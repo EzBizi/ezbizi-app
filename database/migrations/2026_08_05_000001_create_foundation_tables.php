@@ -186,14 +186,22 @@ return new class extends Migration
             $table->index(['organization_id', 'user_id']);
         });
 
-        // XOR: exactly one target. MySQL 8.0.16+ enforces CHECK for real.
-        DB::statement('
-            ALTER TABLE assignments ADD CONSTRAINT assignments_exactly_one_scope CHECK (
-                (assigned_organization_id IS NOT NULL)
-              + (assigned_company_id      IS NOT NULL)
-              + (assigned_franchise_id    IS NOT NULL) = 1
-            )
-        ');
+        // XOR: exactly one target, enforced by the database itself.
+        //
+        // Driver-aware because SQLite cannot ALTER TABLE ADD CONSTRAINT. Tests run
+        // against MySQL for exactly this reason (see phpunit.xml) — testing the
+        // invariants on a different engine than production tests the wrong thing.
+        // The guard stays so the migration doesn't explode if anyone points it at
+        // SQLite; Assignment::saving() still enforces the rule at model level there.
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement('
+                ALTER TABLE assignments ADD CONSTRAINT assignments_exactly_one_scope CHECK (
+                    (assigned_organization_id IS NOT NULL)
+                  + (assigned_company_id      IS NOT NULL)
+                  + (assigned_franchise_id    IS NOT NULL) = 1
+                )
+            ');
+        }
     }
 
     public function down(): void
