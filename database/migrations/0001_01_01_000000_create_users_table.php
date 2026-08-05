@@ -4,6 +4,20 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
+/**
+ * Laravel's stub, modified for EzBizi: users are UUID-keyed, not BIGINT.
+ *
+ * Why (plan §5): sequential integer IDs leak business volume through the public
+ * API — a client seeing /users/1041 learns roughly how many users exist across the
+ * whole platform. Every tenant-owned table uses UUIDv7, and users are no exception.
+ * Leaving them on BIGINT also makes every foreign key pointing at users the wrong
+ * type, which is exactly how this was caught: assignments.user_id (uuid) could not
+ * reference users.id (bigint) — MySQL error 3780.
+ *
+ * Editing a framework stub is acceptable *here* because the project is greenfield
+ * with zero data. It stops being acceptable the moment real rows exist; after that,
+ * changes belong in new migrations.
+ */
 return new class extends Migration
 {
     /**
@@ -12,8 +26,11 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('users', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->string('name');
+            // This global unique index is REPLACED by a per-organization one in
+            // 2026_08_05_000001_create_foundation_tables — one person may hold
+            // separate accounts in two organizations (plan §4).
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
@@ -29,7 +46,7 @@ return new class extends Migration
 
         Schema::create('sessions', function (Blueprint $table) {
             $table->string('id')->primary();
-            $table->foreignId('user_id')->nullable()->index();
+            $table->foreignUuid('user_id')->nullable()->index();
             $table->string('ip_address', 45)->nullable();
             $table->text('user_agent')->nullable();
             $table->longText('payload');
