@@ -28,3 +28,9 @@ Thumbs.db
 .idea/
 .vscode/
 *.log
+
+# Flutter web build output — derived, not source. Built locally and uploaded to
+# the shared directory on the server (see scripts/deploy.sh). 36 MB per build,
+# almost all CanvasKit, and a new blob on every rebuild: committing it would
+# bloat the repo permanently for no gain.
+/public/app

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\SettingsController;
 use Illuminate\Support\Facades\Route;
 
@@ -23,9 +24,18 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+// ── Public: no user and no organization exist yet ────────────────
+Route::prefix('v1/auth')->group(function () {
+    Route::post('login',  [AuthController::class, 'login']);
+    Route::post('choose', [AuthController::class, 'choose']);
+});
+
+// ── Authenticated ────────────────────────────────────────────────
 Route::prefix('v1')
     ->middleware(['auth:sanctum', 'tenant', 'subscription'])
     ->group(function () {
+
+        Route::post('auth/logout', [AuthController::class, 'logout']);
 
         // ── Settings (§6) ────────────────────────────────────────
         Route::get('settings', [SettingsController::class, 'index']);
