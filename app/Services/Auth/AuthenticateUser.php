@@ -85,7 +85,13 @@ class AuthenticateUser
                 continue;
             }
 
-            if ($staff !== null) {
+            // A user may have enrolled their own factor (§6) even without a
+            // staff link. Either way, once there is one it is required — an
+            // account that has switched 2FA on and can still be entered with a
+            // password alone has not switched anything on.
+            $needsCode = $staff !== null || $account->hasTotp();
+
+            if ($needsCode) {
                 if ($code === null || $code === '') {
                     // Password proven, factor missing. Saying so is safe: it is
                     // only reachable by someone who already has the password.
@@ -93,7 +99,11 @@ class AuthenticateUser
                     continue;
                 }
 
-                if (! $this->staffAuth->verifySecondFactor($staff, $code)) {
+                $verified = $staff !== null
+                    ? $this->staffAuth->verifySecondFactor($staff, $code)
+                    : app(\App\Support\Auth\TotpEnrolment::class)->verify($account, $code);
+
+                if (! $verified) {
                     continue;
                 }
             }
@@ -154,8 +164,14 @@ class AuthenticateUser
             return AuthenticationResult::failed();
         }
 
-        if ($staff !== null && ! $this->staffAuth->verifySecondFactor($staff, (string) $code)) {
-            return AuthenticationResult::failed();
+        if ($staff !== null) {
+            if (! $this->staffAuth->verifySecondFactor($staff, (string) $code)) {
+                return AuthenticationResult::failed();
+            }
+        } elseif ($user->hasTotp()) {
+            if (! app(\App\Support\Auth\TotpEnrolment::class)->verify($user, (string) $code)) {
+                return AuthenticationResult::failed();
+            }
         }
 
         return AuthenticationResult::success($this->enter($user));

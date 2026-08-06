@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\HasTotp;
 use App\Support\Modules\ModuleAvailability;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -27,13 +28,14 @@ use Laravel\Sanctum\HasApiTokens;
  * when an address matches more than one account.
  */
 #[Fillable(['organization_id', 'role_id', 'name', 'email', 'password', 'is_active'])]
-#[Hidden(['password', 'remember_token'])]
+#[Hidden(['password', 'remember_token', 'totp_secret', 'pending_totp_secret', 'recovery_codes'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
+    use HasTotp;
     use HasApiTokens;
     use Notifiable;
 
@@ -43,6 +45,13 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password'          => 'hashed',
             'is_active'         => 'boolean',
+            'totp_confirmed_at' => 'datetime',
+            // Encrypted at rest: a leak that exposes TOTP secrets makes the
+            // second factor worthless, and recovery codes are a full bypass.
+            'totp_secret'         => 'encrypted',
+            'pending_totp_secret' => 'encrypted',
+            'recovery_codes'      => 'encrypted:array',
+            'last_totp_timestamp' => 'integer',
         ];
     }
 

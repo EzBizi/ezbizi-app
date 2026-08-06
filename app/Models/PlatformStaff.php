@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasTotp;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -21,6 +22,7 @@ class PlatformStaff extends Authenticatable
     use HasFactory;
     use HasUuids;
     use HasApiTokens;
+    use HasTotp;
     use SoftDeletes;
 
     protected $table = 'platform_staff';
@@ -106,17 +108,6 @@ class PlatformStaff extends Authenticatable
 
     // ── TOTP ─────────────────────────────────────────────────────
 
-    public function hasTotp(): bool
-    {
-        return $this->totp_secret !== null && $this->totp_confirmed_at !== null;
-    }
-
-    /** A secret has been issued but not yet proven to work. */
-    public function hasPendingTotp(): bool
-    {
-        return $this->pending_totp_secret !== null;
-    }
-
     /**
      * TOTP is mandatory for staff, so an account without it confirmed cannot be
      * used for anything except completing enrolment. Enforced in the guard, not
@@ -127,42 +118,4 @@ class PlatformStaff extends Authenticatable
         return $this->is_active && $this->hasTotp();
     }
 
-    /**
-     * Burn a recovery code. Single use — returns false if it wasn't valid.
-     *
-     * Locked for the duration, because "single use" has to survive two requests
-     * arriving together. The codes are encrypted, so the check cannot be pushed
-     * into a WHERE clause; a row lock is what serialises it instead. Without one,
-     * read-modify-write lets the same code be redeemed twice by two clients
-     * racing — which is exactly what someone who copied the list would try.
-     */
-    public function consumeRecoveryCode(string $code): bool
-    {
-        $normalised = strtoupper(trim($code));
-
-        return \Illuminate\Support\Facades\DB::transaction(function () use ($normalised) {
-            $locked = static::query()->whereKey($this->getKey())->lockForUpdate()->first();
-
-            if ($locked === null) {
-                return false;
-            }
-
-            $codes = $locked->recovery_codes ?? [];
-            $index = array_search($normalised, $codes, strict: true);
-
-            if ($index === false) {
-                return false;
-            }
-
-            unset($codes[$index]);
-            $locked->recovery_codes = array_values($codes);
-            $locked->save();
-
-            // Keep the in-memory copy honest — callers read recovery_codes right
-            // after this to report how many are left.
-            $this->recovery_codes = $locked->recovery_codes;
-
-            return true;
-        });
-    }
 }

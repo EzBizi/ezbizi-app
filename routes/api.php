@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CustomersController;
+use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\SettingsController;
@@ -9,6 +10,7 @@ use App\Http\Controllers\Api\WorkflowsController;
 use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
 use App\Http\Controllers\Api\StaffController;
+use App\Http\Controllers\Api\TwoFactorController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -138,6 +140,22 @@ Route::prefix('v1')
 |
 */
 Route::post('v1/staff/auth/login', [StaffAuthController::class, 'login']);
+
+/*
+ * Setting up a second factor with nobody else present (§4.2).
+ *
+ * `begin` is unauthenticated by necessity — a staff account with no confirmed
+ * factor cannot sign in, which is the whole reason it needs this. It is reachable
+ * ONLY while no confirmed secret exists, throttled per address, and every attempt
+ * is audited. See EnrolmentController for what that trades and what bounds it.
+ *
+ * `confirm` needs the short-lived, single-ability token `begin` hands back — so
+ * it sits behind auth:sanctum but deliberately NOT behind the `staff` middleware,
+ * which would refuse an account that is not yet able to authenticate.
+ */
+Route::post('v1/staff/auth/enrolment', [EnrolmentController::class, 'begin']);
+Route::post('v1/staff/auth/enrolment/confirm', [EnrolmentController::class, 'confirm'])
+    ->middleware('auth:sanctum');
 
 Route::prefix('v1/staff')
     ->middleware(['auth:sanctum', 'staff'])
