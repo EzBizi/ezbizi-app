@@ -21,6 +21,7 @@ import 'screens/settings_screen.dart';
 import 'screens/staff/staff_login_screen.dart';
 import 'screens/staff/staff_shell.dart';
 import 'widgets/notification_bell.dart';
+import 'widgets/scope_switcher.dart';
 
 void main() => runApp(const EzBiziApp());
 
@@ -306,18 +307,16 @@ class _HomeShellState extends State<HomeShell> {
          * there — then it appears here instead. Which one is showing is decided
          * by where there is space to say it, and it is never said twice.
          */
+        // The organization's NAME is gone from here, replaced by the switcher
+        // that shows where you are standing. Two controls saying almost the
+        // same thing — a fixed name and a changeable view — is how somebody
+        // ends up sure they are in one place while the lists show another.
         title: Row(children: [
           EzBiziTheme.wordmark(context, size: 20),
           const SizedBox(width: 14),
           Container(width: 1, height: 18, color: Theme.of(context).dividerColor),
           const SizedBox(width: 14),
-          Flexible(
-            child: Text(
-              me.organization.name,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-          ),
+          Flexible(child: ScopeSwitcher(session: widget.session)),
         ]),
         actions: [
           // Light / dark, one tap, from anywhere.

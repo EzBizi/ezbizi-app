@@ -159,6 +159,7 @@ class Me {
     required this.preferences,
     required this.development,
     required this.organization,
+    required this.scope,
     required this.companies,
     required this.franchises,
   });
@@ -184,6 +185,13 @@ class Me {
 
   /// Only franchises this user can actually act on (§4). The server sends reach,
   /// not the full list, so the UI never offers something that will fail on save.
+  /// Where this person is standing (§3 roll-ups).
+  ///
+  /// The RESOLVED scope, not the stored preference. A saved view that has
+  /// stopped being valid — a franchise removed, an assignment narrowed — comes
+  /// back as the organization rather than as something that no longer exists.
+  final ViewScope scope;
+
   /// The companies behind the franchises this person can reach (§6). Needed so
   /// the settings screen can offer the middle tier of the cascade, which was
   /// supported by the API and unreachable from the UI.
@@ -201,6 +209,7 @@ class Me {
         preferences: {...preferences, key: value},
         development: development,
         organization: organization,
+        scope: scope,
         companies: companies,
         franchises: franchises,
       );
@@ -242,6 +251,8 @@ class Me {
             : DevelopmentAccess.fromJson(json['development'] as Map<String, dynamic>),
         organization:
             OrganizationSummary.fromJson(json['organization'] as Map<String, dynamic>),
+        scope: ViewScope.fromJson(
+            json['scope'] as Map<String, dynamic>? ?? const {}),
         companies: (json['companies'] as List<dynamic>? ?? [])
             .map((c) => CompanySummary.fromJson(c as Map<String, dynamic>))
             .toList(),
@@ -271,6 +282,24 @@ class OrganizationSummary {
         name: json['name'] as String,
         franchiseLabel: json['franchise_label'] as String? ?? 'Franchise',
         isReadOnly: json['is_read_only'] as bool? ?? false,
+      );
+}
+
+class ViewScope {
+  const ViewScope({required this.type, required this.id, required this.label});
+
+  /// organization · company · franchise
+  final String type;
+  final String? id;
+
+  /// What the switcher shows — the organization's, company's or franchise's
+  /// name, resolved by the server so the client never has to look it up.
+  final String label;
+
+  factory ViewScope.fromJson(Map<String, dynamic> json) => ViewScope(
+        type: json['type'] as String? ?? 'organization',
+        id: json['id'] as String?,
+        label: json['label'] as String? ?? '',
       );
 }
 

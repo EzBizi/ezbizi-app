@@ -25,17 +25,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _error;
   List<dynamic> _settings = [];
 
-  String _scopeType = 'organization';
-  String? _scopeId;
-  String _scopeLabel = '';
+  /// Whatever the top bar's switcher is pointing at.
+  ///
+  /// This screen used to carry its own chip row — the organization, its
+  /// companies and their franchises — which was a second control doing the same
+  /// job as the switcher. Two of them is how somebody ends up configuring one
+  /// scope while looking at another's numbers.
+  String get _scopeType => widget.session.me!.scope.type;
+  String? get _scopeId =>
+      widget.session.me!.scope.id ?? widget.session.me!.organization.id;
+  String get _scopeLabel => widget.session.me!.scope.label;
+
+  /// The scope the last load ran against, so a change in the top bar refetches.
+  String? _loadedFor;
 
   @override
   void initState() {
     super.initState();
-    final me = widget.session.me!;
-    _scopeId = me.organization.id;
-    _scopeLabel = me.organization.name;
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final current = '$_scopeType:$_scopeId';
+
+    if (_loadedFor != null && _loadedFor != current) _load();
   }
 
   Future<void> _load() async {
@@ -43,6 +59,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _loading = true;
       _error = null;
     });
+
+    _loadedFor = '$_scopeType:$_scopeId';
 
     final response = await widget.api.get('/settings', {
       'scope_type': _scopeType,
@@ -120,191 +138,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _scopePicker(context, me),
+        // A line saying what these settings belong to. The switcher above says
+        // where you are; this says what changing something here would affect,
+        // which is the question people actually get wrong.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+          child: Text(
+            _scopeType == 'organization'
+                ? 'Settings for ${me.organization.name} — everything inherits these '
+                    'unless a company or a place overrides them.'
+                : 'Settings for $_scopeLabel. Anything left alone inherits from '
+                    'above; anything set here overrides it.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ),
         const Divider(height: 1),
         Expanded(child: _body(context)),
       ],
     );
-  }
-
-  /// Where in the cascade you are configuring (§6).
-  ///
-  /// ── Why this is not one row of chips ─────────────────────────
-  ///
-  /// It was, and it flattened three different kinds of thing into one
-  /// undifferentiated list: the organization, its companies, and their
-  /// franchises, all as equal siblings. That is a lie about the model — a
-  /// franchise BELONGS to a company, and a value set on the company is what the
-  /// franchise inherits.
-  ///
-  /// The flattening also made the screen ambiguous the moment a second company
-  /// appeared. Two companies each operating Connecticut produced two chips
-  /// reading "Connecticut", side by side, with nothing to tell them apart and
-  /// different settings behind each. Prefixing the labels would have hidden
-  /// that; showing the structure removes it, because the two now sit on
-  /// different rows under the company that owns them.
-  Widget _scopePicker(BuildContext context, Me me) {
-    // Grouped by the company each one belongs to. Every reachable franchise has
-    // a reachable company — the server derives one list from the other — so
-    // nothing can fall outside a group.
-    final byCompany = <String, List<FranchiseSummary>>{};
-
-    for (final f in me.franchises) {
-      byCompany.putIfAbsent(f.companyId ?? '', () => []).add(f);
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            SizedBox(
-              width: 84,
-              child: Text('Configuring',
-                  style: Theme.of(context).textTheme.labelSmall),
-            ),
-            _chip(
-              label: me.organization.name,
-              // Every tier carries its own glyph, so the rows read as three
-              // kinds of thing rather than one list with some of it decorated.
-              // A hub for the organization: it is what the companies hang off,
-              // and its silhouette stays distinct from the two buildings below
-              // it at 15px.
-              icon: Icons.hub_outlined,
-              selected: _scopeType == 'organization',
-              onTap: () => _select('organization', me.organization.id, me.organization.name),
-            ),
-          ]),
-
-          // Top-level companies, each followed by its own Sub Companies.
-          //
-          // A flat loop rendered Premier Garage Repair beside Everdoors as
-          // though the two were siblings — nothing on screen said that Premier
-          // sits UNDER Everdoors and inherits its settings before falling
-          // through to the organization. That is the same flattening the
-          // franchise row had, one tier up.
-          for (final company in me.companies.where((c) => c.parentCompanyId == null))
-            ..._companyRows(context, me, company, byCompany),
-
-          // A Sub Company whose parent is not in this person's reach would
-          // otherwise vanish from the picker entirely. Shown at the top level
-          // rather than hidden: they can configure it, they just cannot see
-          // what it hangs off.
-          for (final orphan in me.companies.where((c) =>
-              c.parentCompanyId != null &&
-              !me.companies.any((p) => p.id == c.parentCompanyId)))
-            ..._companyRows(context, me, orphan, byCompany),
-        ],
-      ),
-    );
-  }
-
-  /// One company's row, then a row for each of its Sub Companies.
-  ///
-  /// Returns a list rather than a Column so the rows stay siblings in the
-  /// outer one — nesting Columns here would make the indent depend on the
-  /// widget tree instead of on the model, and they would drift.
-  List<Widget> _companyRows(
-    BuildContext context,
-    Me me,
-    CompanySummary company,
-    Map<String, List<FranchiseSummary>> byCompany, {
-    bool isSub = false,
-  }) {
-    final subs = me.companies.where((c) => c.parentCompanyId == company.id);
-
-    return [
-      const SizedBox(height: 8),
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // The indent is the hierarchy. A Sub Company sits one step further in
-          // than the company it belongs to, under a corner that points at it.
-          SizedBox(
-            width: isSub ? 108 : 84,
-            child: isSub
-                ? Align(
-                    alignment: Alignment.centerRight,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 6, bottom: 4),
-                      child: Icon(
-                        Icons.subdirectory_arrow_right,
-                        size: 16,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  )
-                : null,
-          ),
-          _chip(
-            label: company.name,
-            // Sub Companies are "literally a Company with a parent" (§3), so
-            // they carry the same glyph. The position says which is which; a
-            // second icon would imply a third kind of thing.
-            icon: Icons.apartment_outlined,
-            selected: _scopeType == 'company' && _scopeId == company.id,
-            onTap: () => _select('company', company.id, company.name),
-          ),
-          SizedBox(
-            height: 32,
-            width: 30,
-            child: Center(
-              child: Icon(
-                Icons.chevron_right,
-                size: 18,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final f in byCompany[company.id] ?? const [])
-                  _chip(
-                    label: f.name,
-                    icon: Icons.storefront_outlined,
-                    selected: _scopeType == 'franchise' && _scopeId == f.id,
-                    onTap: () => _select('franchise', f.id, f.name),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      for (final sub in subs)
-        ..._companyRows(context, me, sub, byCompany, isSub: true),
-    ];
-  }
-  Widget _chip({
-    required String label,
-    required IconData icon,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return ChoiceChip(
-      label: Text(label),
-      avatar: Icon(icon, size: 15),
-      selected: selected,
-      onSelected: (_) => onTap(),
-    );
-  }
-
-  /// One place that changes scope, so the three fields cannot drift apart.
-  ///
-  /// They were set inline at each of the three call sites, which is how a
-  /// scope's type, id and label end up describing different things after an
-  /// edit to one of them.
-  void _select(String type, String id, String label) {
-    setState(() {
-      _scopeType = type;
-      _scopeId = id;
-      _scopeLabel = label;
-    });
-
-    _load();
   }
 
   Widget _body(BuildContext context) {
