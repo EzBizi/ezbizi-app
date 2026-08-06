@@ -75,10 +75,10 @@ class SettingsVisibilityTest extends TestCase
                 'password' => 'a-real-password', 'is_active' => true,
             ]);
 
-            $user->assignments()->create([
-                'organization_id' => $this->alpha['org']->id,
-                'scope_type' => 'franchise',
-                'scope_id'   => $this->alpha['franchise']->id,
+            \App\Models\Assignment::create([
+                'organization_id'      => $this->alpha['org']->id,
+                'user_id'              => $user->id,
+                'assigned_franchise_id' => $this->alpha['franchise']->id,
             ]);
 
             return 'v@alpha.test';
