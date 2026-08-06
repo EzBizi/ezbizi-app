@@ -251,6 +251,11 @@ class _IdentityPanel extends StatelessWidget {
                   // spare after the headline — and that is the most common
                   // laptop size there is.
                   Flexible(
+                    // Weighted heavily against the two Spacers. At flex 1 it was
+                    // sharing the leftover space three ways and scaling itself
+                    // down to a third of its size on a screen with room to
+                    // spare — a preview too small to read is decoration.
+                    flex: 8,
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,

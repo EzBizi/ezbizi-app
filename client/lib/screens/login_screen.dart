@@ -189,10 +189,16 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return AuthShell(
       pill: 'Early access',
-      eyebrow: 'Built for field service',
-      headline: 'Run the whole day from one screen.',
-      blurb: 'Booked, dispatched, invoiced — without the whiteboard, the group '
-          'chat and three spreadsheets.',
+      // Lifted from ezbizi.com rather than invented here. Somebody arriving at
+      // this screen has usually just read that page, and a sign-in that makes a
+      // different promise in a different voice reads as a different company.
+      //
+      // The second sentence is the site's own differentiator, and it is the one
+      // line on the page that says why this rather than any of the others.
+      eyebrow: 'One platform, every location',
+      headline: 'Run your entire business from one platform.',
+      blurb: 'Customers, scheduling, field work and billing on the same record. '
+          "Most software assumes you run one site — EzBizi assumes you don't.",
       preview: const CustomerPreview(),
       footnote: 'Your data. Your organization. Nobody else can see it.',
       form: _choices != null

@@ -140,8 +140,11 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     return AuthShell(
       pill: 'Control plane',
       eyebrow: 'EzBizi platform',
-      headline: 'Every customer, one console.',
-      blurb: 'Organizations, modules, access and health — for the whole '
+      // Same construction the site uses throughout — "One account. Every
+      // location.", "Every module, one record" — so the control plane reads as
+      // the same product rather than an internal tool somebody bolted on.
+      headline: 'One console. Every organization.',
+      blurb: 'Modules, access, subscriptions and health — for the whole '
           'platform at once.',
       preview: const StaffPreview(),
       // Said plainly on the way in, because it is true and because somebody who
