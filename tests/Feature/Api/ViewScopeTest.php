@@ -97,13 +97,20 @@ class ViewScopeTest extends TestCase
         }
     }
 
+    /**
+     * Inside the tenant: saving a User fires BelongsToTenant's write guard,
+     * which refuses outright when there is no tenant established. That guard is
+     * doing its job — a test is just a caller like any other.
+     */
     private function scopeTo(string $scope): void
     {
-        $user = User::withoutGlobalScopes()->find($this->w['admin']->id);
+        app(TenantContext::class)->run($this->w['org'], function () use ($scope) {
+            $user = User::find($this->w['admin']->id);
 
-        $user->forceFill([
-            'preferences' => array_merge($user->preferences ?? [], ['navigation.scope' => $scope]),
-        ])->save();
+            $user->forceFill([
+                'preferences' => array_merge($user->preferences ?? [], ['navigation.scope' => $scope]),
+            ])->save();
+        });
     }
 
     /**
@@ -237,9 +244,9 @@ class ViewScopeTest extends TestCase
             return $user;
         });
 
-        $limited->forceFill([
+        app(TenantContext::class)->run($this->w['org'], fn () => $limited->forceFill([
             'preferences' => ['navigation.scope' => 'organization'],
-        ])->save();
+        ])->save());
 
         // Even asking for the whole organization, reach is the floor: this
         // person is assigned to one franchise and sees its 10.
