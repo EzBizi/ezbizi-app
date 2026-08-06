@@ -509,6 +509,77 @@ class VerticalSliceTest extends TestCase
         $this->assertSame('First Entry', $response->json('possible_duplicates.0.name'));
     }
 
+    // ── the contract says what the columns say ───────────────────
+
+    public function test_an_explicit_null_on_an_unchangeable_field_is_refused_not_a_500(): void
+    {
+        $alpha = $this->provision('Alpha', 'a@alpha.test');
+
+        $customer = $this->as($alpha['admin'])->postJson('/api/v1/customers', [
+            'owning_franchise_id' => $alpha['franchise']->id, 'name' => 'Person',
+        ])->assertCreated()->json('data.id');
+
+        // `prohibited` is satisfied by a present-but-null value, so the null used
+        // to reach fill() and violate a NOT NULL column as a 500. `missing`
+        // rejects the key being there at all.
+        $this->as($alpha['admin'])->patchJson("/api/v1/customers/{$customer}", [
+            'name' => 'Renamed', 'owning_franchise_id' => null,
+        ])->assertStatus(422);
+
+        $this->assertSame('Person', Customer::find($customer)->name);
+    }
+
+    public function test_currency_comes_from_the_franchise_and_is_not_accepted_from_the_client(): void
+    {
+        $alpha = $this->provision('Alpha', 'a@alpha.test');
+
+        $customer = $this->as($alpha['admin'])->postJson('/api/v1/customers', [
+            'owning_franchise_id' => $alpha['franchise']->id, 'name' => 'Person',
+        ])->assertCreated()->json('data.id');
+
+        // The column is NOT NULL and v1 is single-currency (§7), so the only
+        // thing a caller could send is USD or a mistake — and a null against a
+        // NOT NULL column was a 500 rather than a refusal.
+        $this->as($alpha['admin'])->postJson('/api/v1/jobs', [
+            'franchise_id' => $alpha['franchise']->id, 'customer_id' => $customer,
+            'title' => 'One', 'status' => 'scheduled', 'currency' => null,
+        ])->assertStatus(422);
+
+        $job = $this->as($alpha['admin'])->postJson('/api/v1/jobs', [
+            'franchise_id' => $alpha['franchise']->id, 'customer_id' => $customer,
+            'title' => 'One', 'status' => 'scheduled',
+        ])->assertCreated();
+
+        $this->assertSame('USD', $job->json('data.amount.currency'));
+    }
+
+    public function test_a_job_with_no_scheduled_date_still_appears_first(): void
+    {
+        $alpha = $this->provision('Alpha', 'a@alpha.test');
+
+        $customer = $this->as($alpha['admin'])->postJson('/api/v1/customers', [
+            'owning_franchise_id' => $alpha['franchise']->id, 'name' => 'Person',
+        ])->assertCreated()->json('data.id');
+
+        $this->as($alpha['admin'])->postJson('/api/v1/jobs', [
+            'franchise_id' => $alpha['franchise']->id, 'customer_id' => $customer,
+            'title' => 'Scheduled last year', 'status' => 'scheduled',
+            'scheduled_for' => now()->subYear()->toIso8601String(),
+        ])->assertCreated();
+
+        $this->as($alpha['admin'])->postJson('/api/v1/jobs', [
+            'franchise_id' => $alpha['franchise']->id, 'customer_id' => $customer,
+            'title' => 'Just created, no date', 'status' => 'scheduled',
+        ])->assertCreated();
+
+        // MySQL sorts NULLs last under DESC, so ordering on scheduled_for alone
+        // sent every job created without a date to the bottom — where a user who
+        // had just created one would never find it.
+        $this->as($alpha['admin'])->getJson('/api/v1/jobs')
+            ->assertOk()
+            ->assertJsonPath('data.0.title', 'Just created, no date');
+    }
+
     // ── the module registry (§5.5) ───────────────────────────────
 
     public function test_the_new_modules_appear_with_their_permissions_and_triggers(): void

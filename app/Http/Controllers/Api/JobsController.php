@@ -61,7 +61,10 @@ class JobsController extends Controller
             ->when($request->query('franchise_id'), fn ($q, $id) => $q->where('franchise_id', $id))
             ->when($request->query('customer_id'), fn ($q, $id) => $q->where('customer_id', $id))
             ->when($request->query('status'), fn ($q, $s) => $q->where('status', $s))
-            ->orderByDesc('scheduled_for')
+            // COALESCE, not scheduled_for alone. MySQL sorts NULLs last under
+            // DESC, and a job created without a date has a null one — so a user
+            // who had just created one watched it fail to appear.
+            ->orderByRaw('COALESCE(scheduled_for, created_at) DESC')
             ->orderByDesc('created_at')
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
 
@@ -105,6 +108,9 @@ class JobsController extends Controller
         $job = DB::transaction(function () use ($input, $franchise, $customer) {
             $job = Job::create($input + [
                 'number' => $this->numbers->next(RecordNumberGenerator::JOBS, $franchise),
+                // From the franchise, so the amount and its currency can never
+                // disagree with where the work happened.
+                'currency' => strtoupper($franchise->currency ?: 'USD'),
             ]);
 
             $this->audit->log('job.created', $job, metadata: [
@@ -192,11 +198,14 @@ class JobsController extends Controller
             // rewrites two franchises' history at once, and one that changes
             // customer detaches work from the person it was done for — both are
             // "create a new one and cancel this", not an edit.
+            // `missing`, not `prohibited`: prohibited is satisfied by a
+            // present-but-null value, which then reached fill() and violated a
+            // NOT NULL column as a 500 instead of a refusal.
             'franchise_id' => $forUpdate
-                ? ['prohibited']
+                ? ['missing']
                 : ['required', 'uuid', $this->existsInTenant('franchises')],
             'customer_id'  => $forUpdate
-                ? ['prohibited']
+                ? ['missing']
                 : ['required', 'uuid', $this->existsInTenant('customers')],
 
             'title'            => [$required, 'string', 'max:200'],
@@ -207,7 +216,12 @@ class JobsController extends Controller
             // Minor units, integer (§7). Accepting a decimal here is how floats
             // get into money — the client sends cents or nothing.
             'amount_minor'     => ['nullable', 'integer', 'min:0'],
-            'currency'         => ['nullable', 'string', 'size:3'],
+            // Currency is NOT accepted from the client. The column is NOT NULL
+            // and v1 is single-currency (§7), so the only thing a caller could
+            // send is either 'USD' or a mistake — and `nullable` against a NOT
+            // NULL column turned an explicit null into a 500 rather than a 422.
+            // It comes from the franchise below instead.
+            'currency'         => ['missing'],
         ];
     }
 

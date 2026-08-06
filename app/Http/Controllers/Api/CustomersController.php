@@ -225,8 +225,11 @@ class CustomersController extends Controller
         $required = $forUpdate ? 'sometimes' : 'required';
 
         return [
+            // `missing`, not `prohibited`: prohibited is satisfied by a
+            // present-but-null value, which then reached fill() and violated a
+            // NOT NULL column as a 500 instead of a refusal.
             'owning_franchise_id' => $forUpdate
-                ? ['prohibited']
+                ? ['missing']
                 : ['required', 'uuid', $this->existsInTenant('franchises')],
             'name'          => [$required, 'string', 'max:200'],
             'email'         => ['nullable', 'email', 'max:200'],

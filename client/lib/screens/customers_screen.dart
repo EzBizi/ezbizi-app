@@ -28,6 +28,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
   String? _error;
   List<Map<String, dynamic>> _customers = [];
   int _total = 0;
+  // Page one only, until asked. The header used to claim a total the list did
+  // not render, with no next-page control and nothing saying records were
+  // hidden — which reads as data loss rather than as pagination.
+  int _page = 1;
+  int _lastPage = 1;
 
   @override
   void initState() {
@@ -41,13 +46,14 @@ class _CustomersScreenState extends State<CustomersScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int page = 1}) async {
     setState(() {
-      _loading = true;
+      if (page == 1) _loading = true;
       _error = null;
     });
 
     final response = await widget.api.get('/customers', {
+      'page': '$page',
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
     });
 
@@ -55,12 +61,19 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
     setState(() {
       _loading = false;
-      if (response.ok) {
-        _customers = List<Map<String, dynamic>>.from(response.data as List);
-        _total = (response.body['meta'] as Map<String, dynamic>?)?['total'] as int? ?? _customers.length;
-      } else {
+
+      if (!response.ok) {
         _error = response.message;
+        return;
       }
+
+      final rows = List<Map<String, dynamic>>.from(response.data as List);
+      _customers = page == 1 ? rows : [..._customers, ...rows];
+
+      final meta = response.body['meta'] as Map<String, dynamic>?;
+      _total = meta?['total'] as int? ?? _customers.length;
+      _lastPage = meta?['last_page'] as int? ?? 1;
+      _page = page;
     });
   }
 
@@ -76,8 +89,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
           title: 'Customers',
           note: (_loading || _error != null)
               ? 'Shared across the organization — the $label tag shows who is accountable.'
-              : '$_total shared across the organization. The $label tag shows who is '
-                  'accountable for each relationship.',
+              : _customers.length < _total
+                  ? 'Showing ${_customers.length} of $_total shared across the '
+                      'organization. The $label tag shows who is accountable.'
+                  : '$_total shared across the organization. The $label tag shows who is '
+                      'accountable for each relationship.',
           action: FilledButton.icon(
             // The server decides in the end; hiding the button when the user has
             // no reach anywhere just avoids offering a guaranteed failure.
@@ -116,9 +132,16 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 ? const Center(child: Text('No customers yet.'))
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                    itemCount: _customers.length,
+                    itemCount: _customers.length + (_page < _lastPage ? 1 : 0),
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) => _row(context, _customers[i]),
+                    itemBuilder: (context, i) => i == _customers.length
+                        ? Center(
+                            child: TextButton(
+                              onPressed: () => _load(page: _page + 1),
+                              child: Text('Load more (${_total - _customers.length} left)'),
+                            ),
+                          )
+                        : _row(context, _customers[i]),
                   ),
           ),
         ),

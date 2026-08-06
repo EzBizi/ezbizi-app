@@ -51,37 +51,39 @@ class RecordNumberGenerator
     {
         $organizationId = $this->tenant->idOrFail();
 
+        /*
+         * The counter row is created BEFORE anything locks, and never inside the
+         * lock.
+         *
+         * The obvious shape — SELECT ... FOR UPDATE, and INSERT if it finds
+         * nothing — deadlocks on the very first record an organization creates.
+         * A locking read that matches no row does not take a record lock under
+         * InnoDB; it takes a GAP lock, and gap locks are mutually compatible. So
+         * two simultaneous first-creates both acquire one, then both need an
+         * insert-intention lock in that same gap, which conflicts with the
+         * other's gap lock. InnoDB resolves it by killing one transaction —
+         * rolling back the caller's entire request, not just this statement.
+         *
+         * insertOrIgnore takes no prior gap lock and is safe to lose: whichever
+         * request gets there second simply does nothing. By the time the locking
+         * read runs, the row exists, so it takes an ordinary record lock and the
+         * loser waits its turn instead of dying.
+         */
+        DB::table('record_sequences')->insertOrIgnore([
+            'id'              => (string) \Illuminate\Support\Str::uuid7(),
+            'organization_id' => $organizationId,
+            'sequence_key'    => $sequenceKey,
+            'next_value'      => 1,
+            'created_at'      => now(),
+            'updated_at'      => now(),
+        ]);
+
         $value = DB::transaction(function () use ($organizationId, $sequenceKey) {
             $row = DB::table('record_sequences')
                 ->where('organization_id', $organizationId)
                 ->where('sequence_key', $sequenceKey)
                 ->lockForUpdate()
                 ->first();
-
-            if ($row === null) {
-                // First record of this type for this organization. The unique
-                // index is what makes the race safe: if two requests both find
-                // nothing, one insert wins and the other retries into the
-                // locked-read path below.
-                try {
-                    DB::table('record_sequences')->insert([
-                        'id'              => (string) \Illuminate\Support\Str::uuid7(),
-                        'organization_id' => $organizationId,
-                        'sequence_key'    => $sequenceKey,
-                        'next_value'      => 2,
-                        'created_at'      => now(),
-                        'updated_at'      => now(),
-                    ]);
-
-                    return 1;
-                } catch (\Illuminate\Database\UniqueConstraintViolationException) {
-                    $row = DB::table('record_sequences')
-                        ->where('organization_id', $organizationId)
-                        ->where('sequence_key', $sequenceKey)
-                        ->lockForUpdate()
-                        ->first();
-                }
-            }
 
             DB::table('record_sequences')
                 ->where('id', $row->id)

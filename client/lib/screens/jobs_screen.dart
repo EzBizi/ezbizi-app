@@ -26,6 +26,11 @@ class _JobsScreenState extends State<JobsScreen> {
   String? _error;
   List<Map<String, dynamic>> _jobs = [];
   int _total = 0;
+  // Page one only, until asked. The header used to claim a total the list did
+  // not render, with no next-page control and nothing saying records were
+  // hidden — which reads as data loss rather than as pagination.
+  int _page = 1;
+  int _lastPage = 1;
 
   @override
   void initState() {
@@ -33,24 +38,31 @@ class _JobsScreenState extends State<JobsScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int page = 1}) async {
     setState(() {
-      _loading = true;
+      if (page == 1) _loading = true;
       _error = null;
     });
 
-    final response = await widget.api.get('/jobs');
+    final response = await widget.api.get('/jobs', {'page': '$page'});
 
     if (!mounted) return;
 
     setState(() {
       _loading = false;
-      if (response.ok) {
-        _jobs = List<Map<String, dynamic>>.from(response.data as List);
-        _total = (response.body['meta'] as Map<String, dynamic>?)?['total'] as int? ?? _jobs.length;
-      } else {
+
+      if (!response.ok) {
         _error = response.message;
+        return;
       }
+
+      final rows = List<Map<String, dynamic>>.from(response.data as List);
+      _jobs = page == 1 ? rows : [..._jobs, ...rows];
+
+      final meta = response.body['meta'] as Map<String, dynamic>?;
+      _total = meta?['total'] as int? ?? _jobs.length;
+      _lastPage = meta?['last_page'] as int? ?? 1;
+      _page = page;
     });
   }
 
@@ -65,7 +77,10 @@ class _JobsScreenState extends State<JobsScreen> {
           title: 'Jobs',
           note: (_loading || _error != null)
               ? 'Everything you can reach.'
-              : '$_total across the ${me.organization.franchiseLabel.toLowerCase()}s you can reach.',
+              : _jobs.length < _total
+                  ? 'Showing ${_jobs.length} of $_total across the '
+                      '${me.organization.franchiseLabel.toLowerCase()}s you can reach.'
+                  : '$_total across the ${me.organization.franchiseLabel.toLowerCase()}s you can reach.',
           action: FilledButton.icon(
             onPressed: me.franchises.isEmpty ? null : _create,
             icon: const Icon(Icons.add, size: 18),
@@ -81,9 +96,16 @@ class _JobsScreenState extends State<JobsScreen> {
                 ? const Center(child: Text('No jobs yet.'))
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                    itemCount: _jobs.length,
+                    itemCount: _jobs.length + (_page < _lastPage ? 1 : 0),
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) => _row(context, _jobs[i]),
+                    itemBuilder: (context, i) => i == _jobs.length
+                        ? Center(
+                            child: TextButton(
+                              onPressed: () => _load(page: _page + 1),
+                              child: Text('Load more (${_total - _jobs.length} left)'),
+                            ),
+                          )
+                        : _row(context, _jobs[i]),
                   ),
           ),
         ),
@@ -195,30 +217,48 @@ class _NewJobDialogState extends State<_NewJobDialog> {
 
   /// Statuses come from the organization's settings, not from a constant here —
   /// an organization can rename them without a new build (§2.1).
+  ///
+  /// The endpoint needs a scope, and it answers with a LIST of setting objects
+  /// rather than a map keyed by setting name. Getting either wrong used to fail
+  /// silently: the dropdown quietly offered one status, and an organization that
+  /// had removed 'scheduled' from its list could not create a job at all,
+  /// because the client posted a status the server was right to reject.
   Future<void> _loadOptions() async {
+    final organizationId = widget.session.me!.organization.id;
+
     final customers = await widget.api.get('/customers', {'per_page': '200'});
-    final settings = await widget.api.get('/settings');
+    final settings = await widget.api.get('/settings', {
+      'scope_type': 'organization',
+      'scope_id': organizationId,
+    });
 
     if (!mounted) return;
 
     setState(() {
       _loading = false;
 
-      if (customers.ok) {
-        _customers = List<Map<String, dynamic>>.from(customers.data as List);
-      } else {
+      if (!customers.ok) {
         _error = customers.message;
+      } else {
+        _customers = List<Map<String, dynamic>>.from(customers.data as List);
       }
 
-      if (settings.ok) {
-        final all = settings.data;
-        final value = all is Map<String, dynamic> ? all['jobs.statuses'] : null;
-        final resolved = value is Map<String, dynamic> ? value['value'] : value;
+      if (!settings.ok) {
+        // Said out loud rather than degraded quietly. A create form offering the
+        // wrong statuses is worse than one that admits it could not load them.
+        _error ??= 'Could not load this organization\'s job statuses: ${settings.message}';
+        return;
+      }
 
-        if (resolved is List && resolved.isNotEmpty) {
-          _statuses = resolved.map((s) => s.toString()).toList();
-          _status = _statuses.first;
-        }
+      final all = settings.data;
+      final rows = (all is List)
+          ? all.cast<Map<String, dynamic>>().where((s) => s['key'] == 'jobs.statuses').toList()
+          : const <Map<String, dynamic>>[];
+      final resolved = rows.isEmpty ? null : rows.first['value'];
+
+      if (resolved is List && resolved.isNotEmpty) {
+        _statuses = resolved.map((s) => s.toString()).toList();
+        _status = _statuses.first;
       }
     });
   }
@@ -294,22 +334,71 @@ class _NewJobDialogState extends State<_NewJobDialog> {
                       onChanged: _busy ? null : (v) => setState(() => _franchiseId = v),
                     ),
                     const SizedBox(height: 14),
-                    DropdownButtonFormField<String>(
-                      initialValue: _customerId,
-                      decoration: const InputDecoration(
-                        labelText: 'Customer',
-                        helperText: 'Any customer in the organization — doing work for '
-                            'another franchise\'s customer does not move them.',
-                        helperMaxLines: 3,
+                    // Searched, not listed. A dropdown of the first 200 by name
+                    // means that in a 900-customer organization everyone from
+                    // roughly 'D' onward simply cannot be picked, and no job can
+                    // be created for them at all — with nothing on screen saying
+                    // why. The endpoint already searches name, email, phone and
+                    // number, so this asks it.
+                    Autocomplete<Map<String, dynamic>>(
+                      displayStringForOption: (c) => '${c['name']} · ${c['number']}',
+                      optionsBuilder: (value) async {
+                        if (value.text.trim().isEmpty) return _customers.take(50);
+
+                        final response = await widget.api.get('/customers', {
+                          'search': value.text.trim(),
+                          'per_page': '50',
+                        });
+
+                        if (!response.ok) return const <Map<String, dynamic>>[];
+
+                        return List<Map<String, dynamic>>.from(response.data as List);
+                      },
+                      onSelected: (c) => setState(() => _customerId = c['id'] as String),
+                      fieldViewBuilder: (context, controller, focusNode, onSubmit) => TextField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        enabled: !_busy,
+                        decoration: InputDecoration(
+                          labelText: 'Customer',
+                          helperText: _customerId == null
+                              ? 'Search by name, phone, email or number.'
+                              : 'Any customer in the organization — doing work for '
+                                  'another franchise\'s customer does not move them.',
+                          helperMaxLines: 3,
+                          suffixIcon: _customerId == null
+                              ? const Icon(Icons.search)
+                              : const Icon(Icons.check, size: 20),
+                        ),
+                        // Typing again after choosing means the choice is stale.
+                        onChanged: (_) {
+                          if (_customerId != null) setState(() => _customerId = null);
+                        },
                       ),
-                      items: _customers
-                          .map((c) => DropdownMenuItem(
-                                value: c['id'] as String,
-                                child: Text('${c['name']} · '
-                                    '${(c['owning_franchise'] as Map)['name'] ?? ''}'),
-                              ))
-                          .toList(),
-                      onChanged: _busy ? null : (v) => setState(() => _customerId = v),
+                      optionsViewBuilder: (context, onSelected, options) => Align(
+                        alignment: Alignment.topLeft,
+                        child: Material(
+                          elevation: 4,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 260, maxWidth: 420),
+                            child: ListView(
+                              padding: EdgeInsets.zero,
+                              shrinkWrap: true,
+                              children: options
+                                  .map((c) => ListTile(
+                                        dense: true,
+                                        title: Text(c['name'] as String),
+                                        subtitle: Text([
+                                          c['number'],
+                                          (c['owning_franchise'] as Map)['name'] ?? '',
+                                        ].join(' · ')),
+                                        onTap: () => onSelected(c),
+                                      ))
+                                  .toList(),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 14),
                     TextField(
