@@ -172,4 +172,117 @@ class AuthApiTest extends TestCase
             'email' => 'a@alpha.test', 'password' => 'wrong',
         ])->assertStatus(429)->assertJsonPath('code', 'throttled');
     }
+
+    // ── two organizations, one protected (plan §4) ───────────────
+
+    /** @return array{0: \App\Models\User, 1: string} the protected account and its secret */
+    private function protectedTwin(string $email, string $password = 'a-real-password'): array
+    {
+        $r = $this->org('Beta', $email, $password);
+
+        $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
+        $secret = $totp->generateSecretKey(32);
+
+        \App\Models\User::whereKey($r['administrator']->id)->update([
+            'totp_secret' => encrypt($secret), 'totp_confirmed_at' => now(),
+        ]);
+
+        return [$r['administrator']->fresh(), $secret];
+    }
+
+    public function test_an_account_behind_an_authenticator_is_not_silently_skipped(): void
+    {
+        $this->org('Alpha', 'both@example.test');
+        $this->protectedTwin('both@example.test');
+
+        $response = $this->postJson('/api/v1/auth/login', [
+            'email' => 'both@example.test', 'password' => 'a-real-password',
+        ])->assertOk();
+
+        // The protected account used to be set aside, the unprotected one
+        // matched alone, and one match meant straight in — so the protected
+        // organization was unreachable and nothing ever asked for a code.
+        $response->assertJsonPath('status', 'choose_organization');
+
+        $names = array_column($response->json('choices'), 'organization_name');
+        sort($names);
+
+        $this->assertSame(['Alpha', 'Beta'], $names);
+    }
+
+    public function test_the_picker_says_which_account_will_want_a_code(): void
+    {
+        $this->org('Alpha', 'both@example.test');
+        $this->protectedTwin('both@example.test');
+
+        $choices = $this->postJson('/api/v1/auth/login', [
+            'email' => 'both@example.test', 'password' => 'a-real-password',
+        ])->assertOk()->json('choices');
+
+        $flags = [];
+
+        foreach ($choices as $c) {
+            $flags[$c['organization_name']] = $c['needs_code'];
+        }
+
+        // Otherwise the client picks one, is refused, and has nowhere to type
+        // the thing it was refused for.
+        $this->assertFalse($flags['Alpha']);
+        $this->assertTrue($flags['Beta']);
+    }
+
+    public function test_choosing_the_protected_organization_works_with_a_code(): void
+    {
+        $this->org('Alpha', 'both@example.test');
+        [$beta, $secret] = $this->protectedTwin('both@example.test');
+
+        $this->postJson('/api/v1/auth/choose', [
+            'user_id'  => $beta->id,
+            'email'    => 'both@example.test',
+            'password' => 'a-real-password',
+            'code'     => app(\PragmaRX\Google2FA\Google2FA::class)->getCurrentOtp($secret),
+        ])->assertOk()->assertJsonStructure(['token']);
+    }
+
+    public function test_a_mistyped_code_is_not_reported_as_a_wrong_password(): void
+    {
+        $r = $this->org('Alpha', 'a@alpha.test');
+
+        $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
+        $secret = $totp->generateSecretKey(32);
+
+        \App\Models\User::whereKey($r['administrator']->id)->update([
+            'totp_secret' => encrypt($secret), 'totp_confirmed_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/v1/auth/login', [
+            'email' => 'a@alpha.test', 'password' => 'a-real-password', 'code' => '000000',
+        ])->assertOk();
+
+        // It used to fall through to the generic failure, so somebody who fat
+        // fingered a digit was told their password was wrong — and went off to
+        // reset a password that was never the problem.
+        $response->assertJsonPath('status', 'second_factor_required');
+        $this->assertStringContainsString('code', strtolower($response->json('message')));
+    }
+
+    public function test_the_sign_in_screen_never_mentions_the_control_plane(): void
+    {
+        $r = $this->org('Alpha', 'a@alpha.test');
+
+        $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
+        $secret = $totp->generateSecretKey(32);
+
+        \App\Models\User::whereKey($r['administrator']->id)->update([
+            'totp_secret' => encrypt($secret), 'totp_confirmed_at' => now(),
+        ]);
+
+        $message = $this->postJson('/api/v1/auth/login', [
+            'email' => 'a@alpha.test', 'password' => 'a-real-password',
+        ])->assertOk()->json('message');
+
+        // It is the one page every customer sees. Whether a second system
+        // exists is nobody else's business.
+        $this->assertStringNotContainsStringIgnoringCase('control plane', $message);
+    }
 }

@@ -20,6 +20,16 @@ final class AuthenticationResult
         public readonly ?User $user = null,
         /** @var User[] accounts whose password matched, when more than one did */
         public readonly array $candidates = [],
+
+        /**
+         * Why the second factor is being asked for again.
+         *
+         * Null on the first ask. Set when a code was supplied and did not
+         * verify — which used to fall through to the generic failure and tell
+         * somebody their PASSWORD was wrong, sending them to reset a password
+         * that was never the problem.
+         */
+        public readonly ?string $message = null,
     ) {}
 
     public const SUCCESS   = 'success';
@@ -51,9 +61,9 @@ final class AuthenticationResult
         return new self(self::FAILED);
     }
 
-    public static function secondFactorRequired(): self
+    public static function secondFactorRequired(?string $message = null): self
     {
-        return new self(self::NEEDS_SECOND_FACTOR);
+        return new self(self::NEEDS_SECOND_FACTOR, message: $message);
     }
 
     public function needsSecondFactor(): bool
@@ -85,6 +95,12 @@ final class AuthenticationResult
             'user_id'           => $u->getKey(),
             'organization_id'   => $u->organization_id,
             'organization_name' => $u->organization->name,
+
+            // So the picker can ask for a code when the chosen account needs
+            // one. Without it the client would pick an organization, be refused,
+            // and have nowhere to type the thing it was refused for.
+            'needs_code'        => \App\Models\PlatformStaffLink::staffFor($u->getKey()) !== null
+                                   || $u->hasTotp(),
         ], $this->candidates);
     }
 }

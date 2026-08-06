@@ -27,6 +27,9 @@ class _LoginScreenState extends State<LoginScreen> {
   // one from the second would fail — that form is no longer mounted, so its
   // key has no state to validate.
   final _codeFormKey = GlobalKey<FormState>();
+
+  /// The organization picked from the list, waiting on a code.
+  Map<String, dynamic>? _pendingChoice;
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _code = TextEditingController();
@@ -126,6 +129,19 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _choose(Map<String, dynamic> choice) async {
+    // This account is protected and no code has been given yet — ask for it
+    // before spending a request that can only be refused. Reachable now because
+    // the server offers the picker instead of silently signing somebody into
+    // whichever of their accounts happened to need nothing.
+    if (choice['needs_code'] == true && _code.text.trim().isEmpty) {
+      setState(() {
+        _pendingChoice = choice;
+        _needsCode = true;
+        _error = null;
+      });
+      return;
+    }
+
     setState(() {
       _busy = true;
       _error = null;
@@ -313,6 +329,14 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _submitCode() async {
     if (!(_codeFormKey.currentState?.validate() ?? false)) return;
 
+    final pending = _pendingChoice;
+
+    if (pending != null) {
+      setState(() => _pendingChoice = null);
+      await _choose(pending);
+      return;
+    }
+
     await _submit(skipValidation: true);
   }
 
@@ -324,6 +348,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void _back() {
     setState(() {
       _needsCode = false;
+      _pendingChoice = null;
       _code.clear();
       _error = null;
     });
@@ -408,7 +433,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 18),
                   alignment: Alignment.centerLeft,
                 ),
-                child: Text(choice['organization_name'] as String),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(choice['organization_name'] as String)),
+                    // Marked, so choosing one and immediately being asked for a
+                    // code is expected rather than a surprise.
+                    if (choice['needs_code'] == true)
+                      const Icon(Icons.lock_outline, size: 16),
+                  ],
+                ),
               ),
             )),
 

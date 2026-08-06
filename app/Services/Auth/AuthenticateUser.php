@@ -56,6 +56,12 @@ class AuthenticateUser
 
         $needsSecondFactor = false;
 
+        // Accounts whose password was right and whose factor was simply not
+        // supplied yet. Kept apart from a WRONG code, which is a different
+        // answer to a different question.
+        $awaitingCode = [];
+        $codeWasWrong = false;
+
         foreach ($accounts as $account) {
             /*
              * A linked account authenticates against its STAFF credentials.
@@ -95,7 +101,16 @@ class AuthenticateUser
                 if ($code === null || $code === '') {
                     // Password proven, factor missing. Saying so is safe: it is
                     // only reachable by someone who already has the password.
+                    //
+                    // The ACCOUNT is remembered, not just the fact. Somebody
+                    // with an account in two organizations — one protected by an
+                    // authenticator, one not — used to be signed silently into
+                    // the unprotected one and could never reach the other: it
+                    // was skipped here, the other matched, one match meant
+                    // straight in, and the client only offers a code field once
+                    // the server has asked for one, which never happened.
                     $needsSecondFactor = true;
+                    $awaitingCode[] = $account;
                     continue;
                 }
 
@@ -117,6 +132,12 @@ class AuthenticateUser
                     );
 
                 if (! $verified) {
+                    // Distinct from a missing code. Falling through to the
+                    // generic failure told somebody their PASSWORD was wrong
+                    // when their password was fine and they had fat-fingered a
+                    // digit — which sends people resetting a password that was
+                    // never the problem.
+                    $codeWasWrong = true;
                     continue;
                 }
             }
@@ -124,8 +145,27 @@ class AuthenticateUser
             $matched[] = $account;
         }
 
+        if ($matched === [] && $codeWasWrong) {
+            return AuthenticationResult::secondFactorRequired(
+                'That code did not verify. Check the clock on the device, then try again.'
+            );
+        }
+
         if ($matched === [] && $needsSecondFactor) {
             return AuthenticationResult::secondFactorRequired();
+        }
+
+        /*
+         * Some accounts matched, and at least one more is waiting for a code.
+         *
+         * Signing them into the one that needed nothing would be the convenient
+         * answer and the wrong one: it silently picks an organization on their
+         * behalf and makes the other unreachable. Offering the choice keeps both
+         * doors open — /auth/choose already accepts a code, so picking the
+         * protected one asks for it.
+         */
+        if ($matched !== [] && $awaitingCode !== []) {
+            return AuthenticationResult::ambiguous([...$matched, ...$awaitingCode]);
         }
 
         if ($matched === []) {

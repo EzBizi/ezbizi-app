@@ -78,8 +78,13 @@ class AuthController extends Controller
             // must not get unlimited attempts at the second factor.
             return response()->json([
                 'status'  => 'second_factor_required',
-                'message' => 'This account also signs in to the control plane, so it needs '
-                    .'your authenticator code.',
+
+                // The reason when there is one — a code that did not verify —
+                // and otherwise nothing but the ask. The old text named the
+                // control plane on the one screen every customer sees; whether
+                // a second system exists is nobody else's business.
+                'message' => $result->message
+                    ?? 'Enter the code from your authenticator.',
             ]);
         }
 
