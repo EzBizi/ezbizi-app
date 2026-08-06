@@ -3,6 +3,7 @@
 namespace App\Support\Data;
 
 use App\Models\Customer;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Model;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -18,12 +19,23 @@ class Exporter
     /** Rows per query. Big enough to be few round trips, small enough to stay flat. */
     private const CHUNK = 500;
 
+    public function __construct(private TenantContext $tenant) {}
+
     public function csv(string $resource): StreamedResponse
     {
         $definition = ResourceMap::get($resource);
         $columns    = $definition['columns'];
 
-        return response()->streamDownload(function () use ($definition, $columns) {
+        // Captured HERE, not read inside the callback.
+        //
+        // A streamed response runs its body after the middleware stack has
+        // unwound, and SetTenantContext clears the tenant in a `finally` on the
+        // way out. So by the time these rows are queried there is no tenant left
+        // — which is either an exception or, far worse, an unscoped query that
+        // writes another organization's customers into this file.
+        $organization = $this->tenant->get();
+
+        return response()->streamDownload(function () use ($definition, $columns, $organization) {
             $out = fopen('php://output', 'w');
 
             // Excel reads a bare UTF-8 CSV as the system codepage, so an accented
@@ -33,18 +45,20 @@ class Exporter
 
             fputcsv($out, $columns);
 
-            $definition['model']::query()
-                ->orderBy('created_at')
-                ->chunkById(self::CHUNK, function ($rows) use ($out, $columns) {
-                    foreach ($rows as $row) {
-                        fputcsv($out, array_map(
-                            fn (string $c) => $this->cell($row->getAttribute($c)),
-                            $columns,
-                        ));
-                    }
+            $this->tenant->run($organization, function () use ($definition, $columns, $out) {
+                $definition['model']::query()
+                    ->orderBy('created_at')
+                    ->chunkById(self::CHUNK, function ($rows) use ($out, $columns) {
+                        foreach ($rows as $row) {
+                            fputcsv($out, array_map(
+                                fn (string $c) => $this->cell($row->getAttribute($c)),
+                                $columns,
+                            ));
+                        }
 
-                    flush();
-                });
+                        flush();
+                    });
+            });
 
             fclose($out);
         }, "{$resource}.csv", ['Content-Type' => 'text/csv; charset=UTF-8']);

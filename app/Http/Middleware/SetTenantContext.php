@@ -61,6 +61,11 @@ class SetTenantContext
             $this->tenant->forget();
         }
 
-        return $response->header('X-Correlation-Id', $this->audit->correlationId());
+        // headers->set rather than ->header(): the latter is Laravel's own
+        // Response, and a streamed download is a bare Symfony StreamedResponse
+        // that does not have it. Every response type has ->headers.
+        $response->headers->set('X-Correlation-Id', $this->audit->correlationId());
+
+        return $response;
     }
 }
