@@ -38,7 +38,9 @@ return [
         'database' => [
             'driver' => 'database',
             'connection' => env('DB_QUEUE_CONNECTION'),
-            'table' => env('DB_QUEUE_TABLE', 'jobs'),
+            // Not 'jobs' — that name belongs to the business entity (§5.2).
+            // See 2026_08_06_035000_rename_queue_jobs_table.
+            'table' => env('DB_QUEUE_TABLE', 'queue_jobs'),
             'queue' => env('DB_QUEUE', 'default'),
             'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
             'after_commit' => false,
