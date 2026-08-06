@@ -31,7 +31,7 @@ class Session extends ChangeNotifier {
   /// Returns whether the token actually produced a session — /me can fail even
   /// when the login succeeded, and the caller has to know so it can stop showing
   /// a spinner and say something.
-  Future<bool> adopt(String token) async {
+  Future<bool> adopt(String token, {bool persist = false}) async {
     _api.setToken(token);
     await refresh();
 
@@ -39,7 +39,7 @@ class Session extends ChangeNotifier {
     // work would mean every future launch tries it, fails, and clears it —
     // a slow sign-in instead of a fast sign-out.
     if (signedIn) {
-      TokenStore.save(tenant: token, staff: staffToken);
+      TokenStore.save(tenant: token, staff: staffToken, persist: persist);
     }
 
     return signedIn;

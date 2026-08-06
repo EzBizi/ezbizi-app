@@ -12,7 +12,7 @@ void main() {
 
     // The gate that matters: no session, no application shell.
     expect(find.text('Sign in'), findsOneWidget);
-    expect(find.text('Sign in to your account'), findsOneWidget);
+    expect(find.text('Welcome back'), findsOneWidget);
   });
 
   testWidgets('the customer host offers no way into the control plane', (tester) async {
@@ -22,7 +22,7 @@ void main() {
     // Staff live at dev.ezbizi.com now. nginx refuses /api/v1/staff here too,
     // so a link would only lead somewhere that answers 404.
     expect(find.text('EzBizi staff'), findsNothing);
-    expect(find.text('CONTROL PLANE'), findsNothing);
+    expect(find.text('Staff sign-in'), findsNothing);
     expect(find.text('Authenticator code'), findsNothing);
   });
 
@@ -37,7 +37,7 @@ void main() {
 
     // TOTP is mandatory for staff, so the field is not optional and not a second
     // screen — the server takes both factors in one request.
-    expect(find.text('CONTROL PLANE'), findsOneWidget);
+    expect(find.text('Staff sign-in'), findsOneWidget);
     expect(find.text('Staff email'), findsOneWidget);
     expect(find.text('Authenticator code'), findsOneWidget);
   });
@@ -51,9 +51,9 @@ void main() {
     await tester.pumpWidget(const EzBiziApp());
     await tester.pump();
 
-    final wordmark = tester.widget<RichText>(
-      find.descendant(of: find.byType(Card), matching: find.byType(RichText)).first,
-    );
+    // No longer inside a Card: the sign-in form sits directly on the surface
+    // beside the identity panel. Found by type instead.
+    final wordmark = tester.widget<RichText>(find.byType(RichText).first);
 
     final spans = (wordmark.text as TextSpan).children!;
     final bizi = spans.firstWhere((s) => (s as TextSpan).text == 'Bizi') as TextSpan;

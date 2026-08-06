@@ -8,7 +8,11 @@ import 'package:web/web.dart' as web;
 /// tabs.
 String? readItem(String key) {
   try {
-    final value = web.window.sessionStorage.getItem(key);
+    // sessionStorage first, then localStorage. The two hold the same key and
+    // only one is ever written for a given sign-in, so checking both is how a
+    // "keep me signed in" session is found after the browser has been closed.
+    final value = web.window.sessionStorage.getItem(key) ??
+        web.window.localStorage.getItem(key);
 
     return (value == null || value.isEmpty) ? null : value;
   } catch (_) {
@@ -19,12 +23,20 @@ String? readItem(String key) {
   }
 }
 
-void writeItem(String key, String? value) {
+void writeItem(String key, String? value, {bool persist = false}) {
   try {
-    if (value == null || value.isEmpty) {
-      web.window.sessionStorage.removeItem(key);
-    } else {
-      web.window.sessionStorage.setItem(key, value);
+    // Cleared from BOTH on the way out, whichever it was written to. Signing
+    // out of one while a copy lingers in the other is how somebody ends up
+    // believing they have left.
+    web.window.sessionStorage.removeItem(key);
+    web.window.localStorage.removeItem(key);
+
+    if (value != null && value.isNotEmpty) {
+      if (persist) {
+        web.window.localStorage.setItem(key, value);
+      } else {
+        web.window.sessionStorage.setItem(key, value);
+      }
     }
   } catch (_) {
     // Same reason. A session that does not persist is a smaller problem than an

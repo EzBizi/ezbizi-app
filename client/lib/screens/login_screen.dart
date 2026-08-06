@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../widgets/auth_shell.dart';
 import '../widgets/error_note.dart';
 
 /// Sign in (plan §4).
@@ -30,6 +31,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// The organization picked from the list, waiting on a code.
   Map<String, dynamic>? _pendingChoice;
+
+  bool _showPassword = false;
+
+  /// Whether the session should survive closing the browser.
+  ///
+  /// Off by default, and that is the safe default rather than the lazy one: the
+  /// token otherwise lives in sessionStorage and dies with the tab, which is
+  /// right for a shared or public machine. Ticking this moves it to
+  /// localStorage — a real trade the person makes for themselves, not one made
+  /// quietly on their behalf.
+  bool _stayed = false;
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _code = TextEditingController();
@@ -117,7 +129,7 @@ class _LoginScreenState extends State<LoginScreen> {
     // section's own client. It is deliberately not set on the tenant client.
     widget.session.staffToken = staffToken;
 
-    final signedIn = await widget.session.adopt(token);
+    final signedIn = await widget.session.adopt(token, persist: _stayed);
 
     if (!mounted || signedIn) return;
 
@@ -174,25 +186,24 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: _choices != null
-                    ? _organizationPicker(context)
-                    : _needsCode
-                        ? _codeForm(context)
-                        : _loginForm(context),
-              ),
-            ),
-          ),
-        ),
-      ),
+    return AuthShell(
+      pill: 'Early access',
+      eyebrow: 'Field service, in one place',
+      headline: 'Every job, every customer, one place to run it from.',
+      blurb: 'Schedule the work, keep the customer record straight, and let the '
+          'rules you set handle the rest — across every company and franchise '
+          'you operate.',
+      steps: const [
+        (icon: Icons.people_outline, label: 'Customers'),
+        (icon: Icons.construction_outlined, label: 'Jobs'),
+        (icon: Icons.bolt_outlined, label: 'Workflows'),
+      ],
+      footnote: 'Your organization. Your data. Nobody else can see it.',
+      form: _choices != null
+          ? _organizationPicker(context)
+          : _needsCode
+              ? _codeForm(context)
+              : _loginForm(context),
     );
   }
 
@@ -203,17 +214,21 @@ class _LoginScreenState extends State<LoginScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Center(child: EzBiziTheme.wordmark(context, size: 32)),
-          const SizedBox(height: 8),
-          Center(
-            child: Text('Sign in to your account',
-                style: Theme.of(context).textTheme.bodyMedium),
-          ),
+          // No wordmark here: the panel beside it already carries the brand,
+          // and on a narrow screen AuthShell puts one at the top. Two on one
+          // screen is a logo competing with itself.
+          Text('Welcome back', style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 6),
+          Text('Sign in to your workspace.',
+              style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 28),
 
           TextFormField(
             controller: _email,
-            decoration: const InputDecoration(labelText: 'Email'),
+            decoration: const InputDecoration(
+              labelText: 'Email address',
+              prefixIcon: Icon(Icons.alternate_email, size: 18),
+            ),
             keyboardType: TextInputType.emailAddress,
             autofillHints: const [AutofillHints.username],
             enabled: !_busy,
@@ -225,12 +240,40 @@ class _LoginScreenState extends State<LoginScreen> {
 
           TextFormField(
             controller: _password,
-            decoration: const InputDecoration(labelText: 'Password'),
-            obscureText: true,
+            decoration: InputDecoration(
+              labelText: 'Password',
+              prefixIcon: const Icon(Icons.lock_outline, size: 18),
+              suffixIcon: IconButton(
+                // Shown on request. A password field nobody can read is how
+                // people end up locked out by a keyboard layout they cannot see.
+                icon: Icon(_showPassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined),
+                onPressed: () => setState(() => _showPassword = !_showPassword),
+              ),
+            ),
+            obscureText: !_showPassword,
             autofillHints: const [AutofillHints.password],
             enabled: !_busy,
             validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
             onFieldSubmitted: (_) => _submit(),
+          ),
+
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Checkbox(
+                value: _stayed,
+                visualDensity: VisualDensity.compact,
+                onChanged: _busy ? null : (v) => setState(() => _stayed = v ?? false),
+              ),
+              const Flexible(child: Text('Keep me signed in')),
+              const Spacer(),
+              TextButton(
+                onPressed: _busy ? null : _forgot,
+                child: const Text('Forgot password?'),
+              ),
+            ],
           ),
 
           if (_error != null) ...[
@@ -246,11 +289,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     height: 18, width: 18,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Text('Sign in'),
-          ),
-          const SizedBox(height: 4),
-          TextButton(
-            onPressed: _busy ? null : _forgot,
-            child: const Text('I forgot my password'),
           ),
         ],
       ),

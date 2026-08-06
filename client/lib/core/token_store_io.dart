@@ -11,4 +11,4 @@
 /// store was added.
 String? readItem(String key) => null;
 
-void writeItem(String key, String? value) {}
+void writeItem(String key, String? value, {bool persist = false}) {}

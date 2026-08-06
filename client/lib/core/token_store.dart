@@ -34,9 +34,14 @@ class TokenStore {
   /// Writes only what it is given, so saving a staff token does not wipe the
   /// tenant one — the linked-account login hands them over together, but the
   /// control-plane host only ever has the second.
-  static void save({String? tenant, String? staff}) {
-    if (tenant != null) store.writeItem(_tenantKey, tenant);
-    if (staff != null) store.writeItem(_staffKey, staff);
+  static void save({String? tenant, String? staff, bool persist = false}) {
+    // `persist` is the "keep me signed in" tick. Off, the token lives in
+    // sessionStorage and dies with the tab — right for a shared machine, and
+    // the default. On, it moves to localStorage and survives the browser
+    // closing. The person makes that trade for themselves; it is not made
+    // quietly on their behalf.
+    if (tenant != null) store.writeItem(_tenantKey, tenant, persist: persist);
+    if (staff != null) store.writeItem(_staffKey, staff, persist: persist);
   }
 
   /// Both, always. Signing out of one while the other lingers is how somebody

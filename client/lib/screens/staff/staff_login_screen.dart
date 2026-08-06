@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/staff_session.dart';
 import '../../core/api_client.dart';
-import '../../core/theme.dart';
+import '../../widgets/auth_shell.dart';
 import '../../widgets/totp_setup_dialog.dart';
 import '../../widgets/error_note.dart';
 
@@ -136,34 +136,41 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Form(
+    return AuthShell(
+      pill: 'Control plane',
+      eyebrow: 'EzBizi platform',
+      headline: 'The platform underneath the product.',
+      blurb: 'Organizations, module availability, client access and staff '
+          'accounts. Everything here reaches every customer on the platform, '
+          'which is why it asks for more than a password.',
+      steps: const [
+        (icon: Icons.apartment_outlined, label: 'Organizations'),
+        (icon: Icons.toggle_on_outlined, label: 'Modules'),
+        (icon: Icons.favorite_outline, label: 'Health'),
+      ],
+      // Said plainly on the way in, because it is true and because somebody who
+      // reached this screen by accident should understand what it is.
+      footnote: 'Every action here is audited, including this sign-in.',
+      form: Form(
                   key: _formKey,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Center(child: EzBiziTheme.wordmark(context, size: 30)),
+                      // The panel beside this already says what this is.
+                      Text('Staff sign-in',
+                          style: Theme.of(context).textTheme.headlineSmall),
                       const SizedBox(height: 6),
-                      Center(
-                        child: Text(
-                          'CONTROL PLANE',
-                          style: Theme.of(context).textTheme.labelSmall,
-                        ),
-                      ),
+                      Text('Your account, your password, and a code.',
+                          style: Theme.of(context).textTheme.bodyMedium),
                       const SizedBox(height: 24),
 
                       TextFormField(
                         controller: _email,
-                        decoration: const InputDecoration(labelText: 'Staff email'),
+                        decoration: const InputDecoration(
+                          labelText: 'Staff email',
+                          prefixIcon: Icon(Icons.alternate_email, size: 18),
+                        ),
                         keyboardType: TextInputType.emailAddress,
                         autofillHints: const [AutofillHints.username],
                         enabled: !_busy,
@@ -228,19 +235,14 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                       const SizedBox(height: 4),
                       Center(
                         child: Text(
-                          'Staff accounts only. Customers sign in at app.ezbizi.com.',
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          'Customers sign in at app.ezbizi.com.',
+                          style: Theme.of(context).textTheme.bodySmall,
                           textAlign: TextAlign.center,
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
