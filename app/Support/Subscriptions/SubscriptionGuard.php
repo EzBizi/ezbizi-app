@@ -5,6 +5,8 @@ namespace App\Support\Subscriptions;
 use App\Models\Notification;
 use App\Models\Organization;
 use App\Models\User;
+use App\Models\WorkflowEvent;
+use App\Models\WorkflowRun;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -48,6 +50,16 @@ class SubscriptionGuard
      */
     private const ALWAYS_WRITABLE = [
         Notification::class,
+
+        // The engine's own bookkeeping — the outbox row and the run ledger.
+        // These are not business data; they are the record of what the engine
+        // did, including what it REFUSED to do. Blocking them would leave every
+        // event permanently undelivered, so the outbox would grow without bound
+        // and the retry sweep would pick the same rows up forever. The actions
+        // themselves are still refused; WorkflowEngine::deliver() checks once up
+        // front and stops the event with a reason.
+        WorkflowEvent::class,
+        WorkflowRun::class,
     ];
 
     /**

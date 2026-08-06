@@ -138,6 +138,10 @@ class SubscriptionEnforcementTest extends TestCase
         // The rule matched and its action was refused. "The product works fine
         // without paying" is precisely what §13 says this must not be.
         $this->assertSame('A job', $this->inTenant(fn () => Job::find($job->id)->title));
+
+        // And the event is finished with, rather than left for the retry sweep
+        // to pick up forever — an outbox that never drains is its own outage.
+        $this->assertNotNull($event->fresh()->delivered_at);
     }
 
     // ── what must keep working (§13) ─────────────────────────────

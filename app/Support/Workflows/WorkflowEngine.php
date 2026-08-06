@@ -43,6 +43,23 @@ class WorkflowEngine
             return 0;   // the organization was removed while this sat in the queue
         }
 
+        if ($organization->isReadOnly()) {
+            // Checked ONCE here rather than letting each action be refused
+            // individually: §13 says a workflow that keeps firing after expiry
+            // means the product works fine without paying, and a rule that fails
+            // action-by-action still burns retries and fills the log with the
+            // same refusal. Stopping the event drains the outbox and leaves one
+            // legible reason on the run somebody can see in the UI.
+            return $this->tenant->run($organization, function () use ($event) {
+                $this->stop($event,
+                    'Not run — this organization is read-only because its subscription '
+                    .'has ended. Rules will resume automatically once billing is updated.'
+                );
+
+                return 0;
+            });
+        }
+
         return $this->tenant->run($organization, function () use ($event) {
             // Loop protection (§5.5). Depth catches a rule that feeds itself; the
             // budget catches one that fans out sideways, and a chain alternating
