@@ -126,7 +126,12 @@ class OutboundWebhook
             throw new RuntimeException('Webhook URLs must be https.');
         }
 
-        $host = $parts['host'];
+        // parse_url hands back an IPv6 literal still wrapped in its brackets —
+        // https://[::1]/ gives '[::1]', which is not an IP as far as
+        // FILTER_VALIDATE_IP is concerned. Left in, a loopback address would be
+        // refused for the wrong reason (it "does not resolve") and a perfectly
+        // ordinary public IPv6 host would be refused too.
+        $host = trim($parts['host'], '[]');
 
         foreach ($this->resolve($host) as $ip) {
             foreach (self::BLOCKED as $range) {

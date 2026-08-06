@@ -88,10 +88,18 @@ class WorkflowEvent extends Model
      */
     public function actionsSpent(): int
     {
+        $root = $this->rootId();
+
         return static::query()
-            ->where('root_event_id', $this->rootId())
-            ->orWhere('id', $this->rootId())
             ->join('workflow_runs', 'workflow_runs.event_id', '=', 'workflow_events.id')
+            // Grouped and qualified. Ungrouped, `A or B and C` binds as
+            // `A or (B and C)`, which quietly counts every run in the
+            // organization rather than this cascade's — and `id` is ambiguous
+            // once both tables are in the query.
+            ->where(function ($q) use ($root) {
+                $q->where('workflow_events.root_event_id', $root)
+                    ->orWhere('workflow_events.id', $root);
+            })
             ->whereNotNull('workflow_runs.action_results')
             ->count();
     }
