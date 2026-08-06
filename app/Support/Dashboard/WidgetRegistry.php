@@ -44,11 +44,19 @@ class WidgetRegistry
      */
     public function availableTo(User $user): array
     {
-        return array_values(array_filter(
+        // Memoised per instance, because find() calls this once per panel in the
+        // saved layout — five panels meant instantiating every widget five times
+        // and asking the permission system twenty-five questions to render one
+        // page. The registry is resolved once per request, so this lives exactly
+        // as long as the answer stays true.
+        return $this->available[$user->getKey()] ??= array_values(array_filter(
             $this->all(),
             fn (Widget $w) => $user->hasPermission($w->permission()),
         ));
     }
+
+    /** @var array<string, Widget[]> */
+    private array $available = [];
 
     public function find(string $key, User $user): ?Widget
     {
