@@ -441,10 +441,17 @@ class _HomeShellState extends State<HomeShell> {
                   // The rule that says the group below is a different kind of
                   // thing: places you go to change how the work behaves, rather
                   // than places you go to do it.
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: expanded ? 16 : 12),
-                    child: const Divider(height: 1),
-                  ),
+                  //
+                  // Full-bleed, not inset. An inset rule reads as belonging to
+                  // the list it sits inside — a separator between two rows. One
+                  // that runs the whole width of the column cuts the column in
+                  // two, which is what this is actually saying.
+                  //
+                  // `height` rather than padding around it: Divider's own height
+                  // is the space it occupies, and the line is drawn centred in
+                  // it. Wrapping it in a Padding would work and would leave two
+                  // numbers to keep in step.
+                  const Divider(height: 17, thickness: 1),
 
                   // IntrinsicHeight because a rail's root column is
                   // mainAxisSize.max — it expects to own the full height. This
