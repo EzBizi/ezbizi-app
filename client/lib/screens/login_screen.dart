@@ -189,13 +189,12 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return AuthShell(
       pill: 'Early access',
-      eyebrow: 'Field service, in one place',
-      headline: 'Every job, every customer, one place to run it from.',
-      blurb: 'Schedule the work, keep the customer record straight, and let the '
-          'rules you set handle the rest — across every company and franchise '
-          'you operate.',
+      eyebrow: 'Built for field service',
+      headline: 'Run the whole day from one screen.',
+      blurb: 'Booked, dispatched, invoiced — without the whiteboard, the group '
+          'chat and three spreadsheets.',
       preview: const CustomerPreview(),
-      footnote: 'Your organization. Your data. Nobody else can see it.',
+      footnote: 'Your data. Your organization. Nobody else can see it.',
       form: _choices != null
           ? _organizationPicker(context)
           : _needsCode

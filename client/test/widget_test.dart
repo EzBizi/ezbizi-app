@@ -84,6 +84,7 @@ void main() {
     Size(768, 1024),   // tablet, still below the two-panel threshold
     Size(1024, 640),   // small laptop — short, which is the hard one
     Size(1440, 900),   // ordinary laptop
+    Size(1920, 1080),  // the window these screens are actually reviewed in
     Size(2560, 1440),  // the wide monitor this is usually seen on
   ]) {
     testWidgets('the customer sign-in lays out at ${size.width}x${size.height}',
@@ -110,6 +111,45 @@ void main() {
       await tester.pump();
 
       expect(find.text('Sign in'), findsWidgets);
+    });
+  }
+
+  // A sign-in page must never ask anyone to scroll to see it.
+  //
+  // The first attempt at "make it fit" wrapped the panel in a scroll view,
+  // which hands its child UNBOUNDED height — the exact opposite of what Spacer
+  // and Flexible need to shrink. So nothing shrank, the column grew past the
+  // window, and it scrolled. Asserting on the absence of a scrollable is the
+  // only way to keep that fix from quietly coming back.
+  for (final size in const [
+    Size(1280, 720),
+    Size(1440, 900),
+    Size(1920, 1080),
+    Size(2560, 1440),
+  ]) {
+    testWidgets('the sign-in page does not scroll at ${size.width}x${size.height}',
+        (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(const EzBiziApp());
+      await tester.pump();
+
+      for (final scrollable in tester.widgetList<Scrollable>(find.byType(Scrollable))) {
+        final position = (scrollable.controller?.hasClients ?? false)
+            ? scrollable.controller!.position
+            : null;
+
+        if (position == null) continue;
+
+        expect(
+          position.maxScrollExtent,
+          0.0,
+          reason: 'Something on the sign-in page scrolls at '
+              '${size.width}x${size.height}.',
+        );
+      }
     });
   }
 }

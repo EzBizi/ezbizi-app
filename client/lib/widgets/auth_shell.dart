@@ -133,19 +133,25 @@ class _IdentityPanel extends StatelessWidget {
           // beside it. Constraining the column and centring it keeps the same
           // left-aligned reading line at any panel width, and puts the whole
           // block where the eye expects it.
-          // Scrollable, but only when it has to be.
+          // Deliberately NOT scrollable.
           //
-          // The column uses Spacers to centre itself, which needs a bounded
-          // height — and a short window (a laptop with the dock and a bookmarks
-          // bar) would otherwise overflow it. minHeight + IntrinsicHeight keeps
-          // the Spacers working at normal heights and lets the whole thing
-          // scroll when the panel is genuinely too short.
+          // It was, briefly, and that was the mistake: a scroll view hands its
+          // child unbounded height, which is exactly what Spacer and Flexible
+          // need bounded to work. So the shrinking never happened, the column
+          // grew past the window, and a sign-in page asked people to scroll to
+          // see a picture.
+          //
+          // Bounded instead, and the content gives way: the preview scales down
+          // to whatever is left, then drops out entirely on a short window.
           LayoutBuilder(
-            builder: (context, box) => SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: box.maxHeight),
-                child: IntrinsicHeight(
-                  child: Center(
+            builder: (context, box) {
+              // What the panel drops as it runs out of room, in order: the
+              // preview, then the blurb, then the pill — least load-bearing
+              // first. The headline and the footnote always survive.
+              final tall = box.maxHeight >= 820;
+              final medium = box.maxHeight >= 680;
+
+              return Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 620),
               child: Padding(
@@ -179,7 +185,7 @@ class _IdentityPanel extends StatelessWidget {
                 // panel's true centre instead of drifting downwards.
                 const Spacer(),
 
-                if (pill != null) ...[
+                if (pill != null && medium) ...[
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
@@ -211,23 +217,25 @@ class _IdentityPanel extends StatelessWidget {
                 const SizedBox(height: 16),
                 Text(
                   headline,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 40,
-                    height: 1.14,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.9,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  blurb,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.70),
-                    fontSize: 14.5,
-                    height: 1.6,
+                    color: Colors.white,
+                    fontSize: tall ? 42 : (medium ? 34 : 28),
+                    height: 1.12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -1.0,
                   ),
                 ),
+                if (medium) ...[
+                  const SizedBox(height: 18),
+                  Text(
+                    blurb,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.70),
+                      fontSize: 14.5,
+                      height: 1.6,
+                    ),
+                  ),
+                ],
 
                 // The preview is the first thing to go on a short window.
                 //
@@ -235,13 +243,13 @@ class _IdentityPanel extends StatelessWidget {
                 // tallest, so on a 900px-high laptop the column wanted 935px
                 // and overflowed. Dropping it keeps the headline, the blurb and
                 // the footnote — the parts that still say something without it.
-                if (box.maxHeight >= 800) ...[
+                if (tall) ...[
                   const SizedBox(height: 34),
                   // Flexible, so the preview takes whatever height is left over
-                  // and its own FittedBox scales it down to fit. Laid out at its
-                  // natural size it wants ~420px, which is more than a
-                  // 1440x900 laptop has left after the headline — the most
-                  // common laptop size there is.
+                  // and scales itself down into it. At its natural size it
+                  // wants ~420px, which is more than a 1440x900 laptop has
+                  // spare after the headline — and that is the most common
+                  // laptop size there is.
                   Flexible(
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
@@ -271,10 +279,8 @@ class _IdentityPanel extends StatelessWidget {
             ),
               ),
             ),
-                  ),
-                ),
-              ),
-            ),
+          );
+            },
           ),
         ],
       ),
