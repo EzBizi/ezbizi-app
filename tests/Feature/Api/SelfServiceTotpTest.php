@@ -66,6 +66,20 @@ class SelfServiceTotpTest extends TestCase
      *                               which is the whole point, so the helper has
      *                               to keep up rather than the feature bend.
      */
+    /**
+     * Let the next code count as new.
+     *
+     * Codes are single-use: verifying one records its step, and the same digits
+     * are refused for the rest of that 30-second window. Signing in with a code
+     * and then USING a code in the same window is two verifications, so a test
+     * that does both has to say time passed — Google2FA reads the real clock and
+     * Carbon cannot move it, so clearing the recorded step is how.
+     */
+    private function freshStep(): void
+    {
+        User::whereKey($this->org['admin']->id)->update(['last_totp_timestamp' => null]);
+    }
+
     private function signedIn(?string $secret = null): static
     {
         if ($secret !== null) {
@@ -237,7 +251,9 @@ class SelfServiceTotpTest extends TestCase
         ])->assertStatus(422);
 
         $this->app['auth']->forgetGuards();
-        $this->signedIn($secret)->deleteJson('/api/v1/me/totp', [
+        $request = $this->signedIn($secret);
+        $this->freshStep();
+        $request->deleteJson('/api/v1/me/totp', [
             'password' => 'a-real-password',
             'code'     => $this->totp->getCurrentOtp($secret),
         ])->assertOk();
@@ -263,7 +279,9 @@ class SelfServiceTotpTest extends TestCase
         // was set above them. Proving who they are is not the obstacle here —
         // the policy is — so this sends a valid code as well.
         $this->app['auth']->forgetGuards();
-        $this->signedIn($secret)->deleteJson('/api/v1/me/totp', [
+        $request = $this->signedIn($secret);
+        $this->freshStep();
+        $request->deleteJson('/api/v1/me/totp', [
             'password' => 'a-real-password',
             'code'     => $this->totp->getCurrentOtp($secret),
         ])->assertStatus(422);
@@ -292,7 +310,9 @@ class SelfServiceTotpTest extends TestCase
         // with no second factor at all — on an account the organization may
         // require one for.
         $this->app['auth']->forgetGuards();
-        $second = $this->signedIn($secret)->postJson('/api/v1/me/totp', [
+        $request = $this->signedIn($secret);
+        $this->freshStep();
+        $second = $request->postJson('/api/v1/me/totp', [
             'password' => 'a-real-password',
             'code'     => $this->totp->getCurrentOtp($secret),
         ])->assertOk();
