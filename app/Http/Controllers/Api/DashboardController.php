@@ -62,6 +62,13 @@ class DashboardController extends Controller
             $panels[] = [
                 'key'   => $widget->key(),
                 'label' => $widget->label(),
+
+                // Echoed back, or the client has nothing to preserve when it
+                // saves a changed selection — it read `options` off these panels
+                // and got null every time, so turning one panel on wiped every
+                // other panel's configuration.
+                'options' => $entry['options'] ?? [],
+
                 'data'  => $widget->resolve($user, $entry['options'] ?? []),
             ];
         }

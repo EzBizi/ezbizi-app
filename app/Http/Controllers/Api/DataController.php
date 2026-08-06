@@ -74,7 +74,7 @@ class DataController extends Controller
         // disappearing among ordinary reads (§10).
         $this->audit->log('data.exported', metadata: ['resource' => $resource, 'format' => 'csv']);
 
-        return $this->exporter->csv($resource);
+        return $this->exporter->csv($resource, $request->user());
     }
 
     /** Everything, as one JSON document — the §9 portability answer. */
@@ -86,7 +86,7 @@ class DataController extends Controller
 
         $this->audit->log('data.exported', metadata: ['resource' => 'all', 'format' => 'json']);
 
-        return $this->exporter->bundle();
+        return $this->exporter->bundle($request->user());
     }
 
     /** One person's record and work history (§9). */
@@ -96,7 +96,7 @@ class DataController extends Controller
 
         $this->audit->log('data.exported', $customer, metadata: ['resource' => 'person']);
 
-        return $this->exporter->person($customer);
+        return $this->exporter->person($customer, $request->user());
     }
 
     public function import(Request $request, string $resource)

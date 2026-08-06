@@ -137,17 +137,30 @@ class SubscriptionGuard
             return null;
         }
 
-        // Cached per request: a bulk write would otherwise ask the same question
-        // once per row, and the answer cannot change mid-request.
-        return static::$cache[$id] ??= Organization::withoutGlobalScopes()->find($id);
+        // Cached per request, and no longer: a bulk write would otherwise ask
+        // the same question once per row.
+        //
+        // An INSTANCE cache, deliberately. It was static, which is a per-request
+        // lifetime only in a per-request process — a queue worker is one process
+        // for days, so the first organization it ever saw stayed cached and a
+        // subscription that lapsed at noon kept writing until the worker was
+        // restarted. The container binding is `scoped`, which Laravel resets
+        // between jobs as well as between requests.
+        return $this->cache[$id] ??= Organization::withoutGlobalScopes()->find($id);
     }
 
     /** @var array<string, Organization|null> */
-    private static array $cache = [];
+    private array $cache = [];
 
-    /** Tests and long-lived workers change organizations underneath this. */
+    /**
+     * Tests change an organization's state underneath a resolved instance.
+     *
+     * Still static so callers do not need the instance, but it clears the
+     * container's copy rather than a shared array — which is what makes the
+     * per-instance cache safe to rely on.
+     */
     public static function flush(): void
     {
-        static::$cache = [];
+        app()->forgetScopedInstances();
     }
 }

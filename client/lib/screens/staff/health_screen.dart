@@ -209,6 +209,12 @@ class _HealthScreenState extends State<HealthScreen> {
             Expanded(
               child: TextField(
                 controller: _address,
+                // Without this the Send button below is frozen at whatever
+                // `_address.text.isEmpty` was when build last ran — a controller
+                // notifies the field it drives, never an ancestor State — so the
+                // button could never become enabled and the whole test-send
+                // feature was inert.
+                onChanged: (_) => setState(() {}),
                 decoration: const InputDecoration(
                   labelText: 'Send a test to',
                   isDense: true,

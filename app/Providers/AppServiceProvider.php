@@ -44,6 +44,21 @@ class AppServiceProvider extends ServiceProvider
          * risk here, not leakage.
          */
         $this->app->singleton(\App\Support\Settings\SettingsResolver::class);
+
+        /*
+         * Scoped, NOT singleton — the distinction is the whole point.
+         *
+         * SubscriptionGuard caches whether an organization is read-only, and a
+         * singleton in a queue worker lives for days. The first organization the
+         * worker ever touched would stay cached, so a subscription that lapsed at
+         * noon kept writing until somebody restarted the process — the exact
+         * failure §13 says must not be possible via "scheduled tasks, workflow
+         * actions, queued jobs".
+         *
+         * `scoped` is reset by Laravel between requests AND between queue jobs,
+         * which is precisely the lifetime the cache is allowed to have.
+         */
+        $this->app->scoped(\App\Support\Subscriptions\SubscriptionGuard::class);
     }
 
     /**

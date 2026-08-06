@@ -34,6 +34,9 @@ class Importer
     /** Enough to fix the file in one pass; not so many the response is unusable. */
     private const MAX_REPORTED_ERRORS = 100;
 
+    /** Marker for a row with more cells than columns — see parse(). */
+    private const TOO_WIDE = '__too_wide__';
+
     public function __construct(
         private RecordNumberGenerator $numbers,
         private AuditLogger $audit,
@@ -57,7 +60,11 @@ class Importer
         $errors   = [];
 
         foreach ($rows as $number => $row) {
-            $failure = $this->one($definition, $spec, $row, $franchise, $dryRun);
+            $failure = $row === self::TOO_WIDE
+                ? ['This row has more values than there are columns — most likely a comma '
+                    .'inside a value that is not wrapped in quotes. Everything after it '
+                    .'would land in the wrong field.']
+                : $this->one($definition, $spec, $row, $franchise, $dryRun);
 
             if ($failure === null) {
                 $imported++;
@@ -145,10 +152,20 @@ class Importer
 
         try {
             DB::transaction(function () use ($model, $input, $franchise, $definition) {
+                // `??=`, not a `+` union with a fallback.
+                //
+                // A blank `number` cell becomes a present-but-null key, and PHP's
+                // `+` gives the LEFT operand precedence on duplicate keys — so
+                // the null won, the generator was never consulted, and the row
+                // went in with no record number at all. Every export includes a
+                // `number` column, so re-importing an edited export with one
+                // blank cell hit this immediately.
+                $input['number'] ??= $this->numbers->next(
+                    $this->sequenceFor($definition), $franchise,
+                );
+
                 $model::create($input + [
                     $definition['import']['franchise_column'] => $franchise->id,
-                    'number' => $input['number']
-                        ?? $this->numbers->next($this->sequenceFor($definition), $franchise),
                 ]);
             });
         } catch (\Throwable $e) {
@@ -161,6 +178,25 @@ class Importer
         }
 
         return null;
+    }
+
+    /**
+     * Undo the export's spreadsheet-formula escape.
+     *
+     * Exporter::cell prefixes a leading = + - @ with an apostrophe so Excel does
+     * not execute the cell. Without stripping it here, exporting and re-importing
+     * a phone number turns `+1 415 555 0100` into `'+1 415 555 0100` and does it
+     * again on every round trip. Only a marker in front of a character that
+     * actually needed escaping is removed, so a name that genuinely starts with
+     * an apostrophe survives.
+     */
+    private function uncell(mixed $value): string
+    {
+        $string = trim((string) $value);
+
+        return (strlen($string) > 1 && $string[0] === "'" && str_contains("=+-@", $string[1]))
+            ? substr($string, 1)
+            : $string;
     }
 
     private function sequenceFor(array $definition): string
@@ -226,11 +262,20 @@ class Importer
                 ));
             }
 
-            // array_combine needs equal lengths, and a short row is common in
-            // hand-edited files — pad rather than refuse.
-            $cells = array_slice(array_pad($cells, count($header), ''), 0, count($header));
+            // Short rows are common in hand-edited files — pad rather than
+            // refuse. A row with MORE cells than columns is a different thing
+            // entirely: an unquoted comma inside a value, which shifts every
+            // later column by one. Truncating it silently discarded the tail and
+            // wrote the fragment after the comma into the next field, and the
+            // result validated clean. Reported as a row failure instead.
+            if (count($cells) > count($header)) {
+                $rows[$number] = self::TOO_WIDE;
+                continue;
+            }
 
-            $rows[$number] = array_map(fn ($v) => trim((string) $v), array_combine($header, $cells));
+            $cells = array_pad($cells, count($header), '');
+
+            $rows[$number] = array_map(fn ($v) => $this->uncell($v), array_combine($header, $cells));
         }
 
         fclose($handle);

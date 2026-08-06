@@ -92,7 +92,7 @@ class HealthController extends Controller
 
         $status = json_decode((string) file_get_contents($path), true) ?: [];
         $at     = isset($status['at']) ? Carbon::parse($status['at']) : null;
-        $age    = $at?->diffInHours(now());
+        $age    = $at === null ? null : (int) $at->diffInHours(now());
 
         // Age is judged here rather than trusting `ok`, because a stopped timer
         // leaves yesterday's success sitting in the file indefinitely.
@@ -113,8 +113,35 @@ class HealthController extends Controller
             'offsite'    => $status['offsite'] ?? false,
             'restored_from' => $status['from'] ?? null,
             'errors'     => $status['errors'] ?? [],
-            'problem'    => $stale ? 'The verdict is stale — the nightly timer has stopped.' : null,
+
+            // Never null when ok is false. The card renders `problem` as its
+            // explanation, and a fresh backup that simply has not been
+            // restore-checked yet produced ok=false, problem=null, errors=[] —
+            // a red icon beside an empty sentence, which is the least useful
+            // thing a health screen can do.
+            'problem'    => $this->problem($status, $stale),
         ];
+    }
+
+    private function problem(array $status, bool $stale): ?string
+    {
+        if ($stale) {
+            return 'The verdict is stale — the nightly timer has stopped.';
+        }
+
+        if (($status['errors'] ?? []) !== []) {
+            return implode(' ', $status['errors']);
+        }
+
+        if (($status['stage'] ?? '') !== 'restore-check') {
+            return 'The backup was written but its restore has not been verified yet. '
+                .'An unverified backup is indistinguishable from a working one until '
+                .'the day it matters.';
+        }
+
+        return ($status['ok'] ?? false) === true
+            ? null
+            : 'The restore check did not pass, and did not say why.';
     }
 
     /**
@@ -133,7 +160,7 @@ class HealthController extends Controller
 
         return [
             'pending'        => WorkflowEvent::withoutGlobalScopes()->whereNull('delivered_at')->count(),
-            'oldest_minutes' => $oldest ? Carbon::parse($oldest)->diffInMinutes(now()) : null,
+            'oldest_minutes' => $oldest ? (int) Carbon::parse($oldest)->diffInMinutes(now()) : null,
             'failed_jobs'    => DB::table('failed_jobs')->count(),
             'ok'             => $oldest === null || Carbon::parse($oldest)->diffInMinutes(now()) < 15,
         ];

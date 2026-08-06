@@ -26,14 +26,18 @@ set -uo pipefail
 STATUS=/var/www/ezbizi/storage/app/backup-status.json
 KEYFILE=/root/.ezbizi-backup.key
 SCRATCH=ezbizi_restore_check
-WORK=$(mktemp -d)
+WORK=$(mktemp -d) || { echo "mktemp failed" >&2; exit 1; }
 REMOTE_HOST=${EZBIZI_BACKUP_HOST:-ubuntu@32.194.222.151}
 REMOTE_DIR=${EZBIZI_BACKUP_DIR:-/home/ubuntu/ezbizi-backups}
 REMOTE_KEY=${EZBIZI_BACKUP_SSH_KEY:-/root/.ssh/ezbizi-backup}
 LIVE=ezbizi
 LOCAL_DIR=/var/backups/ezbizi
 
-trap 'rm -rf "$WORK"; mysql -e "DROP DATABASE IF EXISTS \`$SCRATCH\`;" 2>/dev/null' EXIT
+# INT and TERM as well as EXIT: systemd kills this unit with SIGTERM when
+# TimeoutStartSec expires, and a bash script killed mid-run does not otherwise
+# run its EXIT trap — leaving a scratch copy of the production database behind.
+cleanup() { rm -rf "$WORK"; mysql -e "DROP DATABASE IF EXISTS \`$SCRATCH\`;" 2>/dev/null; }
+trap cleanup EXIT INT TERM
 
 note()  { echo "$(date -Is) restore-check $*" >> /var/log/ezbizi-backup.log; }
 fail()  {
@@ -74,9 +78,30 @@ stamp=$(basename "$newest" | sed -E "s/db-${LIVE}-(.*)\.sql\.gz\.gpg/\1/")
 # Yesterday's file passing every check is still a failure: it means last night's
 # run did not happen, and a stale backup that verifies clean is precisely how a
 # dead timer stays unnoticed.
+#
+# Yesterday's stamp is accepted ONLY in the small hours, for a run that started
+# before midnight and finished after it. Accepting it at any hour is what let a
+# failed backup pass its own verification against the previous night's file.
 today=$(date +%F)
 yesterday=$(date -d yesterday +%F)
-[[ "$stamp" != "$today" && "$stamp" != "$yesterday" ]] && fail "the newest dump anywhere is from $stamp"
+hour=$(date +%-H)
+
+if [[ "$stamp" != "$today" ]]; then
+  if [[ "$stamp" == "$yesterday" && "$hour" -lt 6 ]]; then
+    note "verifying yesterday's dump — this run straddled midnight"
+  else
+    fail "the newest dump anywhere is from $stamp, not today"
+  fi
+fi
+
+# A failure recorded by backup.sh is NOT erased by a passing restore of an older
+# file. Both scripts write the same status file and this one runs second, so a
+# dump that never got written could be reported green on the strength of the
+# previous night's copy.
+if [[ -r "$STATUS" ]] && grep -q '"stage":"backup"' "$STATUS" && grep -q '"ok":false' "$STATUS"; then
+  earlier=$(sed -n 's/.*"errors":\[\(.*\)\].*//p' "$STATUS")
+  fail "tonight's backup failed (${earlier:-no reason recorded}) — the restore below used an older file"
+fi
 
 # ── 2. the file is intact ────────────────────────────────────────
 #
@@ -91,7 +116,11 @@ fi
 
 actual=$(sha256sum "$file" | awk '{print $1}')
 
-[[ -n "$recorded" && "$recorded" != "$actual" ]] && fail "checksum mismatch on $(basename "$newest")"
+# A MISSING manifest entry is a failure, not a pass. Skipping the comparison
+# when it cannot be read means the one case the checksum exists for — a file
+# that did not arrive intact — is also the case where it is silently not checked.
+[[ -z "$recorded" ]] && fail "no checksum recorded for $(basename "$newest")"
+[[ "$recorded" != "$actual" ]] && fail "checksum mismatch on $(basename "$newest")"
 
 # ── 3. decrypt and restore into a scratch database ───────────────
 gpg --batch --quiet --decrypt --passphrase-file "$KEYFILE" "$file" 2>/dev/null \
@@ -122,6 +151,14 @@ live_tables=$(q "SELECT COUNT(*) FROM information_schema.tables WHERE table_sche
 
 restored_migrations=$(q "SELECT COUNT(*) FROM \`$SCRATCH\`.migrations;")
 live_migrations=$(q "SELECT COUNT(*) FROM \`$LIVE\`.migrations;")
+
+# Empty is not zero and not equal. Both queries returning nothing — a missing
+# table, a refused connection — made this comparison pass and then interpolated
+# an empty string into the JSON below, producing a status file nothing could
+# parse. The check meant to catch a bad restore instead broke the reporting that
+# would have told anybody about it.
+[[ ! "$restored_migrations" =~ ^[0-9]+$ || ! "$live_migrations" =~ ^[0-9]+$ ]] && \
+  fail "could not count migrations (restored='$restored_migrations' live='$live_migrations')"
 
 [[ "$restored_migrations" -ne "$live_migrations" ]] && \
   fail "schema is behind: $restored_migrations migrations restored, $live_migrations live"

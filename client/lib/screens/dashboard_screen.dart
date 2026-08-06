@@ -47,7 +47,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     setState(() {
       _loading = false;
-      _error = results[0].ok ? null : results[0].message;
+      // Either failure is an error. The catalogue drives the chooser, and a
+      // silently empty one meant pressing Save wrote an empty layout — erasing
+      // the dashboard because a request nobody was told about had failed.
+      _error = results[0].ok
+          ? (results[1].ok ? null : results[1].message)
+          : results[0].message;
       _panels = results[0].ok
           ? (results[0].body['panels'] as List<dynamic>).cast<Map<String, dynamic>>()
           : [];
@@ -259,7 +264,11 @@ class _Panel extends StatelessWidget {
 
     // Money. Rendered per currency because the server refuses to add them
     // together — see the Revenue widget for why.
-    if (panel['key'] == 'jobs.revenue') {
+    // By SHAPE, not by name. Keying on the literal 'jobs.revenue' means the
+    // next widget that reports money renders as a bare list of numbers with no
+    // currency beside them — and a number that might be dollars is worse than
+    // no number.
+    if (_isMoney(data)) {
       final rows = (data['rows'] as List<dynamic>).cast<Map<String, dynamic>>();
 
       if (rows.isEmpty) return [const Text('No work in this period.')];
@@ -282,9 +291,19 @@ class _Panel extends StatelessWidget {
     }
 
     if (panel['key'] == 'workflows.health') {
+      final waiting = data['waiting'] as int;
+
       if (data['idle'] == true) {
         // Not "0 failures" — that reads as health, and silence is not health.
-        return [const Text('No automations have run in this period.')];
+        // And a backlog is reported HERE too: nothing running while events pile
+        // up is the exact signature of a stopped scheduler, and hiding it behind
+        // "idle" would bury the one number that says so.
+        return [
+          const Text('No automations have run in this period.'),
+          if (waiting > 0)
+            Text('$waiting event${waiting == 1 ? '' : 's'} waiting to be delivered.',
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        ];
       }
 
       return [
@@ -293,7 +312,35 @@ class _Panel extends StatelessWidget {
         if ((data['failed'] as int) > 0)
           Text('${data['failed']} failed',
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
-        if ((data['waiting'] as int) > 0) Text('${data['waiting']} waiting'),
+        if (waiting > 0) Text('$waiting waiting'),
+      ];
+    }
+
+    if (panel['key'] == 'jobs.upcoming') {
+      final rows = (data['rows'] as List<dynamic>).cast<Map<String, dynamic>>();
+
+      if (rows.isEmpty) return [const Text('Nothing scheduled.')];
+
+      return [
+        for (final row in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${row['number']} · ${row['title']}',
+                    overflow: TextOverflow.ellipsis),
+                Text(
+                  // The whole reason somebody opens this panel is WHEN. The
+                  // generic row renderer showed the status and the customer and
+                  // dropped both the job and its time.
+                  '${_when(row['scheduled_for'] as String?)}'
+                  '${row['customer'] == null ? '' : ' · ${row['customer']}'}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
       ];
     }
 
@@ -333,6 +380,29 @@ class _Panel extends StatelessWidget {
     }
 
     return [const Text('Nothing to show yet.')];
+  }
+
+  /// Does this widget report amounts of money?
+  static bool _isMoney(Map<String, dynamic> data) {
+    final rows = data['rows'];
+
+    return rows is List &&
+        rows.isNotEmpty &&
+        rows.first is Map &&
+        (rows.first as Map).containsKey('amount_minor');
+  }
+
+  /// A scheduled time somebody can read at a glance.
+  static String _when(String? iso) {
+    if (iso == null) return 'Not scheduled';
+
+    final at = DateTime.tryParse(iso)?.toLocal();
+
+    if (at == null) return 'Not scheduled';
+
+    String two(int n) => n.toString().padLeft(2, '0');
+
+    return '${at.year}-${two(at.month)}-${two(at.day)} ${two(at.hour)}:${two(at.minute)}';
   }
 
   /// Minor units to something readable.

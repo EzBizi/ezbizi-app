@@ -266,7 +266,17 @@ class _ImportDialogState extends State<_ImportDialog> {
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 16),
-              if (franchises.length > 1)
+              if (franchises.isEmpty)
+                // Permission without reach (§4). Rendering the form anyway gives
+                // somebody a Choose-a-file button, a paste box, and a refusal
+                // they cannot act on — the missing thing is an assignment, which
+                // only an administrator can grant.
+                Text(
+                  'You are not assigned to a franchise, so there is nowhere for '
+                  'these records to belong. An administrator can assign you to one.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                )
+              else if (franchises.length > 1)
                 DropdownButtonFormField<String>(
                   initialValue: _franchiseId,
                   decoration: const InputDecoration(

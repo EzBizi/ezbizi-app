@@ -51,6 +51,10 @@ errors=()
 
 note() { echo "$(date -Is) $*" >> /var/log/ezbizi-backup.log; }
 
+# Every stage of a pipeline, checked. Reading one hand-picked PIPESTATUS index
+# is how a failing producer stays invisible behind a happy consumer.
+all_ok() { for s in "$@"; do [[ "$s" -ne 0 ]] && return 1; done; return 0; }
+
 # Every artefact goes through here. Symmetric AES256 rather than a keypair
 # because the only party who needs to decrypt is whoever is holding the
 # passphrase during a restore, and a private key stored beside the backups
@@ -69,8 +73,24 @@ if [[ ! -r "$KEYFILE" ]]; then
 fi
 
 # ── 1. databases ─────────────────────────────────────────────────
-for db in $(mysql -N -e "SELECT schema_name FROM information_schema.schemata
-      WHERE schema_name NOT IN ('information_schema','performance_schema','mysql','sys');" 2>/dev/null); do
+#
+# Enumerated into a variable FIRST, and checked. As a `for ... in $(mysql ...)`
+# this swallowed its own failure twice over: a `for` list discards the command
+# substitution's exit status, and 2>/dev/null hid the reason. A refused
+# connection therefore produced an empty list, zero dumps, and a backup that
+# reported success with no databases in it.
+databases=$(mysql -N -e "SELECT schema_name FROM information_schema.schemata
+      WHERE schema_name NOT IN ('information_schema','performance_schema','mysql','sys');" 2>&1)
+
+if [[ $? -ne 0 || -z "$databases" ]]; then
+  note "FATAL cannot list databases: ${databases:-empty result}"
+  printf '{"ok":false,"at":"%s","stage":"backup","errors":["cannot list databases"]}
+'          "$(date -Is)" > "$STATUS"
+  chmod 644 "$STATUS"
+  exit 1
+fi
+
+for db in $databases; do
 
   out="$DEST/db-${db}-${STAMP}.sql.gz.gpg"
 
@@ -81,8 +101,10 @@ for db in $(mysql -N -e "SELECT schema_name FROM information_schema.schemata
   mysqldump --single-transaction --routines --triggers --events \
             --no-tablespaces "$db" 2>/dev/null | gzip | encrypt_to "$out"
 
-  status=("${PIPESTATUS[@]}")
-  if [[ "${status[0]}" -ne 0 || "${status[2]}" -ne 0 ]]; then
+  # Every stage, not a chosen index. mysqldump | gzip | gpg is three, and the
+  # middle one was not being read at all — a gzip that ran out of disk produced
+  # a truncated file that gpg encrypted quite happily.
+  if ! all_ok "${PIPESTATUS[@]}"; then
     errors+=("dump:$db")
     rm -f "$out"
   fi
@@ -99,15 +121,17 @@ tar -czf - \
     -C /var/www/ezbizi .env storage \
     2>/dev/null | encrypt_to "$DEST/app-${STAMP}.tar.gz.gpg"
 
-status=("${PIPESTATUS[@]}")
-[[ "${status[0]}" -ne 0 || "${status[1]}" -ne 0 ]] && errors+=("app-archive")
+all_ok "${PIPESTATUS[@]}" || errors+=("app-archive")
 
 # ── 3. server configuration ──────────────────────────────────────
 tar -czf - /etc/nginx/sites-available /etc/nginx/conf.d /etc/bind /var/lib/bind \
            /etc/letsencrypt/renewal /etc/systemd/system/ezbizi-* /etc/cron.d \
     2>/dev/null | encrypt_to "$DEST/config-${STAMP}.tar.gz.gpg"
 
-[[ "${PIPESTATUS[1]}" -ne 0 ]] && errors+=("config-archive")
+# Was PIPESTATUS[1] only, so tar's own exit status was discarded: a missing
+# path or an unreadable file produced a partial archive that encrypted cleanly,
+# checksummed cleanly and uploaded cleanly.
+all_ok "${PIPESTATUS[@]}" || errors+=("config-archive")
 
 # ── 4. a manifest, so a restore can prove it got the whole file ──
 (cd "$DEST" && sha256sum ./*-"${STAMP}".*.gpg > "manifest-${STAMP}.txt") 2>/dev/null \
@@ -135,7 +159,13 @@ fi
 #
 # Monthlies are kept: the failure this protects against is corruption nobody
 # notices for a fortnight, which a fourteen-day window quietly discards.
-find "$DEST" -type f -mtime +$KEEP_LOCAL_DAYS ! -name '*-01.*' -delete 2>/dev/null
+# Only after a clean run. Deleting a fortnight-old backup on the strength of a
+# night that produced nothing is how a bad week becomes an unrecoverable one.
+if [[ ${#errors[@]} -eq 0 ]]; then
+  find "$DEST" -type f -mtime +$KEEP_LOCAL_DAYS ! -name '*-01.*' -delete 2>/dev/null
+else
+  note "retention skipped — tonight's run had errors"
+fi
 
 # ── 7. the verdict ───────────────────────────────────────────────
 if [[ ${#errors[@]} -eq 0 ]]; then
@@ -147,7 +177,12 @@ else
   # only its first character, so the array came out as one mangled string and
   # the status file was not valid JSON, which is a poor way for an error report
   # to fail.
-  joined=$(printf '"%s",' "${errors[@]}")
+  # Escaped, because a database name or a path can contain a quote or a
+  # backslash and an error report that is itself unparseable JSON is worse than
+  # no error report.
+  joined=$(printf '%s
+' "${errors[@]}" | sed 's/\/\\/g; s/"/\\"/g' | sed 's/.*/"&",/' | tr -d '
+')
 
   printf '{"ok":false,"at":"%s","stage":"backup","errors":[%s]}\n' \
          "$(date -Is)" "${joined%,}" > "$STATUS"

@@ -68,6 +68,19 @@ final class ResourceMap
                 'model'      => Job::class,
                 'label'      => 'Jobs',
                 'permission' => 'jobs.view',
+
+                // The WHERE gate (§4), as data rather than a special case in the
+                // exporter. Permission says a person may look at jobs; reach says
+                // which ones. The export shipped with only the first, so anybody
+                // with jobs.view could download every franchise's work — a leak
+                // that looks like a working feature, because nobody reports a
+                // number that is too big.
+                //
+                // Customers deliberately have no entry: they are shared
+                // organization-wide (§5.2), so filtering them would break sharing
+                // rather than enforce anything. Its absence is a statement.
+                'reach_column' => 'franchise_id',
+
                 'columns'    => [
                     'number', 'title', 'description', 'status',
                     'scheduled_for', 'duration_minutes', 'amount_minor', 'currency',
