@@ -37,6 +37,7 @@ class User extends Authenticatable
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
+    use Concerns\ReachesCompanies;
     use HasTotp;
     use HasApiTokens;
     use Notifiable;

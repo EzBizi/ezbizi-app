@@ -192,7 +192,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   selected: _scopeType == 'company' && _scopeId == company.id,
                   onTap: () => _select('company', company.id, company.name),
                 ),
-                const SizedBox(width: 10),
+                // A chevron between the company and its franchises. The indent
+                // already implies the relationship, but only once you have
+                // noticed the alignment — the arrow says "these belong to that"
+                // at a glance, and costs one glyph.
+                SizedBox(
+                  // A chip's height, so the chevron sits on the FIRST row of
+                  // franchises rather than at the top of a block that has
+                  // wrapped onto three lines.
+                  height: 32,
+                  width: 30,
+                  child: Center(
+                    child: Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
                 Expanded(
                   child: Wrap(
                     spacing: 8,
