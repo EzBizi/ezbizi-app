@@ -249,7 +249,21 @@ class _HomeShellState extends State<HomeShell> {
         : _index.clamp(0, destinations.length - 1);
 
     return Scaffold(
-      appBar: AppBar(
+      // The top bar belongs to the CHROME, not to the page.
+      //
+      // In a mixed mode it takes the sidebar's theme, so the bar and the
+      // sidebar read as one continuous frame around a page in the other theme.
+      // Siding it with the page instead put a seam across the top of the
+      // sidebar, which made the two halves look misaligned rather than
+      // deliberately different.
+      //
+      // PreferredSize because Scaffold.appBar demands one and a Theme is not:
+      // the height is the toolbar plus the one-pixel rule below it.
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight + 1),
+        child: _maybeThemed(
+          EzBiziTheme.navigationOverride(me.theme),
+          child: AppBar(
         // A rule under the top bar.
         //
         // The bar and the rail were both plain surface, so on a light theme
@@ -380,6 +394,8 @@ class _HomeShellState extends State<HomeShell> {
           ),
           const SizedBox(width: 8),
         ],
+          ),
+        ),
       ),
       body: Row(
         children: [
@@ -399,9 +415,8 @@ class _HomeShellState extends State<HomeShell> {
               // colours, resolves against the right scheme without knowing that
               // anything unusual is happening.
               //
-              // The top bar stays with the page. It spans both columns, so
-              // giving it the sidebar's theme would put a seam in the middle of
-              // a single surface.
+              // The top bar takes this same override, so the chrome is one
+              // theme and the page is the other.
               EzBiziTheme.navigationOverride(me.theme),
               child: NavigationSidebar(
               expanded: expanded,
