@@ -58,7 +58,7 @@ class StaffAuthController extends Controller
         if ($staff === null) {
             RateLimiter::hit($key, decaySeconds: 900);
 
-            return $this->rejected();
+            return $this->rejected($request, $input['email'], 'password');
         }
 
         // Past this point the password is proven, so a specific message tells the
@@ -75,7 +75,7 @@ class StaffAuthController extends Controller
         if (! $this->auth->verifySecondFactor($staff, $input['code'])) {
             RateLimiter::hit($key, decaySeconds: 900);
 
-            return $this->rejected();
+            return $this->rejected($request, $input['email'], 'second_factor');
         }
 
         RateLimiter::clear($key);
@@ -152,9 +152,24 @@ class StaffAuthController extends Controller
         ]]);
     }
 
-    /** Identical for every failure, so nothing leaks about which factor was wrong. */
-    private function rejected(): JsonResponse
+    /**
+     * Identical for every failure, so nothing leaks about which factor was wrong.
+     *
+     * Recorded via logError, which is exempt from the Lead Developer suppression
+     * (§4.2) and needs no actor — a failure often has no identified account at
+     * all. Successes alone are not a security record: an attacker grinding the
+     * control plane would otherwise leave nothing behind but a rate-limiter
+     * counter that expires in fifteen minutes.
+     */
+    private function rejected(Request $request, string $email, string $stage): JsonResponse
     {
+        $this->audit->logError('staff.sign_in_failed', [
+            'email'      => $email,
+            'stage'      => $stage,   // 'password' or 'second_factor'
+            'ip'         => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
         return response()->json([
             'message' => 'Those credentials do not match our records.',
             'code'    => 'invalid_credentials',

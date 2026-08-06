@@ -82,7 +82,22 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    await widget.session.adopt(response.body['token'] as String);
+    await _adopt(response.body['token'] as String);
+  }
+
+  /// Shared by both paths. If /me fails after a successful login the screen is
+  /// rebuilt in place with its State intact, so _busy must be released here or
+  /// the card is left greyed out and spinning with nothing said.
+  Future<void> _adopt(String token) async {
+    final signedIn = await widget.session.adopt(token);
+
+    if (!mounted || signedIn) return;
+
+    setState(() {
+      _busy = false;
+      _error = 'Signed in, but your account could not be loaded. Try again.';
+      _choices = null;
+    });
   }
 
   Future<void> _choose(Map<String, dynamic> choice) async {
@@ -109,7 +124,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    await widget.session.adopt(response.body['token'] as String);
+    await _adopt(response.body['token'] as String);
   }
 
   @override

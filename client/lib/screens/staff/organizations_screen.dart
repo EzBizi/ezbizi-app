@@ -56,8 +56,12 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
       children: [
         PanelHeader(
           title: 'Organizations',
-          note: '${_organizations.length} on the platform. '
-              'Opening a client\'s records needs an impersonation session.',
+          // Only claim a count when there is actually a loaded list behind it —
+          // "0 on the platform" over a failed request reads as a fact.
+          note: (_loading || _error != null)
+              ? 'Opening a client\'s records needs an impersonation session.'
+              : '${_organizations.length} on the platform. '
+                  'Opening a client\'s records needs an impersonation session.',
           action: IconButton(
             tooltip: 'Refresh',
             onPressed: _load,

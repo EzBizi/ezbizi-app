@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../core/api_client.dart';
 import 'error_note.dart';
+import 'recovery_codes.dart';
 
 /// Handing someone their second factor (plan §4.2).
 ///
@@ -84,7 +85,9 @@ class _EnrolmentDialogState extends State<EnrolmentDialog> {
       content: SizedBox(
         width: 420,
         child: SingleChildScrollView(
-          child: _recoveryCodes == null ? _setup(context) : _recovery(context),
+          child: _recoveryCodes == null
+              ? _setup(context)
+              : RecoveryCodesView(codes: _recoveryCodes!),
         ),
       ),
       actions: _recoveryCodes == null
@@ -157,47 +160,6 @@ class _EnrolmentDialogState extends State<EnrolmentDialog> {
           const SizedBox(height: 14),
           ErrorNote(_error!),
         ],
-      ],
-    );
-  }
-
-  Widget _recovery(BuildContext context) {
-    final codes = _recoveryCodes!;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Shown once and never again. Store them somewhere that is not the '
-          'phone holding the authenticator — each one works a single time, in '
-          'place of a six-digit code.',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: SelectableText(
-            codes.join('\n'),
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 14, height: 1.6),
-          ),
-        ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: () async {
-            await Clipboard.setData(ClipboardData(text: codes.join('\n')));
-            if (context.mounted) {
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('Recovery codes copied')));
-            }
-          },
-          icon: const Icon(Icons.copy_all_outlined, size: 18),
-          label: const Text('Copy all'),
-        ),
       ],
     );
   }

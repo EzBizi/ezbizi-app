@@ -88,10 +88,21 @@ class StaffAccountsController extends Controller
             'is_active' => ['boolean'],
         ]);
 
+        // Normalised ONCE, up front. Laravel's `boolean` rule accepts 0, 1, "0"
+        // and "1" as well as real booleans, so a strict `=== false` further down
+        // would quietly miss `{"is_active": 0}` — disabling the account while
+        // leaving every live token valid for the next time it is re-enabled.
+        if (array_key_exists('is_active', $input)) {
+            $input['is_active'] = filter_var($input['is_active'], FILTER_VALIDATE_BOOL);
+        }
+
+        $staysLead   = ($input['tier'] ?? $staff->tier) === PlatformStaff::TIER_LEAD;
+        $staysActive = $input['is_active'] ?? $staff->is_active;
+
         // Locking yourself out of the control plane leaves the console on the box
         // as the only way back in. Refusing is cheaper than that evening.
         if ($staff->is($request->user())) {
-            if (array_key_exists('is_active', $input) && $input['is_active'] === false) {
+            if ($staysActive === false) {
                 return $this->refuse('You cannot deactivate your own account.');
             }
 
@@ -102,12 +113,9 @@ class StaffAccountsController extends Controller
 
         // Demoting or disabling the last remaining Lead Developer leaves nobody
         // able to manage staff — recoverable only from a shell on the box.
-        $staysLead   = ($input['tier'] ?? $staff->tier) === PlatformStaff::TIER_LEAD;
-        $staysActive = $input['is_active'] ?? $staff->is_active;
-
         if ($staff->isLeadDeveloper() && $staff->is_active
             && ! ($staysLead && $staysActive)
-            && $this->activeLeadCount() <= 1) {
+            && $this->usableLeadCount() <= 1) {
             return $this->refuse(
                 'This is the last active Lead Developer. Promote someone else first.'
             );
@@ -140,6 +148,22 @@ class StaffAccountsController extends Controller
     {
         $this->authorizeManagement($request);
 
+        // Never on yourself. This path kills the live secret AND every token,
+        // including the one making the request — so confirming the replacement
+        // would need a session that no longer exists, and signing in again is
+        // impossible without a confirmed factor. The account would be strandable
+        // in one click, recoverable only from a shell on the box.
+        if ($staff->is($request->user())) {
+            return $this->refuse(
+                'Use "Move authenticator" to change your own — that path keeps the '
+                .'current one working until the replacement is confirmed.'
+            );
+        }
+
+        // No last-lead check here, and that is not an oversight: the caller is
+        // necessarily a Lead Developer who is signed in, so they are themselves a
+        // usable one, and the line above guarantees they are not the target.
+        // Revoking somebody else therefore always leaves at least one.
         $enrolment = $this->auth->beginEnrolment($staff, revokeExisting: true);
         $staff->tokens()->delete();
 
@@ -172,6 +196,25 @@ class StaffAccountsController extends Controller
     public function beginOwnTotp(Request $request): JsonResponse
     {
         $staff = $request->user();
+
+        $input = $request->validate([
+            'password' => ['required', 'string'],
+            'code'     => ['required', 'string'],
+        ]);
+
+        /*
+         * Both factors again, not just the bearer token.
+         *
+         * A staff token is valid for twelve hours. Without this, anyone holding a
+         * stolen one could bind their own phone as a second factor and confirm it
+         * with their own code — turning a session that expires into access that
+         * does not. Re-proving both factors is what stops a token upgrading
+         * itself into a credential.
+         */
+        if ($this->auth->verifyPassword($staff->email, $input['password']) === null
+            || ! $this->auth->verifySecondFactor($staff, $input['code'])) {
+            return $this->refuse('That password or code did not verify.');
+        }
 
         $enrolment = $this->auth->beginEnrolment($staff, revokeExisting: false);
 
@@ -223,10 +266,19 @@ class StaffAccountsController extends Controller
         );
     }
 
-    private function activeLeadCount(): int
+    /**
+     * Lead Developers who can actually sign in.
+     *
+     * Not just active ones: an account whose TOTP is unconfirmed cannot
+     * authenticate at all, so counting it would let the "last lead" guard be
+     * satisfied by somebody nobody can be.
+     */
+    private function usableLeadCount(): int
     {
         return PlatformStaff::where('tier', PlatformStaff::TIER_LEAD)
             ->where('is_active', true)
+            ->whereNotNull('totp_secret')
+            ->whereNotNull('totp_confirmed_at')
             ->count();
     }
 

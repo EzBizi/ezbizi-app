@@ -84,6 +84,10 @@ class ImpersonationService
                 'client_approved' => $session->wasApproved(),
                 'tier'            => $staff->tier,
             ],
+            // Staff run in platform scope, so nothing would otherwise stamp the
+            // organization — and "show me everything that happened to this
+            // client" is precisely the query this row has to answer.
+            organizationId: $organization->getKey(),
         );
 
         return $session;
@@ -109,6 +113,12 @@ class ImpersonationService
 
     public function end(StaffImpersonation $session, PlatformStaff $staff): void
     {
+        // Already closed — say nothing. A second "ended" row in an append-only
+        // log reads as a second session, and the log cannot be corrected.
+        if ($session->ended_at !== null) {
+            return;
+        }
+
         $session->end();
 
         $this->audit->logStaff(
@@ -119,6 +129,7 @@ class ImpersonationService
             metadata: [
                 'duration_seconds' => $session->started_at->diffInSeconds($session->ended_at),
             ],
+            organizationId: $session->organization_id,
         );
     }
 
@@ -141,9 +152,14 @@ class ImpersonationService
             $this->audit->logStaff(
                 action: 'staff.impersonation_expired',
                 staffId: $session->staff_id,
-                staffLabel: $session->staff?->email ?? 'unknown',
+                // Same "Name <email>" shape as every other actor label, so the
+                // log can be read and grouped without special-casing this row.
+                staffLabel: $session->staff
+                    ? "{$session->staff->name} <{$session->staff->email}>"
+                    : 'unknown staff',
                 target: $session->organization,
                 metadata: ['expired_at' => $session->expires_at->toIso8601String()],
+                organizationId: $session->organization_id,
             );
         }
 

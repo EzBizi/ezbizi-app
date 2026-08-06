@@ -36,7 +36,17 @@ class _StaffShellState extends State<StaffShell> {
   /// server does that deliberately, so a mis-scan cannot lock you out of the
   /// account that manages every other account.
   Future<void> _rotateAuthenticator() async {
-    final response = await widget.staff.api.post('/staff/me/totp', {});
+    // Both factors again, not just the session. A staff token lives twelve
+    // hours; without re-proving them, whoever stole one could bind their own
+    // phone as a permanent second factor.
+    final proof = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (_) => const _ReauthDialog(),
+    );
+
+    if (proof == null || !mounted) return;
+
+    final response = await widget.staff.api.post('/staff/me/totp', proof);
 
     if (!mounted) return;
 
@@ -223,4 +233,72 @@ class _Destination {
   final String label;
   final IconData icon;
   final Widget screen;
+}
+
+/// Re-proving both factors before binding a new one.
+///
+/// A StatefulWidget purely so the controllers get disposed — a dialog that
+/// builds them in a closure leaks one per opening.
+class _ReauthDialog extends StatefulWidget {
+  const _ReauthDialog();
+
+  @override
+  State<_ReauthDialog> createState() => _ReauthDialogState();
+}
+
+class _ReauthDialogState extends State<_ReauthDialog> {
+  final _password = TextEditingController();
+  final _code = TextEditingController();
+
+  @override
+  void dispose() {
+    _password.dispose();
+    _code.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.of(context).pop({
+        'password': _password.text,
+        'code': _code.text.trim(),
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Confirm it is you'),
+      content: SizedBox(
+        width: 380,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Binding a new authenticator needs your password and a code from '
+              'the current one — a session on its own is not enough.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _password,
+              decoration: const InputDecoration(labelText: 'Password'),
+              obscureText: true,
+              autofocus: true,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _code,
+              decoration: const InputDecoration(labelText: 'Code from your current app'),
+              onSubmitted: (_) => _submit(),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Continue')),
+      ],
+    );
+  }
 }

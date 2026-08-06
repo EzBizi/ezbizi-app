@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Models\PlatformModuleFlag;
 use App\Models\StaffImpersonation;
 use App\Services\Staff\ImpersonationService;
+use App\Support\Audit\AuditLogger;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Modules\ModuleDefinition;
 use App\Support\Modules\ModuleRegistry;
@@ -27,6 +28,7 @@ class StaffController extends Controller
         private readonly ModuleRegistry $registry,
         private readonly ModuleAvailability $modules,
         private readonly ImpersonationService $impersonation,
+        private readonly AuditLogger $audit,
     ) {}
 
     // ── organizations ────────────────────────────────────────────
@@ -96,6 +98,9 @@ class StaffController extends Controller
 
         $staff = $request->user();
 
+        $before = PlatformModuleFlag::where('module_key', $key)->first()?->state
+            ?? PlatformModuleFlag::ENABLED;
+
         try {
             $flag = $this->modules->setState(
                 moduleKey: $key,
@@ -109,6 +114,31 @@ class StaffController extends Controller
             // different words is how two sources of truth start.
             throw ValidationException::withMessages(['state' => $e->getMessage()]);
         }
+
+        /*
+         * Always recorded, including for the Lead Developer.
+         *
+         * This is the one staff action that changes what EVERY customer sees, at
+         * the same moment. `changed_by` on the flag row is overwritten by the
+         * next change, so without this an outage is unreconstructable: nothing
+         * would say the module was ever off, for how long, or who turned it off.
+         *
+         * Both tiers may do it — a kill switch is only useful to whoever is awake
+         * during the incident (§4.2, "platform work"). The audit row is what makes
+         * that safe rather than the tier gate.
+         */
+        $this->audit->logStaff(
+            action: 'staff.module_state_changed',
+            staffId: $staff->getKey(),
+            staffLabel: "{$staff->name} <{$staff->email}>",
+            metadata: [
+                'module'                => $key,
+                'before'                => $before,
+                'after'                 => $flag->state,
+                'reason'                => $flag->reason,
+                'beta_organization_ids' => $flag->beta_organization_ids ?? [],
+            ],
+        );
 
         return response()->json(['data' => [
             'key'                   => $flag->module_key,

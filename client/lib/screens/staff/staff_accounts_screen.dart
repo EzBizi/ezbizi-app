@@ -5,6 +5,7 @@ import '../../widgets/async_body.dart';
 import '../../widgets/tag.dart';
 import '../../widgets/enrolment_dialog.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/recovery_codes.dart';
 
 /// EzBizi staff accounts (plan §4.2). Lead Developer only.
 ///
@@ -127,7 +128,12 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
                   itemBuilder: (_) => [
                     if (pending)
                       const PopupMenuItem(value: 'confirm', child: Text('Confirm authenticator')),
-                    const PopupMenuItem(value: 'reset', child: Text('Re-enrol authenticator')),
+                    // Never on your own row. This endpoint kills the live secret
+                    // AND every token in one request — on yourself that strands
+                    // the account. "Move authenticator" in the account menu is
+                    // the self path, and it keeps the current one working.
+                    if (!isMe)
+                      const PopupMenuItem(value: 'reset', child: Text('Re-enrol authenticator')),
                     if (!isMe) const PopupMenuDivider(),
                     if (!isMe)
                       PopupMenuItem(
@@ -292,13 +298,25 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
 
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(response.ok
-          ? 'Confirmed. Hand over the recovery codes from the setup dialog.'
-          : response.message),
-    ));
+    if (!response.ok) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(response.message)));
+      return;
+    }
 
-    if (response.ok) _load();
+    // The codes are minted by this call and are never retrievable again. A
+    // snackbar here would silently destroy them.
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => RecoveryCodesDialog(
+        codes: (response.body['recovery_codes'] as List? ?? [])
+            .map((c) => c as String)
+            .toList(),
+      ),
+    );
+
+    if (mounted) _load();
   }
 
   Future<void> _showEnrolment(

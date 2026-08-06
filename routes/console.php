@@ -9,3 +9,8 @@ Artisan::command('inspire', function () {
 
 // Audit retention (plan §10). Runs nightly; the command reports what it removed.
 Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
+
+// Close impersonation sessions past their expiry (§4.2). Every five minutes,
+// because the value is a truthful record rather than cutting off access —
+// access already stops by itself the moment the expiry passes.
+Schedule::command('ezbizi:expire-impersonations')->everyFiveMinutes()->withoutOverlapping();

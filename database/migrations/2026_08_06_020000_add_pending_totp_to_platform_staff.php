@@ -39,6 +39,14 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Put the pending secrets back where they came from before dropping the
+        // column, or rolling back destroys every in-progress enrolment — and the
+        // account it belonged to can no longer sign in at all.
+        DB::table('platform_staff')
+            ->whereNull('totp_secret')
+            ->whereNotNull('pending_totp_secret')
+            ->update(['totp_secret' => DB::raw('pending_totp_secret')]);
+
         Schema::table('platform_staff', function (Blueprint $table) {
             $table->dropColumn('pending_totp_secret');
         });

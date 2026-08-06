@@ -55,6 +55,31 @@ class StaffAccountsApiTest extends TestCase
         ])->assertOk()->json('token');
     }
 
+    /**
+     * A code from the NEXT time-step.
+     *
+     * Each code is single-use, so a test that authenticates twice needs a second
+     * one. Google2FA reads the real clock and Carbon's time travel cannot move
+     * it, so clearing the recorded step is how a test says "thirty seconds
+     * passed". The replay rule itself is tested directly, in
+     * test_a_totp_code_cannot_be_used_twice.
+     */
+    private function nextCode(PlatformStaff $staff, string $secret): string
+    {
+        $staff->forceFill(['last_totp_timestamp' => null])->save();
+
+        return $this->totp->getCurrentOtp($secret);
+    }
+
+    /** Password plus a fresh code — what /staff/me/totp now demands. */
+    private function reauth(PlatformStaff $staff, string $secret): array
+    {
+        return [
+            'password' => 'a-sufficiently-long-password',
+            'code'     => $this->nextCode($staff, $secret),
+        ];
+    }
+
     // ── who may manage staff ─────────────────────────────────────
 
     public function test_a_developer_cannot_create_staff(): void
@@ -191,7 +216,7 @@ class StaffAccountsApiTest extends TestCase
         $auth = 'Bearer '.$this->tokenFor($staff, $secret);
 
         $rotation = $this->withHeader('Authorization', $auth)
-            ->postJson('/api/v1/staff/me/totp')->assertOk();
+            ->postJson('/api/v1/staff/me/totp', $this->reauth($staff, $secret))->assertOk();
 
         $newSecret = $rotation->json('enrolment.secret');
         $this->assertNotSame($secret, $newSecret);
@@ -199,19 +224,110 @@ class StaffAccountsApiTest extends TestCase
         // The whole point: a mis-scan must not lock you out of your own account.
         $this->postJson('/api/v1/staff/auth/login', [
             'email' => $staff->email, 'password' => 'a-sufficiently-long-password',
-            'code' => $this->totp->getCurrentOtp($secret),
+            'code' => $this->nextCode($staff, $secret),
         ])->assertOk();
 
         $this->withHeader('Authorization', $auth)
             ->postJson('/api/v1/staff/me/totp/confirm', [
-                'code' => $this->totp->getCurrentOtp($newSecret),
+                'code' => $this->nextCode($staff, $newSecret),
             ])->assertOk();
 
         // Once confirmed, the old phone stops working.
         $this->postJson('/api/v1/staff/auth/login', [
             'email' => $staff->email, 'password' => 'a-sufficiently-long-password',
-            'code' => $this->totp->getCurrentOtp($secret),
+            'code' => $this->nextCode($staff, $secret),
         ])->assertUnauthorized();
+    }
+
+    public function test_rotating_your_own_authenticator_needs_both_factors_again(): void
+    {
+        [$staff, $secret] = $this->staff();
+        $auth = 'Bearer '.$this->tokenFor($staff, $secret);
+
+        // A stolen token lives twelve hours. Without this it could bind a phone
+        // the thief owns and turn an expiring session into a standing credential.
+        $this->withHeader('Authorization', $auth)
+            ->postJson('/api/v1/staff/me/totp', [
+                'password' => 'a-sufficiently-long-password',
+                'code'     => '000000',
+            ])->assertStatus(422);
+
+        $this->withHeader('Authorization', $auth)
+            ->postJson('/api/v1/staff/me/totp', [
+                'password' => 'the-wrong-password-entirely',
+                'code'     => $this->nextCode($staff, $secret),
+            ])->assertStatus(422);
+
+        $this->assertFalse($staff->fresh()->hasPendingTotp());
+    }
+
+    public function test_you_cannot_re_enrol_yourself_through_the_lost_phone_path(): void
+    {
+        [$staff, $secret] = $this->staff();
+
+        // That endpoint kills the live secret AND every token in one request.
+        // On yourself it strands the account: no session left to confirm the
+        // replacement, and no confirmed factor left to sign in with.
+        $this->withHeader('Authorization', 'Bearer '.$this->tokenFor($staff, $secret))
+            ->postJson("/api/v1/staff/accounts/{$staff->id}/totp")
+            ->assertStatus(422);
+
+        $this->assertTrue($staff->fresh()->hasTotp());
+    }
+
+    public function test_a_lead_can_still_re_enrol_another_lead(): void
+    {
+        [$lead, $leadSecret] = $this->staff();
+        [$other, ] = $this->staff(PlatformStaff::TIER_LEAD, 'other@ezbizi.test');
+
+        // The self-refusal must not become a blanket one — a colleague losing
+        // their phone is exactly what this endpoint is for.
+        $this->withHeader('Authorization', 'Bearer '.$this->tokenFor($lead, $leadSecret))
+            ->postJson("/api/v1/staff/accounts/{$other->id}/totp")
+            ->assertOk()
+            ->assertJsonPath('data.totp_confirmed', false);
+    }
+
+    public function test_a_totp_code_cannot_be_used_twice(): void
+    {
+        [$staff, $secret] = $this->staff();
+
+        $code = $this->totp->getCurrentOtp($secret);
+
+        $this->postJson('/api/v1/staff/auth/login', [
+            'email' => $staff->email, 'password' => 'a-sufficiently-long-password', 'code' => $code,
+        ])->assertOk();
+
+        // Six digits overheard during an enrolment hand-off, or lifted from a
+        // screenshot, would otherwise stay good for the rest of their window.
+        $this->postJson('/api/v1/staff/auth/login', [
+            'email' => $staff->email, 'password' => 'a-sufficiently-long-password', 'code' => $code,
+        ])->assertUnauthorized();
+    }
+
+    public function test_disabling_with_a_falsy_value_still_revokes_tokens(): void
+    {
+        [$lead, $leadSecret] = $this->staff();
+        [$dev, $devSecret] = $this->staff(PlatformStaff::TIER_DEV, 'dev@ezbizi.test');
+
+        $devToken = $this->tokenFor($dev, $devSecret);
+
+        // Laravel's `boolean` rule accepts 0 and "0" as well as false. A strict
+        // comparison further down would disable the account while leaving live
+        // tokens to spring back the moment it is re-enabled.
+        $this->withHeader('Authorization', 'Bearer '.$this->tokenFor($lead, $leadSecret))
+            ->patchJson("/api/v1/staff/accounts/{$dev->id}", ['is_active' => 0])
+            ->assertOk()
+            ->assertJsonPath('data.is_active', false);
+
+        $this->assertDatabaseMissing('personal_access_tokens', [
+            'tokenable_id' => $dev->id,
+        ]);
+
+        $this->app['auth']->forgetGuards();
+
+        $this->withHeader('Authorization', "Bearer {$devToken}")
+            ->getJson('/api/v1/staff/me')->assertUnauthorized();
     }
 
     public function test_a_lost_phone_reset_kills_the_old_secret_immediately(): void

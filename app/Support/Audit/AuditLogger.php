@@ -27,6 +27,9 @@ class AuditLogger
         'password', 'secret', 'token', 'api_key', 'apikey',
         'authorization', 'credit_card', 'card_number', 'cvv', 'ssn',
         'private_key', 'access_key', 'refresh_token',
+        // Plural deliberately: a recovery code is a full second-factor bypass,
+        // but `recovery_code_count` is just a number and stays readable.
+        'recovery_codes',
     ];
 
     /** Ties every event from one request together. */
@@ -44,9 +47,17 @@ class AuditLogger
         return $this->correlationId ??= (string) Str::uuid7();
     }
 
+    /**
+     * Adopt a caller-supplied correlation id, if it is actually one.
+     *
+     * The value arrives from an untrusted request header and lands in a CHAR(36)
+     * column. Anything longer is a 500 raised *after* the business change has
+     * already committed — the worst possible moment. A malformed id is not worth
+     * failing a request over, so it is replaced rather than rejected.
+     */
     public function setCorrelationId(string $id): void
     {
-        $this->correlationId = $id;
+        $this->correlationId = Str::isUuid($id) ? $id : (string) Str::uuid7();
     }
 
     /**
@@ -158,9 +169,15 @@ class AuditLogger
         string $staffLabel,
         ?Model $target = null,
         array $metadata = [],
+        // Staff work in platform scope, so there is no tenant in context to
+        // infer this from. Passed explicitly where the event concerns a specific
+        // client — otherwise "everything that happened to organization X" would
+        // miss the rows that matter most to them.
+        ?string $organizationId = null,
     ): AuditEvent {
         return AuditEvent::create([
-            'organization_id' => $this->tenant->has() ? $this->tenant->id() : null,
+            'organization_id' => $organizationId
+                ?? ($this->tenant->has() ? $this->tenant->id() : null),
             'actor_type'      => AuditEvent::ACTOR_STAFF,
             'actor_id'        => $staffId,
             'actor_label'     => $staffLabel,

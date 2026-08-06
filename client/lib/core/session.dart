@@ -19,9 +19,13 @@ class Session extends ChangeNotifier {
   /// what happened instead of showing a generic failure.
   String? readOnlyNotice;
 
-  Future<void> adopt(String token) async {
+  /// Returns whether the token actually produced a session — /me can fail even
+  /// when the login succeeded, and the caller has to know so it can stop showing
+  /// a spinner and say something.
+  Future<bool> adopt(String token) async {
     _api.setToken(token);
     await refresh();
+    return signedIn;
   }
 
   Future<void> refresh() async {

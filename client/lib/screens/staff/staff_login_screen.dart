@@ -65,7 +65,20 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       return;
     }
 
-    await widget.staff.adopt(response.body['token'] as String);
+    // adopt() returns whether /staff/me then answered. If it did not — a proxy
+    // hiccup, a 500, a dropped connection — the token is discarded and this
+    // screen is rebuilt in place with its State intact, so leaving _busy set
+    // would strand the card with greyed-out fields and a spinner and no
+    // explanation.
+    final signedIn = await widget.staff.adopt(response.body['token'] as String);
+
+    if (!mounted || signedIn) return;
+
+    setState(() {
+      _busy = false;
+      _error = 'Signed in, but the session could not be loaded. Try again.';
+      _code.clear();
+    });
   }
 
   @override

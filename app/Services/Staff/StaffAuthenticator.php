@@ -55,6 +55,11 @@ class StaffAuthenticator
      * `window: 1` accepts the adjacent 30-second steps, which covers ordinary
      * clock drift between the phone and the server. Wider windows trade real
      * security for a problem better solved by fixing the clock.
+     *
+     * Each code is accepted ONCE. `verifyKeyNewer` refuses any time-step at or
+     * before the last one this account used, so six digits overheard — during the
+     * enrolment hand-off, in a screenshot, through a phishing proxy — cannot be
+     * replayed for the remaining minute and a half they would otherwise be valid.
      */
     public function verifySecondFactor(PlatformStaff $staff, string $code): bool
     {
@@ -69,7 +74,20 @@ class StaffAuthenticator
             return $staff->consumeRecoveryCode($code);
         }
 
-        return $this->totp->verifyKey($staff->totp_secret, $code, window: 1);
+        $timestamp = $this->totp->verifyKeyNewer(
+            $staff->totp_secret,
+            $code,
+            $staff->last_totp_timestamp,
+            window: 1,
+        );
+
+        if ($timestamp === false) {
+            return false;
+        }
+
+        $staff->forceFill(['last_totp_timestamp' => $timestamp])->save();
+
+        return true;
     }
 
     // ── enrolment ────────────────────────────────────────────────
@@ -123,7 +141,14 @@ class StaffAuthenticator
             return null;
         }
 
-        if (! $this->totp->verifyKey($staff->pending_totp_secret, trim($code), window: 1)) {
+        $timestamp = $this->totp->verifyKeyNewer(
+            $staff->pending_totp_secret,
+            trim($code),
+            $staff->last_totp_timestamp,
+            window: 1,
+        );
+
+        if ($timestamp === false) {
             return null;
         }
 
@@ -135,6 +160,10 @@ class StaffAuthenticator
         $staff->pending_totp_secret = null;
         $staff->totp_confirmed_at = now();
         $staff->recovery_codes = $recovery;
+        // The confirming code was spoken aloud to whoever ran the enrolment.
+        // Burning its time-step here stops it being turned straight around into
+        // a sign-in on the secret it just activated.
+        $staff->last_totp_timestamp = $timestamp;
         $staff->save();
 
         return $recovery;

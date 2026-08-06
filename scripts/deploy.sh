@@ -61,12 +61,19 @@ if [ "$CODE_ONLY" != "--code" ]; then
   # base-href / — the app IS the site (app.ezbizi.com), not a subdirectory.
   (cd client && flutter build web --release --base-href /)
 
+fi
+
+# Code BEFORE the UI, deliberately. The UI is uploaded straight into the live
+# shared directory with no staging step, so shipping it first would put a new
+# client in front of the old API for however long the push takes — and if the
+# push then fails, permanently.
+echo "→ pushing code"
+git push production main
+
+if [ "$CODE_ONLY" != "--code" ]; then
   echo "→ uploading UI to shared directory"
   # --delete so removed assets don't linger; the shared dir holds only the build.
   rsync -az --delete client/build/web/ "$REMOTE:$SHARED/"
 fi
-
-echo "→ pushing code"
-git push production main
 
 echo "✓ done — https://app.ezbizi.com"
