@@ -19,6 +19,14 @@ class Session extends ChangeNotifier {
   /// what happened instead of showing a generic failure.
   String? readOnlyNotice;
 
+  /// The staff token issued alongside the tenant one for a linked account.
+  ///
+  /// Kept on its OWN client (see main.dart) rather than being set on this one.
+  /// Both factors were proven at sign-in, so a second challenge would be
+  /// ceremony — but the two tokens stay separate, because a tenant session that
+  /// could reach the control plane is exactly what the split prevents.
+  String? staffToken;
+
   /// Returns whether the token actually produced a session — /me can fail even
   /// when the login succeeded, and the caller has to know so it can stop showing
   /// a spinner and say something.
@@ -60,6 +68,7 @@ class Me {
     required this.name,
     required this.email,
     required this.roleName,
+    required this.development,
     required this.organization,
     required this.franchises,
   });
@@ -68,6 +77,14 @@ class Me {
   final String name;
   final String email;
   final String? roleName;
+
+  /// Set when this person is also platform staff (§4.2, revised 2026-08-06).
+  ///
+  /// One human, two identity records, linked. Its presence is what puts the
+  /// Development section in the sidebar — so the section cannot appear for
+  /// somebody with no staff account behind them, whatever the client believes.
+  final DevelopmentAccess? development;
+
   final OrganizationSummary organization;
 
   /// Only franchises this user can actually act on (§4). The server sends reach,
@@ -79,6 +96,9 @@ class Me {
         name: json['name'] as String,
         email: json['email'] as String,
         roleName: (json['role'] as Map<String, dynamic>?)?['name'] as String?,
+        development: json['development'] == null
+            ? null
+            : DevelopmentAccess.fromJson(json['development'] as Map<String, dynamic>),
         organization:
             OrganizationSummary.fromJson(json['organization'] as Map<String, dynamic>),
         franchises: (json['franchises'] as List<dynamic>? ?? [])
@@ -121,5 +141,32 @@ class FranchiseSummary {
         id: json['id'] as String,
         name: json['name'] as String,
         companyId: json['company_id'] as String?,
+      );
+}
+
+/// Platform-staff access held by the signed-in person (§4.2, revised).
+class DevelopmentAccess {
+  const DevelopmentAccess({
+    required this.tier,
+    required this.staffName,
+    required this.focusedAt,
+  });
+
+  final String tier;
+  final String staffName;
+
+  /// The focused control-plane host. The Development section here is the same
+  /// screens embedded in the CRM; dev.ezbizi.com is them on their own, which is
+  /// what you want when that is all you are doing.
+  final String focusedAt;
+
+  bool get isLead => tier == 'lead_developer';
+
+  String get tierLabel => isLead ? 'Lead Developer' : 'Developer';
+
+  factory DevelopmentAccess.fromJson(Map<String, dynamic> json) => DevelopmentAccess(
+        tier: json['tier'] as String? ?? 'developer',
+        staffName: json['staff_name'] as String? ?? '',
+        focusedAt: json['focused_at'] as String? ?? 'https://dev.ezbizi.com',
       );
 }

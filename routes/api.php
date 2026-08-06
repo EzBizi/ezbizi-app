@@ -92,6 +92,18 @@ Route::prefix('v1')
                     'name'  => $user->name,
                     'email' => $user->email,
                     'role'  => ['id' => $user->role?->id, 'name' => $user->role?->name],
+                    // Whether this person is also platform staff (§4.2, revised).
+                    // The client renders the Development section from this, so it
+                    // cannot appear for somebody with no staff account behind them.
+                    'development' => (function () use ($user) {
+                        $staff = \App\Models\PlatformStaffLink::staffFor($user->getKey());
+
+                        return $staff === null ? null : [
+                            'tier'       => $staff->tier,
+                            'staff_name' => $staff->name,
+                            'focused_at' => 'https://dev.ezbizi.com',
+                        ];
+                    })(),
                     'organization' => [
                         'id'              => $user->organization->id,
                         'name'            => $user->organization->name,
@@ -149,6 +161,8 @@ Route::prefix('v1/staff')
         Route::get('accounts', [StaffAccountsController::class, 'index']);
         Route::post('accounts', [StaffAccountsController::class, 'store']);
         Route::patch('accounts/{staff}', [StaffAccountsController::class, 'update']);
+        Route::post('accounts/{staff}/link', [StaffAccountsController::class, 'link']);
+        Route::delete('accounts/{staff}/link/{user}', [StaffAccountsController::class, 'unlink']);
         Route::post('accounts/{staff}/totp', [StaffAccountsController::class, 'resetTotp']);
         Route::post('accounts/{staff}/totp/confirm', [StaffAccountsController::class, 'confirmTotpFor']);
 

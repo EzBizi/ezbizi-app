@@ -5,6 +5,7 @@ import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
 import 'screens/customers_screen.dart';
+import 'screens/development_screen.dart';
 import 'screens/jobs_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/workflows_screen.dart';
@@ -132,6 +133,18 @@ class _HomeShellState extends State<HomeShell> {
         Icons.settings_outlined,
         SettingsScreen(api: widget.api, session: widget.session),
       ),
+
+      // Last in the rail, deliberately (§4.2, revised). It is not part of
+      // running the business — it is the platform underneath it — and it only
+      // exists when the server says this person is also staff. A client that
+      // decided this for itself could show the tab to somebody with nothing
+      // behind it.
+      if (me.development != null)
+        _Destination(
+          'Development',
+          Icons.terminal_outlined,
+          DevelopmentScreen(session: widget.session),
+        ),
     ];
 
     return Scaffold(

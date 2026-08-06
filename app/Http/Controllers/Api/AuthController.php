@@ -35,6 +35,9 @@ class AuthController extends Controller
         $credentials = $request->validate([
             'email'    => ['required', 'email'],
             'password' => ['required', 'string'],
+            // Only accounts linked to a staff record need this (§4.2, revised),
+            // so it is optional here and demanded by the service if it applies.
+            'code'     => ['nullable', 'string'],
         ]);
 
         // Throttled per email+IP. Without this, the same-email design gives an
@@ -50,7 +53,11 @@ class AuthController extends Controller
             ], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
-        $result = ($this->authenticate)($credentials['email'], $credentials['password']);
+        $result = ($this->authenticate)(
+            $credentials['email'],
+            $credentials['password'],
+            $credentials['code'] ?? null,
+        );
 
         if ($result->status === AuthenticationResult::FAILED) {
             RateLimiter::hit($throttleKey, decaySeconds: 300);
@@ -61,6 +68,18 @@ class AuthController extends Controller
                 'message' => 'Those credentials do not match our records.',
                 'code'    => 'invalid_credentials',
             ], Response::HTTP_UNAUTHORIZED);
+        }
+
+        if ($result->needsSecondFactor()) {
+            // Not a failure and not a success. The password was right; this
+            // account carries platform reach, so it needs the authenticator too.
+            // The throttle is NOT cleared — an attacker with a stolen password
+            // must not get unlimited attempts at the second factor.
+            return response()->json([
+                'status'  => 'second_factor_required',
+                'message' => 'This account also signs in to the control plane, so it needs '
+                    .'your authenticator code.',
+            ]);
         }
 
         RateLimiter::clear($throttleKey);
@@ -85,13 +104,14 @@ class AuthController extends Controller
             'user_id'  => ['required', 'uuid'],
             'email'    => ['required', 'email'],
             'password' => ['required', 'string'],
+            'code'     => ['nullable', 'string'],
         ]);
 
         // Re-verifies the password: the chosen id comes from the client, so
         // trusting it as proof of the earlier step would let anyone post a user
         // id and skip authentication.
         $result = $this->authenticate->completeChoice(
-            $input['user_id'], $input['email'], $input['password']
+            $input['user_id'], $input['email'], $input['password'], $input['code'] ?? null,
         );
 
         if (! $result->succeeded()) {
@@ -130,9 +150,54 @@ class AuthController extends Controller
             'user_agent' => $request->userAgent(),
         ]);
 
+        /*
+         * A linked account gets BOTH tokens from one sign-in.
+         *
+         * Both factors have just been proven against the staff credential set,
+         * so making them authenticate again to open the Development tab would be
+         * ceremony rather than security. The tokens stay separate — the tenant
+         * one still cannot touch /api/v1/staff and the staff one still cannot
+         * touch tenant endpoints — because that separation is what keeps a
+         * stolen CRM session from being a platform session.
+         *
+         * The staff token is deliberately shorter-lived (12 hours, as at
+         * dev.ezbizi.com) even though the tenant token lasts 30 days.
+         */
+        $staff = $this->authenticate->staffFor($user);
+
+        $staffToken = null;
+
+        if ($staff !== null) {
+            $staffToken = $staff->createToken(
+                'staff:'.$request->input('device_name', 'web').' (via CRM)',
+                ['staff'],
+                expiresAt: now()->addHours(12),
+            )->plainTextToken;
+
+            $staff->forceFill(['last_login_at' => now(), 'last_login_ip' => $request->ip()])->save();
+
+            $this->audit->logStaff(
+                action: 'staff.signed_in',
+                staffId: $staff->getKey(),
+                staffLabel: "{$staff->name} <{$staff->email}>",
+                metadata: [
+                    'ip' => $request->ip(),
+                    'via' => 'linked tenant login',
+                    'organization' => $user->organization->name,
+                ],
+            );
+        }
+
         return response()->json([
             'status' => 'authenticated',
             'token'  => $token->plainTextToken,
+            // Present only for linked accounts. The client shows the Development
+            // section when it is there and hides it when it is not, so the tab
+            // cannot appear for somebody who has no staff account behind them.
+            'staff_token' => $staffToken,
+            'staff' => $staff === null ? null : [
+                'id' => $staff->id, 'name' => $staff->name, 'tier' => $staff->tier,
+            ],
             'user'   => [
                 'id'    => $user->id,
                 'name'  => $user->name,

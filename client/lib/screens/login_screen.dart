@@ -24,9 +24,15 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _code = TextEditingController();
 
   bool _busy = false;
   String? _error;
+
+  /// Shown only after the server says this account needs it — which it only
+  /// does for accounts linked to a staff record (§4.2, revised). Ordinary
+  /// customers never see this field.
+  bool _needsCode = false;
 
   /// Populated only when the server reports more than one matching account.
   List<Map<String, dynamic>>? _choices;
@@ -35,6 +41,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _email.dispose();
     _password.dispose();
+    _code.dispose();
     super.dispose();
   }
 
@@ -49,10 +56,22 @@ class _LoginScreenState extends State<LoginScreen> {
     final response = await widget.api.post('/auth/login', {
       'email': _email.text.trim(),
       'password': _password.text,
+      if (_code.text.trim().isNotEmpty) 'code': _code.text.trim(),
       'device_name': 'web',
     });
 
     if (!mounted) return;
+
+    if (response.body['status'] == 'second_factor_required') {
+      // The password was right. This account also signs in to the control
+      // plane, so it carries the platform's credentials and its authenticator.
+      setState(() {
+        _busy = false;
+        _needsCode = true;
+        _error = response.body['message'] as String?;
+      });
+      return;
+    }
 
     if (response.body['status'] == 'choose_organization') {
       setState(() {
@@ -70,13 +89,20 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    await _adopt(response.body['token'] as String);
+    await _adopt(
+      response.body['token'] as String,
+      staffToken: response.body['staff_token'] as String?,
+    );
   }
 
   /// Shared by both paths. If /me fails after a successful login the screen is
   /// rebuilt in place with its State intact, so _busy must be released here or
   /// the card is left greyed out and spinning with nothing said.
-  Future<void> _adopt(String token) async {
+  Future<void> _adopt(String token, {String? staffToken}) async {
+    // Carried on the session so the shell can hand it to the Development
+    // section's own client. It is deliberately not set on the tenant client.
+    widget.session.staffToken = staffToken;
+
     final signedIn = await widget.session.adopt(token);
 
     if (!mounted || signedIn) return;
@@ -98,6 +124,7 @@ class _LoginScreenState extends State<LoginScreen> {
       'user_id': choice['user_id'],
       'email': _email.text.trim(),
       'password': _password.text,
+      if (_code.text.trim().isNotEmpty) 'code': _code.text.trim(),
       'device_name': 'web',
     });
 
@@ -112,7 +139,10 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    await _adopt(response.body['token'] as String);
+    await _adopt(
+      response.body['token'] as String,
+      staffToken: response.body['staff_token'] as String?,
+    );
   }
 
   @override
@@ -171,6 +201,22 @@ class _LoginScreenState extends State<LoginScreen> {
             validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
             onFieldSubmitted: (_) => _submit(),
           ),
+
+          if (_needsCode) ...[
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _code,
+              decoration: const InputDecoration(
+                labelText: 'Authenticator code',
+                helperText: 'Six digits, or a recovery code',
+              ),
+              autofocus: true,
+              autofillHints: const [AutofillHints.oneTimeCode],
+              enabled: !_busy,
+              validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter the code' : null,
+              onFieldSubmitted: (_) => _submit(),
+            ),
+          ],
 
           if (_error != null) ...[
             const SizedBox(height: 16),

@@ -7,9 +7,11 @@ use App\Models\User;
 /**
  * The outcome of an authentication attempt.
  *
- * Three outcomes, not two, because one email address may exist in several
- * organizations (plan §4 — a person working for two clients holds two separate
- * accounts). "Which of your accounts?" is a legitimate third answer.
+ * Four outcomes, not two. One email address may exist in several organizations
+ * (plan §4 — a person working for two clients holds two separate accounts), so
+ * "which of your accounts?" is a legitimate answer. And an account linked to a
+ * staff record authenticates against the staff credential set (§4.2, revised),
+ * which means "your password is right, now the code" is another.
  */
 final class AuthenticationResult
 {
@@ -23,6 +25,15 @@ final class AuthenticationResult
     public const SUCCESS   = 'success';
     public const AMBIGUOUS = 'ambiguous';
     public const FAILED    = 'failed';
+
+    /**
+     * Password proven, second factor missing.
+     *
+     * Only reachable by someone who already holds the password, so naming the
+     * reason discloses nothing — and the alternative, a generic failure, would
+     * have the account owner retyping a correct password wondering why.
+     */
+    public const NEEDS_SECOND_FACTOR = 'needs_second_factor';
 
     public static function success(User $user): self
     {
@@ -38,6 +49,16 @@ final class AuthenticationResult
     public static function failed(): self
     {
         return new self(self::FAILED);
+    }
+
+    public static function secondFactorRequired(): self
+    {
+        return new self(self::NEEDS_SECOND_FACTOR);
+    }
+
+    public function needsSecondFactor(): bool
+    {
+        return $this->status === self::NEEDS_SECOND_FACTOR;
     }
 
     public function succeeded(): bool

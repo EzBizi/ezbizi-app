@@ -229,6 +229,73 @@ class StaffAccountsController extends Controller
         return $this->confirm($request, $request->user());
     }
 
+    /**
+     * POST /api/v1/staff/accounts/{staff}/link
+     *
+     * Tie a staff account to a tenant user, so one human signs in once (§4.2,
+     * revised). From then on that user authenticates against the STAFF password
+     * and the staff authenticator — a stronger credential than the one they had.
+     *
+     * Lead Developer only, and audited: linking hands a tenant login the
+     * platform's credentials, which should never happen as a side effect of
+     * anything else.
+     */
+    public function link(Request $request, PlatformStaff $staff): JsonResponse
+    {
+        $this->authorizeManagement($request);
+
+        $input = $request->validate(['user_id' => ['required', 'uuid']]);
+
+        // Outside tenancy on purpose: staff span organizations, so the user being
+        // linked is by definition in one this request has no context for.
+        $user = app(\App\Support\Tenancy\TenantContext::class)->runWithoutTenant(
+            fn () => \App\Models\User::query()->with('organization')->find($input['user_id'])
+        );
+
+        if ($user === null) {
+            return $this->refuse('No such user.');
+        }
+
+        $existing = \App\Models\PlatformStaffLink::query()->where('user_id', $user->getKey())->first();
+
+        if ($existing !== null && $existing->staff_id !== $staff->getKey()) {
+            // One staff account per user. Silently repointing it would change who
+            // a login answers to without anybody deciding that.
+            return $this->refuse('That user is already linked to a different staff account.');
+        }
+
+        \App\Models\PlatformStaffLink::firstOrCreate(
+            ['user_id' => $user->getKey()],
+            ['staff_id' => $staff->getKey(), 'linked_by_staff_id' => $request->user()->getKey()],
+        );
+
+        $this->record($request, 'staff.account_linked', $staff, [
+            'user_id'      => $user->getKey(),
+            'user_email'   => $user->email,
+            'organization' => $user->organization?->name,
+        ]);
+
+        return response()->json(['data' => $this->present($staff->fresh())]);
+    }
+
+    /** DELETE /api/v1/staff/accounts/{staff}/link/{user} */
+    public function unlink(Request $request, PlatformStaff $staff, string $user): JsonResponse
+    {
+        $this->authorizeManagement($request);
+
+        \App\Models\PlatformStaffLink::query()
+            ->where('staff_id', $staff->getKey())
+            ->where('user_id', $user)
+            ->delete();
+
+        // The tenant account keeps working — it falls back to its own password,
+        // which is still in the users table and was never overwritten. Unlinking
+        // must not lock somebody out of their own CRM.
+        $this->record($request, 'staff.account_unlinked', $staff, ['user_id' => $user]);
+
+        return response()->json(['data' => $this->present($staff->fresh())]);
+    }
+
     // ── shared ───────────────────────────────────────────────────
 
     private function confirm(Request $request, PlatformStaff $staff): JsonResponse
@@ -319,6 +386,10 @@ class StaffAccountsController extends Controller
             'totp_pending'      => $staff->hasPendingTotp(),
             'recovery_code_count' => count($staff->recovery_codes ?? []),
             'last_login_at'     => $staff->last_login_at?->toIso8601String(),
+            // Which tenant logins now answer to this account's credentials.
+            'linked_users'      => \App\Models\PlatformStaffLink::query()
+                ->where('staff_id', $staff->getKey())
+                ->pluck('user_id'),
             'created_at'        => $staff->created_at->toIso8601String(),
         ];
     }
