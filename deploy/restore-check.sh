@@ -42,8 +42,15 @@ trap cleanup EXIT INT TERM
 note()  { echo "$(date -Is) restore-check $*" >> /var/log/ezbizi-backup.log; }
 fail()  {
   note "FAILED: $1"
+
+  # Sanitised for the same reason as backup.sh: these messages interpolate file
+  # names, database names and shell output, and a status file that cannot be
+  # parsed means a real failure is reported as no failure at all. The full text
+  # goes to the log, which has no such constraint.
+  safe=$(printf '%s' "$1" | tr -c "A-Za-z0-9 :;,.()_/='-" '?')
+
   printf '{"ok":false,"at":"%s","stage":"restore-check","errors":["%s"]}\n' \
-         "$(date -Is)" "$1" > "$STATUS"
+         "$(date -Is)" "$safe" > "$STATUS"
   chmod 644 "$STATUS"
   exit 1
 }
@@ -94,13 +101,28 @@ if [[ "$stamp" != "$today" ]]; then
   fi
 fi
 
-# A failure recorded by backup.sh is NOT erased by a passing restore of an older
-# file. Both scripts write the same status file and this one runs second, so a
-# dump that never got written could be reported green on the strength of the
-# previous night's copy.
+# A failure recorded by backup.sh is NOT erased by a passing restore. Both
+# scripts write the same status file and this one runs second, so a dump that
+# never got written could be reported green on the strength of an older copy.
+#
+# Which failure it was decides what happens next, and the distinction matters:
+#
+#   - a dump or archive that did not get written means there is nothing
+#     tonight to verify, and verifying an older file would be answering a
+#     different question than the one anybody is asking. Stop.
+#   - an off-site copy that did not happen still leaves a good local dump.
+#     Verifying it is worth doing and is reported honestly as offsite:false —
+#     refusing to check at all would throw away the half that still works.
+earlier=""
+
 if [[ -r "$STATUS" ]] && grep -q '"stage":"backup"' "$STATUS" && grep -q '"ok":false' "$STATUS"; then
-  earlier=$(sed -n 's/.*"errors":\[\(.*\)\].*//p' "$STATUS")
-  fail "tonight's backup failed (${earlier:-no reason recorded}) — the restore below used an older file"
+  earlier=$(tr -d '[]"' < "$STATUS" | sed -n 's/.*errors:\(.*\)}/\1/p')
+
+  if [[ "$earlier" != *offsite* || "$earlier" == *dump* || "$earlier" == *archive* ]]; then
+    fail "tonight's backup failed (${earlier:-no reason recorded}) - there is nothing from tonight to verify"
+  fi
+
+  note "backup reported ${earlier} - verifying the local dump anyway"
 fi
 
 # ── 2. the file is intact ────────────────────────────────────────

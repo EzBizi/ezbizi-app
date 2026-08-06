@@ -173,16 +173,22 @@ if [[ ${#errors[@]} -eq 0 ]]; then
          "$(date -Is)" "$(du -sh "$DEST" | cut -f1)" "$(ls -1 "$DEST" | wc -l)" > "$STATUS"
   note "backup ok size=$(du -sh "$DEST" | cut -f1)"
 else
-  # Joined by hand. `IFS='","'` looks like it does this and does not — IFS uses
-  # only its first character, so the array came out as one mangled string and
-  # the status file was not valid JSON, which is a poor way for an error report
-  # to fail.
-  # Escaped, because a database name or a path can contain a quote or a
-  # backslash and an error report that is itself unparseable JSON is worse than
-  # no error report.
-  joined=$(printf '%s
-' "${errors[@]}" | sed 's/\/\\/g; s/"/\\"/g' | sed 's/.*/"&",/' | tr -d '
-')
+  # Sanitised, not escaped.
+  #
+  # Two attempts at joining this array have now produced invalid JSON — first
+  # `IFS='","'` (IFS uses only its first character), then a sed pipeline whose
+  # own quoting was wrong. The status file is how a failure gets REPORTED, so a
+  # bug in it means a real failure is invisible; it is the last place that
+  # should be clever.
+  #
+  # Every value here is a token this script wrote itself — `dump:ezbizi`,
+  # `offsite-copy`. Reducing them to a safe character set cannot produce
+  # unparseable JSON no matter what a database happens to be called.
+  joined=""
+  for e in "${errors[@]}"; do
+    safe=$(printf '%s' "$e" | tr -c 'A-Za-z0-9 :._-' '?')
+    joined="${joined}\"${safe}\","
+  done
 
   printf '{"ok":false,"at":"%s","stage":"backup","errors":[%s]}\n' \
          "$(date -Is)" "${joined%,}" > "$STATUS"
