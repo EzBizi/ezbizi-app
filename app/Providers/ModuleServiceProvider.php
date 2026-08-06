@@ -81,6 +81,17 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             new ModuleDefinition(
+                key:   'workflows',
+                label: 'Workflows & automations',
+                // Deliberately outside automation itself. A workflow that could
+                // create or edit workflows is a self-modifying system: the loop
+                // guards count actions, not rules, so a rule that writes rules
+                // escapes them entirely. Automation stays a human act.
+                automationExemptBecause:
+                    'A workflow that could write workflows would escape the loop guards entirely.',
+            ),
+
+            new ModuleDefinition(
                 key:     'audit',
                 label:   'Audit log',
                 actions: ['view'],

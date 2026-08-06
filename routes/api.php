@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\WorkflowsController;
 use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
 use App\Http\Controllers\Api\StaffController;
@@ -53,6 +54,18 @@ Route::prefix('v1')
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
 
         Route::apiResource('jobs', JobsController::class);
+
+        // ── Workflows & automations (§5.5) ───────────────────────
+        //
+        // The catalogue route sits BEFORE the resource, or /workflows/catalogue
+        // binds as a workflow id and 404s.
+        Route::get('workflows/catalogue', [WorkflowsController::class, 'catalogue']);
+        Route::get('workflows/{workflow}/runs', [WorkflowsController::class, 'runs']);
+        Route::post('workflows/{workflow}/test', [WorkflowsController::class, 'test']);
+        Route::post('workflows/{workflow}/activate/{version}', [WorkflowsController::class, 'activateVersion']);
+        Route::apiResource('workflows', WorkflowsController::class)->except(['store'])
+            ->parameters(['workflows' => 'workflow']);
+        Route::post('workflows', [WorkflowsController::class, 'store']);
 
         // ── Settings (§6) ────────────────────────────────────────
         Route::get('settings', [SettingsController::class, 'index']);
