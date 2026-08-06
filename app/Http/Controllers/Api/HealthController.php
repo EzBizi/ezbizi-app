@@ -122,8 +122,8 @@ class HealthController extends Controller
     {
         $oldest = WorkflowEvent::withoutGlobalScopes()
             ->whereNull('delivered_at')
-            ->orderBy('created_at')
-            ->value('created_at');
+            ->orderBy('occurred_at')
+            ->value('occurred_at');
 
         return [
             'pending'        => WorkflowEvent::withoutGlobalScopes()->whereNull('delivered_at')->count(),
