@@ -247,6 +247,47 @@ class SubscriptionEnforcementTest extends TestCase
         $this->assertNotNull($this->customer());
     }
 
+    public function test_password_recovery_survives_the_http_edge_too(): void
+    {
+        $token = $this->postJson('/api/v1/auth/login', [
+            'email' => 'a@alpha.test', 'password' => 'a-real-password',
+        ])->assertOk()->json('token');
+
+        $this->app['auth']->forgetGuards();
+
+        $this->lapse();
+
+        // §13: "Password & MFA recovery — otherwise expiry locks people out
+        // permanently." The model-layer guard permitted this from the first
+        // day; the middleware refused it two layers earlier, so the guarantee
+        // existed in exactly one of the two places that had to agree.
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->postJson('/api/v1/me/password', [
+                'current_password' => 'a-real-password',
+                'password' => 'a-brand-new-password',
+                'password_confirmation' => 'a-brand-new-password',
+            ])->assertOk();
+    }
+
+    public function test_renaming_yourself_is_still_refused_when_lapsed(): void
+    {
+        $token = $this->postJson('/api/v1/auth/login', [
+            'email' => 'a@alpha.test', 'password' => 'a-real-password',
+        ])->assertOk()->json('token');
+
+        $this->app['auth']->forgetGuards();
+
+        $this->lapse();
+
+        // The /me/* exemption stops at the sub-resources. A display name is what
+        // the rest of the organization sees against somebody's work, which makes
+        // it business data rather than account recovery — and an exemption that
+        // quietly widened to cover it would be the kind of gap nobody notices.
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->patchJson('/api/v1/me', ['name' => 'Renamed'])
+            ->assertStatus(402);
+    }
+
     public function test_the_http_edge_still_answers_402(): void
     {
         $this->lapse();

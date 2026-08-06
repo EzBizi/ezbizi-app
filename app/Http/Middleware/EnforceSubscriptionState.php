@@ -53,7 +53,35 @@ class EnforceSubscriptionState
 
     private function isAlwaysPermitted(Request $request): bool
     {
-        foreach (['api/*/billing/*', 'api/*/exports/*', 'api/*/privacy/*', 'api/*/auth/*'] as $pattern) {
+        $exempt = [
+            'api/*/billing/*',
+            'api/*/exports/*',
+            'api/*/privacy/*',
+            'api/*/auth/*',
+
+            // Everything BELOW /me — your own password, second factor, sessions
+            // and preferences.
+            //
+            // §13 lists "password & MFA recovery" among the writes that must
+            // REMAIN allowed, on the grounds that otherwise expiry locks people
+            // out permanently, and somebody who cannot get into their account
+            // cannot update their billing either — the one action that ends the
+            // situation. This pattern was missing, so a lapsed organization's
+            // users could not change their own passwords: the model-layer guard
+            // permitted it and the middleware refused it two layers earlier.
+            //
+            // The trailing segment matters. This covers the sub-resources and
+            // deliberately does NOT match `api/v1/me` itself, so renaming
+            // yourself is still refused — a display name is what the rest of the
+            // organization sees against your work, which makes it business data
+            // rather than account recovery.
+            //
+            // (Written as line comments on purpose: a block comment cannot hold
+            // these patterns, because the slash-star in one of them closes it.)
+            'api/*/me/*',
+        ];
+
+        foreach ($exempt as $pattern) {
             if ($request->is($pattern)) {
                 return true;
             }
