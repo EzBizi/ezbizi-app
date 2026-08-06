@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Modules\ModuleAvailability;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -61,10 +62,23 @@ class User extends Authenticatable
      * WHAT this user may do. Separate from WHERE — see canActOnFranchise().
      * Both must pass; a permission without reach is meaningless, and reach
      * without permission is worse.
+     *
+     * Two gates, in order:
+     *
+     *   1. Is the module switched on at platform level? (§2.1 layer 3)
+     *   2. Does this user's role grant the action?      (§4)
+     *
+     * The platform gate runs FIRST and applies to Administrators too. A kill
+     * switch that exempts admins isn't a kill switch — during an incident the
+     * admins are exactly the people still hammering the broken module.
      */
     public function hasPermission(string $key): bool
     {
         if (! $this->is_active) {
+            return false;
+        }
+
+        if (! app(ModuleAvailability::class)->isPermissionAvailable($key, $this->organization)) {
             return false;
         }
 
