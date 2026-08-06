@@ -288,18 +288,16 @@ class _HomeShellState extends State<HomeShell> {
          */
         title: Row(children: [
           EzBiziTheme.wordmark(context, size: 20),
-          if (!wide || !expanded) ...[
-            const SizedBox(width: 14),
-            Container(width: 1, height: 18, color: Theme.of(context).dividerColor),
-            const SizedBox(width: 14),
-            Flexible(
-              child: Text(
-                me.organization.name,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+          const SizedBox(width: 14),
+          Container(width: 1, height: 18, color: Theme.of(context).dividerColor),
+          const SizedBox(width: 14),
+          Flexible(
+            child: Text(
+              me.organization.name,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-          ],
+          ),
         ]),
         actions: [
           // Light / dark, one tap, from anywhere.
@@ -431,10 +429,6 @@ class _HomeShellState extends State<HomeShell> {
                       destinations: destinations,
                       selectedIndex: railIndex,
                       onSelected: (i) => setState(() => _index = i),
-                      leading: _RailHeader(
-                        expanded: expanded,
-                        organization: me.organization.name,
-                      ),
                     ),
                   ),
 
@@ -451,7 +445,17 @@ class _HomeShellState extends State<HomeShell> {
                   // is the space it occupies, and the line is drawn centred in
                   // it. Wrapping it in a Padding would work and would leave two
                   // numbers to keep in step.
-                  const Divider(height: 17, thickness: 1),
+                  //
+                  // outlineVariant, not the app's default divider colour. That
+                  // one is 10% black — right for a hairline between rows on
+                  // white, and effectively invisible against the rail's tinted
+                  // background, which is why this rule could not be seen at all.
+                  // A separator nobody can see is not a separator.
+                  Divider(
+                    height: 17,
+                    thickness: 1,
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
 
                   // IntrinsicHeight because a rail's root column is
                   // mainAxisSize.max — it expects to own the full height. This
@@ -542,77 +546,5 @@ class _Destination {
   final String label;
   final IconData icon;
   final Widget screen;
-}
-
-/// The wordmark and the organization, at the top of the sidebar.
-///
-/// They were in the top bar. Moving them here puts the identity against the
-/// thing it identifies — the sidebar IS the organization's workspace, and a
-/// wordmark floating above a full-width header belongs to the page rather than
-/// to anything in particular.
-///
-/// ── Deliberately not a workspace card ────────────────────────────
-///
-/// The first version of this was a bordered pill holding a circular avatar with
-/// the organization's initial, a small uppercase label and the name — which is
-/// a shape borrowed wholesale from another product rather than drawn from this
-/// one. It looked like that product with different words in it.
-///
-/// This uses the vocabulary the rest of the app already has: the accent spine
-/// is the same device the rail uses to mark a live destination, so the current
-/// organization is stated in a language somebody has already learnt from the
-/// screen below it. No avatar, because a coloured circle with "A" in it
-/// identifies nothing that the name beside it does not say better.
-class _RailHeader extends StatelessWidget {
-  const _RailHeader({required this.expanded, required this.organization});
-
-  final bool expanded;
-  final String organization;
-
-  @override
-  Widget build(BuildContext context) {
-    // Collapsed, there is no room to say it and the top bar says it instead.
-    // An initial in a coloured circle would fit and would identify nothing.
-    if (!expanded) return const SizedBox(height: 8);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 16, 16),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // The spine, not a border. A rule down one side reads as "you are
-            // here" — the same device the rail uses to mark a live destination,
-            // so it is stated in a language somebody has already learnt from the
-            // screen below it. A box around the name would read as a control,
-            // and this is not one: there is no organization to switch to.
-            Container(
-              width: 3,
-              decoration: BoxDecoration(
-                color: EzBiziTheme.accent,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  organization,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    height: 1.25,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
