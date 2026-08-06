@@ -4,6 +4,8 @@ import 'core/deployment.dart';
 import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
+import 'screens/customers_screen.dart';
+import 'screens/jobs_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/staff/staff_login_screen.dart';
@@ -97,12 +99,25 @@ class _HomeShellState extends State<HomeShell> {
 
     final destinations = <_Destination>[
       _Destination(
+        'Customers',
+        Icons.people_outline,
+        CustomersScreen(api: widget.api, session: widget.session),
+      ),
+      _Destination(
+        'Jobs',
+        Icons.construction_outlined,
+        JobsScreen(api: widget.api, session: widget.session),
+      ),
+      _Destination(
         'Dashboard',
         Icons.dashboard_outlined,
         const _Placeholder(
           title: 'Dashboard',
-          note: 'Widgets appear here as modules are built — one per module, '
-              'sized by you. Nothing is faked in the meantime.',
+          // §18 Phase 4: dashboards come AFTER modules produce data worth
+          // showing. A page of empty widgets teaches you nothing about whether
+          // the foundation works.
+          note: 'Widgets appear here once there is data worth showing — Customers '
+              'and Jobs are producing it now. Nothing is faked in the meantime.',
         ),
       ),
       _Destination(
