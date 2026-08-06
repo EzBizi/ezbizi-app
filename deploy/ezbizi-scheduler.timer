@@ -1,0 +1,19 @@
+# Runs the scheduler every minute — Laravel's own scheduler decides what is
+# actually due, so this is deliberately dumb.
+#
+# Persistent=false: a missed minute is skipped rather than caught up. Catching
+# up would fire a minute's worth of workflow deliveries at once after a reboot,
+# and everything scheduled here is idempotent-by-sweep anyway — the next run
+# picks up whatever the missed one would have.
+
+[Unit]
+Description=Run EzBizi scheduled tasks every minute
+
+[Timer]
+OnCalendar=*:0/1
+AccuracySec=10s
+Persistent=false
+Unit=ezbizi-scheduler.service
+
+[Install]
+WantedBy=timers.target

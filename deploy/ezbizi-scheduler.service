@@ -1,0 +1,38 @@
+# Laravel's scheduler (plan §5.5, §10).
+#
+# Everything time-based in EzBizi hangs off this: audit retention, closing
+# expired impersonation sessions, and — since the workflow engine landed —
+# draining the outbox. Without it the whole automation subsystem is decorative:
+# events pile up in workflow_events, nothing is ever delivered, and no error is
+# raised anywhere because nothing is broken. It simply never runs.
+#
+# A systemd timer rather than a crontab line, so failures land in the journal
+# alongside everything else instead of in root's mail spool.
+#
+# Points at the CURRENT symlink, not a release directory, so a deploy swaps the
+# code underneath it without touching this unit.
+#
+# Install:
+#   sudo cp deploy/ezbizi-scheduler.* /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ezbizi-scheduler.timer
+
+[Unit]
+Description=EzBizi scheduled tasks
+After=network.target mysql.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/ezbizi-current
+ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan schedule:run
+
+# A scheduled task that hangs must not hold the next minute's run hostage.
+TimeoutStartSec=300
+
+# The app needs storage/ and bootstrap/cache; nothing else on the box.
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true

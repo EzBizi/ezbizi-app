@@ -88,6 +88,24 @@ a **500 with no log entry** — because the thing that failed *was* the logging.
 That cost me a confusing ten minutes; the bit is there so it doesn't cost anyone
 else more.
 
+## What runs the clock
+
+Two systemd units, both versioned in `deploy/` and installed on the app box:
+
+| Unit | Does |
+|---|---|
+| `ezbizi-scheduler.timer` → `.service` | `artisan schedule:run` every minute |
+| `ezbizi-worker.service` | `artisan queue:work`, restarted on deploy |
+
+**Neither existed until 2026-08-06**, which meant audit retention, impersonation
+expiry and the workflow outbox had never run once — and nothing anywhere reported
+an error, because nothing was broken. They simply never executed. If automation
+ever looks inert again, check these first:
+
+```bash
+ssh app 'systemctl is-active ezbizi-scheduler.timer ezbizi-worker'
+```
+
 ## Rules
 
 **Edit locally, push to deploy. Never edit on the server.**
