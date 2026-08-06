@@ -126,9 +126,9 @@ class StaffAuditTest extends TestCase
 
     public function test_a_module_state_change_is_recorded_even_for_the_lead_developer(): void
     {
-        app(ModuleRegistry::class)->register(new ModuleDefinition(
-            key: 'jobs', label: 'Jobs', triggers: ['job.created'],
-        ));
+        // 'jobs' is a real registered module now that the vertical slice exists
+        // (§18 Phase 2) — this used to register a stand-in for it.
+        $this->assertNotNull(app(ModuleRegistry::class)->get('jobs'));
 
         [$staff, $auth] = $this->signedIn();
 
