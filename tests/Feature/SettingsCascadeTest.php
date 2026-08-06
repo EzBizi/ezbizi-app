@@ -190,14 +190,14 @@ class SettingsCascadeTest extends TestCase
         $t = $this->tree();
 
         app(TenantContext::class)->run($t['organization'], function () use ($t) {
-            $this->settings->set('require_two_factor', $t['organization'], true);
+            $this->settings->set('security.require_two_factor', $t['organization'], true);
 
             $this->expectException(InvalidArgumentException::class);
             $this->expectExceptionMessageMatches('/cannot be set at franchise level/');
 
             // The reason allowedScopes exists: a franchise administrator must not
             // be able to switch off a policy the organization imposed.
-            $this->settings->set('require_two_factor', $t['newJersey'], false);
+            $this->settings->set('security.require_two_factor', $t['newJersey'], false);
         });
     }
 
@@ -206,10 +206,10 @@ class SettingsCascadeTest extends TestCase
         $t = $this->tree();
 
         app(TenantContext::class)->run($t['organization'], function () use ($t) {
-            $this->settings->set('require_two_factor', $t['organization'], true);
+            $this->settings->set('security.require_two_factor', $t['organization'], true);
 
-            $this->assertTrue($this->settings->get('require_two_factor', $t['newJersey']));
-            $this->assertTrue($this->settings->get('require_two_factor', $t['serecorTexas']));
+            $this->assertTrue($this->settings->get('security.require_two_factor', $t['newJersey']));
+            $this->assertTrue($this->settings->get('security.require_two_factor', $t['serecorTexas']));
         });
     }
 
@@ -246,9 +246,9 @@ class SettingsCascadeTest extends TestCase
         $t = $this->tree();
 
         app(TenantContext::class)->run($t['organization'], function () use ($t) {
-            $this->settings->set('session_timeout_minutes', $t['organization'], '90');
+            $this->settings->set('security.session_timeout_minutes', $t['organization'], '90');
 
-            $this->assertSame(90, $this->settings->get('session_timeout_minutes', $t['organization']));
+            $this->assertSame(90, $this->settings->get('security.session_timeout_minutes', $t['organization']));
         });
     }
 

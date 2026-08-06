@@ -20,10 +20,12 @@ use InvalidArgumentException;
  */
 final class SettingDefinition
 {
-    public const TYPE_STRING = 'string';
-    public const TYPE_BOOL   = 'bool';
-    public const TYPE_INT    = 'int';
-    public const TYPE_ENUM   = 'enum';
+    public const TYPE_STRING  = 'string';
+    public const TYPE_BOOL    = 'bool';
+    public const TYPE_INT     = 'int';
+    public const TYPE_DECIMAL = 'decimal';
+    public const TYPE_ENUM    = 'enum';
+    public const TYPE_JSON    = 'json';
 
     public const SCOPE_ORGANIZATION = 'organization';
     public const SCOPE_COMPANY      = 'company';
@@ -81,11 +83,13 @@ final class SettingDefinition
     public function cast(mixed $value): mixed
     {
         return match ($this->type) {
-            self::TYPE_BOOL   => (bool) $value,
-            self::TYPE_INT    => $this->castInt($value),
-            self::TYPE_ENUM   => $this->castEnum($value),
-            self::TYPE_STRING => (string) $value,
-            default           => $value,
+            self::TYPE_BOOL    => (bool) $value,
+            self::TYPE_INT     => $this->castInt($value),
+            self::TYPE_DECIMAL => $this->castDecimal($value),
+            self::TYPE_ENUM    => $this->castEnum($value),
+            self::TYPE_STRING  => (string) $value,
+            self::TYPE_JSON    => $this->castJson($value),
+            default            => $value,
         };
     }
 
@@ -96,6 +100,41 @@ final class SettingDefinition
         }
 
         return (int) $value;
+    }
+
+    /**
+     * Money-adjacent values (tax rates) as float.
+     *
+     * Note this is a RATE, not an amount. Amounts are stored as integer minor
+     * units elsewhere (§7) — a percentage is a different thing and float is
+     * correct for it.
+     */
+    private function castDecimal(mixed $value): float
+    {
+        if (! is_numeric($value)) {
+            throw new InvalidArgumentException("Setting '{$this->key}' expects a number.");
+        }
+
+        return (float) $value;
+    }
+
+    private function castJson(mixed $value): array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new InvalidArgumentException("Setting '{$this->key}' expects valid JSON.");
+            }
+
+            return $decoded;
+        }
+
+        if (! is_array($value)) {
+            throw new InvalidArgumentException("Setting '{$this->key}' expects an array or JSON string.");
+        }
+
+        return $value;
     }
 
     private function castEnum(mixed $value): mixed
