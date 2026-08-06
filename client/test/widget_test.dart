@@ -1,5 +1,6 @@
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/staff_session.dart';
+import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/staff/staff_login_screen.dart';
 import 'package:flutter/material.dart';
@@ -159,4 +160,64 @@ void main() {
   // the real destinations. They are now real destinations themselves — a second
   // NavigationRail — so there is nothing left to drift, and a test that can no
   // longer fail is a test that only costs time to maintain.
+
+  // The rule between the modules and the pinned group must actually be drawn.
+  //
+  // It was not, for two rounds of "fixes". Divider has no width of its own —
+  // it fills what it is given — and the sidebar was a non-flex child of a Row,
+  // which hands out `maxWidth: infinity`. Under that, the line collapses to
+  // ZERO WIDTH while still occupying its 17px of vertical space: a gap where a
+  // rule should be. Making it full-bleed and then darkening it changed nothing,
+  // because the problem was never how it looked.
+  //
+  // Asserting on the painted width is the only check that distinguishes "faint"
+  // from "not there", which is exactly the distinction that was missed.
+  testWidgets('the sidebar rule is actually drawn, not zero-width',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        // The real arrangement: a non-flex sidebar beside an Expanded body, so
+        // the sidebar receives unbounded width exactly as it does in the shell.
+        body: Row(
+          children: [
+            NavigationSidebar(
+              expanded: true,
+              destinations: [
+                Destination('Dashboard', Icons.dashboard_outlined, const SizedBox()),
+                Destination('Customers', Icons.people_outline, const SizedBox()),
+              ],
+              pinned: [
+                Destination('Settings', Icons.settings_outlined, const SizedBox()),
+              ],
+              selectedIndex: 0,
+              pinnedIndex: null,
+              onSelected: (_) {},
+              onPinnedSelected: (_) {},
+            ),
+            const Expanded(child: SizedBox()),
+          ],
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    final divider = find.byType(Divider);
+    expect(divider, findsOneWidget);
+
+    // The Divider box itself always has width; the LINE inside it is the thing
+    // that vanished. Measure the painted container, not its parent.
+    final line = find.descendant(
+      of: divider,
+      matching: find.byWidgetPredicate((w) => w is Container && w.decoration != null),
+    );
+
+    expect(line, findsOneWidget);
+    expect(
+      tester.getSize(line).width,
+      greaterThan(50),
+      reason: 'The rule is drawn but has (almost) no width — the sidebar is '
+          'being laid out with unbounded width again.',
+    );
+  });
 }

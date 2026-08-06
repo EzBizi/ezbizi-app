@@ -166,28 +166,28 @@ class _HomeShellState extends State<HomeShell> {
     // It is the screen somebody opens the app to look at — what is happening
     // today — and the one they return to between tasks. Everything below it is
     // a place you go to do a specific thing.
-    final destinations = <_Destination>[
-      _Destination(
+    final destinations = <Destination>[
+      Destination(
         'Dashboard',
         Icons.dashboard_outlined,
         DashboardScreen(api: widget.api, session: widget.session),
       ),
-      _Destination(
+      Destination(
         'Customers',
         Icons.people_outline,
         CustomersScreen(api: widget.api, session: widget.session),
       ),
-      _Destination(
+      Destination(
         'Jobs',
         Icons.construction_outlined,
         JobsScreen(api: widget.api, session: widget.session),
       ),
-      _Destination(
+      Destination(
         'Workflows',
         Icons.bolt_outlined,
         WorkflowsScreen(api: widget.api, session: widget.session),
       ),
-      _Destination(
+      Destination(
         'Import & export',
         Icons.import_export_outlined,
         DataScreen(api: widget.api, session: widget.session),
@@ -200,14 +200,14 @@ class _HomeShellState extends State<HomeShell> {
     // change how the work behaves, and Development is the platform underneath
     // the product rather than part of it (§4.2) — both belong away from the
     // list of things you actually open all day.
-    final pinned = <_Destination>[
-      _Destination(
+    final pinned = <Destination>[
+      Destination(
         'Settings',
         Icons.settings_outlined,
         SettingsScreen(api: widget.api, session: widget.session),
       ),
       if (me.development != null)
-        _Destination(
+        Destination(
           'Development',
           Icons.terminal_outlined,
           DevelopmentScreen(session: widget.session),
@@ -393,85 +393,14 @@ class _HomeShellState extends State<HomeShell> {
             // Blocks fit more in less width and some people prefer them, so
             // they stay available — as the user's own preference, not an
             // opinion imposed by whoever wrote this.
-            // Tinted, and against a rule.
-            //
-            // The rail and the top bar were both plain surface, so on a light
-            // theme they were one continuous white field with no edge between
-            // them — the sidebar read as part of the header rather than as a
-            // column of its own.
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerLow,
-                border: Border(
-                  right: BorderSide(color: Theme.of(context).dividerColor),
-                ),
-              ),
-              // TWO rails, not one rail with a hand-drawn footer.
-              //
-              // Settings and Development used to be a Material + InkWell built
-              // to look like destinations. It never quite did: the hover lit the
-              // whole row instead of the indicator pill, the icons sat 20px left
-              // of the column above them, there was no selection animation, and
-              // every change to the rail's width moved them again. Four defects,
-              // one cause — they were not destinations.
-              //
-              // NavigationRail has no minimum destination count, so the pinned
-              // group can simply be another rail. Hover, splash, indicator
-              // shape, selection animation, icon column, label style and row
-              // height are then identical because they are the same widget, not
-              // because constants were copied out of its source.
-              child: Column(
-                children: [
-                  Expanded(
-                    child: _rail(
-                      context,
-                      expanded: expanded,
-                      destinations: destinations,
-                      selectedIndex: railIndex,
-                      onSelected: (i) => setState(() => _index = i),
-                    ),
-                  ),
-
-                  // The rule that says the group below is a different kind of
-                  // thing: places you go to change how the work behaves, rather
-                  // than places you go to do it.
-                  //
-                  // Full-bleed, not inset. An inset rule reads as belonging to
-                  // the list it sits inside — a separator between two rows. One
-                  // that runs the whole width of the column cuts the column in
-                  // two, which is what this is actually saying.
-                  //
-                  // `height` rather than padding around it: Divider's own height
-                  // is the space it occupies, and the line is drawn centred in
-                  // it. Wrapping it in a Padding would work and would leave two
-                  // numbers to keep in step.
-                  //
-                  // outlineVariant, not the app's default divider colour. That
-                  // one is 10% black — right for a hairline between rows on
-                  // white, and effectively invisible against the rail's tinted
-                  // background, which is why this rule could not be seen at all.
-                  // A separator nobody can see is not a separator.
-                  Divider(
-                    height: 17,
-                    thickness: 1,
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
-
-                  // IntrinsicHeight because a rail's root column is
-                  // mainAxisSize.max — it expects to own the full height. This
-                  // asks it for exactly the height its destinations need.
-                  IntrinsicHeight(
-                    child: _rail(
-                      context,
-                      expanded: expanded,
-                      destinations: pinned,
-                      selectedIndex: pinnedIndex,
-                      onSelected: (i) => setState(() => _index = pinnedBase + i),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-              ),
+            NavigationSidebar(
+              expanded: expanded,
+              destinations: destinations,
+              pinned: pinned,
+              selectedIndex: railIndex,
+              pinnedIndex: pinnedIndex,
+              onSelected: (i) => setState(() => _index = i),
+              onPinnedSelected: (i) => setState(() => _index = pinnedBase + i),
             ),
           Expanded(
             child: pinnedIndex != null
@@ -507,6 +436,110 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
+/// The sidebar: the modules, a rule, then the pinned group.
+///
+/// A widget rather than inline in HomeShell's build so it can be laid out in a
+/// test at a real size. Its one subtle failure — see the width note below —
+/// depends entirely on the constraints it is given, which is not something
+/// reading the code reliably catches.
+class NavigationSidebar extends StatelessWidget {
+  const NavigationSidebar({
+    super.key,
+    required this.expanded,
+    required this.destinations,
+    required this.pinned,
+    required this.selectedIndex,
+    required this.pinnedIndex,
+    required this.onSelected,
+    required this.onPinnedSelected,
+  });
+
+  final bool expanded;
+  final List<Destination> destinations;
+  final List<Destination> pinned;
+
+  /// Exactly one of these is non-null: the selection lives in one rail or the
+  /// other, never both.
+  final int? selectedIndex;
+  final int? pinnedIndex;
+
+  final ValueChanged<int> onSelected;
+  final ValueChanged<int> onPinnedSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return IntrinsicWidth(
+      // A Row gives its non-flex children `maxWidth: infinity`, and the Divider
+      // below has no width of its own — under an unbounded width its line
+      // collapses to zero and it draws nothing at all while still occupying its
+      // vertical space. IntrinsicWidth binds this column to what the rails
+      // actually want, so the rule inherits that width instead of guessing at
+      // it, and 220/80 stays written down in exactly one place.
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          // Tinted and edged. The rail and the top bar were both plain surface,
+          // so on a light theme they met as one continuous white field and the
+          // sidebar read as part of the header.
+          color: scheme.surfaceContainerLow,
+          border: Border(right: BorderSide(color: Theme.of(context).dividerColor)),
+        ),
+        // TWO rails, not one rail with a hand-drawn footer.
+        //
+        // Settings and Development used to be a Material + InkWell built to look
+        // like destinations. It never quite did: the hover lit the whole row
+        // instead of the indicator pill, the icons sat 20px left of the column
+        // above them, there was no selection animation, and every change to the
+        // rail's width moved them again. Four defects, one cause — they were not
+        // destinations.
+        //
+        // NavigationRail has no minimum destination count, so the pinned group
+        // is simply another rail. Hover, splash, indicator shape, selection
+        // animation, icon column, label style and row height are identical
+        // because they are the same widget, not because constants were copied
+        // out of its source.
+        child: Column(
+          children: [
+            Expanded(
+              child: _rail(
+                context,
+                expanded: expanded,
+                destinations: destinations,
+                selectedIndex: selectedIndex,
+                onSelected: onSelected,
+              ),
+            ),
+
+            // The rule that says the group below is a different kind of thing:
+            // places you go to change how the work behaves, rather than places
+            // you go to do it.
+            //
+            // outlineVariant rather than the app's divider colour, which is 10%
+            // black — right for a hairline between rows on white, too quiet
+            // against the rail's tint.
+            Divider(height: 17, thickness: 1, color: scheme.outlineVariant),
+
+            // IntrinsicHeight because a rail's root column is mainAxisSize.max
+            // — it expects to own the full height. This asks it for exactly the
+            // height its destinations need.
+            IntrinsicHeight(
+              child: _rail(
+                context,
+                expanded: expanded,
+                destinations: pinned,
+                selectedIndex: pinnedIndex,
+                onSelected: onPinnedSelected,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// One rail, built one way.
 ///
 /// Both the main group and the pinned group go through here, so there is no
@@ -516,7 +549,7 @@ class _HomeShellState extends State<HomeShell> {
 Widget _rail(
   BuildContext context, {
   required bool expanded,
-  required List<_Destination> destinations,
+  required List<Destination> destinations,
   required int? selectedIndex,
   required ValueChanged<int> onSelected,
   Widget? leading,
@@ -541,8 +574,8 @@ Widget _rail(
   );
 }
 
-class _Destination {
-  const _Destination(this.label, this.icon, this.screen);
+class Destination {
+  const Destination(this.label, this.icon, this.screen);
   final String label;
   final IconData icon;
   final Widget screen;
