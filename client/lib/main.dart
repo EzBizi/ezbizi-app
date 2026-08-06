@@ -7,9 +7,11 @@ import 'core/theme.dart';
 import 'screens/customers_screen.dart';
 import 'screens/jobs_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/workflows_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/staff/staff_login_screen.dart';
 import 'screens/staff/staff_shell.dart';
+import 'widgets/notification_bell.dart';
 
 void main() => runApp(const EzBiziApp());
 
@@ -109,6 +111,11 @@ class _HomeShellState extends State<HomeShell> {
         JobsScreen(api: widget.api, session: widget.session),
       ),
       _Destination(
+        'Workflows',
+        Icons.bolt_outlined,
+        WorkflowsScreen(api: widget.api, session: widget.session),
+      ),
+      _Destination(
         'Dashboard',
         Icons.dashboard_outlined,
         const _Placeholder(
@@ -143,6 +150,7 @@ class _HomeShellState extends State<HomeShell> {
           ),
         ]),
         actions: [
+          NotificationBell(api: widget.api),
           if (me.organization.isReadOnly)
             Padding(
               padding: const EdgeInsets.only(right: 12),
