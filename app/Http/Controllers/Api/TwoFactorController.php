@@ -34,17 +34,22 @@ class TwoFactorController extends Controller
     /** GET /api/v1/me/totp — what state am I in? */
     public function show(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $user    = $request->user();
+        $subject = $this->subject($request);
 
         return response()->json(['data' => [
-            'enabled'              => $user->hasTotp(),
-            'pending'              => $user->hasPendingTotp(),
-            'recovery_code_count'  => $user->recoveryCodeCount(),
+            'enabled'              => $subject->hasTotp(),
+            'pending'              => $subject->hasPendingTotp(),
+            'recovery_code_count'  => $subject->recoveryCodeCount(),
             'required_by_organization' => $this->required($user),
-            // A linked account's factor lives on the staff record, not here.
-            // Saying so stops somebody enrolling a second one and wondering why
-            // the first still gets asked for.
-            'managed_elsewhere'    => PlatformStaffLink::staffFor($user->getKey()) !== null,
+
+            // A linked account's factor lives on the staff record. It used to
+            // be reported as "managed elsewhere" and left with no control at
+            // all, which sent somebody looking for a screen they may not be
+            // able to reach. It is now changed from here, on the record that
+            // actually holds it — the flag stays only so the UI can say the
+            // change covers both sign-ins.
+            'covers_control_plane' => $subject !== $user,
         ]]);
     }
 
@@ -57,20 +62,21 @@ class TwoFactorController extends Controller
      */
     public function begin(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $subject = $this->subject($request);
 
-        if ($this->managedElsewhere($user)) {
-            return $this->refuse(
-                'Your sign-in is managed by your EzBizi staff account. Change your '
-                .'authenticator there — it covers both.'
-            );
+        // Re-enrolment no longer means "turn it off first". Making somebody
+        // strip their only factor to move to a new phone leaves a window with
+        // no protection at all, and the old secret is replaced the moment the
+        // new one is confirmed rather than the moment it is issued.
+        if ($subject->hasTotp() || $subject->hasPendingTotp()) {
+            $refusal = $this->reauthenticate($request, $subject);
+
+            if ($refusal !== null) {
+                return $this->refuse($refusal);
+            }
         }
 
-        if ($user->hasTotp()) {
-            return $this->refuse('Two-factor is already on. Turn it off first to re-enrol.');
-        }
-
-        $enrolment = $this->totp->begin($user, $user->email);
+        $enrolment = $this->totp->begin($subject, $subject->email, revokeExisting: false);
 
         return response()->json(['enrolment' => $enrolment]);
     }
@@ -80,13 +86,14 @@ class TwoFactorController extends Controller
     {
         $input = $request->validate(['code' => ['required', 'string']]);
 
-        $user = $request->user();
+        $subject = $this->subject($request);
+        $user    = $request->user();
 
-        if (! $user->hasPendingTotp()) {
+        if (! $subject->hasPendingTotp()) {
             return $this->refuse('There is no pending authenticator to confirm.');
         }
 
-        $recovery = $this->totp->complete($user, $input['code']);
+        $recovery = $this->totp->complete($subject, $input['code']);
 
         if ($recovery === null) {
             return $this->refuse(
@@ -112,16 +119,13 @@ class TwoFactorController extends Controller
      */
     public function disable(Request $request): JsonResponse
     {
-        $input = $request->validate(['password' => ['required', 'string']]);
+        $subject = $this->subject($request);
+        $user    = $request->user();
 
-        $user = $request->user();
+        $refusal = $this->reauthenticate($request, $subject);
 
-        if ($this->managedElsewhere($user)) {
-            return $this->refuse('Your sign-in is managed by your EzBizi staff account.');
-        }
-
-        if (! Hash::check($input['password'], $user->password)) {
-            return $this->refuse('That password is not right.');
+        if ($refusal !== null) {
+            return $this->refuse($refusal);
         }
 
         if ($this->required($user)) {
@@ -134,7 +138,7 @@ class TwoFactorController extends Controller
             );
         }
 
-        $this->totp->disable($user);
+        $this->totp->disable($subject);
 
         $this->audit->log('user.two_factor_disabled', $user);
 
@@ -144,6 +148,59 @@ class TwoFactorController extends Controller
     private function required($user): bool
     {
         return (bool) $this->settings->get('security.require_two_factor', $user->organization);
+    }
+
+    /**
+     * Whose second factor this actually is.
+     *
+     * A linked account signs in with the STAFF credentials and the staff
+     * authenticator (§4.2), so the factor being changed lives there. Operating
+     * on the user row instead would enrol a second authenticator that nothing
+     * ever asks for, and leave the real one untouched — the change appears to
+     * work and protects nothing.
+     */
+    private function subject(Request $request)
+    {
+        return PlatformStaffLink::staffFor($request->user()->getKey())
+            ?? $request->user();
+    }
+
+    /**
+     * Prove it is really them before touching the second factor.
+     *
+     * The password alone is not enough: somebody at a borrowed unlocked laptop
+     * who also knows the password is exactly the case the second factor exists
+     * for. So when a factor is already enrolled, a current code is required as
+     * well — you must hold the thing you are about to remove.
+     *
+     * @return string|null  the refusal, or null if they proved it
+     */
+    private function reauthenticate(Request $request, $subject): ?string
+    {
+        $input = $request->validate([
+            'password' => ['required', 'string'],
+            'code'     => ['nullable', 'string'],
+        ]);
+
+        if (! Hash::check($input['password'], $subject->password)) {
+            return 'That password is not right.';
+        }
+
+        if (! $subject->hasTotp()) {
+            return null;
+        }
+
+        if (blank($input['code'] ?? null)) {
+            return 'Enter a current code from your authenticator as well.';
+        }
+
+        // A recovery code counts. Somebody who has lost the device is precisely
+        // who needs to change this, and refusing them would leave the only way
+        // back through a support request.
+        $verified = $this->totp->verify($subject, $input['code'])
+            || $subject->consumeRecoveryCode($input['code']);
+
+        return $verified ? null : 'That code did not verify.';
     }
 
     private function managedElsewhere($user): bool
