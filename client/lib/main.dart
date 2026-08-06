@@ -5,6 +5,7 @@ import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
 import 'screens/customers_screen.dart';
+import 'screens/dashboard_screen.dart';
 import 'screens/data_screen.dart';
 import 'screens/development_screen.dart';
 import 'screens/jobs_screen.dart';
@@ -150,14 +151,7 @@ class _HomeShellState extends State<HomeShell> {
       _Destination(
         'Dashboard',
         Icons.dashboard_outlined,
-        const _Placeholder(
-          title: 'Dashboard',
-          // §18 Phase 4: dashboards come AFTER modules produce data worth
-          // showing. A page of empty widgets teaches you nothing about whether
-          // the foundation works.
-          note: 'Widgets appear here once there is data worth showing — Customers '
-              'and Jobs are producing it now. Nothing is faked in the meantime.',
-        ),
+        DashboardScreen(api: widget.api, session: widget.session),
       ),
       _Destination(
         'Import & export',
@@ -291,32 +285,4 @@ class _Destination {
   final String label;
   final IconData icon;
   final Widget screen;
-}
-
-class _Placeholder extends StatelessWidget {
-  const _Placeholder({required this.title, required this.note});
-
-  final String title;
-  final String note;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.headlineMedium),
-            const SizedBox(height: 10),
-            Text(
-              note,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

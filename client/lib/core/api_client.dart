@@ -44,6 +44,14 @@ class ApiClient {
     return _send(() => _http.post(uri, headers: _headers, body: jsonEncode(body)));
   }
 
+  /// PUT, for endpoints that replace a whole thing rather than amend one.
+  /// The dashboard layout is the first: sending half a layout would be a
+  /// different operation, not a partial version of this one.
+  Future<ApiResponse> put(String path, Map<String, dynamic> body) async {
+    final uri = Uri.parse('$_root/api/v1$path');
+    return _send(() => _http.put(uri, headers: _headers, body: jsonEncode(body)));
+  }
+
   Future<ApiResponse> patch(String path, Map<String, dynamic> body,
       [Map<String, String>? query]) async {
     final uri = Uri.parse('$_root/api/v1$path').replace(queryParameters: query);
