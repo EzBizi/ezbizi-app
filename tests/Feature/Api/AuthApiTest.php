@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -183,9 +184,14 @@ class AuthApiTest extends TestCase
         $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        \App\Models\User::whereKey($r['administrator']->id)->update([
-            'totp_secret' => encrypt($secret), 'totp_confirmed_at' => now(),
-        ]);
+        \App\Models\User::findOrFail($r['administrator']->id)->forceFill([
+            // Through the MODEL, so the `encrypted` cast does the work.
+            // encrypt() wraps a SERIALIZED value and the cast reads with
+            // decryptString, which does not unserialize — so the secret came
+            // back as `s:32:"..."` and base32 decoding threw. It stayed
+            // hidden because no test had ever verified a user's own code.
+            'totp_secret' => $secret, 'totp_confirmed_at' => now(),
+        ])->save();
 
         return [$r['administrator']->fresh(), $secret];
     }
@@ -251,9 +257,14 @@ class AuthApiTest extends TestCase
         $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        \App\Models\User::whereKey($r['administrator']->id)->update([
-            'totp_secret' => encrypt($secret), 'totp_confirmed_at' => now(),
-        ]);
+        \App\Models\User::findOrFail($r['administrator']->id)->forceFill([
+            // Through the MODEL, so the `encrypted` cast does the work.
+            // encrypt() wraps a SERIALIZED value and the cast reads with
+            // decryptString, which does not unserialize — so the secret came
+            // back as `s:32:"..."` and base32 decoding threw. It stayed
+            // hidden because no test had ever verified a user's own code.
+            'totp_secret' => $secret, 'totp_confirmed_at' => now(),
+        ])->save();
 
         $response = $this->postJson('/api/v1/auth/login', [
             'email' => 'a@alpha.test', 'password' => 'a-real-password', 'code' => '000000',
@@ -273,9 +284,14 @@ class AuthApiTest extends TestCase
         $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        \App\Models\User::whereKey($r['administrator']->id)->update([
-            'totp_secret' => encrypt($secret), 'totp_confirmed_at' => now(),
-        ]);
+        \App\Models\User::findOrFail($r['administrator']->id)->forceFill([
+            // Through the MODEL, so the `encrypted` cast does the work.
+            // encrypt() wraps a SERIALIZED value and the cast reads with
+            // decryptString, which does not unserialize — so the secret came
+            // back as `s:32:"..."` and base32 decoding threw. It stayed
+            // hidden because no test had ever verified a user's own code.
+            'totp_secret' => $secret, 'totp_confirmed_at' => now(),
+        ])->save();
 
         $message = $this->postJson('/api/v1/auth/login', [
             'email' => 'a@alpha.test', 'password' => 'a-real-password',

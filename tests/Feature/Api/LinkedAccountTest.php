@@ -120,10 +120,16 @@ class LinkedAccountTest extends TestCase
     {
         $this->link();
 
-        $this->postJson('/api/v1/auth/login', [
+        $response = $this->postJson('/api/v1/auth/login', [
             'email' => 'jose@ezbizi.test', 'password' => 'a-sufficiently-long-staff-password',
             'code' => '000000',
-        ])->assertUnauthorized();
+        ])->assertOk();
+
+        // Still not signed in — but no longer reported as a wrong PASSWORD.
+        // The old 401 sent somebody who fat-fingered a digit off to reset a
+        // password that was never the problem.
+        $response->assertJsonPath('status', 'second_factor_required');
+        $response->assertJsonMissingPath('token');
     }
 
     // ── what the login hands back ────────────────────────────────

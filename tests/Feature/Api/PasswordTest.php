@@ -123,9 +123,14 @@ class PasswordTest extends TestCase
         $totp = app(Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        User::whereKey($this->alpha['admin']->id)->update([
-            'totp_secret' => encrypt($secret), 'totp_confirmed_at' => now(),
-        ]);
+        User::findOrFail($this->alpha['admin']->id)->forceFill([
+            // Through the MODEL, so the `encrypted` cast does the work.
+            // encrypt() wraps a SERIALIZED value and the cast reads with
+            // decryptString, which does not unserialize — so the secret came
+            // back as `s:32:"..."` and base32 decoding threw. It stayed
+            // hidden because no test had ever verified a user's own code.
+            'totp_secret' => $secret, 'totp_confirmed_at' => now(),
+        ])->save();
 
         $token = app(PasswordResets::class)->issue($this->alpha['admin']->fresh())['token'];
 
