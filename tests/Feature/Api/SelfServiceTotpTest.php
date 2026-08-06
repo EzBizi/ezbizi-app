@@ -228,9 +228,19 @@ class SelfServiceTotpTest extends TestCase
         $this->signedIn($secret)->deleteJson('/api/v1/me/totp', ['password' => 'wrong'])
             ->assertStatus(422);
 
+        // Nor is the password on its own enough. Somebody at that laptop who
+        // also knows the password is exactly the case the second factor exists
+        // for — so removing it requires holding the thing being removed.
         $this->app['auth']->forgetGuards();
-        $this->signedIn($secret)->deleteJson('/api/v1/me/totp', ['password' => 'a-real-password'])
-            ->assertOk();
+        $this->signedIn($secret)->deleteJson('/api/v1/me/totp', [
+            'password' => 'a-real-password',
+        ])->assertStatus(422);
+
+        $this->app['auth']->forgetGuards();
+        $this->signedIn($secret)->deleteJson('/api/v1/me/totp', [
+            'password' => 'a-real-password',
+            'code'     => $this->totp->getCurrentOtp($secret),
+        ])->assertOk();
 
         $this->assertFalse(User::find($this->org['admin']->id)->hasTotp());
     }
@@ -250,10 +260,13 @@ class SelfServiceTotpTest extends TestCase
             ->set('security.require_two_factor', $this->org['organization'], true));
 
         // §6: allowed scopes exist precisely so somebody below cannot weaken what
-        // was set above them.
+        // was set above them. Proving who they are is not the obstacle here —
+        // the policy is — so this sends a valid code as well.
         $this->app['auth']->forgetGuards();
-        $this->signedIn($secret)->deleteJson('/api/v1/me/totp', ['password' => 'a-real-password'])
-            ->assertStatus(422);
+        $this->signedIn($secret)->deleteJson('/api/v1/me/totp', [
+            'password' => 'a-real-password',
+            'code'     => $this->totp->getCurrentOtp($secret),
+        ])->assertStatus(422);
     }
 
     public function test_state_is_reported_so_the_settings_screen_knows_what_to_show(): void
@@ -262,6 +275,56 @@ class SelfServiceTotpTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.enabled', false)
             ->assertJsonPath('data.pending', false)
-            ->assertJsonPath('data.managed_elsewhere', false);
+            ->assertJsonPath('data.covers_control_plane', false);
+    }
+
+    public function test_moving_to_a_new_phone_does_not_require_going_unprotected_first(): void
+    {
+        $begin = $this->signedIn()->postJson('/api/v1/me/totp')->assertOk();
+        $secret = $begin->json('enrolment.secret');
+
+        $this->app['auth']->forgetGuards();
+        $this->signedIn()->postJson('/api/v1/me/totp/confirm', [
+            'code' => $this->totp->getCurrentOtp($secret),
+        ])->assertOk();
+
+        // Re-enrolling used to mean "turn it off first", which leaves a window
+        // with no second factor at all — on an account the organization may
+        // require one for.
+        $this->app['auth']->forgetGuards();
+        $second = $this->signedIn($secret)->postJson('/api/v1/me/totp', [
+            'password' => 'a-real-password',
+            'code'     => $this->totp->getCurrentOtp($secret),
+        ])->assertOk();
+
+        $newSecret = $second->json('enrolment.secret');
+
+        $this->assertNotSame($secret, $newSecret);
+
+        // The old one still works until the new one is confirmed.
+        $this->assertTrue(User::find($this->org['admin']->id)->hasTotp());
+
+        $this->app['auth']->forgetGuards();
+        $this->signedIn($secret)->postJson('/api/v1/me/totp/confirm', [
+            'code' => $this->totp->getCurrentOtp($newSecret),
+        ])->assertOk();
+    }
+
+    public function test_re_enrolling_needs_the_current_code_too(): void
+    {
+        $begin = $this->signedIn()->postJson('/api/v1/me/totp')->assertOk();
+        $secret = $begin->json('enrolment.secret');
+
+        $this->app['auth']->forgetGuards();
+        $this->signedIn()->postJson('/api/v1/me/totp/confirm', [
+            'code' => $this->totp->getCurrentOtp($secret),
+        ])->assertOk();
+
+        // Otherwise a borrowed laptop plus a known password is enough to point
+        // the second factor at an attacker's own phone.
+        $this->app['auth']->forgetGuards();
+        $this->signedIn($secret)->postJson('/api/v1/me/totp', [
+            'password' => 'a-real-password',
+        ])->assertStatus(422);
     }
 }
