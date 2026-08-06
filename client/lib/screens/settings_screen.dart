@@ -95,7 +95,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (!mounted) return;
 
-    _snack(response.ok ? 'Now inherited' : response.message, isError: !response.ok);
+    _snack(
+      response.ok
+          ? (_scopeType == 'organization' ? 'Back to the default' : 'Now inherited')
+          : response.message,
+      isError: !response.ok,
+    );
     if (response.ok) _load();
   }
 
@@ -221,6 +226,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _SettingRow(
                     setting: entry.value[i] as Map<String, dynamic>,
                     scopeLabel: _scopeLabel,
+                    scopeType: _scopeType,
                     onChanged: _update,
                     onReset: _reset,
                   ),
@@ -238,12 +244,18 @@ class _SettingRow extends StatelessWidget {
   const _SettingRow({
     required this.setting,
     required this.scopeLabel,
+    required this.scopeType,
     required this.onChanged,
     required this.onReset,
   });
 
   final Map<String, dynamic> setting;
   final String scopeLabel;
+
+  /// Organization is the top of the cascade, so it inherits from nothing. The
+  /// row has to know, or it offers to "reset to inherited" at a level with
+  /// nothing above it.
+  final String scopeType;
   final void Function(String key, dynamic value) onChanged;
   final void Function(String key) onReset;
 
@@ -278,7 +290,11 @@ class _SettingRow extends StatelessWidget {
                 // Where the value came from. The whole reason the API returns
                 // `source` — an admin who can't see this changes the wrong level.
                 Text(
-                  !scopeAllows
+                  source == null
+                      // Nothing set anywhere in the cascade — the value on
+                      // screen is the platform's, not this organization's.
+                      ? 'EzBizi default'
+                      : !scopeAllows
                       ? 'Set at organization level only'
                       : !editable
                           // Names the permission. "You cannot do that" sends
@@ -286,7 +302,7 @@ class _SettingRow extends StatelessWidget {
                           // neither of them can name.
                           ? 'Read-only — needs ${setting['permission'] ?? 'permission'}'
                           : inherited
-                              ? 'Inherited from ${source!['name']}'
+                              ? 'Inherited from ${source['name']}'
                               : 'Set here',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12),
                 ),
@@ -308,7 +324,13 @@ class _SettingRow extends StatelessWidget {
           if (editable && !inherited && source != null)
             IconButton(
               icon: const Icon(Icons.settings_backup_restore, size: 18),
-              tooltip: 'Reset to inherited',
+              // At organization scope there is nothing above to inherit FROM —
+              // it is the top of the cascade. Clearing the value there still
+              // does something useful, it just falls back to the platform's
+              // default rather than to a parent, and the label should say which.
+              tooltip: scopeType == 'organization'
+                  ? 'Reset to the EzBizi default'
+                  : 'Reset to inherited',
               onPressed: () => onReset(key),
             ),
         ],
