@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CustomersController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\HealthController;
@@ -67,6 +68,14 @@ Route::prefix('v1')
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
 
         Route::apiResource('jobs', JobsController::class);
+
+        // ── Dashboard (§18 Phase 4) ──────────────────────────────
+        //
+        // `catalogue` before nothing in particular — there is no {id} route to
+        // collide with — but kept adjacent so the three read as one feature.
+        Route::get('dashboard', [DashboardController::class, 'index']);
+        Route::get('dashboard/catalogue', [DashboardController::class, 'catalogue']);
+        Route::put('dashboard/layout', [DashboardController::class, 'saveLayout']);
 
         // ── Import / export (§12, §9) ────────────────────────────
         //
