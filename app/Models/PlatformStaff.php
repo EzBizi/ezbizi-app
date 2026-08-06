@@ -39,6 +39,9 @@ class PlatformStaff extends Authenticatable
         return [
             'password'          => 'hashed',
             'is_active'         => 'boolean',
+            // Read back from MySQL as a string otherwise, and it is compared
+            // numerically against the next time-slice.
+            'last_totp_timestamp' => 'integer',
             'totp_confirmed_at' => 'datetime',
             'last_login_at'     => 'datetime',
             // Encrypted at rest: a database leak that exposes TOTP secrets makes

@@ -77,7 +77,11 @@ class StaffAuthenticator
         $timestamp = $this->totp->verifyKeyNewer(
             $staff->totp_secret,
             $code,
-            $staff->last_totp_timestamp,
+            // 0, never null. With null the library returns a bare `true` instead
+            // of the time-slice it matched, and storing that as the "last used
+            // step" records step 1 — after which every subsequent code counts as
+            // newer and the replay check silently does nothing.
+            $staff->last_totp_timestamp ?? 0,
             window: 1,
         );
 
@@ -144,7 +148,7 @@ class StaffAuthenticator
         $timestamp = $this->totp->verifyKeyNewer(
             $staff->pending_totp_secret,
             trim($code),
-            $staff->last_totp_timestamp,
+            $staff->last_totp_timestamp ?? 0,   // see verifySecondFactor
             window: 1,
         );
 

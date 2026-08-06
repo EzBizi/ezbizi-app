@@ -352,7 +352,8 @@ class StaffAccountsApiTest extends TestCase
         [$staff, $secret] = $this->staff();
         $auth = 'Bearer '.$this->tokenFor($staff, $secret);
 
-        $this->withHeader('Authorization', $auth)->postJson('/api/v1/staff/me/totp')->assertOk();
+        $this->withHeader('Authorization', $auth)
+            ->postJson('/api/v1/staff/me/totp', $this->reauth($staff, $secret))->assertOk();
 
         $this->withHeader('Authorization', $auth)
             ->postJson('/api/v1/staff/me/totp/confirm', ['code' => '000000'])
