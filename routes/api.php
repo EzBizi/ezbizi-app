@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\StaffAuthController;
+use App\Http\Controllers\Api\StaffController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -43,6 +45,7 @@ Route::prefix('v1')
         Route::delete('settings/{key}', [SettingsController::class, 'destroy']);
 
         // Who am I — what the client calls on launch to know what to render.
+        // (staff routes are below, deliberately outside this group)
         Route::get('me', function (Illuminate\Http\Request $request) {
             $user = $request->user();
 
@@ -68,4 +71,39 @@ Route::prefix('v1')
                 ],
             ]);
         });
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Platform control plane — the Development tab (§4.2)
+|--------------------------------------------------------------------------
+|
+| A separate identity domain, so a separate middleware stack: no `tenant`, no
+| `subscription`. Staff work across organizations, and there is no single one to
+| put in context — TenantContext enters PLATFORM SCOPE instead, which makes an
+| accidental unscoped query distinguishable from legitimate staff access.
+|
+| `staff` does the real gating. `auth:sanctum` only proves the bearer token is
+| valid; it does not check WHICH model issued it, so on its own it would let a
+| tenant user's token in here.
+|
+*/
+Route::post('v1/staff/auth/login', [StaffAuthController::class, 'login']);
+
+Route::prefix('v1/staff')
+    ->middleware(['auth:sanctum', 'staff'])
+    ->group(function () {
+        Route::post('auth/logout', [StaffAuthController::class, 'logout']);
+        Route::get('me', [StaffAuthController::class, 'me']);
+
+        Route::get('organizations', [StaffController::class, 'organizations']);
+
+        // Global module availability — the platform-wide gate that sits above
+        // every organization's own permissions (§2.1, layer 3).
+        Route::get('modules', [StaffController::class, 'modules']);
+        Route::patch('modules/{key}', [StaffController::class, 'setModuleState']);
+
+        Route::get('impersonations', [StaffController::class, 'impersonations']);
+        Route::post('impersonations', [StaffController::class, 'impersonate']);
+        Route::delete('impersonations/{impersonation}', [StaffController::class, 'endImpersonation']);
     });

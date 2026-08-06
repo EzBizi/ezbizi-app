@@ -18,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
             // auth -> tenant -> subscription. See the note there.
             'tenant'       => App\Http\Middleware\SetTenantContext::class,
             'subscription' => App\Http\Middleware\EnforceSubscriptionState::class,
+            // The control plane (§4.2) — deliberately not 'tenant'.
+            'staff'        => App\Http\Middleware\StaffOnly::class,
         ]);
 
         /*

@@ -11,6 +11,7 @@ oauth2*.json
 
 # ── dependencies / build ──────────────────────────────
 /vendor
+/composer.phar
 /node_modules
 /public/build
 /public/hot

@@ -81,8 +81,9 @@ git log --oneline -1
 
 ## Not yet done
 
-- **No CI.** Tests are not run before deploy — `git push` deploys whatever you
-  give it. Running `php artisan test` first is currently a matter of discipline.
+- **No CI.** `scripts/deploy.sh` runs the suite against `git archive main` in the
+  sandbox at `/var/www/ezbizi` before pushing, so the gate tests exactly what
+  ships — but a bare `git push production main` still bypasses it entirely.
 - **No staging.** `dev.ezbizi.com` exists and is the obvious home for one.
 - **No automatic rollback.** The hook refuses to ship a broken build, but if a
   bad release passes its health check, rolling back is the manual step above.

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\PlatformStaff;
 use App\Support\Audit\AuditLogger;
 use App\Support\Tenancy\TenantContext;
 use Closure;
@@ -32,6 +33,17 @@ class SetTenantContext
     public function handle(Request $request, Closure $next): Response
     {
         $user = $request->user();
+
+        // A staff token is not a tenant identity. Sanctum resolves any bearer
+        // token to its issuer regardless of guard, so without this a staff token
+        // would reach tenant endpoints with no organization in context — and the
+        // failure would surface later as a confusing 500 rather than a refusal.
+        if ($user instanceof PlatformStaff) {
+            abort(
+                Response::HTTP_FORBIDDEN,
+                'Staff tokens cannot be used on tenant endpoints. Start an impersonation session (§4.2).'
+            );
+        }
 
         if ($user?->organization !== null) {
             $this->tenant->set($user->organization);

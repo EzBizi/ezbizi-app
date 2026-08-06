@@ -23,10 +23,31 @@ cd "$(dirname "$0")/.."
 # ── tests before anything ships ──────────────────────────────────
 # There is no CI yet (see DEPLOY.md), so this is the gate. Deploying a red
 # build is the one thing the pipeline cannot undo for you.
-echo "→ backend tests"
-ssh "$REMOTE" 'cd /var/www/ezbizi && php8.4 artisan test --compact' || {
-  echo "✗ backend tests failed — nothing deployed"; exit 1;
-}
+#
+# The working tree is synced to the box FIRST. Without that, the gate ran
+# against whatever was last left in /var/www/ezbizi — reporting green for code
+# that was never tested, which is worse than no gate at all. Releases install
+# --no-dev and have no phpunit, so this sandbox (full vendor, own .env, own
+# test database) is where tests run.
+#
+# `git archive main` — the exact tree about to ship, not the working directory
+# and not whatever was last left on the box. The old gate ran against a stale
+# sandbox and reported green for code that was never tested, which is worse than
+# no gate at all.
+#
+# Commit before deploying: this tests main, not your uncommitted edits.
+echo "→ testing the tree about to ship"
+git archive main | ssh "$REMOTE" '
+  set -e
+  cd /var/www/ezbizi
+  # Removed files must disappear too, or a deleted class keeps passing.
+  rm -rf app tests routes config database bootstrap resources
+  tar -x
+  # Releases install --no-dev and have no phpunit; this sandbox keeps dev deps,
+  # its own .env and its own test database.
+  composer install --no-interaction -q
+  php8.4 artisan test --compact
+' || { echo "✗ backend tests failed — nothing deployed"; exit 1; }
 
 if [ "$CODE_ONLY" != "--code" ]; then
   echo "→ client analyze + tests"
@@ -37,7 +58,8 @@ if [ "$CODE_ONLY" != "--code" ]; then
   echo "→ building web"
   # Same-origin by default, so the built app talks to whatever host serves it
   # and can never point at the wrong API.
-  (cd client && flutter build web --release --base-href /app/)
+  # base-href / — the app IS the site (app.ezbizi.com), not a subdirectory.
+  (cd client && flutter build web --release --base-href /)
 
   echo "→ uploading UI to shared directory"
   # --delete so removed assets don't linger; the shared dir holds only the build.
@@ -47,4 +69,4 @@ fi
 echo "→ pushing code"
 git push production main
 
-echo "✓ done — https://app.ezbizi.com/app/"
+echo "✓ done — https://app.ezbizi.com"
