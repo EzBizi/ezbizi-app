@@ -156,7 +156,22 @@ class _HomeShellState extends State<HomeShell> {
     final me = widget.session.me!;
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
+    // Labels beside icons, unless this person has collapsed it or prefers the
+    // stacked "blocks" shape. Stored, so it survives a reload — a sidebar that
+    // springs back open every time is a toggle nobody uses twice.
+    final expanded = me.navigationStyle == 'list' && !me.navigationCollapsed;
+
+    // Dashboard first, deliberately.
+    //
+    // It is the screen somebody opens the app to look at — what is happening
+    // today — and the one they return to between tasks. Everything below it is
+    // a place you go to do a specific thing.
     final destinations = <_Destination>[
+      _Destination(
+        'Dashboard',
+        Icons.dashboard_outlined,
+        DashboardScreen(api: widget.api, session: widget.session),
+      ),
       _Destination(
         'Customers',
         Icons.people_outline,
@@ -173,20 +188,30 @@ class _HomeShellState extends State<HomeShell> {
         WorkflowsScreen(api: widget.api, session: widget.session),
       ),
       _Destination(
-        'Dashboard',
-        Icons.dashboard_outlined,
-        DashboardScreen(api: widget.api, session: widget.session),
-      ),
-      _Destination(
         'Import & export',
         Icons.import_export_outlined,
         DataScreen(api: widget.api, session: widget.session),
       ),
+    ];
+
+    // Pinned to the bottom, under a rule and the empty space.
+    //
+    // Neither is a place you go to do the work. Settings is where you go to
+    // change how the work behaves, and Development is the platform underneath
+    // the product rather than part of it (§4.2) — both belong away from the
+    // list of things you actually open all day.
+    final pinned = <_Destination>[
       _Destination(
         'Settings',
         Icons.settings_outlined,
         SettingsScreen(api: widget.api, session: widget.session),
       ),
+      if (me.development != null)
+        _Destination(
+          'Development',
+          Icons.terminal_outlined,
+          DevelopmentScreen(session: widget.session),
+        ),
     ];
 
     // Two screens that are deliberately NOT rail destinations.
@@ -204,22 +229,50 @@ class _HomeShellState extends State<HomeShell> {
     // Both live one past the end of the destination list. Keeping them out of
     // the list is what allows one to be hidden and the other pinned; this index
     // arithmetic is the price, and it is confined to the four lines below.
+    // "Your account" is reached from the avatar in the top bar, where every
+    // other app puts it — it is about the person, not the business.
+    //
+    // Everything off the main list lives past its end. Keeping them out of the
+    // list is what allows one to be hidden and the others pinned; this index
+    // arithmetic is the price, and it is confined to these few lines.
     final profileIndex = destinations.length;
-    final developmentIndex = destinations.length + 1;
+    final pinnedBase = destinations.length + 1;
 
-    final hasDevelopment = me.development != null;
     final showingProfile = _index == profileIndex;
-    final showingDevelopment = hasDevelopment && _index == developmentIndex;
+    final pinnedIndex = (_index >= pinnedBase && _index < pinnedBase + pinned.length)
+        ? _index - pinnedBase
+        : null;
 
     // Clamped every build. The list shrinks when a staff link is removed or a
     // module is switched off platform-wide, and an index left pointing past the
     // end throws on the next frame — a blank screen with no way back.
-    final railIndex = (showingProfile || showingDevelopment)
+    final railIndex = (showingProfile || pinnedIndex != null)
         ? null
         : _index.clamp(0, destinations.length - 1);
 
     return Scaffold(
       appBar: AppBar(
+        // A rule under the top bar.
+        //
+        // The bar and the rail were both plain surface, so on a light theme
+        // they met as one continuous white field and the sidebar read as part
+        // of the header. One pixel fixes it; nothing else would.
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: Theme.of(context).dividerColor),
+        ),
+        leading: wide
+            ? IconButton(
+                tooltip: expanded ? 'Collapse the sidebar' : 'Expand the sidebar',
+                icon: Icon(expanded ? Icons.menu_open : Icons.menu),
+                // Written through the same path as every other preference, so
+                // it is the server's answer that wins and the value is there on
+                // the next device somebody signs in from.
+                onPressed: () => widget.session.setPreference(
+                    'navigation.collapsed', !me.navigationCollapsed),
+              )
+            : null,
+        titleSpacing: wide ? 0 : null,
         title: Row(children: [
           EzBiziTheme.wordmark(context, size: 20),
           const SizedBox(width: 16),
@@ -327,43 +380,58 @@ class _HomeShellState extends State<HomeShell> {
             // Blocks fit more in less width and some people prefer them, so
             // they stay available — as the user's own preference, not an
             // opinion imposed by whoever wrote this.
-            NavigationRail(
-              // null when an off-rail screen is showing. The rail has no
-              // destination for either, and an out-of-range index throws.
-              selectedIndex: railIndex,
-              onDestinationSelected: (i) => setState(() => _index = i),
-              extended: me.navigationStyle == 'list',
-              labelType: me.navigationStyle == 'list'
-                  ? null   // `extended` and labelType are mutually exclusive
-                  : NavigationRailLabelType.all,
-              minExtendedWidth: 188,
-              destinations: destinations
-                  .map((d) => NavigationRailDestination(
-                        icon: Icon(d.icon),
-                        label: Text(d.label),
-                      ))
-                  .toList(),
-              trailing: !hasDevelopment
-                  ? null
-                  // Expanded inside the rail's own scroll view pushes this to
-                  // the bottom of the available height, rather than leaving it
-                  // tucked under the last destination.
-                  : Expanded(
-                      child: Align(
-                        alignment: Alignment.bottomCenter,
-                        child: _RailFooter(
-                          extended: me.navigationStyle == 'list',
-                          selected: showingDevelopment,
-                          onTap: () =>
-                              setState(() => _index = developmentIndex),
-                        ),
-                      ),
+            // Tinted, and against a rule.
+            //
+            // The rail and the top bar were both plain surface, so on a light
+            // theme they were one continuous white field with no edge between
+            // them — the sidebar read as part of the header rather than as a
+            // column of its own.
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
+                border: Border(
+                  right: BorderSide(color: Theme.of(context).dividerColor),
+                ),
+              ),
+              child: NavigationRail(
+                backgroundColor: Colors.transparent,
+                // null when an off-rail screen is showing. The rail has no
+                // destination for either, and an out-of-range index throws.
+                selectedIndex: railIndex,
+                onDestinationSelected: (i) => setState(() => _index = i),
+                extended: expanded,
+                labelType: expanded
+                    ? null   // `extended` and labelType are mutually exclusive
+                    : (me.navigationStyle == 'list'
+                        ? NavigationRailLabelType.none
+                        : NavigationRailLabelType.all),
+                minExtendedWidth: 188,
+                destinations: destinations
+                    .map((d) => NavigationRailDestination(
+                          icon: Icon(d.icon),
+                          label: Text(d.label),
+                        ))
+                    .toList(),
+                // Expanded inside the rail's own scroll view pushes this to the
+                // bottom of the available height, rather than leaving it tucked
+                // under the last destination.
+                trailing: Expanded(
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: _RailFooter(
+                      extended: expanded,
+                      items: pinned,
+                      selectedIndex: pinnedIndex,
+                      onSelected: (i) =>
+                          setState(() => _index = pinnedBase + i),
                     ),
+                  ),
+                ),
+              ),
             ),
-          if (wide) const VerticalDivider(width: 1),
           Expanded(
-            child: showingDevelopment
-                ? DevelopmentScreen(session: widget.session)
+            child: pinnedIndex != null
+                ? pinned[pinnedIndex].screen
                 : showingProfile
                     ? ProfileScreen(api: widget.api, session: widget.session)
                     : destinations[railIndex ?? 0].screen,
@@ -374,20 +442,21 @@ class _HomeShellState extends State<HomeShell> {
       // there is no rail to pin it to the bottom of, and hiding it entirely
       // would make the section unreachable on a phone. Your account stays in
       // the avatar menu on both, which is where people look for it.
+      // Narrow layout. The pinned items get ordinary tabs here — there is no
+      // rail to pin them to the bottom of, and hiding them would make Settings
+      // unreachable on a phone. Your account stays in the avatar menu on both,
+      // which is where people look for it.
       bottomNavigationBar: wide
           ? null
           : NavigationBar(
               selectedIndex: showingProfile
                   ? 0
-                  : (railIndex ?? (showingDevelopment ? destinations.length : 0)),
-              onDestinationSelected: (i) => setState(() =>
-                  _index = i == destinations.length ? developmentIndex : i),
+                  : (railIndex ?? destinations.length + (pinnedIndex ?? 0)),
+              onDestinationSelected: (i) => setState(() => _index =
+                  i < destinations.length ? i : pinnedBase + (i - destinations.length)),
               destinations: [
-                for (final d in destinations)
+                for (final d in [...destinations, ...pinned])
                   NavigationDestination(icon: Icon(d.icon), label: d.label),
-                if (hasDevelopment)
-                  const NavigationDestination(
-                    icon: Icon(Icons.terminal_outlined), label: 'Development'),
               ],
             ),
     );
@@ -401,60 +470,28 @@ class _Destination {
   final Widget screen;
 }
 
-/// Development, pinned to the bottom of the rail.
+/// The pinned items, at the actual bottom of the rail.
 ///
-/// Not a NavigationRailDestination: those sit in the list, in order, directly
-/// under the last one. This is the platform underneath the product rather than
-/// part of it (§4.2), and the separation is the point — a rule above it and the
-/// empty space between say so before anybody reads the label.
+/// Not NavigationRailDestinations: those sit in the list, in order, directly
+/// under the last one. Settings and Development are not places you go to do the
+/// work — one changes how the work behaves, the other is the platform
+/// underneath the product (§4.2) — and the separation is the point. A rule
+/// above them and the empty space between says so before anybody reads a label.
 class _RailFooter extends StatelessWidget {
   const _RailFooter({
     required this.extended,
-    required this.selected,
-    required this.onTap,
+    required this.items,
+    required this.selectedIndex,
+    required this.onSelected,
   });
 
   final bool extended;
-  final bool selected;
-  final VoidCallback onTap;
+  final List<_Destination> items;
+  final int? selectedIndex;
+  final ValueChanged<int> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    final content = extended
-        ? Row(
-            children: [
-              const SizedBox(width: 16),
-              Icon(Icons.terminal_outlined,
-                  size: 22,
-                  color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant),
-              const SizedBox(width: 12),
-              Flexible(
-                child: Text('Development',
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant,
-                    )),
-              ),
-              const SizedBox(width: 12),
-            ],
-          )
-        : Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.terminal_outlined,
-                  size: 22,
-                  color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant),
-              const SizedBox(height: 4),
-              Text('Development',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant,
-                  )),
-            ],
-          );
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
       child: Column(
@@ -462,20 +499,76 @@ class _RailFooter extends StatelessWidget {
         children: [
           const Divider(height: 1),
           const SizedBox(height: 12),
-          Material(
-            color: selected ? scheme.secondaryContainer : Colors.transparent,
-            borderRadius: BorderRadius.circular(18),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(18),
-              onTap: onTap,
-              child: Container(
-                constraints: BoxConstraints(minWidth: extended ? 172 : 56),
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: content,
-              ),
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const SizedBox(height: 4),
+            _RailFooterItem(
+              extended: extended,
+              icon: items[i].icon,
+              label: items[i].label,
+              selected: selectedIndex == i,
+              onTap: () => onSelected(i),
             ),
-          ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _RailFooterItem extends StatelessWidget {
+  const _RailFooterItem({
+    required this.extended,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final bool extended;
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tint = selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
+
+    final content = extended
+        ? Row(
+            children: [
+              const SizedBox(width: 16),
+              Icon(icon, size: 22, color: tint),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(label,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: tint)),
+              ),
+              const SizedBox(width: 12),
+            ],
+          )
+        // Collapsed: the icon alone, with the label as a tooltip. A truncated
+        // word under a 22px icon is not a label, it is noise.
+        : Tooltip(
+            message: label,
+            child: SizedBox(
+              width: 56,
+              child: Icon(icon, size: 22, color: tint),
+            ),
+          );
+
+    return Material(
+      color: selected ? scheme.secondaryContainer : Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: content,
+        ),
       ),
     );
   }

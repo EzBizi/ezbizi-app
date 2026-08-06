@@ -58,6 +58,21 @@ class PreferenceRegistry
                 'options' => ['list', 'blocks'],
                 'help'    => 'A list shows the icon and label side by side; blocks stack them.',
             ],
+
+            /*
+             * Sidebar collapsed to icons.
+             *
+             * Stored rather than held in the widget, because a sidebar that
+             * springs back open on every reload is a toggle nobody uses twice.
+             * Separate from `navigation.style`: that is which SHAPE you prefer,
+             * this is whether you want the room back right now.
+             */
+            'navigation.collapsed' => [
+                'label'   => 'Collapse the sidebar',
+                'type'    => 'bool',
+                'default' => false,
+                'help'    => 'Shows icons only, giving the page its width back.',
+            ],
         ];
     }
 

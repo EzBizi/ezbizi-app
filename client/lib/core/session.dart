@@ -216,6 +216,8 @@ class Me {
   String get navigationStyle =>
       preferences['navigation.style'] == 'blocks' ? 'blocks' : 'list';
 
+  bool get navigationCollapsed => preferences['navigation.collapsed'] == true;
+
   factory Me.fromJson(Map<String, dynamic> json) => Me(
         id: json['id'] as String,
         name: json['name'] as String,
