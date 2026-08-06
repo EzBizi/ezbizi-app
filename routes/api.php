@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CustomersController;
+use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
@@ -39,6 +41,18 @@ Route::prefix('v1')
     ->group(function () {
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
+
+        // ── The vertical slice: Customer → Job (§18 Phase 2) ─────
+        //
+        // Customers are shared org-wide and jobs are not, so the two look
+        // deliberately different: the customer list is unfiltered, the job list
+        // is scoped to the caller's reach. Both are enforced in policies, not
+        // here — a route file is a bad place to keep an authorization rule,
+        // because the next endpoint added beside it will not inherit the thought.
+        Route::apiResource('customers', CustomersController::class);
+        Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
+
+        Route::apiResource('jobs', JobsController::class);
 
         // ── Settings (§6) ────────────────────────────────────────
         Route::get('settings', [SettingsController::class, 'index']);

@@ -11,5 +11,13 @@ namespace App\Http\Controllers\Api;
  */
 abstract class Controller
 {
-    //
+    /**
+     * Gives controllers $this->authorize().
+     *
+     * Laravel's base controller carries this by default; this one does not
+     * extend it, so it has to be said. Without it `authorize()` is simply an
+     * undefined method — which surfaces as a 500 rather than as an unprotected
+     * endpoint, but is worth naming so nobody removes it as unused.
+     */
+    use \Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 }

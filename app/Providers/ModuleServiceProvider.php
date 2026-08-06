@@ -20,7 +20,7 @@ class ModuleServiceProvider extends ServiceProvider
         $this->app->singleton(ModuleRegistry::class, function () {
             $registry = new ModuleRegistry;
 
-            foreach ($this->foundationModules() as $module) {
+            foreach ([...$this->foundationModules(), ...$this->businessModules()] as $module) {
                 $registry->register($module);
             }
 
@@ -89,6 +89,63 @@ class ModuleServiceProvider extends ServiceProvider
                 // question — there is simply no code path.
                 automationExemptBecause:
                     'The audit log is append-only; nothing may act on it programmatically.',
+            ),
+        ];
+    }
+
+    /**
+     * The first vertical slice (§18 Phase 2).
+     *
+     * Their triggers and actions are declared here alongside the permissions, per
+     * the §5.5 standing rule — and they are the ones the workflow engine will be
+     * built against. The plan is explicit that the engine should be proved with
+     * REAL Customer and Job events rather than imagined ones, which is only
+     * possible if these exist first.
+     *
+     * @return ModuleDefinition[]
+     */
+    private function businessModules(): array
+    {
+        return [
+            new ModuleDefinition(
+                key:   'customers',
+                label: 'Customers',
+                triggers: [
+                    'customer.created',
+                    'customer.updated',
+                    'customer.deleted',
+                    // Its own trigger rather than a field-change on updated:
+                    // moving accountability between franchises is the kind of
+                    // thing a manager wants to be told about, and burying it in
+                    // "a field changed" means nobody ever builds that rule.
+                    'customer.owner_reassigned',
+                ],
+                workflowActions: [
+                    'customer.update_field',
+                    'customer.reassign_owner',
+                    'customer.deactivate',
+                ],
+            ),
+
+            new ModuleDefinition(
+                key:   'jobs',
+                label: 'Jobs',
+                triggers: [
+                    'job.created',
+                    'job.updated',
+                    'job.deleted',
+                    // The one most automation will actually hang off — "when a
+                    // job is completed, email the customer" is the canonical
+                    // rule, and it needs the transition, not the end state.
+                    'job.status_changed',
+                    'job.scheduled',
+                ],
+                workflowActions: [
+                    'job.update_field',
+                    'job.change_status',
+                    'job.assign_to_user',
+                    'job.create',
+                ],
             ),
         ];
     }

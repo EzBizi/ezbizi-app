@@ -315,6 +315,26 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_BOOL, default: true,
                 help: 'Complements the owning-franchise tag (§5.2).',
             ),
+
+            /*
+             * The permitted job statuses.
+             *
+             * Data, not an enum column: an organization wanting its own word for
+             * "on hold" should not need a migration (§2.1 category 5). That a job
+             * HAS a status stays a platform invariant and lives in code.
+             *
+             * ORGANIZATION-ONLY on purpose. Statuses varying per franchise would
+             * make a roll-up list a mix of vocabularies, and any report grouped by
+             * status would silently split one real state into several.
+             */
+            new SettingDefinition(
+                key: 'jobs.statuses', label: 'Job statuses',
+                type: SettingDefinition::TYPE_JSON,
+                default: ['scheduled', 'in_progress', 'completed', 'cancelled'],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Renaming one does not rename it on existing jobs — those keep the '
+                    .'value they were saved with.',
+            ),
         ];
     }
 }

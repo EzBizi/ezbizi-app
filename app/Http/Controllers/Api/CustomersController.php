@@ -1,0 +1,269 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Models\Customer;
+use App\Models\Franchise;
+use App\Services\Customers\DuplicateCustomerFinder;
+use App\Support\Audit\AuditLogger;
+use App\Support\Numbering\RecordNumberGenerator;
+use App\Support\Settings\SettingsResolver;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\Response;
+
+/**
+ * Customers (plan §5.2) — the first half of the vertical slice.
+ *
+ * Shared org-wide, so the list is deliberately NOT filtered to the caller's
+ * franchises. That is the feature, not an oversight: a customer served by two
+ * franchises is one person, and hiding them from the second creates two
+ * half-histories of one relationship.
+ *
+ * What keeps that honest is the owning-franchise tag on every response, so the
+ * UI can show who is accountable before anybody acts.
+ */
+class CustomersController extends Controller
+{
+    public function __construct(
+        private readonly RecordNumberGenerator $numbers,
+        private readonly DuplicateCustomerFinder $duplicates,
+        private readonly SettingsResolver $settings,
+        private readonly AuditLogger $audit,
+    ) {}
+
+    /** GET /api/v1/customers */
+    public function index(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Customer::class);
+
+        $customers = Customer::query()
+            ->with('owningFranchise:id,name')
+            ->withCount('jobs')
+            // Optional narrowing, NOT an authorization boundary — sharing means
+            // everything here is already readable. A filter that looked like a
+            // permission would be the more dangerous kind of confusion.
+            ->when($request->query('franchise_id'), fn ($q, $id) => $q->where('owning_franchise_id', $id))
+            ->when($request->query('search'), function ($q, $term) {
+                $q->where(function ($inner) use ($term) {
+                    $inner->where('name', 'like', "%{$term}%")
+                        ->orWhere('email', 'like', "%{$term}%")
+                        ->orWhere('phone', 'like', "%{$term}%")
+                        ->orWhere('number', 'like', "%{$term}%");
+                });
+            })
+            ->when($request->boolean('active_only'), fn ($q) => $q->where('is_active', true))
+            ->orderBy('name')
+            ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+
+        return response()->json([
+            'data' => collect($customers->items())->map(fn (Customer $c) => $this->present($c)),
+            'meta' => [
+                'total'        => $customers->total(),
+                'per_page'     => $customers->perPage(),
+                'current_page' => $customers->currentPage(),
+                'last_page'    => $customers->lastPage(),
+            ],
+        ]);
+    }
+
+    /** GET /api/v1/customers/{customer} */
+    public function show(Customer $customer): JsonResponse
+    {
+        $this->authorize('view', $customer);
+
+        return response()->json(['data' => $this->present($customer, detailed: true)]);
+    }
+
+    /**
+     * POST /api/v1/customers
+     *
+     * Possible duplicates come back in the response rather than blocking it
+     * (§5.2 — never auto-merge, and a second household on one phone number is
+     * real). The client shows them; a human decides.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $input = $request->validate($this->rules());
+
+        $franchise = Franchise::findOrFail($input['owning_franchise_id']);
+
+        $this->authorize('create', [Customer::class, $franchise]);
+
+        $customer = DB::transaction(function () use ($input, $franchise) {
+            $customer = Customer::create($input + [
+                'number' => $this->numbers->next(RecordNumberGenerator::CUSTOMERS, $franchise),
+            ]);
+
+            // Written inside the transaction, so the record and its history
+            // commit together or not at all (§10).
+            $this->audit->log('customer.created', $customer, metadata: [
+                'owning_franchise' => $franchise->name,
+                'number'           => $customer->number,
+            ]);
+
+            return $customer;
+        });
+
+        return response()->json([
+            'data' => $this->present($customer->fresh(), detailed: true),
+            'possible_duplicates' => $this->duplicates
+                ->candidates($input, $franchise, ignoreId: $customer->getKey())
+                ->map(fn (Customer $c) => $this->present($c)),
+        ], Response::HTTP_CREATED);
+    }
+
+    /** PATCH /api/v1/customers/{customer} */
+    public function update(Request $request, Customer $customer): JsonResponse
+    {
+        $this->authorize('update', $customer);
+
+        // owning_franchise_id is absent on purpose. Reassignment is a separate,
+        // separately authorised act (§5.2) — allowing it here would let a
+        // routine edit move accountability as a side effect.
+        $input = $request->validate($this->rules(forUpdate: true));
+
+        DB::transaction(function () use ($customer, $input) {
+            $customer->fill($input);
+
+            $this->audit->logChange('customer.updated', $customer);
+
+            $customer->save();
+        });
+
+        return response()->json(['data' => $this->present($customer->fresh(), detailed: true)]);
+    }
+
+    /**
+     * POST /api/v1/customers/{customer}/owner
+     *
+     * Moving accountability. Deliberate and audited: a customer permanently
+     * relocating is real, but it must be an explicit act rather than a side
+     * effect of one franchise doing one job (§5.2).
+     */
+    public function reassignOwner(Request $request, Customer $customer): JsonResponse
+    {
+        $input = $request->validate([
+            'owning_franchise_id' => ['required', 'uuid', Rule::exists('franchises', 'id')],
+            'reason'              => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $newOwner = Franchise::findOrFail($input['owning_franchise_id']);
+
+        $this->authorize('reassignOwner', [$customer, $newOwner]);
+
+        if ($newOwner->is($customer->owningFranchise)) {
+            return response()->json([
+                'message' => 'That franchise already owns this customer.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $previous = $customer->owningFranchise;
+
+        DB::transaction(function () use ($customer, $newOwner, $previous, $input) {
+            $customer->owning_franchise_id = $newOwner->getKey();
+            $customer->save();
+
+            // Names as well as ids: the franchise may be renamed or deactivated
+            // later, and "who was accountable in March" has to stay answerable.
+            $this->audit->log('customer.owner_reassigned', $customer, metadata: [
+                'from'   => ['id' => $previous?->getKey(), 'name' => $previous?->name],
+                'to'     => ['id' => $newOwner->getKey(), 'name' => $newOwner->name],
+                'reason' => $input['reason'] ?? null,
+            ]);
+        });
+
+        return response()->json(['data' => $this->present($customer->fresh(), detailed: true)]);
+    }
+
+    /** DELETE /api/v1/customers/{customer} */
+    public function destroy(Customer $customer): JsonResponse
+    {
+        $this->authorize('delete', $customer);
+
+        if ($customer->jobs()->exists()) {
+            // Soft delete would keep the row, but a job list pointing at a
+            // customer the UI refuses to show reads as data loss.
+            return response()->json([
+                'message' => 'This customer has jobs. Deactivate them instead — '
+                    .'removing them would leave that work with no one attached to it.',
+                'code'    => 'has_jobs',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        DB::transaction(function () use ($customer) {
+            $this->audit->log('customer.deleted', $customer);
+            $customer->delete();
+        });
+
+        return response()->json(['message' => 'Customer deleted.']);
+    }
+
+    // ── shared ───────────────────────────────────────────────────
+
+    private function rules(bool $forUpdate = false): array
+    {
+        $required = $forUpdate ? 'sometimes' : 'required';
+
+        return [
+            'owning_franchise_id' => $forUpdate
+                ? ['prohibited']
+                : ['required', 'uuid', Rule::exists('franchises', 'id')],
+            'name'          => [$required, 'string', 'max:200'],
+            'email'         => ['nullable', 'email', 'max:200'],
+            'phone'         => ['nullable', 'string', 'max:40'],
+            'address_line1' => ['nullable', 'string', 'max:200'],
+            'address_line2' => ['nullable', 'string', 'max:200'],
+            'city'          => ['nullable', 'string', 'max:100'],
+            'state'         => ['nullable', 'string', 'size:2'],
+            'postal_code'   => ['nullable', 'string', 'max:12'],
+            'notes'         => ['nullable', 'string', 'max:5000'],
+            'is_active'     => ['boolean'],
+        ];
+    }
+
+    private function present(Customer $customer, bool $detailed = false): array
+    {
+        $base = [
+            'id'     => $customer->id,
+            'number' => $customer->number,
+            'name'   => $customer->name,
+            'email'  => $customer->email,
+            'phone'  => $customer->phone,
+            'is_active' => $customer->is_active,
+            // Always present, on every representation. Its whole job is to stop
+            // somebody acting on another franchise's customer without realising,
+            // so it cannot be something the detail view alone carries (§5.2).
+            'owning_franchise' => [
+                'id'   => $customer->owning_franchise_id,
+                'name' => $customer->owningFranchise?->name,
+            ],
+            'jobs_count' => $customer->jobs_count ?? $customer->jobs()->count(),
+        ];
+
+        if (! $detailed) {
+            return $base;
+        }
+
+        return $base + [
+            'address' => [
+                'line1'       => $customer->address_line1,
+                'line2'       => $customer->address_line2,
+                'city'        => $customer->city,
+                'state'       => $customer->state,
+                'postal_code' => $customer->postal_code,
+            ],
+            'notes' => $customer->notes,
+            // Derived from jobs, never stored (§5.2).
+            'served_by_franchise_ids' => $customer->servedByFranchiseIds(),
+            'shared_in_practice'      => $customer->isSharedInPractice(),
+            'warn_on_cross_franchise_edit' => (bool) $this->settings->get(
+                'customers.warn_on_cross_franchise_edit',
+                $customer->owningFranchise ?? $customer->organization,
+            ),
+            'created_at' => $customer->created_at->toIso8601String(),
+        ];
+    }
+}

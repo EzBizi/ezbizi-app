@@ -1,0 +1,117 @@
+<?php
+
+namespace App\Support\Numbering;
+
+use App\Models\Franchise;
+use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Human-facing record numbers — JOB-00042 (plan §6, §5.2).
+ *
+ * Two things this proves for the vertical slice: that the settings cascade
+ * reaches real business data, and that a shared sequence survives concurrency.
+ *
+ * ── Why the sequence is per ORGANIZATION ─────────────────────────
+ *
+ * Customers are shared org-wide (§5.2), so two franchises numbering from 1 would
+ * produce two different people called C-00001 in one search result. Jobs are not
+ * shared, but they roll up: an organization-level list showing two JOB-00001 is
+ * the same confusion one level higher.
+ *
+ * Invoices will be different. §5.2 flags that they belong to a legal selling
+ * entity, and the settings registry notes that a shared sequence interleaves two
+ * franchises' invoices in a way auditors dislike. That is a separate sequence key
+ * and a separate decision, to be made when invoicing is built.
+ *
+ * ── Why a counter table and not MAX(number) + 1 ──────────────────
+ *
+ * MAX+1 hands the same number to two simultaneous creates, and the unique index
+ * then fails one of them at random. The counter row is locked for the duration of
+ * the transaction, so allocation is serialised per organization and the loser
+ * waits rather than errors.
+ */
+class RecordNumberGenerator
+{
+    public const CUSTOMERS = 'customer';
+    public const JOBS      = 'job';
+
+    public function __construct(
+        private readonly TenantContext $tenant,
+        private readonly SettingsResolver $settings,
+    ) {}
+
+    /**
+     * @param  Franchise  $scope  where the FORMAT is read from — prefix, padding
+     *                            and year are franchise-overridable (§6). Only the
+     *                            format; the sequence itself stays organization-wide.
+     */
+    public function next(string $sequenceKey, Franchise $scope): string
+    {
+        $organizationId = $this->tenant->idOrFail();
+
+        $value = DB::transaction(function () use ($organizationId, $sequenceKey) {
+            $row = DB::table('record_sequences')
+                ->where('organization_id', $organizationId)
+                ->where('sequence_key', $sequenceKey)
+                ->lockForUpdate()
+                ->first();
+
+            if ($row === null) {
+                // First record of this type for this organization. The unique
+                // index is what makes the race safe: if two requests both find
+                // nothing, one insert wins and the other retries into the
+                // locked-read path below.
+                try {
+                    DB::table('record_sequences')->insert([
+                        'id'              => (string) \Illuminate\Support\Str::uuid7(),
+                        'organization_id' => $organizationId,
+                        'sequence_key'    => $sequenceKey,
+                        'next_value'      => 2,
+                        'created_at'      => now(),
+                        'updated_at'      => now(),
+                    ]);
+
+                    return 1;
+                } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+                    $row = DB::table('record_sequences')
+                        ->where('organization_id', $organizationId)
+                        ->where('sequence_key', $sequenceKey)
+                        ->lockForUpdate()
+                        ->first();
+                }
+            }
+
+            DB::table('record_sequences')
+                ->where('id', $row->id)
+                ->update(['next_value' => $row->next_value + 1, 'updated_at' => now()]);
+
+            return (int) $row->next_value;
+        });
+
+        return $this->format($sequenceKey, $scope, $value);
+    }
+
+    private function format(string $sequenceKey, Franchise $scope, int $value): string
+    {
+        $prefix = match ($sequenceKey) {
+            self::JOBS      => (string) $this->settings->get('numbering.job_prefix', $scope),
+            // Customers have no prefix setting of their own yet — the registry
+            // defines job, invoice and estimate prefixes only. Rather than invent
+            // a fourth silently, customers use a plain 'C-'; add a setting when
+            // somebody actually wants to change it.
+            self::CUSTOMERS => 'C-',
+            default         => '',
+        };
+
+        $padding = max(1, (int) $this->settings->get('numbering.pad_to_digits', $scope));
+        $number  = str_pad((string) $value, $padding, '0', STR_PAD_LEFT);
+
+        if ($this->settings->get('numbering.include_year', $scope)) {
+            return $prefix.now()->year.'-'.$number;
+        }
+
+        return $prefix.$number;
+    }
+}
