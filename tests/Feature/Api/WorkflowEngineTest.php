@@ -223,8 +223,14 @@ class WorkflowEngineTest extends TestCase
         $event = $this->inTenant(fn () => WorkflowEvent::where('event_key', 'job.created')->first());
 
         $first  = $this->inTenant(fn () => $engine->deliver($event));
-        $event->forceFill(['delivered_at' => null])->save();
-        $second = $this->inTenant(fn () => $engine->deliver($event->fresh()));
+
+        // Inside the tenant: BelongsToTenant refuses a write with no tenant in
+        // context, which is exactly what it is for.
+        $second = $this->inTenant(function () use ($engine, $event) {
+            $event->forceFill(['delivered_at' => null])->save();
+
+            return $engine->deliver($event->fresh());
+        });
 
         // At-least-once delivery is the contract; the unique index on
         // (event, version) is what stops at-least-once becoming at-least-twice.
@@ -237,10 +243,15 @@ class WorkflowEngineTest extends TestCase
 
     public function test_a_rule_that_feeds_itself_is_stopped_and_recorded(): void
     {
-        // Sets a field on every update, which emits another update. Left alone
-        // this runs until something falls over.
+        // TWO rules that answer each other. One rule setting a field to a
+        // constant does not actually loop — the runner notices the value is
+        // already what it is being set to and emits nothing, which is a guard
+        // worth having but no test of the depth cap. A pair that disagree is a
+        // real cascade.
         $this->workflow('job.updated', null,
-            [['type' => 'update_field', 'field' => 'description', 'value' => 'set by the rule']]);
+            [['type' => 'update_field', 'field' => 'description', 'value' => 'ping']]);
+        $this->workflow('job.updated', null,
+            [['type' => 'update_field', 'field' => 'description', 'value' => 'pong']]);
 
         [, $job] = $this->makeJob();
         $this->as()->patchJson("/api/v1/jobs/{$job}", ['title' => 'Kick it off'])->assertOk();
