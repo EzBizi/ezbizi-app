@@ -9,6 +9,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Workflows\EventEmitter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -34,6 +35,7 @@ class CustomersController extends Controller
         private readonly SettingsResolver $settings,
         private readonly AuditLogger $audit,
         private readonly TenantContext $tenant,
+        private readonly EventEmitter $events,
     ) {}
 
     /**
@@ -121,6 +123,10 @@ class CustomersController extends Controller
                 'number'           => $customer->number,
             ]);
 
+            $this->events->emit('customer.created', $customer, ['after' => $customer->only([
+                'name', 'email', 'phone', 'owning_franchise_id', 'is_active',
+            ])]);
+
             return $customer;
         });
 
@@ -145,9 +151,18 @@ class CustomersController extends Controller
         DB::transaction(function () use ($customer, $input) {
             $customer->fill($input);
 
+            $changed = $customer->getDirty();
+            $before  = array_intersect_key($customer->getOriginal(), $changed);
+
             $this->audit->logChange('customer.updated', $customer);
 
             $customer->save();
+
+            if ($changed !== []) {
+                $this->events->emit('customer.updated', $customer, [
+                    'before' => $before, 'after' => $changed,
+                ]);
+            }
         });
 
         return response()->json(['data' => $this->present($customer->fresh(), detailed: true)]);
@@ -190,6 +205,11 @@ class CustomersController extends Controller
                 'to'     => ['id' => $newOwner->getKey(), 'name' => $newOwner->name],
                 'reason' => $input['reason'] ?? null,
             ]);
+
+            $this->events->emit('customer.owner_reassigned', $customer, [
+                'before' => ['owning_franchise_id' => $previous?->getKey()],
+                'after'  => ['owning_franchise_id' => $newOwner->getKey()],
+            ]);
         });
 
         return response()->json(['data' => $this->present($customer->fresh(), detailed: true)]);
@@ -212,6 +232,9 @@ class CustomersController extends Controller
 
         DB::transaction(function () use ($customer) {
             $this->audit->log('customer.deleted', $customer);
+            $this->events->emit('customer.deleted', $customer, [
+                'before' => $customer->only(['name', 'owning_franchise_id']),
+            ]);
             $customer->delete();
         });
 

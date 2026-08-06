@@ -14,3 +14,8 @@ Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
 // because the value is a truthful record rather than cutting off access —
 // access already stops by itself the moment the expiry passes.
 Schedule::command('ezbizi:expire-impersonations')->everyFiveMinutes()->withoutOverlapping();
+
+// The reader half of the workflow outbox (5.5). Every minute: the write
+// path only ever inserts a row, because dispatching a job from inside the
+// business transaction is the race the outbox exists to avoid.
+Schedule::command('ezbizi:dispatch-workflow-events')->everyMinute()->withoutOverlapping();

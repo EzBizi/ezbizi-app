@@ -8,6 +8,7 @@ use App\Models\Job;
 use App\Support\Audit\AuditLogger;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Workflows\EventEmitter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +30,7 @@ class JobsController extends Controller
         private readonly RecordNumberGenerator $numbers,
         private readonly AuditLogger $audit,
         private readonly TenantContext $tenant,
+        private readonly EventEmitter $events,
     ) {}
 
     /**
@@ -124,6 +126,18 @@ class JobsController extends Controller
                     $customer->owning_franchise_id !== $franchise->getKey(),
             ]);
 
+            // Same transaction as the change (5.5 transactional outbox): roll
+            // back and the event goes with it, commit and it is already durable.
+            $this->events->emit('job.created', $job, ['after' => $job->only([
+                'status', 'title', 'franchise_id', 'customer_id', 'amount_minor',
+            ])]);
+
+            if ($job->scheduled_for !== null) {
+                $this->events->emit('job.scheduled', $job, [
+                    'after' => ['scheduled_for' => $job->scheduled_for->toIso8601String()],
+                ]);
+            }
+
             return $job;
         });
 
@@ -147,9 +161,35 @@ class JobsController extends Controller
         DB::transaction(function () use ($job, $input) {
             $job->fill($input);
 
+            $changed = $job->getDirty();
+            $before  = array_intersect_key($job->getOriginal(), $changed);
+
             $this->audit->logChange('job.updated', $job);
 
             $job->save();
+
+            if ($changed === []) {
+                return;
+            }
+
+            $this->events->emit('job.updated', $job, ['before' => $before, 'after' => $changed]);
+
+            // Its own trigger, not a field-change condition on job.updated:
+            // "when a job is completed, email the customer" is the canonical
+            // rule, and burying it means nobody ever writes it.
+            if (array_key_exists('status', $changed)) {
+                $this->events->emit('job.status_changed', $job, [
+                    'before' => ['status' => $before['status'] ?? null],
+                    'after'  => ['status' => $changed['status']],
+                ]);
+            }
+
+            if (array_key_exists('scheduled_for', $changed)) {
+                $this->events->emit('job.scheduled', $job, [
+                    'before' => ['scheduled_for' => $before['scheduled_for'] ?? null],
+                    'after'  => ['scheduled_for' => $changed['scheduled_for']],
+                ]);
+            }
         });
 
         return response()->json(['data' => $this->present($job->fresh(), detailed: true)]);
@@ -162,6 +202,7 @@ class JobsController extends Controller
 
         DB::transaction(function () use ($job) {
             $this->audit->log('job.deleted', $job);
+            $this->events->emit('job.deleted', $job, ['before' => $job->only(['status', 'title'])]);
             $job->delete();
         });
 
