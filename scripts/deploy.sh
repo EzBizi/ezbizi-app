@@ -58,8 +58,11 @@ if [ "$CODE_ONLY" != "--code" ]; then
   echo "→ building web"
   # Same-origin by default, so the built app talks to whatever host serves it
   # and can never point at the wrong API.
-  # base-href / — the app IS the site (app.ezbizi.com), not a subdirectory.
-  (cd client && flutter build web --release --base-href /)
+  # No --base-href: the default already is "/", and the app IS the site
+  # (app.ezbizi.com), not a subdirectory. Passing it explicitly is worse than
+  # useless here — Git Bash on Windows rewrites a lone "/" into a drive path and
+  # the build fails with a base-href of "C:/Program Files/Git/".
+  (cd client && flutter build web --release)
 
 fi
 
