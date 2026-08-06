@@ -4,6 +4,7 @@ namespace Tests\Feature\Api;
 
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -184,14 +185,17 @@ class AuthApiTest extends TestCase
         $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        \App\Models\User::findOrFail($r['administrator']->id)->forceFill([
-            // Through the MODEL, so the `encrypted` cast does the work.
-            // encrypt() wraps a SERIALIZED value and the cast reads with
-            // decryptString, which does not unserialize — so the secret came
-            // back as `s:32:"..."` and base32 decoding threw. It stayed
-            // hidden because no test had ever verified a user's own code.
-            'totp_secret' => $secret, 'totp_confirmed_at' => now(),
-        ])->save();
+        \App\Models\User::whereKey($r['administrator']->id)->update([
+            // encryptString, not encrypt(). The `encrypted` cast reads with
+            // decryptString, which does not unserialize — encrypt() wraps a
+            // SERIALIZED value, so the secret came back as `s:32:"..."` and
+            // base32 decoding threw. It stayed hidden because no test had
+            // ever verified a user's own code, only asked for one.
+            //
+            // Query builder rather than the model: a model write goes through
+            // BelongsToTenant, and at login there is no tenant in context.
+            'totp_secret' => Crypt::encryptString($secret), 'totp_confirmed_at' => now(),
+        ]);
 
         return [$r['administrator']->fresh(), $secret];
     }
@@ -257,14 +261,17 @@ class AuthApiTest extends TestCase
         $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        \App\Models\User::findOrFail($r['administrator']->id)->forceFill([
-            // Through the MODEL, so the `encrypted` cast does the work.
-            // encrypt() wraps a SERIALIZED value and the cast reads with
-            // decryptString, which does not unserialize — so the secret came
-            // back as `s:32:"..."` and base32 decoding threw. It stayed
-            // hidden because no test had ever verified a user's own code.
-            'totp_secret' => $secret, 'totp_confirmed_at' => now(),
-        ])->save();
+        \App\Models\User::whereKey($r['administrator']->id)->update([
+            // encryptString, not encrypt(). The `encrypted` cast reads with
+            // decryptString, which does not unserialize — encrypt() wraps a
+            // SERIALIZED value, so the secret came back as `s:32:"..."` and
+            // base32 decoding threw. It stayed hidden because no test had
+            // ever verified a user's own code, only asked for one.
+            //
+            // Query builder rather than the model: a model write goes through
+            // BelongsToTenant, and at login there is no tenant in context.
+            'totp_secret' => Crypt::encryptString($secret), 'totp_confirmed_at' => now(),
+        ]);
 
         $response = $this->postJson('/api/v1/auth/login', [
             'email' => 'a@alpha.test', 'password' => 'a-real-password', 'code' => '000000',
@@ -284,14 +291,17 @@ class AuthApiTest extends TestCase
         $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        \App\Models\User::findOrFail($r['administrator']->id)->forceFill([
-            // Through the MODEL, so the `encrypted` cast does the work.
-            // encrypt() wraps a SERIALIZED value and the cast reads with
-            // decryptString, which does not unserialize — so the secret came
-            // back as `s:32:"..."` and base32 decoding threw. It stayed
-            // hidden because no test had ever verified a user's own code.
-            'totp_secret' => $secret, 'totp_confirmed_at' => now(),
-        ])->save();
+        \App\Models\User::whereKey($r['administrator']->id)->update([
+            // encryptString, not encrypt(). The `encrypted` cast reads with
+            // decryptString, which does not unserialize — encrypt() wraps a
+            // SERIALIZED value, so the secret came back as `s:32:"..."` and
+            // base32 decoding threw. It stayed hidden because no test had
+            // ever verified a user's own code, only asked for one.
+            //
+            // Query builder rather than the model: a model write goes through
+            // BelongsToTenant, and at login there is no tenant in context.
+            'totp_secret' => Crypt::encryptString($secret), 'totp_confirmed_at' => now(),
+        ]);
 
         $message = $this->postJson('/api/v1/auth/login', [
             'email' => 'a@alpha.test', 'password' => 'a-real-password',
