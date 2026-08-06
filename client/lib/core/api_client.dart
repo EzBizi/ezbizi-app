@@ -55,6 +55,24 @@ class ApiClient {
     return _send(() => _http.delete(uri, headers: _headers));
   }
 
+  /// A file, not JSON. Returns null on any failure — the caller shows a note.
+  ///
+  /// Separate from get() because a CSV body would fail jsonDecode, and because
+  /// a download has to carry the bearer token: a plain link cannot send a
+  /// header, which is what makes "just open the URL" not an option here.
+  Future<List<int>?> getBytes(String path) async {
+    try {
+      final response = await _http.get(
+        Uri.parse('$_root/api/v1$path'),
+        headers: {if (_token != null) 'Authorization': 'Bearer $_token'},
+      );
+
+      return response.statusCode == 200 ? response.bodyBytes : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<ApiResponse> _send(Future<http.Response> Function() request) async {
     try {
       final response = await request();

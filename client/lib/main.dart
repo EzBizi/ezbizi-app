@@ -5,6 +5,7 @@ import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
 import 'screens/customers_screen.dart';
+import 'screens/data_screen.dart';
 import 'screens/development_screen.dart';
 import 'screens/jobs_screen.dart';
 import 'screens/login_screen.dart';
@@ -157,6 +158,11 @@ class _HomeShellState extends State<HomeShell> {
           note: 'Widgets appear here once there is data worth showing — Customers '
               'and Jobs are producing it now. Nothing is faked in the meantime.',
         ),
+      ),
+      _Destination(
+        'Import & export',
+        Icons.import_export_outlined,
+        DataScreen(api: widget.api, session: widget.session),
       ),
       _Destination(
         'Settings',

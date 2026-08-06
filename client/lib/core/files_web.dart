@@ -1,0 +1,65 @@
+import 'dart:async';
+import 'dart:js_interop';
+import 'dart:typed_data';
+
+import 'package:web/web.dart' as web;
+
+import 'files.dart';
+
+void download(String filename, List<int> content) {
+  final blob = web.Blob(
+    [Uint8List.fromList(content).toJS].toJS,
+    web.BlobPropertyBag(type: 'text/csv;charset=utf-8'),
+  );
+
+  final url = web.URL.createObjectURL(blob);
+  final anchor = web.document.createElement('a') as web.HTMLAnchorElement
+    ..href = url
+    ..download = filename;
+
+  anchor.click();
+
+  // Without this the blob is held for the life of the page, and a few exports
+  // of a large customer list add up to real memory.
+  web.URL.revokeObjectURL(url);
+}
+
+Future<PickedFile?> pickText() {
+  final completer = Completer<PickedFile?>();
+
+  final input = web.document.createElement('input') as web.HTMLInputElement
+    ..type = 'file'
+    ..accept = '.csv,text/csv,text/plain';
+
+  input.onchange = (web.Event _) {
+    final file = input.files?.item(0);
+
+    if (file == null) {
+      completer.complete(null);
+      return;
+    }
+
+    final reader = web.FileReader();
+
+    reader.onload = (web.Event _) {
+      completer.complete(PickedFile(file.name, (reader.result as JSString?)?.toDart ?? ''));
+    }.toJS;
+
+    reader.onerror = (web.Event _) {
+      completer.complete(null);
+    }.toJS;
+
+    reader.readAsText(file);
+  }.toJS;
+
+  // Cancelling the OS dialog fires no event at all, so this future would hang
+  // forever and the button would stay spinning. `cancel` is the modern signal;
+  // the window focus fallback covers browsers that do not send it yet.
+  input.oncancel = (web.Event _) {
+    if (!completer.isCompleted) completer.complete(null);
+  }.toJS;
+
+  input.click();
+
+  return completer.future;
+}
