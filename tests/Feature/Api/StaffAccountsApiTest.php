@@ -151,10 +151,20 @@ class StaffAccountsApiTest extends TestCase
 
         $this->assertCount(8, $confirm->json('recovery_codes'));
 
+        $account = PlatformStaff::findOrFail($newId);
+
+        // The code they read aloud to be enrolled cannot then be used to sign in
+        // — its step is burned on confirmation.
         $this->postJson('/api/v1/staff/auth/login', [
             'email' => 'new@ezbizi.test',
             'password' => 'a-sufficiently-long-password',
             'code' => $this->totp->getCurrentOtp($newSecret),
+        ])->assertUnauthorized();
+
+        $this->postJson('/api/v1/staff/auth/login', [
+            'email' => 'new@ezbizi.test',
+            'password' => 'a-sufficiently-long-password',
+            'code' => $this->nextCode($account, $newSecret),
         ])->assertOk();
     }
 
