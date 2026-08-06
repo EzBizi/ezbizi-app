@@ -152,4 +152,61 @@ void main() {
       }
     });
   }
+
+  // The pinned footer items must line up with the destinations above them.
+  //
+  // They did not: NavigationRail centres each destination icon in an 80px box
+  // and starts the label after it, while the footer used a 16px inset — so
+  // Settings and Development sat 20px to the left of everything else and read
+  // as a separate list that happened to be underneath.
+  //
+  // Asserting on the x-position rather than on the widget tree, because the two
+  // are built by completely different code and the only thing that matters is
+  // that they land in the same column.
+  testWidgets('the pinned footer icons align with the rail destinations',
+      (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Row(children: [
+          NavigationRail(
+            selectedIndex: 0,
+            extended: true,
+            minWidth: kRailWidth,
+            minExtendedWidth: 188,
+            destinations: const [
+              NavigationRailDestination(
+                  icon: Icon(Icons.dashboard_outlined), label: Text('Dashboard')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.people_outline), label: Text('Customers')),
+            ],
+            trailing: RailFooterItem(
+              extended: true,
+              icon: Icons.settings_outlined,
+              label: 'Settings',
+              selected: false,
+              onTap: () {},
+            ),
+          ),
+          const Expanded(child: SizedBox()),
+        ]),
+      ),
+    ));
+    await tester.pump();
+
+    final destinationIcon =
+        tester.getCenter(find.byIcon(Icons.dashboard_outlined)).dx;
+    final footerIcon =
+        tester.getCenter(find.byIcon(Icons.settings_outlined)).dx;
+
+    expect(
+      footerIcon,
+      moreOrLessEquals(destinationIcon, epsilon: 1.0),
+      reason: 'The footer icon is at $footerIcon, the destinations are at '
+          '$destinationIcon — they are in different columns.',
+    );
+  });
 }

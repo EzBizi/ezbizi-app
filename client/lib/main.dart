@@ -405,6 +405,7 @@ class _HomeShellState extends State<HomeShell> {
                     : (me.navigationStyle == 'list'
                         ? NavigationRailLabelType.none
                         : NavigationRailLabelType.all),
+                minWidth: kRailWidth,
                 minExtendedWidth: 188,
                 destinations: destinations
                     .map((d) => NavigationRailDestination(
@@ -493,7 +494,9 @@ class _RailFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+      // No horizontal inset: the items align to the rail's own icon column,
+      // and insetting them here would shift them off it again.
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -501,7 +504,7 @@ class _RailFooter extends StatelessWidget {
           const SizedBox(height: 12),
           for (var i = 0; i < items.length; i++) ...[
             if (i > 0) const SizedBox(height: 4),
-            _RailFooterItem(
+            RailFooterItem(
               extended: extended,
               icon: items[i].icon,
               label: items[i].label,
@@ -515,8 +518,22 @@ class _RailFooter extends StatelessWidget {
   }
 }
 
-class _RailFooterItem extends StatelessWidget {
-  const _RailFooterItem({
+/// The rail's icon column width.
+///
+/// NavigationRail centres every destination icon inside a box this wide and
+/// starts the label immediately after it, so anything drawn beside the rail has
+/// to use the same number or it will not line up. It is the M3 default; set
+/// explicitly on the rail above so the two cannot drift apart.
+const double kRailWidth = 80.0;
+
+/// Public so the alignment test can drive it directly.
+///
+/// The thing worth testing is that this lands in the same column as a real
+/// NavigationRailDestination, and the only way to check that is to lay both out
+/// side by side and compare their x-positions.
+class RailFooterItem extends StatelessWidget {
+  const RailFooterItem({
+    super.key,
     required this.extended,
     required this.icon,
     required this.label,
@@ -535,39 +552,49 @@ class _RailFooterItem extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final tint = selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
 
+    // Mirrors NavigationRail's own extended layout exactly: the icon centred in
+    // a kRailWidth box, the label starting immediately after it.
+    //
+    // It was `SizedBox(width: 16)` then the icon, which put these two items 20px
+    // to the left of every destination above them — the footer looked like a
+    // different list that happened to be underneath.
     final content = extended
         ? Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(width: 16),
-              Icon(icon, size: 22, color: tint),
-              const SizedBox(width: 12),
+              SizedBox(
+                width: kRailWidth,
+                child: Center(child: Icon(icon, size: 24, color: tint)),
+              ),
               Flexible(
                 child: Text(label,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: tint)),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
             ],
           )
         // Collapsed: the icon alone, with the label as a tooltip. A truncated
-        // word under a 22px icon is not a label, it is noise.
+        // word under a 24px icon is not a label, it is noise.
         : Tooltip(
             message: label,
             child: SizedBox(
-              width: 56,
-              child: Icon(icon, size: 22, color: tint),
+              width: kRailWidth,
+              child: Center(child: Icon(icon, size: 24, color: tint)),
             ),
           );
 
     return Material(
       color: selected ? scheme.secondaryContainer : Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(28),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: content,
+        child: SizedBox(
+          // The same 56px tall target the rail gives its own destinations, so
+          // the pinned items are neither denser nor looser than the list above.
+          height: 56,
+          child: Align(alignment: Alignment.centerLeft, child: content),
         ),
       ),
     );
