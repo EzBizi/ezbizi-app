@@ -319,6 +319,111 @@ class WorkflowEngineTest extends TestCase
         $this->assertStringContainsString('internal address', $run->action_results[0]['detail']);
     }
 
+    public function test_a_redelivery_does_not_perform_the_actions_a_second_time(): void
+    {
+        // The earlier idempotency test passed for the wrong reason: its action
+        // set a field to a constant, so the second run no-opped INSIDE the runner
+        // rather than being stopped before it. A webhook cannot no-op — the POST
+        // either happened twice or it did not.
+        $this->workflow('job.created', null,
+            [['type' => 'webhook', 'url' => 'https://169.254.169.254/never']]);
+
+        $this->makeJob();
+
+        $engine = app(WorkflowEngine::class);
+        $event  = $this->inTenant(fn () => WorkflowEvent::where('event_key', 'job.created')->first());
+
+        $this->inTenant(fn () => $engine->deliver($event));
+
+        $this->inTenant(function () use ($engine, $event) {
+            $event->forceFill(['delivered_at' => null])->save();
+            $engine->deliver($event->fresh());
+        });
+
+        // One run, one attempt. The run row is claimed BEFORE the action loop, so
+        // the unique index refuses the redelivery while it can still prevent the
+        // call rather than merely decline to record it.
+        $runs = $this->inTenant(fn () => WorkflowRun::all());
+
+        $this->assertCount(1, $runs);
+        $this->assertCount(1, $runs->first()->action_results);
+    }
+
+    public function test_the_budget_counts_actions_rather_than_rules(): void
+    {
+        [, $job] = $this->makeJob();
+
+        $event = $this->inTenant(fn () => WorkflowEvent::where('event_key', 'job.created')->first());
+
+        $this->inTenant(fn () => WorkflowRun::create([
+            'organization_id'     => $this->org['organization']->id,
+            'workflow_id'         => $this->workflow('job.created', null,
+                [['type' => 'notify', 'message' => 'x']])->id,
+            'workflow_version_id' => WorkflowVersion::first()->id,
+            'event_id'            => $event->id,
+            'status'              => WorkflowRun::SUCCEEDED,
+            'action_results'      => array_fill(0, 40, ['type' => 'notify', 'ok' => true, 'detail' => 'x']),
+            'action_count'        => 40,
+            'started_at'          => now(),
+        ]));
+
+        // Counting runs made a budget of 50 mean "50 rules firing", each of which
+        // can carry any number of actions — so the ceiling on outbound calls was
+        // not a ceiling at all.
+        $this->assertSame(40, $this->inTenant(fn () => $event->fresh()->actionsSpent()));
+    }
+
+    public function test_a_workflow_cannot_move_a_customer_between_franchises(): void
+    {
+        $other = $this->inTenant(fn () => \App\Models\Franchise::create([
+            'organization_id' => $this->org['organization']->id,
+            'company_id'      => $this->org['franchise']->company_id,
+            'name' => 'Second Franchise', 'is_active' => true,
+        ]));
+
+        $this->workflow('customer.created', null,
+            [['type' => 'update_field', 'field' => 'owning_franchise_id', 'value' => $other->id]]);
+
+        [$customer] = $this->makeJob();
+        $this->drain();
+
+        // owning_franchise_id is fillable, and the HTTP API deliberately refuses
+        // it: reassigning accountability is a separate audited act (§5.2). A rule
+        // must not be able to do silently what an endpoint refuses loudly.
+        $this->assertSame(
+            $this->org['franchise']->id,
+            $this->inTenant(fn () => Customer::find($customer)->owning_franchise_id),
+        );
+
+        $run = $this->inTenant(fn () => WorkflowRun::where('status', WorkflowRun::FAILED)->first());
+        $this->assertStringContainsString('not a field a workflow may set', $run->action_results[0]['detail']);
+    }
+
+    public function test_an_automated_status_change_still_fires_the_status_trigger(): void
+    {
+        $this->workflow('job.created', null,
+            [['type' => 'update_field', 'field' => 'status', 'value' => 'completed']]);
+
+        $this->makeJob();
+        $this->drain();
+
+        // "When a job is completed" is the canonical rule the plan names. It must
+        // not silently fail to fire because another rule is what completed it.
+        $this->assertTrue($this->inTenant(fn () => WorkflowEvent::where('event_key', 'job.status_changed')->exists()));
+    }
+
+    public function test_a_mapped_ipv6_address_cannot_smuggle_an_internal_target(): void
+    {
+        // ::ffff:169.254.169.254 IS 169.254.169.254. It was not the same string
+        // and — worse — not the same LENGTH, so the family check refused to
+        // compare it against any IPv4 range and it sailed through to the metadata
+        // endpoint. One character of typing, complete bypass.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('internal address');
+
+        app(OutboundWebhook::class)->assertAllowed('https://[::ffff:169.254.169.254]/latest/meta-data/');
+    }
+
     // ── operability (§5.5) ───────────────────────────────────────
 
     public function test_a_workflow_that_keeps_failing_disables_itself(): void

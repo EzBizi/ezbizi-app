@@ -25,14 +25,23 @@ class WorkflowRun extends Model
     public const UPDATED_AT = null;
     public const CREATED_AT = null;
 
+    /**
+     * Claimed and in flight.
+     *
+     * Written BEFORE the actions run, so the unique index can refuse a
+     * redelivery while it can still prevent the side effect. A row left in this
+     * state is a delivery that died mid-flight, which is worth being able to see.
+     */
+    public const MATCHED   = 'matched';
+
     public const SKIPPED   = 'skipped';
     public const SUCCEEDED = 'succeeded';
     public const FAILED    = 'failed';
 
     protected $fillable = [
         'organization_id', 'workflow_id', 'workflow_version_id', 'event_id',
-        'status', 'condition_trace', 'action_results', 'error', 'is_test',
-        'started_at', 'finished_at',
+        'status', 'condition_trace', 'action_results', 'action_count', 'error',
+        'is_test', 'started_at', 'finished_at',
     ];
 
     protected function casts(): array

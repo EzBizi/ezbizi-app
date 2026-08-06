@@ -21,9 +21,49 @@ use InvalidArgumentException;
  */
 class ActionRunner
 {
+    /**
+     * What a rule may set, per model. Explicit, not derived from $fillable.
+     *
+     * isFillable was the wrong guard. Customer::owning_franchise_id and
+     * Job::franchise_id, customer_id and currency are all fillable — and the
+     * HTTP API deliberately REFUSES all of them, because moving a customer's
+     * accountability is a separate audited act (§5.2) and a job that changes
+     * franchise rewrites two franchises' history. A workflow could do every one
+     * of those silently, skipping the authorization check, the tenant-existence
+     * validation and the audit entry that exist for exactly that reason.
+     *
+     * So: only fields where an automated change is meaningful and reversible.
+     * Anything with its own endpoint belongs to that endpoint.
+     */
+    private const WRITABLE = [
+        \App\Models\Job::class => [
+            'title', 'description', 'status', 'scheduled_for', 'duration_minutes', 'amount_minor',
+        ],
+        \App\Models\Customer::class => [
+            'name', 'email', 'phone', 'notes', 'is_active',
+            'address_line1', 'address_line2', 'city', 'state', 'postal_code',
+        ],
+    ];
+
+    /**
+     * Field changes that mean something more specific than "updated".
+     *
+     * The controllers emit these; an automated change must emit them too, or
+     * "when a job is completed" — the canonical rule the plan names — silently
+     * does not fire when another rule is what completed it.
+     */
+    private const SECONDARY_TRIGGERS = [
+        \App\Models\Job::class => [
+            'status'        => 'job.status_changed',
+            'scheduled_for' => 'job.scheduled',
+        ],
+        \App\Models\Customer::class => [],
+    ];
+
     public function __construct(
         private readonly EventEmitter $emitter,
         private readonly OutboundWebhook $webhook,
+        private readonly \App\Support\Audit\AuditLogger $audit,
     ) {}
 
     /**
@@ -82,15 +122,14 @@ class ActionRunner
             throw new InvalidArgumentException('update_field needs a field.');
         }
 
-        // Only fields the model itself declares fillable. Without this a rule
-        // could set organization_id and walk a record into another tenant — the
-        // BelongsToTenant guard would catch that one, but "the model decides what
-        // is writable" is the rule that covers the next field nobody thought of.
-        if (! $subject->isFillable($field)) {
+        $writable = self::WRITABLE[$subject::class] ?? [];
+
+        if (! in_array($field, $writable, strict: true)) {
             return [
                 'type'   => 'update_field',
                 'ok'     => false,
-                'detail' => "'{$field}' is not a field a workflow may set on ".class_basename($subject).'.',
+                'detail' => "'{$field}' is not a field a workflow may set on "
+                    .class_basename($subject).'. Allowed: '.implode(', ', $writable).'.',
             ];
         }
 
@@ -108,14 +147,34 @@ class ActionRunner
         }
 
         $subject->setAttribute($field, $value);
+
+        // Audited like any other change (§2.2). A workflow altering a customer's
+        // email or a job's price left nothing in the audit log at all, which is
+        // the one place somebody would look to find out what happened.
+        $this->audit->log(
+            action: strtolower(class_basename($subject)).'.updated_by_workflow',
+            target: $subject,
+            changes: ['before' => [$field => $before], 'after' => [$field => $value]],
+            metadata: ['caused_by_event' => $event->getKey(), 'trigger' => $event->event_key],
+        );
+
         $subject->save();
+
+        $payload = ['before' => [$field => $before], 'after' => [$field => $value]];
 
         $this->emitter->emit(
             eventKey: $this->updateEventFor($subject),
             subject: $subject,
-            payload: ['before' => [$field => $before], 'after' => [$field => $value]],
+            payload: $payload,
             causedBy: $event,
         );
+
+        // The specific trigger too, not only the generic one.
+        $secondary = self::SECONDARY_TRIGGERS[$subject::class][$field] ?? null;
+
+        if ($secondary !== null) {
+            $this->emitter->emit($secondary, $subject, $payload, causedBy: $event);
+        }
 
         return [
             'type'   => 'update_field',

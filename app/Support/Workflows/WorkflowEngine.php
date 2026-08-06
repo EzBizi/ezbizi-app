@@ -77,7 +77,8 @@ class WorkflowEngine
                 ->with('activeVersion')
                 ->get()
                 ->filter(fn (Workflow $w) => $w->coversScope(
-                    ...$this->scopeOf($subject)
+                    ...$this->scopeOf($subject),
+                    companyChain: $this->companyChainFor($subject),
                 ));
 
             $acted = 0;
@@ -128,10 +129,44 @@ class WorkflowEngine
             return false;
         }
 
+        /*
+         * CLAIM the run before doing anything.
+         *
+         * The unique index on (event, version) was being consulted AFTER the
+         * action loop, which made it a guarantee about the LOG rather than about
+         * the side effect: a redelivered event re-sent every webhook and only
+         * then discovered it had already run. The migration, this class and the
+         * job all claimed otherwise, and the test that was supposed to prove it
+         * passed for the wrong reason — its action set a field to a constant, so
+         * the second run no-opped inside ActionRunner instead of being stopped
+         * here.
+         *
+         * Claiming first moves the index to where it can still prevent the POST.
+         * The residual is a crash mid-request, which no database can close.
+         */
+        $run = $this->claim($workflow, $version, $event, $started);
+
+        if ($run === null) {
+            return false;   // already claimed — a redelivery, correctly ignored
+        }
+
         $results = [];
         $failed  = null;
 
         foreach ($version->actions ?? [] as $action) {
+            // Re-checked inside the loop: one version with two hundred actions
+            // would otherwise blow through the cascade budget in a single run,
+            // because the budget is only consulted between events.
+            if ($event->actionsSpent() >= WorkflowEvent::ACTION_BUDGET) {
+                $results[] = [
+                    'type' => $action['type'] ?? 'unknown',
+                    'ok' => false,
+                    'detail' => 'Stopped: this cascade has spent its action budget.',
+                ];
+                $failed = 'Cascade action budget exhausted.';
+                break;
+            }
+
             try {
                 $result = $this->actions->run($action, $event, $subject);
             } catch (Throwable $e) {
@@ -146,18 +181,25 @@ class WorkflowEngine
                 // failure means a broken webhook silently cancels the field
                 // update that was supposed to happen alongside it.
             }
+
+            // Persisted as we go, so a crash halfway through leaves evidence of
+            // what had already happened rather than an empty row.
+            $run->forceFill([
+                'action_results' => $results,
+                'action_count'   => count($results),
+            ])->save();
         }
 
         $status = $failed === null ? WorkflowRun::SUCCEEDED : WorkflowRun::FAILED;
 
-        $recorded = $this->record(
-            $workflow, $version, $event, $status, $started,
-            trace: $verdict['trace'], results: $results, error: $failed,
-        );
-
-        if (! $recorded) {
-            return false;   // already run — a redelivery, correctly ignored
-        }
+        $run->forceFill([
+            'status'         => $status,
+            'condition_trace' => $verdict['trace'],
+            'action_results' => $results ?: null,
+            'action_count'   => count($results),
+            'error'          => $failed,
+            'finished_at'    => now(),
+        ])->save();
 
         $failed === null ? $workflow->noteSuccess() : $workflow->noteFailure($failed);
 
@@ -165,14 +207,31 @@ class WorkflowEngine
     }
 
     /**
-     * Write the run, and let the unique index be the idempotency guarantee.
+     * Take the (event, version) pair, or discover somebody already has.
      *
-     * §5.5 asks for at-least-once delivery with idempotency keys. Rather than
-     * inventing a key and checking it first — which races — the (event, version)
-     * pair is unique in the database, so a redelivery loses the insert and stops.
+     * This is the idempotency guarantee, and it works because it happens BEFORE
+     * any action runs. The insert either wins — and this delivery owns the run —
+     * or it loses to the unique index, and nothing is performed.
      *
-     * @return bool false when this exact run already happened
+     * @return WorkflowRun|null null when this exact run was already claimed
      */
+    private function claim(Workflow $workflow, $version, WorkflowEvent $event, $started): ?WorkflowRun
+    {
+        try {
+            return WorkflowRun::create([
+                'organization_id'     => $event->organization_id,
+                'workflow_id'         => $workflow->getKey(),
+                'workflow_version_id' => $version->getKey(),
+                'event_id'            => $event->getKey(),
+                'status'              => WorkflowRun::MATCHED,
+                'started_at'          => $started,
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            return null;
+        }
+    }
+
+    /** Records a run that did nothing — a skip, or a rule that would not parse. */
     private function record(
         Workflow $workflow,
         $version,
@@ -250,13 +309,43 @@ class WorkflowEngine
             return [null, null];
         }
 
-        foreach (['franchise_id' => 'franchise', 'owning_franchise_id' => 'franchise'] as $attribute => $type) {
+        foreach (['franchise_id', 'owning_franchise_id'] as $attribute) {
             if ($subject->getAttribute($attribute) !== null) {
-                return [$type, $subject->getAttribute($attribute)];
+                return ['franchise', $subject->getAttribute($attribute)];
             }
         }
 
         return [null, null];
+    }
+
+    /**
+     * Every company a franchise sits beneath, nearest first.
+     *
+     * Needed because a company-scoped workflow has to fire on its Sub Companies'
+     * franchises too — the same step §6 flags as the one most easily missed in
+     * the settings cascade, and missing it here meant a company-scoped rule could
+     * be saved through the API and then never match anything at all.
+     *
+     * @return string[] company ids
+     */
+    private function companyChainFor($subject): array
+    {
+        $franchiseId = $subject?->getAttribute('franchise_id')
+            ?? $subject?->getAttribute('owning_franchise_id');
+
+        if ($franchiseId === null) {
+            return [];
+        }
+
+        $company = \App\Models\Franchise::query()->find($franchiseId)?->company;
+        $chain   = [];
+
+        while ($company !== null) {
+            $chain[] = $company->getKey();
+            $company = $company->parent;
+        }
+
+        return $chain;
     }
 
     /**

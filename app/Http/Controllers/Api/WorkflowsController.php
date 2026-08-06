@@ -285,6 +285,11 @@ class WorkflowsController extends Controller
         $this->assertMine($workflow);
         $this->authorize('view', $workflow);
 
+        // Jobs are never shared (§5.2), so a run log that shows every franchise's
+        // work would hand a franchise-scoped user exactly what JobPolicy refuses
+        // them — including the field values in the condition trace.
+        $reachable = $request->user()->reachableFranchises()->pluck('id')->all();
+
         $runs = WorkflowRun::query()
             ->where('workflow_id', $workflow->getKey())
             ->with('event:id,event_key,subject_type,subject_id,occurred_at')
@@ -292,6 +297,8 @@ class WorkflowsController extends Controller
             ->latest('started_at')
             ->limit(100)
             ->get()
+            ->filter(fn (WorkflowRun $r) => $this->maySeeSubjectOf($r, $reachable))
+            ->values()
             ->map(fn (WorkflowRun $r) => [
                 'id'      => $r->id,
                 'status'  => $r->status,
@@ -309,6 +316,26 @@ class WorkflowsController extends Controller
             ]);
 
         return response()->json(['data' => $runs]);
+    }
+
+    /**
+     * Can this caller see the record a run acted on?
+     *
+     * Customers are shared org-wide so they are always visible; jobs are not.
+     * A run whose subject has been deleted is shown — there is nothing left to
+     * leak, and hiding it would make the log lie about what happened.
+     */
+    private function maySeeSubjectOf(WorkflowRun $run, array $reachable): bool
+    {
+        $type = $run->event?->subject_type;
+
+        if ($type !== \App\Models\Job::class) {
+            return true;
+        }
+
+        $job = \App\Models\Job::query()->find($run->event->subject_id);
+
+        return $job === null || in_array($job->franchise_id, $reachable, strict: true);
     }
 
     /** DELETE /api/v1/workflows/{workflow} */
@@ -357,11 +384,17 @@ class WorkflowsController extends Controller
                 // recorded so far would describe something it no longer does.
                 ? ['missing']
                 : ['required', 'string', 'max:100'],
+            // 'company' is accepted because the engine resolves it (see
+            // WorkflowEngine::scopeOf). It previously validated as legal and then
+            // could never match anything, which is worse than refusing it.
             'scope_type'  => ['nullable', Rule::in(['company', 'franchise'])],
             'scope_id'    => ['nullable', 'uuid', 'required_with:scope_type'],
             'is_active'   => ['boolean'],
             'conditions'  => ['nullable', 'array'],
-            'actions'     => [$forUpdate ? 'sometimes' : 'required', 'array', 'min:1'],
+            // Capped. One version with two hundred actions would spend the whole
+            // cascade budget in a single run — the budget is enforced per action
+            // now, but a rule nobody could read is its own problem.
+            'actions'     => [$forUpdate ? 'sometimes' : 'required', 'array', 'min:1', 'max:25'],
             'actions.*.type' => ['required', 'string'],
         ]);
 
@@ -383,6 +416,25 @@ class WorkflowsController extends Controller
 
         if (isset($input['trigger_key'])) {
             $this->assertTriggerExists($input['trigger_key']);
+        }
+
+        // The scope must be OURS. Nothing checked it, and the column has no
+        // foreign key — so a rule could name another organization's franchise
+        // id. It would never fire, but it is a tenant boundary stated and not
+        // enforced, and those are the ones that stop being true later.
+        if (($input['scope_type'] ?? null) !== null) {
+            $table = $input['scope_type'] === 'company' ? 'companies' : 'franchises';
+
+            $exists = DB::table($table)
+                ->where('id', $input['scope_id'])
+                ->where('organization_id', $this->tenant->idOrFail())
+                ->exists();
+
+            if (! $exists) {
+                throw ValidationException::withMessages([
+                    'scope_id' => "That is not one of this organization's {$table}.",
+                ]);
+            }
         }
 
         foreach ($input['actions'] ?? [] as $i => $action) {
@@ -451,6 +503,18 @@ class WorkflowsController extends Controller
         }
     }
 
+    /** @param array<int,array> $actions */
+    private function maskSecrets(array $actions): array
+    {
+        return array_map(function (array $action) {
+            if (isset($action['secret'])) {
+                $action['secret'] = '••••••••';
+            }
+
+            return $action;
+        }, $actions);
+    }
+
     private function present(Workflow $workflow, bool $detailed = false): array
     {
         $base = [
@@ -478,7 +542,12 @@ class WorkflowsController extends Controller
 
         return $base + [
             'conditions' => $workflow->activeVersion?->conditions,
-            'actions'    => $workflow->activeVersion?->actions,
+            // Secrets are masked on the way out. §5.5 says webhook secrets are
+            // stored encrypted and never in the settings table; returning them
+            // in clear from the API is the same exposure by another route —
+            // anyone who can read a workflow could forge signed calls to the
+            // tenant's own endpoint.
+            'actions'    => $this->maskSecrets($workflow->activeVersion?->actions ?? []),
             'versions'   => $workflow->versions->map(fn (WorkflowVersion $v) => [
                 'id'         => $v->id,
                 'version'    => $v->version,

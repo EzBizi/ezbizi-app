@@ -56,6 +56,8 @@ class OutboundWebhook
         '240.0.0.0/4',      // reserved
         'fc00::/7',         // unique local
         'ff00::/8',
+        '::/128',           // the unspecified address; some stacks route it to loopback
+        '64:ff9b::/96',     // NAT64 — a v6 wrapper around an arbitrary v4 address
     ];
 
     /**
@@ -91,6 +93,31 @@ class OutboundWebhook
             $response = Http::withHeaders($headers)
                 ->timeout(self::TIMEOUT_SECONDS)
                 ->connectTimeout(self::TIMEOUT_SECONDS)
+                /*
+                 * Abort on size, at the transport.
+                 *
+                 * Truncating after the fact only bounded what got STORED — the
+                 * whole body was buffered into a PHP string first, so a
+                 * tenant-chosen endpoint replying with a few gigabytes could
+                 * exhaust the queue worker's memory. This refuses the transfer
+                 * instead of surviving it.
+                 */
+                ->withOptions([
+                    'on_headers' => function ($response) {
+                        $length = (int) ($response->getHeaderLine('Content-Length') ?: 0);
+
+                        if ($length > self::MAX_RESPONSE_BYTES) {
+                            throw new \RuntimeException(
+                                "Refused: the endpoint answered with {$length} bytes."
+                            );
+                        }
+                    },
+                    'progress' => function ($downloadTotal, $downloaded) {
+                        if ($downloaded > self::MAX_RESPONSE_BYTES) {
+                            throw new \RuntimeException('Refused: the response exceeded the size cap.');
+                        }
+                    },
+                ])
                 // Never follow a redirect: a permitted URL that 302s to the
                 // metadata endpoint would walk straight past the check above.
                 ->withoutRedirecting()
@@ -171,7 +198,7 @@ class OutboundWebhook
     {
         [$subnet, $bits] = explode('/', $cidr);
 
-        $ipBin     = @inet_pton($ip);
+        $ipBin     = $this->normalise($ip);
         $subnetBin = @inet_pton($subnet);
 
         // Different families never match — comparing a v4 address against a v6
@@ -195,5 +222,48 @@ class OutboundWebhook
         $mask = ~((1 << (8 - $rest)) - 1) & 0xFF;
 
         return (ord($ipBin[$bytes]) & $mask) === (ord($subnetBin[$bytes]) & $mask);
+    }
+
+    /**
+     * Fold an IPv4-mapped IPv6 address back to plain IPv4.
+     *
+     * `::ffff:169.254.169.254` and `169.254.169.254` are the same destination.
+     * Without this they are not the same STRING and, worse, not the same LENGTH —
+     * 16 bytes against a 4-byte range — so the family check above returned false
+     * for every IPv4 range and the address sailed through to the metadata
+     * endpoint. Writing the URL that way is a one-character change for an
+     * attacker and was a complete bypass.
+     *
+     * ::ffff:0:0/96 is the mapped prefix; ::/96 is the deprecated
+     * v4-compatible form, which some resolvers still produce.
+     *
+     * @return string|false packed form, folded to 4 bytes where applicable
+     */
+    private function normalise(string $ip): string|false
+    {
+        $packed = @inet_pton($ip);
+
+        if ($packed === false || strlen($packed) !== 16) {
+            return $packed;
+        }
+
+        $mapped     = str_repeat("\x00", 10)."\xff\xff";
+        $compatible = str_repeat("\x00", 12);
+
+        foreach ([$mapped, $compatible] as $prefix) {
+            if (strncmp($packed, $prefix, 12) === 0) {
+                $v4 = substr($packed, 12);
+
+                // ::/128 itself is not a v4-compatible address, it is the
+                // unspecified address — and it is blocked by its own range.
+                if ($prefix === $compatible && $v4 === "\x00\x00\x00\x00") {
+                    return $packed;
+                }
+
+                return $v4;
+            }
+        }
+
+        return $packed;
     }
 }

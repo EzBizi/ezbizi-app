@@ -63,10 +63,18 @@ class Workflow extends Model
      * reverse: a franchise workflow must not fire on a sibling franchise's work
      * just because they share a parent.
      */
-    public function coversScope(?string $scopeType, ?string $scopeId): bool
+    public function coversScope(?string $scopeType, ?string $scopeId, array $companyChain = []): bool
     {
         if ($this->scope_type === null) {
             return true;   // organization-wide
+        }
+
+        // A company-scoped rule covers every franchise beneath it, including
+        // those of its Sub Companies — the same downward reach assignments have
+        // (§4). Without this the API accepted a company scope the engine could
+        // never match, so the rule looked configured and never ran.
+        if ($this->scope_type === 'company') {
+            return in_array($this->scope_id, $companyChain, strict: true);
         }
 
         return $this->scope_type === $scopeType && $this->scope_id === $scopeId;

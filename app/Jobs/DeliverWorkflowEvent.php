@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\WorkflowEvent;
 use App\Support\Workflows\WorkflowEngine;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
@@ -15,7 +16,7 @@ use Throwable;
  * save. Retries with backoff, and a permanent failure dead-letters the event
  * rather than retrying forever.
  */
-class DeliverWorkflowEvent implements ShouldQueue
+class DeliverWorkflowEvent implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
@@ -35,10 +36,16 @@ class DeliverWorkflowEvent implements ShouldQueue
     /**
      * One delivery attempt per event, whatever else is queued.
      *
-     * The run table's unique index already makes a double delivery harmless, but
-     * two workers racing the same event would both call the same webhook before
-     * either wrote a run — and the far end would see it twice.
+     * ShouldBeUnique is what makes this real. Declaring uniqueId() alone did
+     * nothing at all — Laravel only takes the lock for jobs implementing that
+     * interface, so the protection this docblock described did not exist.
+     *
+     * Belt to the run table's braces: the run row is claimed before any action
+     * runs, so a race is already harmless. This stops two workers doing the
+     * duplicated work at all.
      */
+    public int $uniqueFor = 1200;
+
     public function uniqueId(): string
     {
         return $this->eventId;

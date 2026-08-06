@@ -37,7 +37,13 @@ class WorkflowEvent extends Model
      */
     public const MAX_DEPTH = 5;
 
-    /** Total actions one originating event may cause across the whole cascade. */
+    /**
+     * Total ACTIONS one originating event may cause across the whole cascade.
+     *
+     * Actions, not runs. Counting runs made this a limit of 50 *rules firing*,
+     * each of which can carry any number of actions — so the real ceiling on
+     * outbound calls was unbounded, which is precisely what a budget is for.
+     */
     public const ACTION_BUDGET = 50;
 
     /** Give up after this many delivery attempts and dead-letter it. */
@@ -100,7 +106,6 @@ class WorkflowEvent extends Model
                 $q->where('workflow_events.root_event_id', $root)
                     ->orWhere('workflow_events.id', $root);
             })
-            ->whereNotNull('workflow_runs.action_results')
-            ->count();
+            ->sum('workflow_runs.action_count');
     }
 }

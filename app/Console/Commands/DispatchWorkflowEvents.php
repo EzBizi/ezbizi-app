@@ -24,17 +24,42 @@ class DispatchWorkflowEvents extends Command
 
     public function handle(): int
     {
+        /*
+         * Events are LEASED, not just selected.
+         *
+         * Without this the sweep re-dispatched every event that was still in
+         * flight, once a minute, for as long as it took — which also defeated
+         * the job's widening backoff completely: a delivery waiting 15 minutes
+         * for its next attempt got a brand new job queued 14 times in the
+         * meantime, and each one ran immediately.
+         *
+         * The lease is longer than the largest backoff (900s), or the sweep
+         * simply out-races the retry again. It expires rather than being cleared,
+         * so an event whose worker died is picked up later instead of stranded.
+         */
+        $lease = now()->subSeconds(1200);
+
         $due = WorkflowEvent::withoutGlobalScopes()
             ->whereNull('delivered_at')
             ->whereNull('failed_at')
             ->where('available_at', '<=', now())
             ->where('attempts', '<', WorkflowEvent::MAX_ATTEMPTS)
+            ->where(fn ($q) => $q->whereNull('queued_at')->orWhere('queued_at', '<', $lease))
             ->orderBy('occurred_at')
             ->limit((int) $this->option('limit'))
             ->get();
 
         foreach ($due as $event) {
-            DeliverWorkflowEvent::dispatch($event->getKey());
+            // Claimed before dispatch, so two overlapping sweeps cannot both
+            // queue the same event.
+            $claimed = WorkflowEvent::withoutGlobalScopes()
+                ->whereKey($event->getKey())
+                ->where(fn ($q) => $q->whereNull('queued_at')->orWhere('queued_at', '<', $lease))
+                ->update(['queued_at' => now()]);
+
+            if ($claimed === 1) {
+                DeliverWorkflowEvent::dispatch($event->getKey());
+            }
         }
 
         $this->info($due->isEmpty()
