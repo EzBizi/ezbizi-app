@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/staff_session.dart';
 import '../../core/api_client.dart';
+import '../../widgets/auth_preview.dart';
 import '../../widgets/auth_shell.dart';
 import '../../widgets/totp_setup_dialog.dart';
 import '../../widgets/error_note.dart';
@@ -143,11 +144,7 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       blurb: 'Organizations, module availability, client access and staff '
           'accounts. Everything here reaches every customer on the platform, '
           'which is why it asks for more than a password.',
-      steps: const [
-        (icon: Icons.apartment_outlined, label: 'Organizations'),
-        (icon: Icons.toggle_on_outlined, label: 'Modules'),
-        (icon: Icons.favorite_outline, label: 'Health'),
-      ],
+      preview: const StaffPreview(),
       // Said plainly on the way in, because it is true and because somebody who
       // reached this screen by accident should understand what it is.
       footnote: 'Every action here is audited, including this sign-in.',

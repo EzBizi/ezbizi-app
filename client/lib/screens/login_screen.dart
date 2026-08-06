@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../widgets/auth_preview.dart';
 import '../widgets/auth_shell.dart';
 import '../widgets/error_note.dart';
 
@@ -193,11 +194,7 @@ class _LoginScreenState extends State<LoginScreen> {
       blurb: 'Schedule the work, keep the customer record straight, and let the '
           'rules you set handle the rest — across every company and franchise '
           'you operate.',
-      steps: const [
-        (icon: Icons.people_outline, label: 'Customers'),
-        (icon: Icons.construction_outlined, label: 'Jobs'),
-        (icon: Icons.bolt_outlined, label: 'Workflows'),
-      ],
+      preview: const CustomerPreview(),
       footnote: 'Your organization. Your data. Nobody else can see it.',
       form: _choices != null
           ? _organizationPicker(context)

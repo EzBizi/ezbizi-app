@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
+import 'auth_preview.dart';
 
 /// The two-panel sign-in layout: identity on the left, the form on the right.
 ///
@@ -21,7 +22,7 @@ class AuthShell extends StatelessWidget {
     required this.eyebrow,
     required this.headline,
     required this.blurb,
-    required this.steps,
+    required this.preview,
     required this.footnote,
     required this.form,
     this.pill,
@@ -33,8 +34,13 @@ class AuthShell extends StatelessWidget {
   final String headline;
   final String blurb;
 
-  /// Three words with arrows between them — the shape of the product in one row.
-  final List<({IconData icon, String label})> steps;
+  /// A glimpse of the product itself — see auth_preview.dart.
+  ///
+  /// It was a row of nouns with arrows between them, which is the shape every
+  /// SaaS sign-in page has and which says nothing a person could not guess from
+  /// the word "CRM". Each face supplies its own, because the two answer
+  /// different questions: one business's week, or every business at once.
+  final Widget preview;
 
   /// The reassuring line at the bottom of the dark panel.
   final String footnote;
@@ -66,7 +72,7 @@ class AuthShell extends StatelessWidget {
                   eyebrow: eyebrow,
                   headline: headline,
                   blurb: blurb,
-                  steps: steps,
+                  preview: preview,
                   footnote: footnote,
                   pill: pill,
                 ),
@@ -88,7 +94,7 @@ class _IdentityPanel extends StatelessWidget {
     required this.eyebrow,
     required this.headline,
     required this.blurb,
-    required this.steps,
+    required this.preview,
     required this.footnote,
     required this.pill,
   });
@@ -96,7 +102,7 @@ class _IdentityPanel extends StatelessWidget {
   final String eyebrow;
   final String headline;
   final String blurb;
-  final List<({IconData icon, String label})> steps;
+  final Widget preview;
   final String footnote;
   final String? pill;
 
@@ -115,19 +121,10 @@ class _IdentityPanel extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          // Two soft discs, bled off opposite corners. Cheap depth: no image to
-          // ship, no asset to keep in step with the brand, and it scales to any
-          // panel width without a second art file.
-          Positioned(
-            top: -140,
-            right: -120,
-            child: _Glow(size: 420, color: EzBiziTheme.accent.withValues(alpha: 0.16)),
-          ),
-          Positioned(
-            bottom: -180,
-            left: -140,
-            child: _Glow(size: 460, color: EzBiziTheme.accent.withValues(alpha: 0.10)),
-          ),
+          // A blueprint grid rather than two blurred circles — see
+          // GridBackdrop for why. Positioned.fill so it covers the panel at any
+          // size without a second layout pass.
+          const Positioned.fill(child: GridBackdrop()),
 
           // One column, held to a readable width and centred in the panel.
           //
@@ -136,11 +133,23 @@ class _IdentityPanel extends StatelessWidget {
           // beside it. Constraining the column and centring it keeps the same
           // left-aligned reading line at any panel width, and puts the whole
           // block where the eye expects it.
-          Center(
+          // Scrollable, but only when it has to be.
+          //
+          // The column uses Spacers to centre itself, which needs a bounded
+          // height — and a short window (a laptop with the dock and a bookmarks
+          // bar) would otherwise overflow it. minHeight + IntrinsicHeight keeps
+          // the Spacers working at normal heights and lets the whole thing
+          // scroll when the panel is genuinely too short.
+          LayoutBuilder(
+            builder: (context, box) => SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: box.maxHeight),
+                child: IntrinsicHeight(
+                  child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 620),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(56, 48, 56, 44),
+                padding: const EdgeInsets.fromLTRB(56, 44, 56, 40),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -220,8 +229,27 @@ class _IdentityPanel extends StatelessWidget {
                   ),
                 ),
 
-                const SizedBox(height: 36),
-                _StepStrip(steps: steps),
+                // The preview is the first thing to go on a short window.
+                //
+                // It is the most valuable part of the panel and also the
+                // tallest, so on a 900px-high laptop the column wanted 935px
+                // and overflowed. Dropping it keeps the headline, the blurb and
+                // the footnote — the parts that still say something without it.
+                if (box.maxHeight >= 800) ...[
+                  const SizedBox(height: 34),
+                  // Flexible, so the preview takes whatever height is left over
+                  // and its own FittedBox scales it down to fit. Laid out at its
+                  // natural size it wants ~420px, which is more than a
+                  // 1440x900 laptop has left after the headline — the most
+                  // common laptop size there is.
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: preview,
+                    ),
+                  ),
+                ],
 
                 const Spacer(),
 
@@ -243,69 +271,12 @@ class _IdentityPanel extends StatelessWidget {
             ),
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StepStrip extends StatelessWidget {
-  const _StepStrip({required this.steps});
-
-  final List<({IconData icon, String label})> steps;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          for (var i = 0; i < steps.length; i++) ...[
-            if (i > 0)
-              Icon(Icons.arrow_forward,
-                  size: 16, color: EzBiziTheme.accent.withValues(alpha: 0.85)),
-            Column(
-              children: [
-                Icon(steps[i].icon, color: Colors.white, size: 20),
-                const SizedBox(height: 8),
-                Text(
-                  steps[i].label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ],
+              ),
             ),
-          ],
+          ),
         ],
-      ),
-    );
-  }
-}
-
-class _Glow extends StatelessWidget {
-  const _Glow({required this.size, required this.color});
-
-  final double size;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
       ),
     );
   }
@@ -323,7 +294,12 @@ class _FormPanel extends StatelessWidget {
       color: Theme.of(context).colorScheme.surface,
       child: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 48),
+          // 40 on a 360px phone leaves 280px of usable width, which is
+          // narrower than the sign-in row needs. Tighten it when the screen is.
+          padding: EdgeInsets.symmetric(
+            horizontal: MediaQuery.sizeOf(context).width < 480 ? 20 : 40,
+            vertical: 48,
+          ),
           child: ConstrainedBox(
             // Wider than the old 380: at that width the form read as a
             // small card adrift in a very large empty panel.

@@ -68,4 +68,48 @@ void main() {
     expect(ApiClient.baseUrl, isEmpty,
         reason: 'Default must be same-origin; set API_BASE at build time to override.');
   });
+
+  // ── the sign-in screens at every size somebody actually uses ──
+  //
+  // Added after shipping a row that overflowed by 110px: a fixed-width label
+  // beside a button, in a panel that could be narrower than the two of them.
+  // `flutter analyze` cannot see that, and neither can reading it — the only
+  // thing that catches an overflow is laying the widget out at the size where
+  // it happens.
+  //
+  // Flutter reports overflow as a test failure, so pumping at each size and
+  // settling IS the assertion.
+  for (final size in const [
+    Size(360, 740),    // phone
+    Size(768, 1024),   // tablet, still below the two-panel threshold
+    Size(1024, 640),   // small laptop — short, which is the hard one
+    Size(1440, 900),   // ordinary laptop
+    Size(2560, 1440),  // the wide monitor this is usually seen on
+  ]) {
+    testWidgets('the customer sign-in lays out at ${size.width}x${size.height}',
+        (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(const EzBiziApp());
+      await tester.pump();
+
+      expect(find.text('Welcome back'), findsOneWidget);
+    });
+
+    testWidgets('the control plane lays out at ${size.width}x${size.height}',
+        (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(
+        home: StaffLoginScreen(staff: StaffSession(ApiClient())),
+      ));
+      await tester.pump();
+
+      expect(find.text('Sign in'), findsWidgets);
+    });
+  }
 }
