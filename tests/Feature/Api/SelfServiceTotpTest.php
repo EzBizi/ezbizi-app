@@ -61,11 +61,25 @@ class SelfServiceTotpTest extends TestCase
         return $staff;
     }
 
-    private function signedIn(): static
+    /**
+     * @param  string|null  $secret  once 2FA is on, signing in needs a code —
+     *                               which is the whole point, so the helper has
+     *                               to keep up rather than the feature bend.
+     */
+    private function signedIn(?string $secret = null): static
     {
-        $token = $this->postJson('/api/v1/auth/login', [
-            'email' => 'a@alpha.test', 'password' => 'a-real-password',
-        ])->assertOk()->json('token');
+        if ($secret !== null) {
+            // Each code works once, so a test that signs in repeatedly needs a
+            // fresh step. Google2FA reads the real clock and Carbon cannot move
+            // it; clearing the recorded step is how a test says time passed.
+            User::whereKey($this->org['admin']->id)->update(['last_totp_timestamp' => null]);
+        }
+
+        $token = $this->postJson('/api/v1/auth/login', array_filter([
+            'email' => 'a@alpha.test',
+            'password' => 'a-real-password',
+            'code' => $secret === null ? null : $this->totp->getCurrentOtp($secret),
+        ]))->assertOk()->json('token');
 
         $this->app['auth']->forgetGuards();
 
@@ -201,19 +215,21 @@ class SelfServiceTotpTest extends TestCase
     {
         $begin = $this->signedIn()->postJson('/api/v1/me/totp')->assertOk();
 
+        $secret = $begin->json('enrolment.secret');
+
         $this->app['auth']->forgetGuards();
         $this->signedIn()->postJson('/api/v1/me/totp/confirm', [
-            'code' => $this->totp->getCurrentOtp($begin->json('enrolment.secret')),
+            'code' => $this->totp->getCurrentOtp($secret),
         ])->assertOk();
 
         // A borrowed unlocked laptop must not be able to strip the very thing
         // protecting the account from that laptop.
         $this->app['auth']->forgetGuards();
-        $this->signedIn()->deleteJson('/api/v1/me/totp', ['password' => 'wrong'])
+        $this->signedIn($secret)->deleteJson('/api/v1/me/totp', ['password' => 'wrong'])
             ->assertStatus(422);
 
         $this->app['auth']->forgetGuards();
-        $this->signedIn()->deleteJson('/api/v1/me/totp', ['password' => 'a-real-password'])
+        $this->signedIn($secret)->deleteJson('/api/v1/me/totp', ['password' => 'a-real-password'])
             ->assertOk();
 
         $this->assertFalse(User::find($this->org['admin']->id)->hasTotp());
@@ -223,9 +239,11 @@ class SelfServiceTotpTest extends TestCase
     {
         $begin = $this->signedIn()->postJson('/api/v1/me/totp')->assertOk();
 
+        $secret = $begin->json('enrolment.secret');
+
         $this->app['auth']->forgetGuards();
         $this->signedIn()->postJson('/api/v1/me/totp/confirm', [
-            'code' => $this->totp->getCurrentOtp($begin->json('enrolment.secret')),
+            'code' => $this->totp->getCurrentOtp($secret),
         ])->assertOk();
 
         app(TenantContext::class)->run($this->org['organization'], fn () => app(SettingsResolver::class)
@@ -234,7 +252,7 @@ class SelfServiceTotpTest extends TestCase
         // §6: allowed scopes exist precisely so somebody below cannot weaken what
         // was set above them.
         $this->app['auth']->forgetGuards();
-        $this->signedIn()->deleteJson('/api/v1/me/totp', ['password' => 'a-real-password'])
+        $this->signedIn($secret)->deleteJson('/api/v1/me/totp', ['password' => 'a-real-password'])
             ->assertStatus(422);
     }
 
