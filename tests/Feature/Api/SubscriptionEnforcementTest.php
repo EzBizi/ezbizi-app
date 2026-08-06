@@ -284,7 +284,7 @@ class SubscriptionEnforcementTest extends TestCase
         // it business data rather than account recovery — and an exemption that
         // quietly widened to cover it would be the kind of gap nobody notices.
         $this->withHeader('Authorization', "Bearer {$token}")
-            ->patchJson('/api/v1/me', ['name' => 'Renamed'])
+            ->patchJson('/api/v1/me', ['first_name' => 'Renamed', 'last_name' => 'Person'])
             ->assertStatus(402);
     }
 

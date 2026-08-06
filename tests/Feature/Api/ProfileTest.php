@@ -50,35 +50,87 @@ class ProfileTest extends TestCase
         return $this->withHeader('Authorization', 'Bearer '.($token ?? $this->login()));
     }
 
-    public function test_you_can_change_your_own_name(): void
+    public function test_the_display_name_is_composed_from_the_parts(): void
     {
-        $this->as()->patchJson('/api/v1/me', ['name' => 'Jose Rodriguez'])
-            ->assertOk()->assertJsonPath('name', 'Jose Rodriguez');
+        $this->as()->patchJson('/api/v1/me', [
+            'first_name' => 'Jose', 'middle_name' => 'Luis', 'last_name' => 'Demasi',
+        ])->assertOk()->assertJsonPath('name', 'Jose Luis Demasi');
 
+        // `name` is read by the audit trail, every list screen and the API, so
+        // it cannot drift from the parts it is derived from.
         $this->assertSame(
-            'Jose Rodriguez',
+            'Jose Luis Demasi',
             User::withoutGlobalScopes()->find($this->alpha['admin']->id)->name,
         );
     }
 
-    public function test_a_rename_is_audited(): void
+    public function test_a_missing_middle_name_leaves_no_double_space(): void
     {
-        $this->as()->patchJson('/api/v1/me', ['name' => 'Jose Rodriguez'])->assertOk();
-
-        // It is what everybody else in the organization sees against this
-        // person's actions, so a silent change makes the audit trail lie (§10).
-        $this->assertDatabaseHas('audit_events', ['action' => 'user.renamed']);
+        $this->as()->patchJson('/api/v1/me', [
+            'first_name' => 'Jose', 'last_name' => 'Demasi',
+        ])->assertOk()->assertJsonPath('name', 'Jose Demasi');
     }
 
-    public function test_an_empty_name_is_refused(): void
+    public function test_the_other_profile_fields_save(): void
     {
-        $this->as()->patchJson('/api/v1/me', ['name' => '   '])->assertStatus(422);
+        $this->as()->patchJson('/api/v1/me', [
+            'first_name' => 'Jose', 'last_name' => 'Demasi',
+            'phone' => '(888) 984-4344', 'gender' => 'Prefer not to say',
+            'date_of_birth' => '1990-04-17',
+        ])->assertOk()
+            ->assertJsonPath('phone', '(888) 984-4344')
+            ->assertJsonPath('gender', 'Prefer not to say')
+            ->assertJsonPath('date_of_birth', '1990-04-17');
+    }
+
+    public function test_a_gender_outside_the_common_answers_is_accepted(): void
+    {
+        // A closed list is wrong for somebody and then needs a deploy to fix.
+        $this->as()->patchJson('/api/v1/me', ['gender' => 'Genderfluid'])
+            ->assertOk()->assertJsonPath('gender', 'Genderfluid');
+    }
+
+    public function test_a_date_of_birth_in_the_future_is_refused(): void
+    {
+        $this->as()->patchJson('/api/v1/me', [
+            'date_of_birth' => now()->addYear()->toDateString(),
+        ])->assertStatus(422);
+    }
+
+    public function test_a_profile_change_is_audited(): void
+    {
+        $this->as()->patchJson('/api/v1/me', [
+            'first_name' => 'Jose', 'last_name' => 'Demasi',
+        ])->assertOk();
+
+        // The name is what everybody else sees against this person's actions,
+        // so a silent change makes the audit trail lie (§10).
+        $this->assertDatabaseHas('audit_events', ['action' => 'user.profile_updated']);
+    }
+
+    public function test_a_date_of_birth_is_never_written_to_the_audit_log(): void
+    {
+        $this->as()->patchJson('/api/v1/me', ['date_of_birth' => '1990-04-17'])->assertOk();
+
+        // §9 treats it as personal data with a legal weight. The audit log is
+        // append-only, so anything copied into it is beyond the reach of an
+        // erasure request — which makes it the wrong place to keep this.
+        $this->assertStringNotContainsString(
+            '1990-04-17',
+            \App\Models\AuditEvent::query()->get()->toJson(),
+        );
+    }
+
+    public function test_an_empty_first_name_is_refused(): void
+    {
+        $this->as()->patchJson('/api/v1/me', ['first_name' => ''])->assertStatus(422);
     }
 
     public function test_you_cannot_change_your_email_here(): void
     {
         $this->as()->patchJson('/api/v1/me', [
-            'name' => 'Still Me', 'email' => 'someone-else@alpha.test',
+            'first_name' => 'Still', 'last_name' => 'Me',
+            'email' => 'someone-else@alpha.test',
         ])->assertOk();
 
         // Email is the identity somebody signs in with and where a reset goes.
@@ -130,7 +182,7 @@ class ProfileTest extends TestCase
 
     public function test_none_of_it_works_signed_out(): void
     {
-        $this->patchJson('/api/v1/me', ['name' => 'Nobody'])->assertUnauthorized();
+        $this->patchJson('/api/v1/me', ['first_name' => 'Nobody'])->assertUnauthorized();
         $this->getJson('/api/v1/me/sessions')->assertUnauthorized();
         $this->deleteJson('/api/v1/me/sessions')->assertUnauthorized();
     }
