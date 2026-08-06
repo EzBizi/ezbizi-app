@@ -49,6 +49,28 @@ class Session extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Change one preference and repaint.
+  ///
+  /// Optimistic: the value is applied locally before the request lands, because
+  /// a theme that flickers back to the old one for half a second while a round
+  /// trip completes looks broken. If the server refuses it, refresh() below puts
+  /// the truth back.
+  Future<void> setPreference(String key, Object value) async {
+    final me = _me;
+    if (me == null) return;
+
+    _me = me.withPreference(key, value);
+    notifyListeners();
+
+    final response = await _api.patch('/me/preferences', {
+      'preferences': {key: value},
+    });
+
+    if (!response.ok) {
+      await refresh();
+    }
+  }
+
   void signOut() {
     _me = null;
     readOnlyNotice = null;
@@ -68,6 +90,7 @@ class Me {
     required this.name,
     required this.email,
     required this.roleName,
+    required this.preferences,
     required this.development,
     required this.organization,
     required this.franchises,
@@ -77,6 +100,11 @@ class Me {
   final String name;
   final String email;
   final String? roleName;
+
+  /// Theirs, nobody else's (§2.1 category 6). Always complete — the server
+  /// merges stored values over the registry's defaults, so the client never has
+  /// to know a default and a preference added later simply appears.
+  final Map<String, dynamic> preferences;
 
   /// Set when this person is also platform staff (§4.2, revised 2026-08-06).
   ///
@@ -91,11 +119,37 @@ class Me {
   /// not the full list, so the UI never offers something that will fail on save.
   final List<FranchiseSummary> franchises;
 
+  /// A copy with one preference changed. Me is immutable, which is what makes
+  /// "did the theme actually change" a question with one answer.
+  Me withPreference(String key, Object value) => Me(
+        id: id,
+        name: name,
+        email: email,
+        roleName: roleName,
+        preferences: {...preferences, key: value},
+        development: development,
+        organization: organization,
+        franchises: franchises,
+      );
+
+  /// Never null and never unknown — an unrecognised stored value falls back to
+  /// following the device rather than leaving the app with no theme at all.
+  String get theme => switch (preferences['appearance.theme']) {
+        'light' => 'light',
+        'dark' => 'dark',
+        _ => 'system',
+      };
+
+  String get navigationStyle =>
+      preferences['navigation.style'] == 'blocks' ? 'blocks' : 'list';
+
   factory Me.fromJson(Map<String, dynamic> json) => Me(
         id: json['id'] as String,
         name: json['name'] as String,
         email: json['email'] as String,
         roleName: (json['role'] as Map<String, dynamic>?)?['name'] as String?,
+        preferences: Map<String, dynamic>.from(
+            json['preferences'] as Map<String, dynamic>? ?? const {}),
         development: json['development'] == null
             ? null
             : DevelopmentAccess.fromJson(json['development'] as Map<String, dynamic>),

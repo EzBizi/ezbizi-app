@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\NotificationsController;
+use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\WorkflowsController;
 use App\Http\Controllers\Api\StaffAccountsController;
@@ -70,6 +71,14 @@ Route::prefix('v1')
             ->parameters(['workflows' => 'workflow']);
         Route::post('workflows', [WorkflowsController::class, 'store']);
 
+        // ── Your own preferences (§2.1 category 6) ───────────────
+        //
+        // Kept apart from /settings on purpose. Those are the organization's,
+        // set by an administrator; these are the person's. §2.1 is explicit that
+        // the categories must not be merged into one toggle system.
+        Route::get('me/preferences', [PreferencesController::class, 'index']);
+        Route::patch('me/preferences', [PreferencesController::class, 'update']);
+
         // ── Your own second factor (§6) ──────────────────────────
         //
         // Self-service on purpose: anybody signed in can switch it on without an
@@ -104,6 +113,13 @@ Route::prefix('v1')
                     'name'  => $user->name,
                     'email' => $user->email,
                     'role'  => ['id' => $user->role?->id, 'name' => $user->role?->name],
+                    // Carried here as well as on their own endpoint, so the app
+                    // can paint the right theme on the first frame instead of
+                    // flashing the wrong one while a second request lands.
+                    'preferences' => array_merge(
+                        app(\App\Support\Preferences\PreferenceRegistry::class)->defaults(),
+                        $user->preferences ?? [],
+                    ),
                     // Whether this person is also platform staff (§4.2, revised).
                     // The client renders the Development section from this, so it
                     // cannot appear for somebody with no staff account behind them.

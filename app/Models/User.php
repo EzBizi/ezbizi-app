@@ -52,6 +52,8 @@ class User extends Authenticatable
             'pending_totp_secret' => 'encrypted',
             'recovery_codes'      => 'encrypted:array',
             'last_totp_timestamp' => 'integer',
+            // §2.1 category 6 — theirs, nobody else's.
+            'preferences'         => 'array',
         ];
     }
 

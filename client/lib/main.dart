@@ -52,9 +52,20 @@ class _EzBiziAppState extends State<EzBiziApp> {
       debugShowCheckedModeBanner: false,
       theme: EzBiziTheme.light(),
       darkTheme: EzBiziTheme.dark(),
-      // Follows the device until organizations can define their own themes
-      // (§12) — at which point this reads from the organization's settings.
-      themeMode: ThemeMode.system,
+      /*
+       * The signed-in person's choice (§2.1 category 6), falling back to the
+       * device before anyone has signed in — there is nobody to have a
+       * preference yet at that point.
+       *
+       * Distinct from §12's theming decision, which is about an ORGANIZATION's
+       * brand: its colours and logo. Somebody preferring dark mode at night is
+       * not a branding decision and does not belong to their employer.
+       */
+      themeMode: switch (_session.me?.theme) {
+        'light' => ThemeMode.light,
+        'dark' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      },
       home: _home(),
     );
   }
@@ -211,10 +222,21 @@ class _HomeShellState extends State<HomeShell> {
       body: Row(
         children: [
           if (wide)
+            // Two shapes, and the default is the list.
+            //
+            // A list reads faster: the eye scans labels down a column, and the
+            // icons are a secondary cue rather than the thing being read.
+            // Blocks fit more in less width and some people prefer them, so
+            // they stay available — as the user's own preference, not an
+            // opinion imposed by whoever wrote this.
             NavigationRail(
               selectedIndex: _index,
               onDestinationSelected: (i) => setState(() => _index = i),
-              labelType: NavigationRailLabelType.all,
+              extended: me.navigationStyle == 'list',
+              labelType: me.navigationStyle == 'list'
+                  ? null   // `extended` and labelType are mutually exclusive
+                  : NavigationRailLabelType.all,
+              minExtendedWidth: 188,
               destinations: destinations
                   .map((d) => NavigationRailDestination(
                         icon: Icon(d.icon),
