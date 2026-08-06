@@ -5,8 +5,6 @@ import 'package:ezbizi_client/screens/staff/staff_login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-void _noop() {}
-
 void main() {
   testWidgets('an unauthenticated app shows the sign-in screen', (tester) async {
     await tester.pumpWidget(const EzBiziApp());
@@ -155,63 +153,10 @@ void main() {
     });
   }
 
-  // The pinned footer items must line up with the destinations above them.
+  // The alignment test that used to live here has been deleted, not fixed.
   //
-  // They did not: NavigationRail centres each destination icon in an 80px box
-  // and starts the label after it, while the footer used a 16px inset — so
-  // Settings and Development sat 20px to the left of everything else and read
-  // as a separate list that happened to be underneath.
-  //
-  // Asserting on the x-position rather than on the widget tree, because the two
-  // are built by completely different code and the only thing that matters is
-  // that they land in the same column.
-  testWidgets('the pinned footer icons align with the rail destinations',
-      (tester) async {
-    tester.view.physicalSize = const Size(1440, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: Row(children: [
-          NavigationRail(
-            selectedIndex: 0,
-            extended: true,
-            minWidth: kRailWidth,
-            minExtendedWidth: 220,
-            destinations: const [
-              NavigationRailDestination(
-                  icon: Icon(Icons.dashboard_outlined), label: Text('Dashboard')),
-              NavigationRailDestination(
-                  icon: Icon(Icons.people_outline), label: Text('Customers')),
-            ],
-            trailing: const SizedBox(
-              width: 220,
-              child: RailFooterItem(
-                extended: true,
-                icon: Icons.settings_outlined,
-                label: 'Settings',
-                selected: false,
-                onTap: _noop,
-              ),
-            ),
-          ),
-          const Expanded(child: SizedBox()),
-        ]),
-      ),
-    ));
-    await tester.pump();
-
-    final destinationIcon =
-        tester.getCenter(find.byIcon(Icons.dashboard_outlined)).dx;
-    final footerIcon =
-        tester.getCenter(find.byIcon(Icons.settings_outlined)).dx;
-
-    expect(
-      footerIcon,
-      moreOrLessEquals(destinationIcon, epsilon: 1.0),
-      reason: 'The footer icon is at $footerIcon, the destinations are at '
-          '$destinationIcon — they are in different columns.',
-    );
-  });
+  // It asserted that the hand-rolled footer items landed in the same column as
+  // the real destinations. They are now real destinations themselves — a second
+  // NavigationRail — so there is nothing left to drift, and a test that can no
+  // longer fail is a test that only costs time to maintain.
 }

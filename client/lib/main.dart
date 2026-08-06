@@ -396,47 +396,58 @@ class _HomeShellState extends State<HomeShell> {
                   right: BorderSide(color: Theme.of(context).dividerColor),
                 ),
               ),
-              child: NavigationRail(
-                backgroundColor: Colors.transparent,
-                // null when an off-rail screen is showing. The rail has no
-                // destination for either, and an out-of-range index throws.
-                selectedIndex: railIndex,
-                onDestinationSelected: (i) => setState(() => _index = i),
-                extended: expanded,
-                labelType: expanded
-                    ? null   // `extended` and labelType are mutually exclusive
-                    : (me.navigationStyle == 'list'
-                        ? NavigationRailLabelType.none
-                        : NavigationRailLabelType.all),
-                minWidth: kRailWidth,
-                minExtendedWidth: 220,
-                leading: _RailHeader(
-                  expanded: expanded,
-                  organization: me.organization.name,
-                ),
-                destinations: destinations
-                    .map((d) => NavigationRailDestination(
-                          icon: Icon(d.icon),
-                          label: Text(d.label),
-                        ))
-                    .toList(),
-                // Expanded inside the rail's own scroll view pushes this to the
-                // bottom of the available height, rather than leaving it tucked
-                // under the last destination.
-                trailing: Expanded(
-                  child: Align(
-                    // bottomLeft, not bottomCenter: centring the footer
-                    // horizontally is what moved it out of the icon column.
-                    alignment: Alignment.bottomLeft,
-                    child: _RailFooter(
-                      extended: expanded,
-                      items: pinned,
-                      selectedIndex: pinnedIndex,
-                      onSelected: (i) =>
-                          setState(() => _index = pinnedBase + i),
+              // TWO rails, not one rail with a hand-drawn footer.
+              //
+              // Settings and Development used to be a Material + InkWell built
+              // to look like destinations. It never quite did: the hover lit the
+              // whole row instead of the indicator pill, the icons sat 20px left
+              // of the column above them, there was no selection animation, and
+              // every change to the rail's width moved them again. Four defects,
+              // one cause — they were not destinations.
+              //
+              // NavigationRail has no minimum destination count, so the pinned
+              // group can simply be another rail. Hover, splash, indicator
+              // shape, selection animation, icon column, label style and row
+              // height are then identical because they are the same widget, not
+              // because constants were copied out of its source.
+              child: Column(
+                children: [
+                  Expanded(
+                    child: _rail(
+                      context,
+                      expanded: expanded,
+                      destinations: destinations,
+                      selectedIndex: railIndex,
+                      onSelected: (i) => setState(() => _index = i),
+                      leading: _RailHeader(
+                        expanded: expanded,
+                        organization: me.organization.name,
+                      ),
                     ),
                   ),
-                ),
+
+                  // The rule that says the group below is a different kind of
+                  // thing: places you go to change how the work behaves, rather
+                  // than places you go to do it.
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: expanded ? 16 : 12),
+                    child: const Divider(height: 1),
+                  ),
+
+                  // IntrinsicHeight because a rail's root column is
+                  // mainAxisSize.max — it expects to own the full height. This
+                  // asks it for exactly the height its destinations need.
+                  IntrinsicHeight(
+                    child: _rail(
+                      context,
+                      expanded: expanded,
+                      destinations: pinned,
+                      selectedIndex: pinnedIndex,
+                      onSelected: (i) => setState(() => _index = pinnedBase + i),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
               ),
             ),
           Expanded(
@@ -473,58 +484,45 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
+/// One rail, built one way.
+///
+/// Both the main group and the pinned group go through here, so there is no
+/// route by which the two could end up with different widths, label types or
+/// indicator behaviour. Getting that wrong is precisely what the hand-rolled
+/// footer did.
+Widget _rail(
+  BuildContext context, {
+  required bool expanded,
+  required List<_Destination> destinations,
+  required int? selectedIndex,
+  required ValueChanged<int> onSelected,
+  Widget? leading,
+}) {
+  return NavigationRail(
+    backgroundColor: Colors.transparent,
+    // null when an off-rail screen is showing, or when the OTHER rail holds the
+    // selection. The assert allows it; a stale index would throw.
+    selectedIndex: selectedIndex,
+    onDestinationSelected: onSelected,
+    extended: expanded,
+    labelType: expanded ? null : NavigationRailLabelType.none,
+    minWidth: 80,
+    minExtendedWidth: 220,
+    leading: leading,
+    destinations: destinations
+        .map((d) => NavigationRailDestination(
+              icon: Icon(d.icon),
+              label: Text(d.label),
+            ))
+        .toList(),
+  );
+}
+
 class _Destination {
   const _Destination(this.label, this.icon, this.screen);
   final String label;
   final IconData icon;
   final Widget screen;
-}
-
-/// The pinned items, at the actual bottom of the rail.
-///
-/// Not NavigationRailDestinations: those sit in the list, in order, directly
-/// under the last one. Settings and Development are not places you go to do the
-/// work — one changes how the work behaves, the other is the platform
-/// underneath the product (§4.2) — and the separation is the point. A rule
-/// above them and the empty space between says so before anybody reads a label.
-class _RailFooter extends StatelessWidget {
-  const _RailFooter({
-    required this.extended,
-    required this.items,
-    required this.selectedIndex,
-    required this.onSelected,
-  });
-
-  final bool extended;
-  final List<_Destination> items;
-  final int? selectedIndex;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      // No horizontal inset: the items align to the rail's own icon column,
-      // and insetting them here would shift them off it again.
-      padding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Divider(height: 1),
-          const SizedBox(height: 12),
-          for (var i = 0; i < items.length; i++) ...[
-            if (i > 0) const SizedBox(height: 4),
-            RailFooterItem(
-              extended: extended,
-              icon: items[i].icon,
-              label: items[i].label,
-              selected: selectedIndex == i,
-              onTap: () => onSelected(i),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 }
 
 /// The wordmark and the organization, at the top of the sidebar.
@@ -534,10 +532,18 @@ class _RailFooter extends StatelessWidget {
 /// wordmark floating above a full-width header belongs to the page rather than
 /// to anything in particular.
 ///
-/// The organization sits in its own block rather than as another line of text.
-/// It is not decoration: everything below it is scoped to that organization,
-/// and somebody with accounts in two of them needs to see at a glance which one
-/// they are looking at before they change a setting in the wrong place.
+/// ── Deliberately not a workspace card ────────────────────────────
+///
+/// The first version of this was a bordered pill holding a circular avatar with
+/// the organization's initial, a small uppercase label and the name — which is
+/// a shape borrowed wholesale from another product rather than drawn from this
+/// one. It looked like that product with different words in it.
+///
+/// This uses the vocabulary the rest of the app already has: the accent spine
+/// is the same device the rail uses to mark a live destination, so the current
+/// organization is stated in a language somebody has already learnt from the
+/// screen below it. No avatar, because a coloured circle with "A" in it
+/// identifies nothing that the name beside it does not say better.
 class _RailHeader extends StatelessWidget {
   const _RailHeader({required this.expanded, required this.organization});
 
@@ -546,52 +552,25 @@ class _RailHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
     final mark = Container(
-      width: 32,
-      height: 32,
+      width: 30,
+      height: 30,
       decoration: BoxDecoration(
         color: EzBiziTheme.accent,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: const Icon(Icons.bolt, color: Colors.white, size: 20),
-    );
-
-    final initial = organization.trim().isEmpty
-        ? '?'
-        : organization.trim()[0].toUpperCase();
-
-    final avatar = Container(
-      width: 28,
-      height: 28,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: scheme.secondaryContainer,
-        shape: BoxShape.circle,
-      ),
-      child: Text(
-        initial,
-        style: TextStyle(
-          color: scheme.onSecondaryContainer,
-          fontWeight: FontWeight.w700,
-          fontSize: 13,
-        ),
-      ),
+      child: const Icon(Icons.bolt, color: Colors.white, size: 19),
     );
 
     if (!expanded) {
-      // Collapsed, the block would be a 28px circle with a letter in it and no
-      // way to know what the letter means. The mark alone is honest; the
-      // organization is one click away in the top bar's account menu.
       return Padding(
-        padding: const EdgeInsets.only(top: 12, bottom: 20),
+        padding: const EdgeInsets.only(top: 10, bottom: 16),
         child: Center(child: mark),
       );
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+      padding: const EdgeInsets.fromLTRB(20, 10, 16, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -600,47 +579,39 @@ class _RailHeader extends StatelessWidget {
             const SizedBox(width: 10),
             EzBiziTheme.wordmark(context, size: 19),
           ]),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(11),
-              border: Border.all(color: Theme.of(context).dividerColor),
-            ),
-            child: Row(children: [
-              avatar,
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'ORGANIZATION',
-                      style: TextStyle(
-                        fontSize: 9,
-                        height: 1.2,
-                        letterSpacing: 0.7,
-                        fontWeight: FontWeight.w700,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
+          const SizedBox(height: 18),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // The spine, not a border. A rule down one side reads as "you
+                // are here"; a box around the name reads as a control, and this
+                // is not one — there is no organization to switch to.
+                Container(
+                  width: 3,
+                  decoration: BoxDecoration(
+                    color: EzBiziTheme.accent,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
                       organization,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 13.5,
-                        height: 1.2,
+                        fontSize: 15,
+                        height: 1.25,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ]),
+              ],
+            ),
           ),
         ],
       ),
@@ -648,90 +619,3 @@ class _RailHeader extends StatelessWidget {
   }
 }
 
-/// The rail's icon column width.
-///
-/// NavigationRail centres every destination icon inside a box this wide and
-/// starts the label immediately after it, so anything drawn beside the rail has
-/// to use the same number or it will not line up. It is the M3 default; set
-/// explicitly on the rail above so the two cannot drift apart.
-const double kRailWidth = 80.0;
-
-/// Public so the alignment test can drive it directly.
-///
-/// The thing worth testing is that this lands in the same column as a real
-/// NavigationRailDestination, and the only way to check that is to lay both out
-/// side by side and compare their x-positions.
-class RailFooterItem extends StatelessWidget {
-  const RailFooterItem({
-    super.key,
-    required this.extended,
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final bool extended;
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final tint = selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
-
-    // Mirrors NavigationRail's own extended layout exactly: the icon centred in
-    // a kRailWidth box, the label starting immediately after it.
-    //
-    // It was `SizedBox(width: 16)` then the icon, which put these two items 20px
-    // to the left of every destination above them — the footer looked like a
-    // different list that happened to be underneath.
-    final content = extended
-        ? Row(
-            // max, not min. NavigationRail centres whatever it is given in its
-            // trailing slot, so a min-width row drifted right as the rail got
-            // wider and the footer stopped lining up with the destinations.
-            // Filling the width pins the icon column to kRailWidth and nothing
-            // else.
-            mainAxisSize: MainAxisSize.max,
-            children: [
-              SizedBox(
-                width: kRailWidth,
-                child: Center(child: Icon(icon, size: 24, color: tint)),
-              ),
-              Flexible(
-                child: Text(label,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: tint)),
-              ),
-              const SizedBox(width: 8),
-            ],
-          )
-        // Collapsed: the icon alone, with the label as a tooltip. A truncated
-        // word under a 24px icon is not a label, it is noise.
-        : Tooltip(
-            message: label,
-            child: SizedBox(
-              width: kRailWidth,
-              child: Center(child: Icon(icon, size: 24, color: tint)),
-            ),
-          );
-
-    return Material(
-      color: selected ? scheme.secondaryContainer : Colors.transparent,
-      borderRadius: BorderRadius.circular(28),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: SizedBox(
-          // The same 56px tall target the rail gives its own destinations, so
-          // the pinned items are neither denser nor looser than the list above.
-          height: 56,
-          child: Align(alignment: Alignment.centerLeft, child: content),
-        ),
-      ),
-    );
-  }
-}
