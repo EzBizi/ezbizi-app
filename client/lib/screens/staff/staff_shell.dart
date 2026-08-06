@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/staff_session.dart';
 import '../../core/theme.dart';
 import '../../widgets/enrolment_dialog.dart';
+import 'health_screen.dart';
 import 'impersonations_screen.dart';
 import 'modules_screen.dart';
 import 'organizations_screen.dart';
@@ -87,6 +88,8 @@ class _StaffShellState extends State<StaffShell> {
           ModulesScreen(staff: widget.staff)),
       _Destination('Client access', Icons.history_outlined,
           ImpersonationsScreen(staff: widget.staff)),
+      _Destination('Health', Icons.favorite_outline,
+          HealthScreen(staff: widget.staff)),
       // Lead Developer only. The server refuses either way; hiding it keeps a
       // Developer from clicking into a wall.
       if (me.isLead)

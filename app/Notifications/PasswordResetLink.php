@@ -13,17 +13,6 @@ use Illuminate\Support\Carbon;
 /**
  * The reset email.
  *
- * ── Mail is not deliverable yet, and this says so honestly ───────
- *
- * MAIL_MAILER is `log` on the box: SES is an open item from §18 Phase 0 and
- * nothing else is wired. So today this renders into the Laravel log rather than
- * reaching anybody.
- *
- * That is stated here, in DEPLOY.md and in the response the control plane gives,
- * rather than being discovered by somebody waiting for an email. Until a
- * transport exists, the working path is the Lead Developer generating a link
- * from the control plane and handing it over.
- *
  * Queued, so a slow SMTP server never delays the request — and because the reset
  * endpoint answers identically whether or not an account matched, which it could
  * not do if it waited for a send to succeed.
@@ -48,9 +37,13 @@ class PasswordResetLink extends Notification implements ShouldQueue
         // Staff reset at the control plane, everybody else at the app. Sending
         // the wrong host would work — the API is shared — but it would drop
         // somebody into a sign-in page that is not theirs.
-        $host = $this->subject instanceof PlatformStaff
-            ? 'https://dev.ezbizi.com'
-            : 'https://app.ezbizi.com';
+        //
+        // From config, not written in here: these were literal strings, which
+        // meant any second installation of this software would have emailed
+        // production links to its own users.
+        $host = config($this->subject instanceof PlatformStaff
+            ? 'ezbizi.hosts.staff'
+            : 'ezbizi.hosts.customer');
 
         $url = "{$host}/reset?token={$this->token}";
 

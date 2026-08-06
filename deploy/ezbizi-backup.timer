@@ -1,0 +1,18 @@
+# 03:17 daily — off the hour, because everything else on every box runs at :00
+# and a backup competing with log rotation and certbot for the same disk is a
+# backup that occasionally times out for no interesting reason.
+#
+# Persistent=true, unlike the scheduler: a missed night must be caught up as
+# soon as the machine is back. The whole point is the night nothing was watching.
+
+[Unit]
+Description=Run the EzBizi backup nightly
+
+[Timer]
+OnCalendar=*-*-* 03:17:00
+RandomizedDelaySec=300
+Persistent=true
+Unit=ezbizi-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\EnrolmentController;
+use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\PasswordController;
@@ -217,6 +218,11 @@ Route::prefix('v1/staff')
         Route::get('me', [StaffAuthController::class, 'me']);
 
         Route::get('organizations', [StaffController::class, 'organizations']);
+
+        // The subsystems that fail silently — backups, mail, the outbox. See
+        // HealthController for why a status code cannot answer this.
+        Route::get('health', [HealthController::class, 'index']);
+        Route::post('health/test-email', [HealthController::class, 'testEmail']);
 
         // Global module availability — the platform-wide gate that sits above
         // every organization's own permissions (§2.1, layer 3).

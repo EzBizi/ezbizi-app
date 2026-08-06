@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/staff_session.dart';
+import 'staff/health_screen.dart';
 import 'staff/impersonations_screen.dart';
 import 'staff/modules_screen.dart';
 import 'staff/organizations_screen.dart';
@@ -100,6 +101,7 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
       ('Organizations', Icons.apartment_outlined, OrganizationsScreen(staff: _staff)),
       ('Modules', Icons.toggle_on_outlined, ModulesScreen(staff: _staff)),
       ('Client access', Icons.history_outlined, ImpersonationsScreen(staff: _staff)),
+      ('Health', Icons.favorite_outline, HealthScreen(staff: _staff)),
       if (me.isLead) ('Staff', Icons.badge_outlined, StaffAccountsScreen(staff: _staff)),
     ];
 

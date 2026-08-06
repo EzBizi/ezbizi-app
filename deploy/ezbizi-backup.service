@@ -1,0 +1,39 @@
+# Nightly backup and restore check (plan §18 Phase 0 item 5).
+#
+# Both scripts in one unit, in order, because a backup whose restore is never
+# checked is the thing this is fixing. Splitting them into two timers would let
+# the verification quietly stop running while the backup carried on looking
+# healthy.
+#
+# Runs as root: mysqldump needs socket auth, the archives include /etc, and the
+# ssh key for the off-site copy is root-only.
+#
+# Install:
+#   sudo cp deploy/backup.sh        /usr/local/bin/ezbizi-backup.sh
+#   sudo cp deploy/restore-check.sh /usr/local/bin/ezbizi-restore-check.sh
+#   sudo chmod 755 /usr/local/bin/ezbizi-backup.sh /usr/local/bin/ezbizi-restore-check.sh
+#   sudo cp deploy/ezbizi-backup.* /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ezbizi-backup.timer
+
+[Unit]
+Description=EzBizi backup and verified restore
+After=network-online.target mysql.service
+
+[Service]
+Type=oneshot
+
+# The second script runs even if the first reports failures: a partial backup
+# still deserves to be checked, and the check is what says which parts are
+# usable. `-` prefixes mean systemd does not abandon the unit on a non-zero exit
+# — the verdict is carried in backup-status.json, which the app reads.
+ExecStart=-/usr/local/bin/ezbizi-backup.sh
+ExecStart=-/usr/local/bin/ezbizi-restore-check.sh
+
+# A dump plus a full restore of a database this size is seconds today. The
+# ceiling is generous so growth does not silently start killing the run.
+TimeoutStartSec=3600
+
+# NOT hardened the way the scheduler unit is: this deliberately reads /etc,
+# /var/repos and /root, and writes to another host. ProtectSystem here would
+# break exactly the parts that make it a backup.
