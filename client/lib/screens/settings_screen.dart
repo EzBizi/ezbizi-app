@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
-import '../widgets/appearance_card.dart';
-import '../widgets/password_card.dart';
-import '../widgets/two_factor_card.dart';
 
 /// Settings, at whichever scope is selected (plan §6).
 ///
@@ -186,19 +183,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
-        // Above the organization's settings, deliberately: this one is YOURS.
-        // Everything below it is configuration an administrator sets for
-        // everybody, and mixing the two would suggest somebody else owns it.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-          child: Text('YOUR ACCOUNT', style: Theme.of(context).textTheme.labelSmall),
-        ),
-        AppearanceCard(session: widget.session),
-        const SizedBox(height: 8),
-        TwoFactorCard(api: widget.api, session: widget.session),
-        const SizedBox(height: 8),
-        PasswordCard(api: widget.api, session: widget.session),
-
+        // Everything on this screen belongs to the ORGANIZATION and is set by
+        // an administrator. Your own theme, password and second factor moved to
+        // "Your account" — they were here, directly above the organization's
+        // job statuses, which implied whoever could change one could change the
+        // other. §2.1 is explicit that the two categories are not to be merged.
         for (final entry in groups.entries) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),

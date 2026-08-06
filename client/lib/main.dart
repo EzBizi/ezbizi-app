@@ -10,6 +10,7 @@ import 'screens/data_screen.dart';
 import 'screens/development_screen.dart';
 import 'screens/jobs_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/profile_screen.dart';
 import 'screens/workflows_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/staff/staff_login_screen.dart';
@@ -159,6 +160,11 @@ class _HomeShellState extends State<HomeShell> {
         DataScreen(api: widget.api, session: widget.session),
       ),
       _Destination(
+        'Your account',
+        Icons.person_outline,
+        ProfileScreen(api: widget.api, session: widget.session),
+      ),
+      _Destination(
         'Settings',
         Icons.settings_outlined,
         SettingsScreen(api: widget.api, session: widget.session),
@@ -231,9 +237,22 @@ class _HomeShellState extends State<HomeShell> {
                 ),
               ),
               const PopupMenuDivider(),
+              const PopupMenuItem(value: 'me', child: Text('Your account')),
               const PopupMenuItem(value: 'out', child: Text('Sign out')),
             ],
-            onSelected: (v) => v == 'out' ? _signOut() : null,
+            onSelected: (v) {
+              if (v == 'out') {
+                _signOut();
+                return;
+              }
+
+              // Found by label rather than by a hardcoded index — the rail's
+              // contents depend on whether this person is also staff, so a
+              // literal number would open the wrong screen for half of them.
+              final i = destinations.indexWhere((d) => d.label == 'Your account');
+
+              if (i >= 0) setState(() => _index = i);
+            },
           ),
           const SizedBox(width: 8),
         ],

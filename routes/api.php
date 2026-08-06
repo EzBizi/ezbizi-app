@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\PreferencesController;
+use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\WorkflowsController;
 use App\Http\Controllers\Api\StaffAccountsController;
@@ -107,6 +108,14 @@ Route::prefix('v1')
         // proves somebody sat down at an unlocked laptop, not that they are the
         // account holder.
         Route::post('me/password', [PasswordController::class, 'change']);
+
+        // ── Your own account (§2.1 category 6) ───────────────────
+        //
+        // No policy on any of these: each is bound to the signed-in user's own
+        // record, so there is nobody else to authorize against.
+        Route::patch('me', [ProfileController::class, 'update']);
+        Route::get('me/sessions', [ProfileController::class, 'sessions']);
+        Route::delete('me/sessions', [ProfileController::class, 'revokeOtherSessions']);
 
         // ── Your own preferences (§2.1 category 6) ───────────────
         //
