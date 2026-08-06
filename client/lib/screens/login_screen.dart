@@ -11,22 +11,10 @@ import '../widgets/error_note.dart';
 /// picker only ever appears AFTER the password verified — the server enforces
 /// that, and this screen simply never has the data before then.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({
-    super.key,
-    required this.api,
-    required this.session,
-    required this.onStaffSignIn,
-  });
+  const LoginScreen({super.key, required this.api, required this.session});
 
   final ApiClient api;
   final Session session;
-
-  /// Switches the card to the control-plane form (§4.2).
-  ///
-  /// Visible rather than hidden behind a secret path: obscurity is not what
-  /// protects this — mandatory TOTP is. A hidden URL only means the person who
-  /// needs it has to remember it.
-  final VoidCallback onStaffSignIn;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -197,11 +185,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     height: 18, width: 18,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Text('Sign in'),
-          ),
-          const SizedBox(height: 4),
-          TextButton(
-            onPressed: _busy ? null : widget.onStaffSignIn,
-            child: const Text('EzBizi staff'),
           ),
         ],
       ),

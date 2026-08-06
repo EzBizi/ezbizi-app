@@ -49,7 +49,34 @@ sudo systemctl reload php8.4-fpm
 | Live symlink | `/var/www/ezbizi-current` → current release |
 | Shared storage | `/var/www/ezbizi/storage` |
 | Environment | `/var/www/ezbizi/.env` — **on the box only, never committed** |
-| Served at | https://app.ezbizi.com |
+| Customers | https://app.ezbizi.com |
+| Control plane | https://dev.ezbizi.com |
+
+Both hostnames serve the **same** Flutter bundle and the same Laravel release. The
+client reads its own hostname and picks a face (`client/lib/core/deployment.dart`);
+`app.ezbizi.com` additionally returns 404 for `/api/v1/staff`, so the control plane is
+separated at the transport layer and not only in the UI.
+
+nginx config for both lives in `deploy/` and is versioned. To change either:
+
+```bash
+scp deploy/nginx-dev.ezbizi.com.conf app:/tmp/ && ssh app 'sudo cp /tmp/nginx-dev.ezbizi.com.conf /etc/nginx/sites-available/dev.ezbizi.com.conf && sudo nginx -t && sudo systemctl reload nginx'
+```
+
+## The test sandbox, and the hazard in it
+
+`/var/www/ezbizi` is two things at once, and that is worth knowing before you touch it:
+
+- **Shared state the live app depends on** — `.env`, `storage/`, `public-app/`
+- **A scratch checkout** — `scripts/deploy.sh` extracts `git archive main` here and runs
+  the suite against it
+
+It holds a full Laravel tree with a **copy of the production `.env` and dev dependencies
+installed**. Until 2026-08-06 `dev.ezbizi.com` was rooted at `/var/www/ezbizi/public`, so
+the box was publicly serving that scratch checkout against the real database. Nothing
+points at it now — but any future vhost rooted there would expose it again. Do not add
+one. Splitting the scratch checkout out of `/var/www` would remove the hazard for good and
+has not been done.
 
 ## Permissions, and the trap in them
 

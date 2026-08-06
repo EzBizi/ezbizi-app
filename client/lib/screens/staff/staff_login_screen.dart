@@ -10,13 +10,9 @@ import '../../widgets/error_note.dart';
 /// deliberately — a two-step flow needs an intermediate token that, on its own,
 /// proves the password, and that token becomes the thing to steal.
 class StaffLoginScreen extends StatefulWidget {
-  const StaffLoginScreen({super.key, required this.staff, required this.onExit});
+  const StaffLoginScreen({super.key, required this.staff});
 
   final StaffSession staff;
-
-  /// Back to the tenant login. The control plane is not a separate site, just a
-  /// separate identity.
-  final VoidCallback onExit;
 
   @override
   State<StaffLoginScreen> createState() => _StaffLoginScreenState();
@@ -163,10 +159,13 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                                     strokeWidth: 2, color: Colors.white))
                             : const Text('Sign in'),
                       ),
-                      const SizedBox(height: 4),
-                      TextButton(
-                        onPressed: _busy ? null : widget.onExit,
-                        child: const Text('Back to customer sign-in'),
+                      const SizedBox(height: 12),
+                      Center(
+                        child: Text(
+                          'Staff accounts only. Customers sign in at app.ezbizi.com.',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     ],
                   ),

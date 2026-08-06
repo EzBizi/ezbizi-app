@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/api_client.dart';
+import 'core/deployment.dart';
 import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
@@ -27,8 +28,10 @@ class _EzBiziAppState extends State<EzBiziApp> {
   late final ApiClient _staffApi = ApiClient();
   late final StaffSession _staffSession = StaffSession(_staffApi);
 
-  /// Whether the sign-in card is showing the control-plane form.
-  bool _staffMode = false;
+  /// Decided by the host the browser asked for, once, at launch. There is no
+  /// switching between the two faces at runtime — a customer host has no staff
+  /// form to reach and the control-plane host has no customer app behind it.
+  final AppFace _face = Deployment.face();
 
   @override
   void initState() {
@@ -52,26 +55,15 @@ class _EzBiziAppState extends State<EzBiziApp> {
   }
 
   Widget _home() {
-    if (_staffSession.signedIn) {
-      return StaffShell(staff: _staffSession);
+    if (_face == AppFace.staff) {
+      return _staffSession.signedIn
+          ? StaffShell(staff: _staffSession)
+          : StaffLoginScreen(staff: _staffSession);
     }
 
-    if (_session.signedIn) {
-      return HomeShell(api: _api, session: _session);
-    }
-
-    if (_staffMode) {
-      return StaffLoginScreen(
-        staff: _staffSession,
-        onExit: () => setState(() => _staffMode = false),
-      );
-    }
-
-    return LoginScreen(
-      api: _api,
-      session: _session,
-      onStaffSignIn: () => setState(() => _staffMode = true),
-    );
+    return _session.signedIn
+        ? HomeShell(api: _api, session: _session)
+        : LoginScreen(api: _api, session: _session);
   }
 }
 
