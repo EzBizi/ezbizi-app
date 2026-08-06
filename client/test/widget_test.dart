@@ -183,6 +183,7 @@ void main() {
           children: [
             NavigationSidebar(
               expanded: true,
+              width: 220,
               destinations: [
                 Destination('Dashboard', Icons.dashboard_outlined, const SizedBox()),
                 Destination('Customers', Icons.people_outline, const SizedBox()),

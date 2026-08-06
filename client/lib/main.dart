@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'core/api_client.dart';
 import 'core/deployment.dart';
@@ -74,11 +76,7 @@ class _EzBiziAppState extends State<EzBiziApp> {
        * brand: its colours and logo. Somebody preferring dark mode at night is
        * not a branding decision and does not belong to their employer.
        */
-      themeMode: switch (_session.me?.theme) {
-        'light' => ThemeMode.light,
-        'dark' => ThemeMode.dark,
-        _ => ThemeMode.system,
-      },
+      themeMode: EzBiziTheme.modeFor(_session.me?.theme ?? 'system'),
       home: _home(),
     );
   }
@@ -259,7 +257,7 @@ class _HomeShellState extends State<HomeShell> {
         // of the header. One pixel fixes it; nothing else would.
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: Theme.of(context).dividerColor),
+          child: Container(height: 1, color: EzBiziTheme.edge(context)),
         ),
         leading: wide
             ? IconButton(
@@ -393,14 +391,32 @@ class _HomeShellState extends State<HomeShell> {
             // Blocks fit more in less width and some people prefer them, so
             // they stay available — as the user's own preference, not an
             // opinion imposed by whoever wrote this.
-            NavigationSidebar(
+            _maybeThemed(
+              // In a mixed mode the sidebar runs on the opposite theme to the
+              // page. Wrapping only the sidebar — rather than building two
+              // MaterialApps or threading colours by hand — means every widget
+              // inside it, including NavigationRail's own indicator and hover
+              // colours, resolves against the right scheme without knowing that
+              // anything unusual is happening.
+              //
+              // The top bar stays with the page. It spans both columns, so
+              // giving it the sidebar's theme would put a seam in the middle of
+              // a single surface.
+              EzBiziTheme.navigationOverride(me.theme),
+              child: NavigationSidebar(
               expanded: expanded,
+              width: me.navigationWidth,
               destinations: destinations,
               pinned: pinned,
               selectedIndex: railIndex,
               pinnedIndex: pinnedIndex,
               onSelected: (i) => setState(() => _index = i),
               onPinnedSelected: (i) => setState(() => _index = pinnedBase + i),
+              // Written through the same path as every other preference, once
+              // the drag settles.
+              onResized: (w) => widget.session
+                  .setPreference('navigation.width', w.round()),
+              ),
             ),
           Expanded(
             child: pinnedIndex != null
@@ -436,25 +452,39 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
+/// Wrap in a different theme, or do not wrap at all.
+///
+/// Null means the two halves of the shell match, and an identical Theme pushed
+/// down the tree would be a rebuild that changes nothing.
+Widget _maybeThemed(ThemeData? theme, {required Widget child}) =>
+    theme == null ? child : Theme(data: theme, child: child);
+
 /// The sidebar: the modules, a rule, then the pinned group.
 ///
 /// A widget rather than inline in HomeShell's build so it can be laid out in a
-/// test at a real size. Its one subtle failure — see the width note below —
-/// depends entirely on the constraints it is given, which is not something
+/// test at a real size. Its subtle failure — a Divider with no width to inherit
+/// — depends entirely on the constraints it is given, which is not something
 /// reading the code reliably catches.
-class NavigationSidebar extends StatelessWidget {
+class NavigationSidebar extends StatefulWidget {
   const NavigationSidebar({
     super.key,
     required this.expanded,
+    required this.width,
     required this.destinations,
     required this.pinned,
     required this.selectedIndex,
     required this.pinnedIndex,
     required this.onSelected,
     required this.onPinnedSelected,
+    this.onResized,
   });
 
   final bool expanded;
+
+  /// The stored width, honoured only while expanded — collapsed, the rail is
+  /// its icon column and nothing else, at any setting.
+  final double width;
+
   final List<Destination> destinations;
   final List<Destination> pinned;
 
@@ -466,33 +496,53 @@ class NavigationSidebar extends StatelessWidget {
   final ValueChanged<int> onSelected;
   final ValueChanged<int> onPinnedSelected;
 
+  /// Called once, on release. Not on every drag frame — that would be a request
+  /// per pixel of travel.
+  final ValueChanged<double>? onResized;
+
+  static const double collapsedWidth = 80;
+  static const double minWidth = 180;
+  static const double maxWidth = 420;
+
+  @override
+  State<NavigationSidebar> createState() => _NavigationSidebarState();
+}
+
+class _NavigationSidebarState extends State<NavigationSidebar> {
+  /// The width during a drag, before it is committed. Null when not dragging.
+  double? _dragWidth;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return IntrinsicWidth(
-      // A Row gives its non-flex children `maxWidth: infinity`, and the Divider
-      // below has no width of its own — under an unbounded width its line
-      // collapses to zero and it draws nothing at all while still occupying its
-      // vertical space. IntrinsicWidth binds this column to what the rails
-      // actually want, so the rule inherits that width instead of guessing at
-      // it, and 220/80 stays written down in exactly one place.
+    final width = widget.expanded
+        ? (_dragWidth ?? widget.width)
+        : NavigationSidebar.collapsedWidth;
+
+    final sidebar = SizedBox(
+      // Explicit, not intrinsic. A Row gives its non-flex children
+      // `maxWidth: infinity`, and the Divider below has no width of its own —
+      // under an unbounded width its line collapses to zero and it draws
+      // nothing at all while still occupying its vertical space. A real width
+      // is also what makes the rule's inset a proportion rather than a guess.
+      width: width,
       child: DecoratedBox(
         decoration: BoxDecoration(
           // Tinted and edged. The rail and the top bar were both plain surface,
-          // so on a light theme they met as one continuous white field and the
+          // so on a light theme they met as one continuous field and the
           // sidebar read as part of the header.
           color: scheme.surfaceContainerLow,
-          border: Border(right: BorderSide(color: Theme.of(context).dividerColor)),
+          border: Border(right: BorderSide(color: EzBiziTheme.edge(context))),
         ),
         // TWO rails, not one rail with a hand-drawn footer.
         //
-        // Settings and Development used to be a Material + InkWell built to look
-        // like destinations. It never quite did: the hover lit the whole row
-        // instead of the indicator pill, the icons sat 20px left of the column
-        // above them, there was no selection animation, and every change to the
-        // rail's width moved them again. Four defects, one cause — they were not
-        // destinations.
+        // Settings and Development used to be a Material + InkWell built to
+        // look like destinations. It never quite did: the hover lit the whole
+        // row instead of the indicator pill, the icons sat 20px left of the
+        // column above them, there was no selection animation, and every change
+        // to the rail's width moved them again. Four defects, one cause — they
+        // were not destinations.
         //
         // NavigationRail has no minimum destination count, so the pinned group
         // is simply another rail. Hover, splash, indicator shape, selection
@@ -504,10 +554,11 @@ class NavigationSidebar extends StatelessWidget {
             Expanded(
               child: _rail(
                 context,
-                expanded: expanded,
-                destinations: destinations,
-                selectedIndex: selectedIndex,
-                onSelected: onSelected,
+                expanded: widget.expanded,
+                width: width,
+                destinations: widget.destinations,
+                selectedIndex: widget.selectedIndex,
+                onSelected: widget.onSelected,
               ),
             ),
 
@@ -515,10 +566,17 @@ class NavigationSidebar extends StatelessWidget {
             // places you go to change how the work behaves, rather than places
             // you go to do it.
             //
-            // outlineVariant rather than the app's divider colour, which is 10%
-            // black — right for a hairline between rows on white, too quiet
-            // against the rail's tint.
-            Divider(height: 17, thickness: 1, color: scheme.outlineVariant),
+            // Inset to about 70% of the column. Edge to edge it reads as the
+            // bottom of the sidebar — a border, the same language as the right
+            // edge beside it. Pulled in, it reads as a break WITHIN one list,
+            // which is what it is.
+            Divider(
+              height: 17,
+              thickness: 1,
+              indent: width * 0.15,
+              endIndent: width * 0.15,
+              color: scheme.outlineVariant,
+            ),
 
             // IntrinsicHeight because a rail's root column is mainAxisSize.max
             // — it expects to own the full height. This asks it for exactly the
@@ -526,16 +584,60 @@ class NavigationSidebar extends StatelessWidget {
             IntrinsicHeight(
               child: _rail(
                 context,
-                expanded: expanded,
-                destinations: pinned,
-                selectedIndex: pinnedIndex,
-                onSelected: onPinnedSelected,
+                expanded: widget.expanded,
+                width: width,
+                destinations: widget.pinned,
+                selectedIndex: widget.pinnedIndex,
+                onSelected: widget.onPinnedSelected,
               ),
             ),
             const SizedBox(height: 12),
           ],
         ),
       ),
+    );
+
+    // Collapsed has one right width and dragging it would be a fight with the
+    // toggle. The handle only exists when there is a width to change.
+    if (!widget.expanded || widget.onResized == null) return sidebar;
+
+    return Stack(
+      children: [
+        sidebar,
+        Positioned(
+          top: 0,
+          bottom: 0,
+          // Straddles the border rather than sitting beside it, so the cursor
+          // changes where the eye says the edge is.
+          right: -3,
+          width: 7,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.resizeLeftRight,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onHorizontalDragStart: (_) => setState(() => _dragWidth = width),
+              onHorizontalDragUpdate: (d) => setState(() {
+                _dragWidth = ((_dragWidth ?? width) + d.delta.dx).clamp(
+                  NavigationSidebar.minWidth,
+                  NavigationSidebar.maxWidth,
+                );
+              }),
+              onHorizontalDragEnd: (_) {
+                final settled = _dragWidth;
+                setState(() => _dragWidth = null);
+                if (settled != null) widget.onResized!(settled);
+              },
+              // Double-click puts it back, because a resize handle without one
+              // means somebody who has dragged it somewhere odd has to find
+              // their way back by feel.
+              child: GestureDetector(
+                onDoubleTap: () => widget.onResized!(220),
+                behavior: HitTestBehavior.translucent,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -549,6 +651,7 @@ class NavigationSidebar extends StatelessWidget {
 Widget _rail(
   BuildContext context, {
   required bool expanded,
+  required double width,
   required List<Destination> destinations,
   required int? selectedIndex,
   required ValueChanged<int> onSelected,
@@ -562,8 +665,11 @@ Widget _rail(
     onDestinationSelected: onSelected,
     extended: expanded,
     labelType: expanded ? null : NavigationRailLabelType.none,
-    minWidth: 80,
-    minExtendedWidth: 220,
+    minWidth: NavigationSidebar.collapsedWidth,
+    // The rail fills the column it is given. minExtendedWidth is asserted to be
+    // at least minWidth, so a drag below the icon column would otherwise throw
+    // rather than simply stop.
+    minExtendedWidth: math.max(width, NavigationSidebar.collapsedWidth),
     leading: leading,
     destinations: destinations
         .map((d) => NavigationRailDestination(

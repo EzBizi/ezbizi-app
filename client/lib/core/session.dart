@@ -210,6 +210,8 @@ class Me {
   String get theme => switch (preferences['appearance.theme']) {
         'light' => 'light',
         'dark' => 'dark',
+        'mixed_dark_nav' => 'mixed_dark_nav',
+        'mixed_light_nav' => 'mixed_light_nav',
         _ => 'system',
       };
 
@@ -217,6 +219,16 @@ class Me {
       preferences['navigation.style'] == 'blocks' ? 'blocks' : 'list';
 
   bool get navigationCollapsed => preferences['navigation.collapsed'] == true;
+
+  /// How wide the expanded sidebar is. Clamped on read as well as on write:
+  /// a stored value from an older build, or one the server has since tightened
+  /// the bounds on, must not be able to render an unusable shell.
+  double get navigationWidth {
+    final stored = preferences['navigation.width'];
+    final value = stored is num ? stored.toDouble() : 220.0;
+
+    return value.clamp(180.0, 420.0);
+  }
 
   factory Me.fromJson(Map<String, dynamic> json) => Me(
         id: json['id'] as String,

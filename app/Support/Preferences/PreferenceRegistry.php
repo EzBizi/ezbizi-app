@@ -39,8 +39,17 @@ class PreferenceRegistry
                 'label'   => 'Theme',
                 'type'    => 'enum',
                 'default' => 'system',
-                'options' => ['system', 'light', 'dark'],
-                'help'    => '"Match my device" follows whatever your phone or computer is set to.',
+
+                /*
+                 * The two mixed modes are one visual idea with two directions,
+                 * and they are separate OPTIONS rather than a second toggle
+                 * beside the theme. A "mixed?" switch plus a "which way?" switch
+                 * would be two controls describing one choice, and somebody
+                 * would eventually find the pair in a state that means nothing.
+                 */
+                'options' => ['system', 'light', 'dark', 'mixed_dark_nav', 'mixed_light_nav'],
+                'help'    => '"Match my device" follows whatever your phone or computer is set to. '
+                    .'Mixed keeps the sidebar and the page in opposite themes.',
             ],
 
             /*
@@ -73,6 +82,28 @@ class PreferenceRegistry
                 'default' => false,
                 'help'    => 'Shows icons only, giving the page its width back.',
             ],
+
+            /*
+             * How wide the expanded sidebar is, in logical pixels.
+             *
+             * A number rather than small/medium/large: it is set by dragging the
+             * edge, so the value somebody produces is whatever they let go at.
+             * Offering three named sizes would mean snapping their drag to one
+             * of them, which feels broken in exactly the way a resize handle
+             * must not.
+             *
+             * Bounds are enforced here as well as in the client. The client
+             * clamps while dragging; this is what stops a hand-written API call
+             * storing a width that makes the app unusable on the next load.
+             */
+            'navigation.width' => [
+                'label'   => 'Sidebar width',
+                'type'    => 'int',
+                'default' => 220,
+                'min'     => 180,
+                'max'     => 420,
+                'help'    => 'Drag the edge of the sidebar to change it.',
+            ],
         ];
     }
 
@@ -96,7 +127,7 @@ class PreferenceRegistry
 
         return match ($definition['type']) {
             'bool' => (bool) $value,
-            'int'  => (int) $value,
+            'int'  => $this->clampInt($key, (int) $value, $definition),
             'enum' => in_array($value, $definition['options'], strict: true)
                 ? $value
                 : throw new InvalidArgumentException(sprintf(
@@ -106,6 +137,22 @@ class PreferenceRegistry
                 )),
             default => (string) $value,
         };
+    }
+
+    /**
+     * Hold an integer inside its declared range.
+     *
+     * Silently, rather than refusing: these are somebody's own preferences and
+     * a value slightly out of bounds is a client bug or a stale field, not an
+     * attack. Refusing would leave them with a UI stuck on an error they cannot
+     * act on; clamping leaves them with a usable app.
+     */
+    private function clampInt(string $key, int $value, array $definition): int
+    {
+        return max(
+            $definition['min'] ?? PHP_INT_MIN,
+            min($definition['max'] ?? PHP_INT_MAX, $value),
+        );
     }
 
     /** @return array<string, mixed> */

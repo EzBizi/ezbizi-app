@@ -17,6 +17,43 @@ class EzBiziTheme {
   static ThemeData light() => _build(Brightness.light);
   static ThemeData dark() => _build(Brightness.dark);
 
+  /// The line between the chrome's regions — top bar to page, sidebar to page.
+  ///
+  /// Deliberately NOT `dividerColor`. That one separates rows inside a list,
+  /// where the eye is already scanning line by line and a crisp rule helps. A
+  /// structural edge is doing the opposite job: it says two regions are
+  /// different without asking to be looked at, and at the same weight it reads
+  /// as a cut across the page.
+  ///
+  /// A tinted grey rather than transparent black, so it sits in the same family
+  /// as the surfaces either side instead of darkening whatever is behind it.
+  static Color edge(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF1E262E)
+          : const Color(0xFFE9EDF1);
+
+  /// Which theme each half of the shell gets.
+  ///
+  /// `mixed_dark_nav` and `mixed_light_nav` are one idea in two directions: the
+  /// sidebar and the page in opposite themes. Everything else puts both halves
+  /// on the same one.
+  static ThemeMode modeFor(String preference) => switch (preference) {
+        'light' || 'mixed_dark_nav' => ThemeMode.light,
+        'dark' || 'mixed_light_nav' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      };
+
+  /// The sidebar's own theme, when it differs from the page's.
+  ///
+  /// Null when the two match, so the caller can skip wrapping entirely rather
+  /// than rebuilding an identical theme and pushing a redundant inherited
+  /// widget down the tree.
+  static ThemeData? navigationOverride(String preference) => switch (preference) {
+        'mixed_dark_nav' => dark(),
+        'mixed_light_nav' => light(),
+        _ => null,
+      };
+
   static ThemeData _build(Brightness brightness) {
     final isDark = brightness == Brightness.dark;
 

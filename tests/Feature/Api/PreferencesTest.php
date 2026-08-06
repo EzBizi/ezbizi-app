@@ -145,4 +145,62 @@ class PreferencesTest extends TestCase
 
         $this->assertSame([], User::find($other->id)->preferences ?? []);
     }
+
+    // ── the two mixed modes, and a width that has bounds ─────────
+
+    public function test_the_mixed_themes_are_accepted(): void
+    {
+        foreach (['mixed_dark_nav', 'mixed_light_nav'] as $mode) {
+            $this->as()->patchJson('/api/v1/me/preferences', [
+                'preferences' => ['appearance.theme' => $mode],
+            ])->assertOk();
+
+            $this->assertSame(
+                $mode,
+                User::withoutGlobalScopes()->find($this->alpha['admin']->id)
+                    ->preferences['appearance.theme'],
+            );
+        }
+    }
+
+    public function test_a_theme_that_does_not_exist_is_still_refused(): void
+    {
+        // The list grew; it did not stop being a list. A value the client
+        // cannot render is worse than one that was never saved, because the
+        // second tells somebody immediately.
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['appearance.theme' => 'neon'],
+        ])->assertStatus(422);
+    }
+
+    public function test_the_sidebar_width_is_clamped_rather_than_refused(): void
+    {
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['navigation.width' => 9000],
+        ])->assertOk();
+
+        // Clamped, not rejected. This is somebody's own preference and an
+        // out-of-range value is a stale field or a client bug, not an attack —
+        // refusing would leave them looking at an error they cannot act on.
+        $this->assertSame(
+            420,
+            User::withoutGlobalScopes()->find($this->alpha['admin']->id)
+                ->preferences['navigation.width'],
+        );
+    }
+
+    public function test_a_width_below_the_floor_is_lifted_to_it(): void
+    {
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['navigation.width' => 10],
+        ])->assertOk();
+
+        // 10px of sidebar is an app with no navigation. The floor is what stops
+        // a hand-written API call producing one.
+        $this->assertSame(
+            180,
+            User::withoutGlobalScopes()->find($this->alpha['admin']->id)
+                ->preferences['navigation.width'],
+        );
+    }
 }

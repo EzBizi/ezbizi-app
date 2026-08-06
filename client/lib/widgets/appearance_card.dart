@@ -44,6 +44,11 @@ class AppearanceCard extends StatelessWidget {
                 ('system', 'Match my device'),
                 ('light', 'Light'),
                 ('dark', 'Dark'),
+                // Named by what changes rather than "Mixed 1" and "Mixed 2".
+                // Somebody choosing between them is choosing which half is
+                // dark, so that is what the label says.
+                ('mixed_dark_nav', 'Dark sidebar'),
+                ('mixed_light_nav', 'Light sidebar'),
               ],
               selected: me.theme,
               onChanged: (v) => session.setPreference('appearance.theme', v),
