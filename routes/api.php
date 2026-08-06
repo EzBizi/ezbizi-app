@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CustomersController;
+use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\NotificationsController;
@@ -65,6 +66,20 @@ Route::prefix('v1')
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
 
         Route::apiResource('jobs', JobsController::class);
+
+        // ── Import / export (§12, §9) ────────────────────────────
+        //
+        // Under /exports because EnforceSubscriptionState exempts that prefix by
+        // pattern: §13 requires export to keep working after a lapse. Imports get
+        // their own prefix precisely so they do NOT inherit that exemption.
+        //
+        // `bundle` is declared before `{resource}` or it binds as one and 404s.
+        Route::get('exports', [DataController::class, 'catalogue']);
+        Route::get('exports/bundle', [DataController::class, 'bundle']);
+        Route::get('exports/{resource}', [DataController::class, 'export']);
+        Route::get('customers/{customer}/export', [DataController::class, 'person']);
+
+        Route::post('imports/{resource}', [DataController::class, 'import']);
 
         // ── Workflows & automations (§5.5) ───────────────────────
         //
