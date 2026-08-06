@@ -262,13 +262,28 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 4),
           Row(
             children: [
-              Checkbox(
-                value: _stayed,
-                visualDensity: VisualDensity.compact,
-                onChanged: _busy ? null : (v) => setState(() => _stayed = v ?? false),
+              // A Checkbox carries a 48px tap target of its own, which pushed
+              // the label out of line with the button opposite and wrapped it
+              // onto two lines.
+              Transform.translate(
+                offset: const Offset(-4, 0),
+                child: Checkbox(
+                  value: _stayed,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onChanged: _busy ? null : (v) => setState(() => _stayed = v ?? false),
+                ),
               ),
-              const Flexible(child: Text('Keep me signed in')),
-              const Spacer(),
+              const SizedBox(width: 6),
+              // Expanded, not Spacer + fixed Text. `softWrap: false` on a rigid
+              // Text meant the row could not shrink at all and overflowed by
+              // 110px the moment the panel was narrower than the label plus the
+              // button. This fills the gap AND gives way when it has to.
+              const Expanded(
+                child: Text('Keep me signed in',
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+              const SizedBox(width: 8),
               TextButton(
                 onPressed: _busy ? null : _forgot,
                 child: const Text('Forgot password?'),

@@ -41,6 +41,40 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <script>
+    // Unregister any service worker this browser already installed, and empty
+    // its caches.
+    //
+    // The app is built with --pwa-strategy=none, so nothing registers one any
+    // more — but a worker installed by an EARLIER build keeps running and keeps
+    // serving main.dart.js out of Cache Storage, which ignores HTTP cache
+    // headers completely. Every visitor who loaded the site before this change
+    // is pinned to whatever build they first saw, and no amount of deploying or
+    // fixing nginx reaches them. This is the only thing that does.
+    //
+    // EzBizi is a business application that must always be current; it is not
+    // an offline-first PWA. There is nothing to gain from a worker here and a
+    // whole class of "I don't see my changes" to lose.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations()
+        .then((rs) => Promise.all(rs.map((r) => r.unregister())))
+        .then((unregistered) => {
+          if (!unregistered.some(Boolean)) return;
+
+          // A worker was controlling this page, so what is on screen came from
+          // its cache. Clear the caches and reload once to land on the real
+          // build. The flag stops that reload looping.
+          return caches.keys()
+            .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+            .then(() => {
+              if (sessionStorage.getItem('ezbizi.sw-cleared')) return;
+              sessionStorage.setItem('ezbizi.sw-cleared', '1');
+              location.reload();
+            });
+        })
+        .catch(() => {});
+    }
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

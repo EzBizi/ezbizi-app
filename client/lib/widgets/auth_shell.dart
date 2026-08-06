@@ -57,8 +57,11 @@ class AuthShell extends StatelessWidget {
 
           return Row(
             children: [
+              // 1:1 rather than 5:4. The form is the reason the page exists;
+              // giving it visibly less room than the pitch beside it read as an
+              // afterthought.
               Expanded(
-                flex: 5,
+                flex: 1,
                 child: _IdentityPanel(
                   eyebrow: eyebrow,
                   headline: headline,
@@ -69,7 +72,7 @@ class AuthShell extends StatelessWidget {
                 ),
               ),
               Expanded(
-                flex: 4,
+                flex: 1,
                 child: _FormPanel(form: form, showWordmark: false),
               ),
             ],
@@ -126,15 +129,25 @@ class _IdentityPanel extends StatelessWidget {
             child: _Glow(size: 460, color: EzBiziTheme.accent.withValues(alpha: 0.10)),
           ),
 
-          Padding(
-            padding: const EdgeInsets.all(48),
+          // One column, held to a readable width and centred in the panel.
+          //
+          // It was `EdgeInsets.all(48)` on a full-width column, so on a 1100px
+          // panel the text hugged the left edge with half the panel empty
+          // beside it. Constraining the column and centring it keeps the same
+          // left-aligned reading line at any panel width, and puts the whole
+          // block where the eye expects it.
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 620),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(56, 48, 56, 44),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
                   Container(
-                    width: 38,
-                    height: 38,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: EzBiziTheme.accent,
                       borderRadius: BorderRadius.circular(10),
@@ -153,8 +166,11 @@ class _IdentityPanel extends StatelessWidget {
                   ),
                 ]),
 
+                // Even flex above and below the cluster, so it sits on the
+                // panel's true centre instead of drifting downwards.
+                const Spacer(),
+
                 if (pill != null) ...[
-                  const SizedBox(height: 28),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
@@ -171,9 +187,8 @@ class _IdentityPanel extends StatelessWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 24),
                 ],
-
-                const Spacer(),
 
                 Text(
                   eyebrow.toUpperCase(),
@@ -184,34 +199,28 @@ class _IdentityPanel extends StatelessWidget {
                     letterSpacing: 1.4,
                   ),
                 ),
-                const SizedBox(height: 14),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 460),
-                  child: Text(
-                    headline,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 38,
-                      height: 1.12,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.8,
-                    ),
+                const SizedBox(height: 16),
+                Text(
+                  headline,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 40,
+                    height: 1.14,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.9,
                   ),
                 ),
-                const SizedBox(height: 16),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
-                  child: Text(
-                    blurb,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.72),
-                      fontSize: 14,
-                      height: 1.55,
-                    ),
+                const SizedBox(height: 18),
+                Text(
+                  blurb,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.70),
+                    fontSize: 14.5,
+                    height: 1.6,
                   ),
                 ),
 
-                const SizedBox(height: 34),
+                const SizedBox(height: 36),
                 _StepStrip(steps: steps),
 
                 const Spacer(),
@@ -231,6 +240,8 @@ class _IdentityPanel extends StatelessWidget {
                   ),
                 ]),
               ],
+            ),
+              ),
             ),
           ),
         ],
@@ -254,15 +265,12 @@ class _StepStrip extends StatelessWidget {
         border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           for (var i = 0; i < steps.length; i++) ...[
             if (i > 0)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                child: Icon(Icons.arrow_forward,
-                    size: 16, color: EzBiziTheme.accent.withValues(alpha: 0.85)),
-              ),
+              Icon(Icons.arrow_forward,
+                  size: 16, color: EzBiziTheme.accent.withValues(alpha: 0.85)),
             Column(
               children: [
                 Icon(steps[i].icon, color: Colors.white, size: 20),
@@ -315,9 +323,11 @@ class _FormPanel extends StatelessWidget {
       color: Theme.of(context).colorScheme.surface,
       child: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 48),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 380),
+            // Wider than the old 380: at that width the form read as a
+            // small card adrift in a very large empty panel.
+            constraints: const BoxConstraints(maxWidth: 420),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
