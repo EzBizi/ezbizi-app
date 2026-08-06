@@ -313,7 +313,8 @@ class VerticalSliceTest extends TestCase
             // toggle in the UI is a convenience that sets all four at once.
             foreach (['customers.view', 'jobs.view'] as $key) {
                 $role->permissions()->attach(Permission::firstOrCreate(['key' => $key], [
-                    'key' => $key, 'module' => explode('.', $key)[0], 'action' => explode('.', $key)[1],
+                    'key' => $key, 'module' => explode('.', $key)[0],
+                    'action' => explode('.', $key)[1], 'label' => $key,
                 ])->id);
             }
 

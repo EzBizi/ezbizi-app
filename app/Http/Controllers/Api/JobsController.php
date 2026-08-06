@@ -7,6 +7,7 @@ use App\Models\Franchise;
 use App\Models\Job;
 use App\Support\Audit\AuditLogger;
 use App\Support\Numbering\RecordNumberGenerator;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +28,22 @@ class JobsController extends Controller
     public function __construct(
         private readonly RecordNumberGenerator $numbers,
         private readonly AuditLogger $audit,
+        private readonly TenantContext $tenant,
     ) {}
+
+    /**
+     * An `exists` rule scoped to this organization.
+     *
+     * Laravel's plain `exists` runs a raw query with no tenant scope, so naming
+     * another organization's id passes validation and only fails later as a 404.
+     * Two different answers for two different ids is an existence oracle — it
+     * tells a caller which ids are real somewhere else on the platform.
+     */
+    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
+    {
+        return Rule::exists($table, 'id')
+            ->where('organization_id', $this->tenant->idOrFail());
+    }
 
     /** GET /api/v1/jobs */
     public function index(Request $request): JsonResponse
@@ -178,10 +194,10 @@ class JobsController extends Controller
             // "create a new one and cancel this", not an edit.
             'franchise_id' => $forUpdate
                 ? ['prohibited']
-                : ['required', 'uuid', Rule::exists('franchises', 'id')],
+                : ['required', 'uuid', $this->existsInTenant('franchises')],
             'customer_id'  => $forUpdate
                 ? ['prohibited']
-                : ['required', 'uuid', Rule::exists('customers', 'id')],
+                : ['required', 'uuid', $this->existsInTenant('customers')],
 
             'title'            => [$required, 'string', 'max:200'],
             'status'           => [$required, 'string', 'max:60'],

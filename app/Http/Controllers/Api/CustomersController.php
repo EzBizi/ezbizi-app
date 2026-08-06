@@ -8,6 +8,7 @@ use App\Services\Customers\DuplicateCustomerFinder;
 use App\Support\Audit\AuditLogger;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -32,7 +33,23 @@ class CustomersController extends Controller
         private readonly DuplicateCustomerFinder $duplicates,
         private readonly SettingsResolver $settings,
         private readonly AuditLogger $audit,
+        private readonly TenantContext $tenant,
     ) {}
+
+    /**
+     * An `exists` rule scoped to this organization.
+     *
+     * Laravel's plain `exists` runs a raw query with no tenant scope, so naming
+     * another organization's franchise id passes validation and only fails later
+     * as a 404 from the Eloquent lookup. Two different answers for two different
+     * ids is an existence oracle: it tells a caller which ids are real somewhere
+     * else on the platform. Scoping the rule makes both cases identical.
+     */
+    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
+    {
+        return Rule::exists($table, 'id')
+            ->where('organization_id', $this->tenant->idOrFail());
+    }
 
     /** GET /api/v1/customers */
     public function index(Request $request): JsonResponse
@@ -146,7 +163,7 @@ class CustomersController extends Controller
     public function reassignOwner(Request $request, Customer $customer): JsonResponse
     {
         $input = $request->validate([
-            'owning_franchise_id' => ['required', 'uuid', Rule::exists('franchises', 'id')],
+            'owning_franchise_id' => ['required', 'uuid', $this->existsInTenant('franchises')],
             'reason'              => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -210,7 +227,7 @@ class CustomersController extends Controller
         return [
             'owning_franchise_id' => $forUpdate
                 ? ['prohibited']
-                : ['required', 'uuid', Rule::exists('franchises', 'id')],
+                : ['required', 'uuid', $this->existsInTenant('franchises')],
             'name'          => [$required, 'string', 'max:200'],
             'email'         => ['nullable', 'email', 'max:200'],
             'phone'         => ['nullable', 'string', 'max:40'],
