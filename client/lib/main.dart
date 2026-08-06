@@ -43,6 +43,14 @@ class _EzBiziAppState extends State<EzBiziApp> {
     super.initState();
     _session.addListener(() => setState(() {}));
     _staffSession.addListener(() => setState(() {}));
+
+    // A refresh used to sign people out, because the token lived only in
+    // memory. It is picked back up here and verified before it is trusted.
+    if (_face == AppFace.customer) {
+      _session.restore();
+    } else {
+      _staffSession.restore();
+    }
   }
 
   @override
@@ -71,6 +79,17 @@ class _EzBiziAppState extends State<EzBiziApp> {
   }
 
   Widget _home() {
+    // Held until a stored token has been checked. Without this the sign-in
+    // screen flashes for a moment on every refresh, which reads as being
+    // logged out and then not.
+    final restoring = _face == AppFace.staff
+        ? !_staffSession.restored
+        : !_session.restored;
+
+    if (restoring) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     if (_face == AppFace.staff) {
       return _staffSession.signedIn
           ? StaffShell(staff: _staffSession)

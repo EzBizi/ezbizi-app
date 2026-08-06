@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\NotificationsController;
+use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\WorkflowsController;
@@ -38,6 +39,12 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1/auth')->group(function () {
     Route::post('login',  [AuthController::class, 'login']);
     Route::post('choose', [AuthController::class, 'choose']);
+
+    // Public by necessity — somebody who has forgotten their password cannot
+    // sign in to ask. Both answer identically whatever the outcome, so neither
+    // can be used to discover which addresses are registered.
+    Route::post('forgot', [PasswordController::class, 'forgot']);
+    Route::post('reset',  [PasswordController::class, 'reset']);
 });
 
 // ── Authenticated ────────────────────────────────────────────────
@@ -70,6 +77,11 @@ Route::prefix('v1')
         Route::apiResource('workflows', WorkflowsController::class)->except(['store'])
             ->parameters(['workflows' => 'workflow']);
         Route::post('workflows', [WorkflowsController::class, 'store']);
+
+        // Changing it while signed in. Needs the current password: a session
+        // proves somebody sat down at an unlocked laptop, not that they are the
+        // account holder.
+        Route::post('me/password', [PasswordController::class, 'change']);
 
         // ── Your own preferences (§2.1 category 6) ───────────────
         //
@@ -205,6 +217,7 @@ Route::prefix('v1/staff')
         Route::get('accounts', [StaffAccountsController::class, 'index']);
         Route::post('accounts', [StaffAccountsController::class, 'store']);
         Route::patch('accounts/{staff}', [StaffAccountsController::class, 'update']);
+        Route::post('accounts/{staff}/reset-link', [StaffAccountsController::class, 'resetLink']);
         Route::post('accounts/{staff}/link', [StaffAccountsController::class, 'link']);
         Route::delete('accounts/{staff}/link/{user}', [StaffAccountsController::class, 'unlink']);
         Route::post('accounts/{staff}/totp', [StaffAccountsController::class, 'resetTotp']);

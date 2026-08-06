@@ -296,6 +296,38 @@ class StaffAccountsController extends Controller
         return response()->json(['data' => $this->present($staff->fresh())]);
     }
 
+    /**
+     * POST /api/v1/staff/accounts/{staff}/reset-link
+     *
+     * A reset link, returned rather than emailed.
+     *
+     * MAIL_MAILER is `log` on this box — SES is still an open item from §18
+     * Phase 0 — so a "forgot password" email reaches nobody today. Until a
+     * transport exists this is the working path: a Lead Developer generates the
+     * link and hands it over by whatever channel they already trust.
+     *
+     * It is the same single-use, one-hour token the email would carry, and it is
+     * audited the same way. When mail is wired this stays useful for the case
+     * where somebody has lost access to their mailbox entirely.
+     */
+    public function resetLink(Request $request, PlatformStaff $staff): JsonResponse
+    {
+        $this->authorizeManagement($request);
+
+        $issued = app(\App\Services\Auth\PasswordResets::class)->issue($staff, $request->ip());
+
+        $this->record($request, 'staff.password_reset_link_issued', $staff, [
+            'expires_at' => $issued['expires_at']->toIso8601String(),
+        ]);
+
+        return response()->json(['data' => [
+            'url'        => 'https://dev.ezbizi.com/reset?token='.$issued['token'],
+            'expires_at' => $issued['expires_at']->toIso8601String(),
+            'note'       => 'Single use, one hour. Email delivery is not wired up yet '
+                .'(MAIL_MAILER=log), so hand this over directly.',
+        ]]);
+    }
+
     // ── shared ───────────────────────────────────────────────────
 
     private function confirm(Request $request, PlatformStaff $staff): JsonResponse

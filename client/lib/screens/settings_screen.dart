@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/appearance_card.dart';
+import '../widgets/password_card.dart';
 import '../widgets/two_factor_card.dart';
 
 /// Settings, at whichever scope is selected (plan §6).
@@ -195,6 +196,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         AppearanceCard(session: widget.session),
         const SizedBox(height: 8),
         TwoFactorCard(api: widget.api, session: widget.session),
+        const SizedBox(height: 8),
+        PasswordCard(api: widget.api, session: widget.session),
 
         for (final entry in groups.entries) ...[
           Padding(

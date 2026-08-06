@@ -232,9 +232,67 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Text('Sign in'),
           ),
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: _busy ? null : _forgot,
+            child: const Text('I forgot my password'),
+          ),
         ],
       ),
     );
+  }
+
+  /// Ask for a reset link.
+  ///
+  /// The server answers identically whether or not the address is registered,
+  /// so this screen must too — showing "no such account" would undo the whole
+  /// point of that.
+  Future<void> _forgot() async {
+    final email = TextEditingController(text: _email.text.trim());
+
+    final asked = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset your password'),
+        content: SizedBox(
+          width: 380,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('We will email you a link. It works once and expires in an hour.'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: email,
+                autofocus: true,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Email'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(email.text.trim()),
+            child: const Text('Send link'),
+          ),
+        ],
+      ),
+    );
+
+    email.dispose();
+
+    if (asked == null || asked.isEmpty || !mounted) return;
+
+    final response = await widget.api.post('/auth/forgot', {'email': asked});
+
+    if (!mounted) return;
+
+    // Shown whatever came back, for the same reason.
+    setState(() => _error = response.message);
   }
 
   /// Shown only when the password matched accounts in several organizations.

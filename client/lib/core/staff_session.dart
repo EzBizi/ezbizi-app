@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'api_client.dart';
+import 'token_store.dart';
 
 /// Who is signed in to the control plane (plan §4.2).
 ///
@@ -24,8 +25,37 @@ class StaffSession extends ChangeNotifier {
   Future<bool> adopt(String token) async {
     _api.setToken(token);
     await refresh();
+
+    if (signedIn) {
+      TokenStore.save(staff: token);
+    }
+
     return signedIn;
   }
+
+  /// Pick up a session left by a refresh, verifying it before trusting it.
+  Future<void> restore() async {
+    final token = TokenStore.staffToken;
+
+    if (token == null) {
+      _restored = true;
+      notifyListeners();
+      return;
+    }
+
+    _api.setToken(token);
+    await refresh();
+
+    if (!signedIn) {
+      TokenStore.clear();
+    }
+
+    _restored = true;
+    notifyListeners();
+  }
+
+  bool _restored = false;
+  bool get restored => _restored;
 
   Future<void> refresh() async {
     final response = await _api.get('/staff/me');
@@ -43,6 +73,7 @@ class StaffSession extends ChangeNotifier {
   void signOut() {
     _me = null;
     _api.setToken(null);
+    TokenStore.clear();
     notifyListeners();
   }
 }

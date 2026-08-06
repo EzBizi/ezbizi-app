@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'api_client.dart';
+import 'token_store.dart';
 
 /// Who is signed in, and what they can reach.
 ///
@@ -33,8 +34,49 @@ class Session extends ChangeNotifier {
   Future<bool> adopt(String token) async {
     _api.setToken(token);
     await refresh();
+
+    // Written only after /me answered. Saving a token that turns out not to
+    // work would mean every future launch tries it, fails, and clears it —
+    // a slow sign-in instead of a fast sign-out.
+    if (signedIn) {
+      TokenStore.save(tenant: token, staff: staffToken);
+    }
+
     return signedIn;
   }
+
+  /// Pick up a session left by a refresh.
+  ///
+  /// The token is verified against /me before it is trusted — it may have
+  /// expired, been revoked by a password change, or belong to an account that
+  /// has since been deactivated. refresh() clears it on any of those, so a stale
+  /// token means the sign-in screen rather than a broken shell.
+  Future<void> restore() async {
+    final token = TokenStore.tenantToken;
+
+    if (token == null) {
+      _restored = true;
+      notifyListeners();
+      return;
+    }
+
+    staffToken = TokenStore.staffToken;
+    _api.setToken(token);
+
+    await refresh();
+
+    if (!signedIn) {
+      TokenStore.clear();
+    }
+
+    _restored = true;
+    notifyListeners();
+  }
+
+  /// False until restore() has finished, so the app can hold the first frame
+  /// rather than flashing the sign-in screen at somebody who is signed in.
+  bool _restored = false;
+  bool get restored => _restored;
 
   Future<void> refresh() async {
     final response = await _api.get('/me');
@@ -74,7 +116,9 @@ class Session extends ChangeNotifier {
   void signOut() {
     _me = null;
     readOnlyNotice = null;
+    staffToken = null;
     _api.setToken(null);
+    TokenStore.clear();
     notifyListeners();
   }
 
