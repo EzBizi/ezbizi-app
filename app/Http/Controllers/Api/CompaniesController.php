@@ -156,7 +156,7 @@ class CompaniesController extends Controller
                 // defaulted to a constant. A business in one timezone should not
                 // have to restate it for every place it operates.
                 'timezone' => $input['franchise']['timezone']
-                    ?? $this->settings->get('general.timezone', $request->user()->organization),
+                    ?? $this->settings->get('timezone', $request->user()->organization),
                 'currency' => strtoupper($input['franchise']['currency']
                     ?? $request->user()->organization->reporting_currency ?? 'USD'),
                 'is_active' => true,

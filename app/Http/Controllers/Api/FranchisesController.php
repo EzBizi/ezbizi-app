@@ -56,7 +56,7 @@ class FranchisesController extends Controller
                 'company_id'      => $company->id,
                 'name'            => trim($input['name']),
                 'timezone' => $input['timezone']
-                    ?? $this->settings->get('general.timezone', $company),
+                    ?? $this->settings->get('timezone', $company),
                 'currency' => strtoupper($input['currency']
                     ?? $request->user()->organization->reporting_currency ?? 'USD'),
                 'is_active' => true,
