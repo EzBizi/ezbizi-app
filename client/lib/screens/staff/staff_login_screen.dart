@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/staff_session.dart';
+import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../../widgets/totp_setup_dialog.dart';
 import '../../widgets/error_note.dart';
 
 /// Control-plane sign-in (plan §4.2).
@@ -75,6 +77,61 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       _error = 'Signed in, but the session could not be loaded. Try again.';
       _code.clear();
     });
+  }
+
+  /// Bind an authenticator to an account that has never had one.
+  ///
+  /// Uses the email and password already typed above — the server refuses this
+  /// entirely for an account that is already enrolled, so it cannot be used to
+  /// take over a working one.
+  Future<void> _setUpAuthenticator() async {
+    if (_email.text.trim().isEmpty || _password.text.isEmpty) {
+      setState(() => _error = 'Enter your email and password first, then set up the code.');
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    final begin = await widget.staff.api.post('/staff/auth/enrolment', {
+      'email': _email.text.trim(),
+      'password': _password.text,
+    });
+
+    if (!mounted) return;
+
+    setState(() => _busy = false);
+
+    if (!begin.ok) {
+      setState(() => _error = begin.message);
+      return;
+    }
+
+    final enrolment = begin.body['enrolment'] as Map<String, dynamic>;
+    final token = begin.body['token'] as String;
+
+    // Its own client, carrying the fifteen-minute single-ability token. It must
+    // not be set on the session's client — that one holds a real staff token
+    // after sign-in, and this is deliberately not one.
+    final enrolApi = ApiClient()..setToken(token);
+
+    final done = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => TotpSetupDialog(
+        accountLabel: (begin.body['account'] as Map<String, dynamic>)['email'] as String,
+        secret: enrolment['secret'] as String,
+        uri: enrolment['uri'] as String,
+        intro: 'Your account needs an authenticator before it can sign in.',
+        onConfirm: (code) => enrolApi.post('/staff/auth/enrolment/confirm', {'code': code}),
+      ),
+    );
+
+    if (done == true && mounted) {
+      setState(() => _error = 'Set up. Enter a code from the app and sign in.');
+    }
   }
 
   @override
@@ -159,7 +216,16 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                                     strokeWidth: 2, color: Colors.white))
                             : const Text('Sign in'),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 4),
+                      // The bootstrap path. A staff account cannot sign in until
+                      // it has an authenticator, so it cannot enrol from inside —
+                      // this is how somebody sets one up without a console and
+                      // without anybody else being present.
+                      TextButton(
+                        onPressed: _busy ? null : _setUpAuthenticator,
+                        child: const Text('Set up my authenticator'),
+                      ),
+                      const SizedBox(height: 4),
                       Center(
                         child: Text(
                           'Staff accounts only. Customers sign in at app.ezbizi.com.',

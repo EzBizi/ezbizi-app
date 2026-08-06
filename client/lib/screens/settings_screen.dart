@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../widgets/two_factor_card.dart';
 
 /// Settings, at whichever scope is selected (plan §6).
 ///
@@ -183,6 +184,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
+        // Above the organization's settings, deliberately: this one is YOURS.
+        // Everything below it is configuration an administrator sets for
+        // everybody, and mixing the two would suggest somebody else owns it.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+          child: Text('YOUR ACCOUNT', style: Theme.of(context).textTheme.labelSmall),
+        ),
+        TwoFactorCard(api: widget.api, session: widget.session),
+
         for (final entry in groups.entries) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
