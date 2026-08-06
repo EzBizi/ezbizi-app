@@ -60,9 +60,19 @@ class SettingsController extends Controller
                 'is_sensitive'   => $definition->isSensitive,
                 'options'        => $definition->options ?: null,
                 'help'           => $definition->help,
-                // Can this scope set it? The client uses this to render the
-                // control as editable or read-only-inherited.
+                // Can this SCOPE hold it? Inheritance, not permission.
                 'editable_here'  => $definition->allowsScope($scopeType),
+
+                // Can this PERSON set it here? Two separate questions, and the
+                // client had only the first — so somebody without
+                // `organizations.edit` saw every control live, changed one, and
+                // got a 403 from a switch that had already animated.
+                'may_edit'       => $definition->allowsScope($scopeType)
+                                    && $request->user()->hasPermission($definition->permissionRequired()),
+
+                // Named so a refusal can say which one is missing rather than
+                // "you cannot do that".
+                'permission'     => $definition->permissionRequired(),
                 'allowed_scopes' => $definition->allowedScopes,
                 'source'         => $source === null ? null : [
                     'type'      => $this->scopeTypeOf($source),

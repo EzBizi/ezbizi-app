@@ -193,6 +193,18 @@ Route::prefix('v1')
                     ],
                     // Reach, so the client knows which franchises to offer —
                     // rather than showing all and failing on save (§4).
+                    // The companies behind those franchises. §6 allows settings
+                    // at company level and the client had no way to select one,
+                    // so a whole tier of the cascade was configured through the
+                    // API or not at all.
+                    'companies' => $user->reachableFranchises()
+                        ->pluck('company')
+                        ->filter()
+                        ->unique('id')
+                        ->values()
+                        ->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])
+                        ->all(),
+
                     'franchises' => $user->reachableFranchises()->map(fn ($f) => [
                         'id'         => $f->id,
                         'name'       => $f->name,

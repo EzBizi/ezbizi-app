@@ -159,6 +159,7 @@ class Me {
     required this.preferences,
     required this.development,
     required this.organization,
+    required this.companies,
     required this.franchises,
   });
 
@@ -183,6 +184,11 @@ class Me {
 
   /// Only franchises this user can actually act on (§4). The server sends reach,
   /// not the full list, so the UI never offers something that will fail on save.
+  /// The companies behind the franchises this person can reach (§6). Needed so
+  /// the settings screen can offer the middle tier of the cascade, which was
+  /// supported by the API and unreachable from the UI.
+  final List<CompanySummary> companies;
+
   final List<FranchiseSummary> franchises;
 
   /// A copy with one preference changed. Me is immutable, which is what makes
@@ -195,6 +201,7 @@ class Me {
         preferences: {...preferences, key: value},
         development: development,
         organization: organization,
+        companies: companies,
         franchises: franchises,
       );
 
@@ -221,6 +228,9 @@ class Me {
             : DevelopmentAccess.fromJson(json['development'] as Map<String, dynamic>),
         organization:
             OrganizationSummary.fromJson(json['organization'] as Map<String, dynamic>),
+        companies: (json['companies'] as List<dynamic>? ?? [])
+            .map((c) => CompanySummary.fromJson(c as Map<String, dynamic>))
+            .toList(),
         franchises: (json['franchises'] as List<dynamic>? ?? [])
             .map((f) => FranchiseSummary.fromJson(f as Map<String, dynamic>))
             .toList(),
@@ -247,6 +257,18 @@ class OrganizationSummary {
         name: json['name'] as String,
         franchiseLabel: json['franchise_label'] as String? ?? 'Franchise',
         isReadOnly: json['is_read_only'] as bool? ?? false,
+      );
+}
+
+class CompanySummary {
+  const CompanySummary({required this.id, required this.name});
+
+  final String id;
+  final String name;
+
+  factory CompanySummary.fromJson(Map<String, dynamic> json) => CompanySummary(
+        id: json['id'] as String,
+        name: json['name'] as String,
       );
 }
 

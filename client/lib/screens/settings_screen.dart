@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../widgets/error_note.dart';
 
 /// Settings, at whichever scope is selected (plan §6).
 ///
@@ -139,10 +141,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _load();
             }),
           ),
+          // The middle tier of the cascade (§6). Supported end to end by the
+          // API and unreachable from this screen until now, so any setting whose
+          // allowed scopes were organization+company could only be configured
+          // through the API or not at all.
+          ...me.companies.map((c) => ChoiceChip(
+                label: Text(c.name),
+                avatar: const Icon(Icons.apartment_outlined, size: 15),
+                selected: _scopeType == 'company' && _scopeId == c.id,
+                onSelected: (_) => setState(() {
+                  _scopeType = 'company';
+                  _scopeId = c.id;
+                  _scopeLabel = c.name;
+                  _load();
+                }),
+              )),
+
           // Only franchises this user can reach (§4) — the server sends reach,
           // so the UI never offers one that would fail on save.
           ...me.franchises.map((f) => ChoiceChip(
                 label: Text(f.name),
+                avatar: const Icon(Icons.storefront_outlined, size: 15),
                 selected: _scopeType == 'franchise' && _scopeId == f.id,
                 onSelected: (_) => setState(() {
                   _scopeType = 'franchise';
@@ -232,7 +251,16 @@ class _SettingRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final key = setting['key'] as String;
     final type = setting['type'] as String;
-    final editable = setting['editable_here'] as bool? ?? false;
+    // Two separate questions, and the screen used to ask only the first.
+    //
+    //   editable_here — may this SCOPE hold a value for it (inheritance)
+    //   may_edit      — may THIS PERSON set it here (permission)
+    //
+    // Rendering on the first alone meant somebody without `organizations.edit`
+    // saw every control live, flicked a switch, watched it animate, and got a
+    // 403 from a control that had already moved.
+    final scopeAllows = setting['editable_here'] as bool? ?? false;
+    final editable = setting['may_edit'] as bool? ?? scopeAllows;
     final source = setting['source'] as Map<String, dynamic>?;
     final inherited = source?['inherited'] as bool? ?? false;
 
@@ -250,13 +278,28 @@ class _SettingRow extends StatelessWidget {
                 // Where the value came from. The whole reason the API returns
                 // `source` — an admin who can't see this changes the wrong level.
                 Text(
-                  !editable
+                  !scopeAllows
                       ? 'Set at organization level only'
-                      : inherited
-                          ? 'Inherited from ${source!['name']}'
-                          : 'Set here',
+                      : !editable
+                          // Names the permission. "You cannot do that" sends
+                          // somebody to ask an administrator for something
+                          // neither of them can name.
+                          ? 'Read-only — needs ${setting['permission'] ?? 'permission'}'
+                          : inherited
+                              ? 'Inherited from ${source!['name']}'
+                              : 'Set here',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12),
                 ),
+
+                // The server sends `help` for every setting and nothing showed
+                // it, so the reasoning behind each one lived only in the code.
+                if ((setting['help'] as String?)?.isNotEmpty ?? false) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    setting['help'] as String,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
               ],
             ),
           ),
@@ -293,22 +336,205 @@ class _SettingRow extends StatelessWidget {
       );
     }
 
-    // int / decimal / string — a compact inline field.
+    if (type == 'json') {
+      // Structured values used to render in the same 140px box as a tax rate,
+      // showing `{monday: {open: 08:00...` — a Dart Map's toString, which is not
+      // JSON and which the server rejects the moment it is sent back. So the
+      // control offered you a value it would refuse to accept.
+      return _JsonButton(
+        label: setting['label'] as String,
+        value: value,
+        editable: editable,
+        onChanged: (v) => onChanged(key, v),
+      );
+    }
+
+    // int / decimal / string.
     return SizedBox(
-      width: 140,
-      child: TextFormField(
-        initialValue: value?.toString() ?? '',
+      width: 150,
+      child: _InlineField(
+        // Keyed by value, so a save elsewhere or a scope switch rebuilds the
+        // field instead of leaving the old text sitting in it.
+        key: ValueKey('$key:${value?.toString()}'),
+        initial: value?.toString() ?? '',
         enabled: editable,
-        textAlign: TextAlign.right,
-        decoration: const InputDecoration(
-          isDense: true,
-          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        ),
-        keyboardType: (type == 'int' || type == 'decimal')
-            ? const TextInputType.numberWithOptions(decimal: true)
-            : TextInputType.text,
-        onFieldSubmitted: (v) => onChanged(key, v),
+        numeric: type == 'int' || type == 'decimal',
+        onCommitted: (v) => onChanged(key, v),
       ),
     );
+  }
+}
+
+/// A text field that saves when you leave it, not only when you press Enter.
+///
+/// The old one committed on `onFieldSubmitted` alone. Everybody who typed a
+/// value and clicked away — which is most people, most of the time — watched it
+/// silently revert on the next load and concluded the screen was broken.
+///
+/// It is a StatefulWidget rather than a callback on the parent because it needs
+/// a FocusNode, and because committing on every keystroke would fire a request
+/// per character.
+class _InlineField extends StatefulWidget {
+  const _InlineField({
+    super.key,
+    required this.initial,
+    required this.enabled,
+    required this.numeric,
+    required this.onCommitted,
+  });
+
+  final String initial;
+  final bool enabled;
+  final bool numeric;
+  final ValueChanged<String> onCommitted;
+
+  @override
+  State<_InlineField> createState() => _InlineFieldState();
+}
+
+class _InlineFieldState extends State<_InlineField> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initial);
+  late final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _commit();
+    });
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _commit() {
+    final typed = _controller.text.trim();
+
+    // Unchanged means nothing to save. Without this, tabbing across a row of
+    // settings would write every one of them and fill the audit log with
+    // changes nobody made.
+    if (typed == widget.initial.trim()) return;
+
+    widget.onCommitted(typed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      focusNode: _focus,
+      enabled: widget.enabled,
+      textAlign: TextAlign.right,
+      decoration: const InputDecoration(
+        isDense: true,
+        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      ),
+      keyboardType: widget.numeric
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : TextInputType.text,
+      onSubmitted: (_) => _commit(),
+    );
+  }
+}
+
+/// Structured settings — business hours, quiet hours — edited as real JSON.
+///
+/// A dialog rather than an inline box: these are nested objects, and a 140px
+/// field cannot show one, let alone let somebody correct it. The text is parsed
+/// before it is sent, so a typo is caught here with the cursor still in the
+/// field rather than as a 422 from the server.
+class _JsonButton extends StatelessWidget {
+  const _JsonButton({
+    required this.label,
+    required this.value,
+    required this.editable,
+    required this.onChanged,
+  });
+
+  final String label;
+  final dynamic value;
+  final bool editable;
+  final ValueChanged<dynamic> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: editable ? () => _open(context) : null,
+      icon: const Icon(Icons.data_object, size: 16),
+      label: Text(_summary()),
+    );
+  }
+
+  /// One line that says what is set, without pretending to show the whole thing.
+  String _summary() {
+    if (value == null) return 'Not set';
+    if (value is Map) return '${(value as Map).length} entries';
+    if (value is List) return '${(value as List).length} items';
+
+    return 'Edit';
+  }
+
+  Future<void> _open(BuildContext context) async {
+    final controller = TextEditingController(
+      text: const JsonEncoder.withIndent('  ').convert(value ?? {}),
+    );
+
+    String? error;
+
+    final saved = await showDialog<Object?>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, repaint) => AlertDialog(
+          title: Text(label),
+          content: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  minLines: 8,
+                  maxLines: 18,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                  decoration: const InputDecoration(border: OutlineInputBorder()),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 8),
+                  ErrorNote(error!),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                try {
+                  Navigator.of(context).pop(jsonDecode(controller.text));
+                } on FormatException catch (e) {
+                  // Caught here, where the cursor still is. A 422 arriving
+                  // after the dialog closed loses both the message and the
+                  // half-typed value.
+                  repaint(() => error = 'That is not valid JSON — ${e.message}');
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    controller.dispose();
+
+    if (saved != null) onChanged(saved);
   }
 }
