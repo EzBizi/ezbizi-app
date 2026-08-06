@@ -342,6 +342,22 @@ class WorkflowsController extends Controller
             'actions.*.type' => ['required', 'string'],
         ]);
 
+        /*
+         * The actions come back from the request, not from validated().
+         *
+         * Defining `actions.*.type` makes Laravel treat the array as structured
+         * and return ONLY the keys it has rules for — so every action arrived
+         * carrying its type and nothing else, and a notify with no message was
+         * rejected for having no message it had itself just discarded.
+         *
+         * Each action's meaningful fields are checked in assertActionUsable
+         * below; anything else a client sends is inert, because ActionRunner
+         * matches on type and reads only the keys that type defines.
+         */
+        if ($request->has('actions')) {
+            $input['actions'] = $request->input('actions');
+        }
+
         if (isset($input['trigger_key'])) {
             $this->assertTriggerExists($input['trigger_key']);
         }
