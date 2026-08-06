@@ -75,16 +75,29 @@ class StaffAuthenticator
     // ── enrolment ────────────────────────────────────────────────
 
     /**
-     * Begin TOTP setup. The secret is stored but NOT confirmed, so the account
-     * still cannot authenticate — proving the code works is what completes it.
-     * Otherwise a mistyped setup locks the account out permanently.
+     * Issue a secret to be enrolled. It is PENDING until a code proves it works.
+     *
+     * @param  bool  $revokeExisting  true when someone is being re-enrolled
+     *                                because the old authenticator is gone or
+     *                                suspect — the current secret dies now, and
+     *                                the account is inert until the new one is
+     *                                confirmed. False when a signed-in staff
+     *                                member is simply moving to a new phone: the
+     *                                working secret must keep working until the
+     *                                replacement is proven, or a failed scan
+     *                                locks them out of their own account.
      */
-    public function beginEnrolment(PlatformStaff $staff): array
+    public function beginEnrolment(PlatformStaff $staff, bool $revokeExisting = true): array
     {
         $secret = $this->totp->generateSecretKey(32);
 
-        $staff->totp_secret = $secret;
-        $staff->totp_confirmed_at = null;
+        $staff->pending_totp_secret = $secret;
+
+        if ($revokeExisting) {
+            $staff->totp_secret = null;
+            $staff->totp_confirmed_at = null;
+        }
+
         $staff->save();
 
         return [
@@ -96,17 +109,21 @@ class StaffAuthenticator
     /**
      * Finish enrolment by proving the authenticator works.
      *
-     * Returns recovery codes ONCE. They are stored hashed-at-rest via the
-     * model's encrypted cast and never shown again — a code the server can
-     * redisplay is a code an attacker can read out of the database.
+     * Returns recovery codes ONCE. They are stored encrypted at rest and never
+     * shown again — a code the server can redisplay is a code an attacker can
+     * read out of the database.
+     *
+     * Any previously issued recovery codes are replaced. The old ones were minted
+     * against a secret that is no longer in use; leaving them live would mean a
+     * rotation that changes the phone but not what an old leaked list can open.
      */
     public function completeEnrolment(PlatformStaff $staff, string $code): ?array
     {
-        if ($staff->totp_secret === null) {
+        if ($staff->pending_totp_secret === null) {
             return null;
         }
 
-        if (! $this->totp->verifyKey($staff->totp_secret, trim($code), window: 1)) {
+        if (! $this->totp->verifyKey($staff->pending_totp_secret, trim($code), window: 1)) {
             return null;
         }
 
@@ -114,6 +131,8 @@ class StaffAuthenticator
             ->map(fn () => strtoupper(Str::random(5).'-'.Str::random(5)))
             ->all();
 
+        $staff->totp_secret = $staff->pending_totp_secret;
+        $staff->pending_totp_secret = null;
         $staff->totp_confirmed_at = now();
         $staff->recovery_codes = $recovery;
         $staff->save();

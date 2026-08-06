@@ -30,7 +30,9 @@ class PlatformStaff extends Authenticatable
 
     protected $fillable = ['name', 'email', 'password', 'tier', 'is_active'];
 
-    protected $hidden = ['password', 'totp_secret', 'recovery_codes', 'remember_token'];
+    protected $hidden = [
+        'password', 'totp_secret', 'pending_totp_secret', 'recovery_codes', 'remember_token',
+    ];
 
     protected function casts(): array
     {
@@ -41,8 +43,9 @@ class PlatformStaff extends Authenticatable
             'last_login_at'     => 'datetime',
             // Encrypted at rest: a database leak that exposes TOTP secrets makes
             // the second factor worthless, and recovery codes are a full bypass.
-            'totp_secret'       => 'encrypted',
-            'recovery_codes'    => 'encrypted:array',
+            'totp_secret'         => 'encrypted',
+            'pending_totp_secret' => 'encrypted',
+            'recovery_codes'      => 'encrypted:array',
         ];
     }
 
@@ -71,6 +74,17 @@ class PlatformStaff extends Authenticatable
     }
 
     /**
+     * May this staff member create, disable or re-enrol other staff?
+     *
+     * Lead Developer only. A Developer who could mint another Developer could
+     * mint one for anybody, and the tier ceiling would mean nothing.
+     */
+    public function mayManageStaff(): bool
+    {
+        return $this->isLeadDeveloper();
+    }
+
+    /**
      * Whether ordinary business auditing is suppressed for this account.
      *
      * The owner's decision (§4.2): the Lead Developer's development and testing
@@ -92,6 +106,12 @@ class PlatformStaff extends Authenticatable
     public function hasTotp(): bool
     {
         return $this->totp_secret !== null && $this->totp_confirmed_at !== null;
+    }
+
+    /** A secret has been issued but not yet proven to work. */
+    public function hasPendingTotp(): bool
+    {
+        return $this->pending_totp_secret !== null;
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ShowsTotpEnrolment;
 use App\Models\PlatformStaff;
 use App\Services\Staff\StaffAuthenticator;
 use Illuminate\Console\Command;
@@ -21,6 +22,8 @@ use Illuminate\Support\Facades\Validator;
  */
 class CreateStaffAccount extends Command
 {
+    use ShowsTotpEnrolment;
+
     protected $signature = 'ezbizi:staff-create
                             {email : The staff email address}
                             {--name= : Display name}
@@ -90,14 +93,8 @@ class CreateStaffAccount extends Command
         $this->newLine();
         $this->warn('  TOTP enrolment is REQUIRED before this account can sign in.');
         $this->newLine();
-        $this->line('  Add this to your authenticator app:');
-        $this->newLine();
-        $this->line("    Secret:  {$enrolment['secret']}");
-        $this->line("    Account: EzBizi ({$staff->email})");
-        $this->newLine();
-        $this->line('  Then confirm with the six-digit code:');
-        $this->line("    php artisan ezbizi:staff-enrol {$staff->email} <code>");
-        $this->newLine();
+
+        $this->showEnrolment($staff, $enrolment);
 
         return self::SUCCESS;
     }

@@ -110,8 +110,12 @@ class StaffControlPlaneTest extends TestCase
     {
         [$staff, $secret] = $this->staff();
 
-        $codes = app(\App\Services\Staff\StaffAuthenticator::class)
-            ->completeEnrolment($staff, $this->totp->getCurrentOtp($secret));
+        $auth = app(\App\Services\Staff\StaffAuthenticator::class);
+
+        // Recovery codes are issued when a pending secret is confirmed, so this
+        // goes through the real enrolment path rather than poking the model.
+        $pending = $auth->beginEnrolment($staff, revokeExisting: false);
+        $codes = $auth->completeEnrolment($staff, $this->totp->getCurrentOtp($pending['secret']));
 
         $this->postJson('/api/v1/staff/auth/login', [
             'email' => $staff->email, 'password' => 'a-sufficiently-long-password', 'code' => $codes[0],

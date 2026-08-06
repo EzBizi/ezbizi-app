@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../widgets/error_note.dart';
 
 /// Sign in (plan §4).
 ///
@@ -10,10 +11,22 @@ import '../core/theme.dart';
 /// picker only ever appears AFTER the password verified — the server enforces
 /// that, and this screen simply never has the data before then.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.api, required this.session});
+  const LoginScreen({
+    super.key,
+    required this.api,
+    required this.session,
+    required this.onStaffSignIn,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// Switches the card to the control-plane form (§4.2).
+  ///
+  /// Visible rather than hidden behind a secret path: obscurity is not what
+  /// protects this — mandatory TOTP is. A hidden URL only means the person who
+  /// needs it has to remember it.
+  final VoidCallback onStaffSignIn;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -158,7 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
           if (_error != null) ...[
             const SizedBox(height: 16),
-            _ErrorNote(_error!),
+            ErrorNote(_error!),
           ],
 
           const SizedBox(height: 24),
@@ -169,6 +182,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     height: 18, width: 18,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Text('Sign in'),
+          ),
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: _busy ? null : widget.onStaffSignIn,
+            child: const Text('EzBizi staff'),
           ),
         ],
       ),
@@ -207,7 +225,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (_error != null) ...[
           const SizedBox(height: 12),
-          _ErrorNote(_error!),
+          ErrorNote(_error!),
         ],
 
         const SizedBox(height: 8),
@@ -220,29 +238,3 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-class _ErrorNote extends StatelessWidget {
-  const _ErrorNote(this.message);
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.error_outline, size: 18, color: Theme.of(context).colorScheme.error),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(message,
-                style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.error)),
-          ),
-        ],
-      ),
-    );
-  }
-}

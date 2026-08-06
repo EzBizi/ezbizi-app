@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'core/api_client.dart';
 import 'core/session.dart';
+import 'core/staff_session.dart';
 import 'core/theme.dart';
 import 'screens/login_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/staff/staff_login_screen.dart';
+import 'screens/staff/staff_shell.dart';
 
 void main() => runApp(const EzBiziApp());
 
@@ -15,13 +18,23 @@ class EzBiziApp extends StatefulWidget {
 }
 
 class _EzBiziAppState extends State<EzBiziApp> {
+  // Two clients, deliberately. A tenant token and a staff token must never sit
+  // in the same place — the server refuses each on the other's endpoints, and
+  // the client should not be trying it.
   late final ApiClient _api = ApiClient();
   late final Session _session = Session(_api);
+
+  late final ApiClient _staffApi = ApiClient();
+  late final StaffSession _staffSession = StaffSession(_staffApi);
+
+  /// Whether the sign-in card is showing the control-plane form.
+  bool _staffMode = false;
 
   @override
   void initState() {
     super.initState();
     _session.addListener(() => setState(() {}));
+    _staffSession.addListener(() => setState(() {}));
   }
 
   @override
@@ -34,9 +47,30 @@ class _EzBiziAppState extends State<EzBiziApp> {
       // Follows the device until organizations can define their own themes
       // (§12) — at which point this reads from the organization's settings.
       themeMode: ThemeMode.system,
-      home: _session.signedIn
-          ? HomeShell(api: _api, session: _session)
-          : LoginScreen(api: _api, session: _session),
+      home: _home(),
+    );
+  }
+
+  Widget _home() {
+    if (_staffSession.signedIn) {
+      return StaffShell(staff: _staffSession);
+    }
+
+    if (_session.signedIn) {
+      return HomeShell(api: _api, session: _session);
+    }
+
+    if (_staffMode) {
+      return StaffLoginScreen(
+        staff: _staffSession,
+        onExit: () => setState(() => _staffMode = false),
+      );
+    }
+
+    return LoginScreen(
+      api: _api,
+      session: _session,
+      onStaffSignIn: () => setState(() => _staffMode = true),
     );
   }
 }

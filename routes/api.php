@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
 use App\Http\Controllers\Api\StaffController;
 use Illuminate\Support\Facades\Route;
@@ -106,4 +107,17 @@ Route::prefix('v1/staff')
         Route::get('impersonations', [StaffController::class, 'impersonations']);
         Route::post('impersonations', [StaffController::class, 'impersonate']);
         Route::delete('impersonations/{impersonation}', [StaffController::class, 'endImpersonation']);
+
+        // Staff accounts — Lead Developer only, enforced in the controller
+        // rather than the route, so the refusal can say why.
+        Route::get('accounts', [StaffAccountsController::class, 'index']);
+        Route::post('accounts', [StaffAccountsController::class, 'store']);
+        Route::patch('accounts/{staff}', [StaffAccountsController::class, 'update']);
+        Route::post('accounts/{staff}/totp', [StaffAccountsController::class, 'resetTotp']);
+        Route::post('accounts/{staff}/totp/confirm', [StaffAccountsController::class, 'confirmTotpFor']);
+
+        // Your own authenticator — any tier, because moving to a new phone must
+        // not require asking someone else for permission.
+        Route::post('me/totp', [StaffAccountsController::class, 'beginOwnTotp']);
+        Route::post('me/totp/confirm', [StaffAccountsController::class, 'confirmOwnTotp']);
     });

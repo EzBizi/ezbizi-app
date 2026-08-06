@@ -104,7 +104,7 @@ class StaffAuthController extends Controller
                 'ip'         => $request->ip(),
                 'user_agent' => $request->userAgent(),
                 'tier'       => $staff->tier,
-                'recovery_codes_remaining' => count($staff->recovery_codes ?? []),
+                'recovery_code_count' => count($staff->recovery_codes ?? []),
             ],
         );
 
@@ -147,7 +147,7 @@ class StaffAuthController extends Controller
             'email' => $staff->email,
             'tier'  => $staff->tier,
             'may_enter_without_approval' => $staff->mayEnterWithoutApproval(),
-            'recovery_codes_remaining'   => count($staff->recovery_codes ?? []),
+            'recovery_code_count'   => count($staff->recovery_codes ?? []),
             'last_login_at'              => $staff->last_login_at?->toIso8601String(),
         ]]);
     }

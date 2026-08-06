@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ShowsTotpEnrolment;
 use App\Models\PlatformStaff;
 use App\Services\Staff\StaffAuthenticator;
 use Illuminate\Console\Command;
@@ -16,6 +17,8 @@ use Illuminate\Console\Command;
  */
 class EnrolStaffAccount extends Command
 {
+    use ShowsTotpEnrolment;
+
     protected $signature = 'ezbizi:staff-enrol
                             {email : The staff email address}
                             {code : The current six-digit code from the authenticator}
@@ -37,10 +40,11 @@ class EnrolStaffAccount extends Command
             $enrolment = $auth->beginEnrolment($staff);
 
             $this->newLine();
-            $this->warn('  Previous authenticator entry is now invalid.');
-            $this->line("  New secret: {$enrolment['secret']}");
-            $this->line("  Then run:   php artisan ezbizi:staff-enrol {$staff->email} <code>");
+            $this->warn('  Previous authenticator entry is now invalid, and the account');
+            $this->warn('  cannot sign in until the new one is confirmed.');
             $this->newLine();
+
+            $this->showEnrolment($staff, $enrolment);
 
             return self::SUCCESS;
         }
