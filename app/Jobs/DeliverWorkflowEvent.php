@@ -52,7 +52,14 @@ class DeliverWorkflowEvent implements ShouldQueue
             return;   // already handled, or the organization was removed
         }
 
-        $event->forceFill(['attempts' => $event->attempts + 1])->save();
+        // Query builder, not the model. A save() here fires BelongsToTenant's
+        // update guard, and a queue worker has no tenant in context — so the
+        // attempt counter, of all things, would abort the delivery it exists to
+        // count. The guard is right to refuse; this write simply does not belong
+        // inside a tenant.
+        WorkflowEvent::withoutGlobalScopes()
+            ->whereKey($this->eventId)
+            ->update(['attempts' => $event->attempts + 1]);
 
         $engine->deliver($event);
     }

@@ -32,36 +32,41 @@ class WorkflowEngine
      */
     public function deliver(WorkflowEvent $event): int
     {
-        // Loop protection, before anything else runs (§5.5). Depth catches a rule
-        // that feeds itself; the budget catches a rule that fans out sideways, and
-        // a chain that alternates A→B→A across separate delayed runs — which
-        // depth alone does not.
-        if ($event->isTooDeep()) {
-            $this->stop($event, sprintf(
-                'Stopped at depth %d. A workflow action caused another workflow to '
-                .'run, and so on — the chain is looping or too long to be intended.',
-                $event->depth,
-            ));
+        // The tenant is established FIRST, around everything — including the loop
+        // guards, which read and write tenant-owned rows. A queue worker has no
+        // tenant of its own, and a worker handling many jobs in one long-lived
+        // process is precisely where an inherited one becomes a cross-tenant
+        // write (§5.1). Nothing below may assume a caller set it.
+        $organization = $event->organization()->withoutGlobalScopes()->first();
 
-            return 0;
+        if ($organization === null) {
+            return 0;   // the organization was removed while this sat in the queue
         }
 
-        if ($event->actionsSpent() >= WorkflowEvent::ACTION_BUDGET) {
-            $this->stop($event, sprintf(
-                'Stopped after %d actions from one originating event. The rules are '
-                .'fanning out further than anything deliberate would.',
-                WorkflowEvent::ACTION_BUDGET,
-            ));
-
-            return 0;
-        }
-
-        $organization = $event->organization;
-
-        // Tenant context explicitly, because a queue worker has none — and a
-        // worker handling many jobs in one long-lived process is precisely where
-        // an inherited tenant becomes a cross-tenant write (§5.1).
         return $this->tenant->run($organization, function () use ($event) {
+            // Loop protection (§5.5). Depth catches a rule that feeds itself; the
+            // budget catches one that fans out sideways, and a chain alternating
+            // A→B→A across separate delayed runs — which depth alone does not.
+            if ($event->isTooDeep()) {
+                $this->stop($event, sprintf(
+                    'Stopped at depth %d. A workflow action caused another workflow '
+                    .'to run, and so on — the chain is looping or longer than intended.',
+                    $event->depth,
+                ));
+
+                return 0;
+            }
+
+            if ($event->actionsSpent() >= WorkflowEvent::ACTION_BUDGET) {
+                $this->stop($event, sprintf(
+                    'Stopped after %d actions from one originating event. The rules '
+                    .'are fanning out further than anything deliberate would.',
+                    WorkflowEvent::ACTION_BUDGET,
+                ));
+
+                return 0;
+            }
+
             $subject = $this->subjectOf($event);
 
             $workflows = Workflow::query()
@@ -207,6 +212,9 @@ class WorkflowEngine
      */
     private function stop(WorkflowEvent $event, string $reason): void
     {
+        // Called from inside deliver()'s tenant block, so this save passes the
+        // BelongsToTenant guard. It did not always — that guard caught a real
+        // bug where the queue worker had no tenant, which is exactly its job.
         $event->forceFill(['delivered_at' => now(), 'failed_at' => now(), 'last_error' => $reason])->save();
 
         $this->audit->logError('workflow.cascade_stopped', [
