@@ -127,63 +127,122 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// Where in the cascade you are configuring (§6).
+  ///
+  /// ── Why this is not one row of chips ─────────────────────────
+  ///
+  /// It was, and it flattened three different kinds of thing into one
+  /// undifferentiated list: the organization, its companies, and their
+  /// franchises, all as equal siblings. That is a lie about the model — a
+  /// franchise BELONGS to a company, and a value set on the company is what the
+  /// franchise inherits.
+  ///
+  /// The flattening also made the screen ambiguous the moment a second company
+  /// appeared. Two companies each operating Connecticut produced two chips
+  /// reading "Connecticut", side by side, with nothing to tell them apart and
+  /// different settings behind each. Prefixing the labels would have hidden
+  /// that; showing the structure removes it, because the two now sit on
+  /// different rows under the company that owns them.
   Widget _scopePicker(BuildContext context, Me me) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text('Configuring', style: Theme.of(context).textTheme.labelSmall),
-          ChoiceChip(
-            label: Text(me.organization.name),
-            // Every tier of the cascade carries its own glyph, so the row reads
-            // as three kinds of thing rather than one list with two of them
-            // decorated. A hub for the organization: it is what the companies
-            // hang off, and its silhouette is distinct from the two buildings
-            // below it at 15px, which apartment-vs-corporate would not be.
-            avatar: const Icon(Icons.hub_outlined, size: 15),
-            selected: _scopeType == 'organization',
-            onSelected: (_) => setState(() {
-              _scopeType = 'organization';
-              _scopeId = me.organization.id;
-              _scopeLabel = me.organization.name;
-              _load();
-            }),
-          ),
-          // The middle tier of the cascade (§6). Supported end to end by the
-          // API and unreachable from this screen until now, so any setting whose
-          // allowed scopes were organization+company could only be configured
-          // through the API or not at all.
-          ...me.companies.map((c) => ChoiceChip(
-                label: Text(c.name),
-                avatar: const Icon(Icons.apartment_outlined, size: 15),
-                selected: _scopeType == 'company' && _scopeId == c.id,
-                onSelected: (_) => setState(() {
-                  _scopeType = 'company';
-                  _scopeId = c.id;
-                  _scopeLabel = c.name;
-                  _load();
-                }),
-              )),
+    // Grouped by the company each one belongs to. Every reachable franchise has
+    // a reachable company — the server derives one list from the other — so
+    // nothing can fall outside a group.
+    final byCompany = <String, List<FranchiseSummary>>{};
 
-          // Only franchises this user can reach (§4) — the server sends reach,
-          // so the UI never offers one that would fail on save.
-          ...me.franchises.map((f) => ChoiceChip(
-                label: Text(f.name),
-                avatar: const Icon(Icons.storefront_outlined, size: 15),
-                selected: _scopeType == 'franchise' && _scopeId == f.id,
-                onSelected: (_) => setState(() {
-                  _scopeType = 'franchise';
-                  _scopeId = f.id;
-                  _scopeLabel = f.name;
-                  _load();
-                }),
-              )),
+    for (final f in me.franchises) {
+      byCompany.putIfAbsent(f.companyId ?? '', () => []).add(f);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            SizedBox(
+              width: 84,
+              child: Text('Configuring',
+                  style: Theme.of(context).textTheme.labelSmall),
+            ),
+            _chip(
+              label: me.organization.name,
+              // Every tier carries its own glyph, so the rows read as three
+              // kinds of thing rather than one list with some of it decorated.
+              // A hub for the organization: it is what the companies hang off,
+              // and its silhouette stays distinct from the two buildings below
+              // it at 15px.
+              icon: Icons.hub_outlined,
+              selected: _scopeType == 'organization',
+              onTap: () => _select('organization', me.organization.id, me.organization.name),
+            ),
+          ]),
+
+          for (final company in me.companies) ...[
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // The indent is the hierarchy. Nothing else in this row says
+                // that the chips to the right sit under the company on the
+                // left, and a label would only repeat what the position shows.
+                const SizedBox(width: 84),
+                _chip(
+                  label: company.name,
+                  icon: Icons.apartment_outlined,
+                  selected: _scopeType == 'company' && _scopeId == company.id,
+                  onTap: () => _select('company', company.id, company.name),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final f in byCompany[company.id] ?? const [])
+                        _chip(
+                          label: f.name,
+                          icon: Icons.storefront_outlined,
+                          selected: _scopeType == 'franchise' && _scopeId == f.id,
+                          onTap: () => _select('franchise', f.id, f.name),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Widget _chip({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return ChoiceChip(
+      label: Text(label),
+      avatar: Icon(icon, size: 15),
+      selected: selected,
+      onSelected: (_) => onTap(),
+    );
+  }
+
+  /// One place that changes scope, so the three fields cannot drift apart.
+  ///
+  /// They were set inline at each of the three call sites, which is how a
+  /// scope's type, id and label end up describing different things after an
+  /// edit to one of them.
+  void _select(String type, String id, String label) {
+    setState(() {
+      _scopeType = type;
+      _scopeId = id;
+      _scopeLabel = label;
+    });
+
+    _load();
   }
 
   Widget _body(BuildContext context) {
