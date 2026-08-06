@@ -272,23 +272,35 @@ class _HomeShellState extends State<HomeShell> {
                     'navigation.collapsed', !me.navigationCollapsed),
               )
             : null,
-        titleSpacing: wide ? 0 : null,
-        // The wordmark and the organization moved into the sidebar, which is
-        // where the thing they identify actually lives. On a narrow screen
-        // there is no sidebar to hold them, so they come back here.
-        title: wide
-            ? const SizedBox.shrink()
-            : Row(children: [
-                EzBiziTheme.wordmark(context, size: 20),
-                const SizedBox(width: 12),
-                Flexible(
-                  child: Text(
-                    me.organization.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-              ]),
+        titleSpacing: 0,
+        /*
+         * The wordmark sits beside the collapse button, in the header band above
+         * the sidebar — the product's identity belongs to the application
+         * chrome, not to one column of it.
+         *
+         * The ORGANIZATION does not live here. It is the sidebar's subject:
+         * every destination below it is scoped to that organization, so it is
+         * stated at the top of the thing it scopes.
+         *
+         * Except when the sidebar is collapsed, when there is no room for it
+         * there — then it appears here instead. Which one is showing is decided
+         * by where there is space to say it, and it is never said twice.
+         */
+        title: Row(children: [
+          EzBiziTheme.wordmark(context, size: 20),
+          if (!wide || !expanded) ...[
+            const SizedBox(width: 14),
+            Container(width: 1, height: 18, color: Theme.of(context).dividerColor),
+            const SizedBox(width: 14),
+            Flexible(
+              child: Text(
+                me.organization.name,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+          ],
+        ]),
         actions: [
           // Light / dark, one tap, from anywhere.
           //
@@ -552,68 +564,46 @@ class _RailHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mark = Container(
-      width: 30,
-      height: 30,
-      decoration: BoxDecoration(
-        color: EzBiziTheme.accent,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Icon(Icons.bolt, color: Colors.white, size: 19),
-    );
-
-    if (!expanded) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 10, bottom: 16),
-        child: Center(child: mark),
-      );
-    }
+    // Collapsed, there is no room to say it and the top bar says it instead.
+    // An initial in a coloured circle would fit and would identify nothing.
+    if (!expanded) return const SizedBox(height: 8);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 16, 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            mark,
-            const SizedBox(width: 10),
-            EzBiziTheme.wordmark(context, size: 19),
-          ]),
-          const SizedBox(height: 18),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // The spine, not a border. A rule down one side reads as "you
-                // are here"; a box around the name reads as a control, and this
-                // is not one — there is no organization to switch to.
-                Container(
-                  width: 3,
-                  decoration: BoxDecoration(
-                    color: EzBiziTheme.accent,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      organization,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        height: 1.25,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+      padding: const EdgeInsets.fromLTRB(20, 4, 16, 16),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // The spine, not a border. A rule down one side reads as "you are
+            // here" — the same device the rail uses to mark a live destination,
+            // so it is stated in a language somebody has already learnt from the
+            // screen below it. A box around the name would read as a control,
+            // and this is not one: there is no organization to switch to.
+            Container(
+              width: 3,
+              decoration: BoxDecoration(
+                color: EzBiziTheme.accent,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  organization,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    height: 1.25,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
