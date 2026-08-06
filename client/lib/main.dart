@@ -13,6 +13,7 @@ import 'screens/data_screen.dart';
 import 'screens/development_screen.dart';
 import 'screens/jobs_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/organization_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'screens/workflows_screen.dart';
@@ -199,6 +200,13 @@ class _HomeShellState extends State<HomeShell> {
     // the product rather than part of it (§4.2) — both belong away from the
     // list of things you actually open all day.
     final pinned = <Destination>[
+      // Above Settings, because it is the thing Settings configures: every
+      // scope in that screen is a row in this one.
+      Destination(
+        'Organization',
+        Icons.hub_outlined,
+        OrganizationScreen(api: widget.api, session: widget.session),
+      ),
       Destination(
         'Settings',
         Icons.settings_outlined,
