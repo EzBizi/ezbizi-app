@@ -183,33 +183,40 @@ class _HomeShellState extends State<HomeShell> {
         DataScreen(api: widget.api, session: widget.session),
       ),
       _Destination(
-        'Your account',
-        Icons.person_outline,
-        ProfileScreen(api: widget.api, session: widget.session),
-      ),
-      _Destination(
         'Settings',
         Icons.settings_outlined,
         SettingsScreen(api: widget.api, session: widget.session),
       ),
-
-      // Last in the rail, deliberately (§4.2, revised). It is not part of
-      // running the business — it is the platform underneath it — and it only
-      // exists when the server says this person is also staff. A client that
-      // decided this for itself could show the tab to somebody with nothing
-      // behind it.
-      if (me.development != null)
-        _Destination(
-          'Development',
-          Icons.terminal_outlined,
-          DevelopmentScreen(session: widget.session),
-        ),
     ];
+
+    // Two screens that are deliberately NOT rail destinations.
+    //
+    // "Your account" is reached from the avatar in the top bar, where every
+    // other app puts it — it is about the person, not about the business, and a
+    // tab beside Customers and Jobs implies it is one more thing to work on.
+    //
+    // Development is the platform underneath the product rather than part of it
+    // (§4.2, revised), so it is pinned to the actual bottom of the rail, below
+    // the empty space and behind a rule. It exists only when the server says
+    // this person is also staff; a client deciding that for itself could show
+    // the tab to somebody with nothing behind it.
+    //
+    // Both live one past the end of the destination list. Keeping them out of
+    // the list is what allows one to be hidden and the other pinned; this index
+    // arithmetic is the price, and it is confined to the four lines below.
+    final profileIndex = destinations.length;
+    final developmentIndex = destinations.length + 1;
+
+    final hasDevelopment = me.development != null;
+    final showingProfile = _index == profileIndex;
+    final showingDevelopment = hasDevelopment && _index == developmentIndex;
 
     // Clamped every build. The list shrinks when a staff link is removed or a
     // module is switched off platform-wide, and an index left pointing past the
     // end throws on the next frame — a blank screen with no way back.
-    final index = _index.clamp(0, destinations.length - 1);
+    final railIndex = (showingProfile || showingDevelopment)
+        ? null
+        : _index.clamp(0, destinations.length - 1);
 
     return Scaffold(
       appBar: AppBar(
@@ -274,12 +281,7 @@ class _HomeShellState extends State<HomeShell> {
                 return;
               }
 
-              // Found by label rather than by a hardcoded index — the rail's
-              // contents depend on whether this person is also staff, so a
-              // literal number would open the wrong screen for half of them.
-              final i = destinations.indexWhere((d) => d.label == 'Your account');
-
-              if (i >= 0) setState(() => _index = i);
+              setState(() => _index = profileIndex);
             },
           ),
           const SizedBox(width: 8),
@@ -296,7 +298,9 @@ class _HomeShellState extends State<HomeShell> {
             // they stay available — as the user's own preference, not an
             // opinion imposed by whoever wrote this.
             NavigationRail(
-              selectedIndex: index,
+              // null when an off-rail screen is showing. The rail has no
+              // destination for either, and an out-of-range index throws.
+              selectedIndex: railIndex,
               onDestinationSelected: (i) => setState(() => _index = i),
               extended: me.navigationStyle == 'list',
               labelType: me.navigationStyle == 'list'
@@ -309,19 +313,52 @@ class _HomeShellState extends State<HomeShell> {
                         label: Text(d.label),
                       ))
                   .toList(),
+              trailing: !hasDevelopment
+                  ? null
+                  // Expanded inside the rail's own scroll view pushes this to
+                  // the bottom of the available height, rather than leaving it
+                  // tucked under the last destination.
+                  : Expanded(
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: _RailFooter(
+                          extended: me.navigationStyle == 'list',
+                          selected: showingDevelopment,
+                          onTap: () =>
+                              setState(() => _index = developmentIndex),
+                        ),
+                      ),
+                    ),
             ),
           if (wide) const VerticalDivider(width: 1),
-          Expanded(child: destinations[index].screen),
+          Expanded(
+            child: showingDevelopment
+                ? DevelopmentScreen(session: widget.session)
+                : showingProfile
+                    ? ProfileScreen(api: widget.api, session: widget.session)
+                    : destinations[railIndex ?? 0].screen,
+          ),
         ],
       ),
+      // Narrow layout. Development gets a tab here rather than a footer —
+      // there is no rail to pin it to the bottom of, and hiding it entirely
+      // would make the section unreachable on a phone. Your account stays in
+      // the avatar menu on both, which is where people look for it.
       bottomNavigationBar: wide
           ? null
           : NavigationBar(
-              selectedIndex: _index,
-              onDestinationSelected: (i) => setState(() => _index = i),
-              destinations: destinations
-                  .map((d) => NavigationDestination(icon: Icon(d.icon), label: d.label))
-                  .toList(),
+              selectedIndex: showingProfile
+                  ? 0
+                  : (railIndex ?? (showingDevelopment ? destinations.length : 0)),
+              onDestinationSelected: (i) => setState(() =>
+                  _index = i == destinations.length ? developmentIndex : i),
+              destinations: [
+                for (final d in destinations)
+                  NavigationDestination(icon: Icon(d.icon), label: d.label),
+                if (hasDevelopment)
+                  const NavigationDestination(
+                    icon: Icon(Icons.terminal_outlined), label: 'Development'),
+              ],
             ),
     );
   }
@@ -332,4 +369,84 @@ class _Destination {
   final String label;
   final IconData icon;
   final Widget screen;
+}
+
+/// Development, pinned to the bottom of the rail.
+///
+/// Not a NavigationRailDestination: those sit in the list, in order, directly
+/// under the last one. This is the platform underneath the product rather than
+/// part of it (§4.2), and the separation is the point — a rule above it and the
+/// empty space between say so before anybody reads the label.
+class _RailFooter extends StatelessWidget {
+  const _RailFooter({
+    required this.extended,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final bool extended;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    final content = extended
+        ? Row(
+            children: [
+              const SizedBox(width: 16),
+              Icon(Icons.terminal_outlined,
+                  size: 22,
+                  color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text('Development',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant,
+                    )),
+              ),
+              const SizedBox(width: 12),
+            ],
+          )
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.terminal_outlined,
+                  size: 22,
+                  color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant),
+              const SizedBox(height: 4),
+              Text('Development',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant,
+                  )),
+            ],
+          );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+          Material(
+            color: selected ? scheme.secondaryContainer : Colors.transparent,
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: onTap,
+              child: Container(
+                constraints: BoxConstraints(minWidth: extended ? 172 : 56),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: content,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

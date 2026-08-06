@@ -22,6 +22,11 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
+
+  // Its own key. The code step is a separate Form, and validating the first
+  // one from the second would fail — that form is no longer mounted, so its
+  // key has no state to validate.
+  final _codeFormKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _code = TextEditingController();
@@ -45,8 +50,8 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+  Future<void> _submit({bool skipValidation = false}) async {
+    if (!skipValidation && !(_formKey.currentState?.validate() ?? false)) return;
 
     setState(() {
       _busy = true;
@@ -63,12 +68,18 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (response.body['status'] == 'second_factor_required') {
-      // The password was right. This account also signs in to the control
-      // plane, so it carries the platform's credentials and its authenticator.
+      // The password was right; only the code is left. It becomes a SEPARATE
+      // step rather than a third field appearing under the two the user just
+      // filled in — a form that grows after you submit it reads as a rejection.
+      //
+      // The server's message is deliberately NOT shown. It explains that the
+      // account also reaches the control plane, which is true and is nobody
+      // else's business: the sign-in screen is the one page every customer
+      // sees, and it should not advertise that a second system exists.
       setState(() {
         _busy = false;
         _needsCode = true;
-        _error = response.body['message'] as String?;
+        _error = null;
       });
       return;
     }
@@ -156,7 +167,11 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Card(
               child: Padding(
                 padding: const EdgeInsets.all(32),
-                child: _choices == null ? _loginForm(context) : _organizationPicker(context),
+                child: _choices != null
+                    ? _organizationPicker(context)
+                    : _needsCode
+                        ? _codeForm(context)
+                        : _loginForm(context),
               ),
             ),
           ),
@@ -202,22 +217,6 @@ class _LoginScreenState extends State<LoginScreen> {
             onFieldSubmitted: (_) => _submit(),
           ),
 
-          if (_needsCode) ...[
-            const SizedBox(height: 14),
-            TextFormField(
-              controller: _code,
-              decoration: const InputDecoration(
-                labelText: 'Authenticator code',
-                helperText: 'Six digits, or a recovery code',
-              ),
-              autofocus: true,
-              autofillHints: const [AutofillHints.oneTimeCode],
-              enabled: !_busy,
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter the code' : null,
-              onFieldSubmitted: (_) => _submit(),
-            ),
-          ],
-
           if (_error != null) ...[
             const SizedBox(height: 16),
             ErrorNote(_error!),
@@ -240,6 +239,94 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       ),
     );
+  }
+
+  /// Step two: the authenticator code, on its own.
+  ///
+  /// Nothing here names the control plane, or says why this account has a
+  /// second factor. "Enter your code" is the whole instruction; anything more
+  /// tells a stranger who guessed a password something useful about the
+  /// account they guessed.
+  Widget _codeForm(BuildContext context) {
+    return Form(
+      key: _codeFormKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(child: EzBiziTheme.wordmark(context, size: 32)),
+          const SizedBox(height: 8),
+          Center(
+            child: Text('Enter your authenticator code',
+                style: Theme.of(context).textTheme.bodyMedium),
+          ),
+          const SizedBox(height: 6),
+          Center(
+            child: Text(
+              _email.text.trim(),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          const SizedBox(height: 28),
+
+          TextFormField(
+            controller: _code,
+            decoration: const InputDecoration(
+              labelText: 'Authenticator code',
+              helperText: 'Six digits, or a recovery code',
+            ),
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            autofillHints: const [AutofillHints.oneTimeCode],
+            enabled: !_busy,
+            validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter the code' : null,
+            onFieldSubmitted: (_) => _submitCode(),
+          ),
+
+          if (_error != null) ...[
+            const SizedBox(height: 16),
+            ErrorNote(_error!),
+          ],
+
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: _busy ? null : _submitCode,
+            child: _busy
+                ? const SizedBox(
+                    height: 18, width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('Sign in'),
+          ),
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: _busy ? null : _back,
+            child: const Text('Back'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Validates the code field only. The email and password are already known
+  /// good — re-validating the first form here would fail, because that form is
+  /// no longer mounted and its key has no state.
+  Future<void> _submitCode() async {
+    if (!(_codeFormKey.currentState?.validate() ?? false)) return;
+
+    await _submit(skipValidation: true);
+  }
+
+  /// Back to the beginning, with the code cleared.
+  ///
+  /// The password stays: somebody who reached this step typed it correctly, and
+  /// making them type it again to fix a mistyped digit is a punishment for the
+  /// app's own choice to use two steps.
+  void _back() {
+    setState(() {
+      _needsCode = false;
+      _code.clear();
+      _error = null;
+    });
   }
 
   /// Ask for a reset link.

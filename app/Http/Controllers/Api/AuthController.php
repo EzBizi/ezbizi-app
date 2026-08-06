@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Services\Auth\AuthenticateUser;
+use App\Support\Auth\SessionContext;
 use App\Services\Auth\AuthenticationResult;
 use App\Support\Audit\AuditLogger;
 use Illuminate\Http\JsonResponse;
@@ -144,6 +145,12 @@ class AuthController extends Controller
             $request->input('device_name', 'web'),
             expiresAt: now()->addDays(30),
         );
+
+        // The user agent and address, so the session list can name this row
+        // later. Every device sends `device_name: web`, so without this the
+        // list is five identical entries and revoking one specific machine is
+        // impossible.
+        SessionContext::stamp($token->accessToken, $request);
 
         $this->audit->log('auth.signed_in', actor: $user, metadata: [
             'ip'         => $request->ip(),

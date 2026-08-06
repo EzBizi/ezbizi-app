@@ -27,7 +27,9 @@ use Laravel\Sanctum\HasApiTokens;
  * address can exist in two organizations. Login must therefore disambiguate
  * when an address matches more than one account.
  */
-#[Fillable(['organization_id', 'role_id', 'name', 'email', 'password', 'is_active'])]
+#[Fillable(['organization_id', 'role_id', 'name', 'email', 'password', 'is_active',
+    'first_name', 'middle_name', 'last_name', 'phone', 'gender', 'date_of_birth',
+])]
 #[Hidden(['password', 'remember_token', 'totp_secret', 'pending_totp_secret', 'recovery_codes'])]
 class User extends Authenticatable
 {
@@ -42,6 +44,7 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
+            'date_of_birth' => 'date',
             'email_verified_at' => 'datetime',
             'password'          => 'hashed',
             'is_active'         => 'boolean',

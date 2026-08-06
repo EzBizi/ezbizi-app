@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Support\Audit\AuditLogger;
+use App\Support\Auth\SessionContext;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 /**
  * Your own account (plan §2.1 category 6, §4).
@@ -39,24 +41,152 @@ class ProfileController extends Controller
         $user = $request->user();
 
         $input = $request->validate([
-            'name' => ['required', 'string', 'min:1', 'max:120'],
+            'first_name'  => ['sometimes', 'required', 'string', 'max:60'],
+            'middle_name' => ['sometimes', 'nullable', 'string', 'max:60'],
+            'last_name'   => ['sometimes', 'required', 'string', 'max:60'],
+            'phone'       => ['sometimes', 'nullable', 'string', 'max:40'],
+
+            // Free text, not an `in:` rule. A closed list is wrong for somebody
+            // and then needs a deploy to fix; the client suggests the common
+            // answers and this accepts what a person actually says.
+            'gender'      => ['sometimes', 'nullable', 'string', 'max:40'],
+
+            // `before:today` rather than a minimum age. This is a profile
+            // field, not an eligibility check, and inventing an age limit here
+            // would refuse a legitimate record for a rule nobody has set.
+            'date_of_birth' => ['sometimes', 'nullable', 'date', 'before:today'],
         ]);
 
-        if (trim($input['name']) === $user->name) {
-            return ['name' => $user->name, 'changed' => false];
+        $before = $user->only([
+            'name', 'first_name', 'middle_name', 'last_name',
+            'phone', 'gender', 'date_of_birth',
+        ]);
+
+        $user->fill($input);
+
+        // `name` stays the composed display value. The audit trail, every list
+        // screen and the API all read it, so it cannot be allowed to drift from
+        // the parts — one is derived from the others and the app owns keeping
+        // them in step.
+        if ($user->first_name !== null || $user->last_name !== null) {
+            $user->name = trim(implode(' ', array_filter([
+                $user->first_name, $user->middle_name, $user->last_name,
+            ])));
         }
 
-        $before = $user->name;
+        $changed = $user->getDirty();
 
-        $user->forceFill(['name' => trim($input['name'])])->save();
+        if ($changed === []) {
+            return ['changed' => false] + $this->present($user);
+        }
 
-        // Their own name change is still an audit event: it is what everybody
-        // else in the organization sees against their actions (§10).
-        $this->audit->log('user.renamed', $user, changes: [
-            'before' => $before, 'after' => $user->name,
+        $user->save();
+
+        // Their own details are still an audit event: the name is what everybody
+        // else in the organization sees against their actions (§10). The values
+        // are recorded, but a date of birth is NOT — §9 treats it as personal
+        // data with a legal weight, and copying it into an append-only log that
+        // erasure cannot reach would be the wrong place to keep it.
+        $this->audit->log('user.profile_updated', $user, changes: [
+            'before' => array_diff_key($before, ['date_of_birth' => null]),
+            'after'  => array_diff_key($changed, ['date_of_birth' => null]),
+            'fields' => array_keys($changed),
         ]);
 
-        return ['name' => $user->name, 'changed' => true];
+        return ['changed' => true] + $this->present($user);
+    }
+
+    /**
+     * Replace your own picture.
+     *
+     * Stored under the app's own storage and served back through a controller,
+     * never as a public URL. A publicly guessable avatar path leaks who works
+     * where; an externally hosted one would report every viewer to whoever
+     * hosts it.
+     */
+    public function uploadAvatar(Request $request): array
+    {
+        $request->validate([
+            // `dimensions` as well as mimes: a 40-megapixel photo is a denial of
+            // service against the image pipeline, and the file-size limit alone
+            // does not stop a highly compressible one.
+            'photo' => [
+                'required', 'image', 'mimes:jpeg,png,webp', 'max:5120',
+                'dimensions:max_width=6000,max_height=6000',
+            ],
+        ]);
+
+        $user = $request->user();
+
+        $previous = $user->avatar_path;
+
+        $path = $request->file('photo')->store("avatars/{$user->organization_id}", 'local');
+
+        $user->forceFill(['avatar_path' => $path])->save();
+
+        // Removed only after the new one is safely stored, so a failed write
+        // never leaves somebody with no picture and no way back.
+        if ($previous !== null && $previous !== $path) {
+            Storage::disk('local')->delete($previous);
+        }
+
+        $this->audit->log('user.avatar_changed', $user);
+
+        return ['avatar' => true];
+    }
+
+    /** Serve a picture, to people entitled to see it. */
+    public function avatar(Request $request, string $user)
+    {
+        $subject = \App\Models\User::find($user);
+
+        // Same organization only. An avatar endpoint that serves any id is a
+        // way to enumerate the staff of every customer on the platform.
+        abort_if(
+            $subject === null
+                || $subject->avatar_path === null
+                || $subject->organization_id !== $request->user()->organization_id,
+            404,
+        );
+
+        abort_unless(Storage::disk('local')->exists($subject->avatar_path), 404);
+
+        return response()->file(Storage::disk('local')->path($subject->avatar_path));
+    }
+
+    public function destroyAvatar(Request $request): array
+    {
+        $user = $request->user();
+
+        if ($user->avatar_path !== null) {
+            Storage::disk('local')->delete($user->avatar_path);
+            $user->forceFill(['avatar_path' => null])->save();
+            $this->audit->log('user.avatar_removed', $user);
+        }
+
+        return ['avatar' => false];
+    }
+
+    private function present($user): array
+    {
+        return [
+            'name'          => $user->name,
+            'first_name'    => $user->first_name,
+            'middle_name'   => $user->middle_name,
+            'last_name'     => $user->last_name,
+            'phone'         => $user->phone,
+            'gender'        => $user->gender,
+            'date_of_birth' => $user->date_of_birth?->toDateString(),
+            'has_avatar'    => $user->avatar_path !== null,
+        ];
+    }
+
+    /** What the profile screen loads. */
+    public function show(Request $request): array
+    {
+        $user = $request->user();
+
+        return ['email' => $user->email] + $this->present($user);
     }
 
     /**
@@ -96,6 +226,11 @@ class ProfileController extends Controller
                     'name'         => $token->name,
                     'last_used_at' => $token->last_used_at?->toIso8601String(),
                     'created_at'   => $token->created_at?->toIso8601String(),
+                    'ip'           => $token->ip_address,
+
+                    // Five rows all reading "web" tell nobody which one to sign
+                    // out. The description is what makes a row identifiable.
+                    ...SessionContext::describe($token->user_agent),
                     // Named rather than inferred client-side: "which of these am
                     // I" is the first thing anybody asks of a session list, and
                     // guessing it from a timestamp gets it wrong.

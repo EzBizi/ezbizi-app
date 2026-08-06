@@ -113,7 +113,14 @@ Route::prefix('v1')
         //
         // No policy on any of these: each is bound to the signed-in user's own
         // record, so there is nobody else to authorize against.
+        Route::get('me/profile', [ProfileController::class, 'show']);
         Route::patch('me', [ProfileController::class, 'update']);
+
+        // Pictures are served through a controller, never as a public file. A
+        // guessable avatar URL leaks who works where, across every tenant.
+        Route::post('me/avatar', [ProfileController::class, 'uploadAvatar']);
+        Route::delete('me/avatar', [ProfileController::class, 'destroyAvatar']);
+        Route::get('users/{user}/avatar', [ProfileController::class, 'avatar']);
         Route::get('me/sessions', [ProfileController::class, 'sessions']);
         Route::delete('me/sessions', [ProfileController::class, 'revokeOtherSessions']);
 
