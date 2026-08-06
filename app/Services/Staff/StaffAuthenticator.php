@@ -145,10 +145,23 @@ class StaffAuthenticator
             return null;
         }
 
+        /*
+         * Deliberately NOT measured against last_totp_timestamp.
+         *
+         * That counter belongs to the secret currently in use; this code comes
+         * from a different one that has never been used for anything. Sharing the
+         * counter would reject a perfectly good confirmation whenever it lands in
+         * the same 30-second step as the re-authentication that preceded it —
+         * which is most of the time, since the two happen seconds apart. The
+         * resulting "that code did not verify" would be a lie.
+         *
+         * The counter IS set from this on success (below), so the confirming code
+         * cannot then be turned around into a sign-in on the secret it activated.
+         */
         $timestamp = $this->totp->verifyKeyNewer(
             $staff->pending_totp_secret,
             trim($code),
-            $staff->last_totp_timestamp ?? 0,   // see verifySecondFactor
+            0,   // 0 rather than null — see verifySecondFactor
             window: 1,
         );
 
