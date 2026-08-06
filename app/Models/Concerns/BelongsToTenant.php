@@ -2,6 +2,7 @@
 
 namespace App\Models\Concerns;
 
+use App\Support\Subscriptions\SubscriptionGuard;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -49,6 +50,8 @@ trait BelongsToTenant
                     $tenant->idOrFail(),
                 ));
             }
+
+            static::assertSubscriptionPermits($model);
         });
 
         // Refuse to move a row between tenants, or edit another tenant's row.
@@ -72,6 +75,8 @@ trait BelongsToTenant
                     static::class,
                 ));
             }
+
+            static::assertSubscriptionPermits($model);
         });
 
         static::deleting(function (Model $model) {
@@ -85,6 +90,35 @@ trait BelongsToTenant
                 ));
             }
         });
+    }
+
+    /**
+     * The subscription floor (§13).
+     *
+     * Here rather than in middleware because §13 is explicit that HTTP is not
+     * the only write path: workflow actions, queued jobs, scheduled tasks and
+     * imports all run with no request at all, and "a workflow that keeps firing
+     * after expiry means the product works fine without paying".
+     *
+     * This is the one place every tenant-owned write converges, whatever started
+     * it — which is the difference between an edge that can be walked around and
+     * a floor that cannot.
+     *
+     * Platform scope is exempt: staff repairing a lapsed customer's data is a
+     * legitimate, audited act (§4.2), and refusing it would make an expired
+     * account unsupportable.
+     */
+    protected static function assertSubscriptionPermits(Model $model): void
+    {
+        if (app(TenantContext::class)->inPlatformScope()) {
+            return;
+        }
+
+        $guard = app(SubscriptionGuard::class);
+
+        if (! $guard->permits($model)) {
+            throw new SubscriptionLapsedException($guard->refusal($model));
+        }
     }
 
     public function organization(): BelongsTo
