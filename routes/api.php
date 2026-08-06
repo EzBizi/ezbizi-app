@@ -221,7 +221,17 @@ Route::prefix('v1')
                         ->filter()
                         ->unique('id')
                         ->values()
-                        ->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])
+                        // The parent comes too. Without it the client can only
+                        // draw companies as one flat row, which renders a Sub
+                        // Company as a sibling of the company it belongs to —
+                        // and there is no way to tell from the screen that it
+                        // inherits from that company rather than from the
+                        // organization.
+                        ->map(fn ($c) => [
+                            'id'                => $c->id,
+                            'name'              => $c->name,
+                            'parent_company_id' => $c->parent_company_id,
+                        ])
                         ->all(),
 
                     'franchises' => $user->reachableFranchises()->map(fn ($f) => [

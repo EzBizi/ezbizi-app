@@ -177,62 +177,107 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ]),
 
-          for (final company in me.companies) ...[
-            const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // The indent is the hierarchy. Nothing else in this row says
-                // that the chips to the right sit under the company on the
-                // left, and a label would only repeat what the position shows.
-                const SizedBox(width: 84),
-                _chip(
-                  label: company.name,
-                  icon: Icons.apartment_outlined,
-                  selected: _scopeType == 'company' && _scopeId == company.id,
-                  onTap: () => _select('company', company.id, company.name),
-                ),
-                // A chevron between the company and its franchises. The indent
-                // already implies the relationship, but only once you have
-                // noticed the alignment — the arrow says "these belong to that"
-                // at a glance, and costs one glyph.
-                SizedBox(
-                  // A chip's height, so the chevron sits on the FIRST row of
-                  // franchises rather than at the top of a block that has
-                  // wrapped onto three lines.
-                  height: 32,
-                  width: 30,
-                  child: Center(
-                    child: Icon(
-                      Icons.chevron_right,
-                      size: 18,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final f in byCompany[company.id] ?? const [])
-                        _chip(
-                          label: f.name,
-                          icon: Icons.storefront_outlined,
-                          selected: _scopeType == 'franchise' && _scopeId == f.id,
-                          onTap: () => _select('franchise', f.id, f.name),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
+          // Top-level companies, each followed by its own Sub Companies.
+          //
+          // A flat loop rendered Premier Garage Repair beside Everdoors as
+          // though the two were siblings — nothing on screen said that Premier
+          // sits UNDER Everdoors and inherits its settings before falling
+          // through to the organization. That is the same flattening the
+          // franchise row had, one tier up.
+          for (final company in me.companies.where((c) => c.parentCompanyId == null))
+            ..._companyRows(context, me, company, byCompany),
+
+          // A Sub Company whose parent is not in this person's reach would
+          // otherwise vanish from the picker entirely. Shown at the top level
+          // rather than hidden: they can configure it, they just cannot see
+          // what it hangs off.
+          for (final orphan in me.companies.where((c) =>
+              c.parentCompanyId != null &&
+              !me.companies.any((p) => p.id == c.parentCompanyId)))
+            ..._companyRows(context, me, orphan, byCompany),
         ],
       ),
     );
   }
 
+  /// One company's row, then a row for each of its Sub Companies.
+  ///
+  /// Returns a list rather than a Column so the rows stay siblings in the
+  /// outer one — nesting Columns here would make the indent depend on the
+  /// widget tree instead of on the model, and they would drift.
+  List<Widget> _companyRows(
+    BuildContext context,
+    Me me,
+    CompanySummary company,
+    Map<String, List<FranchiseSummary>> byCompany, {
+    bool isSub = false,
+  }) {
+    final subs = me.companies.where((c) => c.parentCompanyId == company.id);
+
+    return [
+      const SizedBox(height: 8),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // The indent is the hierarchy. A Sub Company sits one step further in
+          // than the company it belongs to, under a corner that points at it.
+          SizedBox(
+            width: isSub ? 108 : 84,
+            child: isSub
+                ? Align(
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 6, bottom: 4),
+                      child: Icon(
+                        Icons.subdirectory_arrow_right,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  )
+                : null,
+          ),
+          _chip(
+            label: company.name,
+            // Sub Companies are "literally a Company with a parent" (§3), so
+            // they carry the same glyph. The position says which is which; a
+            // second icon would imply a third kind of thing.
+            icon: Icons.apartment_outlined,
+            selected: _scopeType == 'company' && _scopeId == company.id,
+            onTap: () => _select('company', company.id, company.name),
+          ),
+          SizedBox(
+            height: 32,
+            width: 30,
+            child: Center(
+              child: Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final f in byCompany[company.id] ?? const [])
+                  _chip(
+                    label: f.name,
+                    icon: Icons.storefront_outlined,
+                    selected: _scopeType == 'franchise' && _scopeId == f.id,
+                    onTap: () => _select('franchise', f.id, f.name),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      for (final sub in subs)
+        ..._companyRows(context, me, sub, byCompany, isSub: true),
+    ];
+  }
   Widget _chip({
     required String label,
     required IconData icon,

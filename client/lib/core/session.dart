@@ -275,14 +275,26 @@ class OrganizationSummary {
 }
 
 class CompanySummary {
-  const CompanySummary({required this.id, required this.name});
+  const CompanySummary({
+    required this.id,
+    required this.name,
+    required this.parentCompanyId,
+  });
 
   final String id;
   final String name;
 
+  /// Null for a top-level company; set for a Sub Company (§3).
+  ///
+  /// Carried so the client can draw the structure rather than a flat row. A
+  /// Sub Company rendered beside its own parent says the two are siblings,
+  /// which is wrong about what it inherits and wrong about who manages it.
+  final String? parentCompanyId;
+
   factory CompanySummary.fromJson(Map<String, dynamic> json) => CompanySummary(
         id: json['id'] as String,
         name: json['name'] as String,
+        parentCompanyId: json['parent_company_id'] as String?,
       );
 }
 
