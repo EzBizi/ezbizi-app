@@ -273,19 +273,22 @@ class _HomeShellState extends State<HomeShell> {
               )
             : null,
         titleSpacing: wide ? 0 : null,
-        title: Row(children: [
-          EzBiziTheme.wordmark(context, size: 20),
-          const SizedBox(width: 16),
-          Container(width: 1, height: 20, color: Theme.of(context).dividerColor),
-          const SizedBox(width: 16),
-          Flexible(
-            child: Text(
-              me.organization.name,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-          ),
-        ]),
+        // The wordmark and the organization moved into the sidebar, which is
+        // where the thing they identify actually lives. On a narrow screen
+        // there is no sidebar to hold them, so they come back here.
+        title: wide
+            ? const SizedBox.shrink()
+            : Row(children: [
+                EzBiziTheme.wordmark(context, size: 20),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    me.organization.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+              ]),
         actions: [
           // Light / dark, one tap, from anywhere.
           //
@@ -406,7 +409,11 @@ class _HomeShellState extends State<HomeShell> {
                         ? NavigationRailLabelType.none
                         : NavigationRailLabelType.all),
                 minWidth: kRailWidth,
-                minExtendedWidth: 188,
+                minExtendedWidth: 220,
+                leading: _RailHeader(
+                  expanded: expanded,
+                  organization: me.organization.name,
+                ),
                 destinations: destinations
                     .map((d) => NavigationRailDestination(
                           icon: Icon(d.icon),
@@ -418,7 +425,9 @@ class _HomeShellState extends State<HomeShell> {
                 // under the last destination.
                 trailing: Expanded(
                   child: Align(
-                    alignment: Alignment.bottomCenter,
+                    // bottomLeft, not bottomCenter: centring the footer
+                    // horizontally is what moved it out of the icon column.
+                    alignment: Alignment.bottomLeft,
                     child: _RailFooter(
                       extended: expanded,
                       items: pinned,
@@ -518,6 +527,127 @@ class _RailFooter extends StatelessWidget {
   }
 }
 
+/// The wordmark and the organization, at the top of the sidebar.
+///
+/// They were in the top bar. Moving them here puts the identity against the
+/// thing it identifies — the sidebar IS the organization's workspace, and a
+/// wordmark floating above a full-width header belongs to the page rather than
+/// to anything in particular.
+///
+/// The organization sits in its own block rather than as another line of text.
+/// It is not decoration: everything below it is scoped to that organization,
+/// and somebody with accounts in two of them needs to see at a glance which one
+/// they are looking at before they change a setting in the wrong place.
+class _RailHeader extends StatelessWidget {
+  const _RailHeader({required this.expanded, required this.organization});
+
+  final bool expanded;
+  final String organization;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    final mark = Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: EzBiziTheme.accent,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: const Icon(Icons.bolt, color: Colors.white, size: 20),
+    );
+
+    final initial = organization.trim().isEmpty
+        ? '?'
+        : organization.trim()[0].toUpperCase();
+
+    final avatar = Container(
+      width: 28,
+      height: 28,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        shape: BoxShape.circle,
+      ),
+      child: Text(
+        initial,
+        style: TextStyle(
+          color: scheme.onSecondaryContainer,
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+        ),
+      ),
+    );
+
+    if (!expanded) {
+      // Collapsed, the block would be a 28px circle with a letter in it and no
+      // way to know what the letter means. The mark alone is honest; the
+      // organization is one click away in the top bar's account menu.
+      return Padding(
+        padding: const EdgeInsets.only(top: 12, bottom: 20),
+        child: Center(child: mark),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            mark,
+            const SizedBox(width: 10),
+            EzBiziTheme.wordmark(context, size: 19),
+          ]),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: Theme.of(context).dividerColor),
+            ),
+            child: Row(children: [
+              avatar,
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'ORGANIZATION',
+                      style: TextStyle(
+                        fontSize: 9,
+                        height: 1.2,
+                        letterSpacing: 0.7,
+                        fontWeight: FontWeight.w700,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      organization,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        height: 1.2,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// The rail's icon column width.
 ///
 /// NavigationRail centres every destination icon inside a box this wide and
@@ -560,7 +690,12 @@ class RailFooterItem extends StatelessWidget {
     // different list that happened to be underneath.
     final content = extended
         ? Row(
-            mainAxisSize: MainAxisSize.min,
+            // max, not min. NavigationRail centres whatever it is given in its
+            // trailing slot, so a min-width row drifted right as the rail got
+            // wider and the footer stopped lining up with the destinations.
+            // Filling the width pins the icon column to kRailWidth and nothing
+            // else.
+            mainAxisSize: MainAxisSize.max,
             children: [
               SizedBox(
                 width: kRailWidth,

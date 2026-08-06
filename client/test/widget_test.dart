@@ -5,6 +5,8 @@ import 'package:ezbizi_client/screens/staff/staff_login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+void _noop() {}
+
 void main() {
   testWidgets('an unauthenticated app shows the sign-in screen', (tester) async {
     await tester.pumpWidget(const EzBiziApp());
@@ -176,19 +178,22 @@ void main() {
             selectedIndex: 0,
             extended: true,
             minWidth: kRailWidth,
-            minExtendedWidth: 188,
+            minExtendedWidth: 220,
             destinations: const [
               NavigationRailDestination(
                   icon: Icon(Icons.dashboard_outlined), label: Text('Dashboard')),
               NavigationRailDestination(
                   icon: Icon(Icons.people_outline), label: Text('Customers')),
             ],
-            trailing: RailFooterItem(
-              extended: true,
-              icon: Icons.settings_outlined,
-              label: 'Settings',
-              selected: false,
-              onTap: () {},
+            trailing: const SizedBox(
+              width: 220,
+              child: RailFooterItem(
+                extended: true,
+                icon: Icons.settings_outlined,
+                label: 'Settings',
+                selected: false,
+                onTap: _noop,
+              ),
             ),
           ),
           const Expanded(child: SizedBox()),
