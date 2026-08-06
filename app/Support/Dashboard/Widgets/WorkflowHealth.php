@@ -50,7 +50,10 @@ class WorkflowHealth implements Widget
         // Permission to view workflows is the whole gate here (§4).
         $runs = WorkflowRun::query()->where('started_at', '>=', $since);
 
-        $failed = (clone $runs)->whereNotNull('failed_at')->count();
+        // `status`, not a failed_at timestamp — a run records its outcome as a
+        // word (matched / skipped / succeeded / failed) so the trace can say
+        // "the conditions did not match" rather than only "nothing happened".
+        $failed = (clone $runs)->where('status', 'failed')->count();
         $total  = $runs->count();
 
         $waiting = WorkflowEvent::query()->whereNull('delivered_at')->count();
