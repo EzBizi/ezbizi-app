@@ -143,8 +143,14 @@ if [[ ${#errors[@]} -eq 0 ]]; then
          "$(date -Is)" "$(du -sh "$DEST" | cut -f1)" "$(ls -1 "$DEST" | wc -l)" > "$STATUS"
   note "backup ok size=$(du -sh "$DEST" | cut -f1)"
 else
-  printf '{"ok":false,"at":"%s","stage":"backup","errors":["%s"]}\n' \
-         "$(date -Is)" "$(IFS='","'; echo "${errors[*]}")" > "$STATUS"
+  # Joined by hand. `IFS='","'` looks like it does this and does not — IFS uses
+  # only its first character, so the array came out as one mangled string and
+  # the status file was not valid JSON, which is a poor way for an error report
+  # to fail.
+  joined=$(printf '"%s",' "${errors[@]}")
+
+  printf '{"ok":false,"at":"%s","stage":"backup","errors":[%s]}\n' \
+         "$(date -Is)" "${joined%,}" > "$STATUS"
   note "backup FAILED: ${errors[*]}"
 fi
 

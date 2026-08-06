@@ -15,8 +15,11 @@
 # merely that a copy command exited zero), decrypts it, restores it into a
 # scratch database, and checks that what came out matches what went in.
 #
-# It deliberately does NOT verify the local copy. The local copy is the one that
-# will not exist on the day this is needed.
+# If the remote is unreachable it verifies the local copy instead and says so —
+# reporting `offsite:false`, which the health screen shows as a problem rather
+# than a tick. Proving a dump restores is worth having on its own; proving it
+# about the copy that shares a disk with the database is not the thing that
+# matters on the day the disk is gone.
 
 set -uo pipefail
 
@@ -28,6 +31,7 @@ REMOTE_HOST=${EZBIZI_BACKUP_HOST:-ubuntu@32.194.222.151}
 REMOTE_DIR=${EZBIZI_BACKUP_DIR:-/home/ubuntu/ezbizi-backups}
 REMOTE_KEY=${EZBIZI_BACKUP_SSH_KEY:-/root/.ssh/ezbizi-backup}
 LIVE=ezbizi
+LOCAL_DIR=/var/backups/ezbizi
 
 trap 'rm -rf "$WORK"; mysql -e "DROP DATABASE IF EXISTS \`$SCRATCH\`;" 2>/dev/null' EXIT
 
@@ -40,16 +44,31 @@ fail()  {
   exit 1
 }
 
-# ── 1. fetch the newest remote dump of the live database ─────────
-newest=$(ssh -i "$REMOTE_KEY" -o BatchMode=yes "$REMOTE_HOST" \
-         "ls -1 $REMOTE_DIR/db-${LIVE}-*.sql.gz.gpg 2>/dev/null | sort | tail -1")
+# ── 1. fetch the newest dump of the live database ────────────────
+#
+# The remote copy is preferred, and fetching it is the point: it proves the
+# off-site file is readable rather than merely that a copy command exited zero.
+#
+# Falling back to the local copy is deliberate and is NOT treated as success.
+# Verifying that a dump restores is most of the value and is worth having on its
+# own — but a restore that only proves the copy sharing a disk with the database
+# has not proved the thing that matters on the day the disk is gone. The
+# distinction is carried through to the status file, so the health screen shows
+# it rather than a green tick.
+offsite=true
+newest=$(ssh -i "$REMOTE_KEY" -o BatchMode=yes -o ConnectTimeout=15 "$REMOTE_HOST" \
+         "ls -1 $REMOTE_DIR/db-${LIVE}-*.sql.gz.gpg 2>/dev/null | sort | tail -1" 2>/dev/null)
 
-[[ -z "$newest" ]] && fail "no remote dump for ${LIVE}"
+if [[ -n "$newest" ]] && scp -i "$REMOTE_KEY" -o BatchMode=yes -q "$REMOTE_HOST:$newest" "$WORK/" 2>/dev/null; then
+  file="$WORK/$(basename "$newest")"
+else
+  offsite=false
+  newest=$(ls -1 "$LOCAL_DIR"/db-"${LIVE}"-*.sql.gz.gpg 2>/dev/null | sort | tail -1)
+  [[ -z "$newest" ]] && fail "no dump for ${LIVE} anywhere"
+  cp "$newest" "$WORK/" || fail "could not read $newest"
+  file="$WORK/$(basename "$newest")"
+fi
 
-scp -i "$REMOTE_KEY" -o BatchMode=yes -q "$REMOTE_HOST:$newest" "$WORK/" \
-  || fail "could not fetch $newest"
-
-file="$WORK/$(basename "$newest")"
 stamp=$(basename "$newest" | sed -E "s/db-${LIVE}-(.*)\.sql\.gz\.gpg/\1/")
 
 # Yesterday's file passing every check is still a failure: it means last night's
@@ -57,14 +76,22 @@ stamp=$(basename "$newest" | sed -E "s/db-${LIVE}-(.*)\.sql\.gz\.gpg/\1/")
 # dead timer stays unnoticed.
 today=$(date +%F)
 yesterday=$(date -d yesterday +%F)
-[[ "$stamp" != "$today" && "$stamp" != "$yesterday" ]] && fail "newest remote dump is from $stamp"
+[[ "$stamp" != "$today" && "$stamp" != "$yesterday" ]] && fail "the newest dump anywhere is from $stamp"
 
 # ── 2. the file is intact ────────────────────────────────────────
-remote_sum=$(ssh -i "$REMOTE_KEY" -o BatchMode=yes "$REMOTE_HOST" \
+#
+# Against the manifest written at backup time, so a file that arrived truncated
+# is caught here rather than at 3am during an actual restore.
+if [[ "$offsite" == true ]]; then
+  recorded=$(ssh -i "$REMOTE_KEY" -o BatchMode=yes "$REMOTE_HOST" \
              "grep '$(basename "$newest")' $REMOTE_DIR/manifest-${stamp}.txt 2>/dev/null" | awk '{print $1}')
-local_sum=$(sha256sum "$file" | awk '{print $1}')
+else
+  recorded=$(grep "$(basename "$newest")" "$LOCAL_DIR/manifest-${stamp}.txt" 2>/dev/null | awk '{print $1}')
+fi
 
-[[ -n "$remote_sum" && "$remote_sum" != "$local_sum" ]] && fail "checksum mismatch on $(basename "$newest")"
+actual=$(sha256sum "$file" | awk '{print $1}')
+
+[[ -n "$recorded" && "$recorded" != "$actual" ]] && fail "checksum mismatch on $(basename "$newest")"
 
 # ── 3. decrypt and restore into a scratch database ───────────────
 gpg --batch --quiet --decrypt --passphrase-file "$KEYFILE" "$file" 2>/dev/null \
@@ -113,8 +140,19 @@ done
 
 [[ -n "$empty" ]] && fail "restored but empty:$empty"
 
-note "restore ok from $stamp — $restored_tables tables, $restored_migrations migrations"
+# The restore worked. Whether that is ENOUGH depends on where the file came
+# from, and saying so is the difference between a health screen that reports and
+# one that reassures.
+if [[ "$offsite" == true ]]; then
+  note "restore ok from $stamp (off-site) — $restored_tables tables, $restored_migrations migrations"
 
-printf '{"ok":true,"at":"%s","stage":"restore-check","from":"%s","tables":%s,"migrations":%s,"errors":[]}\n' \
-       "$(date -Is)" "$stamp" "$restored_tables" "$restored_migrations" > "$STATUS"
+  printf '{"ok":true,"at":"%s","stage":"restore-check","from":"%s","offsite":true,"tables":%s,"migrations":%s,"errors":[]}\n' \
+         "$(date -Is)" "$stamp" "$restored_tables" "$restored_migrations" > "$STATUS"
+else
+  note "restore ok from $stamp (LOCAL ONLY) — no off-site copy"
+
+  printf '{"ok":false,"at":"%s","stage":"restore-check","from":"%s","offsite":false,"tables":%s,"migrations":%s,"errors":["no off-site copy: the verified dump shares a disk with the database it protects"]}\n' \
+         "$(date -Is)" "$stamp" "$restored_tables" "$restored_migrations" > "$STATUS"
+fi
+
 chmod 644 "$STATUS"

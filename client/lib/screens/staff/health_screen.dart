@@ -171,10 +171,19 @@ class _HealthScreenState extends State<HealthScreen> {
           : (backups['problem'] as String? ??
               (backups['errors'] as List<dynamic>? ?? []).join(', ')),
       children: [
-        if (ok && !verified)
-          const Padding(
-            padding: EdgeInsets.only(top: 6),
-            child: Text('Written but never restored — the check did not finish.'),
+        if (!ok && verified)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              // The restore worked; where the file lives is the remaining
+              // problem. Saying "backup failed" here would be wrong, and saying
+              // nothing would be worse.
+              'The dump restores cleanly, from '
+              '${backups['restored_from'] ?? 'the latest file'}. '
+              '${backups['offsite'] == true ? '' : 'It is the local copy only — '
+                  'a lost instance takes the backup with it.'}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ),
       ],
     );

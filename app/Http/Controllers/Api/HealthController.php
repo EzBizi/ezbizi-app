@@ -104,7 +104,13 @@ class HealthController extends Controller
             'at'         => $at?->toIso8601String(),
             'age_hours'  => $age,
             'stage'      => $status['stage'] ?? null,
-            'verified'   => ($status['stage'] ?? '') === 'restore-check' && ($status['ok'] ?? false),
+            'verified'   => ($status['stage'] ?? '') === 'restore-check' && isset($status['tables']),
+
+            // Reported separately from `ok` because they fail differently: a
+            // restore that works proves the dump is good, and an off-site copy
+            // proves it will still exist. A green tick for the first while the
+            // second is missing is the reassurance this screen exists to avoid.
+            'offsite'    => $status['offsite'] ?? false,
             'restored_from' => $status['from'] ?? null,
             'errors'     => $status['errors'] ?? [],
             'problem'    => $stale ? 'The verdict is stale — the nightly timer has stopped.' : null,
