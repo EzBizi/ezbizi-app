@@ -106,16 +106,26 @@ class ViewScopeTest extends TestCase
         ])->save();
     }
 
-    private function scope(): ViewScope
+    /**
+     * Inside the tenant, because resolving a scope reads reach — and reach is a
+     * query over tenant-scoped models. In a request the middleware has already
+     * established it; a test has to say so.
+     */
+    private function scope(?User $user = null): ViewScope
     {
-        return ViewScope::forUser(User::withoutGlobalScopes()->find($this->w['admin']->id));
+        return app(TenantContext::class)->run(
+            $this->w['org'],
+            fn () => ViewScope::forUser($user ?? User::find($this->w['admin']->id)),
+        );
     }
 
     private function countInView(): int
     {
-        return Customer::withoutGlobalScopes()
-            ->whereIn('owning_franchise_id', $this->scope()->franchiseIds())
-            ->count();
+        return app(TenantContext::class)->run($this->w['org'], function () {
+            $ids = ViewScope::forUser(User::find($this->w['admin']->id))->franchiseIds();
+
+            return Customer::whereIn('owning_franchise_id', $ids)->count();
+        });
     }
 
     // ── the owner's four numbers ─────────────────────────────────
@@ -235,7 +245,7 @@ class ViewScopeTest extends TestCase
         // person is assigned to one franchise and sees its 10.
         $this->assertSame(
             [$this->w['ct']->id],
-            ViewScope::forUser($limited->fresh())->franchiseIds(),
+            $this->scope($limited->fresh())->franchiseIds(),
         );
     }
 
