@@ -2,6 +2,7 @@
 
 namespace App\Models\Concerns;
 
+use App\Exceptions\SubscriptionLapsedException;
 use App\Support\Subscriptions\SubscriptionGuard;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
@@ -36,13 +37,11 @@ trait BelongsToTenant
 
             if ($model->getAttribute('organization_id') === null) {
                 $model->setAttribute('organization_id', $tenant->idOrFail());
-                return;
-            }
-
-            // organization_id was set explicitly — allow it only if it matches.
-            // Platform scope may write anywhere; that's its purpose (§4.2).
-            if (! $tenant->inPlatformScope()
+            } elseif (! $tenant->inPlatformScope()
                 && $model->getAttribute('organization_id') !== $tenant->idOrFail()) {
+                // organization_id was set explicitly — allow it only if it
+                // matches. Platform scope may write anywhere; that's its
+                // purpose (§4.2).
                 throw new RuntimeException(sprintf(
                     'Refusing to create %s for organization %s while acting as %s.',
                     static::class,
@@ -51,6 +50,9 @@ trait BelongsToTenant
                 ));
             }
 
+            // Deliberately after the branch rather than inside it: the stamped
+            // case is the COMMON one, and an early return there would have left
+            // almost every create in the app unguarded.
             static::assertSubscriptionPermits($model);
         });
 
