@@ -99,9 +99,22 @@ class AuthenticateUser
                     continue;
                 }
 
+                /*
+                 * The user's own verification runs INSIDE their organization.
+                 *
+                 * Confirming a code writes the time-step it consumed, and User is
+                 * tenant-scoped — at login there is no tenant yet, so the write
+                 * guard refuses it. Entering the account's own organization is
+                 * the precise fix; widening the guard would be the loose one.
+                 *
+                 * Staff are not tenant-scoped, so theirs needs no such thing.
+                 */
                 $verified = $staff !== null
                     ? $this->staffAuth->verifySecondFactor($staff, $code)
-                    : app(\App\Support\Auth\TotpEnrolment::class)->verify($account, $code);
+                    : $this->tenant->run(
+                        $account->organization,
+                        fn () => app(\App\Support\Auth\TotpEnrolment::class)->verify($account, $code),
+                    );
 
                 if (! $verified) {
                     continue;
@@ -169,7 +182,12 @@ class AuthenticateUser
                 return AuthenticationResult::failed();
             }
         } elseif ($user->hasTotp()) {
-            if (! app(\App\Support\Auth\TotpEnrolment::class)->verify($user, (string) $code)) {
+            $verified = $this->tenant->run(
+                $user->organization,
+                fn () => app(\App\Support\Auth\TotpEnrolment::class)->verify($user, (string) $code),
+            );
+
+            if (! $verified) {
                 return AuthenticationResult::failed();
             }
         }
