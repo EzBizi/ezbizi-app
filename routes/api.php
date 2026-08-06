@@ -70,6 +70,16 @@ Route::prefix('v1')
             ->parameters(['workflows' => 'workflow']);
         Route::post('workflows', [WorkflowsController::class, 'store']);
 
+        // ── Your own second factor (§6) ──────────────────────────
+        //
+        // Self-service on purpose: anybody signed in can switch it on without an
+        // administrator, and without anyone from EzBizi being available. No
+        // policy — every route is bound to the signed-in user's own record.
+        Route::get('me/totp', [TwoFactorController::class, 'show']);
+        Route::post('me/totp', [TwoFactorController::class, 'begin']);
+        Route::post('me/totp/confirm', [TwoFactorController::class, 'confirm']);
+        Route::delete('me/totp', [TwoFactorController::class, 'disable']);
+
         // ── Notifications (§12) ──────────────────────────────────
         //
         // No policy: every query is bound to the signed-in user's own id, so
