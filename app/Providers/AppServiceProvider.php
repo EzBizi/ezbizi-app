@@ -11,6 +11,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // One instance per process — see plan §5.1
+        $this->app->singleton(\App\Support\Tenancy\TenantContext::class);
+
         //
     }
 

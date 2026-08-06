@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
 /**
  * A user belongs to exactly ONE organization (plan §4).
@@ -33,6 +34,7 @@ class User extends Authenticatable
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
+    use HasApiTokens;
     use Notifiable;
 
     protected function casts(): array
