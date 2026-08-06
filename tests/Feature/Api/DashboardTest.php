@@ -33,6 +33,12 @@ class DashboardTest extends TestCase
     {
         parent::setUp();
 
+        // Permissions are a PLATFORM table populated by the module registry, not
+        // by provisioning an organization — so a test that builds a non-admin
+        // role has to make sure the rows exist first. Without this the role gets
+        // an empty permission set and every widget looks correctly hidden.
+        $this->artisan('ezbizi:sync-permissions')->assertSuccessful();
+
         $r = app(ProvisionOrganization::class)(
             organizationName: 'Alpha',
             administrator: ['name' => 'Admin', 'email' => 'a@alpha.test', 'password' => 'a-real-password'],
@@ -162,13 +168,13 @@ class DashboardTest extends TestCase
 
     public function test_currencies_are_never_added_together(): void
     {
-        $this->job($this->alpha['franchise'], ['amount_minor' => 10000, 'currency' => 'USD', 'status' => 'done']);
-        $this->job($this->alpha['franchise'], ['amount_minor' => 20000, 'currency' => 'CAD', 'status' => 'done']);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 10000, 'currency' => 'USD', 'status' => 'completed']);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 20000, 'currency' => 'CAD', 'status' => 'completed']);
 
-        $this->inTenant(fn () => Job::query()->update(['status' => 'done']));
+        $this->inTenant(fn () => Job::query()->update(['status' => 'completed']));
 
         $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
-            'widgets' => [['key' => 'jobs.revenue', 'options' => ['statuses' => ['done'], 'days' => 30]]],
+            'widgets' => [['key' => 'jobs.revenue', 'options' => ['statuses' => ['completed'], 'days' => 30]]],
         ])->assertOk();
 
         $rows = collect(
@@ -203,10 +209,10 @@ class DashboardTest extends TestCase
 
     public function test_amounts_stay_in_minor_units(): void
     {
-        $this->job($this->alpha['franchise'], ['amount_minor' => 12345, 'status' => 'done']);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 12345, 'status' => 'completed']);
 
         $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
-            'widgets' => [['key' => 'jobs.revenue', 'options' => ['statuses' => ['done']]]],
+            'widgets' => [['key' => 'jobs.revenue', 'options' => ['statuses' => ['completed']]]],
         ])->assertOk();
 
         $rows = collect(
@@ -225,7 +231,7 @@ class DashboardTest extends TestCase
         $limited = $this->inTenant(function () {
             $role = Role::create([
                 'organization_id' => $this->alpha['org']->id,
-                'name' => 'Jobs only', 'is_administrator' => false,
+                'name' => 'Jobs only', 'is_system' => false,
             ]);
 
             $role->permissions()->sync(
@@ -262,7 +268,7 @@ class DashboardTest extends TestCase
         $limited = $this->inTenant(function () {
             $role = Role::create([
                 'organization_id' => $this->alpha['org']->id,
-                'name' => 'Jobs only', 'is_administrator' => false,
+                'name' => 'Jobs only', 'is_system' => false,
             ]);
 
             $role->permissions()->sync(Permission::whereIn('key', ['jobs.view'])->pluck('id'));
@@ -310,7 +316,7 @@ class DashboardTest extends TestCase
 
         $this->inTenant(function () {
             $role = Role::find($this->alpha['admin']->role_id);
-            $role->forceFill(['is_administrator' => false])->save();
+            $role->forceFill(['is_system' => false, 'name' => 'Jobs only'])->save();
             $role->permissions()->sync(Permission::whereIn('key', ['jobs.view'])->pluck('id'));
         });
 
@@ -336,7 +342,8 @@ class DashboardTest extends TestCase
     public function test_job_statuses_come_from_the_organizations_own_vocabulary(): void
     {
         $this->as($this->alpha['admin'])
-            ->patchJson('/api/v1/settings/jobs.statuses', ['value' => ['booked', 'on site', 'invoiced']])
+            ->patchJson('/api/v1/settings/jobs.statuses?scope_type=organization&scope_id='
+                .$this->alpha['org']->id, ['value' => ['booked', 'on site', 'invoiced']])
             ->assertOk();
 
         $rows = collect(
