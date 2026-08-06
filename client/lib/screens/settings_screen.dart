@@ -138,6 +138,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text('Configuring', style: Theme.of(context).textTheme.labelSmall),
           ChoiceChip(
             label: Text(me.organization.name),
+            // Every tier of the cascade carries its own glyph, so the row reads
+            // as three kinds of thing rather than one list with two of them
+            // decorated. A hub for the organization: it is what the companies
+            // hang off, and its silhouette is distinct from the two buildings
+            // below it at 15px, which apartment-vs-corporate would not be.
+            avatar: const Icon(Icons.hub_outlined, size: 15),
             selected: _scopeType == 'organization',
             onSelected: (_) => setState(() {
               _scopeType = 'organization';
