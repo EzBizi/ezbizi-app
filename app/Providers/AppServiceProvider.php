@@ -28,6 +28,22 @@ class AppServiceProvider extends ServiceProvider
          * suppresses nothing outside the middleware object itself.
          */
         $this->app->singleton(\App\Support\Audit\AuditLogger::class);
+
+        /*
+         * SettingsResolver caches resolved overrides per scope, and set() flushes
+         * that cache — but only its OWN. Left unbound, two instances mean two
+         * caches: change a setting through one and the other keeps serving the
+         * old value until the process ends. The failure is silent and looks like
+         * the setting did not save, which is the worst kind of bug in a settings
+         * system.
+         *
+         * One instance, one cache, and set() invalidates the one everything reads.
+         *
+         * Cache keys are scopeType:uuid, so this cannot serve one organization's
+         * overrides to another even in a long-lived worker — staleness was the
+         * risk here, not leakage.
+         */
+        $this->app->singleton(\App\Support\Settings\SettingsResolver::class);
     }
 
     /**

@@ -56,9 +56,23 @@ class VerticalSliceTest extends TestCase
         ])->assertOk()->json('token');
     }
 
+    /**
+     * Act as a user, from a clean slate.
+     *
+     * forgetGuards() matters more here than anywhere: Laravel's RequestGuard
+     * caches the user it resolved, and one test process serves every request in
+     * a test. Without it the second user's requests answer as the FIRST user —
+     * which would make a tenant-isolation test pass or fail for reasons that have
+     * nothing to do with tenant isolation. Real requests each get a fresh
+     * container; this reproduces that.
+     */
     private function as(User $user): static
     {
-        return $this->withHeader('Authorization', 'Bearer '.$this->tokenFor($user));
+        $token = $this->tokenFor($user);
+
+        $this->app['auth']->forgetGuards();
+
+        return $this->withHeader('Authorization', "Bearer {$token}");
     }
 
     /** Run something inside a tenant, the way a job or console command would. */
