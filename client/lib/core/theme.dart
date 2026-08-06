@@ -112,31 +112,45 @@ class EzBiziTheme {
     );
   }
 
-  /// The wordmark, in the brand's two weights.
-  static Widget wordmark({double size = 28}) => RichText(
-        text: TextSpan(
-          children: [
-            TextSpan(
-              text: 'Ez',
-              style: TextStyle(
-                fontSize: size,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -1,
-                color: _cyan,
-              ),
+  /// The wordmark.
+  ///
+  /// "Bizi" follows the theme rather than being fixed to the brand's ink: the
+  /// logo is drawn on white, but on a dark background black-on-near-black is
+  /// simply invisible. The cyan "Ez" is constant — it carries the brand and has
+  /// enough contrast either way.
+  ///
+  /// Takes a BuildContext for exactly that reason. An earlier version hardcoded
+  /// the ink colour and the second half of the name vanished in dark mode.
+  static Widget wordmark(BuildContext context, {double size = 28}) {
+    final onSurface = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white
+        : _ink;
+
+    return RichText(
+      text: TextSpan(
+        children: [
+          TextSpan(
+            text: 'Ez',
+            style: TextStyle(
+              fontSize: size,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -1,
+              color: _cyan,
             ),
-            TextSpan(
-              text: 'Bizi',
-              style: TextStyle(
-                fontSize: size,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -1,
-                color: _ink,
-              ),
+          ),
+          TextSpan(
+            text: 'Bizi',
+            style: TextStyle(
+              fontSize: size,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -1,
+              color: onSurface,
             ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
+  }
 
   static const Color accent = _cyan;
   static const Color accentDark = _cyanDark;

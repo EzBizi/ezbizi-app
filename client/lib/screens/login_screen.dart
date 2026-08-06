@@ -126,7 +126,7 @@ class _LoginScreenState extends State<LoginScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Center(child: EzBiziTheme.wordmark(size: 32)),
+          Center(child: EzBiziTheme.wordmark(context, size: 32)),
           const SizedBox(height: 8),
           Center(
             child: Text('Sign in to your account',
@@ -181,7 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Center(child: EzBiziTheme.wordmark(size: 28)),
+        Center(child: EzBiziTheme.wordmark(context, size: 28)),
         const SizedBox(height: 20),
         Text('Choose an organization',
             style: Theme.of(context).textTheme.titleMedium, textAlign: TextAlign.center),

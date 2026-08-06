@@ -89,7 +89,7 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       appBar: AppBar(
         title: Row(children: [
-          EzBiziTheme.wordmark(size: 20),
+          EzBiziTheme.wordmark(context, size: 20),
           const SizedBox(width: 16),
           Container(width: 1, height: 20, color: Theme.of(context).dividerColor),
           const SizedBox(width: 16),

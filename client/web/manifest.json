@@ -1,11 +1,11 @@
 {
-    "name": "ezbizi_client",
-    "short_name": "ezbizi_client",
+    "name": "EzBizi",
+    "short_name": "EzBizi",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FFFFFF",
+    "theme_color": "#00AEEF",
+    "description": "EzBizi — one platform for your whole operation.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
