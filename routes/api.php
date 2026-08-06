@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\JobsController;
+use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\WorkflowsController;
 use App\Http\Controllers\Api\StaffAccountsController;
@@ -66,6 +67,14 @@ Route::prefix('v1')
         Route::apiResource('workflows', WorkflowsController::class)->except(['store'])
             ->parameters(['workflows' => 'workflow']);
         Route::post('workflows', [WorkflowsController::class, 'store']);
+
+        // ── Notifications (§12) ──────────────────────────────────
+        //
+        // No policy: every query is bound to the signed-in user's own id, so
+        // there is nothing to authorize beyond being signed in.
+        Route::get('notifications', [NotificationsController::class, 'index']);
+        Route::post('notifications/read-all', [NotificationsController::class, 'markAllRead']);
+        Route::post('notifications/{notification}/read', [NotificationsController::class, 'markRead']);
 
         // ── Settings (§6) ────────────────────────────────────────
         Route::get('settings', [SettingsController::class, 'index']);

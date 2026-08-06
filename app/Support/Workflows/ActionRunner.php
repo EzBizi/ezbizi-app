@@ -64,6 +64,7 @@ class ActionRunner
         private readonly EventEmitter $emitter,
         private readonly OutboundWebhook $webhook,
         private readonly \App\Support\Audit\AuditLogger $audit,
+        private readonly \App\Support\Notifications\NotificationDispatcher $notifications,
     ) {}
 
     /**
@@ -215,9 +216,10 @@ class ActionRunner
     /**
      * An in-app notification.
      *
-     * Recorded rather than pushed for now: the notification module is not built,
-     * and inventing a delivery path here would be the wrong place for it. The
-     * run log says what would be sent, so nothing is silently lost when it is.
+     * The audience is whoever could have seen the record anyway — reach decides
+     * it, exactly as it decides the job list (§4). Telling somebody about a
+     * record they are not allowed to read is a leak dressed up as a feature: the
+     * title alone usually gives the record away.
      */
     private function notify(array $action, WorkflowEvent $event, ?Model $subject): array
     {
@@ -227,11 +229,25 @@ class ActionRunner
             throw new InvalidArgumentException('notify needs a message.');
         }
 
+        $title = $this->interpolate($message, $event, $subject);
+
+        $sent = $this->notifications->dispatch(
+            title: $title,
+            body: $action['body'] ?? null,
+            subject: $subject,
+            source: 'workflow',
+            eventId: $event->getKey(),
+        );
+
         return [
             'type'   => 'notify',
             'ok'     => true,
-            'detail' => 'Queued for delivery once notifications are built: '
-                .$this->interpolate($message, $event, $subject),
+            'detail' => $sent === 0
+                // Not a failure. A rule scoped to a franchise nobody is assigned
+                // to has nobody to tell, and saying so is more useful than a
+                // success that quietly reached no one.
+                ? "Nobody has reach over that record, so there was no one to tell: {$title}"
+                : "Told {$sent} ".($sent === 1 ? 'person' : 'people').": {$title}",
         ];
     }
 
