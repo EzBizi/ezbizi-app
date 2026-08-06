@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CompaniesController;
 use App\Http\Controllers\Api\CustomersController;
+use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\EnrolmentController;
@@ -69,6 +71,23 @@ Route::prefix('v1')
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
 
         Route::apiResource('jobs', JobsController::class);
+
+        // ── The shape of the business (§3) ───────────────────────
+        //
+        // The model has carried Sub Companies since the foundation and the
+        // settings resolver has walked through them, with tests — but nothing
+        // could create one. Structure was editable by whoever had a shell on
+        // the box and by nobody else.
+        //
+        // Listing is on the companies route because it returns the whole tree:
+        // assembling that shape from two flat lists is a second place for it to
+        // be decided, and to be decided differently.
+        Route::get('companies', [CompaniesController::class, 'index']);
+        Route::post('companies', [CompaniesController::class, 'store']);
+        Route::patch('companies/{company}', [CompaniesController::class, 'update']);
+
+        Route::post('franchises', [FranchisesController::class, 'store']);
+        Route::patch('franchises/{franchise}', [FranchisesController::class, 'update']);
 
         // ── Dashboard (§18 Phase 4) ──────────────────────────────
         //
