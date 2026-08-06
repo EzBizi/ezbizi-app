@@ -65,7 +65,9 @@ class Session extends ChangeNotifier {
 
     await refresh();
 
-    if (!signedIn) {
+    // Only when the server actually refused it. Clearing on an unreachable
+    // server means a refresh during an outage permanently loses the session.
+    if (!signedIn && !_unreachable) {
       TokenStore.clear();
     }
 
@@ -83,13 +85,33 @@ class Session extends ChangeNotifier {
 
     if (response.ok) {
       _me = Me.fromJson(response.data as Map<String, dynamic>);
-    } else {
+      _unreachable = false;
+      notifyListeners();
+      return;
+    }
+
+    // A 401 means the token is genuinely no longer good — expired, revoked by a
+    // password change, or the account was deactivated. Anything else means the
+    // server did not answer, and throwing the session away for a network blip
+    // or a 500 signs somebody out of a session that is perfectly valid, with no
+    // way to tell the difference from the outside.
+    if (response.unauthorized) {
       _me = null;
+      _unreachable = false;
       _api.setToken(null);
+    } else {
+      _unreachable = true;
     }
 
     notifyListeners();
   }
+
+  /// The last refresh could not reach the server, as opposed to being refused.
+  ///
+  /// Kept apart from `signedIn` because the two need opposite responses: one is
+  /// "sign in again", the other is "try again in a moment".
+  bool _unreachable = false;
+  bool get unreachable => _unreachable;
 
   /// Change one preference and repaint.
   ///

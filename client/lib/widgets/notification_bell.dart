@@ -18,6 +18,11 @@ class NotificationBell extends StatefulWidget {
 
 class _NotificationBellState extends State<NotificationBell> {
   int _unread = 0;
+
+  // A failed fetch used to render as "Nothing yet.", so an outage and an empty
+  // inbox were indistinguishable — and the one that needs action looked like
+  // the one that does not.
+  String? _error;
   bool _loading = false;
   List<Map<String, dynamic>> _items = [];
 
@@ -40,14 +45,36 @@ class _NotificationBellState extends State<NotificationBell> {
       _loading = false;
 
       if (!response.ok) {
-        // Silent. A bell that shows an error banner because a background poll
-        // failed is worse than a bell that briefly shows a stale count.
+        // Recorded, not shown. A bell that pops an error banner because a
+        // background poll failed is worse than one that briefly shows a stale
+        // count — but the dialog needs to know, or it renders a failed fetch as
+        // "Nothing yet." and an outage becomes indistinguishable from an empty
+        // inbox.
+        _error = response.message;
         return;
       }
 
+      _error = null;
       _items = List<Map<String, dynamic>>.from(response.data as List);
       _unread = (response.body['meta'] as Map<String, dynamic>?)?['unread'] as int? ?? 0;
     });
+  }
+
+  Future<void> _markAllRead() async {
+    final response = await widget.api.post('/notifications/read-all', {});
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      // The response was discarded and the dialog closed either way, so a
+      // failure looked identical to a success until the badge came back.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(response.message)),
+      );
+      return;
+    }
+
+    await _refresh();
   }
 
   Future<void> _open() async {
@@ -57,16 +84,20 @@ class _NotificationBellState extends State<NotificationBell> {
 
     await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
+      // StatefulBuilder, because a dialog's page is built ONCE by the route and
+      // cached: calling setState on this widget repaints the bell behind it and
+      // leaves the open list showing exactly what it showed before. Marking one
+      // read did nothing visible until the dialog was closed and reopened.
+      builder: (context) => StatefulBuilder(
+        builder: (context, repaint) => AlertDialog(
         title: Row(
           children: [
             const Expanded(child: Text('Notifications')),
             if (_unread > 0)
               TextButton(
                 onPressed: () async {
-                  await widget.api.post('/notifications/read-all', {});
-                  if (context.mounted) Navigator.of(context).pop();
-                  await _refresh();
+                  await _markAllRead();
+                  if (context.mounted) repaint(() {});
                 },
                 child: const Text('Mark all read'),
               ),
@@ -76,7 +107,9 @@ class _NotificationBellState extends State<NotificationBell> {
           width: 460,
           height: 400,
           child: _items.isEmpty
-              ? const Center(child: Text('Nothing yet.'))
+              ? Center(
+                  child: Text(_error ?? 'Nothing yet.'),
+                )
               : ListView.separated(
                   itemCount: _items.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),
@@ -96,9 +129,24 @@ class _NotificationBellState extends State<NotificationBell> {
                       trailing: (n['source'] == 'workflow') ? const Tag('Rule') : null,
                       onTap: unread
                           ? () async {
-                              await widget.api.post('/notifications/${n['id']}/read', {});
+                              final r = await widget.api
+                                  .post('/notifications/${n['id']}/read', {});
+
+                              if (!context.mounted) return;
+
+                              if (!r.ok) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(r.message)),
+                                );
+                                return;
+                              }
+
                               await _refresh();
-                              if (context.mounted) setState(() {});
+
+                              // repaint, not setState: setState rebuilds the
+                              // bell behind the dialog, and the dialog's own
+                              // page is cached by the route.
+                              if (context.mounted) repaint(() {});
                             }
                           : null,
                     );
@@ -111,6 +159,7 @@ class _NotificationBellState extends State<NotificationBell> {
             child: const Text('Close'),
           ),
         ],
+        ),
       ),
     );
 

@@ -57,4 +57,20 @@ class Deployment {
         .where((h) => h.isNotEmpty)
         .contains(label);
   }
+
+  /// The reset token in the current URL, if this is a reset link.
+  ///
+  /// The app decided what to render from the HOST alone, so `/reset?token=…` —
+  /// the link every password-reset email contains — rendered the sign-in screen
+  /// and dropped the token. The flow was built end to end on the server and had
+  /// no ending in the client.
+  static String? resetToken() {
+    final uri = Uri.base;
+
+    if (!uri.path.startsWith('/reset')) return null;
+
+    final token = uri.queryParameters['token'];
+
+    return (token == null || token.isEmpty) ? null : token;
+  }
 }

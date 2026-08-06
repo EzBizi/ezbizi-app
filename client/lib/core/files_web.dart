@@ -63,3 +63,17 @@ Future<PickedFile?> pickText() {
 
   return completer.future;
 }
+
+/// Drop the query string without reloading.
+///
+/// Used after a password reset: the token is single-use and already spent, but
+/// leaving `?token=` in the address bar keeps it in history and in anything the
+/// user copies out of the URL bar.
+void clearQuery() {
+  try {
+    web.window.history.replaceState(null, '', web.window.location.pathname);
+  } catch (_) {
+    // Some embedded webviews refuse history manipulation. A stale query string
+    // is untidy; a crash on the success screen is worse.
+  }
+}

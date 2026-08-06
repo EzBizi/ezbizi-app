@@ -114,7 +114,7 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
 
     if (entered == null || entered.isEmpty || !mounted) return;
 
-    final response = await widget.api.delete('/me/totp', {'password': entered});
+    final response = await widget.api.deleteWithBody('/me/totp', {'password': entered});
 
     if (!mounted) return;
 

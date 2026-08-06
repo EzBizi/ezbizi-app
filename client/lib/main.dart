@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'core/api_client.dart';
 import 'core/deployment.dart';
+import 'core/files.dart';
 import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
@@ -11,6 +12,7 @@ import 'screens/development_screen.dart';
 import 'screens/jobs_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/reset_password_screen.dart';
 import 'screens/workflows_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/staff/staff_login_screen.dart';
@@ -81,7 +83,28 @@ class _EzBiziAppState extends State<EzBiziApp> {
     );
   }
 
+  /// Set once a reset link has been dealt with, so "Back to sign in" does not
+  /// bounce straight back into the reset screen off the same URL.
+  bool _resetHandled = false;
+
   Widget _home() {
+    // Before anything else, including the restore gate: somebody following a
+    // reset link is by definition not signed in, and making them wait on a
+    // session check to see a form that does not need one is the kind of delay
+    // that gets read as a broken link.
+    final token = _resetHandled ? null : Deployment.resetToken();
+
+    if (token != null) {
+      return ResetPasswordScreen(
+        api: _api,
+        token: token,
+        onDone: () {
+          Files.clearQuery();
+          setState(() => _resetHandled = true);
+        },
+      );
+    }
+
     // Held until a stored token has been checked. Without this the sign-in
     // screen flashes for a moment on every refresh, which reads as being
     // logged out and then not.
@@ -183,6 +206,11 @@ class _HomeShellState extends State<HomeShell> {
         ),
     ];
 
+    // Clamped every build. The list shrinks when a staff link is removed or a
+    // module is switched off platform-wide, and an index left pointing past the
+    // end throws on the next frame — a blank screen with no way back.
+    final index = _index.clamp(0, destinations.length - 1);
+
     return Scaffold(
       appBar: AppBar(
         title: Row(children: [
@@ -268,7 +296,7 @@ class _HomeShellState extends State<HomeShell> {
             // they stay available — as the user's own preference, not an
             // opinion imposed by whoever wrote this.
             NavigationRail(
-              selectedIndex: _index,
+              selectedIndex: index,
               onDestinationSelected: (i) => setState(() => _index = i),
               extended: me.navigationStyle == 'list',
               labelType: me.navigationStyle == 'list'
@@ -283,7 +311,7 @@ class _HomeShellState extends State<HomeShell> {
                   .toList(),
             ),
           if (wide) const VerticalDivider(width: 1),
-          Expanded(child: destinations[_index].screen),
+          Expanded(child: destinations[index].screen),
         ],
       ),
       bottomNavigationBar: wide

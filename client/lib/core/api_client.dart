@@ -63,6 +63,18 @@ class ApiClient {
     return _send(() => _http.delete(uri, headers: _headers));
   }
 
+  /// DELETE with a JSON body.
+  ///
+  /// Exists because the query-string version was being used to send a PASSWORD
+  /// — which puts it in the nginx access log, the browser's history and any
+  /// Referer header the page emits. A body is not encryption, but it is the
+  /// difference between a secret in transit and a secret written to disk in
+  /// three places.
+  Future<ApiResponse> deleteWithBody(String path, Map<String, dynamic> body) async {
+    final uri = Uri.parse('$_root/api/v1$path');
+    return _send(() => _http.delete(uri, headers: _headers, body: jsonEncode(body)));
+  }
+
   /// A file, not JSON. Returns null on any failure — the caller shows a note.
   ///
   /// Separate from get() because a CSV body would fail jsonDecode, and because

@@ -11,6 +11,9 @@ class Files {
   static void download(String filename, List<int> content) =>
       impl.download(filename, content);
 
+  /// Remove the query string from the address bar, on web. A no-op elsewhere.
+  static void clearQuery() => impl.clearQuery();
+
   /// Ask for a file and return its text, or null if they cancelled.
   ///
   /// Uses the browser's own file input rather than a picker package — one

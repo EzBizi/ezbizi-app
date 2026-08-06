@@ -32,6 +32,11 @@ class _JobsScreenState extends State<JobsScreen> {
   int _page = 1;
   int _lastPage = 1;
 
+  // See customers_screen: a failed next page must not blank the rows already
+  // being read, and a double tap must not append the same page twice.
+  String? _pageError;
+  bool _loadingMore = false;
+
   @override
   void initState() {
     super.initState();
@@ -42,6 +47,8 @@ class _JobsScreenState extends State<JobsScreen> {
     setState(() {
       if (page == 1) _loading = true;
       _error = null;
+      _pageError = null;
+      if (page > 1) _loadingMore = true;
     });
 
     final response = await widget.api.get('/jobs', {'page': '$page'});
@@ -50,9 +57,14 @@ class _JobsScreenState extends State<JobsScreen> {
 
     setState(() {
       _loading = false;
+      _loadingMore = false;
 
       if (!response.ok) {
-        _error = response.message;
+        if (page == 1) {
+          _error = response.message;
+        } else {
+          _pageError = response.message;
+        }
         return;
       }
 
@@ -81,10 +93,19 @@ class _JobsScreenState extends State<JobsScreen> {
                   ? 'Showing ${_jobs.length} of $_total across the '
                       '${me.organization.franchiseLabel.toLowerCase()}s you can reach.'
                   : '$_total across the ${me.organization.franchiseLabel.toLowerCase()}s you can reach.',
-          action: FilledButton.icon(
-            onPressed: me.franchises.isEmpty ? null : _create,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add job'),
+          action: Tooltip(
+            // Permission without reach (§4). A dead button with no explanation
+            // reads as a broken app; the missing thing is an assignment, and
+            // only an administrator can grant it.
+            message: me.franchises.isEmpty
+                ? 'You are not assigned to a franchise, so there is nowhere to '
+                    'put a job. An administrator can assign you to one.'
+                : '',
+            child: FilledButton.icon(
+              onPressed: me.franchises.isEmpty ? null : _create,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add job'),
+            ),
           ),
         ),
         Expanded(
@@ -100,9 +121,24 @@ class _JobsScreenState extends State<JobsScreen> {
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, i) => i == _jobs.length
                         ? Center(
-                            child: TextButton(
-                              onPressed: () => _load(page: _page + 1),
-                              child: Text('Load more (${_total - _jobs.length} left)'),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_pageError != null) ...[
+                                  ErrorNote(_pageError!),
+                                  const SizedBox(height: 8),
+                                ],
+                                TextButton(
+                                  onPressed: _loadingMore
+                                      ? null
+                                      : () => _load(page: _page + 1),
+                                  child: Text(_loadingMore
+                                      ? 'Loading…'
+                                      : _pageError != null
+                                          ? 'Try again'
+                                          : 'Load more (${_total - _jobs.length} left)'),
+                                ),
+                              ],
                             ),
                           )
                         : _row(context, _jobs[i]),
@@ -269,7 +305,15 @@ class _NewJobDialogState extends State<_NewJobDialog> {
       _error = null;
     });
 
-    final cents = int.tryParse(_amount.text.replaceAll(RegExp(r'[^0-9]'), ''));
+    // Parsed as a decimal amount, not by deleting every non-digit.
+    //
+    // Stripping punctuation turned "1,250.00" into 125000 cents — a hundredfold
+    // error that looks like a plausible price, so nobody catches it until a
+    // client queries an invoice. Parsed properly, and refused rather than
+    // guessed when it is not a number.
+    final typed = _amount.text.trim().replaceAll(',', '');
+    final major = typed.isEmpty ? null : double.tryParse(typed);
+    final cents = major == null ? null : (major * 100).round();
 
     final response = await widget.api.post('/jobs', {
       'franchise_id': _franchiseId,

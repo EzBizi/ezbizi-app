@@ -34,6 +34,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
   int _page = 1;
   int _lastPage = 1;
 
+  // A failed NEXT page is a different thing from a failed FIRST page, and
+  // collapsing them meant one bad request blanked every row already on screen
+  // and dropped the reader back to the top of a list they were halfway down.
+  String? _pageError;
+  bool _loadingMore = false;
+
   @override
   void initState() {
     super.initState();
@@ -47,9 +53,18 @@ class _CustomersScreenState extends State<CustomersScreen> {
   }
 
   Future<void> _load({int page = 1}) async {
+    // A second tap while the first request is in flight appends the same page
+    // twice, so the list grows with duplicate rows.
+    if (_loadingMore) return;
+
     setState(() {
-      if (page == 1) _loading = true;
+      if (page == 1) {
+        _loading = true;
+      } else {
+        _loadingMore = true;
+      }
       _error = null;
+      _pageError = null;
     });
 
     final response = await widget.api.get('/customers', {
@@ -61,9 +76,16 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
     setState(() {
       _loading = false;
+      _loadingMore = false;
 
       if (!response.ok) {
-        _error = response.message;
+        // Only a first-page failure takes over the screen — there is nothing to
+        // preserve in that case. A later page reports beside the rows.
+        if (page == 1) {
+          _error = response.message;
+        } else {
+          _pageError = response.message;
+        }
         return;
       }
 
@@ -129,16 +151,36 @@ class _CustomersScreenState extends State<CustomersScreen> {
             error: _error,
             onRetry: _load,
             child: _customers.isEmpty
-                ? const Center(child: Text('No customers yet.'))
+                ? Center(
+                    child: Text(_search.text.trim().isEmpty
+                        ? 'No customers yet.'
+                        // "No customers yet" after a search reads as data loss.
+                        : 'Nothing matches "${_search.text.trim()}".'),
+                  )
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                     itemCount: _customers.length + (_page < _lastPage ? 1 : 0),
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, i) => i == _customers.length
                         ? Center(
-                            child: TextButton(
-                              onPressed: () => _load(page: _page + 1),
-                              child: Text('Load more (${_total - _customers.length} left)'),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_pageError != null) ...[
+                                  ErrorNote(_pageError!),
+                                  const SizedBox(height: 8),
+                                ],
+                                TextButton(
+                                  onPressed: _loadingMore
+                                      ? null
+                                      : () => _load(page: _page + 1),
+                                  child: Text(_loadingMore
+                                      ? 'Loading…'
+                                      : _pageError != null
+                                          ? 'Try again'
+                                          : 'Load more (${_total - _customers.length} left)'),
+                                ),
+                              ],
                             ),
                           )
                         : _row(context, _customers[i]),
