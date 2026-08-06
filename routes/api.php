@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BrandingController;
 use App\Http\Controllers\Api\CompaniesController;
 use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\FranchisesController;
@@ -85,6 +86,19 @@ Route::prefix('v1')
         Route::get('companies', [CompaniesController::class, 'index']);
         Route::post('companies', [CompaniesController::class, 'store']);
         Route::patch('companies/{company}', [CompaniesController::class, 'update']);
+
+        // ── Branding (§12) ───────────────────────────────────────
+        //
+        // Served through a controller, never as a public file: a logo at a
+        // guessable path enumerates every organization on the platform.
+        // Franchises have none — a franchise is a geography, not a brand.
+        Route::post('branding/organization', [BrandingController::class, 'uploadOrganization']);
+        Route::delete('branding/organization', [BrandingController::class, 'destroyOrganization']);
+        Route::get('branding/organization', [BrandingController::class, 'organization']);
+
+        Route::post('branding/companies/{company}', [BrandingController::class, 'uploadCompany']);
+        Route::delete('branding/companies/{company}', [BrandingController::class, 'destroyCompany']);
+        Route::get('branding/companies/{company}', [BrandingController::class, 'company']);
 
         Route::post('franchises', [FranchisesController::class, 'store']);
         Route::patch('franchises/{franchise}', [FranchisesController::class, 'update']);
@@ -231,13 +245,21 @@ Route::prefix('v1')
                             'id'                => $c->id,
                             'name'              => $c->name,
                             'parent_company_id' => $c->parent_company_id,
+                            'has_logo'          => $c->logo_path !== null,
                         ])
                         ->all(),
+
+                    // The RESOLVED scope, not the stored string. A preference
+                    // that has stopped being valid — a franchise removed, an
+                    // assignment narrowed — must not come back as the client's
+                    // idea of where it is.
+                    'scope' => \App\Support\Scoping\ViewScope::forUser($user)->toArray(),
 
                     'franchises' => $user->reachableFranchises()->map(fn ($f) => [
                         'id'         => $f->id,
                         'name'       => $f->name,
                         'company_id' => $f->company_id,
+                        'is_active'  => $f->is_active,
                     ])->values(),
                 ],
             ]);

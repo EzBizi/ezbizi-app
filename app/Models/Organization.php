@@ -22,7 +22,7 @@ class Organization extends Model
 
     protected $fillable = [
         'name', 'slug', 'reporting_currency', 'franchise_label',
-        'shares_customers', 'trial_ends_at', 'is_active', 'is_demo',
+        'shares_customers', 'trial_ends_at', 'is_active', 'is_demo', 'logo_path',
     ];
 
     protected function casts(): array

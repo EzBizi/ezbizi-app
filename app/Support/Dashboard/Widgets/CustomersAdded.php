@@ -40,7 +40,11 @@ class CustomersAdded implements Widget
     {
         $since = $this->since($options);
 
-        $reachable = $user->reachableFranchises()->pluck('id');
+        // Owned-by, not served-by. A customer belongs to exactly one
+        // franchise, so the counts across companies add up to the
+        // organization's — which they would not if every company that had
+        // done work for somebody counted them.
+        $reachable = \App\Support\Scoping\ViewScope::forUser($user)->franchiseIds();
 
         $mine = Customer::query()
             ->whereIn('owning_franchise_id', $reachable)

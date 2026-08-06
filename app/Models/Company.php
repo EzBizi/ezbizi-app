@@ -29,7 +29,9 @@ class Company extends Model
     use BelongsToTenant;
     use SoftDeletes;
 
-    protected $fillable = ['organization_id', 'parent_company_id', 'name', 'is_active'];
+    protected $fillable = [
+        'organization_id', 'parent_company_id', 'name', 'is_active', 'logo_path',
+    ];
 
     protected function casts(): array
     {

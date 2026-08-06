@@ -52,7 +52,8 @@ class JobsController extends Controller
     {
         $this->authorize('viewAny', Job::class);
 
-        $reachable = $request->user()->reachableFranchises()->pluck('id');
+        // The current view, already narrowed to what §4 allows.
+        $reachable = collect(\App\Support\Scoping\ViewScope::forUser($request->user())->franchiseIds());
 
         $jobs = Job::query()
             ->with(['franchise:id,name', 'customer:id,name,number,owning_franchise_id'])

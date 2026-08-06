@@ -104,6 +104,26 @@ class PreferenceRegistry
                 'max'     => 420,
                 'help'    => 'Drag the edge of the sidebar to change it.',
             ],
+
+            /*
+             * Which part of the business you are looking at (§3 roll-ups).
+             *
+             * "organization", or "company:<uuid>", or "franchise:<uuid>". A
+             * string rather than two preferences, because the two halves are
+             * meaningless apart — a type with no id, or an id with no type, is
+             * a state nothing can render.
+             *
+             * Validated on READ rather than on write: assignments change, and a
+             * scope that was legitimate when it was saved can stop being so
+             * without anybody touching it. ViewScope falls back to the whole
+             * organization on anything unusable.
+             */
+            'navigation.scope' => [
+                'label'   => 'Current view',
+                'type'    => 'string',
+                'default' => 'organization',
+                'help'    => 'Set by the switcher in the top bar.',
+            ],
         ];
     }
 

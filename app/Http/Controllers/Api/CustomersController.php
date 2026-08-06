@@ -58,9 +58,30 @@ class CustomersController extends Controller
     {
         $this->authorize('viewAny', Customer::class);
 
+        $scope = \App\Support\Scoping\ViewScope::forUser($request->user());
+
         $customers = Customer::query()
             ->with('owningFranchise:id,name')
             ->withCount('jobs')
+            /*
+             * Scoped by OWNING franchise, and only when a search is not running.
+             *
+             * Owned-by rather than served-by, because a customer belongs to
+             * exactly one franchise: the counts across companies then add up to
+             * the organization's total, which they would not if everyone who had
+             * done work for somebody counted them.
+             *
+             * Search deliberately escapes the scope. Customers are shared
+             * org-wide (§5.2) and the whole point of sharing is that a customer
+             * served by two branches is ONE person — somebody who cannot find an
+             * existing record creates a duplicate, which is the exact failure
+             * sharing exists to prevent. The owning-franchise tag on every row is
+             * what keeps the wider result honest.
+             */
+            ->when(
+                ! $scope->isOrganization() && blank($request->query('search')),
+                fn ($q) => $q->whereIn('owning_franchise_id', $scope->franchiseIds()),
+            )
             // Optional narrowing, NOT an authorization boundary — sharing means
             // everything here is already readable. A filter that looked like a
             // permission would be the more dangerous kind of confusion.
