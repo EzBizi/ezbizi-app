@@ -66,7 +66,10 @@ class StaffAccountsApiTest extends TestCase
      */
     private function nextCode(PlatformStaff $staff, string $secret): string
     {
-        $staff->forceFill(['last_totp_timestamp' => null])->save();
+        // Straight to the query builder. The in-memory model still has null from
+        // when it was made, so forceFill(null)->save() writes nothing — Eloquent
+        // only sends dirty attributes, and null-to-null is not dirty.
+        PlatformStaff::whereKey($staff->getKey())->update(['last_totp_timestamp' => null]);
 
         return $this->totp->getCurrentOtp($secret);
     }
