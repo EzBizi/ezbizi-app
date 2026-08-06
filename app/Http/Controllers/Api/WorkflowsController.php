@@ -32,6 +32,9 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class WorkflowsController extends Controller
 {
+    /** What ActionRunner can actually perform. The validator agrees with this. */
+    private const IMPLEMENTED_ACTIONS = ['update_field', 'webhook', 'notify'];
+
     public function __construct(
         private readonly ModuleRegistry $registry,
         private readonly WorkflowEngine $engine,
@@ -62,7 +65,24 @@ class WorkflowsController extends Controller
                 'key'      => $key,
                 'label'    => $module->label,
                 'triggers' => $module->triggers,
-                'actions'  => $module->workflowActions,
+                /*
+                 * Marked, not merely listed.
+                 *
+                 * A module declares the actions it INTENDS to expose (the §5.5
+                 * standing rule makes that mandatory at the moment the module is
+                 * written). The engine implements a smaller generic set. Listing
+                 * them together without saying which is which advertised action
+                 * names that POST /workflows then rejected — the catalogue and
+                 * the validator were two different vocabularies.
+                 */
+                'declared_actions' => array_map(fn (string $a) => [
+                    'key'         => $a,
+                    'implemented' => in_array(
+                        str_contains($a, '.') ? substr($a, strpos($a, '.') + 1) : $a,
+                        self::IMPLEMENTED_ACTIONS,
+                        strict: true,
+                    ),
+                ], $module->workflowActions),
             ];
         }
 
@@ -88,6 +108,8 @@ class WorkflowsController extends Controller
                     ['key' => 'changed_to', 'label' => 'changed to'],
                     ['key' => 'changed_from', 'label' => 'changed from'],
                 ],
+                // The vocabulary POST /workflows accepts. Anything not here is
+                // declared intent, not a usable action.
                 'action_types' => [
                     ['key' => 'update_field', 'label' => 'Update a field'],
                     ['key' => 'webhook', 'label' => 'Call a webhook'],
@@ -474,7 +496,7 @@ class WorkflowsController extends Controller
     {
         $type = $action['type'] ?? null;
 
-        if (! in_array($type, ['update_field', 'webhook', 'notify'], strict: true)) {
+        if (! in_array($type, self::IMPLEMENTED_ACTIONS, strict: true)) {
             throw ValidationException::withMessages([
                 "actions.{$index}.type" => "Unknown action '{$type}'.",
             ]);
