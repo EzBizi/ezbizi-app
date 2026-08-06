@@ -116,9 +116,27 @@ class WorkflowsController extends Controller
         return response()->json(['data' => $workflows]);
     }
 
+    /**
+     * Another tenant's id is NOT FOUND, never forbidden.
+     *
+     * The tenant scope should already make route binding fail for a record from
+     * another organization, and for customers and jobs it does. It did not here,
+     * and I have not isolated why — so rather than trust it, this says so
+     * outright.
+     *
+     * The distinction matters: 403 confirms the id is real somewhere on the
+     * platform and 404 does not, which is the same existence oracle the `exists`
+     * validation rules had.
+     */
+    private function assertMine(Workflow $workflow): void
+    {
+        abort_unless($workflow->organization_id === $this->tenant->idOrFail(), 404);
+    }
+
     /** GET /api/v1/workflows/{workflow} */
     public function show(Workflow $workflow): JsonResponse
     {
+        $this->assertMine($workflow);
         $this->authorize('view', $workflow);
 
         return response()->json(['data' => $this->present($workflow, detailed: true)]);
@@ -167,6 +185,7 @@ class WorkflowsController extends Controller
      */
     public function update(Request $request, Workflow $workflow): JsonResponse
     {
+        $this->assertMine($workflow);
         $this->authorize('update', $workflow);
 
         $input = $this->validated($request, forUpdate: true);
@@ -209,6 +228,7 @@ class WorkflowsController extends Controller
      */
     public function activateVersion(Request $request, Workflow $workflow, WorkflowVersion $version): JsonResponse
     {
+        $this->assertMine($workflow);
         $this->authorize('update', $workflow);
 
         abort_unless($version->workflow_id === $workflow->getKey(), 404);
@@ -235,6 +255,7 @@ class WorkflowsController extends Controller
      */
     public function test(Request $request, Workflow $workflow): JsonResponse
     {
+        $this->assertMine($workflow);
         $this->authorize('update', $workflow);
 
         $input = $request->validate([
@@ -261,6 +282,7 @@ class WorkflowsController extends Controller
     /** GET /api/v1/workflows/{workflow}/runs */
     public function runs(Request $request, Workflow $workflow): JsonResponse
     {
+        $this->assertMine($workflow);
         $this->authorize('view', $workflow);
 
         $runs = WorkflowRun::query()
@@ -292,6 +314,7 @@ class WorkflowsController extends Controller
     /** DELETE /api/v1/workflows/{workflow} */
     public function destroy(Workflow $workflow): JsonResponse
     {
+        $this->assertMine($workflow);
         $this->authorize('delete', $workflow);
 
         DB::transaction(function () use ($workflow) {

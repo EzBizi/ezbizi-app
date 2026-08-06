@@ -94,7 +94,9 @@ class WorkflowsApiTest extends TestCase
 
         // Checked at save, not only when it runs hours later in a queue worker
         // where only the run log would mention it.
-        $this->assertStringContainsString('internal address', $response->json('errors.actions.0.url.0'));
+        // The key is the literal string 'actions.0.url', so dot traversal walks past it.
+        $errors = $response->json('errors');
+        $this->assertStringContainsString('internal address', $errors['actions.0.url'][0]);
     }
 
     public function test_editing_writes_a_new_version_and_leaves_the_old_one_alone(): void
