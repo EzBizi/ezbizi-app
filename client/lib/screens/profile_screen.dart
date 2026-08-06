@@ -3,7 +3,8 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/appearance_card.dart';
 import '../widgets/async_body.dart';
-import '../widgets/error_note.dart';
+import '../widgets/identity_card.dart';
+import '../widgets/tag.dart';
 import '../widgets/password_card.dart';
 import '../widgets/two_factor_card.dart';
 
@@ -26,25 +27,14 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _name = TextEditingController();
-
   bool _loading = true;
   String? _error;
-  String? _nameError;
-  bool _savingName = false;
   List<Map<String, dynamic>> _sessions = [];
 
   @override
   void initState() {
     super.initState();
-    _name.text = widget.session.me?.name ?? '';
     _load();
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
   }
 
   Future<void> _load() async {
@@ -64,34 +54,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ? (response.body['sessions'] as List<dynamic>).cast<Map<String, dynamic>>()
           : [];
     });
-  }
-
-  Future<void> _saveName() async {
-    setState(() {
-      _savingName = true;
-      _nameError = null;
-    });
-
-    final response = await widget.api.patch('/me', {'name': _name.text.trim()});
-
-    if (!mounted) return;
-
-    setState(() {
-      _savingName = false;
-      _nameError = response.ok ? null : response.message;
-    });
-
-    if (response.ok) {
-      // Refreshed rather than patched locally: the app bar, the avatar initial
-      // and the audit trail all read this, and a client-side copy that drifts
-      // from the server is how one of them ends up showing the old name.
-      await widget.session.refresh();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Name updated.')));
-      }
-    }
   }
 
   Future<void> _revokeOthers() async {
@@ -131,8 +93,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final me = widget.session.me!;
-
     return AsyncBody(
       loading: _loading,
       error: _error,
@@ -149,7 +109,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 20),
 
-          _identity(me),
+          IdentityCard(api: widget.api, session: widget.session),
           const SizedBox(height: 12),
 
           AppearanceCard(session: widget.session),
@@ -159,97 +119,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           PasswordCard(api: widget.api, session: widget.session),
           const SizedBox(height: 12),
           _sessionsCard(),
-        ],
-      ),
-    );
-  }
-
-  Widget _identity(Me me) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Who you are',
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _name,
-                    decoration: const InputDecoration(
-                      labelText: 'Your name',
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                      helperText: 'What everyone else sees against your work.',
-                    ),
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: FilledButton.tonal(
-                    onPressed: _savingName ||
-                            _name.text.trim().isEmpty ||
-                            _name.text.trim() == me.name
-                        ? null
-                        : _saveName,
-                    child: Text(_savingName ? 'Saving…' : 'Save'),
-                  ),
-                ),
-              ],
-            ),
-            if (_nameError != null) ...[
-              const SizedBox(height: 8),
-              ErrorNote(_nameError!),
-            ],
-            const SizedBox(height: 16),
-            _row(context, 'Email', me.email,
-                // Not editable, and the reason is worth saying rather than
-                // leaving as a greyed-out field somebody keeps clicking.
-                note: 'Your sign-in address and where a password reset goes. '
-                    'Changing it needs a confirmation email, which is not '
-                    'wired up yet — ask an administrator.'),
-            if (me.roleName != null) _row(context, 'Role', me.roleName!),
-            _row(context, 'Organization', me.organization.name),
-            if (me.franchises.isNotEmpty)
-              _row(context, 'You can act on',
-                  me.franchises.map((f) => f.name).join(', '),
-                  note: 'Permissions decide WHAT you may do; this decides '
-                      'WHERE. Both have to allow something before it happens.'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _row(BuildContext context, String label, String value, {String? note}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 130,
-                child: Text(label,
-                    style: Theme.of(context).textTheme.bodySmall),
-              ),
-              Expanded(child: Text(value)),
-            ],
-          ),
-          if (note != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 130, top: 2),
-              child:
-                  Text(note, style: Theme.of(context).textTheme.bodySmall),
-            ),
         ],
       ),
     );
@@ -275,24 +144,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 12),
             for (final s in _sessions)
               Padding(
-                padding: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.only(bottom: 10),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      s['current'] == true
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_unchecked,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 8),
+                    // The platform, drawn. Five rows reading "web" told nobody
+                    // which one to sign out, which left "everywhere else" as
+                    // the only usable control.
+                    Icon(_deviceIcon(s['kind'] as String?), size: 20),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: Text(s['current'] == true
-                          ? 'This browser'
-                          : (s['name'] as String? ?? 'Session')),
-                    ),
-                    Text(
-                      _lastUsed(s['last_used_at'] as String?),
-                      style: Theme.of(context).textTheme.bodySmall,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Flexible(
+                              child: Text(
+                                s['label'] as String? ?? 'Unknown device',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (s['current'] == true) ...[
+                              const SizedBox(width: 6),
+                              const Tag('This one'),
+                            ],
+                          ]),
+                          Text(
+                            [
+                              if (s['ip'] != null) s['ip'] as String,
+                              _lastUsed(s['last_used_at'] as String?),
+                            ].join(' · '),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -308,6 +193,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
+  /// Apple, Windows, phone, or an honest shrug.
+  ///
+  /// A confidently wrong icon is worse than a generic one: somebody scanning
+  /// for "the Mac I left at the office" and seeing a Windows logo will not
+  /// revoke it.
+  IconData _deviceIcon(String? kind) => switch (kind) {
+        'mobile' => Icons.smartphone,
+        'apple' => Icons.laptop_mac,
+        'windows' => Icons.laptop_windows,
+        'desktop' => Icons.desktop_windows_outlined,
+        _ => Icons.device_unknown_outlined,
+      };
 
   String _lastUsed(String? iso) {
     if (iso == null) return 'Never used';

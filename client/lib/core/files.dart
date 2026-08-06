@@ -20,6 +20,9 @@ class Files {
   /// `<input type="file">` against a dependency, its transitive tree, and its
   /// permission plumbing.
   static Future<PickedFile?> pickText() => impl.pickText();
+
+  /// Ask for an image and return its bytes.
+  static Future<PickedBytes?> pickImage() => impl.pickImage();
 }
 
 class PickedFile {
@@ -27,4 +30,11 @@ class PickedFile {
 
   final String name;
   final String text;
+}
+
+class PickedBytes {
+  const PickedBytes(this.name, this.bytes);
+
+  final String name;
+  final List<int> bytes;
 }

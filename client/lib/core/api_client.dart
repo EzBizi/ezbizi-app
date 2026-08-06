@@ -75,6 +75,42 @@ class ApiClient {
     return _send(() => _http.delete(uri, headers: _headers, body: jsonEncode(body)));
   }
 
+  /// Upload a file.
+  ///
+  /// Multipart rather than a base64 field: a photo grows by a third in base64,
+  /// and the server's `image` and `dimensions` validation rules only work on a
+  /// real uploaded file.
+  Future<ApiResponse> postFile(
+    String path,
+    String field,
+    String filename,
+    List<int> bytes,
+  ) async {
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse('$_root/api/v1$path'))
+        ..headers['Accept'] = 'application/json'
+        ..files.add(http.MultipartFile.fromBytes(field, bytes, filename: filename));
+
+      if (_token != null) request.headers['Authorization'] = 'Bearer $_token';
+
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+
+      return ApiResponse(
+        statusCode: response.statusCode,
+        body: response.body.isEmpty
+            ? <String, dynamic>{}
+            : jsonDecode(response.body) as Map<String, dynamic>,
+        correlationId: response.headers['x-correlation-id'],
+      );
+    } catch (_) {
+      return const ApiResponse(
+        statusCode: 0,
+        body: {'message': 'Could not upload that. Check your connection.'},
+      );
+    }
+  }
+
   /// A file, not JSON. Returns null on any failure — the caller shows a note.
   ///
   /// Separate from get() because a CSV body would fail jsonDecode, and because

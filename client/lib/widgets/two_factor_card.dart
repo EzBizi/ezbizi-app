@@ -46,8 +46,26 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
     });
   }
 
-  Future<void> _enable() async {
-    final begin = await widget.api.post('/me/totp', {});
+  Future<void> _enable({bool replacing = false}) async {
+    Map<String, String>? proof;
+
+    if (replacing) {
+      proof = await _prove(
+        'Move to a new authenticator',
+        'Your password and a code from the CURRENT authenticator. The one you '
+        'are using now keeps working until the new one is confirmed, so there '
+        'is no moment where the account is unprotected.',
+        true,
+      );
+
+      if (proof == null || !mounted) return;
+    }
+
+    await _beginEnrolment(proof ?? const {}, replacing);
+  }
+
+  Future<void> _beginEnrolment(Map<String, String> proof, bool replacing) async {
+    final begin = await widget.api.post('/me/totp', proof);
 
     if (!mounted) return;
 
@@ -62,11 +80,14 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
       context: context,
       barrierDismissible: false,
       builder: (_) => TotpSetupDialog(
-        title: 'Turn on two-factor',
+        title: replacing ? 'Move to a new authenticator' : 'Turn on two-factor',
         accountLabel: widget.session.me!.email,
         secret: enrolment['secret'] as String,
         uri: enrolment['uri'] as String,
-        intro: 'You will be asked for a code from this app every time you sign in.',
+        intro: replacing
+            ? 'Scan this with the new app. Your old one keeps working until you '
+                'confirm a code from the new one.'
+            : 'You will be asked for a code from this app every time you sign in.',
         onConfirm: (code) => widget.api.post('/me/totp/confirm', {'code': code}),
       ),
     );
@@ -74,22 +95,27 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
     if (mounted) _load();
   }
 
-  Future<void> _disable() async {
+  /// Password, and a current code when one is already enrolled.
+  ///
+  /// The password alone is not enough: somebody at a borrowed unlocked laptop
+  /// who also knows the password is exactly the case the second factor exists
+  /// for. To change or remove it you have to hold the thing being changed.
+  ///
+  /// Returns null if they cancelled.
+  Future<Map<String, String>?> _prove(String title, String why, bool enrolled) async {
     final password = TextEditingController();
+    final code = TextEditingController();
 
-    final entered = await showDialog<String>(
+    final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Turn off two-factor'),
+        title: Text(title),
         content: SizedBox(
           width: 380,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Your password confirms this. A borrowed unlocked laptop should not '
-                'be able to remove the thing protecting you from it.',
-              ),
+              Text(why),
               const SizedBox(height: 16),
               TextField(
                 controller: password,
@@ -97,24 +123,57 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
                 autofocus: true,
                 decoration: const InputDecoration(labelText: 'Password'),
               ),
+              if (enrolled) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: code,
+                  decoration: const InputDecoration(
+                    labelText: 'Authenticator code',
+                    // A recovery code counts. Somebody who lost the phone is
+                    // precisely who needs this, and refusing them would leave
+                    // the only way back through a support request.
+                    helperText: 'Six digits, or a recovery code',
+                  ),
+                ),
+              ],
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(password.text),
-            child: const Text('Turn off'),
-          ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Continue')),
         ],
       ),
     );
 
+    final result = ok == true && password.text.isNotEmpty
+        ? {
+            'password': password.text,
+            if (enrolled) 'code': code.text.trim(),
+          }
+        : null;
+
     password.dispose();
+    code.dispose();
 
-    if (entered == null || entered.isEmpty || !mounted) return;
+    return result;
+  }
 
-    final response = await widget.api.deleteWithBody('/me/totp', {'password': entered});
+  Future<void> _disable(bool enrolled) async {
+    final proof = await _prove(
+      'Turn off two-factor',
+      'Your password and a current code confirm this. A borrowed unlocked '
+      'laptop should not be able to remove the thing protecting you from it.',
+      enrolled,
+    );
+
+    if (proof == null || !mounted) return;
+
+    final response = await widget.api.deleteWithBody('/me/totp', proof);
 
     if (!mounted) return;
 
@@ -137,7 +196,10 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
     final state = _state;
     final enabled = state?['enabled'] as bool? ?? false;
     final required = state?['required_by_organization'] as bool? ?? false;
-    final elsewhere = state?['managed_elsewhere'] as bool? ?? false;
+    // Not "managed elsewhere" any more. A linked account's factor lives on the
+    // staff record, and this card now changes it there — the flag survives only
+    // so the card can say the change covers both sign-ins.
+    final coversControlPlane = state?['covers_control_plane'] as bool? ?? false;
     final codesLeft = state?['recovery_code_count'] as int? ?? 0;
 
     return Card(
@@ -152,31 +214,40 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
                   child: Text('Two-factor authentication',
                       style: Theme.of(context).textTheme.titleMedium),
                 ),
-                if (elsewhere)
-                  const Text('Managed by your EzBizi account')
-                else if (enabled)
+                if (enabled) ...[
+                  TextButton(
+                    onPressed: () => _enable(replacing: true),
+                    child: const Text('Change'),
+                  ),
+                  const SizedBox(width: 8),
                   OutlinedButton(
-                    onPressed: required ? null : _disable,
+                    // Required by the organization means one person cannot opt
+                    // out of a policy set above them (§6). Changing it is still
+                    // allowed — that is not opting out.
+                    onPressed: required ? null : () => _disable(true),
                     child: const Text('Turn off'),
-                  )
-                else
-                  FilledButton(onPressed: _enable, child: const Text('Turn on')),
+                  ),
+                ] else
+                  FilledButton(
+                      onPressed: () => _enable(), child: const Text('Turn on')),
               ],
             ),
             const SizedBox(height: 6),
             Text(
-              elsewhere
-                  // Saying so stops somebody enrolling a second authenticator and
-                  // wondering why the first one is still being asked for.
-                  ? 'Your sign-in is handled by your EzBizi staff account, and its '
-                      'authenticator covers both. Change it there.'
-                  : enabled
-                      ? 'On. $codesLeft recovery ${codesLeft == 1 ? 'code' : 'codes'} left'
-                          '${required ? ' · required by your organization' : ''}.'
-                      : required
-                          ? 'Your organization requires it. Turn it on to keep signing in.'
-                          : 'A code from your phone, as well as your password. '
-                              'Strongly recommended.',
+              [
+                if (enabled)
+                  'On. $codesLeft recovery ${codesLeft == 1 ? 'code' : 'codes'} left'
+                      '${required ? ' · required by your organization' : ''}.'
+                else if (required)
+                  'Your organization requires it. Turn it on to keep signing in.'
+                else
+                  'A code from your phone, as well as your password. '
+                      'Strongly recommended.',
+                if (coversControlPlane)
+                  'This authenticator covers both your sign-ins.',
+                if (enabled)
+                  'Changing or removing it needs your password and a current code.',
+              ].join(' '),
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             if (_error != null) ...[

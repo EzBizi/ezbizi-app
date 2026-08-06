@@ -234,6 +234,36 @@ class _HomeShellState extends State<HomeShell> {
           ),
         ]),
         actions: [
+          // Light / dark, one tap, from anywhere.
+          //
+          // It is the same preference the account screen holds (§2.1 category
+          // 6), written through the same path — this is a shortcut to it, not a
+          // second setting. Two places that both claim to control the theme and
+          // disagree is worse than one place that is hard to find.
+          //
+          // Cycles system -> light -> dark rather than toggling two states: the
+          // default is "match my device", and a two-way switch would silently
+          // throw that away the first time anybody touched it.
+          IconButton(
+            tooltip: switch (me.theme) {
+              'light' => 'Light — switch to dark',
+              'dark' => 'Dark — match my device',
+              _ => 'Matching your device — switch to light',
+            },
+            icon: Icon(switch (me.theme) {
+              'light' => Icons.light_mode_outlined,
+              'dark' => Icons.dark_mode_outlined,
+              _ => Icons.brightness_auto_outlined,
+            }),
+            onPressed: () => widget.session.setPreference(
+              'appearance.theme',
+              switch (me.theme) {
+                'system' => 'light',
+                'light' => 'dark',
+                _ => 'system',
+              },
+            ),
+          ),
           NotificationBell(api: widget.api),
           if (me.organization.isReadOnly)
             Padding(

@@ -77,3 +77,48 @@ void clearQuery() {
     // is untidy; a crash on the success screen is worse.
   }
 }
+
+/// Ask for an image and return its bytes.
+///
+/// Separate from pickText because a photo read as text is corrupted the moment
+/// it touches a String — the bytes have to stay bytes the whole way.
+Future<PickedBytes?> pickImage() {
+  final completer = Completer<PickedBytes?>();
+
+  final input = web.document.createElement('input') as web.HTMLInputElement
+    ..type = 'file'
+    ..accept = 'image/jpeg,image/png,image/webp';
+
+  input.onchange = (web.Event _) {
+    final file = input.files?.item(0);
+
+    if (file == null) {
+      completer.complete(null);
+      return;
+    }
+
+    final reader = web.FileReader();
+
+    reader.onload = (web.Event _) {
+      final buffer = reader.result as JSArrayBuffer?;
+
+      completer.complete(buffer == null
+          ? null
+          : PickedBytes(file.name, buffer.toDart.asUint8List()));
+    }.toJS;
+
+    reader.onerror = (web.Event _) {
+      completer.complete(null);
+    }.toJS;
+
+    reader.readAsArrayBuffer(file);
+  }.toJS;
+
+  input.oncancel = (web.Event _) {
+    if (!completer.isCompleted) completer.complete(null);
+  }.toJS;
+
+  input.click();
+
+  return completer.future;
+}

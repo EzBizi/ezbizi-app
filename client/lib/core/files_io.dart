@@ -6,3 +6,5 @@ void download(String filename, List<int> content) {}
 Future<PickedFile?> pickText() async => null;
 
 void clearQuery() {}
+
+Future<PickedBytes?> pickImage() async => null;
