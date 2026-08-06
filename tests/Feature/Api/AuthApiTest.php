@@ -140,6 +140,16 @@ class AuthApiTest extends TestCase
         $this->withHeader('Authorization', "Bearer {$token}")
             ->postJson('/api/v1/auth/logout')->assertOk();
 
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+
+        // Laravel's RequestGuard caches the user it resolved, and the test
+        // process keeps one container across all three requests — so without
+        // this the second request answers from the first request's memory and
+        // returns 200 for a token that no longer exists. Real requests each get
+        // a fresh container; this reproduces that. Do NOT "fix" it by relaxing
+        // the assertion below: the product is fine, the harness is the problem.
+        $this->app['auth']->forgetGuards();
+
         // The same token must now be worthless.
         $this->withHeader('Authorization', "Bearer {$token}")
             ->getJson('/api/v1/me')->assertUnauthorized();
