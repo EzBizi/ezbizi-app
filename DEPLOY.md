@@ -48,6 +48,7 @@ sudo systemctl reload php8.4-fpm
 | Releases | `/var/www/ezbizi-releases/<timestamp>/` |
 | Live symlink | `/var/www/ezbizi-current` → current release |
 | Shared storage | `/var/www/ezbizi/storage` |
+| Test sandbox | `/opt/ezbizi-test` — deliberately outside `/var/www`, with no `.env` |
 | Environment | `/var/www/ezbizi/.env` — **on the box only, never committed** |
 | Customers | https://app.ezbizi.com |
 | Control plane | https://dev.ezbizi.com |
@@ -63,20 +64,29 @@ nginx config for both lives in `deploy/` and is versioned. To change either:
 scp deploy/nginx-dev.ezbizi.com.conf app:/tmp/ && ssh app 'sudo cp /tmp/nginx-dev.ezbizi.com.conf /etc/nginx/sites-available/dev.ezbizi.com.conf && sudo nginx -t && sudo systemctl reload nginx'
 ```
 
-## The test sandbox, and the hazard in it
+## The test sandbox
 
-`/var/www/ezbizi` is two things at once, and that is worth knowing before you touch it:
+`/opt/ezbizi-test` — outside the webroot, and outside `/var/www` entirely.
 
-- **Shared state the live app depends on** — `.env`, `storage/`, `public-app/`
-- **A scratch checkout** — `scripts/deploy.sh` extracts `git archive main` here and runs
-  the suite against it
+`scripts/deploy.sh` extracts `git archive main` there and runs the suite against
+`ezbizi_testing`. It has its own `storage/`, its own `.env.testing`, and **no `.env` at
+all**.
 
-It holds a full Laravel tree with a **copy of the production `.env` and dev dependencies
-installed**. Until 2026-08-06 `dev.ezbizi.com` was rooted at `/var/www/ezbizi/public`, so
-the box was publicly serving that scratch checkout against the real database. Nothing
-points at it now — but any future vhost rooted there would expose it again. Do not add
-one. Splitting the scratch checkout out of `/var/www` would remove the hazard for good and
-has not been done.
+That last part is the point of the whole arrangement. It used to live in
+`/var/www/ezbizi` alongside the production `.env`, and Laravel falls back to `.env` when
+the environment file it was asked for does not exist — which is how
+`artisan db:wipe --env=testing` wiped production on 2026-08-06. Two guards were added
+that day (the suite refuses any database whose name lacks `testing`, and `.env.testing`
+now exists), but both are guards against a reachable mistake. Removing the `.env` removes
+the reach:
+
+```bash
+cd /opt/ezbizi-test && php8.4 artisan tinker --execute="echo config('database.connections.mysql.database');"
+# laravel        <- the framework default. Not `ezbizi`. There is nothing to fall back to.
+```
+
+`/var/www/ezbizi` is now shared state only — `.env`, `storage/`, `public-app/` — which is
+what the releases symlink to and what nginx serves the Flutter bundle from.
 
 ## Permissions, and the trap in them
 
@@ -127,7 +137,7 @@ git log --oneline -1
 ## Not yet done
 
 - **No CI.** `scripts/deploy.sh` runs the suite against `git archive main` in the
-  sandbox at `/var/www/ezbizi` before pushing, so the gate tests exactly what
+  sandbox at `/opt/ezbizi-test` before pushing, so the gate tests exactly what
   ships — but a bare `git push production main` still bypasses it entirely.
 - **No staging.** `dev.ezbizi.com` exists and is the obvious home for one.
 - **No automatic rollback.** The hook refuses to ship a broken build, but if a

@@ -25,7 +25,7 @@ cd "$(dirname "$0")/.."
 # build is the one thing the pipeline cannot undo for you.
 #
 # The working tree is synced to the box FIRST. Without that, the gate ran
-# against whatever was last left in /var/www/ezbizi — reporting green for code
+# against whatever was last left in the sandbox — reporting green for code
 # that was never tested, which is worse than no gate at all. Releases install
 # --no-dev and have no phpunit, so this sandbox (full vendor, own .env, own
 # test database) is where tests run.
@@ -39,7 +39,10 @@ cd "$(dirname "$0")/.."
 echo "→ testing the tree about to ship"
 git archive main | ssh "$REMOTE" '
   set -e
-  cd /var/www/ezbizi
+  # /opt, not /var/www. The sandbox holds dev dependencies and a full Laravel
+  # tree; sitting it beside the production .env is what let `--env=testing` fall
+  # back to production and wipe it. There is no .env here at all.
+  cd /opt/ezbizi-test
   # Removed files must disappear too, or a deleted class keeps passing.
   rm -rf app tests routes config database bootstrap resources
   tar -x
