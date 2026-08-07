@@ -318,6 +318,7 @@ class ViewScope {
     required this.label,
     required this.path,
     required this.logoPath,
+    required this.logoVersion,
     required this.logoAspect,
   });
 
@@ -338,6 +339,10 @@ class ViewScope {
   /// The branding endpoint whose logo applies to this view (§12).
   final String logoPath;
 
+  /// Moves when that logo does, including when it is the organization's and
+  /// the organization's changes.
+  final String logoVersion;
+
   /// 'square', 'wide', or null when there is no logo to show.
   final String? logoAspect;
 
@@ -357,6 +362,7 @@ class ViewScope {
         label: json['label'] as String? ?? '',
         path: (json['path'] as List<dynamic>? ?? []).cast<String>(),
         logoPath: json['logo_path'] as String? ?? '/branding/organization',
+        logoVersion: json['logo_version'] as String? ?? '',
         logoAspect: json['logo_aspect'] as String?,
       );
 }

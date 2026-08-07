@@ -242,6 +242,17 @@ class ViewScope
             'path'      => $this->path(),
             'logo_path' => $this->logoPath(),
 
+            // The top bar's mark goes stale the same way a company card's does,
+            // and for the same reason: it may be the organization's.
+            'logo_version' => \App\Support\Branding\Branding::version(
+                $this->type === self::COMPANY
+                    ? Company::find($this->id)
+                    : ($this->type === self::FRANCHISE
+                        ? Franchise::find($this->id)?->company
+                        : null),
+                $this->user->organization,
+            ),
+
             // Square or wide. A 4:1 lockup rendered in a square slot is
             // unreadable, so the shape travels with the path.
             'logo_aspect' => $this->logoAspect(),

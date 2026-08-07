@@ -2,6 +2,8 @@
 
 namespace App\Support\Branding;
 
+use Illuminate\Database\Eloquent\Model;
+
 /**
  * The two shapes a logo may be, and their exact sizes (plan §12).
  *
@@ -68,6 +70,34 @@ final class Branding
         }
 
         return null;
+    }
+
+    /**
+     * A token that changes whenever the mark this subject DISPLAYS changes.
+     *
+     * ── Why it cannot just be the subject's own timestamp ────────
+     *
+     * A company with no logo of its own shows the organization's. So when the
+     * organization's mark is replaced or removed, that company's picture
+     * changes while nothing about the company's own row does.
+     *
+     * The client used to refetch only when a subject's `has_logo` flipped —
+     * which is false before and false after for every inheriting company. So
+     * clearing the organization's logo left four companies painting an image
+     * that no longer existed, and nothing would correct them until a reload.
+     *
+     * This resolves to whichever subject actually provides the bytes, so the
+     * token moves for every badge whose picture moved, and for no others.
+     */
+    public static function version(?Model $subject, Model $organization): string
+    {
+        $effective = ($subject?->logo_path !== null) ? $subject : $organization;
+
+        if ($effective->logo_path === null) {
+            return 'none';
+        }
+
+        return (string) ($effective->updated_at?->getTimestamp() ?? 0);
     }
 
     /** "512x512 or 1024x256" — for a refusal that says what would work. */

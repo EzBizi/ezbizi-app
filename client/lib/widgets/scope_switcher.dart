@@ -44,9 +44,10 @@ class ScopeSwitcher extends StatelessWidget {
       child: LogoBadge(
         // Keyed by path, so switching company swaps the mark rather than
         // leaving the previous one until something else rebuilds.
-        key: ValueKey(scope.logoPath),
+        key: ValueKey('${scope.logoPath}?${scope.logoVersion}'),
         api: api,
         path: scope.logoPath,
+        version: scope.logoVersion,
         hasOwn: false,
         mayEdit: false,
         bare: true,

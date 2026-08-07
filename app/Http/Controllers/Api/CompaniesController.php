@@ -90,6 +90,10 @@ class CompaniesController extends Controller
                 'may_add_company' => $user->can('create', Company::class),
                 'has_logo'        => $request->user()->organization->logo_path !== null,
                 'logo_aspect'     => $request->user()->organization->logo_aspect,
+                'logo_version'    => \App\Support\Branding\Branding::version(
+                    null, $request->user()->organization,
+                ),
+                'logo_aspect'     => $request->user()->organization->logo_aspect,
                 'may_edit'        => $user->hasPermission('organizations.edit'),
             ],
 

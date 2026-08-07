@@ -26,6 +26,7 @@ class LogoBadge extends StatefulWidget {
     required this.path,
     required this.hasOwn,
     required this.mayEdit,
+    this.version = '',
     this.onChanged,
     this.size = 44,
     this.bare = false,
@@ -45,6 +46,15 @@ class LogoBadge extends StatefulWidget {
   final bool hasOwn;
 
   final bool mayEdit;
+
+  /// A token that moves whenever the mark this badge DISPLAYS changes.
+  ///
+  /// Sent to the endpoint as a cache-buster and used to decide when to refetch.
+  /// It replaced `hasOwn` for that job, which could not work: a company
+  /// inheriting the organization's logo has hasOwn false before AND after the
+  /// organization's is removed, so four companies kept painting an image that
+  /// no longer existed.
+  final String version;
   /// Null when the badge is only being displayed — a read-only one has
   /// nothing to tell anybody about.
   final VoidCallback? onChanged;
@@ -78,15 +88,21 @@ class _LogoBadgeState extends State<LogoBadge> {
   void didUpdateWidget(LogoBadge old) {
     super.didUpdateWidget(old);
 
-    // The path stays the same while the image behind it changes, so a rebuild
-    // alone would keep showing the old one after an upload.
-    if (old.hasOwn != widget.hasOwn) _fetch();
+    // The path stays the same while the image behind it changes — on upload,
+    // on removal, and on any change to the organization's mark that an
+    // inheriting company displays. The version is the only thing that moves in
+    // all three cases.
+    if (old.version != widget.version || old.path != widget.path) _fetch();
   }
 
   Future<void> _fetch() async {
     setState(() => _busy = true);
 
-    final bytes = await widget.api.getBytes(widget.path);
+    // The version rides along, so the browser cannot serve a previous mark from
+    // its own cache after the file behind the URL has changed.
+    final bytes = await widget.api.getBytes(
+      widget.version.isEmpty ? widget.path : '${widget.path}?v=${widget.version}',
+    );
 
     if (!mounted) return;
 

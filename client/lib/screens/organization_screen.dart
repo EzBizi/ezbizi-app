@@ -314,6 +314,7 @@ class _OrganizationRow extends StatelessWidget {
       LogoBadge(
         api: api,
         path: '/branding/organization',
+        version: organization['logo_version'] as String? ?? '',
         hasOwn: organization['has_logo'] == true,
         aspect: organization['logo_aspect'] as String?,
         mayEdit: organization['may_edit'] == true,
@@ -383,6 +384,7 @@ class _CompanyCard extends StatelessWidget {
               LogoBadge(
                 api: api,
                 path: '/branding/companies/${company['id']}',
+                version: company['logo_version'] as String? ?? '',
                 hasOwn: company['has_logo'] == true,
                 aspect: company['logo_aspect'] as String?,
                 mayEdit: mayEdit,
