@@ -4,6 +4,7 @@ import '../core/files.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
+import '../widgets/franchise_field.dart';
 import '../widgets/side_panel.dart';
 
 /// Import and export (plan §12, §9).
@@ -44,7 +45,7 @@ class _DataScreenState extends State<DataScreen> {
       _error = response.ok ? null : response.message;
       _resources = response.ok
           ? (response.body['resources'] as List<dynamic>)
-              .cast<Map<String, dynamic>>()
+                .cast<Map<String, dynamic>>()
           : [];
     });
   }
@@ -55,9 +56,9 @@ class _DataScreenState extends State<DataScreen> {
     if (!mounted) return;
 
     if (bytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not export $label.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not export $label.')));
       return;
     }
 
@@ -73,7 +74,10 @@ class _DataScreenState extends State<DataScreen> {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Text('Import & export', style: Theme.of(context).textTheme.headlineSmall),
+          Text(
+            'Import & export',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
           const SizedBox(height: 8),
           Text(
             'Your data is yours. Exports are plain CSV and open in any '
@@ -213,11 +217,10 @@ class _ImportPanelState extends State<_ImportPanel> {
       _error = null;
     });
 
-    final response = await widget.api.post('/imports/${widget.resource['key']}', {
-      'csv': _csv.text,
-      'franchise_id': _franchiseId,
-      'dry_run': dryRun,
-    });
+    final response = await widget.api.post(
+      '/imports/${widget.resource['key']}',
+      {'csv': _csv.text, 'franchise_id': _franchiseId, 'dry_run': dryRun},
+    );
 
     if (!mounted) return;
 
@@ -229,7 +232,8 @@ class _ImportPanelState extends State<_ImportPanel> {
         // validation error on `file`, which is more useful than the generic
         // message beside it.
         final errors = response.body['errors'] as Map<String, dynamic>?;
-        _error = (errors?['file'] as List<dynamic>?)?.first as String? ??
+        _error =
+            (errors?['file'] as List<dynamic>?)?.first as String? ??
             response.message;
         _preview = null;
         return;
@@ -241,16 +245,22 @@ class _ImportPanelState extends State<_ImportPanel> {
     if (!dryRun && response.ok && mounted) {
       Navigator.of(context).pop(true);
 
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Imported ${response.body['imported']} '
-            '${(widget.resource['label'] as String).toLowerCase()}.'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Imported ${response.body['imported']} '
+            '${(widget.resource['label'] as String).toLowerCase()}.',
+          ),
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final columns = (widget.resource['import_columns'] as List<dynamic>).join(', ');
+    final columns = (widget.resource['import_columns'] as List<dynamic>).join(
+      ', ',
+    );
     final franchises = widget.session.me!.franchises;
 
     return SidePanel(
@@ -274,16 +284,18 @@ class _ImportPanelState extends State<_ImportPanel> {
           onPressed: _busy || (_preview?['imported'] as int? ?? 0) == 0
               ? null
               : () => _run(dryRun: false),
-          child: Text(_busy
-              ? 'Working…'
-              : 'Import ${_preview?['imported'] ?? ''}'.trim()),
+          child: Text(
+            _busy ? 'Working…' : 'Import ${_preview?['imported'] ?? ''}'.trim(),
+          ),
         ),
       ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Columns: $columns',
-              style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            'Columns: $columns',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
           const SizedBox(height: 4),
           Text(
             'The first row must be the column names. Leave out any column '
@@ -302,16 +314,12 @@ class _ImportPanelState extends State<_ImportPanel> {
               style: Theme.of(context).textTheme.bodyMedium,
             )
           else if (franchises.length > 1)
-            DropdownButtonFormField<String>(
-              initialValue: _franchiseId,
-              decoration: const InputDecoration(
-                labelText: 'Accountable franchise',
-                helperText: 'Every imported record is owned by this one.',
-              ),
-              items: [
-                for (final f in franchises)
-                  DropdownMenuItem(value: f.id, child: Text(f.name)),
-              ],
+            FranchiseField(
+              me: widget.session.me!,
+              value: _franchiseId,
+              franchises: franchises,
+              label: 'Accountable franchise',
+              helperText: 'Every imported record is owned by this one.',
               onChanged: (v) => setState(() => _franchiseId = v),
             ),
           const SizedBox(height: 12),
@@ -325,9 +333,11 @@ class _ImportPanelState extends State<_ImportPanel> {
               const SizedBox(width: 12),
               if (_filename != null)
                 Expanded(
-                  child: Text(_filename!,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall),
+                  child: Text(
+                    _filename!,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                 ),
             ],
           ),
@@ -359,7 +369,8 @@ class _ImportPanelState extends State<_ImportPanel> {
   Widget _previewPanel(Map<String, dynamic> preview) {
     final imported = preview['imported'] as int;
     final failed = preview['failed'] as int;
-    final errors = (preview['errors'] as List<dynamic>).cast<Map<String, dynamic>>();
+    final errors = (preview['errors'] as List<dynamic>)
+        .cast<Map<String, dynamic>>();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -384,12 +395,16 @@ class _ImportPanelState extends State<_ImportPanel> {
           ),
 
         if (errors.length > 20)
-          Text('…and ${errors.length - 20} more.',
-              style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            '…and ${errors.length - 20} more.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
 
         if (preview['truncated'] == true)
-          Text('Only the first ${errors.length} problems are listed.',
-              style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            'Only the first ${errors.length} problems are listed.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
       ],
     );
   }

@@ -28,6 +28,19 @@ class Session extends ChangeNotifier {
   /// could reach the control plane is exactly what the split prevents.
   String? staffToken;
 
+  /// Enter the app on the strength of a successful authentication response.
+  ///
+  /// Takes the whole body rather than the token, because two endpoints return
+  /// this body: /auth/login and /auth/signup, which answer identically by
+  /// design. Pulling the two fields apart at each call site is how the second
+  /// one ends up forgetting the staff token — a linked account that signs in
+  /// and finds the Development section missing, with nothing failing loudly.
+  Future<bool> adoptAuthResponse(Map<String, dynamic> body, {bool persist = false}) {
+    staffToken = body['staff_token'] as String?;
+
+    return adopt(body['token'] as String, persist: persist);
+  }
+
   /// Returns whether the token actually produced a session — /me can fail even
   /// when the login succeeded, and the caller has to know so it can stop showing
   /// a spinner and say something.
@@ -182,6 +195,7 @@ class Me {
     required this.name,
     required this.email,
     required this.roleName,
+    required this.hasAvatar,
     required this.preferences,
     required this.development,
     required this.organization,
@@ -194,6 +208,11 @@ class Me {
   final String name;
   final String email;
   final String? roleName;
+
+  /// Whether there is a profile picture to fetch. The top bar asks only when
+  /// there is one; without this it either requested an avatar for every user
+  /// who has none, or never requested one at all.
+  final bool hasAvatar;
 
   /// Theirs, nobody else's (§2.1 category 6). Always complete — the server
   /// merges stored values over the registry's defaults, so the client never has
@@ -232,6 +251,7 @@ class Me {
         name: name,
         email: email,
         roleName: roleName,
+        hasAvatar: hasAvatar,
         preferences: {...preferences, key: value},
         development: development,
         organization: organization,
@@ -270,6 +290,7 @@ class Me {
         name: json['name'] as String,
         email: json['email'] as String,
         roleName: (json['role'] as Map<String, dynamic>?)?['name'] as String?,
+        hasAvatar: json['has_avatar'] == true,
         preferences: Map<String, dynamic>.from(
             json['preferences'] as Map<String, dynamic>? ?? const {}),
         development: json['development'] == null

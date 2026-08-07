@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/theme.dart';
+import '../core/password_policy.dart';
 import '../widgets/error_note.dart';
 
 /// The other end of "I forgot my password" (plan §4).
@@ -123,7 +124,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         Text(
-          'At least 12 characters. Every other session is signed out when you '
+          '${PasswordPolicy.hint} Every other session is signed out when you '
           'save it — the usual reason for a reset is that somebody else may '
           'know the old one.',
           style: Theme.of(context).textTheme.bodySmall,

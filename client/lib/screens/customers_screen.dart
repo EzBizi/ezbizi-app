@@ -3,6 +3,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
+import '../widgets/franchise_field.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tag.dart';
 
@@ -113,10 +114,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
           note: (_loading || _error != null)
               ? 'Shared across the organization — the $label tag shows who is accountable.'
               : _customers.length < _total
-                  ? 'Showing ${_customers.length} of $_total shared across the '
-                      'organization. The $label tag shows who is accountable.'
-                  : '$_total shared across the organization. The $label tag shows who is '
-                      'accountable for each relationship.',
+              ? 'Showing ${_customers.length} of $_total shared across the '
+                    'organization. The $label tag shows who is accountable.'
+              : '$_total shared across the organization. The $label tag shows who is '
+                    'accountable for each relationship.',
           action: FilledButton.icon(
             // The server decides in the end; hiding the button when the user has
             // no reach anywhere just avoids offering a guaranteed failure.
@@ -153,10 +154,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
             onRetry: _load,
             child: _customers.isEmpty
                 ? Center(
-                    child: Text(_search.text.trim().isEmpty
-                        ? 'No customers yet.'
-                        // "No customers yet" after a search reads as data loss.
-                        : 'Nothing matches "${_search.text.trim()}".'),
+                    child: Text(
+                      _search.text.trim().isEmpty
+                          ? 'No customers yet.'
+                          // "No customers yet" after a search reads as data loss.
+                          : 'Nothing matches "${_search.text.trim()}".',
+                    ),
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -175,11 +178,13 @@ class _CustomersScreenState extends State<CustomersScreen> {
                                   onPressed: _loadingMore
                                       ? null
                                       : () => _load(page: _page + 1),
-                                  child: Text(_loadingMore
-                                      ? 'Loading…'
-                                      : _pageError != null
-                                          ? 'Try again'
-                                          : 'Load more (${_total - _customers.length} left)'),
+                                  child: Text(
+                                    _loadingMore
+                                        ? 'Loading…'
+                                        : _pageError != null
+                                        ? 'Try again'
+                                        : 'Load more (${_total - _customers.length} left)',
+                                  ),
                                 ),
                               ],
                             ),
@@ -210,7 +215,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
             ),
             // §5.2: visible in the list, not only on the detail screen.
             Tag(owner['name'] as String? ?? 'Unassigned'),
-            if (customer['is_active'] == false) const Tag('Inactive', warn: true),
+            if (customer['is_active'] == false)
+              const Tag('Inactive', warn: true),
           ],
         ),
         subtitle: Padding(
@@ -232,7 +238,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
   Future<void> _create() async {
     final created = await showSidePanel<Map<String, dynamic>>(
       context,
-      builder: (_) => _NewCustomerPanel(api: widget.api, session: widget.session),
+      builder: (_) =>
+          _NewCustomerPanel(api: widget.api, session: widget.session),
     );
 
     if (created == null || !mounted) return;
@@ -268,7 +275,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   title: Text('${dup['name']} (${dup['number']})'),
-                  subtitle: Text('${dup['phone'] ?? dup['email'] ?? ''} · ${owner['name'] ?? ''}'),
+                  subtitle: Text(
+                    '${dup['phone'] ?? dup['email'] ?? ''} · ${owner['name'] ?? ''}',
+                  ),
                 );
               }),
             ],
@@ -374,18 +383,15 @@ class _NewCustomerPanelState extends State<_NewCustomerPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          DropdownButtonFormField<String>(
-            initialValue: _franchiseId,
-            decoration: InputDecoration(
-              labelText: 'Owning $label',
-              helperText: 'Accountable for the relationship, and counts them '
-                  'in their numbers. Changing it later is a separate, audited step.',
-              helperMaxLines: 3,
-            ),
-            items: me.franchises
-                .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name)))
-                .toList(),
-            onChanged: _busy ? null : (v) => setState(() => _franchiseId = v),
+          FranchiseField(
+            me: me,
+            value: _franchiseId,
+            label: 'Owning $label',
+            helperText:
+                'Accountable for the relationship, and counts them '
+                'in their numbers. Changing it later is a separate, audited step.',
+            enabled: !_busy,
+            onChanged: (v) => setState(() => _franchiseId = v),
           ),
           const SizedBox(height: 14),
           TextField(

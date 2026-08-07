@@ -2,7 +2,11 @@
 
 namespace App\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Symfony\Component\HttpFoundation\Response;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -77,5 +81,88 @@ class AppServiceProvider extends ServiceProvider
          * one named scope on one relation rather than anything wider.
          */
         \Laravel\Sanctum\Sanctum::usePersonalAccessTokenModel(\App\Models\ApiToken::class);
+
+        $this->defineRateLimiters();
+    }
+
+    /**
+     * Named rate limiters, applied with `->middleware('throttle:<name>')`.
+     *
+     * ── This is the seam, and it was missing ─────────────────────
+     *
+     * Until signup there was no route-level rate limiting in this application at
+     * all: no `throttle` middleware anywhere in routes/api.php. Four endpoints
+     * are limited, and every one of them counts attempts by hand inside its
+     * controller — login and forgot-password here in the tenant API, staff login
+     * and staff enrolment in the control plane. They all answer a 429 with the
+     * same message/code/retry_after body, which is the shape this reproduces.
+     *
+     * Counting by hand is the right call for three of those four, because they
+     * only want to penalise FAILURES — a correct password should not spend
+     * anyone's budget. (forgot-password is the exception: it charges every
+     * request, since it deliberately cannot tell success from failure.)
+     *
+     * Signup inverts it: the expensive outcome is the SUCCESS. So it wants the
+     * framework's middleware, which counts every request reaching the route, and
+     * this method is where such routes declare their numbers. The seam other
+     * unthrottled endpoints should use is this registration site, not this
+     * limiter — each gets its own named entry beside this one, because one
+     * number shared across unrelated routes is the wrong number for most of them.
+     */
+    private function defineRateLimiters(): void
+    {
+        /*
+         * Signup: 10 per hour per IP.
+         *
+         * WHAT IT PROTECTS AGAINST: one host minting tenants in a loop. Each
+         * success writes an organization, a role, a user, a company, a franchise
+         * and an assignment, and there is no email verification to slow it down
+         * (TODO #22, blocked by #1), so an unlimited public endpoint here is a
+         * way to fill the database from a shell script.
+         *
+         * WHY TEN AND NOT FIVE: the middleware counts every request, including
+         * the 422s. A number tuned to how often a business legitimately signs up
+         * — once — would lock somebody out of the product for an hour for
+         * mistyping their password twice. Ten leaves room for a bad form-filling
+         * day and still caps tenant creation from one address at ten an hour.
+         *
+         * WHAT IT DOES NOT PROTECT AGAINST: a distributed flood. Ten per IP is
+         * ten thousand tenants from a thousand hosts, and this limiter cannot see
+         * that they are related. Nor does it protect a shared office NAT from its
+         * own noisiest user — there is no prior account to key on at signup, so
+         * IP is the only key available. The answers to both are email
+         * verification or a challenge; neither exists yet, and neither is
+         * pretended at here.
+         */
+        RateLimiter::for('signup', fn (Request $request) => Limit::perHour(10)
+            ->by($request->ip())
+            // The same body login's hand-rolled throttle returns, because the
+            // client parses one shape for a 429 and there is no reason for this
+            // route to be the exception. Laravel's default is a bare
+            // "Too Many Attempts." with no code and no retry_after.
+            // The wait is IN the sentence, not only in the field beside it.
+            //
+            // The client renders `message` verbatim on a 429, on the stated
+            // reasoning that the response "carries the only number worth reading
+            // — how long until they can try again". It said "Try again later",
+            // and nothing read `retry_after`, so the number the argument rests
+            // on never reached anybody. Either the sentence carries it or the
+            // claim was false; this is the cheaper half to fix.
+            ->response(function (Request $request, array $headers) {
+                $seconds = (int) ($headers['Retry-After'] ?? 0);
+
+                $wait = match (true) {
+                    $seconds <= 0    => 'shortly',
+                    $seconds < 60    => "in {$seconds} seconds",
+                    $seconds < 3600  => 'in '.max(1, (int) round($seconds / 60)).' minutes',
+                    default          => 'in '.max(1, (int) round($seconds / 3600)).' hours',
+                };
+
+                return response()->json([
+                    'message'     => "Too many signups from this address. Try again {$wait}.",
+                    'code'        => 'throttled',
+                    'retry_after' => $seconds ?: null,
+                ], Response::HTTP_TOO_MANY_REQUESTS, $headers);
+            }));
     }
 }

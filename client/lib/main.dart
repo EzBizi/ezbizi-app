@@ -16,6 +16,7 @@ import 'screens/login_screen.dart';
 import 'screens/organization_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
+import 'screens/signup_screen.dart';
 import 'screens/workflows_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/staff/staff_login_screen.dart';
@@ -23,6 +24,7 @@ import 'screens/staff/staff_shell.dart';
 import 'widgets/build_stamp.dart';
 import 'widgets/notification_bell.dart';
 import 'widgets/scope_switcher.dart';
+import 'widgets/user_avatar.dart';
 
 void main() => runApp(const EzBiziApp());
 
@@ -88,6 +90,15 @@ class _EzBiziAppState extends State<EzBiziApp> {
   /// bounce straight back into the reset screen off the same URL.
   bool _resetHandled = false;
 
+  /// Whether the signup form is being shown instead of the sign-in one.
+  ///
+  /// The public screens are swapped here rather than pushed, because there is no
+  /// router — the same way the reset screen is reached. Kept below the staff
+  /// return in _home() so the control plane cannot show it whatever this holds:
+  /// §4.2 gives platform staff their own accounts, created by staff, and nobody
+  /// self-registers there.
+  bool _signingUp = false;
+
   Widget _home() {
     // Before anything else, including the restore gate: somebody following a
     // reset link is by definition not signed in, and making them wait on a
@@ -123,9 +134,41 @@ class _EzBiziAppState extends State<EzBiziApp> {
           : StaffLoginScreen(staff: _staffSession);
     }
 
-    return _session.signedIn
-        ? HomeShell(api: _api, session: _session)
-        : LoginScreen(api: _api, session: _session);
+    // Before the signup branch, so a successful signup lands in the app rather
+    // than back on the form it just submitted — the session adopted there
+    // notifies this widget, and _signingUp is still set when it rebuilds.
+    if (_session.signedIn) {
+      // And cleared here, because ordering alone only MASKS it. The flag was
+      // set on the way in and never unset on success, so it stayed true for the
+      // life of the app: the moment the session ended — signing out, or a token
+      // that stopped being accepted — the branch below took over and the person
+      // who had just created a business was shown "Create your account" with no
+      // sign-in field anywhere. Filling it in built a SECOND organization with
+      // the same name and the same administrator, which nothing refuses (an
+      // address may belong to several organizations by design, and the slug
+      // quietly becomes `-2`).
+      //
+      // A plain assignment rather than setState: this build is already showing
+      // the shell, so nothing needs to rebuild. The flag only decides what a
+      // LATER build does, and by then it is right.
+      _signingUp = false;
+
+      return HomeShell(api: _api, session: _session);
+    }
+
+    if (_signingUp) {
+      return SignupScreen(
+        api: _api,
+        session: _session,
+        onSignIn: () => setState(() => _signingUp = false),
+      );
+    }
+
+    return LoginScreen(
+      api: _api,
+      session: _session,
+      onCreateAccount: () => setState(() => _signingUp = true),
+    );
   }
 }
 
@@ -214,6 +257,21 @@ class _HomeShellState extends State<HomeShell> {
         Icons.settings_outlined,
         SettingsScreen(api: widget.api, session: widget.session),
       ),
+    ];
+
+    // Development gets its own group, below its own rule.
+    //
+    // It was the third row of `pinned`, which said it was the same KIND of thing
+    // as Organization and Settings. It is not: those configure the business and
+    // every administrator has them. This is the platform underneath the product
+    // (§4.2), it exists only when the server says this person is also EzBizi
+    // staff, and most people signed into this app will never see it at all.
+    //
+    // A third rail rather than a divider between destinations, for the reason
+    // the second one exists: NavigationRail cannot put a rule between its own
+    // items, and the alternative is a hand-drawn row that does not match the
+    // real ones. That was tried and produced four separate defects.
+    final staffOnly = <Destination>[
       if (me.development != null)
         Destination(
           'Development',
@@ -222,39 +280,33 @@ class _HomeShellState extends State<HomeShell> {
         ),
     ];
 
-    // Two screens that are deliberately NOT rail destinations.
+    // "Your account" is deliberately NOT a rail destination. It is reached from
+    // the avatar in the top bar, where every other app puts it — it is about the
+    // person, not about the business, and a tab beside Customers and Jobs
+    // implies it is one more thing to work on.
     //
-    // "Your account" is reached from the avatar in the top bar, where every
-    // other app puts it — it is about the person, not about the business, and a
-    // tab beside Customers and Jobs implies it is one more thing to work on.
-    //
-    // Development is the platform underneath the product rather than part of it
-    // (§4.2, revised), so it is pinned to the actual bottom of the rail, below
-    // the empty space and behind a rule. It exists only when the server says
-    // this person is also staff; a client deciding that for itself could show
-    // the tab to somebody with nothing behind it.
-    //
-    // Both live one past the end of the destination list. Keeping them out of
-    // the list is what allows one to be hidden and the other pinned; this index
-    // arithmetic is the price, and it is confined to the four lines below.
-    // "Your account" is reached from the avatar in the top bar, where every
-    // other app puts it — it is about the person, not the business.
-    //
-    // Everything off the main list lives past its end. Keeping them out of the
+    // Everything off the main list lives past its end, in order: the profile,
+    // then the pinned group, then the staff-only group. Keeping them out of the
     // list is what allows one to be hidden and the others pinned; this index
-    // arithmetic is the price, and it is confined to these few lines.
+    // arithmetic is the price, and it is confined to the few lines below.
     final profileIndex = destinations.length;
     final pinnedBase = destinations.length + 1;
+    final staffBase = pinnedBase + pinned.length;
 
     final showingProfile = _index == profileIndex;
-    final pinnedIndex = (_index >= pinnedBase && _index < pinnedBase + pinned.length)
+    final pinnedIndex = (_index >= pinnedBase && _index < staffBase)
         ? _index - pinnedBase
+        : null;
+    final staffIndex =
+        (_index >= staffBase && _index < staffBase + staffOnly.length)
+        ? _index - staffBase
         : null;
 
     // Clamped every build. The list shrinks when a staff link is removed or a
     // module is switched off platform-wide, and an index left pointing past the
     // end throws on the next frame — a blank screen with no way back.
-    final railIndex = (showingProfile || pinnedIndex != null)
+    final railIndex =
+        (showingProfile || pinnedIndex != null || staffIndex != null)
         ? null
         : _index.clamp(0, destinations.length - 1);
 
@@ -273,29 +325,33 @@ class _HomeShellState extends State<HomeShell> {
         preferredSize: const Size.fromHeight(kToolbarHeight + 1),
         child: _maybeThemed(
           EzBiziTheme.navigationOverride(me.theme),
-          child: AppBar(
-        // A rule under the top bar.
-        //
-        // The bar and the rail were both plain surface, so on a light theme
-        // they met as one continuous white field and the sidebar read as part
-        // of the header. One pixel fixes it; nothing else would.
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: EzBiziTheme.edge(context)),
-        ),
-        leading: wide
-            ? IconButton(
-                tooltip: expanded ? 'Collapse the sidebar' : 'Expand the sidebar',
-                icon: Icon(expanded ? Icons.menu_open : Icons.menu),
-                // Written through the same path as every other preference, so
-                // it is the server's answer that wins and the value is there on
-                // the next device somebody signs in from.
-                onPressed: () => widget.session.setPreference(
-                    'navigation.collapsed', !me.navigationCollapsed),
-              )
-            : null,
-        titleSpacing: 0,
-        /*
+          builder: (context) => AppBar(
+            // A rule under the top bar.
+            //
+            // The bar and the rail were both plain surface, so on a light theme
+            // they met as one continuous white field and the sidebar read as part
+            // of the header. One pixel fixes it; nothing else would.
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(1),
+              child: Container(height: 1, color: EzBiziTheme.edge(context)),
+            ),
+            leading: wide
+                ? IconButton(
+                    tooltip: expanded
+                        ? 'Collapse the sidebar'
+                        : 'Expand the sidebar',
+                    icon: Icon(expanded ? Icons.menu_open : Icons.menu),
+                    // Written through the same path as every other preference, so
+                    // it is the server's answer that wins and the value is there on
+                    // the next device somebody signs in from.
+                    onPressed: () => widget.session.setPreference(
+                      'navigation.collapsed',
+                      !me.navigationCollapsed,
+                    ),
+                  )
+                : null,
+            titleSpacing: 0,
+            /*
          * The wordmark sits beside the collapse button, in the header band above
          * the sidebar — the product's identity belongs to the application
          * chrome, not to one column of it.
@@ -308,104 +364,123 @@ class _HomeShellState extends State<HomeShell> {
          * there — then it appears here instead. Which one is showing is decided
          * by where there is space to say it, and it is never said twice.
          */
-        // The organization's NAME is gone from here, replaced by the switcher
-        // that shows where you are standing. Two controls saying almost the
-        // same thing — a fixed name and a changeable view — is how somebody
-        // ends up sure they are in one place while the lists show another.
-        title: Row(children: [
-          EzBiziTheme.wordmark(context, size: 20),
-          const SizedBox(width: 14),
-          Container(width: 1, height: 18, color: Theme.of(context).dividerColor),
-          const SizedBox(width: 14),
-          // The brand first, then the control. Reading order matches what the
-          // eye needs: whose business am I in, then where in it.
-          ScopeSwitcher.logo(widget.api, widget.session),
-          const SizedBox(width: 12),
-          Flexible(child: ScopeSwitcher(api: widget.api, session: widget.session)),
-        ]),
-        actions: [
-          // Light / dark, one tap, from anywhere.
-          //
-          // It is the same preference the account screen holds (§2.1 category
-          // 6), written through the same path — this is a shortcut to it, not a
-          // second setting. Two places that both claim to control the theme and
-          // disagree is worse than one place that is hard to find.
-          //
-          // Cycles system -> light -> dark rather than toggling two states: the
-          // default is "match my device", and a two-way switch would silently
-          // throw that away the first time anybody touched it.
-          IconButton(
-            tooltip: switch (me.theme) {
-              'light' => 'Light — switch to dark',
-              'dark' => 'Dark — match my device',
-              _ => 'Matching your device — switch to light',
-            },
-            icon: Icon(switch (me.theme) {
-              'light' => Icons.light_mode_outlined,
-              'dark' => Icons.dark_mode_outlined,
-              _ => Icons.brightness_auto_outlined,
-            }),
-            onPressed: () => widget.session.setPreference(
-              'appearance.theme',
-              switch (me.theme) {
-                'system' => 'light',
-                'light' => 'dark',
-                _ => 'system',
-              },
+            // The organization's NAME is gone from here, replaced by the switcher
+            // that shows where you are standing. Two controls saying almost the
+            // same thing — a fixed name and a changeable view — is how somebody
+            // ends up sure they are in one place while the lists show another.
+            title: Row(
+              children: [
+                EzBiziTheme.wordmark(context, size: 20),
+                const SizedBox(width: 14),
+                Container(
+                  width: 1,
+                  height: 18,
+                  color: Theme.of(context).dividerColor,
+                ),
+                const SizedBox(width: 14),
+                // The brand first, then the control. Reading order matches what the
+                // eye needs: whose business am I in, then where in it.
+                ScopeSwitcher.logo(widget.api, widget.session),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: ScopeSwitcher(
+                    api: widget.api,
+                    session: widget.session,
+                  ),
+                ),
+              ],
             ),
-          ),
-          NotificationBell(api: widget.api),
-          if (me.organization.isReadOnly)
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: Chip(
-                avatar: const Icon(Icons.lock_outline, size: 16),
-                label: const Text('Read only'),
-                // §13 — stated up front, so a failed save is never a surprise.
-                backgroundColor: Theme.of(context)
-                    .colorScheme
-                    .errorContainer
-                    .withValues(alpha: 0.4),
-              ),
-            ),
-          PopupMenuButton<String>(
-            tooltip: me.email,
-            icon: CircleAvatar(
-              radius: 15,
-              backgroundColor: EzBiziTheme.accent,
-              child: Text(
-                me.name.isNotEmpty ? me.name[0].toUpperCase() : '?',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-              ),
-            ),
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                enabled: false,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(me.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    Text(me.email, style: const TextStyle(fontSize: 12)),
-                    if (me.roleName != null)
-                      Text(me.roleName!, style: const TextStyle(fontSize: 12)),
-                  ],
+            actions: [
+              // Light / dark, one tap, from anywhere.
+              //
+              // It is the same preference the account screen holds (§2.1 category
+              // 6), written through the same path — this is a shortcut to it, not a
+              // second setting. Two places that both claim to control the theme and
+              // disagree is worse than one place that is hard to find.
+              //
+              // Cycles system -> light -> dark rather than toggling two states: the
+              // default is "match my device", and a two-way switch would silently
+              // throw that away the first time anybody touched it.
+              IconButton(
+                tooltip: switch (me.theme) {
+                  'light' => 'Light — switch to dark',
+                  'dark' => 'Dark — match my device',
+                  _ => 'Matching your device — switch to light',
+                },
+                icon: Icon(switch (me.theme) {
+                  'light' => Icons.light_mode_outlined,
+                  'dark' => Icons.dark_mode_outlined,
+                  _ => Icons.brightness_auto_outlined,
+                }),
+                onPressed: () => widget.session.setPreference(
+                  'appearance.theme',
+                  switch (me.theme) {
+                    'system' => 'light',
+                    'light' => 'dark',
+                    _ => 'system',
+                  },
                 ),
               ),
-              const PopupMenuDivider(),
-              const PopupMenuItem(value: 'me', child: Text('Your account')),
-              const PopupMenuItem(value: 'out', child: Text('Sign out')),
-            ],
-            onSelected: (v) {
-              if (v == 'out') {
-                _signOut();
-                return;
-              }
+              NotificationBell(api: widget.api),
+              if (me.organization.isReadOnly)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Chip(
+                    avatar: const Icon(Icons.lock_outline, size: 16),
+                    label: const Text('Read only'),
+                    // §13 — stated up front, so a failed save is never a surprise.
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.errorContainer.withValues(alpha: 0.4),
+                  ),
+                ),
+              PopupMenuButton<String>(
+                tooltip: me.email,
+                // The photo, not just the initial. It was an initial always: the
+                // profile screen was the only place a picture appeared, and even
+                // there it did not, because it was fetched without the token the
+                // endpoint requires. This is the same widget that card uses.
+                icon: UserAvatar(
+                  api: widget.api,
+                  userId: me.id,
+                  name: me.name,
+                  radius: 15,
+                  hasAvatar: me.hasAvatar,
+                ),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    enabled: false,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          me.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        Text(me.email, style: const TextStyle(fontSize: 12)),
+                        if (me.roleName != null)
+                          Text(
+                            me.roleName!,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(value: 'me', child: Text('Your account')),
+                  const PopupMenuItem(value: 'out', child: Text('Sign out')),
+                ],
+                onSelected: (v) {
+                  if (v == 'out') {
+                    _signOut();
+                    return;
+                  }
 
-              setState(() => _index = profileIndex);
-            },
-          ),
-          const SizedBox(width: 8),
-        ],
+                  setState(() => _index = profileIndex);
+                },
+              ),
+              const SizedBox(width: 8),
+            ],
           ),
         ),
       ),
@@ -430,19 +505,23 @@ class _HomeShellState extends State<HomeShell> {
               // The top bar takes this same override, so the chrome is one
               // theme and the page is the other.
               EzBiziTheme.navigationOverride(me.theme),
-              child: NavigationSidebar(
-              expanded: expanded,
-              width: me.navigationWidth,
-              destinations: destinations,
-              pinned: pinned,
-              selectedIndex: railIndex,
-              pinnedIndex: pinnedIndex,
-              onSelected: (i) => setState(() => _index = i),
-              onPinnedSelected: (i) => setState(() => _index = pinnedBase + i),
-              // Written through the same path as every other preference, once
-              // the drag settles.
-              onResized: (w) => widget.session
-                  .setPreference('navigation.width', w.round()),
+              builder: (context) => NavigationSidebar(
+                expanded: expanded,
+                width: me.navigationWidth,
+                destinations: destinations,
+                pinned: pinned,
+                staffOnly: staffOnly,
+                selectedIndex: railIndex,
+                pinnedIndex: pinnedIndex,
+                staffIndex: staffIndex,
+                onSelected: (i) => setState(() => _index = i),
+                onPinnedSelected: (i) =>
+                    setState(() => _index = pinnedBase + i),
+                onStaffSelected: (i) => setState(() => _index = staffBase + i),
+                // Written through the same path as every other preference, once
+                // the drag settles.
+                onResized: (w) =>
+                    widget.session.setPreference('navigation.width', w.round()),
               ),
             ),
           Expanded(
@@ -458,31 +537,42 @@ class _HomeShellState extends State<HomeShell> {
               key: ValueKey('${me.scope.type}:${me.scope.id}'),
               child: pinnedIndex != null
                   ? pinned[pinnedIndex].screen
+                  : staffIndex != null
+                  ? staffOnly[staffIndex].screen
                   : showingProfile
-                      ? ProfileScreen(api: widget.api, session: widget.session)
-                      : destinations[railIndex ?? 0].screen,
+                  ? ProfileScreen(api: widget.api, session: widget.session)
+                  : destinations[railIndex ?? 0].screen,
             ),
           ),
         ],
       ),
-      // Narrow layout. Development gets a tab here rather than a footer —
-      // there is no rail to pin it to the bottom of, and hiding it entirely
-      // would make the section unreachable on a phone. Your account stays in
-      // the avatar menu on both, which is where people look for it.
-      // Narrow layout. The pinned items get ordinary tabs here — there is no
-      // rail to pin them to the bottom of, and hiding them would make Settings
-      // unreachable on a phone. Your account stays in the avatar menu on both,
-      // which is where people look for it.
+      /*
+       * Narrow layout. Everything gets an ordinary tab, in the same order.
+       *
+       * The grouping the sidebar draws with rules cannot be expressed here —
+       * NavigationBar has no separators — and hiding the tail would make
+       * Settings, and Development for staff, unreachable on a phone. Order is
+       * the only signal available, so order is what carries it.
+       *
+       * `_index` counts profile at `destinations.length`, so the tab index and
+       * `_index` diverge past the main list; the two expressions below are that
+       * one-slot gap, in both directions.
+       */
       bottomNavigationBar: wide
           ? null
           : NavigationBar(
               selectedIndex: showingProfile
                   ? 0
-                  : (railIndex ?? destinations.length + (pinnedIndex ?? 0)),
-              onDestinationSelected: (i) => setState(() => _index =
-                  i < destinations.length ? i : pinnedBase + (i - destinations.length)),
+                  : (railIndex ??
+                        destinations.length +
+                            (pinnedIndex ?? (pinned.length + staffIndex!))),
+              onDestinationSelected: (i) => setState(
+                () => _index = i < destinations.length
+                    ? i
+                    : pinnedBase + (i - destinations.length),
+              ),
               destinations: [
-                for (final d in [...destinations, ...pinned])
+                for (final d in [...destinations, ...pinned, ...staffOnly])
                   NavigationDestination(icon: Icon(d.icon), label: d.label),
               ],
             ),
@@ -494,8 +584,30 @@ class _HomeShellState extends State<HomeShell> {
 ///
 /// Null means the two halves of the shell match, and an identical Theme pushed
 /// down the tree would be a rebuild that changes nothing.
-Widget _maybeThemed(ThemeData? theme, {required Widget child}) =>
-    theme == null ? child : Theme(data: theme, child: child);
+///
+/// ── Why a builder and not a child ────────────────────────────────
+///
+/// It took a `child`, and that quietly did not work for anything that read the
+/// theme while being CONSTRUCTED rather than while being laid out. `AppBar(...)`
+/// and all of its arguments are built in the enclosing method's context — which
+/// is above this Theme — so `EzBiziTheme.wordmark(context)` and
+/// `Theme.of(context).dividerColor` in the title row resolved against the PAGE's
+/// theme, not the chrome's.
+///
+/// In a mixed mode that is the opposite theme. The wordmark's second half is
+/// drawn in the on-surface colour, so on a light bar it came out white: "Ez" and
+/// then nothing. The divider beside it was wrong in the same direction and just
+/// looked faint.
+///
+/// A builder makes the override reach everything by construction, so no widget
+/// placed in that bar in future has to know any of this.
+Widget _maybeThemed(ThemeData? theme, {required WidgetBuilder builder}) =>
+    theme == null
+    ? Builder(builder: builder)
+    : Theme(
+        data: theme,
+        child: Builder(builder: builder),
+      );
 
 /// The sidebar: the modules, a rule, then the pinned group.
 ///
@@ -510,10 +622,13 @@ class NavigationSidebar extends StatefulWidget {
     required this.width,
     required this.destinations,
     required this.pinned,
+    required this.staffOnly,
     required this.selectedIndex,
     required this.pinnedIndex,
+    required this.staffIndex,
     required this.onSelected,
     required this.onPinnedSelected,
+    required this.onStaffSelected,
     this.onResized,
   });
 
@@ -526,13 +641,19 @@ class NavigationSidebar extends StatefulWidget {
   final List<Destination> destinations;
   final List<Destination> pinned;
 
+  /// Development, when this person is also EzBizi staff (§4.2). Its own group
+  /// because it is a different kind of thing, not a third setting.
+  final List<Destination> staffOnly;
+
   /// Exactly one of these is non-null: the selection lives in one rail or the
   /// other, never both.
   final int? selectedIndex;
   final int? pinnedIndex;
+  final int? staffIndex;
 
   final ValueChanged<int> onSelected;
   final ValueChanged<int> onPinnedSelected;
+  final ValueChanged<int> onStaffSelected;
 
   /// Called once, on release. Not on every drag frame — that would be a request
   /// per pixel of travel.
@@ -630,6 +751,37 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
               ),
             ),
 
+            // And a third group, for staff only.
+            //
+            // Development sat in the group above, which said it was the same
+            // kind of thing as Organization and Settings. Those configure the
+            // business and every administrator has them; this is the platform
+            // underneath the product (§4.2), it appears only when the server
+            // says this person is also EzBizi staff, and most people signed
+            // into this app will never see it.
+            //
+            // The whole group disappears with its rule when they are not, so
+            // nobody is left looking at a divider with nothing under it.
+            if (widget.staffOnly.isNotEmpty) ...[
+              Divider(
+                height: 17,
+                thickness: 1,
+                indent: width * 0.15,
+                endIndent: width * 0.15,
+                color: scheme.outlineVariant,
+              ),
+              IntrinsicHeight(
+                child: _rail(
+                  context,
+                  expanded: widget.expanded,
+                  width: width,
+                  destinations: widget.staffOnly,
+                  selectedIndex: widget.staffIndex,
+                  onSelected: widget.onStaffSelected,
+                ),
+              ),
+            ],
+
             // The version, at the very foot of the sidebar.
             //
             // Only when expanded: at 80px it would truncate, and half a build
@@ -721,10 +873,12 @@ Widget _rail(
     minExtendedWidth: math.max(width, NavigationSidebar.collapsedWidth),
     leading: leading,
     destinations: destinations
-        .map((d) => NavigationRailDestination(
-              icon: Icon(d.icon),
-              label: Text(d.label),
-            ))
+        .map(
+          (d) => NavigationRailDestination(
+            icon: Icon(d.icon),
+            label: Text(d.label),
+          ),
+        )
         .toList(),
   );
 }
@@ -735,4 +889,3 @@ class Destination {
   final IconData icon;
   final Widget screen;
 }
-

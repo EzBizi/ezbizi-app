@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/password_policy.dart';
 import 'error_note.dart';
 
 /// Changing your password while signed in (plan §4).
@@ -111,7 +112,7 @@ class _PasswordCardState extends State<PasswordCard> {
                   ? 'One password covers the app and the control plane. Changing it '
                       'signs out every other session, including this tab\'s Development '
                       'section.'
-                  : 'At least 12 characters. Changing it signs out your other devices.',
+                  : '${PasswordPolicy.hint} Changing it signs out your other devices.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
 

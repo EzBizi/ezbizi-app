@@ -14,10 +14,20 @@ import '../widgets/side_panel.dart';
 /// picker only ever appears AFTER the password verified — the server enforces
 /// that, and this screen simply never has the data before then.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.api, required this.session});
+  const LoginScreen({
+    super.key,
+    required this.api,
+    required this.session,
+    required this.onCreateAccount,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// Opens the signup screen. Required rather than optional because this is the
+  /// only way to reach it — there is no router, so an omitted callback would
+  /// leave a screen that exists and cannot be opened.
+  final VoidCallback onCreateAccount;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -117,21 +127,16 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    await _adopt(
-      response.body['token'] as String,
-      staffToken: response.body['staff_token'] as String?,
-    );
+    await _adopt(response.body);
   }
 
   /// Shared by both paths. If /me fails after a successful login the screen is
   /// rebuilt in place with its State intact, so _busy must be released here or
   /// the card is left greyed out and spinning with nothing said.
-  Future<void> _adopt(String token, {String? staffToken}) async {
-    // Carried on the session so the shell can hand it to the Development
-    // section's own client. It is deliberately not set on the tenant client.
-    widget.session.staffToken = staffToken;
-
-    final signedIn = await widget.session.adopt(token, persist: _stayed);
+  Future<void> _adopt(Map<String, dynamic> body) async {
+    // The signup screen goes through the same Session method — its response body
+    // is this one, by design — so the staff token cannot be handled two ways.
+    final signedIn = await widget.session.adoptAuthResponse(body, persist: _stayed);
 
     if (!mounted || signedIn) return;
 
@@ -180,10 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    await _adopt(
-      response.body['token'] as String,
-      staffToken: response.body['staff_token'] as String?,
-    );
+    await _adopt(response.body);
   }
 
   @override
@@ -307,6 +309,29 @@ class _LoginScreenState extends State<LoginScreen> {
                     height: 18, width: 18,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Text('Sign in'),
+          ),
+
+          // The only door into signup, and it is here because this is where
+          // somebody without an account arrives — there is no marketing page in
+          // the app to put it on. It sits below the button rather than beside
+          // "Forgot password?": the two are for different people, and a row of
+          // three small links is three things to read before typing.
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  'New to EzBizi?',
+                  style: Theme.of(context).textTheme.bodySmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              TextButton(
+                onPressed: _busy ? null : widget.onCreateAccount,
+                child: const Text('Create an account'),
+              ),
+            ],
           ),
         ],
       ),

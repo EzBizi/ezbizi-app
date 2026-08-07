@@ -150,7 +150,10 @@ class CompaniesController extends Controller
 
             'franchise.name'     => ['required', 'string', 'max:120'],
             'franchise.timezone' => ['nullable', 'string', 'timezone'],
-            'franchise.currency' => ['nullable', 'string', 'size:3'],
+            // §7, and the same reasoning as FranchisesController::store —
+            // permanent once jobs carry it, so `size:3` let a typo mislabel a
+            // franchise's financial history for good.
+            'franchise.currency' => ['nullable', 'string', 'in:USD'],
         ]);
 
         $parent = isset($input['parent_company_id'])

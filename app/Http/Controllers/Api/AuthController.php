@@ -2,27 +2,179 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\User;
 use App\Services\Auth\AuthenticateUser;
+use App\Services\Organizations\ProvisionOrganization;
+use App\Support\Auth\PasswordPolicy;
 use App\Support\Auth\SessionContext;
 use App\Services\Auth\AuthenticationResult;
 use App\Support\Audit\AuditLogger;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Sign in and out (plan §4).
+ * Sign up, sign in and sign out (plan §4).
  *
  * Sits OUTSIDE auth:sanctum and outside the tenant middleware — there is no
- * user and no organization until this succeeds.
+ * user and no organization until one of these succeeds.
+ *
+ * Signup lives here rather than in a controller of its own because it ENDS in a
+ * login: its success body has the same keys as `login`'s, produced by the same
+ * private method. Splitting it out would mean either making that method public
+ * or copying it, and a second copy of the session contract is a second thing to
+ * keep in step with the client.
+ *
+ * Same keys, not the same bytes — the token differs, the staff token may, and
+ * signup answers 201 where login answers 200.
  */
 class AuthController extends Controller
 {
     public function __construct(
         private readonly AuthenticateUser $authenticate,
         private readonly AuditLogger $audit,
+        private readonly ProvisionOrganization $provision,
+        private readonly TenantContext $tenant,
     ) {}
+
+    /**
+     * POST /api/v1/auth/signup — the front door (§3, §13; TODO #10).
+     *
+     * ── One form, one request, one transaction ───────────────────
+     *
+     * §3 forbids a company without a franchise, so this is deliberately not a
+     * resumable wizard: somebody abandoning a multi-step flow halfway through
+     * would leave behind precisely the state the rule prohibits.
+     * ProvisionOrganization already builds the whole minimum viable tree or
+     * nothing at all, and this is its first non-test caller.
+     *
+     * ── Why `business_name` becomes BOTH the organization and the company ──
+     *
+     * A business signing up is one company. Asking a plumber to distinguish
+     * "your organization" from "your first company" at the front door is asking
+     * them to understand §3's hierarchy before they have seen the product. They
+     * can add companies and sub-companies afterwards — the Organization screen
+     * already does that — and renaming either one is a text field. This is a
+     * decision about the form, not an oversight in the mapping.
+     *
+     * ── What is deliberately absent ──────────────────────────────
+     *
+     * EMAIL VERIFICATION. Nothing on this platform can send mail: AWS blocks
+     * outbound port 25 on both instances and SES has no credential yet (TODO
+     * #1). Gating signup on a verification link would therefore lock out every
+     * account it created. It is recorded as a follow-up in EZBIZI-TODO.md tied
+     * to #1 rather than left to look like something nobody thought of.
+     *
+     * A TIMEZONE. Left at the service default on purpose. TODO #20 — whether a
+     * scheduled job is an instant or a local wall time — is deliberately
+     * parked, and asking for a timezone here would pick an answer to it in
+     * passing.
+     *
+     * `is_demo`. Stays false. TODO #9 asks what a demo organization actually
+     * suppresses and is unanswered, so signup must not start minting them.
+     */
+    public function signup(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'name'  => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
+
+            // No `unique` rule, deliberately. The same address may hold accounts
+            // in several organizations (§4) — a person working for two clients —
+            // and tests/Feature/Api/AuthApiTest.php asserts login copes with it
+            // via choose_organization. Refusing a known address here would break
+            // that, and would also make this endpoint an oracle: type an address,
+            // read the status code, learn whether it is registered.
+            'password' => PasswordPolicy::rules(),
+
+            // Both become real entities, so neither may be blank. TrimStrings and
+            // ConvertEmptyStringsToNull run globally, so "   " arrives as null and
+            // `required` refuses it.
+            //
+            // 120, matching CompaniesController and FranchisesController.
+            //
+            // The columns are varchar(255) and an earlier version used that,
+            // which let the front door create a franchise the Structure screen
+            // then refused to save: signup accepted 200 characters, renaming it
+            // to the same value came back 422. The binding constraint in this
+            // app is 120, not the column width.
+            //
+            // It also closes a reachable 500. `uniqueSlug` appends `-2` on a
+            // collision, and `organizations.slug` is varchar(255) — so two
+            // signups with the same 255-character business name overflowed the
+            // column on the second. At 120 the suffix has nowhere near enough
+            // room to matter.
+            'business_name'  => ['required', 'string', 'max:120'],
+            'first_location' => ['required', 'string', 'max:120'],
+
+            'device_name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        /*
+         * The organization and the record of its creation commit together.
+         *
+         * ProvisionOrganization opens its own transaction; nesting makes that a
+         * savepoint, so the audit row cannot survive a rolled-back tenant and a
+         * failed audit cannot leave one unrecorded. Same shape as every other
+         * write in this app — see CompaniesController::store.
+         */
+        $tree = DB::transaction(function () use ($input, $request) {
+            $tree = ($this->provision)(
+                organizationName: $input['business_name'],
+                administrator: [
+                    'name'     => $input['name'],
+                    'email'    => $input['email'],
+                    'password' => $input['password'],
+                ],
+                companyName:   $input['business_name'],
+                franchiseName: $input['first_location'],
+            );
+
+            /*
+             * The tenant, before anything is audited.
+             *
+             * ProvisionOrganization restores whatever tenancy it found when it
+             * returns — which here is none — and AuditLogger reads the context to
+             * decide which organization an event belongs to. Without this line the
+             * row describing a tenant's creation lands with organization_id NULL,
+             * so it is missing from that customer's own history from the first
+             * second of its life.
+             *
+             * `run()` and not `set()`, because TenantContext is a singleton and
+             * nothing sweeps this request: signup is in the PUBLIC group, so
+             * SetTenantContext — whose whole job is the try/finally that clears
+             * it — never runs. A bare set() left the tenant in place for
+             * whatever the process handled next. Harmless under php-fpm, where
+             * the process ends; not harmless in the test suite, where it made
+             * the second and third signups in one test run with the first one's
+             * tenant still in context, so a test that reads as exercising the
+             * no-tenant path was not.
+             */
+            $this->tenant->run($tree['organization'], function () use ($tree, $request) {
+                $this->audit->log('organization.provisioned', $tree['organization'], metadata: [
+                    'company'   => $tree['company']->name,
+                    'franchise' => $tree['franchise']->name,
+                    'ip'        => $request->ip(),
+                    'via'       => 'self-serve signup',
+                ], actor: $tree['administrator']);
+            });
+
+            return $tree;
+        });
+
+        // 201, and otherwise the login body key for key — the client is going to
+        // treat this response as one. Not byte for byte: the token differs, and
+        // so does the status.
+        //
+        // Inside the tenant as well, because issueToken audits the sign-in.
+        return $this->tenant->run(
+            $tree['organization'],
+            fn () => $this->issueToken($request, $tree['administrator'], Response::HTTP_CREATED),
+        );
+    }
 
     /**
      * POST /api/v1/auth/login
@@ -100,7 +252,7 @@ class AuthController extends Controller
             ]);
         }
 
-        return $this->issueToken($request, $result);
+        return $this->issueToken($request, $result->user);
     }
 
     /** POST /api/v1/auth/choose — complete an ambiguous login. */
@@ -127,7 +279,7 @@ class AuthController extends Controller
             ], Response::HTTP_UNAUTHORIZED);
         }
 
-        return $this->issueToken($request, $result);
+        return $this->issueToken($request, $result->user);
     }
 
     /** POST /api/v1/auth/logout — revoke the token that made this request. */
@@ -140,14 +292,33 @@ class AuthController extends Controller
         return response()->json(['message' => 'Signed out.']);
     }
 
-    private function issueToken(Request $request, AuthenticationResult $result): JsonResponse
-    {
-        $user = $result->user;
-
+    /**
+     * The session body every successful entry point returns.
+     *
+     * Takes a User rather than an AuthenticationResult: signup has no
+     * authentication attempt behind it — it just created the account — and the
+     * only thing this ever read off the result was `->user`.
+     */
+    private function issueToken(
+        Request $request,
+        User $user,
+        int $status = Response::HTTP_OK,
+    ): JsonResponse {
         // Named after the device so a user can revoke one client without
         // signing out everywhere.
+        //
+        // `?:` and not `input(..., 'web')`. A default applies only to a MISSING
+        // key, and ConvertEmptyStringsToNull turns `"device_name": ""` into
+        // null — which reached createToken() and raised a TypeError. On login
+        // that was a 500 where a 401 belonged; on signup it was a 500 raised
+        // AFTER the tenant transaction had committed, so the caller was told
+        // the server broke while a real, reachable organization existed, and
+        // retrying built a second one. Resolved here rather than in each
+        // caller's validation, because this is the line that cannot accept it.
+        $deviceName = trim((string) $request->input('device_name')) ?: 'web';
+
         $token = $user->createToken(
-            $request->input('device_name', 'web'),
+            $deviceName,
             expiresAt: now()->addDays(30),
         );
 
@@ -181,7 +352,7 @@ class AuthController extends Controller
 
         if ($staff !== null) {
             $staffToken = $staff->createToken(
-                'staff:'.$request->input('device_name', 'web').' (via CRM)',
+                "staff:{$deviceName} (via CRM)",
                 ['staff'],
                 expiresAt: now()->addHours(12),
             )->plainTextToken;
@@ -222,6 +393,6 @@ class AuthController extends Controller
                 // front rather than after the first failed write (§13).
                 'is_read_only' => $user->organization->isReadOnly(),
             ],
-        ]);
+        ], $status);
     }
 }

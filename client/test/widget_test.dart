@@ -1,13 +1,21 @@
+import 'dart:convert';
+
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/staff_session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
+import 'package:ezbizi_client/screens/signup_screen.dart';
 import 'package:ezbizi_client/screens/staff/staff_login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 void main() {
-  testWidgets('an unauthenticated app shows the sign-in screen', (tester) async {
+  testWidgets('an unauthenticated app shows the sign-in screen', (
+    tester,
+  ) async {
     await tester.pumpWidget(const EzBiziApp());
     await tester.pump();
 
@@ -16,7 +24,9 @@ void main() {
     expect(find.text('Welcome back'), findsOneWidget);
   });
 
-  testWidgets('the customer host offers no way into the control plane', (tester) async {
+  testWidgets('the customer host offers no way into the control plane', (
+    tester,
+  ) async {
     await tester.pumpWidget(const EzBiziApp());
     await tester.pump();
 
@@ -27,13 +37,15 @@ void main() {
     expect(find.text('Authenticator code'), findsNothing);
   });
 
-  testWidgets('the control-plane form asks for a second factor', (tester) async {
+  testWidgets('the control-plane form asks for a second factor', (
+    tester,
+  ) async {
     // Pumped directly: the host picks this screen in the real app, and a widget
     // test cannot set Uri.base. Which hostname selects it is covered in
     // deployment_test.dart.
-    await tester.pumpWidget(MaterialApp(
-      home: StaffLoginScreen(staff: StaffSession(ApiClient())),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(home: StaffLoginScreen(staff: StaffSession(ApiClient()))),
+    );
     await tester.pump();
 
     // TOTP is mandatory for staff, so the field is not optional and not a second
@@ -41,6 +53,211 @@ void main() {
     expect(find.text('Staff sign-in'), findsOneWidget);
     expect(find.text('Staff email'), findsOneWidget);
     expect(find.text('Authenticator code'), findsOneWidget);
+  });
+
+  // ── signing up ────────────────────────────────────────────────────
+  //
+  // Until this screen existed there was no way to create an organization at
+  // all: every caller of ProvisionOrganization was a test. These cover the four
+  // things that would make it useless or dangerous — unreachable, reachable
+  // from the control plane, submittable half-filled, or silent about why the
+  // server refused.
+
+  testWidgets('the sign-in screen leads to signup, and back again', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(const EzBiziApp());
+    await tester.pump();
+
+    // The only door into it. There is no router and no marketing page inside
+    // the app, so if this affordance goes the screen is unreachable.
+    await tester.tap(find.text('Create an account'));
+    await tester.pump();
+
+    expect(find.text('Create your account'), findsOneWidget);
+
+    // The person, then the business — and the business asked for in the same
+    // words company_form_panel.dart uses for the same idea.
+    expect(find.text('Your name'), findsOneWidget);
+    expect(find.text('Business name'), findsOneWidget);
+    expect(find.text('Its first place'), findsOneWidget);
+
+    // Two-way: somebody who already has an account is one tap from where they
+    // meant to be.
+    await tester.tap(find.widgetWithText(TextButton, 'Sign in'));
+    await tester.pump();
+
+    expect(find.text('Welcome back'), findsOneWidget);
+  });
+
+  testWidgets('the control plane offers no way to create an account', (
+    tester,
+  ) async {
+    // Pumped directly, as the other control-plane tests are: the host picks
+    // this screen in the real app and a widget test cannot set Uri.base.
+    await tester.pumpWidget(
+      MaterialApp(home: StaffLoginScreen(staff: StaffSession(ApiClient()))),
+    );
+    await tester.pump();
+
+    // §4.2: staff accounts are created by staff. Nobody self-registers here,
+    // and the signup endpoint is a customer one regardless.
+    expect(find.text('Create an account'), findsNothing);
+    expect(find.text('Create your account'), findsNothing);
+  });
+
+  testWidgets('signup will not submit until every field is filled', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await _pumpSignup(tester, (_) async => http.Response('{}', 201));
+
+    // The contract has no optional field but device_name, so a partial form can
+    // only ever produce a 422 round trip.
+    expect(_submitEnabled(tester), isFalse);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Your name'),
+      'Jose Silva',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Email address'),
+      'jose@example.com',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Password'),
+      'a-long-passphrase',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Business name'),
+      'A-1 Chimney',
+    );
+    await tester.pump();
+
+    // Four of five. §3 forbids a company without a franchise, which is exactly
+    // what this last field becomes.
+    expect(_submitEnabled(tester), isFalse);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Its first place'),
+      'Connecticut',
+    );
+    await tester.pump();
+
+    expect(_submitEnabled(tester), isTrue);
+  });
+
+  testWidgets('a rejected signup shows what the server said', (tester) async {
+    tester.view.physicalSize = const Size(1440, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // A 422 in Laravel's ordinary shape.
+    await _pumpSignup(
+      tester,
+      (_) async => http.Response(
+        jsonEncode({
+          'message': 'The given data was invalid.',
+          'errors': {
+            'email': ['That email address is already in use.'],
+          },
+        }),
+        422,
+        headers: {'content-type': 'application/json'},
+      ),
+    );
+
+    await _fillSignup(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+    await tester.pumpAndSettle();
+
+    // Under the field it is about, not as a sentence floating above the form.
+    expect(find.text('That email address is already in use.'), findsOneWidget);
+  });
+
+  testWidgets('a throttled signup shows the server message verbatim', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // The shape login already uses for 429. The sentence carries the only
+    // number worth reading, so substituting wording of our own — which the
+    // sign-in screen does on one path — would throw it away.
+    await _pumpSignup(
+      tester,
+      (_) async => http.Response(
+        jsonEncode({
+          'message': 'Too many attempts. Try again in 41 seconds.',
+          'code': 'throttled',
+          'retry_after': 41,
+        }),
+        429,
+        headers: {'content-type': 'application/json'},
+      ),
+    );
+
+    await _fillSignup(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Too many attempts. Try again in 41 seconds.'),
+      findsOneWidget,
+    );
+
+    // And it is still submittable — a throttle is a "not yet", not a "never".
+    expect(_submitEnabled(tester), isTrue);
+  });
+
+  testWidgets('a signup that succeeded cannot be submitted twice', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    var signups = 0;
+
+    // 201 with a token, then /me fails — the case that matters, because the
+    // organization exists and the screen stays on screen to say so. A second
+    // submit here would build a second organization behind the first.
+    await _pumpSignup(tester, (request) async {
+      if (request.url.path.endsWith('/auth/signup')) {
+        signups++;
+        return http.Response(
+          jsonEncode({
+            'status': 'authenticated',
+            'token': 'tok',
+            'staff_token': null,
+          }),
+          201,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      return http.Response(
+        '{"message":"Server error."}',
+        500,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+
+    await _fillSignup(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+    await tester.pumpAndSettle();
+
+    expect(signups, 1);
+    expect(_submitEnabled(tester), isFalse);
+    expect(find.textContaining('Your account was created'), findsOneWidget);
   });
 
   testWidgets('the wordmark is legible in dark mode', (tester) async {
@@ -57,7 +274,8 @@ void main() {
     final wordmark = tester.widget<RichText>(find.byType(RichText).first);
 
     final spans = (wordmark.text as TextSpan).children!;
-    final bizi = spans.firstWhere((s) => (s as TextSpan).text == 'Bizi') as TextSpan;
+    final bizi =
+        spans.firstWhere((s) => (s as TextSpan).text == 'Bizi') as TextSpan;
 
     expect(bizi.style!.color, Colors.white);
   });
@@ -66,8 +284,12 @@ void main() {
     // A1 Tools compiled its host into the binary, which is why moving that app
     // to a new domain is a migration rather than a config change. The default
     // here is same-origin, so a web build cannot drift from where it was served.
-    expect(ApiClient.baseUrl, isEmpty,
-        reason: 'Default must be same-origin; set API_BASE at build time to override.');
+    expect(
+      ApiClient.baseUrl,
+      isEmpty,
+      reason:
+          'Default must be same-origin; set API_BASE at build time to override.',
+    );
   });
 
   // ── the sign-in screens at every size somebody actually uses ──
@@ -81,37 +303,61 @@ void main() {
   // Flutter reports overflow as a test failure, so pumping at each size and
   // settling IS the assertion.
   for (final size in const [
-    Size(360, 740),    // phone
-    Size(768, 1024),   // tablet, still below the two-panel threshold
-    Size(1024, 640),   // small laptop — short, which is the hard one
-    Size(1440, 900),   // ordinary laptop
-    Size(1920, 1080),  // the window these screens are actually reviewed in
-    Size(2560, 1440),  // the wide monitor this is usually seen on
+    Size(360, 740), // phone
+    Size(768, 1024), // tablet, still below the two-panel threshold
+    Size(1024, 640), // small laptop — short, which is the hard one
+    Size(1440, 900), // ordinary laptop
+    Size(1920, 1080), // the window these screens are actually reviewed in
+    Size(2560, 1440), // the wide monitor this is usually seen on
   ]) {
-    testWidgets('the customer sign-in lays out at ${size.width}x${size.height}',
-        (tester) async {
+    testWidgets(
+      'the customer sign-in lays out at ${size.width}x${size.height}',
+      (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await tester.pumpWidget(const EzBiziApp());
+        await tester.pump();
+
+        expect(find.text('Welcome back'), findsOneWidget);
+      },
+    );
+
+    testWidgets('the control plane lays out at ${size.width}x${size.height}', (
+      tester,
+    ) async {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
 
-      await tester.pumpWidget(const EzBiziApp());
-      await tester.pump();
-
-      expect(find.text('Welcome back'), findsOneWidget);
-    });
-
-    testWidgets('the control plane lays out at ${size.width}x${size.height}',
-        (tester) async {
-      tester.view.physicalSize = size;
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-
-      await tester.pumpWidget(MaterialApp(
-        home: StaffLoginScreen(staff: StaffSession(ApiClient())),
-      ));
+      await tester.pumpWidget(
+        MaterialApp(home: StaffLoginScreen(staff: StaffSession(ApiClient()))),
+      );
       await tester.pump();
 
       expect(find.text('Sign in'), findsWidgets);
+    });
+
+    // Signup gets the same treatment, and needs it more: five fields, two
+    // section headings and three blocks of helper text make it the tallest of
+    // the three public screens by some way.
+    //
+    // Unlike sign-in it is NOT asserted to fit without scrolling. It cannot —
+    // the form is taller than a 720px window once the padding is paid — and
+    // AuthShell's form panel scrolls by design. What this catches is the other
+    // kind of failure: a row that overflows sideways, which is what shipped on
+    // the sign-in screen and which nothing but laying it out will find.
+    testWidgets('signup lays out at ${size.width}x${size.height}', (
+      tester,
+    ) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await _pumpSignup(tester, (_) async => http.Response('{}', 201));
+
+      expect(find.text('Create your account'), findsOneWidget);
     });
   }
 
@@ -128,30 +374,35 @@ void main() {
     Size(1920, 1080),
     Size(2560, 1440),
   ]) {
-    testWidgets('the sign-in page does not scroll at ${size.width}x${size.height}',
-        (tester) async {
-      tester.view.physicalSize = size;
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+    testWidgets(
+      'the sign-in page does not scroll at ${size.width}x${size.height}',
+      (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
 
-      await tester.pumpWidget(const EzBiziApp());
-      await tester.pump();
+        await tester.pumpWidget(const EzBiziApp());
+        await tester.pump();
 
-      for (final scrollable in tester.widgetList<Scrollable>(find.byType(Scrollable))) {
-        final position = (scrollable.controller?.hasClients ?? false)
-            ? scrollable.controller!.position
-            : null;
+        for (final scrollable in tester.widgetList<Scrollable>(
+          find.byType(Scrollable),
+        )) {
+          final position = (scrollable.controller?.hasClients ?? false)
+              ? scrollable.controller!.position
+              : null;
 
-        if (position == null) continue;
+          if (position == null) continue;
 
-        expect(
-          position.maxScrollExtent,
-          0.0,
-          reason: 'Something on the sign-in page scrolls at '
-              '${size.width}x${size.height}.',
-        );
-      }
-    });
+          expect(
+            position.maxScrollExtent,
+            0.0,
+            reason:
+                'Something on the sign-in page scrolls at '
+                '${size.width}x${size.height}.',
+          );
+        }
+      },
+    );
   }
 
   // The alignment test that used to live here has been deleted, not fixed.
@@ -172,35 +423,53 @@ void main() {
   //
   // Asserting on the painted width is the only check that distinguishes "faint"
   // from "not there", which is exactly the distinction that was missed.
-  testWidgets('the sidebar rule is actually drawn, not zero-width',
-      (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      theme: EzBiziTheme.light(),
-      home: Scaffold(
-        // The real arrangement: a non-flex sidebar beside an Expanded body, so
-        // the sidebar receives unbounded width exactly as it does in the shell.
-        body: Row(
-          children: [
-            NavigationSidebar(
-              expanded: true,
-              width: 220,
-              destinations: [
-                Destination('Dashboard', Icons.dashboard_outlined, const SizedBox()),
-                Destination('Customers', Icons.people_outline, const SizedBox()),
-              ],
-              pinned: [
-                Destination('Settings', Icons.settings_outlined, const SizedBox()),
-              ],
-              selectedIndex: 0,
-              pinnedIndex: null,
-              onSelected: (_) {},
-              onPinnedSelected: (_) {},
-            ),
-            const Expanded(child: SizedBox()),
-          ],
+  testWidgets('the sidebar rule is actually drawn, not zero-width', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          // The real arrangement: a non-flex sidebar beside an Expanded body, so
+          // the sidebar receives unbounded width exactly as it does in the shell.
+          body: Row(
+            children: [
+              NavigationSidebar(
+                expanded: true,
+                width: 220,
+                destinations: [
+                  Destination(
+                    'Dashboard',
+                    Icons.dashboard_outlined,
+                    const SizedBox(),
+                  ),
+                  Destination(
+                    'Customers',
+                    Icons.people_outline,
+                    const SizedBox(),
+                  ),
+                ],
+                pinned: [
+                  Destination(
+                    'Settings',
+                    Icons.settings_outlined,
+                    const SizedBox(),
+                  ),
+                ],
+                staffOnly: const [],
+                selectedIndex: 0,
+                pinnedIndex: null,
+                staffIndex: null,
+                onSelected: (_) {},
+                onPinnedSelected: (_) {},
+                onStaffSelected: (_) {},
+              ),
+              const Expanded(child: SizedBox()),
+            ],
+          ),
         ),
       ),
-    ));
+    );
     await tester.pump();
 
     final divider = find.byType(Divider);
@@ -210,15 +479,148 @@ void main() {
     // that vanished. Measure the painted container, not its parent.
     final line = find.descendant(
       of: divider,
-      matching: find.byWidgetPredicate((w) => w is Container && w.decoration != null),
+      matching: find.byWidgetPredicate(
+        (w) => w is Container && w.decoration != null,
+      ),
     );
 
     expect(line, findsOneWidget);
     expect(
       tester.getSize(line).width,
       greaterThan(50),
-      reason: 'The rule is drawn but has (almost) no width — the sidebar is '
+      reason:
+          'The rule is drawn but has (almost) no width — the sidebar is '
           'being laid out with unbounded width again.',
     );
   });
+
+  /// Development is staff-only (§4.2), so it sits under its own rule rather than
+  /// in the group with Organization and Settings — those configure the business
+  /// and every administrator has them.
+  ///
+  /// Both directions, because the interesting failure is the second one: a rule
+  /// left behind when the group beneath it is empty is a divider with nothing
+  /// under it, which reads as a rendering fault.
+  testWidgets('the staff group brings its own rule, and takes it away again', (
+    tester,
+  ) async {
+    Future<void> pumpWith(List<Destination> staffOnly) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            body: Row(
+              children: [
+                NavigationSidebar(
+                  expanded: true,
+                  width: 220,
+                  destinations: [
+                    Destination(
+                      'Dashboard',
+                      Icons.dashboard_outlined,
+                      const SizedBox(),
+                    ),
+                  ],
+                  pinned: [
+                    Destination(
+                      'Settings',
+                      Icons.settings_outlined,
+                      const SizedBox(),
+                    ),
+                  ],
+                  staffOnly: staffOnly,
+                  selectedIndex: 0,
+                  pinnedIndex: null,
+                  staffIndex: null,
+                  onSelected: (_) {},
+                  onPinnedSelected: (_) {},
+                  onStaffSelected: (_) {},
+                ),
+                const Expanded(child: SizedBox()),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    await pumpWith([
+      Destination('Development', Icons.terminal_outlined, const SizedBox()),
+    ]);
+
+    expect(find.text('Development'), findsOneWidget);
+    expect(
+      find.byType(Divider),
+      findsNWidgets(2),
+      reason:
+          'Development needs a rule of its own — grouped with Settings it '
+          'reads as one more place to configure the business.',
+    );
+
+    // Not staff: the group and its rule both go.
+    await pumpWith(const []);
+
+    expect(find.text('Development'), findsNothing);
+    expect(
+      find.byType(Divider),
+      findsOneWidget,
+      reason: 'A rule with nothing under it looks like a bug.',
+    );
+  });
 }
+
+/// Put the signup screen on screen with a canned server behind it.
+///
+/// Pumped directly rather than tapped through from the sign-in screen, because
+/// these tests are about what the screen does with an answer — reaching it is
+/// covered once, above.
+Future<void> _pumpSignup(WidgetTester tester, MockClientHandler handler) async {
+  final api = ApiClient(client: MockClient(handler));
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: SignupScreen(api: api, session: Session(api), onSignIn: () {}),
+    ),
+  );
+  await tester.pump();
+}
+
+/// One valid answer per field, so a test can get to the submit.
+Future<void> _fillSignup(WidgetTester tester) async {
+  await tester.enterText(
+    find.widgetWithText(TextField, 'Your name'),
+    'Jose Silva',
+  );
+  await tester.enterText(
+    find.widgetWithText(TextField, 'Email address'),
+    'jose@example.com',
+  );
+  await tester.enterText(
+    find.widgetWithText(TextField, 'Password'),
+    'a-long-passphrase',
+  );
+  await tester.enterText(
+    find.widgetWithText(TextField, 'Business name'),
+    'A-1 Chimney',
+  );
+  await tester.enterText(
+    find.widgetWithText(TextField, 'Its first place'),
+    'Connecticut',
+  );
+  await tester.pump();
+}
+
+/// Whether the button would do anything if it were pressed.
+///
+/// A disabled FilledButton is one whose onPressed is null — asking the widget
+/// rather than looking at its colour is the difference between "greyed out" and
+/// "cannot be pressed", and only the second one prevents a second organization.
+bool _submitEnabled(WidgetTester tester) =>
+    tester
+        .widget<FilledButton>(
+          find.widgetWithText(FilledButton, 'Create account'),
+        )
+        .onPressed !=
+    null;

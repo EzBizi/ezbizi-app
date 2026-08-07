@@ -5,6 +5,7 @@ import '../core/session.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
+import '../widgets/franchise_field.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tag.dart';
 
@@ -93,16 +94,16 @@ class _JobsScreenState extends State<JobsScreen> {
           note: (_loading || _error != null)
               ? 'Everything you can reach.'
               : _jobs.length < _total
-                  ? 'Showing ${_jobs.length} of $_total across the '
-                      '${me.organization.franchiseLabel.toLowerCase()}s you can reach.'
-                  : '$_total across the ${me.organization.franchiseLabel.toLowerCase()}s you can reach.',
+              ? 'Showing ${_jobs.length} of $_total across the '
+                    '${me.organization.franchiseLabel.toLowerCase()}s you can reach.'
+              : '$_total across the ${me.organization.franchiseLabel.toLowerCase()}s you can reach.',
           action: Tooltip(
             // Permission without reach (§4). A dead button with no explanation
             // reads as a broken app; the missing thing is an assignment, and
             // only an administrator can grant it.
             message: me.franchises.isEmpty
                 ? 'You are not assigned to a franchise, so there is nowhere to '
-                    'put a job. An administrator can assign you to one.'
+                      'put a job. An administrator can assign you to one.'
                 : '',
             child: FilledButton.icon(
               onPressed: me.franchises.isEmpty ? null : _create,
@@ -135,11 +136,13 @@ class _JobsScreenState extends State<JobsScreen> {
                                   onPressed: _loadingMore
                                       ? null
                                       : () => _load(page: _page + 1),
-                                  child: Text(_loadingMore
-                                      ? 'Loading…'
-                                      : _pageError != null
-                                          ? 'Try again'
-                                          : 'Load more (${_total - _jobs.length} left)'),
+                                  child: Text(
+                                    _loadingMore
+                                        ? 'Loading…'
+                                        : _pageError != null
+                                        ? 'Try again'
+                                        : 'Load more (${_total - _jobs.length} left)',
+                                  ),
                                 ),
                               ],
                             ),
@@ -185,7 +188,8 @@ class _JobsScreenState extends State<JobsScreen> {
               franchise['name'] ?? '',
               if (job['scheduled_for'] != null)
                 formatStamp(job['scheduled_for'] as String, ''),
-              if (amount['display'] != null) '${amount['currency']} ${amount['display']}',
+              if (amount['display'] != null)
+                '${amount['currency']} ${amount['display']}',
             ].join(' · '),
             style: Theme.of(context).textTheme.bodyMedium,
           ),
@@ -277,13 +281,17 @@ class _NewJobPanelState extends State<_NewJobPanel> {
       if (!settings.ok) {
         // Said out loud rather than degraded quietly. A create form offering the
         // wrong statuses is worse than one that admits it could not load them.
-        _error ??= 'Could not load this organization\'s job statuses: ${settings.message}';
+        _error ??=
+            'Could not load this organization\'s job statuses: ${settings.message}';
         return;
       }
 
       final all = settings.data;
       final rows = (all is List)
-          ? all.cast<Map<String, dynamic>>().where((s) => s['key'] == 'jobs.statuses').toList()
+          ? all
+                .cast<Map<String, dynamic>>()
+                .where((s) => s['key'] == 'jobs.statuses')
+                .toList()
           : const <Map<String, dynamic>>[];
       final resolved = rows.isEmpty ? null : rows.first['value'];
 
@@ -367,7 +375,8 @@ class _NewJobPanelState extends State<_NewJobPanel> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: (_busy || _loading || _franchiseId == null || _customerId == null)
+          onPressed:
+              (_busy || _loading || _franchiseId == null || _customerId == null)
               ? null
               : _submit,
           child: const Text('Create'),
@@ -381,15 +390,11 @@ class _NewJobPanelState extends State<_NewJobPanel> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                DropdownButtonFormField<String>(
-                  initialValue: _franchiseId,
-                  decoration: InputDecoration(
-                    labelText: me.organization.franchiseLabel,
-                  ),
-                  items: me.franchises
-                      .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name)))
-                      .toList(),
-                  onChanged: _busy ? null : (v) => setState(() => _franchiseId = v),
+                FranchiseField(
+                  me: me,
+                  value: _franchiseId,
+                  enabled: !_busy,
+                  onChanged: (v) => setState(() => _franchiseId = v),
                 ),
                 const SizedBox(height: 14),
                 // Searched, not listed. A dropdown of the first 200 by name
@@ -399,7 +404,8 @@ class _NewJobPanelState extends State<_NewJobPanel> {
                 // why. The endpoint already searches name, email, phone and
                 // number, so this asks it.
                 Autocomplete<Map<String, dynamic>>(
-                  displayStringForOption: (c) => '${c['name']} · ${c['number']}',
+                  displayStringForOption: (c) =>
+                      '${c['name']} · ${c['number']}',
                   optionsBuilder: (value) async {
                     if (value.text.trim().isEmpty) return _customers.take(50);
 
@@ -410,48 +416,62 @@ class _NewJobPanelState extends State<_NewJobPanel> {
 
                     if (!response.ok) return const <Map<String, dynamic>>[];
 
-                    return List<Map<String, dynamic>>.from(response.data as List);
+                    return List<Map<String, dynamic>>.from(
+                      response.data as List,
+                    );
                   },
-                  onSelected: (c) => setState(() => _customerId = c['id'] as String),
-                  fieldViewBuilder: (context, controller, focusNode, onSubmit) => TextField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    enabled: !_busy,
-                    decoration: InputDecoration(
-                      labelText: 'Customer',
-                      helperText: _customerId == null
-                          ? 'Search by name, phone, email or number.'
-                          : 'Any customer in the organization — doing work for '
-                              'another franchise\'s customer does not move them.',
-                      helperMaxLines: 3,
-                      suffixIcon: _customerId == null
-                          ? const Icon(Icons.search)
-                          : const Icon(Icons.check, size: 20),
-                    ),
-                    // Typing again after choosing means the choice is stale.
-                    onChanged: (_) {
-                      if (_customerId != null) setState(() => _customerId = null);
-                    },
-                  ),
+                  onSelected: (c) =>
+                      setState(() => _customerId = c['id'] as String),
+                  fieldViewBuilder:
+                      (context, controller, focusNode, onSubmit) => TextField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        enabled: !_busy,
+                        decoration: InputDecoration(
+                          labelText: 'Customer',
+                          helperText: _customerId == null
+                              ? 'Search by name, phone, email or number.'
+                              : 'Any customer in the organization — doing work for '
+                                    'another franchise\'s customer does not move them.',
+                          helperMaxLines: 3,
+                          suffixIcon: _customerId == null
+                              ? const Icon(Icons.search)
+                              : const Icon(Icons.check, size: 20),
+                        ),
+                        // Typing again after choosing means the choice is stale.
+                        onChanged: (_) {
+                          if (_customerId != null) {
+                            setState(() => _customerId = null);
+                          }
+                        },
+                      ),
                   optionsViewBuilder: (context, onSelected, options) => Align(
                     alignment: Alignment.topLeft,
                     child: Material(
                       elevation: 4,
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 260, maxWidth: 420),
+                        constraints: const BoxConstraints(
+                          maxHeight: 260,
+                          maxWidth: 420,
+                        ),
                         child: ListView(
                           padding: EdgeInsets.zero,
                           shrinkWrap: true,
                           children: options
-                              .map((c) => ListTile(
-                                    dense: true,
-                                    title: Text(c['name'] as String),
-                                    subtitle: Text([
+                              .map(
+                                (c) => ListTile(
+                                  dense: true,
+                                  title: Text(c['name'] as String),
+                                  subtitle: Text(
+                                    [
                                       c['number'],
-                                      (c['owning_franchise'] as Map)['name'] ?? '',
-                                    ].join(' · ')),
-                                    onTap: () => onSelected(c),
-                                  ))
+                                      (c['owning_franchise'] as Map)['name'] ??
+                                          '',
+                                    ].join(' · '),
+                                  ),
+                                  onTap: () => onSelected(c),
+                                ),
+                              )
                               .toList(),
                         ),
                       ),
@@ -461,7 +481,9 @@ class _NewJobPanelState extends State<_NewJobPanel> {
                 const SizedBox(height: 14),
                 TextField(
                   controller: _title,
-                  decoration: const InputDecoration(labelText: 'What is the job'),
+                  decoration: const InputDecoration(
+                    labelText: 'What is the job',
+                  ),
                   enabled: !_busy,
                 ),
                 const SizedBox(height: 14),
@@ -471,21 +493,26 @@ class _NewJobPanelState extends State<_NewJobPanel> {
                   items: _statuses
                       .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                       .toList(),
-                  onChanged: _busy ? null : (v) => setState(() => _status = v ?? _status),
+                  onChanged: _busy
+                      ? null
+                      : (v) => setState(() => _status = v ?? _status),
                 ),
                 const SizedBox(height: 14),
                 TextField(
                   controller: _amount,
                   decoration: const InputDecoration(
                     labelText: 'Price',
-                    helperText: 'In dollars — 199.99 for \$199.99. Stored as '
+                    helperText:
+                        'In dollars — 199.99 for \$199.99. Stored as '
                         'whole cents so it cannot drift.',
                     helperMaxLines: 2,
                   ),
                   // Dollars have a decimal point, so the on-screen keyboard has
                   // to offer one. Plain .number hides it on iOS, which would
                   // leave a phone user unable to type anything but whole dollars.
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   enabled: !_busy,
                 ),
                 if (_error != null) ...[

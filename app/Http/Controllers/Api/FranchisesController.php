@@ -40,7 +40,14 @@ class FranchisesController extends Controller
             ],
             'name'     => ['required', 'string', 'max:120'],
             'timezone' => ['nullable', 'string', 'timezone'],
-            'currency' => ['nullable', 'string', 'size:3'],
+            // §7: single currency in v1. `size:3` accepted ZZZ, and a currency
+            // is stamped onto every job created at this franchise and is then
+            // permanent — correctly so, since changing it would relabel amounts
+            // that were really charged in something else. So a typo here is not
+            // a typo, it is a franchise whose financial history is mislabelled
+            // with no way back. The schema stays multi-currency-ready; the
+            // validator is what says v1 is not.
+            'currency' => ['nullable', 'string', 'in:USD'],
         ]);
 
         $company = Company::findOrFail($input['company_id']);

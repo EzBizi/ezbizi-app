@@ -44,6 +44,16 @@ use Illuminate\Support\Facades\Route;
 
 // ── Public: no user and no organization exist yet ────────────────
 Route::prefix('v1/auth')->group(function () {
+    // The front door (§3, TODO #10). One request, one transaction: the person,
+    // the organization, its first company and that company's first franchise.
+    //
+    // The only route in this file carrying `throttle`, and it needs it more than
+    // any of the others — it is public, unauthenticated, and every success
+    // writes six rows. See AppServiceProvider::defineRateLimiters for the
+    // numbers and what they do and do not cover.
+    Route::post('signup', [AuthController::class, 'signup'])
+        ->middleware('throttle:signup');
+
     Route::post('login',  [AuthController::class, 'login']);
     Route::post('choose', [AuthController::class, 'choose']);
 
@@ -200,6 +210,15 @@ Route::prefix('v1')
                     'name'  => $user->name,
                     'email' => $user->email,
                     'role'  => ['id' => $user->role?->id, 'name' => $user->role?->name],
+
+                    // Whether there is a photo to fetch, so the top bar can ask
+                    // for one only when there is one. `/me/profile` already
+                    // carried this, but the top bar reads THIS payload — so
+                    // without it the bar either requests an avatar for everybody
+                    // who has none, or never requests one at all. It was the
+                    // latter, and the picture only ever appeared on the profile
+                    // screen that had just uploaded it.
+                    'has_avatar' => $user->avatar_path !== null,
                     // Carried here as well as on their own endpoint, so the app
                     // can paint the right theme on the first frame instead of
                     // flashing the wrong one while a second request lands.

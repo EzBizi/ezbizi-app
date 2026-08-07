@@ -6,6 +6,7 @@ use App\Models\PlatformStaffLink;
 use App\Notifications\PasswordResetLink;
 use App\Services\Auth\PasswordResets;
 use App\Support\Audit\AuditLogger;
+use App\Support\Auth\PasswordPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -18,15 +19,6 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class PasswordController extends Controller
 {
-    /**
-     * Long enough to be worth having, short enough that people use it.
-     *
-     * Deliberately NOT the staff minimum of 16 — that applies to accounts which
-     * reach every customer on the platform. This is the ordinary tenant policy,
-     * and a length nobody complies with is a length that produces Summer2026!.
-     */
-    private const MIN_LENGTH = 12;
-
     public function __construct(
         private readonly PasswordResets $resets,
         private readonly AuditLogger $audit,
@@ -76,7 +68,7 @@ class PasswordController extends Controller
     {
         $input = $request->validate([
             'token'    => ['required', 'string'],
-            'password' => ['required', 'string', 'min:'.self::MIN_LENGTH, 'confirmed'],
+            'password' => [...PasswordPolicy::rules(), 'confirmed'],
         ]);
 
         $subject = $this->resets->redeem($input['token'], $input['password']);
@@ -107,7 +99,7 @@ class PasswordController extends Controller
     {
         $input = $request->validate([
             'current_password' => ['required', 'string'],
-            'password'         => ['required', 'string', 'min:'.self::MIN_LENGTH, 'confirmed'],
+            'password'         => [...PasswordPolicy::rules(), 'confirmed'],
         ]);
 
         $user = $request->user();

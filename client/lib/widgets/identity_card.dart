@@ -5,6 +5,9 @@ import '../core/api_client.dart';
 import '../core/files.dart';
 import '../core/session.dart';
 import 'error_note.dart';
+import 'logo_cropper.dart';
+import 'side_panel.dart';
+import 'user_avatar.dart';
 
 /// Who you are (plan §2.1 category 6).
 ///
@@ -34,6 +37,9 @@ class _IdentityCardState extends State<IdentityCard> {
   String _email = '';
   bool _hasAvatar = false;
   Uint8List? _avatarPreview;
+
+  /// Bumped when the photo changes, so the fetched copy is not the cached one.
+  String _avatarVersion = '';
 
   bool _loading = true;
   bool _saving = false;
@@ -116,8 +122,9 @@ class _IdentityCardState extends State<IdentityCard> {
     await widget.session.refresh();
 
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Profile saved.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Profile saved.')));
     }
   }
 
@@ -131,17 +138,52 @@ class _IdentityCardState extends State<IdentityCard> {
     return first is List && first.isNotEmpty ? first.first as String : null;
   }
 
+  /// Pick, crop, upload.
+  ///
+  /// The crop is not a nicety. This picture is drawn in a circle everywhere it
+  /// appears, and the server accepts anything up to 6000x6000 of any shape — so
+  /// a landscape photo was stored whole and then centre-cropped by the circle,
+  /// which is how somebody's head ends up outside the frame with nothing they
+  /// can do about it. Choosing what is inside the circle is the whole job.
+  ///
+  /// The same cropper the logos use, restricted to one shape: a logo can be
+  /// square or wide because it sits in different places, and a face in a circle
+  /// can only be square.
   Future<void> _pickPhoto() async {
     final picked = await Files.pickImage();
 
     if (picked == null || !mounted) return;
 
+    final cropped = await showSidePanel<Uint8List>(
+      context,
+      builder: (_) => LogoCropper(
+        bytes: Uint8List.fromList(picked.bytes),
+        shapes: const {
+          'square': {
+            'width': 512,
+            'height': 512,
+            'label': 'Photo',
+            'help': 'Drag to choose what sits inside the circle.',
+          },
+        },
+      ),
+    );
+
+    if (cropped == null || !mounted) return;
+
     // Shown immediately from the bytes in hand. Waiting for a round trip and a
     // re-fetch makes choosing a photo feel like it did not work.
-    setState(() => _avatarPreview = Uint8List.fromList(picked.bytes));
+    setState(() => _avatarPreview = cropped);
 
-    final response =
-        await widget.api.postFile('/me/avatar', 'photo', picked.name, picked.bytes);
+    // The cropper always emits PNG, so the name says so — the server validates
+    // on the file's real contents, but a name that disagrees with them is the
+    // kind of thing that trips a proxy or a virus scanner later.
+    final response = await widget.api.postFile(
+      '/me/avatar',
+      'photo',
+      'avatar.png',
+      cropped,
+    );
 
     if (!mounted) return;
 
@@ -153,7 +195,16 @@ class _IdentityCardState extends State<IdentityCard> {
       return;
     }
 
-    setState(() => _hasAvatar = true);
+    setState(() {
+      _hasAvatar = true;
+      // A new photo at the same URL. Without this the fetched copy is the one
+      // the browser already has.
+      _avatarVersion = DateTime.now().microsecondsSinceEpoch.toString();
+    });
+
+    // The top bar draws the same picture, and it reads the session rather than
+    // this card's state.
+    widget.session.refresh();
   }
 
   Future<void> _removePhoto() async {
@@ -169,7 +220,10 @@ class _IdentityCardState extends State<IdentityCard> {
     setState(() {
       _hasAvatar = false;
       _avatarPreview = null;
+      _avatarVersion = DateTime.now().microsecondsSinceEpoch.toString();
     });
+
+    widget.session.refresh();
   }
 
   @override
@@ -202,17 +256,23 @@ class _IdentityCardState extends State<IdentityCard> {
                 Expanded(
                   child: Column(
                     children: [
-                      Row(children: [
-                        Expanded(child: _field(_first, 'First name')),
-                        const SizedBox(width: 12),
-                        Expanded(child: _field(_middle, 'Middle name (optional)')),
-                      ]),
+                      Row(
+                        children: [
+                          Expanded(child: _field(_first, 'First name')),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _field(_middle, 'Middle name (optional)'),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 12),
-                      Row(children: [
-                        Expanded(child: _field(_last, 'Last name')),
-                        const SizedBox(width: 12),
-                        Expanded(child: _field(_phone, 'Phone number')),
-                      ]),
+                      Row(
+                        children: [
+                          Expanded(child: _field(_last, 'Last name')),
+                          const SizedBox(width: 12),
+                          Expanded(child: _field(_phone, 'Phone number')),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -230,10 +290,15 @@ class _IdentityCardState extends State<IdentityCard> {
             ),
 
             const SizedBox(height: 16),
-            _readOnly(context, 'Email', _email,
-                'Your sign-in address and where a password reset goes. Changing '
-                'it needs a confirmation email, which is not wired up yet.'),
-            if (me.roleName != null) _readOnly(context, 'Role', me.roleName!, null),
+            _readOnly(
+              context,
+              'Email',
+              _email,
+              'Your sign-in address and where a password reset goes. Changing '
+                  'it needs a confirmation email, which is not wired up yet.',
+            ),
+            if (me.roleName != null)
+              _readOnly(context, 'Role', me.roleName!, null),
             _readOnly(context, 'Organization', me.organization.name, null),
             if (me.franchises.isNotEmpty)
               _readOnly(
@@ -252,7 +317,8 @@ class _IdentityCardState extends State<IdentityCard> {
             Align(
               alignment: Alignment.centerRight,
               child: FilledButton(
-                onPressed: _saving ||
+                onPressed:
+                    _saving ||
                         _first.text.trim().isEmpty ||
                         _last.text.trim().isEmpty
                     ? null
@@ -267,28 +333,21 @@ class _IdentityCardState extends State<IdentityCard> {
   }
 
   Widget _photo(BuildContext context, Me me) {
-    final scheme = Theme.of(context).colorScheme;
-
     return Column(
       children: [
-        CircleAvatar(
+        // Was a NetworkImage, which is the browser fetching the URL by itself —
+        // no Authorization header, and this endpoint is authenticated on
+        // purpose (§9: a guessable avatar URL says who works where). So it 401'd
+        // every time: the upload succeeded, the button changed to "Change", and
+        // the circle stayed empty.
+        UserAvatar(
+          api: widget.api,
+          userId: me.id,
+          name: me.name,
           radius: 44,
-          backgroundColor: scheme.primaryContainer,
-          backgroundImage: _avatarPreview != null
-              ? MemoryImage(_avatarPreview!)
-              : _hasAvatar
-                  // Cache-busted on every rebuild, or a replaced photo keeps
-                  // showing the old one until the browser feels like asking.
-                  ? NetworkImage(
-                      '${ApiClient.baseUrl}/api/v1/users/${me.id}/avatar'
-                      '?v=${DateTime.now().millisecondsSinceEpoch ~/ 60000}')
-                  : null,
-          child: (_avatarPreview == null && !_hasAvatar)
-              ? Text(
-                  me.name.isNotEmpty ? me.name[0].toUpperCase() : '?',
-                  style: TextStyle(fontSize: 30, color: scheme.onPrimaryContainer),
-                )
-              : null,
+          hasAvatar: _hasAvatar,
+          version: _avatarVersion,
+          bytes: _avatarPreview,
         ),
         const SizedBox(height: 8),
         TextButton(
@@ -296,23 +355,20 @@ class _IdentityCardState extends State<IdentityCard> {
           child: Text(_hasAvatar ? 'Change' : 'Add photo'),
         ),
         if (_hasAvatar)
-          TextButton(
-            onPressed: _removePhoto,
-            child: const Text('Remove'),
-          ),
+          TextButton(onPressed: _removePhoto, child: const Text('Remove')),
       ],
     );
   }
 
   Widget _field(TextEditingController c, String label) => TextField(
-        controller: c,
-        decoration: InputDecoration(
-          labelText: label,
-          isDense: true,
-          border: const OutlineInputBorder(),
-        ),
-        onChanged: (_) => setState(() {}),
-      );
+    controller: c,
+    decoration: InputDecoration(
+      labelText: label,
+      isDense: true,
+      border: const OutlineInputBorder(),
+    ),
+    onChanged: (_) => setState(() {}),
+  );
 
   /// A text field with suggestions, not a dropdown.
   ///
@@ -362,7 +418,9 @@ class _IdentityCardState extends State<IdentityCard> {
         child: Row(
           children: [
             Expanded(
-              child: Text(_dob?.toIso8601String().split('T').first ?? 'Not set'),
+              child: Text(
+                _dob?.toIso8601String().split('T').first ?? 'Not set',
+              ),
             ),
             if (_dob != null)
               IconButton(
@@ -376,7 +434,12 @@ class _IdentityCardState extends State<IdentityCard> {
     );
   }
 
-  Widget _readOnly(BuildContext context, String label, String value, String? note) {
+  Widget _readOnly(
+    BuildContext context,
+    String label,
+    String value,
+    String? note,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Column(
@@ -387,7 +450,10 @@ class _IdentityCardState extends State<IdentityCard> {
             children: [
               SizedBox(
                 width: 130,
-                child: Text(label, style: Theme.of(context).textTheme.bodySmall),
+                child: Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ),
               Expanded(child: Text(value)),
             ],
