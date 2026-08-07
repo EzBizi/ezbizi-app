@@ -93,7 +93,6 @@ class _ScopePickerDialogState extends State<ScopePickerDialog> {
         icon: Icons.apartment_outlined,
         depth: depth,
         path: path,
-        note: subs.isNotEmpty ? 'and its sub companies' : null,
         logoPath: '/branding/companies/${company.id}',
       ));
 
