@@ -1,0 +1,545 @@
+import 'package:flutter/material.dart';
+
+import 'side_panel.dart';
+
+/// Editors for the settings that have a shape (plan §6, §2.1 layer 5).
+///
+/// ── Why these exist ──────────────────────────────────────────────
+///
+/// Business hours, quiet hours and job statuses were all typed `json` on the
+/// server, so the screen had one control for all three: a box of raw JSON. To
+/// say the shop opens at eight you typed
+///
+///     {"monday": {"open": "08:00", "close": "17:00"}, ...}
+///
+/// and got every brace right, or the save was refused and you started again.
+/// That is not a setting, it is a config file with a text area around it.
+///
+/// ── Driven by the type, not by the key ───────────────────────────
+///
+/// Each editor is chosen by the setting's declared type — `hours`,
+/// `time_range`, `list` — never by its key. A second set of opening hours added
+/// to the registry tomorrow gets this editor with no change here, which is the
+/// same rule the rest of the app follows: the thing is configured, not coded.
+///
+/// ── No dialogs, and none needed ──────────────────────────────────
+///
+/// showTimePicker is a modal, so it is not used. A time is chosen from a
+/// dropdown of quarter hours, which is a menu rather than a pop-up, and which
+/// happens to be faster than a clock face for the "half past eight" that
+/// opening times almost always are.
+
+/// A time of day, in quarter-hour steps.
+///
+/// Values are 24-hour `HH:MM` because that is what the server stores and
+/// compares. What is shown follows the reader's locale and their 24-hour
+/// preference, so the same stored value reads as "5:00 PM" or "17:00" without
+/// either end having to know which.
+class TimeField extends StatelessWidget {
+  const TimeField({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  final String value;
+  final ValueChanged<String> onChanged;
+  final bool enabled;
+
+  static const int _stepMinutes = 15;
+
+  static String format(BuildContext context, String hhmm) {
+    final parts = hhmm.split(':');
+    final time = TimeOfDay(
+      hour: int.tryParse(parts.first) ?? 0,
+      minute: int.tryParse(parts.last) ?? 0,
+    );
+
+    return MaterialLocalizations.of(context).formatTimeOfDay(
+      time,
+      alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final slots = <String>[
+      for (var m = 0; m < 24 * 60; m += _stepMinutes)
+        '${(m ~/ 60).toString().padLeft(2, '0')}:'
+            '${(m % 60).toString().padLeft(2, '0')}',
+    ];
+
+    // Anything set through the API can sit off the quarter hour. Dropping it
+    // from the list would make the dropdown throw on a value it is meant to be
+    // showing, so it joins the list in its right place instead.
+    if (!slots.contains(value)) {
+      slots
+        ..add(value)
+        ..sort();
+    }
+
+    return DropdownButton<String>(
+      value: value,
+      isDense: true,
+      underline: const SizedBox.shrink(),
+      onChanged: enabled ? (v) => v == null ? null : onChanged(v) : null,
+      items: [
+        for (final slot in slots)
+          DropdownMenuItem(value: slot, child: Text(format(context, slot))),
+      ],
+    );
+  }
+}
+
+/// Opening times, one row per day (`hours`).
+class HoursButton extends StatelessWidget {
+  const HoursButton({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.editable,
+    required this.onChanged,
+  });
+
+  final String label;
+  final dynamic value;
+  final bool editable;
+  final ValueChanged<Map<String, dynamic>> onChanged;
+
+  static const List<String> weekdays = [
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+    'sunday',
+  ];
+
+  static String title(String day) => day[0].toUpperCase() + day.substring(1, 3);
+
+  Map<String, dynamic> get _week {
+    final raw = value is Map ? Map<String, dynamic>.from(value as Map) : {};
+
+    return {for (final day in weekdays) day: raw[day]};
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: editable ? () => _open(context) : null,
+      child: Text(_summary(context)),
+    );
+  }
+
+  /// The week in one line, when the week has one line's worth to say.
+  ///
+  /// Almost every business is open the same hours on the days it is open, so
+  /// the useful summary is which days and what time. When they differ, saying
+  /// so is more honest than picking one day's hours to stand for all of them.
+  String _summary(BuildContext context) {
+    final open = _week.entries.where((e) => e.value != null).toList();
+
+    if (open.isEmpty) return 'Closed all week';
+
+    final days = open.map((e) => title(e.key)).join(' ');
+    final ranges = open
+        .map((e) => '${e.value['open']}-${e.value['close']}')
+        .toSet();
+
+    if (ranges.length > 1) return '$days · varies';
+
+    final first = open.first.value as Map;
+
+    return '$days · ${TimeField.format(context, first['open'] as String)}'
+        ' – ${TimeField.format(context, first['close'] as String)}';
+  }
+
+  Future<void> _open(BuildContext context) async {
+    var week = _week;
+
+    final saved = await showSidePanel<Map<String, dynamic>>(
+      context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, repaint) => SidePanel(
+          title: label,
+          width: 480,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(week),
+              child: const Text('Save'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final day in weekdays)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 46,
+                        child: Text(
+                          title(day),
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ),
+                      Switch(
+                        value: week[day] != null,
+                        onChanged: (on) => repaint(() {
+                          // Closing keeps nothing, so reopening starts from the
+                          // ordinary working day rather than from midnight to
+                          // midnight, which is what an empty pair would mean.
+                          week[day] = on
+                              ? {'open': '08:00', 'close': '17:00'}
+                              : null;
+                        }),
+                      ),
+                      const SizedBox(width: 8),
+                      if (week[day] == null)
+                        Text(
+                          'Closed',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        )
+                      else ...[
+                        TimeField(
+                          value: week[day]['open'] as String,
+                          onChanged: (v) =>
+                              repaint(() => week[day]['open'] = v),
+                        ),
+                        const Text(' – '),
+                        TimeField(
+                          value: week[day]['close'] as String,
+                          onChanged: (v) =>
+                              repaint(() => week[day]['close'] = v),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 14),
+              Text(
+                'A day that is switched off is closed. Closing later than it '
+                'opens is allowed — an evening shift running past midnight is '
+                'a real working day, not a mistake.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (saved != null) onChanged(saved);
+  }
+}
+
+/// One start-and-end pair that can also be off (`time_range`).
+class TimeRangeButton extends StatelessWidget {
+  const TimeRangeButton({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.editable,
+    required this.onChanged,
+    this.help,
+  });
+
+  final String label;
+  final dynamic value;
+  final bool editable;
+  final String? help;
+  final ValueChanged<Map<String, dynamic>> onChanged;
+
+  String? get _start =>
+      value is Map ? (value as Map)['start'] as String? : null;
+  String? get _end => value is Map ? (value as Map)['end'] as String? : null;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: editable ? () => _open(context) : null,
+      child: Text(
+        _start == null || _end == null
+            ? 'Off'
+            : '${TimeField.format(context, _start!)}'
+                  ' – ${TimeField.format(context, _end!)}',
+      ),
+    );
+  }
+
+  Future<void> _open(BuildContext context) async {
+    var start = _start;
+    var end = _end;
+
+    final saved = await showSidePanel<Map<String, dynamic>>(
+      context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, repaint) => SidePanel(
+          title: label,
+          subtitle: help,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              // Both or neither — half a range is a rule nothing downstream
+              // can evaluate, and the server refuses it. The switch below is
+              // what makes that impossible to express rather than a message
+              // arriving after the save.
+              onPressed: () =>
+                  Navigator.of(context).pop({'start': start, 'end': end}),
+              child: const Text('Save'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('On'),
+                value: start != null,
+                onChanged: (on) => repaint(() {
+                  start = on ? '22:00' : null;
+                  end = on ? '07:00' : null;
+                }),
+              ),
+              if (start != null && end != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Text('From '),
+                    TimeField(
+                      value: start!,
+                      onChanged: (v) => repaint(() => start = v),
+                    ),
+                    const Text(' until '),
+                    TimeField(
+                      value: end!,
+                      onChanged: (v) => repaint(() => end = v),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (saved != null) onChanged(saved);
+  }
+}
+
+/// An ordered list of names — job statuses and anything like them (`list`).
+///
+/// Order is content here, not presentation: a status list is a pipeline, and
+/// the sequence is what a board reads to lay its columns out left to right. So
+/// the editor lets you drag, and saves what you see.
+class ListButton extends StatefulWidget {
+  const ListButton({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.editable,
+    required this.onChanged,
+    this.help,
+  });
+
+  final String label;
+  final dynamic value;
+  final bool editable;
+  final String? help;
+  final ValueChanged<List<String>> onChanged;
+
+  @override
+  State<ListButton> createState() => _ListButtonState();
+}
+
+class _ListButtonState extends State<ListButton> {
+  List<String> get _items => widget.value is List
+      ? (widget.value as List).map((e) => '$e').toList()
+      : [];
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      // The row it sits in has a heading beside it, so the button takes what
+      // is left and ellipsizes rather than pushing the label off the screen.
+      constraints: const BoxConstraints(maxWidth: 260),
+      child: OutlinedButton(
+        onPressed: widget.editable ? _open : null,
+        child: Text(
+          _items.isEmpty ? 'None' : _items.join(', '),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _open() async {
+    final saved = await showSidePanel<List<String>>(
+      context,
+      builder: (_) =>
+          _ListPanel(label: widget.label, help: widget.help, items: _items),
+    );
+
+    if (saved != null) widget.onChanged(saved);
+  }
+}
+
+class _ListPanel extends StatefulWidget {
+  const _ListPanel({required this.label, required this.items, this.help});
+
+  final String label;
+  final String? help;
+  final List<String> items;
+
+  @override
+  State<_ListPanel> createState() => _ListPanelState();
+}
+
+/// A row of the list, with an identity of its own.
+///
+/// Keyed by the text it holds, a row would get a new key on every keystroke and
+/// lose focus mid-word; keyed by its position, dragging would carry the text of
+/// whatever used to be there. So each row keeps an id that outlives both.
+class _Row {
+  _Row(this.id, String text) : controller = TextEditingController(text: text);
+
+  final int id;
+  final TextEditingController controller;
+}
+
+class _ListPanelState extends State<_ListPanel> {
+  late final List<_Row> _rows = [
+    for (final (i, item) in widget.items.indexed) _Row(i, item),
+  ];
+
+  late int _nextId = _rows.length;
+  String? _error;
+
+  @override
+  void dispose() {
+    for (final row in _rows) {
+      row.controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SidePanel(
+      title: widget.label,
+      subtitle: widget.help,
+      width: 480,
+      // The list scrolls itself — see side_panel.dart.
+      scrollable: false,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('Save')),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: ReorderableListView(
+              buildDefaultDragHandles: false,
+              onReorder: (from, to) => setState(() {
+                if (to > from) to -= 1;
+                _rows.insert(to, _rows.removeAt(from));
+              }),
+              children: [
+                for (final (i, row) in _rows.indexed)
+                  Padding(
+                    key: ValueKey(row.id),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        ReorderableDragStartListener(
+                          index: i,
+                          child: const Padding(
+                            padding: EdgeInsets.only(right: 8),
+                            child: Icon(Icons.drag_indicator, size: 20),
+                          ),
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: row.controller,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          tooltip: 'Remove',
+                          onPressed: () => setState(() {
+                            _rows.removeAt(i).controller.dispose();
+                          }),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => setState(() => _rows.add(_Row(_nextId++, ''))),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The same three rules the server enforces, checked while the cursor is
+  /// still in the field rather than as a 422 after the panel has closed.
+  void _save() {
+    final values = [for (final row in _rows) row.controller.text.trim()];
+
+    if (values.any((v) => v.isEmpty)) {
+      setState(
+        () => _error = 'One of these is blank. Fill it in or remove it.',
+      );
+      return;
+    }
+
+    if (values.toSet().length != values.length) {
+      setState(
+        () => _error = 'Two entries are the same — each has to be distinct.',
+      );
+      return;
+    }
+
+    if (values.isEmpty) {
+      setState(() => _error = 'There has to be at least one.');
+      return;
+    }
+
+    Navigator.of(context).pop(values);
+  }
+}

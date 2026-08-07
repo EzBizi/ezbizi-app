@@ -132,7 +132,7 @@ class SettingRegistry
         return [
             new SettingDefinition(
                 key: 'ops.business_hours', label: 'Business hours',
-                type: SettingDefinition::TYPE_JSON,
+                type: SettingDefinition::TYPE_HOURS,
                 // Per weekday. `null` means closed — distinct from 00:00–00:00,
                 // which would otherwise read as "open, for zero minutes".
                 default: [
@@ -284,7 +284,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'notifications.quiet_hours', label: 'Quiet hours',
-                type: SettingDefinition::TYPE_JSON,
+                type: SettingDefinition::TYPE_TIME_RANGE,
                 default: ['start' => null, 'end' => null],
                 help: 'Suppress non-urgent notifications. Null disables.',
             ),
@@ -329,7 +329,7 @@ class SettingRegistry
              */
             new SettingDefinition(
                 key: 'jobs.statuses', label: 'Job statuses',
-                type: SettingDefinition::TYPE_JSON,
+                type: SettingDefinition::TYPE_LIST,
                 default: ['scheduled', 'in_progress', 'completed', 'cancelled'],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 help: 'Renaming one does not rename it on existing jobs — those keep the '

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/files.dart';
 import 'logo_cropper.dart';
+import 'side_panel.dart';
 
 /// An organization's or company's mark, with the controls to change it (§12).
 ///
@@ -132,8 +133,8 @@ class _LogoBadgeState extends State<LogoBadge> {
     // Cropped before it is sent, never after. The server refuses anything that
     // is not exactly one of the two sizes, and almost no logo on anybody's disk
     // already is — so this is what turns that rule from a wall into a step.
-    final cropped = await showDialog<Uint8List>(
-      context: context,
+    final cropped = await showSidePanel<Uint8List>(
+      context,
       builder: (_) => LogoCropper(
         bytes: Uint8List.fromList(picked.bytes),
         shapes: (shapes.body['shapes'] as Map).cast<String, dynamic>(),

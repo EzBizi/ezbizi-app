@@ -6,6 +6,7 @@ import '../../widgets/tag.dart';
 import '../../widgets/enrolment_dialog.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/recovery_codes.dart';
+import '../../widgets/side_panel.dart';
 
 /// EzBizi staff accounts (plan §4.2). Lead Developer only.
 ///
@@ -205,9 +206,9 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
   // ── enrolment ────────────────────────────────────────────────
 
   Future<void> _create() async {
-    final created = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (_) => _NewStaffDialog(staff: widget.staff),
+    final created = await showSidePanel<Map<String, dynamic>>(
+      context,
+      builder: (_) => _NewStaffPanel(staff: widget.staff),
     );
 
     if (created == null || !mounted) return;
@@ -220,14 +221,10 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
   }
 
   Future<void> _resetTotp(Map<String, dynamic> account) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Re-enrol ${account['name']}?'),
-        content: const Text(
-          'Their current authenticator stops working immediately and every '
-          'session is ended. Use this when a phone is lost or suspect.',
-        ),
+    final confirmed = await showSidePanel<bool>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Re-enrol ${account['name']}?',
         actions: [
           TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -236,6 +233,10 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
               onPressed: () => Navigator.of(context).pop(true),
               child: const Text('Re-enrol')),
         ],
+        child: const Text(
+          'Their current authenticator stops working immediately and every '
+          'session is ended. Use this when a phone is lost or suspect.',
+        ),
       ),
     );
 
@@ -256,30 +257,16 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
     if (mounted) _load();
   }
 
-  /// Confirm a secret that was issued earlier — the dialog was closed, or the
+  /// Confirm a secret that was issued earlier — the panel was closed, or the
   /// person went away to find their phone.
   Future<void> _confirmExisting(Map<String, dynamic> account) async {
     final code = TextEditingController();
 
-    final entered = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Confirm ${account['name']}\'s authenticator'),
-        content: SizedBox(
-          width: 380,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Ask them to read out the six digits their app is showing.'),
-              const SizedBox(height: 16),
-              TextField(
-                controller: code,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Code'),
-              ),
-            ],
-          ),
-        ),
+    final entered = await showSidePanel<String>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Confirm ${account['name']}\'s authenticator',
+        subtitle: 'Ask them to read out the six digits their app is showing.',
         actions: [
           TextButton(
               onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
@@ -288,6 +275,11 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
             child: const Text('Confirm'),
           ),
         ],
+        child: TextField(
+          controller: code,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Code'),
+        ),
       ),
     );
 
@@ -305,10 +297,11 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
     }
 
     // The codes are minted by this call and are never retrievable again. A
-    // snackbar here would silently destroy them.
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
+    // snackbar here would silently destroy them. The dialog this replaced also
+    // refused to be dismissed; a panel always can be, so closing it early now
+    // costs a re-enrolment — the panel's own words are what stop that.
+    await showSidePanel<void>(
+      context,
       builder: (_) => RecoveryCodesDialog(
         codes: (response.body['recovery_codes'] as List? ?? [])
             .map((c) => c as String)
@@ -321,9 +314,8 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
 
   Future<void> _showEnrolment(
       Map<String, dynamic> account, Map<String, dynamic> enrolment) {
-    return showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
+    return showSidePanel<bool>(
+      context,
       builder: (_) => EnrolmentDialog(
         title: 'Set up ${account['name']}\'s authenticator',
         email: account['email'] as String,
@@ -348,16 +340,16 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
 }
 
 /// Collecting the details for a new account.
-class _NewStaffDialog extends StatefulWidget {
-  const _NewStaffDialog({required this.staff});
+class _NewStaffPanel extends StatefulWidget {
+  const _NewStaffPanel({required this.staff});
 
   final StaffSession staff;
 
   @override
-  State<_NewStaffDialog> createState() => _NewStaffDialogState();
+  State<_NewStaffPanel> createState() => _NewStaffPanelState();
 }
 
-class _NewStaffDialogState extends State<_NewStaffDialog> {
+class _NewStaffPanelState extends State<_NewStaffPanel> {
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
@@ -415,68 +407,8 @@ class _NewStaffDialogState extends State<_NewStaffDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Add staff'),
-      content: SizedBox(
-        width: 420,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextField(
-                controller: _name,
-                decoration: const InputDecoration(labelText: 'Name'),
-                enabled: !_busy,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _email,
-                decoration: const InputDecoration(labelText: 'Email'),
-                keyboardType: TextInputType.emailAddress,
-                enabled: !_busy,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _password,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  // Longer than the tenant minimum, and the reason is worth
-                  // saying rather than leaving as an arbitrary-looking rule.
-                  helperText: 'At least 16 characters — this account reaches every customer',
-                ),
-                obscureText: true,
-                enabled: !_busy,
-              ),
-              const SizedBox(height: 18),
-              Text('Tier', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'developer', label: Text('Developer')),
-                  ButtonSegment(value: 'lead_developer', label: Text('Lead Developer')),
-                ],
-                selected: {_tier},
-                onSelectionChanged: _busy ? null : (s) => setState(() => _tier = s.first),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _tier == 'lead_developer'
-                    ? 'Reaches every organization, may enter a client without their '
-                        'approval, and is exempt from the ordinary audit trail. '
-                        'Client access is still always recorded.'
-                    : 'Platform work only. Reaching client records needs the client\'s '
-                        'approval on each session.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 14),
-                ErrorNote(_error!),
-              ],
-            ],
-          ),
-        ),
-      ),
+    return SidePanel(
+      title: 'Add staff',
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(),
@@ -487,6 +419,60 @@ class _NewStaffDialogState extends State<_NewStaffDialog> {
           child: const Text('Create'),
         ),
       ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _name,
+            decoration: const InputDecoration(labelText: 'Name'),
+            enabled: !_busy,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _email,
+            decoration: const InputDecoration(labelText: 'Email'),
+            keyboardType: TextInputType.emailAddress,
+            enabled: !_busy,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _password,
+            decoration: const InputDecoration(
+              labelText: 'Password',
+              // Longer than the tenant minimum, and the reason is worth
+              // saying rather than leaving as an arbitrary-looking rule.
+              helperText: 'At least 16 characters — this account reaches every customer',
+            ),
+            obscureText: true,
+            enabled: !_busy,
+          ),
+          const SizedBox(height: 18),
+          Text('Tier', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'developer', label: Text('Developer')),
+              ButtonSegment(value: 'lead_developer', label: Text('Lead Developer')),
+            ],
+            selected: {_tier},
+            onSelectionChanged: _busy ? null : (s) => setState(() => _tier = s.first),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _tier == 'lead_developer'
+                ? 'Reaches every organization, may enter a client without their '
+                    'approval, and is exempt from the ordinary audit trail. '
+                    'Client access is still always recorded.'
+                : 'Platform work only. Reaching client records needs the client\'s '
+                    'approval on each session.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 14),
+            ErrorNote(_error!),
+          ],
+        ],
+      ),
     );
   }
 }

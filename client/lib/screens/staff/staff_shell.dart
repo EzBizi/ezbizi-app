@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/staff_session.dart';
 import '../../core/theme.dart';
 import '../../widgets/enrolment_dialog.dart';
+import '../../widgets/side_panel.dart';
 import 'health_screen.dart';
 import 'impersonations_screen.dart';
 import 'modules_screen.dart';
@@ -40,9 +41,9 @@ class _StaffShellState extends State<StaffShell> {
     // Both factors again, not just the session. A staff token lives twelve
     // hours; without re-proving them, whoever stole one could bind their own
     // phone as a permanent second factor.
-    final proof = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (_) => const _ReauthDialog(),
+    final proof = await showSidePanel<Map<String, String>>(
+      context,
+      builder: (_) => const _ReauthPanel(),
     );
 
     if (proof == null || !mounted) return;
@@ -60,9 +61,11 @@ class _StaffShellState extends State<StaffShell> {
     final enrolment = response.body['enrolment'] as Map<String, dynamic>;
     final me = widget.staff.me!;
 
-    await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
+    // The undismissable barrier this used to have is gone: a panel is always
+    // closeable, by design. Nothing is lost by leaving early — the old secret
+    // keeps working until a code confirms the new one.
+    await showSidePanel<bool>(
+      context,
       builder: (_) => EnrolmentDialog(
         title: 'Move your authenticator',
         email: me.email,
@@ -240,16 +243,16 @@ class _Destination {
 
 /// Re-proving both factors before binding a new one.
 ///
-/// A StatefulWidget purely so the controllers get disposed — a dialog that
+/// A StatefulWidget purely so the controllers get disposed — a panel that
 /// builds them in a closure leaks one per opening.
-class _ReauthDialog extends StatefulWidget {
-  const _ReauthDialog();
+class _ReauthPanel extends StatefulWidget {
+  const _ReauthPanel();
 
   @override
-  State<_ReauthDialog> createState() => _ReauthDialogState();
+  State<_ReauthPanel> createState() => _ReauthPanelState();
 }
 
-class _ReauthDialogState extends State<_ReauthDialog> {
+class _ReauthPanelState extends State<_ReauthPanel> {
   final _password = TextEditingController();
   final _code = TextEditingController();
 
@@ -267,34 +270,10 @@ class _ReauthDialogState extends State<_ReauthDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Confirm it is you'),
-      content: SizedBox(
-        width: 380,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Binding a new authenticator needs your password and a code from '
-              'the current one — a session on its own is not enough.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _password,
-              decoration: const InputDecoration(labelText: 'Password'),
-              obscureText: true,
-              autofocus: true,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _code,
-              decoration: const InputDecoration(labelText: 'Code from your current app'),
-              onSubmitted: (_) => _submit(),
-            ),
-          ],
-        ),
-      ),
+    return SidePanel(
+      title: 'Confirm it is you',
+      subtitle: 'Binding a new authenticator needs your password and a code from '
+          'the current one — a session on its own is not enough.',
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -302,6 +281,23 @@ class _ReauthDialogState extends State<_ReauthDialog> {
         ),
         FilledButton(onPressed: _submit, child: const Text('Continue')),
       ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _password,
+            decoration: const InputDecoration(labelText: 'Password'),
+            obscureText: true,
+            autofocus: true,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _code,
+            decoration: const InputDecoration(labelText: 'Code from your current app'),
+            onSubmitted: (_) => _submit(),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import 'error_note.dart';
+import 'side_panel.dart';
 import 'totp_setup_dialog.dart';
 
 /// A client switching two-factor on for themselves (plan §6).
@@ -76,9 +77,8 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
 
     final enrolment = begin.body['enrolment'] as Map<String, dynamic>;
 
-    await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
+    await showSidePanel<bool>(
+      context,
       builder: (_) => TotpSetupDialog(
         title: replacing ? 'Move to a new authenticator' : 'Turn on two-factor',
         accountLabel: widget.session.me!.email,
@@ -106,39 +106,10 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
     final password = TextEditingController();
     final code = TextEditingController();
 
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: SizedBox(
-          width: 380,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(why),
-              const SizedBox(height: 16),
-              TextField(
-                controller: password,
-                obscureText: true,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Password'),
-              ),
-              if (enrolled) ...[
-                const SizedBox(height: 12),
-                TextField(
-                  controller: code,
-                  decoration: const InputDecoration(
-                    labelText: 'Authenticator code',
-                    // A recovery code counts. Somebody who lost the phone is
-                    // precisely who needs this, and refusing them would leave
-                    // the only way back through a support request.
-                    helperText: 'Six digits, or a recovery code',
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
+    final ok = await showSidePanel<bool>(
+      context,
+      builder: (context) => SidePanel(
+        title: title,
         actions: [
           TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -147,6 +118,32 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
               onPressed: () => Navigator.of(context).pop(true),
               child: const Text('Continue')),
         ],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(why),
+            const SizedBox(height: 16),
+            TextField(
+              controller: password,
+              obscureText: true,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Password'),
+            ),
+            if (enrolled) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: code,
+                decoration: const InputDecoration(
+                  labelText: 'Authenticator code',
+                  // A recovery code counts. Somebody who lost the phone is
+                  // precisely who needs this, and refusing them would leave
+                  // the only way back through a support request.
+                  helperText: 'Six digits, or a recovery code',
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
 

@@ -6,6 +6,7 @@ import '../../widgets/auth_preview.dart';
 import '../../widgets/auth_shell.dart';
 import '../../widgets/totp_setup_dialog.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/side_panel.dart';
 
 /// Control-plane sign-in (plan §4.2).
 ///
@@ -118,9 +119,8 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     // after sign-in, and this is deliberately not one.
     final enrolApi = ApiClient()..setToken(token);
 
-    final done = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
+    final done = await showSidePanel<bool>(
+      context,
       builder: (_) => TotpSetupDialog(
         accountLabel: (begin.body['account'] as Map<String, dynamic>)['email'] as String,
         secret: enrolment['secret'] as String,

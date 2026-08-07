@@ -19,8 +19,30 @@ import '../widgets/side_panel.dart';
 /// The first place is here for a harder reason: §3 says a company cannot exist
 /// without a franchise. Asking for it in a second step would leave somebody able
 /// to close the panel halfway and produce exactly the state the rule forbids.
+///
+/// ── One form for adding and for editing ──────────────────────────
+///
+/// The same questions, so the same form. A separate edit screen would be the
+/// same eight fields maintained twice, and the second copy is the one that
+/// falls behind when a ninth is added.
+///
+/// Editing asks less, not differently. §3 says an entity is never moved between
+/// parents, so the kind and the parent are not offered — a control that only
+/// ever produces a refusal is worse than no control. And a company being edited
+/// already has its places, so "its first place" has nothing left to ask.
 class CompanyFormPanel extends StatefulWidget {
-  const CompanyFormPanel({super.key, required this.parents, this.fixedParent});
+  const CompanyFormPanel({super.key, required this.parents, this.fixedParent})
+    : existing = null;
+
+  /// Edit what is already there. [existing] is a company from /companies.
+  const CompanyFormPanel.edit({
+    super.key,
+    required Map<String, dynamic> company,
+  }) : existing = company,
+       parents = const [],
+       fixedParent = null;
+
+  final Map<String, dynamic>? existing;
 
   /// Top-level companies only.
   ///
@@ -51,7 +73,9 @@ class CompanyDraft {
   });
 
   final String name;
-  final String franchise;
+
+  /// Null when editing — the company already has its places.
+  final String? franchise;
   final String? parentId;
   final String address1;
   final String address2;
@@ -61,37 +85,73 @@ class CompanyDraft {
   final String phone;
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        if (parentId != null) 'parent_company_id': parentId,
-        'franchise': {'name': franchise},
-        // Blank means "not given", not "set this to empty" — the same rule the
-        // importer follows, so a half-filled form does not write empty strings
-        // over columns that were meant to stay null.
-        if (address1.isNotEmpty) 'address_line1': address1,
-        if (address2.isNotEmpty) 'address_line2': address2,
-        if (city.isNotEmpty) 'city': city,
-        if (state.isNotEmpty) 'state': state,
-        if (postalCode.isNotEmpty) 'postal_code': postalCode,
-        if (phone.isNotEmpty) 'phone': phone,
-      };
+    'name': name,
+    if (parentId != null) 'parent_company_id': parentId,
+    'franchise': {'name': franchise},
+    // Blank means "not given", not "set this to empty" — the same rule the
+    // importer follows, so a half-filled form does not write empty strings
+    // over columns that were meant to stay null.
+    if (address1.isNotEmpty) 'address_line1': address1,
+    if (address2.isNotEmpty) 'address_line2': address2,
+    if (city.isNotEmpty) 'city': city,
+    if (state.isNotEmpty) 'state': state,
+    if (postalCode.isNotEmpty) 'postal_code': postalCode,
+    if (phone.isNotEmpty) 'phone': phone,
+  };
+
+  /// Every field, every time — including the empty ones.
+  ///
+  /// The opposite rule to creating, and deliberately so. On the way in, blank
+  /// means "I did not say"; on the way out it means "take it off", because
+  /// clearing a field somebody typed by mistake is the whole point of an edit
+  /// form. Omitting it would leave the old value there and look like the save
+  /// had failed.
+  ///
+  /// `parent_company_id` is absent, not null: §3 says an entity is never moved
+  /// between parents, and the endpoint refuses the key outright.
+  Map<String, dynamic> toUpdateJson() => {
+    'name': name,
+    'address_line1': address1.isEmpty ? null : address1,
+    'address_line2': address2.isEmpty ? null : address2,
+    'city': city.isEmpty ? null : city,
+    'state': state.isEmpty ? null : state,
+    'postal_code': postalCode.isEmpty ? null : postalCode,
+    'phone': phone.isEmpty ? null : phone,
+  };
 }
 
 class _CompanyFormPanelState extends State<CompanyFormPanel> {
-  final _name = TextEditingController();
+  late final _name = _controller('name');
   final _franchise = TextEditingController();
-  final _address1 = TextEditingController();
-  final _address2 = TextEditingController();
-  final _city = TextEditingController();
-  final _state = TextEditingController();
-  final _postal = TextEditingController();
-  final _phone = TextEditingController();
+  late final _address1 = _controller('address_line1');
+  late final _address2 = _controller('address_line2');
+  late final _city = _controller('city');
+  late final _state = _controller('state');
+  late final _postal = _controller('postal_code');
+  late final _phone = _controller('phone');
 
-  late bool _isSub = widget.fixedParent != null;
+  bool get _editing => widget.existing != null;
+
+  late bool _isSub =
+      widget.fixedParent != null ||
+      widget.existing?['parent_company_id'] != null;
   late String? _parentId = widget.fixedParent?.id;
+
+  TextEditingController _controller(String field) =>
+      TextEditingController(text: widget.existing?[field] as String? ?? '');
 
   @override
   void dispose() {
-    for (final c in [_name, _franchise, _address1, _address2, _city, _state, _postal, _phone]) {
+    for (final c in [
+      _name,
+      _franchise,
+      _address1,
+      _address2,
+      _city,
+      _state,
+      _postal,
+      _phone,
+    ]) {
       c.dispose();
     }
     super.dispose();
@@ -99,20 +159,33 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
 
   bool get _valid =>
       _name.text.trim().isNotEmpty &&
-      _franchise.text.trim().isNotEmpty &&
+      // Creating asks for the first place; editing does not, because there
+      // already is one.
+      (_editing || _franchise.text.trim().isNotEmpty) &&
       // A sub company with no parent is not a sub company. The button stays
       // disabled rather than letting the server explain it afterwards.
-      (!_isSub || _parentId != null);
+      (_editing || !_isSub || _parentId != null);
+
+  String get _noun => _isSub ? 'sub company' : 'company';
 
   @override
   Widget build(BuildContext context) {
     return SidePanel(
-      title: _isSub ? 'Add a sub company' : 'Add a company',
-      subtitle: _isSub
+      title: _editing
+          ? 'Edit ${widget.existing!['name']}'
+          : _isSub
+          ? 'Add a sub company'
+          : 'Add a company',
+      subtitle: _editing
+          // §3 again: what cannot change is worth saying once, here, rather
+          // than leaving somebody to look for the control that would do it.
+          ? 'Its name, address and phone. Which $_noun it belongs to is fixed '
+                'and cannot be changed.'
+          : _isSub
           ? 'It inherits its parent company\'s settings before the '
-              'organization\'s, and cannot be moved to a different parent later.'
+                'organization\'s, and cannot be moved to a different parent later.'
           : 'A branch of the business with its own name and address — the ones '
-              'that appear on its invoices.',
+                'that appear on its invoices.',
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -120,7 +193,7 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
         ),
         FilledButton(
           onPressed: _valid ? _submit : null,
-          child: Text(_isSub ? 'Add sub company' : 'Add company'),
+          child: Text(_editing ? 'Save changes' : 'Add $_noun'),
         ),
       ],
       child: Column(
@@ -129,7 +202,7 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
           // The kind first, because it changes what the rest of the form means.
           // Asking it last would make somebody re-read what they had already
           // filled in.
-          if (widget.fixedParent == null) ...[
+          if (!_editing && widget.fixedParent == null) ...[
             _label(context, 'What kind'),
             SegmentedButton<bool>(
               segments: const [
@@ -162,13 +235,16 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
           _label(context, 'Name'),
           _field(_name, autofocus: true),
 
-          const SizedBox(height: 22),
-          _label(context, 'Its first place'),
-          _field(
-            _franchise,
-            helper: 'Where work happens — a state, a city, a region. '
-                'A company must have at least one; you can add more later.',
-          ),
+          if (!_editing) ...[
+            const SizedBox(height: 22),
+            _label(context, 'Its first place'),
+            _field(
+              _franchise,
+              helper:
+                  'Where work happens — a state, a city, a region. '
+                  'A company must have at least one; you can add more later.',
+            ),
+          ],
 
           const SizedBox(height: 22),
           _label(context, 'Address'),
@@ -176,16 +252,20 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
           const SizedBox(height: 10),
           _field(_address2, hint: 'Suite, unit, floor (optional)'),
           const SizedBox(height: 10),
-          Row(children: [
-            Expanded(flex: 3, child: _field(_city, hint: 'City')),
-            const SizedBox(width: 10),
-            // Two characters, because that is what the server accepts — a full
-            // state name would be refused after the fact for a reason the form
-            // could have made obvious.
-            Expanded(child: _field(_state, hint: 'ST', maxLength: 2, caps: true)),
-            const SizedBox(width: 10),
-            Expanded(flex: 2, child: _field(_postal, hint: 'ZIP')),
-          ]),
+          Row(
+            children: [
+              Expanded(flex: 3, child: _field(_city, hint: 'City')),
+              const SizedBox(width: 10),
+              // Two characters, because that is what the server accepts — a full
+              // state name would be refused after the fact for a reason the form
+              // could have made obvious.
+              Expanded(
+                child: _field(_state, hint: 'ST', maxLength: 2, caps: true),
+              ),
+              const SizedBox(width: 10),
+              Expanded(flex: 2, child: _field(_postal, hint: 'ZIP')),
+            ],
+          ),
 
           const SizedBox(height: 22),
           _label(context, 'Phone'),
@@ -196,13 +276,14 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
   }
 
   Widget _label(BuildContext context, String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(text,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(fontWeight: FontWeight.w600)),
-      );
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      text,
+      style: Theme.of(
+        context,
+      ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+    ),
+  );
 
   Widget _field(
     TextEditingController controller, {
@@ -216,8 +297,9 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
       controller: controller,
       autofocus: autofocus,
       maxLength: maxLength,
-      textCapitalization:
-          caps ? TextCapitalization.characters : TextCapitalization.none,
+      textCapitalization: caps
+          ? TextCapitalization.characters
+          : TextCapitalization.none,
       decoration: InputDecoration(
         hintText: hint,
         helperText: helper,
@@ -231,16 +313,18 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
   }
 
   void _submit() {
-    Navigator.of(context).pop(CompanyDraft(
-      name: _name.text.trim(),
-      franchise: _franchise.text.trim(),
-      parentId: _isSub ? _parentId : null,
-      address1: _address1.text.trim(),
-      address2: _address2.text.trim(),
-      city: _city.text.trim(),
-      state: _state.text.trim().toUpperCase(),
-      postalCode: _postal.text.trim(),
-      phone: _phone.text.trim(),
-    ));
+    Navigator.of(context).pop(
+      CompanyDraft(
+        name: _name.text.trim(),
+        franchise: _editing ? null : _franchise.text.trim(),
+        parentId: _isSub && !_editing ? _parentId : null,
+        address1: _address1.text.trim(),
+        address2: _address2.text.trim(),
+        city: _city.text.trim(),
+        state: _state.text.trim().toUpperCase(),
+        postalCode: _postal.text.trim(),
+        phone: _phone.text.trim(),
+      ),
+    );
   }
 }

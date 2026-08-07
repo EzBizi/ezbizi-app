@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
+import '../widgets/side_panel.dart';
 
 /// The dashboard (plan §18 Phase 4).
 ///
@@ -136,39 +137,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _choosePanels() {
     final shown = _panels.map((p) => p['key'] as String).toSet();
 
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Choose panels'),
-        content: SizedBox(
-          width: 420,
-          child: StatefulBuilder(
-            builder: (context, setInner) => Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final entry in _catalogue)
-                  CheckboxListTile(
-                    dense: true,
-                    value: shown.contains(entry['key']),
-                    title: Text(entry['label'] as String),
-                    onChanged: (on) => setInner(() {
-                      on == true
-                          ? shown.add(entry['key'] as String)
-                          : shown.remove(entry['key'] as String);
-                    }),
-                  ),
-              ],
-            ),
-          ),
-        ),
+    showSidePanel<void>(
+      context,
+      builder: (panelContext) => SidePanel(
+        title: 'Choose panels',
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
+            onPressed: () => Navigator.of(panelContext).pop(),
             child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () {
-              Navigator.of(dialogContext).pop();
+              Navigator.of(panelContext).pop();
 
               // Existing options are preserved for panels that stay — turning a
               // panel off and on again should not silently reset how it was
@@ -189,6 +169,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: const Text('Save'),
           ),
         ],
+        // The footer reads `shown` when Save is pressed, so only the list needs
+        // rebuilding as boxes are ticked.
+        child: StatefulBuilder(
+          builder: (context, setInner) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final entry in _catalogue)
+                CheckboxListTile(
+                  dense: true,
+                  value: shown.contains(entry['key']),
+                  title: Text(entry['label'] as String),
+                  onChanged: (on) => setInner(() {
+                    on == true
+                        ? shown.add(entry['key'] as String)
+                        : shown.remove(entry['key'] as String);
+                  }),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

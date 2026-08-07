@@ -6,6 +6,7 @@ import '../widgets/async_body.dart';
 import '../widgets/identity_card.dart';
 import '../widgets/tag.dart';
 import '../widgets/password_card.dart';
+import '../widgets/side_panel.dart';
 import '../widgets/two_factor_card.dart';
 
 /// Your own account (plan §2.1 category 6).
@@ -57,14 +58,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _revokeOthers() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('Sign out everywhere else?'),
-        content: const Text(
-          'Every other browser and device is signed out immediately. This one '
-          'stays signed in.',
-        ),
+    final confirmed = await showSidePanel<bool>(
+      context,
+      builder: (c) => SidePanel(
+        title: 'Sign out everywhere else?',
         actions: [
           TextButton(
               onPressed: () => Navigator.of(c).pop(false),
@@ -73,6 +70,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onPressed: () => Navigator.of(c).pop(true),
               child: const Text('Sign them out')),
         ],
+        child: const Text(
+          'Every other browser and device is signed out immediately. This one '
+          'stays signed in.',
+        ),
       ),
     );
 

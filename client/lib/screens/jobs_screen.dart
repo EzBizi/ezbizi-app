@@ -3,6 +3,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
+import '../widgets/side_panel.dart';
 import '../widgets/tag.dart';
 
 /// Jobs (plan §5.2).
@@ -200,26 +201,26 @@ class _JobsScreenState extends State<JobsScreen> {
   }
 
   Future<void> _create() async {
-    final created = await showDialog<bool>(
-      context: context,
-      builder: (_) => _NewJobDialog(api: widget.api, session: widget.session),
+    final created = await showSidePanel<bool>(
+      context,
+      builder: (_) => _NewJobPanel(api: widget.api, session: widget.session),
     );
 
     if (created == true && mounted) _load();
   }
 }
 
-class _NewJobDialog extends StatefulWidget {
-  const _NewJobDialog({required this.api, required this.session});
+class _NewJobPanel extends StatefulWidget {
+  const _NewJobPanel({required this.api, required this.session});
 
   final ApiClient api;
   final Session session;
 
   @override
-  State<_NewJobDialog> createState() => _NewJobDialogState();
+  State<_NewJobPanel> createState() => _NewJobPanelState();
 }
 
-class _NewJobDialogState extends State<_NewJobDialog> {
+class _NewJobPanelState extends State<_NewJobPanel> {
   final _title = TextEditingController();
   final _amount = TextEditingController();
 
@@ -353,132 +354,12 @@ class _NewJobDialogState extends State<_NewJobDialog> {
   Widget build(BuildContext context) {
     final me = widget.session.me!;
 
-    return AlertDialog(
-      title: const Text('Add job'),
-      content: SizedBox(
-        width: 440,
-        child: _loading
-            ? const Padding(
-                padding: EdgeInsets.all(32),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            : SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    DropdownButtonFormField<String>(
-                      initialValue: _franchiseId,
-                      decoration: InputDecoration(
-                        labelText: me.organization.franchiseLabel,
-                      ),
-                      items: me.franchises
-                          .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name)))
-                          .toList(),
-                      onChanged: _busy ? null : (v) => setState(() => _franchiseId = v),
-                    ),
-                    const SizedBox(height: 14),
-                    // Searched, not listed. A dropdown of the first 200 by name
-                    // means that in a 900-customer organization everyone from
-                    // roughly 'D' onward simply cannot be picked, and no job can
-                    // be created for them at all — with nothing on screen saying
-                    // why. The endpoint already searches name, email, phone and
-                    // number, so this asks it.
-                    Autocomplete<Map<String, dynamic>>(
-                      displayStringForOption: (c) => '${c['name']} · ${c['number']}',
-                      optionsBuilder: (value) async {
-                        if (value.text.trim().isEmpty) return _customers.take(50);
-
-                        final response = await widget.api.get('/customers', {
-                          'search': value.text.trim(),
-                          'per_page': '50',
-                        });
-
-                        if (!response.ok) return const <Map<String, dynamic>>[];
-
-                        return List<Map<String, dynamic>>.from(response.data as List);
-                      },
-                      onSelected: (c) => setState(() => _customerId = c['id'] as String),
-                      fieldViewBuilder: (context, controller, focusNode, onSubmit) => TextField(
-                        controller: controller,
-                        focusNode: focusNode,
-                        enabled: !_busy,
-                        decoration: InputDecoration(
-                          labelText: 'Customer',
-                          helperText: _customerId == null
-                              ? 'Search by name, phone, email or number.'
-                              : 'Any customer in the organization — doing work for '
-                                  'another franchise\'s customer does not move them.',
-                          helperMaxLines: 3,
-                          suffixIcon: _customerId == null
-                              ? const Icon(Icons.search)
-                              : const Icon(Icons.check, size: 20),
-                        ),
-                        // Typing again after choosing means the choice is stale.
-                        onChanged: (_) {
-                          if (_customerId != null) setState(() => _customerId = null);
-                        },
-                      ),
-                      optionsViewBuilder: (context, onSelected, options) => Align(
-                        alignment: Alignment.topLeft,
-                        child: Material(
-                          elevation: 4,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxHeight: 260, maxWidth: 420),
-                            child: ListView(
-                              padding: EdgeInsets.zero,
-                              shrinkWrap: true,
-                              children: options
-                                  .map((c) => ListTile(
-                                        dense: true,
-                                        title: Text(c['name'] as String),
-                                        subtitle: Text([
-                                          c['number'],
-                                          (c['owning_franchise'] as Map)['name'] ?? '',
-                                        ].join(' · ')),
-                                        onTap: () => onSelected(c),
-                                      ))
-                                  .toList(),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: _title,
-                      decoration: const InputDecoration(labelText: 'What is the job'),
-                      enabled: !_busy,
-                    ),
-                    const SizedBox(height: 14),
-                    DropdownButtonFormField<String>(
-                      initialValue: _status,
-                      decoration: const InputDecoration(labelText: 'Status'),
-                      items: _statuses
-                          .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                          .toList(),
-                      onChanged: _busy ? null : (v) => setState(() => _status = v ?? _status),
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: _amount,
-                      decoration: const InputDecoration(
-                        labelText: 'Price in cents',
-                        helperText: '19999 for \$199.99. Stored as an integer so it '
-                            'cannot drift by a cent.',
-                        helperMaxLines: 2,
-                      ),
-                      keyboardType: TextInputType.number,
-                      enabled: !_busy,
-                    ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 14),
-                      ErrorNote(_error!),
-                    ],
-                  ],
-                ),
-              ),
-      ),
+    return SidePanel(
+      title: 'Add job',
+      // Wider than the default. The customer picker's suggestion list is 420
+      // across and is drawn over everything, so in a 440 panel it would hang off
+      // the right edge of the window.
+      width: 520,
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(false),
@@ -491,6 +372,124 @@ class _NewJobDialogState extends State<_NewJobDialog> {
           child: const Text('Create'),
         ),
       ],
+      child: _loading
+          ? const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: _franchiseId,
+                  decoration: InputDecoration(
+                    labelText: me.organization.franchiseLabel,
+                  ),
+                  items: me.franchises
+                      .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name)))
+                      .toList(),
+                  onChanged: _busy ? null : (v) => setState(() => _franchiseId = v),
+                ),
+                const SizedBox(height: 14),
+                // Searched, not listed. A dropdown of the first 200 by name
+                // means that in a 900-customer organization everyone from
+                // roughly 'D' onward simply cannot be picked, and no job can
+                // be created for them at all — with nothing on screen saying
+                // why. The endpoint already searches name, email, phone and
+                // number, so this asks it.
+                Autocomplete<Map<String, dynamic>>(
+                  displayStringForOption: (c) => '${c['name']} · ${c['number']}',
+                  optionsBuilder: (value) async {
+                    if (value.text.trim().isEmpty) return _customers.take(50);
+
+                    final response = await widget.api.get('/customers', {
+                      'search': value.text.trim(),
+                      'per_page': '50',
+                    });
+
+                    if (!response.ok) return const <Map<String, dynamic>>[];
+
+                    return List<Map<String, dynamic>>.from(response.data as List);
+                  },
+                  onSelected: (c) => setState(() => _customerId = c['id'] as String),
+                  fieldViewBuilder: (context, controller, focusNode, onSubmit) => TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    enabled: !_busy,
+                    decoration: InputDecoration(
+                      labelText: 'Customer',
+                      helperText: _customerId == null
+                          ? 'Search by name, phone, email or number.'
+                          : 'Any customer in the organization — doing work for '
+                              'another franchise\'s customer does not move them.',
+                      helperMaxLines: 3,
+                      suffixIcon: _customerId == null
+                          ? const Icon(Icons.search)
+                          : const Icon(Icons.check, size: 20),
+                    ),
+                    // Typing again after choosing means the choice is stale.
+                    onChanged: (_) {
+                      if (_customerId != null) setState(() => _customerId = null);
+                    },
+                  ),
+                  optionsViewBuilder: (context, onSelected, options) => Align(
+                    alignment: Alignment.topLeft,
+                    child: Material(
+                      elevation: 4,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 260, maxWidth: 420),
+                        child: ListView(
+                          padding: EdgeInsets.zero,
+                          shrinkWrap: true,
+                          children: options
+                              .map((c) => ListTile(
+                                    dense: true,
+                                    title: Text(c['name'] as String),
+                                    subtitle: Text([
+                                      c['number'],
+                                      (c['owning_franchise'] as Map)['name'] ?? '',
+                                    ].join(' · ')),
+                                    onTap: () => onSelected(c),
+                                  ))
+                              .toList(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _title,
+                  decoration: const InputDecoration(labelText: 'What is the job'),
+                  enabled: !_busy,
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  initialValue: _status,
+                  decoration: const InputDecoration(labelText: 'Status'),
+                  items: _statuses
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: _busy ? null : (v) => setState(() => _status = v ?? _status),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _amount,
+                  decoration: const InputDecoration(
+                    labelText: 'Price in cents',
+                    helperText: '19999 for \$199.99. Stored as an integer so it '
+                        'cannot drift by a cent.',
+                    helperMaxLines: 2,
+                  ),
+                  keyboardType: TextInputType.number,
+                  enabled: !_busy,
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 14),
+                  ErrorNote(_error!),
+                ],
+              ],
+            ),
     );
   }
 }

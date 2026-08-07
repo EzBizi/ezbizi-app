@@ -3,6 +3,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
+import '../widgets/side_panel.dart';
 import '../widgets/tag.dart';
 
 /// Customers (plan §5.2).
@@ -229,9 +230,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
   }
 
   Future<void> _create() async {
-    final created = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (_) => _NewCustomerDialog(api: widget.api, session: widget.session),
+    final created = await showSidePanel<Map<String, dynamic>>(
+      context,
+      builder: (_) => _NewCustomerPanel(api: widget.api, session: widget.session),
     );
 
     if (created == null || !mounted) return;
@@ -241,41 +242,37 @@ class _CustomersScreenState extends State<CustomersScreen> {
     if (duplicates.isNotEmpty) {
       // Reported, never merged (§5.2). Automatic merging of customer records is
       // unrecoverable when it is wrong, so this is a notice for a human.
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Possible duplicate'),
-          content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Saved. These existing customers look similar — nothing has been '
-                  'merged, and nothing will be automatically.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 12),
-                ...duplicates.map((d) {
-                  final dup = d as Map<String, dynamic>;
-                  final owner = dup['owning_franchise'] as Map<String, dynamic>;
-                  return ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('${dup['name']} (${dup['number']})'),
-                    subtitle: Text('${dup['phone'] ?? dup['email'] ?? ''} · ${owner['name'] ?? ''}'),
-                  );
-                }),
-              ],
-            ),
-          ),
+      await showSidePanel<void>(
+        context,
+        builder: (context) => SidePanel(
+          title: 'Possible duplicate',
           actions: [
             FilledButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Got it'),
             ),
           ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Saved. These existing customers look similar — nothing has been '
+                'merged, and nothing will be automatically.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 12),
+              ...duplicates.map((d) {
+                final dup = d as Map<String, dynamic>;
+                final owner = dup['owning_franchise'] as Map<String, dynamic>;
+                return ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('${dup['name']} (${dup['number']})'),
+                  subtitle: Text('${dup['phone'] ?? dup['email'] ?? ''} · ${owner['name'] ?? ''}'),
+                );
+              }),
+            ],
+          ),
         ),
       );
     }
@@ -284,17 +281,17 @@ class _CustomersScreenState extends State<CustomersScreen> {
   }
 }
 
-class _NewCustomerDialog extends StatefulWidget {
-  const _NewCustomerDialog({required this.api, required this.session});
+class _NewCustomerPanel extends StatefulWidget {
+  const _NewCustomerPanel({required this.api, required this.session});
 
   final ApiClient api;
   final Session session;
 
   @override
-  State<_NewCustomerDialog> createState() => _NewCustomerDialogState();
+  State<_NewCustomerPanel> createState() => _NewCustomerPanelState();
 }
 
-class _NewCustomerDialogState extends State<_NewCustomerDialog> {
+class _NewCustomerPanelState extends State<_NewCustomerPanel> {
   final _name = TextEditingController();
   final _phone = TextEditingController();
   final _email = TextEditingController();
@@ -362,57 +359,8 @@ class _NewCustomerDialogState extends State<_NewCustomerDialog> {
     final me = widget.session.me!;
     final label = me.organization.franchiseLabel;
 
-    return AlertDialog(
-      title: const Text('Add customer'),
-      content: SizedBox(
-        width: 420,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: _franchiseId,
-                decoration: InputDecoration(
-                  labelText: 'Owning $label',
-                  helperText: 'Accountable for the relationship, and counts them '
-                      'in their numbers. Changing it later is a separate, audited step.',
-                  helperMaxLines: 3,
-                ),
-                items: me.franchises
-                    .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name)))
-                    .toList(),
-                onChanged: _busy ? null : (v) => setState(() => _franchiseId = v),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: _name,
-                decoration: const InputDecoration(labelText: 'Name'),
-                autofocus: true,
-                enabled: !_busy,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _phone,
-                decoration: const InputDecoration(labelText: 'Phone'),
-                keyboardType: TextInputType.phone,
-                enabled: !_busy,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _email,
-                decoration: const InputDecoration(labelText: 'Email'),
-                keyboardType: TextInputType.emailAddress,
-                enabled: !_busy,
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 14),
-                ErrorNote(_error!),
-              ],
-            ],
-          ),
-        ),
-      ),
+    return SidePanel(
+      title: 'Add customer',
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(),
@@ -423,6 +371,49 @@ class _NewCustomerDialogState extends State<_NewCustomerDialog> {
           child: const Text('Create'),
         ),
       ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DropdownButtonFormField<String>(
+            initialValue: _franchiseId,
+            decoration: InputDecoration(
+              labelText: 'Owning $label',
+              helperText: 'Accountable for the relationship, and counts them '
+                  'in their numbers. Changing it later is a separate, audited step.',
+              helperMaxLines: 3,
+            ),
+            items: me.franchises
+                .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name)))
+                .toList(),
+            onChanged: _busy ? null : (v) => setState(() => _franchiseId = v),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _name,
+            decoration: const InputDecoration(labelText: 'Name'),
+            autofocus: true,
+            enabled: !_busy,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _phone,
+            decoration: const InputDecoration(labelText: 'Phone'),
+            keyboardType: TextInputType.phone,
+            enabled: !_busy,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _email,
+            decoration: const InputDecoration(labelText: 'Email'),
+            keyboardType: TextInputType.emailAddress,
+            enabled: !_busy,
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 14),
+            ErrorNote(_error!),
+          ],
+        ],
+      ),
     );
   }
 }

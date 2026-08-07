@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/error_note.dart';
+import '../widgets/setting_editors.dart';
+import '../widgets/side_panel.dart';
 
 /// Settings, at whichever scope is selected (plan §6).
 ///
@@ -34,6 +36,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String get _scopeType => widget.session.me!.scope.type;
   String? get _scopeId =>
       widget.session.me!.scope.id ?? widget.session.me!.organization.id;
+
   /// The full chain — "Everdoors › Connecticut".
   ///
   /// "Settings for Connecticut" named one of two different places, each with
@@ -111,16 +114,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _reset(String key) async {
-    final response = await widget.api.delete(
-      '/settings/$key',
-      {'scope_type': _scopeType, 'scope_id': _scopeId!},
-    );
+    final response = await widget.api.delete('/settings/$key', {
+      'scope_type': _scopeType,
+      'scope_id': _scopeId!,
+    });
 
     if (!mounted) return;
 
     _snack(
       response.ok
-          ? (_scopeType == 'organization' ? 'Back to the default' : 'Now inherited')
+          ? (_scopeType == 'organization'
+                ? 'Back to the default'
+                : 'Now inherited')
           : response.message,
       isError: !response.ok,
     );
@@ -128,12 +133,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _snack(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
-      behavior: SnackBarBehavior.floating,
-      width: 320,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
+        behavior: SnackBarBehavior.floating,
+        width: 320,
+      ),
+    );
   }
 
   @override
@@ -151,9 +158,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Text(
             _scopeType == 'organization'
                 ? 'Settings for ${me.organization.name} — everything inherits these '
-                    'unless a company or a place overrides them.'
+                      'unless a company or a place overrides them.'
                 : 'Settings for $_scopeLabel. Anything left alone inherits from '
-                    'above; anything set here overrides it.',
+                      'above; anything set here overrides it.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ),
@@ -171,7 +178,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
             const SizedBox(height: 12),
             OutlinedButton(onPressed: _load, child: const Text('Try again')),
           ],
@@ -198,8 +208,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         for (final entry in groups.entries) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
-            child: Text(entry.key.toUpperCase(),
-                style: Theme.of(context).textTheme.labelSmall),
+            child: Text(
+              entry.key.toUpperCase(),
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
           ),
           Card(
             child: Column(
@@ -267,8 +279,10 @@ class _SettingRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(setting['label'] as String,
-                    style: Theme.of(context).textTheme.titleMedium),
+                Text(
+                  setting['label'] as String,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
                 const SizedBox(height: 2),
                 // Where the value came from. The whole reason the API returns
                 // `source` — an admin who can't see this changes the wrong level.
@@ -280,14 +294,16 @@ class _SettingRow extends StatelessWidget {
                       : !scopeAllows
                       ? 'Set at organization level only'
                       : !editable
-                          // Names the permission. "You cannot do that" sends
-                          // somebody to ask an administrator for something
-                          // neither of them can name.
-                          ? 'Read-only — needs ${setting['permission'] ?? 'permission'}'
-                          : inherited
-                              ? 'Inherited from ${source['name']}'
-                              : 'Set here',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12),
+                      // Names the permission. "You cannot do that" sends
+                      // somebody to ask an administrator for something
+                      // neither of them can name.
+                      ? 'Read-only — needs ${setting['permission'] ?? 'permission'}'
+                      : inherited
+                      ? 'Inherited from ${source['name']}'
+                      : 'Set here',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontSize: 12),
                 ),
 
                 // The server sends `help` for every setting and nothing showed
@@ -321,7 +337,12 @@ class _SettingRow extends StatelessWidget {
     );
   }
 
-  Widget _control(BuildContext context, String key, String type, bool editable) {
+  Widget _control(
+    BuildContext context,
+    String key,
+    String type,
+    bool editable,
+  ) {
     final value = setting['value'];
 
     if (type == 'bool') {
@@ -332,15 +353,55 @@ class _SettingRow extends StatelessWidget {
     }
 
     if (type == 'enum') {
-      final options = (setting['options'] as List<dynamic>? ?? []).cast<String>();
+      final options = (setting['options'] as List<dynamic>? ?? [])
+          .cast<String>();
       return DropdownButton<String>(
         value: options.contains(value) ? value as String : null,
         underline: const SizedBox.shrink(),
-        onChanged: editable ? (v) => v == null ? null : onChanged(key, v) : null,
-        items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+        onChanged: editable
+            ? (v) => v == null ? null : onChanged(key, v)
+            : null,
+        items: options
+            .map((o) => DropdownMenuItem(value: o, child: Text(o)))
+            .toList(),
       );
     }
 
+    // Settings with a declared shape get an editor that knows it. The switch is
+    // on the TYPE, never on the key — a second set of opening hours added to the
+    // registry tomorrow lands here with nothing to change.
+    if (type == 'hours') {
+      return HoursButton(
+        label: setting['label'] as String,
+        value: value,
+        editable: editable,
+        onChanged: (v) => onChanged(key, v),
+      );
+    }
+
+    if (type == 'time_range') {
+      return TimeRangeButton(
+        label: setting['label'] as String,
+        value: value,
+        editable: editable,
+        help: setting['help'] as String?,
+        onChanged: (v) => onChanged(key, v),
+      );
+    }
+
+    if (type == 'list') {
+      return ListButton(
+        label: setting['label'] as String,
+        value: value,
+        editable: editable,
+        help: setting['help'] as String?,
+        onChanged: (v) => onChanged(key, v),
+      );
+    }
+
+    // Anything still declared as plain `json` has no shape to draw, so it keeps
+    // the text editor. Nothing in the registry uses it today; it is the escape
+    // hatch for a structure that has not earned an editor yet.
     if (type == 'json') {
       // Structured values used to render in the same 140px box as a tax rate,
       // showing `{monday: {open: 08:00...` — a Dart Map's toString, which is not
@@ -398,8 +459,9 @@ class _InlineField extends StatefulWidget {
 }
 
 class _InlineFieldState extends State<_InlineField> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.initial);
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initial,
+  );
   late final FocusNode _focus = FocusNode();
 
   @override
@@ -449,7 +511,7 @@ class _InlineFieldState extends State<_InlineField> {
 
 /// Structured settings — business hours, quiet hours — edited as real JSON.
 ///
-/// A dialog rather than an inline box: these are nested objects, and a 140px
+/// A panel rather than an inline box: these are nested objects, and a 140px
 /// field cannot show one, let alone let somebody correct it. The text is parsed
 /// before it is sent, so a typo is caught here with the cursor still in the
 /// field rather than as a 422 from the server.
@@ -491,30 +553,12 @@ class _JsonButton extends StatelessWidget {
 
     String? error;
 
-    final saved = await showDialog<Object?>(
-      context: context,
+    final saved = await showSidePanel<Object?>(
+      context,
       builder: (context) => StatefulBuilder(
-        builder: (context, repaint) => AlertDialog(
-          title: Text(label),
-          content: SizedBox(
-            width: 460,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: controller,
-                  minLines: 8,
-                  maxLines: 18,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                  decoration: const InputDecoration(border: OutlineInputBorder()),
-                ),
-                if (error != null) ...[
-                  const SizedBox(height: 8),
-                  ErrorNote(error!),
-                ],
-              ],
-            ),
-          ),
+        builder: (context, repaint) => SidePanel(
+          title: label,
+          width: 520,
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -526,14 +570,32 @@ class _JsonButton extends StatelessWidget {
                   Navigator.of(context).pop(jsonDecode(controller.text));
                 } on FormatException catch (e) {
                   // Caught here, where the cursor still is. A 422 arriving
-                  // after the dialog closed loses both the message and the
+                  // after the panel closed loses both the message and the
                   // half-typed value.
-                  repaint(() => error = 'That is not valid JSON — ${e.message}');
+                  repaint(
+                    () => error = 'That is not valid JSON — ${e.message}',
+                  );
                 }
               },
               child: const Text('Save'),
             ),
           ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                minLines: 8,
+                maxLines: 18,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                ErrorNote(error!),
+              ],
+            ],
+          ),
         ),
       ),
     );

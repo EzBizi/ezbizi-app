@@ -4,6 +4,7 @@ import '../core/files.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
+import '../widgets/side_panel.dart';
 
 /// Import and export (plan §12, §9).
 ///
@@ -132,9 +133,9 @@ class _DataScreenState extends State<DataScreen> {
   }
 
   void _openImport(Map<String, dynamic> resource) {
-    showDialog<bool>(
-      context: context,
-      builder: (_) => _ImportDialog(
+    showSidePanel<bool>(
+      context,
+      builder: (_) => _ImportPanel(
         api: widget.api,
         session: widget.session,
         resource: resource,
@@ -148,8 +149,12 @@ class _DataScreenState extends State<DataScreen> {
 /// The dry run is not optional politeness: §11.3 calls import "the first thing a
 /// new client touches", and the difference between a preview and a surprise is
 /// whether somebody trusts the product with the rest of their data.
-class _ImportDialog extends StatefulWidget {
-  const _ImportDialog({
+///
+/// Wider than a panel's default because the rows are the point — CSV in a
+/// monospace box, and a preview listing problems by row number, both of which
+/// wrap into noise at the width a form needs.
+class _ImportPanel extends StatefulWidget {
+  const _ImportPanel({
     required this.api,
     required this.session,
     required this.resource,
@@ -160,10 +165,10 @@ class _ImportDialog extends StatefulWidget {
   final Map<String, dynamic> resource;
 
   @override
-  State<_ImportDialog> createState() => _ImportDialogState();
+  State<_ImportPanel> createState() => _ImportPanelState();
 }
 
-class _ImportDialogState extends State<_ImportDialog> {
+class _ImportPanelState extends State<_ImportPanel> {
   final _csv = TextEditingController();
 
   String? _franchiseId;
@@ -248,88 +253,9 @@ class _ImportDialogState extends State<_ImportDialog> {
     final columns = (widget.resource['import_columns'] as List<dynamic>).join(', ');
     final franchises = widget.session.me!.franchises;
 
-    return AlertDialog(
-      title: Text('Import ${(widget.resource['label'] as String).toLowerCase()}'),
-      content: SizedBox(
-        width: 560,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Columns: $columns',
-                  style: Theme.of(context).textTheme.bodySmall),
-              const SizedBox(height: 4),
-              Text(
-                'The first row must be the column names. Leave out any column '
-                'you have no data for.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 16),
-              if (franchises.isEmpty)
-                // Permission without reach (§4). Rendering the form anyway gives
-                // somebody a Choose-a-file button, a paste box, and a refusal
-                // they cannot act on — the missing thing is an assignment, which
-                // only an administrator can grant.
-                Text(
-                  'You are not assigned to a franchise, so there is nowhere for '
-                  'these records to belong. An administrator can assign you to one.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                )
-              else if (franchises.length > 1)
-                DropdownButtonFormField<String>(
-                  initialValue: _franchiseId,
-                  decoration: const InputDecoration(
-                    labelText: 'Accountable franchise',
-                    helperText: 'Every imported record is owned by this one.',
-                  ),
-                  items: [
-                    for (final f in franchises)
-                      DropdownMenuItem(value: f.id, child: Text(f.name)),
-                  ],
-                  onChanged: (v) => setState(() => _franchiseId = v),
-                ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : _pick,
-                    icon: const Icon(Icons.attach_file),
-                    label: const Text('Choose a CSV file'),
-                  ),
-                  const SizedBox(width: 12),
-                  if (_filename != null)
-                    Expanded(
-                      child: Text(_filename!,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _csv,
-                minLines: 4,
-                maxLines: 8,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                decoration: const InputDecoration(
-                  labelText: '…or paste the rows here',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => setState(() => _preview = null),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                ErrorNote(_error!),
-              ],
-              if (_preview != null) ...[
-                const SizedBox(height: 16),
-                _previewPanel(_preview!),
-              ],
-            ],
-          ),
-        ),
-      ),
+    return SidePanel(
+      title: 'Import ${(widget.resource['label'] as String).toLowerCase()}',
+      width: 560,
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(false),
@@ -353,6 +279,80 @@ class _ImportDialogState extends State<_ImportDialog> {
               : 'Import ${_preview?['imported'] ?? ''}'.trim()),
         ),
       ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Columns: $columns',
+              style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 4),
+          Text(
+            'The first row must be the column names. Leave out any column '
+            'you have no data for.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 16),
+          if (franchises.isEmpty)
+            // Permission without reach (§4). Rendering the form anyway gives
+            // somebody a Choose-a-file button, a paste box, and a refusal
+            // they cannot act on — the missing thing is an assignment, which
+            // only an administrator can grant.
+            Text(
+              'You are not assigned to a franchise, so there is nowhere for '
+              'these records to belong. An administrator can assign you to one.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            )
+          else if (franchises.length > 1)
+            DropdownButtonFormField<String>(
+              initialValue: _franchiseId,
+              decoration: const InputDecoration(
+                labelText: 'Accountable franchise',
+                helperText: 'Every imported record is owned by this one.',
+              ),
+              items: [
+                for (final f in franchises)
+                  DropdownMenuItem(value: f.id, child: Text(f.name)),
+              ],
+              onChanged: (v) => setState(() => _franchiseId = v),
+            ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: _busy ? null : _pick,
+                icon: const Icon(Icons.attach_file),
+                label: const Text('Choose a CSV file'),
+              ),
+              const SizedBox(width: 12),
+              if (_filename != null)
+                Expanded(
+                  child: Text(_filename!,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _csv,
+            minLines: 4,
+            maxLines: 8,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            decoration: const InputDecoration(
+              labelText: '…or paste the rows here',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) => setState(() => _preview = null),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            ErrorNote(_error!),
+          ],
+          if (_preview != null) ...[
+            const SizedBox(height: 16),
+            _previewPanel(_preview!),
+          ],
+        ],
+      ),
     );
   }
 

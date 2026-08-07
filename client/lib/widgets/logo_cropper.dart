@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import 'side_panel.dart';
+
 /// Crop an image to one of the two logo shapes, and produce it exactly (§12).
 ///
 /// ── Why the client does the cropping ─────────────────────────────
@@ -26,11 +28,7 @@ import 'package:flutter/material.dart';
 /// The export is the part worth reading — see [_export]. It reverses exactly the
 /// transform the preview applied, so what you saw is what you get.
 class LogoCropper extends StatefulWidget {
-  const LogoCropper({
-    super.key,
-    required this.bytes,
-    required this.shapes,
-  });
+  const LogoCropper({super.key, required this.bytes, required this.shapes});
 
   /// The image the user picked, as-is.
   final Uint8List bytes;
@@ -59,9 +57,22 @@ class _LogoCropperState extends State<LogoCropper> {
 
   bool _busy = false;
 
-  /// The viewport the user composes in. The output is rendered at the shape's
-  /// real size; this is only how big the preview is on screen.
-  static const double _viewportWidth = 460;
+  /// The widest the preview is ever drawn. Below this it shrinks to whatever
+  /// the panel has left, so the body always fits.
+  ///
+  /// That is not only tidiness. The panel scrolls its body by default, and a
+  /// scroll view with anything to scroll installs a vertical-drag recognizer
+  /// above everything inside it — which accepts at a smaller slop than this
+  /// widget's scale recognizer and takes the gesture. On a short window the one
+  /// instruction this screen gives, "drag to reposition", stopped working
+  /// vertically. So the panel is told not to scroll, and the preview fits.
+  static const double _maxViewportWidth = 460;
+
+  /// The size the preview was last laid out at, in logical pixels.
+  ///
+  /// [_offset] is measured against it and [_export] scales by it, so it is read
+  /// during layout rather than assumed.
+  double _viewportWidth = _maxViewportWidth;
 
   @override
   void initState() {
@@ -143,7 +154,10 @@ class _LogoCropperState extends State<LogoCropper> {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
-    final drawn = Size(image.width * _scale * ratio, image.height * _scale * ratio);
+    final drawn = Size(
+      image.width * _scale * ratio,
+      image.height * _scale * ratio,
+    );
 
     canvas.drawImageRect(
       image,
@@ -173,68 +187,13 @@ class _LogoCropperState extends State<LogoCropper> {
   Widget build(BuildContext context) {
     final image = _image;
 
-    return AlertDialog(
-      title: const Text('Crop the logo'),
-      content: SizedBox(
-        width: _viewportWidth,
-        child: image == null
-            ? const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()))
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SegmentedButton<String>(
-                    segments: [
-                      for (final entry in widget.shapes.entries)
-                        ButtonSegment(
-                          value: entry.key,
-                          label: Text((entry.value as Map)['label'] as String),
-                          icon: Icon(entry.key == 'square'
-                              ? Icons.crop_square
-                              : Icons.crop_16_9),
-                        ),
-                    ],
-                    selected: {_shape},
-                    onSelectionChanged: (v) => setState(() {
-                      _shape = v.first;
-                      // Recentre: the old pan was measured against a viewport
-                      // of a different shape and means nothing in the new one.
-                      _offset = Offset.zero;
-                      _zoom = 1;
-                    }),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    (_shapeSpec['help'] as String?) ?? '',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 14),
-
-                  _viewport(image),
-
-                  const SizedBox(height: 10),
-                  Row(children: [
-                    const Icon(Icons.zoom_out, size: 18),
-                    Expanded(
-                      child: Slider(
-                        value: _zoom,
-                        min: 1,
-                        max: 4,
-                        onChanged: (v) => setState(() {
-                          _zoom = v;
-                          _clamp();
-                        }),
-                      ),
-                    ),
-                    const Icon(Icons.zoom_in, size: 18),
-                  ]),
-                  Text(
-                    'Drag to reposition. Exported at $_outWidth × $_outHeight.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-      ),
+    return SidePanel(
+      title: 'Crop the logo',
+      // The viewport, plus the panel's own padding either side. Anything
+      // narrower would squeeze the thing being composed.
+      width: _maxViewportWidth + 60,
+      // The preview owns its drags — see [_maxViewportWidth].
+      scrollable: false,
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(),
@@ -253,10 +212,101 @@ class _LogoCropperState extends State<LogoCropper> {
           child: Text(_busy ? 'Working…' : 'Use this'),
         ),
       ],
+      child: image == null
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SegmentedButton<String>(
+                  segments: [
+                    for (final entry in widget.shapes.entries)
+                      ButtonSegment(
+                        value: entry.key,
+                        label: Text((entry.value as Map)['label'] as String),
+                        icon: Icon(
+                          entry.key == 'square'
+                              ? Icons.crop_square
+                              : Icons.crop_16_9,
+                        ),
+                      ),
+                  ],
+                  selected: {_shape},
+                  onSelectionChanged: (v) => setState(() {
+                    _shape = v.first;
+                    // Recentre: the old pan was measured against a viewport
+                    // of a different shape and means nothing in the new one.
+                    _offset = Offset.zero;
+                    _zoom = 1;
+                  }),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  (_shapeSpec['help'] as String?) ?? '',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 14),
+
+                // Loose, so it takes what is left after the controls above
+                // and below rather than pushing them off the panel.
+                Flexible(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) =>
+                        _viewport(image, _fit(constraints)),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Icon(Icons.zoom_out, size: 18),
+                    Expanded(
+                      child: Slider(
+                        value: _zoom,
+                        min: 1,
+                        max: 4,
+                        onChanged: (v) => setState(() {
+                          _zoom = v;
+                          _clamp();
+                        }),
+                      ),
+                    ),
+                    const Icon(Icons.zoom_in, size: 18),
+                  ],
+                ),
+                Text(
+                  'Drag to reposition. Exported at $_outWidth × $_outHeight.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
     );
   }
 
-  Widget _viewport(ui.Image image) {
+  /// The biggest preview of the current shape that fits, keeping its ratio.
+  ///
+  /// Called during layout, so it also records the width the composition is
+  /// measured in and re-clamps the pan — a window resize would otherwise leave
+  /// [_offset] describing a viewport that no longer exists.
+  Size _fit(BoxConstraints constraints) {
+    final byHeight = constraints.maxHeight.isFinite
+        ? constraints.maxHeight * _outWidth / _outHeight
+        : double.infinity;
+
+    final width = [
+      _maxViewportWidth,
+      constraints.maxWidth,
+      byHeight,
+    ].reduce((a, b) => a < b ? a : b);
+
+    if (width != _viewportWidth) {
+      _viewportWidth = width;
+      if (_image != null) _clamp();
+    }
+
+    return Size(width, width * _outHeight / _outWidth);
+  }
+
+  Widget _viewport(ui.Image image, Size size) {
     final scheme = Theme.of(context).colorScheme;
 
     return GestureDetector(
@@ -271,8 +321,8 @@ class _LogoCropperState extends State<LogoCropper> {
         _clamp();
       }),
       child: Container(
-        width: _viewportWidth,
-        height: _viewportHeight,
+        width: size.width,
+        height: size.height,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           // A chequerboard would be truer to transparency, but this is a

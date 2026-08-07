@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import 'logo_badge.dart';
-import 'scope_picker_dialog.dart';
+import 'scope_picker_panel.dart';
 
 /// Which part of the business you are looking at (plan §3 roll-ups).
 ///
@@ -72,9 +72,9 @@ class ScopeSwitcher extends StatelessWidget {
 
     return InkWell(
       borderRadius: BorderRadius.circular(8),
-      // A dialog rather than a dropdown. The dropdown listed every company,
+      // A panel rather than a dropdown. The dropdown listed every company,
       // sub company and franchise in one run — already taller than the window
-      // at four companies, and unusable at twenty. See ScopePickerDialog: the
+      // at four companies, and unusable at twenty. See ScopePickerPanel: the
       // list stays a tree and search does the scaling.
       onTap: () => showScopePicker(context, api: api, session: session),
       child: Container(

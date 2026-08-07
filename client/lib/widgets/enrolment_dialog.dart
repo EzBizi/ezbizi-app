@@ -4,12 +4,13 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../core/api_client.dart';
 import 'error_note.dart';
 import 'recovery_codes.dart';
+import 'side_panel.dart';
 
 /// Handing someone their second factor (plan §4.2).
 ///
 /// Shown in three situations — a new account, a lost phone, and moving your own
 /// authenticator — because they are the same moment from different directions.
-/// One dialog means one set of instructions to keep correct.
+/// One panel means one set of instructions to keep correct.
 ///
 /// The QR is drawn from the otpauth:// URI the server issues. The server does
 /// not render an image: the URI is the single source of truth, and generating
@@ -80,16 +81,14 @@ class _EnrolmentDialogState extends State<EnrolmentDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(_recoveryCodes == null ? widget.title : 'Recovery codes'),
-      content: SizedBox(
-        width: 420,
-        child: SingleChildScrollView(
-          child: _recoveryCodes == null
-              ? _setup(context)
-              : RecoveryCodesView(codes: _recoveryCodes!),
-        ),
-      ),
+    // The dialog this replaces refused scrim dismissal, so a stray click could
+    // not destroy the recovery codes. A panel is escapable by design
+    // (side_panel.dart), which leaves 'Copy all' standing in for that guard.
+    return SidePanel(
+      title: _recoveryCodes == null ? widget.title : 'Recovery codes',
+      // Wider than the default so the QR and the secret beside its label both
+      // fit without wrapping.
+      width: 480,
       actions: _recoveryCodes == null
           ? [
               TextButton(
@@ -107,6 +106,9 @@ class _EnrolmentDialogState extends State<EnrolmentDialog> {
                 child: const Text('Done'),
               ),
             ],
+      child: _recoveryCodes == null
+          ? _setup(context)
+          : RecoveryCodesView(codes: _recoveryCodes!),
     );
   }
 

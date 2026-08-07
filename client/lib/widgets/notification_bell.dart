@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import 'side_panel.dart';
 import 'tag.dart';
 
 /// The bell (plan §12).
@@ -47,7 +48,7 @@ class _NotificationBellState extends State<NotificationBell> {
       if (!response.ok) {
         // Recorded, not shown. A bell that pops an error banner because a
         // background poll failed is worse than one that briefly shows a stale
-        // count — but the dialog needs to know, or it renders a failed fetch as
+        // count — but the panel needs to know, or it renders a failed fetch as
         // "Nothing yet." and an outage becomes indistinguishable from an empty
         // inbox.
         _error = response.message;
@@ -56,7 +57,9 @@ class _NotificationBellState extends State<NotificationBell> {
 
       _error = null;
       _items = List<Map<String, dynamic>>.from(response.data as List);
-      _unread = (response.body['meta'] as Map<String, dynamic>?)?['unread'] as int? ?? 0;
+      _unread =
+          (response.body['meta'] as Map<String, dynamic>?)?['unread'] as int? ??
+          0;
     });
   }
 
@@ -66,11 +69,11 @@ class _NotificationBellState extends State<NotificationBell> {
     if (!mounted) return;
 
     if (!response.ok) {
-      // The response was discarded and the dialog closed either way, so a
+      // The response was discarded and the panel closed either way, so a
       // failure looked identical to a success until the badge came back.
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
       return;
     }
 
@@ -82,17 +85,19 @@ class _NotificationBellState extends State<NotificationBell> {
 
     if (!mounted) return;
 
-    await showDialog<void>(
-      context: context,
-      // StatefulBuilder, because a dialog's page is built ONCE by the route and
+    await showSidePanel<void>(
+      context,
+      // StatefulBuilder, because a panel's page is built ONCE by the route and
       // cached: calling setState on this widget repaints the bell behind it and
       // leaves the open list showing exactly what it showed before. Marking one
-      // read did nothing visible until the dialog was closed and reopened.
+      // read did nothing visible until the panel was closed and reopened.
       builder: (context) => StatefulBuilder(
-        builder: (context, repaint) => AlertDialog(
-        title: Row(
-          children: [
-            const Expanded(child: Text('Notifications')),
+        builder: (context, repaint) => SidePanel(
+          title: 'Notifications',
+          width: 460,
+          // "Mark all read" sat beside the title and moves to the footer with
+          // Close, because the panel has one place for the things you press.
+          actions: [
             if (_unread > 0)
               TextButton(
                 onPressed: () async {
@@ -101,16 +106,23 @@ class _NotificationBellState extends State<NotificationBell> {
                 },
                 child: const Text('Mark all read'),
               ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
           ],
-        ),
-        content: SizedBox(
-          width: 460,
-          height: 400,
           child: _items.isEmpty
-              ? Center(
-                  child: Text(_error ?? 'Nothing yet.'),
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 48),
+                  child: Center(child: Text(_error ?? 'Nothing yet.')),
                 )
               : ListView.separated(
+                  // The panel scrolls the body already, so the list lays itself
+                  // out at full height inside it. Two nested scrollers would
+                  // fight over the same drag.
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.zero,
                   itemCount: _items.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, i) {
@@ -119,18 +131,27 @@ class _NotificationBellState extends State<NotificationBell> {
 
                     return ListTile(
                       dense: true,
+                      contentPadding: EdgeInsets.zero,
                       leading: Icon(
                         unread ? Icons.circle : Icons.circle_outlined,
                         size: 12,
-                        color: unread ? Theme.of(context).colorScheme.primary : null,
+                        color: unread
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
                       ),
                       title: Text(n['title'] as String),
-                      subtitle: n['body'] != null ? Text(n['body'] as String) : null,
-                      trailing: (n['source'] == 'workflow') ? const Tag('Rule') : null,
+                      subtitle: n['body'] != null
+                          ? Text(n['body'] as String)
+                          : null,
+                      trailing: (n['source'] == 'workflow')
+                          ? const Tag('Rule')
+                          : null,
                       onTap: unread
                           ? () async {
-                              final r = await widget.api
-                                  .post('/notifications/${n['id']}/read', {});
+                              final r = await widget.api.post(
+                                '/notifications/${n['id']}/read',
+                                {},
+                              );
 
                               if (!context.mounted) return;
 
@@ -144,7 +165,7 @@ class _NotificationBellState extends State<NotificationBell> {
                               await _refresh();
 
                               // repaint, not setState: setState rebuilds the
-                              // bell behind the dialog, and the dialog's own
+                              // bell behind the panel, and the panel's own
                               // page is cached by the route.
                               if (context.mounted) repaint(() {});
                             }
@@ -152,13 +173,6 @@ class _NotificationBellState extends State<NotificationBell> {
                     );
                   },
                 ),
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
         ),
       ),
     );

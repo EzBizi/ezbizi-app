@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/staff_session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/side_panel.dart';
 
 /// Global module availability — the platform-wide gate (plan §2.1, layer 3).
 ///
@@ -108,56 +109,11 @@ class _ModulesScreenState extends State<ModulesScreen> {
     final controller = TextEditingController();
     final selected = <String>{};
 
-    return showDialog<Map<String, dynamic>>(
-      context: context,
+    return showSidePanel<Map<String, dynamic>>(
+      context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setLocal) => AlertDialog(
-          title: Text('Set $label to $state'),
-          content: SizedBox(
-            width: 440,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  TextField(
-                    controller: controller,
-                    autofocus: true,
-                    minLines: 2,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: 'Reason',
-                      helperText:
-                          'Read by whoever finds this later, probably mid-incident',
-                    ),
-                  ),
-                  if (state == 'beta') ...[
-                    const SizedBox(height: 16),
-                    Text('Available to',
-                        style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Everyone else sees the module as switched off.',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    ...organizations.map((org) => CheckboxListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          value: selected.contains(org['id']),
-                          title: Text(org['name'] as String),
-                          onChanged: (on) => setLocal(() {
-                            on == true
-                                ? selected.add(org['id'] as String)
-                                : selected.remove(org['id']);
-                          }),
-                        )),
-                  ],
-                ],
-              ),
-            ),
-          ),
+        builder: (context, setLocal) => SidePanel(
+          title: 'Set $label to $state',
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -171,6 +127,45 @@ class _ModulesScreenState extends State<ModulesScreen> {
               child: const Text('Apply'),
             ),
           ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Reason',
+                  helperText:
+                      'Read by whoever finds this later, probably mid-incident',
+                ),
+              ),
+              if (state == 'beta') ...[
+                const SizedBox(height: 16),
+                Text('Available to',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(
+                  'Everyone else sees the module as switched off.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 8),
+                ...organizations.map((org) => CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      value: selected.contains(org['id']),
+                      title: Text(org['name'] as String),
+                      onChanged: (on) => setLocal(() {
+                        on == true
+                            ? selected.add(org['id'] as String)
+                            : selected.remove(org['id']);
+                      }),
+                    )),
+              ],
+            ],
+          ),
         ),
       ),
     );

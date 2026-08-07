@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../core/staff_session.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
-import 'impersonation_dialog.dart';
+import 'impersonation_panel.dart';
 
 /// Every organization on the platform (plan §4.2).
 ///
@@ -127,9 +128,9 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
   }
 
   Future<void> _impersonate(Map<String, dynamic> org) async {
-    final started = await showDialog<bool>(
-      context: context,
-      builder: (_) => ImpersonationDialog(
+    final started = await showSidePanel<bool>(
+      context,
+      builder: (_) => ImpersonationPanel(
         staff: widget.staff,
         organizationId: org['id'] as String,
         organizationName: org['name'] as String,

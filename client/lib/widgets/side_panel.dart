@@ -27,6 +27,7 @@ class SidePanel extends StatelessWidget {
     this.subtitle,
     this.actions = const [],
     this.width = 440,
+    this.scrollable = true,
   });
 
   final String title;
@@ -38,6 +39,22 @@ class SidePanel extends StatelessWidget {
   final List<Widget> actions;
 
   final double width;
+
+  /// Whether the panel scrolls the body for you.
+  ///
+  /// True suits a form, which is most of them. Set it false when the body wants
+  /// the height for itself — a long list that should stay lazy, or a surface
+  /// that handles its own drags.
+  ///
+  /// A scroll view is not free to impose. It hands the body unbounded height, so
+  /// a `ListView` inside one builds every row; and once it has anything to
+  /// scroll it puts a vertical-drag recognizer above everything in the body,
+  /// which accepts at a smaller slop than a pan or scale recognizer and takes
+  /// the gesture. That is how the logo cropper lost its drag.
+  ///
+  /// False gives the body a bounded height instead, and it decides what to do
+  /// with it.
+  final bool scrollable;
 
   @override
   Widget build(BuildContext context) {
@@ -72,12 +89,16 @@ class SidePanel extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(title,
-                              style: Theme.of(context).textTheme.titleLarge),
+                          Text(
+                            title,
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
                           if (subtitle != null) ...[
                             const SizedBox(height: 6),
-                            Text(subtitle!,
-                                style: Theme.of(context).textTheme.bodySmall),
+                            Text(
+                              subtitle!,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
                           ],
                         ],
                       ),
@@ -92,23 +113,29 @@ class SidePanel extends StatelessWidget {
               ),
               const Divider(height: 1),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-                  child: child,
-                ),
+                child: scrollable
+                    ? SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                        child: child,
+                      )
+                    : Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                        child: child,
+                      ),
               ),
               if (actions.isNotEmpty) ...[
                 const Divider(height: 1),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      for (final action in actions) ...[
-                        action,
-                        if (action != actions.last) const SizedBox(width: 10),
-                      ],
-                    ],
+                  // Wraps rather than overflows. Three buttons is about 344px,
+                  // which fits the panel until the window is narrow enough that
+                  // the panel becomes the window — and that is exactly where a
+                  // Row would have thrown.
+                  child: Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 10,
+                    runSpacing: 8,
+                    children: actions,
                   ),
                 ),
               ],

@@ -4,11 +4,12 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../core/api_client.dart';
 import 'error_note.dart';
 import 'recovery_codes.dart';
+import 'side_panel.dart';
 
 /// Setting up an authenticator, from the app (plan §4.2, §6).
 ///
 /// Used by both audiences — a staff member bootstrapping their own account, and
-/// a client switching two-factor on in Settings. One dialog, because it is the
+/// a client switching two-factor on in Settings. One panel, because it is the
 /// same moment: here is a QR, prove it works, keep these codes.
 ///
 /// The QR is drawn from the otpauth:// URI the server issues. The server does
@@ -84,16 +85,14 @@ class _TotpSetupDialogState extends State<TotpSetupDialog> {
   Widget build(BuildContext context) {
     final done = _recoveryCodes != null;
 
-    return AlertDialog(
-      title: Text(done ? 'Recovery codes' : widget.title),
-      content: SizedBox(
-        width: 420,
-        child: SingleChildScrollView(
-          child: done
-              ? RecoveryCodesView(codes: _recoveryCodes!)
-              : _setup(context),
-        ),
-      ),
+    // The dialog this replaces refused scrim dismissal, so a stray click could
+    // not destroy the recovery codes. A panel is escapable by design
+    // (side_panel.dart), which leaves 'Copy all' standing in for that guard.
+    return SidePanel(
+      title: done ? 'Recovery codes' : widget.title,
+      // Wider than the default so the QR and the secret beside its label both
+      // fit without wrapping.
+      width: 480,
       actions: done
           ? [
               FilledButton(
@@ -108,6 +107,9 @@ class _TotpSetupDialogState extends State<TotpSetupDialog> {
               ),
               FilledButton(onPressed: _busy ? null : _confirm, child: const Text('Confirm')),
             ],
+      child: done
+          ? RecoveryCodesView(codes: _recoveryCodes!)
+          : _setup(context),
     );
   }
 

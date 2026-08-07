@@ -17,7 +17,11 @@ import 'company_form_panel.dart';
 /// Sub Company inherits from its parent before the organization, and a flat
 /// list says the opposite.
 class OrganizationScreen extends StatefulWidget {
-  const OrganizationScreen({super.key, required this.api, required this.session});
+  const OrganizationScreen({
+    super.key,
+    required this.api,
+    required this.session,
+  });
 
   final ApiClient api;
   final Session session;
@@ -83,12 +87,14 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   }
 
   void _snack(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
-      behavior: SnackBarBehavior.floating,
-      width: 420,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
+        behavior: SnackBarBehavior.floating,
+        width: 420,
+      ),
+    );
   }
 
   @override
@@ -110,8 +116,10 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Organization',
-                              style: Theme.of(context).textTheme.headlineSmall),
+                          Text(
+                            'Organization',
+                            style: Theme.of(context).textTheme.headlineSmall,
+                          ),
                           const SizedBox(height: 4),
                           Text(
                             'Companies, sub companies and the places work happens. '
@@ -139,7 +147,8 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                 ),
 
                 for (final company
-                    in (tree['companies'] as List<dynamic>).cast<Map<String, dynamic>>())
+                    in (tree['companies'] as List<dynamic>)
+                        .cast<Map<String, dynamic>>())
                   _companyBlock(company, isSub: false),
               ],
             ),
@@ -163,34 +172,33 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
             onChanged: _load,
             company: company,
             isSub: isSub,
-            onRename: () => _rename(
-              title: isSub ? 'Rename sub company' : 'Rename company',
-              current: company['name'] as String,
-              onSubmit: (name) => _send(
-                () => widget.api.patch('/companies/${company['id']}', {'name': name}),
-                'Renamed',
-              ),
-            ),
+            onEdit: () => _editCompany(company),
             onToggleActive: () => _send(
-              () => widget.api.patch('/companies/${company['id']}',
-                  {'is_active': !(company['is_active'] as bool)}),
-              company['is_active'] as bool ? 'Switched off' : 'Switched back on',
+              () => widget.api.patch('/companies/${company['id']}', {
+                'is_active': !(company['is_active'] as bool),
+              }),
+              company['is_active'] as bool
+                  ? 'Switched off'
+                  : 'Switched back on',
             ),
             onAddFranchise: () => _createFranchise(company),
             // §3: depth is fixed. Only a top-level company may hold one.
-            onAddSubCompany:
-                isSub ? null : () => _createCompany(parent: company),
+            onAddSubCompany: isSub
+                ? null
+                : () => _createCompany(parent: company),
             onRenameFranchise: (f) => _rename(
               title: 'Rename',
               current: f['name'] as String,
               onSubmit: (name) => _send(
-                () => widget.api.patch('/franchises/${f['id']}', {'name': name}),
+                () =>
+                    widget.api.patch('/franchises/${f['id']}', {'name': name}),
                 'Renamed',
               ),
             ),
             onToggleFranchise: (f) => _send(
-              () => widget.api.patch('/franchises/${f['id']}',
-                  {'is_active': !(f['is_active'] as bool)}),
+              () => widget.api.patch('/franchises/${f['id']}', {
+                'is_active': !(f['is_active'] as bool),
+              }),
               f['is_active'] as bool ? 'Switched off' : 'Switched back on',
             ),
           ),
@@ -233,6 +241,27 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
     );
   }
 
+  /// Everything about a company that can change, in the form that created it.
+  ///
+  /// This used to be "Rename", a single field — so an address typed once at
+  /// creation was permanent, and a company that moved had no way to say so
+  /// short of the API. The name was the only editable thing about the entity
+  /// whose address goes on the invoices.
+  Future<void> _editCompany(Map<String, dynamic> company) async {
+    final draft = await showSidePanel<CompanyDraft>(
+      context,
+      builder: (_) => CompanyFormPanel.edit(company: company),
+    );
+
+    if (draft == null) return;
+
+    await _send(
+      () =>
+          widget.api.patch('/companies/${company['id']}', draft.toUpdateJson()),
+      'Saved',
+    );
+  }
+
   Future<void> _createFranchise(Map<String, dynamic> company) async {
     final name = await _prompt(
       title: 'Add to ${company['name']}',
@@ -271,23 +300,13 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   }) async {
     final controller = TextEditingController(text: initial);
 
-    final value = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: SizedBox(
-          width: 380,
-          child: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: InputDecoration(
-              labelText: label,
-              helperText: hint,
-              border: const OutlineInputBorder(),
-            ),
-            onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
-          ),
-        ),
+    final value = await showSidePanel<String>(
+      context,
+      builder: (context) => SidePanel(
+        title: title,
+        // The field's helper moves up to the subtitle: one explanation, said
+        // once, above the thing it explains.
+        subtitle: hint,
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -298,6 +317,15 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
             child: const Text('Save'),
           ),
         ],
+        child: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: label,
+            border: const OutlineInputBorder(),
+          ),
+          onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
+        ),
       ),
     );
 
@@ -322,32 +350,37 @@ class _OrganizationRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
-      LogoBadge(
-        api: api,
-        path: '/branding/organization',
-        version: organization['logo_version'] as String? ?? '',
-        hasOwn: organization['has_logo'] == true,
-        aspect: organization['logo_aspect'] as String?,
-        mayEdit: organization['may_edit'] == true,
-        onChanged: onChanged,
-        size: 52,
-        fallbackIcon: Icons.hub_outlined,
-      ),
-      const SizedBox(width: 14),
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(organization['name'] as String,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          Text('the whole business — every company inherits this mark',
-              style: Theme.of(context).textTheme.bodySmall),
-        ],
-      ),
-    ]);
+    return Row(
+      children: [
+        LogoBadge(
+          api: api,
+          path: '/branding/organization',
+          version: organization['logo_version'] as String? ?? '',
+          hasOwn: organization['has_logo'] == true,
+          aspect: organization['logo_aspect'] as String?,
+          mayEdit: organization['may_edit'] == true,
+          onChanged: onChanged,
+          size: 52,
+          fallbackIcon: Icons.hub_outlined,
+        ),
+        const SizedBox(width: 14),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              organization['name'] as String,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            Text(
+              'the whole business — every company inherits this mark',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ],
+    );
   }
 }
 
@@ -357,7 +390,7 @@ class _CompanyCard extends StatelessWidget {
     required this.onChanged,
     required this.company,
     required this.isSub,
-    required this.onRename,
+    required this.onEdit,
     required this.onToggleActive,
     required this.onAddFranchise,
     required this.onAddSubCompany,
@@ -369,7 +402,7 @@ class _CompanyCard extends StatelessWidget {
   final VoidCallback onChanged;
   final Map<String, dynamic> company;
   final bool isSub;
-  final VoidCallback onRename;
+  final VoidCallback onEdit;
   final VoidCallback onToggleActive;
   final VoidCallback onAddFranchise;
   final VoidCallback? onAddSubCompany;
@@ -382,8 +415,8 @@ class _CompanyCard extends StatelessWidget {
     final active = company['is_active'] as bool;
     final mayEdit = company['may_edit'] as bool? ?? false;
 
-    final franchises =
-        (company['franchises'] as List<dynamic>).cast<Map<String, dynamic>>();
+    final franchises = (company['franchises'] as List<dynamic>)
+        .cast<Map<String, dynamic>>();
 
     return Card(
       margin: EdgeInsets.zero,
@@ -392,65 +425,75 @@ class _CompanyCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [
-              LogoBadge(
-                api: api,
-                path: '/branding/companies/${company['id']}',
-                version: company['logo_version'] as String? ?? '',
-                hasOwn: company['has_logo'] == true,
-                aspect: company['logo_aspect'] as String?,
-                mayEdit: mayEdit,
-                onChanged: onChanged,
-                size: 36,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                company['name'] as String,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15,
-                  color: active ? null : scheme.onSurfaceVariant,
+            Row(
+              children: [
+                LogoBadge(
+                  api: api,
+                  path: '/branding/companies/${company['id']}',
+                  version: company['logo_version'] as String? ?? '',
+                  hasOwn: company['has_logo'] == true,
+                  aspect: company['logo_aspect'] as String?,
+                  mayEdit: mayEdit,
+                  onChanged: onChanged,
+                  size: 36,
                 ),
-              ),
-              if (isSub) ...[
-                const SizedBox(width: 8),
-                Text('sub company',
-                    style: Theme.of(context).textTheme.bodySmall),
-              ],
-              if (!active) ...[
-                const SizedBox(width: 8),
-                Text('switched off',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: scheme.error)),
-              ],
-              const Spacer(),
-              if (mayEdit)
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_horiz, size: 20),
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(value: 'rename', child: Text('Rename')),
-                    PopupMenuItem(
-                      value: 'franchise',
-                      child: Text('Add a place'),
-                    ),
-                    if (onAddSubCompany != null)
+                const SizedBox(width: 12),
+                Text(
+                  company['name'] as String,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    color: active ? null : scheme.onSurfaceVariant,
+                  ),
+                ),
+                if (isSub) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    'sub company',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+                if (!active) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    'switched off',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: scheme.error),
+                  ),
+                ],
+                const Spacer(),
+                if (mayEdit)
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_horiz, size: 20),
+                    itemBuilder: (_) => [
                       const PopupMenuItem(
-                          value: 'sub', child: Text('Add a sub company')),
-                    PopupMenuItem(
-                      value: 'active',
-                      child: Text(active ? 'Switch off' : 'Switch back on'),
-                    ),
-                  ],
-                  onSelected: (v) => switch (v) {
-                    'rename' => onRename(),
-                    'franchise' => onAddFranchise(),
-                    'sub' => onAddSubCompany?.call(),
-                    _ => onToggleActive(),
-                  },
-                ),
-            ]),
+                        value: 'edit',
+                        child: Text('Edit details'),
+                      ),
+                      PopupMenuItem(
+                        value: 'franchise',
+                        child: Text('Add a place'),
+                      ),
+                      if (onAddSubCompany != null)
+                        const PopupMenuItem(
+                          value: 'sub',
+                          child: Text('Add a sub company'),
+                        ),
+                      PopupMenuItem(
+                        value: 'active',
+                        child: Text(active ? 'Switch off' : 'Switch back on'),
+                      ),
+                    ],
+                    onSelected: (v) => switch (v) {
+                      'edit' => onEdit(),
+                      'franchise' => onAddFranchise(),
+                      'sub' => onAddSubCompany?.call(),
+                      _ => onToggleActive(),
+                    },
+                  ),
+              ],
+            ),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
@@ -505,8 +548,11 @@ class _FranchiseChip extends StatelessWidget {
       ],
       onSelected: (v) => v == 'rename' ? onRename() : onToggle(),
       child: Chip(
-        avatar: Icon(Icons.storefront_outlined,
-            size: 15, color: active ? null : scheme.onSurfaceVariant),
+        avatar: Icon(
+          Icons.storefront_outlined,
+          size: 15,
+          color: active ? null : scheme.onSurfaceVariant,
+        ),
         label: Text(
           franchise['name'] as String,
           style: TextStyle(
@@ -518,4 +564,3 @@ class _FranchiseChip extends StatelessWidget {
     );
   }
 }
-

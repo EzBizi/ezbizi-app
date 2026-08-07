@@ -5,6 +5,7 @@ import '../core/theme.dart';
 import '../widgets/auth_preview.dart';
 import '../widgets/auth_shell.dart';
 import '../widgets/error_note.dart';
+import '../widgets/side_panel.dart';
 
 /// Sign in (plan §4).
 ///
@@ -417,26 +418,11 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _forgot() async {
     final email = TextEditingController(text: _email.text.trim());
 
-    final asked = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reset your password'),
-        content: SizedBox(
-          width: 380,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('We will email you a link. It works once and expires in an hour.'),
-              const SizedBox(height: 16),
-              TextField(
-                controller: email,
-                autofocus: true,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Email'),
-              ),
-            ],
-          ),
-        ),
+    final asked = await showSidePanel<String>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Reset your password',
+        subtitle: 'We will email you a link. It works once and expires in an hour.',
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -447,6 +433,12 @@ class _LoginScreenState extends State<LoginScreen> {
             child: const Text('Send link'),
           ),
         ],
+        child: TextField(
+          controller: email,
+          autofocus: true,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(labelText: 'Email'),
+        ),
       ),
     );
 
