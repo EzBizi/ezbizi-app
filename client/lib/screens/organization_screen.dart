@@ -3,6 +3,8 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/logo_badge.dart';
+import '../widgets/side_panel.dart';
+import 'company_form_panel.dart';
 
 /// The shape of the business (plan §3).
 ///
@@ -201,23 +203,33 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   // ── the two creation flows ───────────────────────────────────
 
   Future<void> _createCompany({Map<String, dynamic>? parent}) async {
-    final result = await showDialog<({String name, String franchise})>(
-      context: context,
-      builder: (_) => _CompanyDialog(parentName: parent?['name'] as String?),
+    final tree = _tree;
+
+    if (tree == null) return;
+
+    // Top-level companies only — §3 fixes the depth, so a sub company can never
+    // be a parent. Filtering here means the form cannot offer a choice the
+    // server would refuse.
+    final parents = (tree['companies'] as List<dynamic>)
+        .cast<Map<String, dynamic>>()
+        .map((c) => (id: c['id'] as String, name: c['name'] as String))
+        .toList();
+
+    final draft = await showSidePanel<CompanyDraft>(
+      context,
+      builder: (_) => CompanyFormPanel(
+        parents: parents,
+        fixedParent: parent == null
+            ? null
+            : (id: parent['id'] as String, name: parent['name'] as String),
+      ),
     );
 
-    if (result == null) return;
+    if (draft == null) return;
 
     await _send(
-      () => widget.api.post('/companies', {
-        'name': result.name,
-        if (parent != null) 'parent_company_id': parent['id'],
-        // §3: a company cannot exist without a franchise, so the form asks for
-        // the first one in the same breath rather than leaving somebody with
-        // half a company if they close the tab.
-        'franchise': {'name': result.franchise},
-      }),
-      parent == null ? 'Company added' : 'Sub company added',
+      () => widget.api.post('/companies', draft.toJson()),
+      draft.parentId == null ? 'Company added' : 'Sub company added',
     );
   }
 
@@ -507,91 +519,3 @@ class _FranchiseChip extends StatelessWidget {
   }
 }
 
-/// Adding a company, and its first place, in one form.
-///
-/// Two fields rather than two steps, because §3 makes them one act: a company
-/// cannot exist without a franchise. A wizard would leave somebody able to
-/// close the tab halfway and produce exactly the state the rule forbids.
-class _CompanyDialog extends StatefulWidget {
-  const _CompanyDialog({this.parentName});
-
-  final String? parentName;
-
-  @override
-  State<_CompanyDialog> createState() => _CompanyDialogState();
-}
-
-class _CompanyDialogState extends State<_CompanyDialog> {
-  final _name = TextEditingController();
-  final _franchise = TextEditingController();
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _franchise.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isSub = widget.parentName != null;
-
-    return AlertDialog(
-      title: Text(isSub ? 'Add a sub company' : 'Add a company'),
-      content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (isSub)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  'Under ${widget.parentName}. It will inherit that company\'s '
-                  'settings before the organization\'s — and it cannot be moved '
-                  'to a different parent later.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-            TextField(
-              controller: _name,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Name',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _franchise,
-              decoration: const InputDecoration(
-                labelText: 'Its first place',
-                helperText: 'A company must have somewhere work happens. '
-                    'A state, a city, a region — you can add more later.',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _name.text.trim().isEmpty || _franchise.text.trim().isEmpty
-              ? null
-              : () => Navigator.of(context).pop((
-                  name: _name.text.trim(),
-                  franchise: _franchise.text.trim(),
-                )),
-          child: const Text('Add'),
-        ),
-      ],
-    );
-  }
-}
