@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import 'logo_badge.dart';
+import 'scope_picker_dialog.dart';
 
 /// Which part of the business you are looking at (plan §3 roll-ups).
 ///
@@ -68,40 +69,13 @@ class ScopeSwitcher extends StatelessWidget {
 
     final scheme = Theme.of(context).colorScheme;
 
-    return PopupMenuButton<String>(
-      tooltip: 'Change what you are looking at',
-      position: PopupMenuPosition.under,
-      onSelected: session.setScope,
-      itemBuilder: (context) => [
-        PopupMenuItem(
-          value: 'organization',
-          child: _Entry(
-            icon: Icons.hub_outlined,
-            label: me.organization.name,
-            note: 'Everything',
-            selected: me.scope.type == 'organization',
-            depth: 0,
-          ),
-        ),
-        const PopupMenuDivider(),
-
-        // Top-level companies, each followed by its own Sub Companies and the
-        // franchises beneath both — the same tree the structure screen draws,
-        // because it is the same tree.
-        for (final company in me.companies.where((c) => c.parentCompanyId == null)) ...[
-          _companyItem(me, company, depth: 0),
-          for (final f in me.franchises.where((f) => f.companyId == company.id))
-            _franchiseItem(me, f, depth: 1),
-          for (final sub in me.companies.where((c) => c.parentCompanyId == company.id)) ...[
-            _companyItem(me, sub, depth: 1),
-            for (final f in me.franchises.where((f) => f.companyId == sub.id))
-              _franchiseItem(me, f, depth: 2),
-          ],
-        ],
-      ],
-      // Lighter than it was. With the logo standing on its own beside it, a
-      // bordered filled chip made two boxes competing for the same corner —
-      // and the one carrying the brand lost.
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      // A dialog rather than a dropdown. The dropdown listed every company,
+      // sub company and franchise in one run — already taller than the window
+      // at four companies, and unusable at twenty. See ScopePickerDialog: the
+      // list stays a tree and search does the scaling.
+      onTap: () => showScopePicker(context, api: api, session: session),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
@@ -129,35 +103,6 @@ class ScopeSwitcher extends StatelessWidget {
     );
   }
 
-  PopupMenuItem<String> _companyItem(Me me, CompanySummary company, {required int depth}) {
-    return PopupMenuItem(
-      value: 'company:${company.id}',
-      child: _Entry(
-        icon: Icons.apartment_outlined,
-        label: company.name,
-        // Said out loud, because it is the rule people get wrong: a company
-        // view includes everything under its Sub Companies too.
-        note: me.companies.any((c) => c.parentCompanyId == company.id)
-            ? 'and its sub companies'
-            : null,
-        selected: me.scope.type == 'company' && me.scope.id == company.id,
-        depth: depth,
-      ),
-    );
-  }
-
-  PopupMenuItem<String> _franchiseItem(Me me, FranchiseSummary f, {required int depth}) {
-    return PopupMenuItem(
-      value: 'franchise:${f.id}',
-      child: _Entry(
-        icon: Icons.storefront_outlined,
-        label: f.name,
-        selected: me.scope.type == 'franchise' && me.scope.id == f.id,
-        depth: depth,
-      ),
-    );
-  }
-
   static IconData _iconFor(String type) => switch (type) {
         'company' => Icons.apartment_outlined,
         'franchise' => Icons.storefront_outlined,
@@ -165,49 +110,3 @@ class ScopeSwitcher extends StatelessWidget {
       };
 }
 
-class _Entry extends StatelessWidget {
-  const _Entry({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.depth,
-    this.note,
-  });
-
-  final IconData icon;
-  final String label;
-  final String? note;
-  final bool selected;
-  final int depth;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Padding(
-      // The indent is the hierarchy, the same as everywhere else this tree is
-      // drawn. A flat menu would say a Sub Company is a sibling of its parent.
-      padding: EdgeInsets.only(left: depth * 18.0),
-      child: Row(children: [
-        Icon(icon,
-            size: 16,
-            color: selected ? scheme.primary : scheme.onSurfaceVariant),
-        const SizedBox(width: 10),
-        Flexible(
-          child: Text(
-            label,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-              color: selected ? scheme.primary : null,
-            ),
-          ),
-        ),
-        if (note != null) ...[
-          const SizedBox(width: 10),
-          Text(note!, style: Theme.of(context).textTheme.bodySmall),
-        ],
-      ]),
-    );
-  }
-}
