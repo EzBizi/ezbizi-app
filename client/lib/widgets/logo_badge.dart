@@ -25,7 +25,7 @@ class LogoBadge extends StatefulWidget {
     required this.path,
     required this.hasOwn,
     required this.mayEdit,
-    required this.onChanged,
+    this.onChanged,
     this.size = 44,
     this.fallbackIcon = Icons.apartment_outlined,
   });
@@ -42,7 +42,9 @@ class LogoBadge extends StatefulWidget {
   final bool hasOwn;
 
   final bool mayEdit;
-  final VoidCallback onChanged;
+  /// Null when the badge is only being displayed — a read-only one has
+  /// nothing to tell anybody about.
+  final VoidCallback? onChanged;
   final double size;
   final IconData fallbackIcon;
 
@@ -107,7 +109,7 @@ class _LogoBadgeState extends State<LogoBadge> {
     }
 
     await _fetch();
-    widget.onChanged();
+    widget.onChanged?.call();
   }
 
   Future<void> _remove() async {
@@ -118,7 +120,7 @@ class _LogoBadgeState extends State<LogoBadge> {
     if (!mounted) return;
 
     await _fetch();
-    widget.onChanged();
+    widget.onChanged?.call();
   }
 
   String _reason(ApiResponse response) {

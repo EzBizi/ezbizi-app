@@ -312,20 +312,47 @@ class OrganizationSummary {
 }
 
 class ViewScope {
-  const ViewScope({required this.type, required this.id, required this.label});
+  const ViewScope({
+    required this.type,
+    required this.id,
+    required this.label,
+    required this.path,
+    required this.logoPath,
+  });
 
   /// organization · company · franchise
   final String type;
   final String? id;
 
-  /// What the switcher shows — the organization's, company's or franchise's
-  /// name, resolved by the server so the client never has to look it up.
+  /// The scoped thing's own name — "Connecticut".
   final String label;
+
+  /// Its ancestry, ending in itself: ["Everdoors", "Connecticut"].
+  ///
+  /// Two companies can each operate a Connecticut, so the name alone names one
+  /// of two different places with different data behind each. Everywhere the
+  /// current view is stated, it is stated from this.
+  final List<String> path;
+
+  /// The branding endpoint whose logo applies to this view (§12).
+  final String logoPath;
+
+  /// The last two segments — "Everdoors › Connecticut".
+  ///
+  /// Enough to disambiguate in a top bar without spending the width on a full
+  /// chain; the whole path goes in the tooltip and on the settings screen,
+  /// where there is room to be complete.
+  String get shortPath =>
+      path.length <= 2 ? path.join(' › ') : path.sublist(path.length - 2).join(' › ');
+
+  String get fullPath => path.join(' › ');
 
   factory ViewScope.fromJson(Map<String, dynamic> json) => ViewScope(
         type: json['type'] as String? ?? 'organization',
         id: json['id'] as String?,
         label: json['label'] as String? ?? '',
+        path: (json['path'] as List<dynamic>? ?? []).cast<String>(),
+        logoPath: json['logo_path'] as String? ?? '/branding/organization',
       );
 }
 

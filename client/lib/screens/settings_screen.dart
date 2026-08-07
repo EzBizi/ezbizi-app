@@ -34,7 +34,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String get _scopeType => widget.session.me!.scope.type;
   String? get _scopeId =>
       widget.session.me!.scope.id ?? widget.session.me!.organization.id;
-  String get _scopeLabel => widget.session.me!.scope.label;
+  /// The full chain — "Everdoors › Connecticut".
+  ///
+  /// "Settings for Connecticut" named one of two different places, each with
+  /// its own values, and there was nothing on the screen to say which was being
+  /// edited.
+  String get _scopeLabel => widget.session.me!.scope.fullPath;
 
   /// The scope the last load ran against, so a change in the top bar refetches.
   String? _loadedFor;

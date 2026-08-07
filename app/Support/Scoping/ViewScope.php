@@ -141,7 +141,7 @@ class ViewScope
         return $this->type === self::FRANCHISE ? $this->id : null;
     }
 
-    /** What the client shows in the switcher. */
+    /** The scoped thing's own name — "Connecticut". */
     public function label(): string
     {
         return match ($this->type) {
@@ -151,12 +151,78 @@ class ViewScope
         };
     }
 
+    /**
+     * The ancestry, ending in the scoped thing itself.
+     *
+     * ["Everdoors", "Connecticut"], or with a Sub Company in between,
+     * ["Everdoors", "Premier Garage Repair", "Connecticut"].
+     *
+     * ── Why the name alone was not enough ────────────────────────
+     *
+     * Two companies can each operate a Connecticut, and both did within a day
+     * of the second company existing. A switcher reading "Connecticut" and a
+     * settings screen reading "Settings for Connecticut" were then describing
+     * one of two different places, with different data and different settings
+     * behind each, and nothing on either screen said which.
+     *
+     * The organization is deliberately absent. It is the root of every path, so
+     * including it would add a word to every label and distinguish nothing.
+     *
+     * @return string[]
+     */
+    public function path(): array
+    {
+        if ($this->type === self::ORGANIZATION) {
+            return [$this->user->organization->name];
+        }
+
+        if ($this->type === self::COMPANY) {
+            $company = Company::find($this->id);
+
+            return array_values(array_filter([
+                $company?->parent?->name,
+                $company?->name,
+            ]));
+        }
+
+        $franchise = Franchise::find($this->id);
+        $company   = $franchise?->company;
+
+        return array_values(array_filter([
+            $company?->parent?->name,
+            $company?->name,
+            $franchise?->name,
+        ]));
+    }
+
+    /**
+     * Where to fetch the logo that applies to this view (§12).
+     *
+     * A franchise has none — it is a geography, not a brand — so it shows its
+     * company's. A company with none of its own falls back to the
+     * organization's, which the branding endpoint does at read time.
+     */
+    public function logoPath(): string
+    {
+        $companyId = match ($this->type) {
+            self::COMPANY   => $this->id,
+            self::FRANCHISE => Franchise::find($this->id)?->company_id,
+            default         => null,
+        };
+
+        return $companyId === null
+            ? '/branding/organization'
+            : "/branding/companies/{$companyId}";
+    }
+
     public function toArray(): array
     {
         return [
-            'type'  => $this->type,
-            'id'    => $this->id,
-            'label' => $this->label(),
+            'type'      => $this->type,
+            'id'        => $this->id,
+            'label'     => $this->label(),
+            'path'      => $this->path(),
+            'logo_path' => $this->logoPath(),
         ];
     }
 }

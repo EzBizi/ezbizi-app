@@ -317,7 +317,7 @@ class _HomeShellState extends State<HomeShell> {
           const SizedBox(width: 14),
           Container(width: 1, height: 18, color: Theme.of(context).dividerColor),
           const SizedBox(width: 14),
-          Flexible(child: ScopeSwitcher(session: widget.session)),
+          Flexible(child: ScopeSwitcher(api: widget.api, session: widget.session)),
         ]),
         actions: [
           // Light / dark, one tap, from anywhere.

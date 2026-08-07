@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../core/api_client.dart';
 import '../core/session.dart';
+import 'logo_badge.dart';
 
 /// Which part of the business you are looking at (plan §3 roll-ups).
 ///
@@ -19,8 +21,9 @@ import '../core/session.dart';
 /// app simply IS that franchise for them. A control with one option is a
 /// control that only teaches people it does nothing.
 class ScopeSwitcher extends StatelessWidget {
-  const ScopeSwitcher({super.key, required this.session});
+  const ScopeSwitcher({super.key, required this.api, required this.session});
 
+  final ApiClient api;
   final Session session;
 
   @override
@@ -74,14 +77,30 @@ class ScopeSwitcher extends StatelessWidget {
           border: Border.all(color: scheme.outlineVariant),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(_iconFor(me.scope.type), size: 15, color: scheme.onSurfaceVariant),
-          const SizedBox(width: 8),
+          // The brand you are working under. A franchise has no logo of its
+          // own, so it shows its company's — which is also the fastest way to
+          // tell two Connecticuts apart, before reading a word.
+          LogoBadge(
+            key: ValueKey(me.scope.logoPath),
+            api: api,
+            path: me.scope.logoPath,
+            hasOwn: false,
+            mayEdit: false,
+            size: 22,
+            fallbackIcon: _iconFor(me.scope.type),
+          ),
+          const SizedBox(width: 9),
           ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 220),
-            child: Text(
-              me.scope.label,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+            constraints: const BoxConstraints(maxWidth: 300),
+            child: Tooltip(
+              message: me.scope.fullPath,
+              child: Text(
+                // The company AND the place. "Connecticut" alone named one of
+                // two different places with different data behind each.
+                me.scope.shortPath,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+              ),
             ),
           ),
           const SizedBox(width: 6),
