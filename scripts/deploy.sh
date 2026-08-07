@@ -79,8 +79,27 @@ git push production main
 
 if [ "$CODE_ONLY" != "--code" ]; then
   echo "→ uploading UI to shared directory"
-  # --delete so removed assets don't linger; the shared dir holds only the build.
-  rsync -az --delete client/build/web/ "$REMOTE:$SHARED/"
+
+  # tar over ssh rather than rsync, for two reasons.
+  #
+  # It is there. rsync is not on a stock Windows Git Bash, and the deploy that
+  # found that out had already pushed the backend — leaving a new API behind an
+  # old UI, which is the exact state the code half is carefully ordered to avoid.
+  # tar ships with every shell this runs in.
+  #
+  # And it swaps rather than syncs. rsync --delete edits the live directory in
+  # place, so for the length of an upload the site is a mix of two builds — and
+  # Flutter's assets are content-addressed, so half of them 404. Unpacking beside
+  # it and renaming makes the change one operation, and leaves the previous build
+  # next door to rename back to.
+  tar -cz -C client/build/web . | ssh "$REMOTE" "
+    set -e
+    rm -rf '$SHARED.new' '$SHARED.old'
+    mkdir -p '$SHARED.new'
+    tar -xz -C '$SHARED.new'
+    mv '$SHARED' '$SHARED.old'
+    mv '$SHARED.new' '$SHARED'
+  "
 fi
 
 echo "✓ done — https://app.ezbizi.com"
