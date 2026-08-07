@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import 'auth_preview.dart';
+import 'build_stamp.dart';
 
 /// The two-panel sign-in layout: identity on the left, the form on the right.
 ///
@@ -267,6 +268,8 @@ class _IdentityPanel extends StatelessWidget {
                 const Spacer(),
 
                 Row(children: [
+                  const BuildStamp(onDark: true),
+                  const SizedBox(width: 16),
                   Icon(Icons.lock_outline,
                       size: 14, color: Colors.white.withValues(alpha: 0.55)),
                   const SizedBox(width: 8),
@@ -325,6 +328,8 @@ class _FormPanel extends StatelessWidget {
                   const SizedBox(height: 36),
                 ],
                 form,
+                const SizedBox(height: 28),
+                const Center(child: BuildStamp()),
               ],
             ),
           ),

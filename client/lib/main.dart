@@ -20,6 +20,7 @@ import 'screens/workflows_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/staff/staff_login_screen.dart';
 import 'screens/staff/staff_shell.dart';
+import 'widgets/build_stamp.dart';
 import 'widgets/notification_bell.dart';
 import 'widgets/scope_switcher.dart';
 
@@ -624,6 +625,17 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                 onSelected: widget.onPinnedSelected,
               ),
             ),
+
+            // The version, at the very foot of the sidebar.
+            //
+            // Only when expanded: at 80px it would truncate, and half a build
+            // id is worse than none — it invites people to compare the wrong
+            // characters and conclude they are up to date when they are not.
+            if (widget.expanded)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 10, 12, 0),
+                child: BuildStamp(),
+              ),
             const SizedBox(height: 12),
           ],
         ),
