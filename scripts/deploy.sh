@@ -65,7 +65,20 @@ if [ "$CODE_ONLY" != "--code" ]; then
   # (app.ezbizi.com), not a subdirectory. Passing it explicitly is worse than
   # useless here — Git Bash on Windows rewrites a lone "/" into a drive path and
   # the build fails with a base-href of "C:/Program Files/Git/".
-  (cd client && flutter build web --release)
+  # The service-worker kill switch, copied over the empty file Flutter writes.
+  #
+  # `--pwa-strategy=none` does not omit flutter_service_worker.js — it writes it
+  # EMPTY. An empty worker is valid, installs, and then waits: with no
+  # skipWaiting() it will not take over while a tab the old worker controls is
+  # still open. So somebody who never closes the tab keeps the old build
+  # forever, which is exactly what happened.
+  #
+  # Ours calls skipWaiting, deletes every cache, unregisters itself and reloads
+  # the tabs. It must be copied AFTER the build, because the build overwrites
+  # anything at that path.
+  (cd client && flutter build web --release --pwa-strategy=none)
+
+  cp client/web/sw-kill.js client/build/web/flutter_service_worker.js
 
 fi
 

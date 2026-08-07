@@ -75,6 +75,39 @@
         .catch(() => {});
     }
   </script>
+  <script>
+    // Belt and braces to flutter_service_worker.js's self-destruct.
+    //
+    // That one catches a browser whose old worker is still doing update checks.
+    // This catches the page directly: anybody who reaches a fresh index.html
+    // unregisters whatever is registered and empties Cache Storage, without
+    // waiting for the worker's own update cycle to come round.
+    //
+    // The app registers no service worker at all now (--pwa-strategy=none), so
+    // there is never anything here worth keeping. It is offline support this
+    // app does not have and a stale-build risk it does not need.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations()
+        .then(function (registrations) {
+          registrations.forEach(function (registration) {
+            registration.unregister();
+          });
+        })
+        .catch(function () {
+          // Private modes and some embedded webviews refuse the API. A stale
+          // cache is survivable; a page that will not start is not.
+        });
+
+      if (window.caches && caches.keys) {
+        caches.keys()
+          .then(function (keys) {
+            keys.forEach(function (key) { caches.delete(key); });
+          })
+          .catch(function () {});
+      }
+    }
+  </script>
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
