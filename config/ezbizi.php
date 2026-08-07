@@ -13,19 +13,58 @@
  * PasswordResetLink, which meant a staging copy of this app would have emailed
  * production links to real people.
  */
+/*
+ * The two faces of the same API (§4.2, revised).
+ *
+ * A reset link has to land somebody on the sign-in page that is theirs. Both
+ * hosts serve the same API, so the wrong one would still work — it would just
+ * drop a customer into the control plane's login, which is the kind of thing
+ * that gets reported as a security incident.
+ *
+ * Bound to a variable rather than written straight into the array so the TLS
+ * check below can default to it. Repeating the literal there would be a second
+ * copy of a value that must not drift.
+ */
+$hosts = [
+    'customer' => env('EZBIZI_HOST_CUSTOMER', 'https://app.ezbizi.com'),
+    'staff'    => env('EZBIZI_HOST_STAFF', 'https://dev.ezbizi.com'),
+];
+
 return [
 
+    'hosts' => $hosts,
+
     /*
-     * The two faces of the same API (§4.2, revised).
+     * The certificate, as served — not as stored.
      *
-     * A reset link has to land somebody on the sign-in page that is theirs.
-     * Both hosts serve the same API, so the wrong one would still work — it
-     * would just drop a customer into the control plane's login, which is the
-     * kind of thing that gets reported as a security incident.
+     * nginx reads its certificates once and keeps them in memory for the life of
+     * the master process, so "certbot renewed the file" and "visitors are getting
+     * a valid certificate" are two different facts, and only the second one is
+     * the product's problem. This names the host to ask.
+     *
+     * One certificate covers both hostnames, so asking either answers for both;
+     * the customer host is the default because it is the one whose outage is a
+     * customer's outage.
      */
-    'hosts' => [
-        'customer' => env('EZBIZI_HOST_CUSTOMER', 'https://app.ezbizi.com'),
-        'staff'    => env('EZBIZI_HOST_STAFF', 'https://dev.ezbizi.com'),
+    'tls' => [
+        // `?: $hosts['customer']` on the end, because parse_url returns null for
+        // a schemeless value — and a null host builds `ssl://:443`, which fails
+        // to connect and reports a permanently red certificate with a message
+        // blaming the certificate rather than the configuration.
+        'host'    => env('EZBIZI_TLS_HOST')
+            ?: (parse_url($hosts['customer'], PHP_URL_HOST) ?: $hosts['customer']),
+        'port'    => (int) env('EZBIZI_TLS_PORT', 443),
+
+        // Short on purpose: this runs inside a staff page request, and a health
+        // screen that hangs waiting for a socket is reporting nothing while
+        // looking like it is reporting something.
+        'timeout' => (int) env('EZBIZI_TLS_TIMEOUT_SECONDS', 5),
+
+        // certbot starts renewing at 30 days out and retries twice a day, so a
+        // healthy installation never gets near this. Below it means either the
+        // renewal or the nginx reload after it has been failing for over a week,
+        // which is still a fortnight of warning before anything breaks.
+        'min_days' => (int) env('EZBIZI_TLS_MIN_DAYS', 21),
     ],
 
     /*

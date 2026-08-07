@@ -254,9 +254,9 @@ class AuditLogTest extends TestCase
             $this->audit->logStaff('staff.viewed_records', 's1', 'Dev');
         });
 
-        // Age both by two months: past the 1-month business window, well inside
+        // Age both by four months: past the 3-month business window, well inside
         // the 12-month staff window.
-        DB::table('audit_events')->update(['occurred_at' => now()->subMonths(2)]);
+        DB::table('audit_events')->update(['occurred_at' => now()->subMonths(4)]);
 
         $this->artisan('ezbizi:expire-audit')->assertSuccessful();
 

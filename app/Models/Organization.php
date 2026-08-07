@@ -22,16 +22,15 @@ class Organization extends Model
 
     protected $fillable = [
         'name', 'slug', 'reporting_currency', 'franchise_label',
-        'shares_customers', 'trial_ends_at', 'is_active', 'is_demo', 'logo_path', 'logo_aspect',
+        'trial_ends_at', 'is_active', 'is_demo', 'logo_path', 'logo_aspect',
     ];
 
     protected function casts(): array
     {
         return [
-            'shares_customers' => 'boolean',
-            'is_active'        => 'boolean',
-            'is_demo'          => 'boolean',
-            'trial_ends_at'    => 'datetime',
+            'is_active'     => 'boolean',
+            'is_demo'       => 'boolean',
+            'trial_ends_at' => 'datetime',
         ];
     }
 

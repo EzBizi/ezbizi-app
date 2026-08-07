@@ -6,6 +6,7 @@ use App\Models\Assignment;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Organization;
+use App\Models\PlatformSubscriptionDefaults;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
@@ -21,7 +22,7 @@ class ProvisionOrganizationTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function provision(string $name = 'Milk United Group', bool $demo = false): array
+    private function provision(string $name = 'Milk United Group', bool $demo = false, ?int $trialDays = null): array
     {
         return app(ProvisionOrganization::class)(
             organizationName: $name,
@@ -33,6 +34,7 @@ class ProvisionOrganizationTest extends TestCase
             companyName:   'Serenisima',
             franchiseName: 'New Jersey',
             isDemo:        $demo,
+            trialDays:     $trialDays,
         );
     }
 
@@ -106,17 +108,41 @@ class ProvisionOrganizationTest extends TestCase
         });
     }
 
-    public function test_starts_a_one_month_trial(): void
+    public function test_starts_a_trial_of_the_platform_default_length_in_days(): void
     {
         ['organization' => $org] = $this->provision();
 
         $this->assertNotNull($org->trial_ends_at);
+
+        // Days, never addMonth(). §13 rejects calendar months outright — they
+        // make a February trial shorter than a March one from the same wording.
         $this->assertEqualsWithDelta(
-            now()->addMonth()->timestamp,
+            now()->addDays(PlatformSubscriptionDefaults::trialDays())->timestamp,
             $org->trial_ends_at->timestamp,
             5
         );
         $this->assertFalse($org->isReadOnly());
+    }
+
+    public function test_the_trial_length_is_data_rather_than_a_deploy(): void
+    {
+        // "Sales can extend it" (owner, 2026-08-07). Changing the control-plane
+        // row changes what the next signup gets, with no release.
+        PlatformSubscriptionDefaults::current()->update(['trial_days' => 45]);
+
+        ['organization' => $org] = $this->provision();
+
+        $this->assertEqualsWithDelta(now()->addDays(45)->timestamp, $org->trial_ends_at->timestamp, 5);
+    }
+
+    public function test_one_organization_can_be_given_a_longer_trial_than_the_default(): void
+    {
+        ['organization' => $org] = $this->provision(trialDays: 90);
+
+        // The per-organization override, for a tenant created by staff from the
+        // control plane (§13). Everybody else still gets the default.
+        $this->assertEqualsWithDelta(now()->addDays(90)->timestamp, $org->trial_ends_at->timestamp, 5);
+        $this->assertSame(30, PlatformSubscriptionDefaults::trialDays());
     }
 
     public function test_goes_read_only_when_the_trial_lapses(): void
@@ -130,12 +156,11 @@ class ProvisionOrganizationTest extends TestCase
         $this->assertTrue($org->fresh()->isReadOnly());
     }
 
-    public function test_defaults_to_usd_and_customer_sharing_on(): void
+    public function test_defaults_to_usd_and_a_renameable_franchise_label(): void
     {
         ['organization' => $org] = $this->provision();
 
         $this->assertSame('USD', $org->reporting_currency);   // single-currency v1 (§7)
-        $this->assertTrue($org->shares_customers);            // owner decision (§5.2)
         $this->assertSame('Franchise', $org->franchise_label); // renameable (§8)
     }
 

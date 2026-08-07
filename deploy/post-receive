@@ -17,6 +17,13 @@
 # with no way back. This checks out, prepares, and only then swaps — and it
 # refuses to swap at all if anything fails.
 #
+# What that protects is the CODE, and only the code. `migrate --force` runs
+# against the production database partway through, so from that point on
+# "aborted" means the swap did not happen — not that nothing happened. The
+# messages below say which of the two they mean, because for a while they all
+# claimed the second one. The dump taken immediately before the migration is
+# what makes the difference recoverable.
+#
 set -uo pipefail
 
 APP=/var/www/ezbizi
@@ -36,7 +43,45 @@ while read -r _old _new ref; do
 
   echo "→ carrying over environment + storage"
   # .env NEVER lives in the repo (plan §15 Phase 0). It stays on the box.
-  cp "$APP/.env" "$TARGET/.env"
+  #
+  # Ownership is set explicitly because `cp` carries the source's mode across,
+  # and the source was `ubuntu:ubuntu 0640` — readable by the user that deploys
+  # and by nobody else. php-fpm runs as www-data, so the serving user could not
+  # read the file it serves from. The app only worked because a cached config
+  # existed and Laravel skips env loading entirely when it does; `config:clear`,
+  # or a config:cache that failed to write, took both hostnames to a hard 500.
+  #
+  # ubuntu keeps ownership (it deploys), www-data gets the group (it serves),
+  # and 0640 keeps everyone else out — APP_KEY is in here, and APP_KEY is what
+  # makes every TOTP secret in the database readable.
+  #
+  # Guarded, because a release whose .env the serving user cannot read is a
+  # release that 500s the moment anything invalidates the config cache — and it
+  # would not fail until then, which is the worst time to find out.
+  if ! (cp "$APP/.env" "$TARGET/.env" \
+        && sudo chown ubuntu:www-data "$TARGET/.env" \
+        && sudo chmod 0640 "$TARGET/.env"); then
+    echo "✗ could not place .env for www-data to read — deployment aborted, live app untouched"
+    rm -rf "$TARGET"; exit 1
+  fi
+
+  # Ask the serving user directly, because nothing later will.
+  #
+  # The obvious place to catch this is the boot check below, and it cannot: that
+  # runs after `config:cache`, and Laravel's LoadEnvironmentVariables returns
+  # immediately when a cached config exists, so it never opens .env at all. A
+  # release whose .env www-data cannot read boots perfectly, serves perfectly,
+  # and then 500s on both hostnames the first time anything invalidates the
+  # cache — `config:clear` while debugging being the likeliest trigger, at the
+  # least convenient moment.
+  #
+  # So the readability of the file is asserted here, as the user that will need
+  # it, rather than inferred later from something that cannot see it.
+  if ! sudo -u www-data test -r "$TARGET/.env"; then
+    echo "✗ www-data cannot read $TARGET/.env — deployment aborted, live app untouched"
+    rm -rf "$TARGET"; exit 1
+  fi
+
   # Storage holds uploads and logs; it must survive releases.
   rm -rf "$TARGET/storage"
   ln -s "$APP/storage" "$TARGET/storage"
@@ -55,19 +100,138 @@ while read -r _old _new ref; do
     rm -rf "$TARGET"; exit 1
   fi
 
-  echo "→ migrations"
-  if ! (cd "$TARGET" && php8.4 artisan migrate --force); then
-    echo "✗ migrations failed — deployment aborted, live app untouched"
+  # ── everything from here on can touch the live database ────────
+  #
+  # §11.2: "Backup immediately before every migration — verified, not assumed.
+  # The one time you skip it is the one that fails." There was no such backup.
+  #
+  # The nightly dump is not a substitute. It is up to twenty-four hours old and
+  # it lives on another instance; this one is seconds old and is sitting in the
+  # release directory beside the code that expected the schema it describes.
+  #
+  # Dumped as root over the unix socket, exactly as the nightly backup does, so
+  # that no database password is ever passed on a command line where `ps` can
+  # read it. The database NAME comes from the app's own configuration rather
+  # than a literal — a second installation has a different one, and dumping the
+  # wrong database is indistinguishable from dumping the right one until the
+  # restore.
+  echo "→ backing up the database before migrating"
+  DB_NAME=$(cd "$TARGET" && php8.4 artisan tinker --execute='echo config("database.connections.".config("database.default").".database");' 2>/dev/null | tr -d '[:space:]')
+  DUMP="$TARGET/pre-migration-$STAMP.sql.gz"
+
+  if [ -z "$DB_NAME" ]; then
+    echo "✗ could not read the database name from the app's config — refusing to migrate"
+    echo "  without a backup. This usually means .env is unreadable or malformed."
     rm -rf "$TARGET"; exit 1
   fi
 
-  echo "→ caches"
-  (cd "$TARGET" && php8.4 artisan config:cache -q && php8.4 artisan route:cache -q && php8.4 artisan view:cache -q)
+  # Created empty at 0600 BEFORE anything is written to it. Release directories
+  # are world-readable (0775) and this hook runs under umask 002, so a plain
+  # redirect would have left a full copy of the customer database readable by
+  # every account on the box — the same exposure `umask 077` exists to prevent in
+  # the nightly backup. `>` truncates the file it finds and keeps that mode, so
+  # there is no window where the dump exists with wider permissions.
+  # Guarded, because the whole argument above depends on it having worked. If
+  # `install` fails and control falls through, the `>` below creates the file
+  # fresh under the shell's umask (0002 here) inside a release directory that is
+  # drwxrwxr-x — mode 0664, which is precisely the world-readable dump of every
+  # customer record this line exists to prevent.
+  if ! install -m 0600 /dev/null "$DUMP"; then
+    echo "✗ could not create the pre-migration dump file — deployment aborted"
+    exit 1
+  fi
+  sudo mysqldump --single-transaction --routines --triggers --events \
+                 --no-tablespaces "$DB_NAME" | gzip > "$DUMP"
 
-  echo "→ health check before going live"
-  if ! (cd "$TARGET" && php8.4 artisan about --only=environment >/dev/null 2>&1); then
-    echo "✗ app failed to boot — deployment aborted, live app untouched"
+  # Both stages, not the last one. `mysqldump | gzip` reports only gzip, and gzip
+  # is perfectly happy compressing a stream that mysqldump abandoned halfway —
+  # which produces a plausible file that restores into half a database. -s
+  # catches the third case, where mysqldump wrote nothing at all.
+  DUMP_STAGES=("${PIPESTATUS[@]}")
+  if [ "${DUMP_STAGES[0]}" -ne 0 ] || [ "${DUMP_STAGES[1]}" -ne 0 ] || [ ! -s "$DUMP" ]; then
+    echo "✗ pre-migration backup of '$DB_NAME' failed — refusing to migrate without one"
     rm -rf "$TARGET"; exit 1
+  fi
+  echo "  dumped $DB_NAME to $DUMP ($(du -h "$DUMP" | cut -f1))"
+
+  echo "→ migrations"
+  if ! (cd "$TARGET" && php8.4 artisan migrate --force); then
+    # This used to say "live app untouched", and that was false in the way that
+    # matters most: `migrate --force` runs against the PRODUCTION database, so a
+    # failure here leaves the code on the old release and the schema partly on
+    # the new one. Deleting the release directory made the message look true by
+    # removing the evidence.
+    #
+    # The release directory is deliberately KEPT here — the dump is inside it.
+    echo "✗ migrations failed."
+    echo ""
+    echo "  The running CODE is untouched. The DATABASE is not: whichever"
+    echo "  migrations ran before the failure are still applied."
+    echo ""
+    echo "  Do not reach for migrate:rollback. Several down() methods are"
+    echo "  destructive — one drops every enrolled TOTP column — so rolling back"
+    echo "  destroys data the failed migration never touched."
+    echo ""
+    echo "  Restore the dump taken seconds ago instead:"
+    echo ""
+    echo "    gunzip -c $DUMP | sudo mysql $DB_NAME"
+    echo ""
+    echo "  Then remove the kept release: rm -rf $TARGET"
+    exit 1
+  fi
+
+  # Runs here, between the schema and the caches, because it reads the module
+  # registry from the new code and writes rows the new code expects to find.
+  # Production had ZERO rows in `permissions` and `permission_role` — this had
+  # never been run there at all, so the permission catalogue simply did not
+  # exist in the live database.
+  #
+  # Not quietened like the caches below it: -q suppresses error output too, and
+  # the one thing this command has to say when it fails is which module broke
+  # the §5.5 automation rule.
+  echo "→ syncing the permission catalogue"
+  if ! (cd "$TARGET" && php8.4 artisan ezbizi:sync-permissions); then
+    echo "✗ permission sync failed — deployment aborted."
+    echo "  The running code is untouched; the database has already been migrated."
+    echo "  Shipping without this is worse than not shipping: a module whose"
+    echo "  permissions are missing loses its tab with no error anywhere."
+    echo "  Pre-migration dump if you need it: gunzip -c $DUMP | sudo mysql $DB_NAME"
+    exit 1
+  fi
+
+  # Guarded like every other step. This was the one command in the file with no
+  # `if !` around it, and under `set -uo pipefail` (no `-e`) a failure here just
+  # carried on to the next line. A config:cache that dies leaves no
+  # bootstrap/cache/config.php, which makes the app read .env on every request —
+  # so the deploy reported success and the site served 500s.
+  echo "→ caches"
+  if ! (cd "$TARGET" && php8.4 artisan config:cache -q && php8.4 artisan route:cache -q && php8.4 artisan view:cache -q); then
+    echo "✗ cache build failed — deployment aborted."
+    echo "  The running code is untouched; the database has already been migrated."
+    echo "  Pre-migration dump if you need it: gunzip -c $DUMP | sudo mysql $DB_NAME"
+    exit 1
+  fi
+
+  # Run as www-data, which is who php-fpm runs as.
+  #
+  # As `ubuntu` this gate was testing a filesystem that nobody serves from: it
+  # proved the deploying user could boot the release, which is not the question.
+  # It now proves the SERVING user can traverse the release directory, read
+  # vendor/ and the caches, and boot the framework — the things that actually
+  # differ between the two accounts.
+  #
+  # What it deliberately does NOT prove is that www-data can read .env. It runs
+  # after `config:cache`, and Laravel skips env loading entirely once a cached
+  # config exists, so this gate cannot see that fault however it is run. That is
+  # asserted directly, further up, at the moment .env is placed.
+  echo "→ health check before going live (as www-data, the user that serves)"
+  if ! sudo -u www-data sh -c "cd '$TARGET' && php8.4 artisan about --only=environment" >/dev/null 2>&1; then
+    echo "✗ app failed to boot as www-data — deployment aborted."
+    echo "  The running code is untouched; the database has already been migrated."
+    echo "  Run it without the redirect to see why:"
+    echo "    sudo -u www-data sh -c \"cd '$TARGET' && php8.4 artisan about --only=environment\""
+    echo "  Pre-migration dump if you need it: gunzip -c $DUMP | sudo mysql $DB_NAME"
+    exit 1
   fi
 
   echo "→ swapping in"
@@ -77,9 +241,15 @@ while read -r _old _new ref; do
   # through to "deployed" — the push looked successful while the live app was
   # still running the previous release, which is the most misleading outcome
   # a deploy can produce.
+  #
+  # The release is kept rather than deleted on this path too, for the same reason
+  # as the migration failure above: the pre-migration dump is inside it, and the
+  # database has already been migrated by the time control reaches here.
   if ! ln -sfn "$TARGET" /var/www/ezbizi-current; then
-    echo "✗ could not repoint /var/www/ezbizi-current — deployment aborted"
-    rm -rf "$TARGET"; exit 1
+    echo "✗ could not repoint /var/www/ezbizi-current — deployment aborted."
+    echo "  The running code is untouched; the database has already been migrated."
+    echo "  Pre-migration dump if you need it: gunzip -c $DUMP | sudo mysql $DB_NAME"
+    exit 1
   fi
   sudo systemctl reload php8.4-fpm 2>/dev/null || true
 
@@ -91,6 +261,11 @@ while read -r _old _new ref; do
   echo "-> asking the queue worker to pick up the new release"
   (cd "$TARGET" && php8.4 artisan queue:restart -q) || true
 
+  # Each release now carries its own pre-migration dump, so this also bounds how
+  # many of those are kept. Five deploys of headroom is deliberate: it is long
+  # enough to still have the dump from the deploy that broke something, and short
+  # enough that the dumps do not quietly become the largest thing on the disk.
+  # Anything older belongs to the nightly backup, which is off this instance.
   echo "→ pruning old releases (keeping $KEEP)"
   ls -1dt "$RELEASES"/*/ 2>/dev/null | tail -n +$((KEEP+1)) | xargs -r rm -rf
 

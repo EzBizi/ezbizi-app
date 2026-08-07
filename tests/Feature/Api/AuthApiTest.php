@@ -185,15 +185,20 @@ class AuthApiTest extends TestCase
         $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        \App\Models\User::whereKey($r['administrator']->id)->update([
+        \App\Models\User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
             // encryptString, not encrypt(). The `encrypted` cast reads with
             // decryptString, which does not unserialize — encrypt() wraps a
             // SERIALIZED value, so the secret came back as `s:32:"..."` and
             // base32 decoding threw. It stayed hidden because no test had
             // ever verified a user's own code, only asked for one.
             //
-            // Query builder rather than the model: a model write goes through
-            // BelongsToTenant, and at login there is no tenant in context.
+            // Straight to the row, on purpose: there is no tenant here, and a
+            // model save would go through BelongsToTenant's write guard. The
+            // comment used to say "query builder" and stop there, which was not
+            // the whole story — User::whereKey() is still an ELOQUENT builder,
+            // so the tenant READ scope applies to it too. That used to pass
+            // silently because the scope failed open; it now refuses, so the
+            // cross-tenant read has to be stated.
             'totp_secret' => Crypt::encryptString($secret), 'totp_confirmed_at' => now(),
         ]);
 
@@ -261,15 +266,20 @@ class AuthApiTest extends TestCase
         $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        \App\Models\User::whereKey($r['administrator']->id)->update([
+        \App\Models\User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
             // encryptString, not encrypt(). The `encrypted` cast reads with
             // decryptString, which does not unserialize — encrypt() wraps a
             // SERIALIZED value, so the secret came back as `s:32:"..."` and
             // base32 decoding threw. It stayed hidden because no test had
             // ever verified a user's own code, only asked for one.
             //
-            // Query builder rather than the model: a model write goes through
-            // BelongsToTenant, and at login there is no tenant in context.
+            // Straight to the row, on purpose: there is no tenant here, and a
+            // model save would go through BelongsToTenant's write guard. The
+            // comment used to say "query builder" and stop there, which was not
+            // the whole story — User::whereKey() is still an ELOQUENT builder,
+            // so the tenant READ scope applies to it too. That used to pass
+            // silently because the scope failed open; it now refuses, so the
+            // cross-tenant read has to be stated.
             'totp_secret' => Crypt::encryptString($secret), 'totp_confirmed_at' => now(),
         ]);
 
@@ -291,15 +301,20 @@ class AuthApiTest extends TestCase
         $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        \App\Models\User::whereKey($r['administrator']->id)->update([
+        \App\Models\User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
             // encryptString, not encrypt(). The `encrypted` cast reads with
             // decryptString, which does not unserialize — encrypt() wraps a
             // SERIALIZED value, so the secret came back as `s:32:"..."` and
             // base32 decoding threw. It stayed hidden because no test had
             // ever verified a user's own code, only asked for one.
             //
-            // Query builder rather than the model: a model write goes through
-            // BelongsToTenant, and at login there is no tenant in context.
+            // Straight to the row, on purpose: there is no tenant here, and a
+            // model save would go through BelongsToTenant's write guard. The
+            // comment used to say "query builder" and stop there, which was not
+            // the whole story — User::whereKey() is still an ELOQUENT builder,
+            // so the tenant READ scope applies to it too. That used to pass
+            // silently because the scope failed open; it now refuses, so the
+            // cross-tenant read has to be stated.
             'totp_secret' => Crypt::encryptString($secret), 'totp_confirmed_at' => now(),
         ]);
 

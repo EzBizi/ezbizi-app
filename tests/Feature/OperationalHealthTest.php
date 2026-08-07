@@ -12,7 +12,7 @@ use PragmaRX\Google2FA\Google2FA;
 use Tests\TestCase;
 
 /**
- * The three subsystems that fail silently (plan §18 Phase 0, §4.2).
+ * The subsystems that fail silently (plan §18 Phase 0, §4.2).
  *
  * Every one of these has the same failure shape: it stops, and nothing about the
  * app looks different. That is why they are tested for what they REPORT, not
@@ -31,6 +31,16 @@ class OperationalHealthTest extends TestCase
 
         $this->statusFile = storage_path('app/backup-status-test.json');
         config(['ezbizi.backups.status_file' => $this->statusFile]);
+
+        // Pointed at a closed port for the whole class.
+        //
+        // The certificate check reads what is being served over the wire, which
+        // means that left at its default the suite would open a TLS connection
+        // to the real production host — a test whose result depends on the
+        // network it runs on, and which stalls for the full timeout wherever
+        // there isn't one. Port 1 refuses immediately and deterministically.
+        // Tests that care set their own value.
+        config(['ezbizi.tls.host' => '127.0.0.1', 'ezbizi.tls.port' => 1]);
 
         @unlink($this->statusFile);
     }
@@ -191,6 +201,80 @@ class OperationalHealthTest extends TestCase
         $this->assertDatabaseHas('audit_events', ['action' => 'backup.unhealthy']);
     }
 
+    // ── the certificate ──────────────────────────────────────────
+
+    public function test_a_certificate_that_cannot_be_read_is_a_failure_not_an_unknown(): void
+    {
+        $health = $this->certificateReading();
+
+        // Same rule as the backup verdict, for the same reason: on a screen
+        // somebody glances at, "I could not tell" and "it is fine" are the same
+        // green tick, and only one of them is true.
+        $this->assertFalse($health['ok']);
+
+        // Null rather than 0. Zero is a measurement — it says the certificate
+        // expires today — and there is no measurement here.
+        $this->assertNull($health['days_remaining']);
+        $this->assertNull($health['expires_at']);
+        $this->assertNotNull($health['problem']);
+    }
+
+    public function test_the_certificate_check_names_the_host_it_could_not_read(): void
+    {
+        config(['ezbizi.tls.host' => '127.0.0.1', 'ezbizi.tls.port' => 1]);
+
+        // The point of the whole screen is that a red icon beside an empty
+        // sentence is useless. Whoever reads this has to know which host and
+        // which port produced nothing.
+        $this->assertStringContainsString('127.0.0.1:1', $this->certificateReading()['problem']);
+    }
+
+    /**
+     * The certificate block, read the way the staff screen reads it.
+     *
+     * Goes through the endpoint rather than the controller so it exercises what
+     * actually ships — including the fact that a check which cannot reach
+     * anything must not take the whole health screen down with it.
+     */
+    private function certificateReading(): array
+    {
+        $response = $this->withHeader('Authorization', 'Bearer '.$this->staffToken())
+            ->getJson('/api/v1/staff/health')
+            ->assertOk();
+
+        return $response->json('certificate');
+    }
+
+    /**
+     * A signed-in Lead Developer, which is the only thing that can read /health.
+     *
+     * The enrol-then-login dance is real rather than faked because the staff
+     * guard is a second factor, not a flag: a token minted around it would let
+     * these tests pass against a route that nobody could actually reach.
+     */
+    private function staffToken(): string
+    {
+        $totp = app(Google2FA::class);
+        $secret = $totp->generateSecretKey(32);
+
+        $staff = PlatformStaff::create([
+            'name' => 'Jose', 'email' => 'staff@ezbizi.test',
+            'password' => 'a-real-staff-password',
+            'tier' => PlatformStaff::TIER_LEAD, 'is_active' => true,
+        ]);
+
+        $staff->forceFill(['totp_secret' => $secret, 'totp_confirmed_at' => now()])->save();
+
+        $token = $this->postJson('/api/v1/staff/auth/login', [
+            'email' => 'staff@ezbizi.test', 'password' => 'a-real-staff-password',
+            'code' => $totp->getCurrentOtp($secret),
+        ])->assertOk()->json('token');
+
+        $this->app['auth']->forgetGuards();
+
+        return $token;
+    }
+
     // ── the staff-facing view ────────────────────────────────────
 
     public function test_health_is_staff_only(): void
@@ -215,23 +299,7 @@ class OperationalHealthTest extends TestCase
 
     public function test_staff_see_every_subsystem_at_once(): void
     {
-        $totp = app(Google2FA::class);
-        $secret = $totp->generateSecretKey(32);
-
-        $staff = PlatformStaff::create([
-            'name' => 'Jose', 'email' => 'staff@ezbizi.test',
-            'password' => 'a-real-staff-password',
-            'tier' => PlatformStaff::TIER_LEAD, 'is_active' => true,
-        ]);
-
-        $staff->forceFill(['totp_secret' => $secret, 'totp_confirmed_at' => now()])->save();
-
-        $token = $this->postJson('/api/v1/staff/auth/login', [
-            'email' => 'staff@ezbizi.test', 'password' => 'a-real-staff-password',
-            'code' => $totp->getCurrentOtp($secret),
-        ])->assertOk()->json('token');
-
-        $this->app['auth']->forgetGuards();
+        $token = $this->staffToken();
 
         config(['mail.default' => 'log']);
 
@@ -240,28 +308,13 @@ class OperationalHealthTest extends TestCase
             ->assertOk()
             ->assertJsonPath('backups.ok', false)
             ->assertJsonPath('mail.delivers', false)
-            ->assertJsonPath('outbox.ok', true);
+            ->assertJsonPath('outbox.ok', true)
+            ->assertJsonPath('certificate.ok', false);
     }
 
     public function test_a_test_email_refuses_rather_than_pretending(): void
     {
-        $totp = app(Google2FA::class);
-        $secret = $totp->generateSecretKey(32);
-
-        $staff = PlatformStaff::create([
-            'name' => 'Jose', 'email' => 'staff@ezbizi.test',
-            'password' => 'a-real-staff-password',
-            'tier' => PlatformStaff::TIER_LEAD, 'is_active' => true,
-        ]);
-
-        $staff->forceFill(['totp_secret' => $secret, 'totp_confirmed_at' => now()])->save();
-
-        $token = $this->postJson('/api/v1/staff/auth/login', [
-            'email' => 'staff@ezbizi.test', 'password' => 'a-real-staff-password',
-            'code' => $totp->getCurrentOtp($secret),
-        ])->assertOk()->json('token');
-
-        $this->app['auth']->forgetGuards();
+        $token = $this->staffToken();
 
         config(['mail.default' => 'log']);
 

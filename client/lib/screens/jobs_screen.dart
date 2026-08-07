@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/money.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
@@ -299,23 +300,30 @@ class _NewJobPanelState extends State<_NewJobPanel> {
       _error = null;
     });
 
-    // Parsed as a decimal amount, not by deleting every non-digit.
-    //
-    // Stripping punctuation turned "1,250.00" into 125000 cents — a hundredfold
-    // error that looks like a plausible price, so nobody catches it until a
-    // client queries an invoice. Parsed properly, and refused rather than
-    // guessed when it is not a number.
-    final typed = _amount.text.trim().replaceAll(',', '');
-    final major = typed.isEmpty ? null : double.tryParse(typed);
-    final cents = major == null ? null : (major * 100).round();
+    // The conversion lives in core/money.dart, where it is tested. What matters
+    // here is that a price it cannot read is SAID rather than dropped: the
+    // amount used to be posted with a null-aware element, so a typo created the
+    // job with no price at all and no complaint, and the first anyone knew was
+    // an invoice that came to nothing.
+    final int? cents;
+    try {
+      cents = parseAmountMinor(_amount.text);
+    } on FormatException catch (e) {
+      setState(() {
+        _busy = false;
+        _error = e.message;
+      });
+      return;
+    }
 
     final response = await widget.api.post('/jobs', {
       'franchise_id': _franchiseId,
       'customer_id': _customerId,
       'title': _title.text.trim(),
       'status': _status,
-      // Minor units, always — the field takes cents and this is where they
-      // become an integer. Money never travels as a float (§7).
+      // Minor units, always — money never travels as a float (§7). Null here
+      // means the field was left empty, which is a job booked before anyone
+      // quoted it; an amount that could not be read never reaches this line.
       'amount_minor': ?cents,
     });
 
@@ -469,12 +477,15 @@ class _NewJobPanelState extends State<_NewJobPanel> {
                 TextField(
                   controller: _amount,
                   decoration: const InputDecoration(
-                    labelText: 'Price in cents',
-                    helperText: '19999 for \$199.99. Stored as an integer so it '
-                        'cannot drift by a cent.',
+                    labelText: 'Price',
+                    helperText: 'In dollars — 199.99 for \$199.99. Stored as '
+                        'whole cents so it cannot drift.',
                     helperMaxLines: 2,
                   ),
-                  keyboardType: TextInputType.number,
+                  // Dollars have a decimal point, so the on-screen keyboard has
+                  // to offer one. Plain .number hides it on iOS, which would
+                  // leave a phone user unable to type anything but whole dollars.
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   enabled: !_busy,
                 ),
                 if (_error != null) ...[

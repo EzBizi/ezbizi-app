@@ -91,6 +91,15 @@ trait BelongsToTenant
                     static::class,
                 ));
             }
+
+            // A delete is a write. This hook was the one of the three that did
+            // not say so, while the docblock below claimed every tenant-owned
+            // write converged here — so a lapsed organization could not create
+            // or edit a customer and could still delete one, including
+            // forceDelete. The owner's rule for the read-only state is
+            // "no changes whatsoever can be done", and removing a record is the
+            // largest change there is.
+            static::assertSubscriptionPermits($model);
         });
     }
 
@@ -133,10 +142,29 @@ trait BelongsToTenant
  * The read filter.
  *
  * In platform scope it deliberately does nothing — staff working across
- * organizations is a real, audited mode (§4.2), not an accident. With no tenant
- * and no platform scope it also does nothing, because silently returning every
- * tenant's rows would be far worse than the loud failure the write path gives.
- * That combination is what the isolation tests exist to catch.
+ * organizations is a real, audited mode (§4.2), not an accident.
+ *
+ * ── With no tenant it REFUSES ────────────────────────────────────
+ *
+ * It used to return without adding a predicate, on the reasoning that a loud
+ * failure was worse than no filter. That was backwards, and the docblock saying
+ * so described the leak as though it were the safeguard: no predicate means the
+ * query returns every organization's rows. Route model binding was resolving
+ * ahead of SetTenantContext (see bootstrap/app.php), so that was not a
+ * hypothetical — it was the live path for every {model} in routes/api.php.
+ *
+ * So this now matches the write path, which has always thrown. Reading across
+ * tenants is a real need, and it has two named ways to say so:
+ *
+ *   TenantContext::runWithoutTenant()   the callback runs in platform scope
+ *   Model::withoutGlobalScopes()        one query, opted out at the call site
+ *
+ * Both are greppable. Silence was not.
+ *
+ * The exception is RuntimeException rather than something more specific
+ * deliberately: this is a programming error — code reading tenant data from
+ * somewhere that never established a tenant — not a condition callers should be
+ * catching and handling.
  */
 class TenantScope implements Scope
 {
@@ -144,8 +172,18 @@ class TenantScope implements Scope
     {
         $tenant = app(TenantContext::class);
 
-        if ($tenant->inPlatformScope() || ! $tenant->has()) {
+        if ($tenant->inPlatformScope()) {
             return;
+        }
+
+        if (! $tenant->has()) {
+            throw new RuntimeException(sprintf(
+                'No tenant in context, refusing to read %s unscoped. Anything reading '
+                .'tenant data must run inside TenantContext::run() or after a request '
+                .'has resolved its organization. If this read genuinely spans tenants, '
+                .'say so with runWithoutTenant() or withoutGlobalScopes().',
+                $model::class,
+            ));
         }
 
         $builder->where(

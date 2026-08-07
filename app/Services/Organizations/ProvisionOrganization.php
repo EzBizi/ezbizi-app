@@ -6,6 +6,7 @@ use App\Models\Assignment;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Organization;
+use App\Models\PlatformSubscriptionDefaults;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\Tenancy\TenantContext;
@@ -32,6 +33,20 @@ class ProvisionOrganization
 
     /**
      * @param  array{name:string, email:string, password:string}  $administrator
+     * @param  int|null  $trialDays  overrides the platform default for this one
+     *                               organization, so a longer trial can be handed
+     *                               out without changing it for everybody.
+     *                               NOTE: no caller passes this yet. There is no
+     *                               signup form and no control-plane creation
+     *                               screen — every caller of this class is a test
+     *                               — so today the parameter is reachable only
+     *                               from tests, and extending a trial in practice
+     *                               means writing `organizations.trial_ends_at`
+     *                               by hand. The owner's decision is that sales
+     *                               can extend a trial; this is the seam that
+     *                               makes that a one-line change once either
+     *                               entry point exists, not a claim that it
+     *                               already works.
      * @return array{organization:Organization, administrator:User, company:Company, franchise:Franchise}
      */
     public function __invoke(
@@ -41,17 +56,30 @@ class ProvisionOrganization
         string $franchiseName,
         ?string $timezone = 'America/New_York',
         bool $isDemo = false,
+        ?int $trialDays = null,
     ): array {
+        // Resolved before the transaction opens so the row this reads is the
+        // same one an operator would edit, not something the transaction is
+        // holding open.
+        $trialDays ??= PlatformSubscriptionDefaults::trialDays();
+
         return DB::transaction(function () use (
-            $organizationName, $administrator, $companyName, $franchiseName, $timezone, $isDemo
+            $organizationName, $administrator, $companyName, $franchiseName, $timezone, $isDemo, $trialDays
         ) {
             $organization = Organization::create([
                 'name'               => $organizationName,
                 'slug'               => $this->uniqueSlug($organizationName),
                 'reporting_currency' => 'USD',   // single-currency v1 (§7)
                 'franchise_label'    => 'Franchise',
-                'shares_customers'   => true,    // ON by default (§5.2, owner decision)
-                'trial_ends_at'      => now()->addMonth(),  // 1-month trial (§13)
+
+                // A fixed number of DAYS, and the exact expiry stored rather
+                // than recomputed (§13). This was addMonth(), which §13 rejects
+                // outright: a February signup got 28 days and a July one 31,
+                // from identical wording in the same contract. The length itself
+                // is data — see PlatformSubscriptionDefaults for why it is not a
+                // constant here and not a tenant setting either.
+                'trial_ends_at'      => now()->addDays($trialDays),
+
                 'is_active'          => true,
                 'is_demo'            => $isDemo,
             ]);

@@ -104,7 +104,10 @@ class PreferencesTest extends TestCase
         // Refused loudly rather than stored: a preference the client cannot
         // render is worse than one that was never saved, because the second
         // tells somebody immediately.
-        $this->assertSame([], User::find($this->alpha['admin']->id)->preferences ?? []);
+        // withoutGlobalScopes: the request has ended and SetTenantContext clears
+        // the tenant on its way out, so an assertion made afterwards has none to
+        // be scoped by.
+        $this->assertSame([], User::withoutGlobalScopes()->find($this->alpha['admin']->id)->preferences ?? []);
     }
 
     public function test_an_unknown_key_is_refused(): void
@@ -143,7 +146,7 @@ class PreferencesTest extends TestCase
 
         $this->assertSame('system', $theirs['appearance.theme']);
 
-        $this->assertSame([], User::find($other->id)->preferences ?? []);
+        $this->assertSame([], User::withoutGlobalScopes()->find($other->id)->preferences ?? []);
     }
 
     // ── the two mixed modes, and a width that has bounds ─────────

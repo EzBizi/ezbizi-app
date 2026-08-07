@@ -77,7 +77,10 @@ class SelfServiceTotpTest extends TestCase
      */
     private function freshStep(): void
     {
-        User::whereKey($this->org['admin']->id)->update(['last_totp_timestamp' => null]);
+        // withoutGlobalScopes because this runs between requests, where there is
+        // no tenant — SetTenantContext clears it as each one finishes, and the
+        // tenant read scope now refuses rather than quietly matching every row.
+        User::withoutGlobalScopes()->whereKey($this->org['admin']->id)->update(['last_totp_timestamp' => null]);
     }
 
     private function signedIn(?string $secret = null): static
@@ -86,7 +89,7 @@ class SelfServiceTotpTest extends TestCase
             // Each code works once, so a test that signs in repeatedly needs a
             // fresh step. Google2FA reads the real clock and Carbon cannot move
             // it; clearing the recorded step is how a test says time passed.
-            User::whereKey($this->org['admin']->id)->update(['last_totp_timestamp' => null]);
+            User::withoutGlobalScopes()->whereKey($this->org['admin']->id)->update(['last_totp_timestamp' => null]);
         }
 
         $token = $this->postJson('/api/v1/auth/login', array_filter([
@@ -217,7 +220,7 @@ class SelfServiceTotpTest extends TestCase
             'email' => 'a@alpha.test', 'password' => 'a-real-password',
         ])->assertOk()->assertJsonPath('status', 'second_factor_required');
 
-        User::whereKey($this->org['admin']->id)->update(['last_totp_timestamp' => null]);
+        User::withoutGlobalScopes()->whereKey($this->org['admin']->id)->update(['last_totp_timestamp' => null]);
 
         $this->postJson('/api/v1/auth/login', [
             'email' => 'a@alpha.test', 'password' => 'a-real-password',
@@ -258,7 +261,9 @@ class SelfServiceTotpTest extends TestCase
             'code'     => $this->totp->getCurrentOtp($secret),
         ])->assertOk();
 
-        $this->assertFalse(User::find($this->org['admin']->id)->hasTotp());
+        // withoutGlobalScopes for the same reason as freshStep(): between
+        // requests there is no tenant, so a scoped read has nothing to scope by.
+        $this->assertFalse(User::withoutGlobalScopes()->find($this->org['admin']->id)->hasTotp());
     }
 
     public function test_a_user_cannot_opt_out_of_a_policy_their_organization_set(): void
@@ -322,7 +327,7 @@ class SelfServiceTotpTest extends TestCase
         $this->assertNotSame($secret, $newSecret);
 
         // The old one still works until the new one is confirmed.
-        $this->assertTrue(User::find($this->org['admin']->id)->hasTotp());
+        $this->assertTrue(User::withoutGlobalScopes()->find($this->org['admin']->id)->hasTotp());
 
         $this->app['auth']->forgetGuards();
         $this->signedIn($secret)->postJson('/api/v1/me/totp/confirm', [

@@ -167,6 +167,50 @@ class TenantIsolationTest extends TestCase
         Company::create(['name' => 'Orphan']);
     }
 
+    public function test_refuses_to_read_with_no_tenant_in_context(): void
+    {
+        $this->makeTree($this->makeOrg('Alpha'), 'A');
+        $this->makeTree($this->makeOrg('Bravo'), 'B');
+
+        /*
+         * The read half of the rule the test above states for writes.
+         *
+         * This one used to pass by returning FOUR franchises — both
+         * organizations' — because the scope added no predicate when there was
+         * no tenant. Route model binding ran in exactly that state until
+         * bootstrap/app.php was ordered, so it was the live path rather than a
+         * thought experiment.
+         */
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/No tenant in context/');
+
+        Franchise::all();
+    }
+
+    public function test_a_token_stops_working_when_its_organization_is_removed(): void
+    {
+        $a = $this->makeOrg('Alpha');
+        $user = $this->makeUser($a, 'admin@alpha.test', 'Administrator');
+
+        $token = $user->createToken('probe')->plainTextToken;
+
+        // Organization is soft-deleted, so every user of it has a null
+        // organization while their tokens go on authenticating — nothing revokes
+        // them when the tenant goes. The request must be refused at the door,
+        // not carried on with no tenant in context.
+        $a->delete();
+
+        $this->tenant->forget();
+
+        // The MESSAGE is asserted, not just the status. Sanctum answers 401 too,
+        // and "the token did not resolve" would be a different bug wearing the
+        // same code — this has to be the tenancy refusal.
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->getJson('/api/v1/me')
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'This account is no longer attached to an organization. Sign in again.');
+    }
+
     // ── context safety ───────────────────────────────────────────
 
     public function test_restores_the_previous_tenant_even_when_the_callback_throws(): void
@@ -261,11 +305,17 @@ class TenantIsolationTest extends TestCase
             'assigned_organization_id' => $a->id,
         ]));
 
-        $fresh = $user->fresh();
+        // Asked from inside A, like the two tests above it. canActOnFranchise()
+        // walks the user's assignments, which are tenant-owned — so the question
+        // needs a tenant to be asked in. It used to be asked with none, and the
+        // read scope answered by matching every organization's rows.
+        $this->tenant->run($a, function () use ($user, $treeA, $treeB) {
+            $fresh = $user->fresh();
 
-        // Organization-wide authority inside A must still stop at A's edge.
-        $this->assertTrue($fresh->canActOnFranchise($treeA['franchise']));
-        $this->assertFalse($fresh->canActOnFranchise($treeB['franchise']));
+            // Organization-wide authority inside A must still stop at A's edge.
+            $this->assertTrue($fresh->canActOnFranchise($treeA['franchise']));
+            $this->assertFalse($fresh->canActOnFranchise($treeB['franchise']));
+        });
     }
 
     // ── the XOR invariant ────────────────────────────────────────

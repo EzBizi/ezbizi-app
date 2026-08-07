@@ -9,10 +9,10 @@ use App\Models\User;
 /**
  * Who may do what to a customer (plan §4, §5.2).
  *
- * Customers are SHARED org-wide, which changes the shape of this from every
+ * Customers are visible org-wide, which changes the shape of this from every
  * other policy in the system: reading and editing are permission questions
- * only, because the whole point of sharing is that a customer served by two
- * franchises is one record both can work with.
+ * only, because a customer served by two franchises is one record both can
+ * work with.
  *
  * Reach still matters in two places, and both are about ACCOUNTABILITY rather
  * than access:
@@ -21,8 +21,18 @@ use App\Models\User;
  *     for the relationship and will count it in their numbers
  *   - reassigning the owner, for the same reason, in both directions
  *
- * Note what is deliberately absent: a franchise check on view or update. Adding
- * one would quietly turn sharing off while leaving the setting saying it is on.
+ * Note what is deliberately absent: a franchise check on view or update. That
+ * follows from the hierarchy (§3), not from a preference anyone can set. A
+ * customer is entered against a franchise, the franchise sits inside a company,
+ * and the company sits inside the organization — so the customer is the
+ * organization's, and seeing it from the organization view is the same record
+ * seen from further up its own tree. Adding a franchise check here would refuse
+ * an organization its own data on the strength of which branch typed it in.
+ *
+ * (There was once a `shares_customers` column suggesting this could be switched
+ * off per tenant. Nothing ever read it and it has been dropped — what keeps the
+ * relationship unambiguous is the owning-franchise tag, which is visible
+ * wherever the customer appears, and the audit trail behind every edit.)
  */
 class CustomerPolicy
 {

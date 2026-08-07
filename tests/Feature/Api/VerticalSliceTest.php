@@ -526,7 +526,9 @@ class VerticalSliceTest extends TestCase
             'name' => 'Renamed', 'owning_franchise_id' => null,
         ])->assertStatus(422);
 
-        $this->assertSame('Person', Customer::find($customer)->name);
+        // withoutGlobalScopes: the request has ended, so there is no tenant left
+        // for this read to be scoped by — the middleware clears it on the way out.
+        $this->assertSame('Person', Customer::withoutGlobalScopes()->find($customer)->name);
     }
 
     public function test_currency_comes_from_the_franchise_and_is_not_accepted_from_the_client(): void

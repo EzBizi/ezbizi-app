@@ -23,6 +23,46 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         /*
+         * Tenancy is established BEFORE route model binding.
+         *
+         * Listing middleware in a route's ->middleware([...]) does not decide the
+         * order it runs in. The framework sorts the gathered list against the
+         * priority map, and SubstituteBindings is in that map while our two are
+         * not — so whatever the route file said, binding won and the real
+         * pipeline for api/v1/customers/{customer} was:
+         *
+         *     auth:sanctum -> SubstituteBindings -> tenant -> subscription
+         *
+         * Every {model} in routes/api.php therefore resolved with no tenant in
+         * context. That is only survivable while TenantScope fails OPEN, which
+         * is the bug it pairs with (see TenantScope in BelongsToTenant.php): a
+         * findOrFail that runs unscoped will happily bind another organization's
+         * row and hand it to a controller that assumed the scope had already
+         * refused it.
+         *
+         * Both entries below establish a tenancy MODE — SetTenantContext an
+         * organization, StaffOnly platform scope — and binding is only safe once
+         * one of them has run. They must still come after authentication, since
+         * neither has anything to work from until there is a principal.
+         *
+         * prependToPriorityList() rather than priority(): priority() REPLACES the
+         * framework's default map, which would mean pasting a copy of Laravel's
+         * eleven-entry list into this file and silently keeping the Laravel 13
+         * version of it through every future upgrade. The relative form states
+         * the only thing we actually care about — "before binding" — and inherits
+         * the rest.
+         */
+        $middleware->prependToPriorityList(
+            Illuminate\Routing\Middleware\SubstituteBindings::class,
+            App\Http\Middleware\SetTenantContext::class,
+        );
+
+        $middleware->prependToPriorityList(
+            Illuminate\Routing\Middleware\SubstituteBindings::class,
+            App\Http\Middleware\StaffOnly::class,
+        );
+
+        /*
          * Never redirect an API caller to a login PAGE.
          *
          * Laravel's default is to send unauthenticated users to route('login'),

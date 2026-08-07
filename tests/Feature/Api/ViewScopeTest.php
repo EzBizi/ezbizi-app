@@ -250,9 +250,18 @@ class ViewScopeTest extends TestCase
 
         // Even asking for the whole organization, reach is the floor: this
         // person is assigned to one franchise and sees its 10.
+        //
+        // The whole expression runs inside the tenant, not just the scope()
+        // call. franchiseIds() is lazy — it resolves reach when asked rather
+        // than when the scope is built — so calling it outside was a read of
+        // every organization's franchises that happened to give the right
+        // answer only because it was then intersected with reach.
         $this->assertSame(
             [$this->w['ct']->id],
-            $this->scope($limited->fresh())->franchiseIds(),
+            app(TenantContext::class)->run(
+                $this->w['org'],
+                fn () => ViewScope::forUser($limited->fresh())->franchiseIds(),
+            ),
         );
     }
 

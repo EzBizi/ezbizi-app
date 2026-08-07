@@ -46,6 +46,25 @@ class ModuleAvailabilityTest extends TestCase
         );
     }
 
+    /**
+     * What this user may do, asked from inside their own tenant.
+     *
+     * hasPermission() consults their Role, and roles are tenant-owned — so the
+     * question cannot be asked with no tenant in context. A request has one by
+     * the time a permission is checked; a test has to establish it, the same way
+     * ViewScopeTest does for reach.
+     *
+     * These assertions used to run outside any tenant and passed only because
+     * the read scope failed open and matched every organization's roles.
+     */
+    private function may(User $user, string $permission): bool
+    {
+        return app(TenantContext::class)->run(
+            $user->organization,
+            fn () => $user->fresh()->hasPermission($permission),
+        );
+    }
+
     // ── defaults ─────────────────────────────────────────────────
 
     public function test_a_module_with_no_flag_is_available(): void
@@ -71,7 +90,7 @@ class ModuleAvailabilityTest extends TestCase
         ['organization' => $org, 'administrator' => $admin] = $this->provision('Alpha');
 
         // Administrator normally holds everything, unconditionally.
-        $this->assertTrue($admin->fresh()->hasPermission('companies.edit'));
+        $this->assertTrue($this->may($admin, 'companies.edit'));
 
         $this->availability->setState(
             'companies',
@@ -81,7 +100,7 @@ class ModuleAvailabilityTest extends TestCase
         );
 
         // A kill switch that exempts admins isn't a kill switch.
-        $this->assertFalse($admin->fresh()->hasPermission('companies.edit'));
+        $this->assertFalse($this->may($admin, 'companies.edit'));
         $this->assertFalse($this->availability->isAvailable('companies', $org));
     }
 
@@ -93,8 +112,8 @@ class ModuleAvailabilityTest extends TestCase
             'companies', PlatformModuleFlag::DISABLED, reason: 'broken'
         );
 
-        $this->assertFalse($admin->fresh()->hasPermission('companies.edit'));
-        $this->assertTrue($admin->fresh()->hasPermission('franchises.edit'));
+        $this->assertFalse($this->may($admin, 'companies.edit'));
+        $this->assertTrue($this->may($admin, 'franchises.edit'));
     }
 
     public function test_re_enabling_restores_access(): void
@@ -102,12 +121,12 @@ class ModuleAvailabilityTest extends TestCase
         ['administrator' => $admin] = $this->provision('Alpha');
 
         $this->availability->setState('companies', PlatformModuleFlag::DISABLED, reason: 'x');
-        $this->assertFalse($admin->fresh()->hasPermission('companies.edit'));
+        $this->assertFalse($this->may($admin, 'companies.edit'));
 
         $this->availability->setState('companies', PlatformModuleFlag::ENABLED);
         $this->availability->flushCache();
 
-        $this->assertTrue($admin->fresh()->hasPermission('companies.edit'));
+        $this->assertTrue($this->may($admin, 'companies.edit'));
     }
 
     // ── beta rollout ─────────────────────────────────────────────
@@ -127,8 +146,8 @@ class ModuleAvailabilityTest extends TestCase
         $this->assertTrue($this->availability->isAvailable('companies', $alpha));
         $this->assertFalse($this->availability->isAvailable('companies', $bravo));
 
-        $this->assertTrue($alphaAdmin->fresh()->hasPermission('companies.edit'));
-        $this->assertFalse($bravoAdmin->fresh()->hasPermission('companies.edit'));
+        $this->assertTrue($this->may($alphaAdmin, 'companies.edit'));
+        $this->assertFalse($this->may($bravoAdmin, 'companies.edit'));
     }
 
     public function test_beta_with_no_organizations_is_rejected(): void

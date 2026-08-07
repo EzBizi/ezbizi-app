@@ -88,12 +88,42 @@ class BrandingController extends Controller
         return $this->serve($request->user()->organization);
     }
 
+    /**
+     * A company's mark.
+     *
+     * ── The tenant check is HERE, not inherited ──────────────────
+     *
+     * This used to say the tenant scope had already refused another
+     * organization's company because binding ran inside it. That was not true:
+     * the resolved pipeline put SubstituteBindings ahead of SetTenantContext, so
+     * `{company}` was looked up with no tenant in context — and TenantScope adds
+     * no predicate when there is none. bootstrap/app.php now orders tenancy
+     * before binding, and TenantScope refuses rather than returning everything,
+     * so the claim is finally true. It is still not a reason to make this the
+     * only bound-model read in the API with nothing of its own: §5.1 puts
+     * authorization alongside the scope in the boundary, not behind it.
+     *
+     * 404 rather than 403, matching the avatar endpoint: another tenant's
+     * company is not merely forbidden, it is not there — and saying "forbidden"
+     * confirms the id exists.
+     *
+     * No PERMISSION beyond membership, for the same reason `organization()` has
+     * none: the scope picker draws a mark beside every company the caller can
+     * reach, and reaching a franchise does not imply `companies.view`. Gating
+     * this on the policy would blank those logos for everybody below an
+     * administrator — and would also put a logo behind the platform module flag,
+     * which is a switch for a feature, not for the chrome around it.
+     *
+     * Falling back to the organization's mark rather than 404ing keeps a company
+     * that has not set one looking like part of the same business.
+     */
     public function company(Request $request, Company $company)
     {
-        // The tenant scope already refuses another organization's company, and
-        // `findOrFail` binding runs inside it. Falling back to the
-        // organization's mark rather than 404ing keeps a company that has not
-        // set one looking like part of the same business.
+        abort_unless(
+            $company->organization_id === $request->user()->organization_id,
+            404,
+        );
+
         return $company->logo_path === null
             ? $this->serve($request->user()->organization)
             : $this->serve($company);

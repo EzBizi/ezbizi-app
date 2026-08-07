@@ -373,9 +373,14 @@ class WorkflowEngine
      */
     public function rehearse(Workflow $workflow, WorkflowEvent $event): array
     {
-        $version = $workflow->activeVersion ?? $workflow->versions()->first();
+        return $this->tenant->run($event->organization, function () use ($workflow, $event) {
+            // Resolved INSIDE the tenant, like everything in deliver(). It used
+            // to be read a line above the run() and worked only because the
+            // caller happened to be a request that already had a tenant — the
+            // same assumption deliver()'s header says nothing below it may make.
+            // Reading a WorkflowVersion is a tenant-scoped read whoever asks.
+            $version = $workflow->activeVersion ?? $workflow->versions()->first();
 
-        return $this->tenant->run($event->organization, function () use ($version, $event) {
             $subject = $this->subjectOf($event);
             $verdict = $this->conditions->evaluate($version?->conditions, $event, $subject);
 

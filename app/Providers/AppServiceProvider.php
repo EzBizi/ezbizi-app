@@ -66,6 +66,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        /*
+         * Sanctum resolves a bearer token to the account that issued it, and
+         * that lookup necessarily happens before any tenant is in context — the
+         * tenant is a property of the account being looked up.
+         *
+         * The stock PersonalAccessToken has no way to say so, so the read went
+         * through the tenant scope with nothing set. See App\Models\ApiToken for
+         * what that meant while the scope failed open, and why the exemption is
+         * one named scope on one relation rather than anything wider.
+         */
+        \Laravel\Sanctum\Sanctum::usePersonalAccessTokenModel(\App\Models\ApiToken::class);
     }
 }

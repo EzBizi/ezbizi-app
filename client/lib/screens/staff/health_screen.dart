@@ -4,11 +4,13 @@ import '../../widgets/async_body.dart';
 
 /// The subsystems that fail silently (plan §4.2, §18 Phase 0).
 ///
-/// Backups, mail and the outbox all fail the same way: they stop, and nothing
-/// about the app looks different. The scheduler was not running for the first
-/// week — no error, no alert, the outbox just filled up. Mail is a transport
-/// that accepts every message and returns success. The backup wrote files to the
-/// disk it was protecting and exited zero.
+/// Backups, the certificate, mail and the outbox all fail the same way: they
+/// stop, and nothing about the app looks different. The scheduler was not
+/// running for the first week — no error, no alert, the outbox just filled up.
+/// Mail is a transport that accepts every message and returns success. The
+/// backup wrote files to the disk it was protecting and exited zero. And certbot
+/// renews on time while nginx serves the copy it loaded at boot, so the
+/// certificate is the one whose failure already has a date on it.
 ///
 /// So this screen answers the only question that catches those: when did it last
 /// actually work, and is that recent enough.
@@ -65,8 +67,9 @@ class _HealthScreenState extends State<HealthScreen> {
       _testResult = null;
     });
 
-    final response = await widget.staff.api
-        .post('/staff/health/test-email', {'address': _address.text.trim()});
+    final response = await widget.staff.api.post('/staff/health/test-email', {
+      'address': _address.text.trim(),
+    });
 
     if (!mounted) return;
 
@@ -90,8 +93,10 @@ class _HealthScreenState extends State<HealthScreen> {
           Row(
             children: [
               Expanded(
-                child: Text('Health',
-                    style: Theme.of(context).textTheme.headlineSmall),
+                child: Text(
+                  'Health',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
               ),
               IconButton(
                 onPressed: _load,
@@ -102,13 +107,14 @@ class _HealthScreenState extends State<HealthScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Three subsystems that stop without complaining. Everything here is '
+            'Four subsystems that stop without complaining. Everything here is '
             'a read of when it last actually worked, not whether it answers.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 20),
           if (_health != null) ...[
             _backups(_health!['backups'] as Map<String, dynamic>),
+            _certificate(_health!['certificate'] as Map<String, dynamic>?),
             _mail(_health!['mail'] as Map<String, dynamic>),
             _outbox(_health!['outbox'] as Map<String, dynamic>),
           ],
@@ -154,6 +160,34 @@ class _HealthScreenState extends State<HealthScreen> {
     );
   }
 
+  /// TLS expiry.
+  ///
+  /// Here because the failure it reports is dated and silent: certbot renews on
+  /// schedule, and nginx keeps serving the certificate it loaded at boot until
+  /// something reloads it. Nothing on the box says so, and the first symptom is
+  /// both hostnames refusing connections on the same morning — including this
+  /// screen, which is why the number has to be visible long before then.
+  ///
+  /// Null-tolerant: an older server that does not send the key yet leaves this
+  /// card out rather than crashing the page it is a diagnostic for.
+  Widget _certificate(Map<String, dynamic>? certificate) {
+    if (certificate == null) return const SizedBox.shrink();
+
+    final ok = certificate['ok'] == true;
+    final days = certificate['days_remaining'];
+
+    return _card(
+      ok: ok,
+      title: 'Certificate',
+      headline: ok
+          ? '${certificate['common_name'] ?? 'The certificate'} is good for '
+                '$days more ${days == 1 ? 'day' : 'days'}, '
+                'until ${certificate['expires_at'] ?? 'its stated date'}.'
+          : (certificate['problem'] as String? ??
+                'The certificate could not be read.'),
+    );
+  }
+
   Widget _backups(Map<String, dynamic> backups) {
     final ok = backups['ok'] == true;
     final age = backups['age_hours'];
@@ -167,9 +201,9 @@ class _HealthScreenState extends State<HealthScreen> {
           // An unverified backup is indistinguishable from a working one until
           // the day it matters.
           ? 'Last verified restore ${age == null ? "recently" : "$age hours ago"}, '
-              'from ${backups['restored_from'] ?? 'the latest dump'}.'
+                'from ${backups['restored_from'] ?? 'the latest dump'}.'
           : (backups['problem'] as String? ??
-              (backups['errors'] as List<dynamic>? ?? []).join(', ')),
+                (backups['errors'] as List<dynamic>? ?? []).join(', ')),
       children: [
         if (!ok && verified)
           Padding(
@@ -181,7 +215,7 @@ class _HealthScreenState extends State<HealthScreen> {
               'The dump restores cleanly, from '
               '${backups['restored_from'] ?? 'the latest file'}. '
               '${backups['offsite'] == true ? '' : 'It is the local copy only — '
-                  'a lost instance takes the backup with it.'}',
+                        'a lost instance takes the backup with it.'}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
@@ -199,9 +233,9 @@ class _HealthScreenState extends State<HealthScreen> {
       headline: delivers
           ? 'Sending through ${mail['transport']} as ${mail['from']}.'
           : missing.isEmpty
-              ? 'The "${mail['transport']}" transport does not deliver anywhere. '
-                  'Password resets are written to the log and reach nobody.'
-              : 'Not configured — missing ${missing.join(', ')}.',
+          ? 'The "${mail['transport']}" transport does not deliver anywhere. '
+                'Password resets are written to the log and reach nobody.'
+          : 'Not configured — missing ${missing.join(', ')}.',
       children: [
         const SizedBox(height: 12),
         Row(
@@ -224,7 +258,9 @@ class _HealthScreenState extends State<HealthScreen> {
             ),
             const SizedBox(width: 8),
             FilledButton.tonal(
-              onPressed: _sending || _address.text.trim().isEmpty ? null : _sendTest,
+              onPressed: _sending || _address.text.trim().isEmpty
+                  ? null
+                  : _sendTest,
               child: Text(_sending ? 'Sending…' : 'Send'),
             ),
           ],
@@ -232,8 +268,10 @@ class _HealthScreenState extends State<HealthScreen> {
         if (_testResult != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text(_testResult!,
-                style: Theme.of(context).textTheme.bodySmall),
+            child: Text(
+              _testResult!,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ),
       ],
     );
@@ -252,7 +290,7 @@ class _HealthScreenState extends State<HealthScreen> {
           // A backlog here means schedule:run has stopped — the outbox is the
           // only symptom that subsystem produces.
           : 'The oldest undelivered event is $oldest minutes old. '
-              'The scheduler has stopped running.',
+                'The scheduler has stopped running.',
       children: [
         if (failed > 0)
           Padding(

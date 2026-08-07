@@ -137,8 +137,19 @@ tar -czf - \
 all_ok "${PIPESTATUS[@]}" || errors+=("app-archive")
 
 # ── 3. server configuration ──────────────────────────────────────
+#
+# renewal-hooks as well as renewal. The renewal configs say when to renew; the
+# hooks are what makes a renewal reach anything. Without
+# renewal-hooks/deploy/nginx-reload.sh a rebuilt box renews its certificates
+# perfectly and serves the one nginx loaded at boot until it expires — a silent
+# failure with a date on it, and the exact thing this box was already doing.
+#
+# tar keeps the executable bit, which matters here more than it looks: certbot
+# ignores a hook that is not executable, so a hook restored without +x is a hook
+# that is present, readable, reviewed, and never runs.
 tar -czf - /etc/nginx/sites-available /etc/nginx/conf.d /etc/bind /var/lib/bind \
-           /etc/letsencrypt/renewal /etc/systemd/system/ezbizi-* /etc/cron.d \
+           /etc/letsencrypt/renewal /etc/letsencrypt/renewal-hooks \
+           /etc/systemd/system/ezbizi-* /etc/cron.d \
     2>/dev/null | encrypt_to "$DEST/config-${STAMP}.tar.gz.gpg"
 
 # Was PIPESTATUS[1] only, so tar's own exit status was discarded: a missing

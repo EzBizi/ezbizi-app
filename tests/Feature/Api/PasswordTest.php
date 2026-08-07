@@ -82,7 +82,13 @@ class PasswordTest extends TestCase
             'password_confirmation' => 'a-brand-new-password',
         ])->assertOk();
 
-        $this->assertTrue(Hash::check('a-brand-new-password', User::find($this->alpha['admin']->id)->password));
+        // withoutGlobalScopes: the assertion runs after the request has ended,
+        // and SetTenantContext clears the tenant on its way out — so this read
+        // has no tenant to be scoped by and has to say so.
+        $this->assertTrue(Hash::check(
+            'a-brand-new-password',
+            User::withoutGlobalScopes()->find($this->alpha['admin']->id)->password,
+        ));
 
         // The usual reason somebody resets is that they think the old password
         // is known. Leaving sessions alive would make the reset cosmetic.
@@ -124,15 +130,17 @@ class PasswordTest extends TestCase
         $totp = app(Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        User::whereKey($this->alpha['admin']->id)->update([
+        User::withoutGlobalScopes()->whereKey($this->alpha['admin']->id)->update([
             // encryptString, not encrypt(). The `encrypted` cast reads with
             // decryptString, which does not unserialize — encrypt() wraps a
             // SERIALIZED value, so the secret came back as `s:32:"..."` and
             // base32 decoding threw. It stayed hidden because no test had
             // ever verified a user's own code, only asked for one.
             //
-            // Query builder rather than the model: a model write goes through
-            // BelongsToTenant, and at login there is no tenant in context.
+            // Straight to the row, on purpose: no tenant here, and a model save
+            // would go through BelongsToTenant's write guard. withoutGlobalScopes
+            // because User::whereKey() is an Eloquent builder, so the tenant READ
+            // scope applies to it as well — it used to pass by failing open.
             'totp_secret' => Crypt::encryptString($secret), 'totp_confirmed_at' => now(),
         ]);
 

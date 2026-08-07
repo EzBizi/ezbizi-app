@@ -17,10 +17,16 @@ use Illuminate\Support\Facades\DB;
  * Retention differs by category because the categories answer different
  * questions:
  *
- *   business    1 month   — "what happened in my account?"
+ *   business    3 months  — "what happened in my account?"
  *   developer   3 months  — debugging a report that arrives weeks later
  *   crash       1 month   — fix it or it isn't getting fixed
  *   staff       12 months — evidence of EzBizi access to client data (§4.2)
+ *
+ * Business audit was one month and is now three (owner decision, 2026-08-07).
+ * One month meant a client asking "who changed this in the spring?" in June was
+ * told the record no longer existed — a quarter is the shortest window in which
+ * that question is usually still answerable. Crash logs stay at one month
+ * because they are only useful while the build that produced them is current.
  *
  * Staff access is the outlier on purpose: it's the record you need when a client
  * asks who touched their data, and that question can arrive long after the fact.
@@ -28,8 +34,6 @@ use Illuminate\Support\Facades\DB;
 class ExpireAuditEvents extends Command
 {
     protected $signature = 'ezbizi:expire-audit {--dry-run : show what would be removed}';
-
-    protected $description = 'Apply audit retention policy (plan §10)';
 
     /** action prefix => months retained */
     private const RETENTION = [
@@ -39,7 +43,28 @@ class ExpireAuditEvents extends Command
         'error'     => 1,
     ];
 
-    private const DEFAULT_MONTHS = 1;
+    private const DEFAULT_MONTHS = 3;
+
+    /**
+     * `artisan list` is where somebody checks what the policy actually is, so
+     * the description says it rather than pointing at the plan alone. Built from
+     * the constants rather than typed out again — a second copy of the number is
+     * a second thing to forget when the policy next changes.
+     */
+    public function __construct()
+    {
+        // Before parent::__construct(), not after: the base constructor is what
+        // hands this property to Symfony, and Symfony keeps its own private copy.
+        // Assigning afterwards changes the property and leaves `artisan list`
+        // showing the old text.
+        $this->description = sprintf(
+            'Apply audit retention policy (plan §10) — %d months of business activity, %d of staff access',
+            self::DEFAULT_MONTHS,
+            self::RETENTION['staff'],
+        );
+
+        parent::__construct();
+    }
 
     public function handle(): int
     {
