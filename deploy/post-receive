@@ -269,5 +269,28 @@ while read -r _old _new ref; do
   echo "→ pruning old releases (keeping $KEEP)"
   ls -1dt "$RELEASES"/*/ 2>/dev/null | tail -n +$((KEEP+1)) | xargs -r rm -rf
 
+  # Does the hook running this deploy match the one in the release it just
+  # deployed?
+  #
+  # This file lives at /var/repos/ezbizi.git/hooks/post-receive and is NOT
+  # updated by pushing. So deploy/post-receive in the repo can be edited,
+  # reviewed, committed and shipped while the box goes on running whatever was
+  # copied there by hand months ago — the whole class of "the fix is in the
+  # repo, so it must be live". It happened the first time this hook was changed:
+  # a pre-migration dump was added, pushed, and did not run.
+  #
+  # Not self-updating. A hook that rewrites itself mid-run is a hook that can
+  # brick every future deploy in one bad push, and this is the one script with
+  # no way to roll itself back. Saying so loudly is enough — the drift is
+  # visible on the next deploy either way, which is the part that was missing.
+  if ! diff -q "$0" "$TARGET/deploy/post-receive" >/dev/null 2>&1; then
+    echo
+    echo "!! This hook differs from deploy/post-receive in the release just shipped."
+    echo "   The repo copy is not live until it is installed:"
+    echo "     ssh app 'sudo install -m 0755 -o ubuntu -g ubuntu \\"
+    echo "       $TARGET/deploy/post-receive /var/repos/ezbizi.git/hooks/post-receive'"
+    echo
+  fi
+
   echo "✓ deployed $STAMP"
 done
