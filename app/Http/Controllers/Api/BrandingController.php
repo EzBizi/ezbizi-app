@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Company;
 use App\Models\Organization;
 use App\Support\Audit\AuditLogger;
+use App\Support\Branding\Branding;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -30,8 +31,14 @@ use Illuminate\Support\Facades\Storage;
  */
 class BrandingController extends Controller
 {
-    /** Anything larger is a photograph somebody has mistaken for a logo. */
-    private const MAX_KILOBYTES = 2048;
+    /**
+     * A 512x512 or 1024x256 PNG has no business being larger than this.
+     *
+     * The cropper produces the file, so anything approaching the limit is
+     * either a photograph pushed through it or something that did not come from
+     * the app at all.
+     */
+    private const MAX_KILOBYTES = 1024;
 
     public function __construct(private AuditLogger $audit) {}
 
@@ -92,27 +99,49 @@ class BrandingController extends Controller
             : $this->serve($company);
     }
 
+    /** The shapes and sizes the cropper must produce. */
+    public function shapes(): array
+    {
+        // Served rather than duplicated in the client. The cropper's output has
+        // to match the validator's expectation exactly, and two hardcoded lists
+        // of numbers that must agree eventually will not.
+        return ['shapes' => Branding::SHAPES, 'format' => Branding::MIME];
+    }
+
     private function store(Request $request, Model $subject, string $action): array
     {
         $request->validate([
-            // `dimensions` as well as a size cap: a highly compressible
-            // 40-megapixel PNG passes a byte limit and still ruins the image
-            // pipeline. SVG is absent on purpose — it is a document that can
-            // carry script, and it would be served from our own origin.
-            'logo' => [
-                'required', 'image', 'mimes:png,jpeg,webp', 'max:'.self::MAX_KILOBYTES,
-                'dimensions:max_width=4000,max_height=4000',
-            ],
+            'logo' => ['required', 'file', 'mimes:'.Branding::MIME, 'max:'.self::MAX_KILOBYTES],
         ]);
+
+        $file = $request->file('logo');
+        $size = @getimagesize($file->getRealPath());
+
+        abort_if($size === false, 422, 'That file is not a readable image.');
+
+        // EXACT dimensions, one of two. Not a maximum and not an aspect ratio:
+        // uniformity is the whole reason the shapes exist, and "close enough"
+        // produces a row of logos that each sit slightly differently.
+        //
+        // Checked here as well as in the cropper because the cropper is a
+        // convenience, not a boundary — this endpoint is reachable without it.
+        $aspect = Branding::shapeOf($size[0], $size[1]);
+
+        abort_if(
+            $aspect === null,
+            422,
+            "A logo must be exactly ".Branding::expected()." pixels. "
+            ."That one is {$size[0]}x{$size[1]} — use the cropper, which produces "
+            ."the right size from any image.",
+        );
 
         $previous = $subject->logo_path;
 
-        $path = $request->file('logo')->store(
-            "logos/{$request->user()->organization_id}",
-            'local',
-        );
+        $path = $file->store("logos/{$request->user()->organization_id}", 'local');
 
-        $subject->forceFill(['logo_path' => $path])->save();
+        // Written together. A path without a shape is a state nothing can lay
+        // out, so neither is ever set alone.
+        $subject->forceFill(['logo_path' => $path, 'logo_aspect' => $aspect])->save();
 
         // Removed only after the new one is safely stored, so a failed write
         // never leaves a business with no mark and no way back.
@@ -129,7 +158,7 @@ class BrandingController extends Controller
     {
         if ($subject->logo_path !== null) {
             Storage::disk('local')->delete($subject->logo_path);
-            $subject->forceFill(['logo_path' => null])->save();
+            $subject->forceFill(['logo_path' => null, 'logo_aspect' => null])->save();
 
             $this->audit->log($action, $subject);
         }

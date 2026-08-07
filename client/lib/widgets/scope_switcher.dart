@@ -49,6 +49,7 @@ class ScopeSwitcher extends StatelessWidget {
         hasOwn: false,
         mayEdit: false,
         bare: true,
+        aspect: scope.logoAspect,
         size: size,
         fallbackIcon: _iconFor(scope.type),
       ),

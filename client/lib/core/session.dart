@@ -318,6 +318,7 @@ class ViewScope {
     required this.label,
     required this.path,
     required this.logoPath,
+    required this.logoAspect,
   });
 
   /// organization · company · franchise
@@ -337,6 +338,9 @@ class ViewScope {
   /// The branding endpoint whose logo applies to this view (§12).
   final String logoPath;
 
+  /// 'square', 'wide', or null when there is no logo to show.
+  final String? logoAspect;
+
   /// The last two segments — "Everdoors › Connecticut".
   ///
   /// Enough to disambiguate in a top bar without spending the width on a full
@@ -353,6 +357,7 @@ class ViewScope {
         label: json['label'] as String? ?? '',
         path: (json['path'] as List<dynamic>? ?? []).cast<String>(),
         logoPath: json['logo_path'] as String? ?? '/branding/organization',
+        logoAspect: json['logo_aspect'] as String?,
       );
 }
 

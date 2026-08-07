@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/files.dart';
+import 'logo_cropper.dart';
 
 /// An organization's or company's mark, with the controls to change it (§12).
 ///
@@ -28,6 +29,7 @@ class LogoBadge extends StatefulWidget {
     this.onChanged,
     this.size = 44,
     this.bare = false,
+    this.aspect,
     this.fallbackIcon = Icons.apartment_outlined,
   });
 
@@ -51,6 +53,10 @@ class LogoBadge extends StatefulWidget {
   /// No frame and no padding — for places where the mark is the point rather
   /// than a slot you might click. Boxed artwork reads as a disabled button.
   final bool bare;
+
+  /// 'square' or 'wide'. A wide lockup drawn in a square box is a lockup
+  /// nobody can read, so the slot takes the shape of what is in it.
+  final String? aspect;
 
   final IconData fallbackIcon;
 
@@ -95,10 +101,35 @@ class _LogoBadgeState extends State<LogoBadge> {
 
     if (picked == null || !mounted) return;
 
+    // The shapes come from the server, so the cropper's output and the
+    // validator's expectation are the same numbers rather than two copies.
+    final shapes = await widget.api.get('/branding/shapes');
+
+    if (!mounted) return;
+
+    if (!shapes.ok) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(shapes.message)));
+      return;
+    }
+
+    // Cropped before it is sent, never after. The server refuses anything that
+    // is not exactly one of the two sizes, and almost no logo on anybody's disk
+    // already is — so this is what turns that rule from a wall into a step.
+    final cropped = await showDialog<Uint8List>(
+      context: context,
+      builder: (_) => LogoCropper(
+        bytes: Uint8List.fromList(picked.bytes),
+        shapes: (shapes.body['shapes'] as Map).cast<String, dynamic>(),
+      ),
+    );
+
+    if (cropped == null || !mounted) return;
+
     setState(() => _busy = true);
 
     final response =
-        await widget.api.postFile(widget.path, 'logo', picked.name, picked.bytes);
+        await widget.api.postFile(widget.path, 'logo', 'logo.png', cropped);
 
     if (!mounted) return;
 
@@ -142,8 +173,13 @@ class _LogoBadgeState extends State<LogoBadge> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
+    // 4:1 for a lockup, 1:1 for a mark. The height is what stays fixed — a row
+    // of logos with different heights is exactly the raggedness the fixed
+    // shapes exist to prevent.
+    final isWide = widget.aspect == 'wide';
+
     final badge = Container(
-      width: widget.size,
+      width: isWide ? widget.size * 4 : widget.size,
       height: widget.size,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(

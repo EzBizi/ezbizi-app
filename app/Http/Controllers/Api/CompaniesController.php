@@ -66,7 +66,8 @@ class CompaniesController extends Controller
                 // Whether it has one OF ITS OWN. A company with none renders
                 // the organization's, and the difference matters here: this is
                 // the screen where you would set or clear it.
-                'has_logo'   => $company->logo_path !== null,
+                'has_logo'    => $company->logo_path !== null,
+                'logo_aspect' => $company->logo_aspect,
                 'franchises' => $company->franchises
                     ->sortBy('name')
                     ->values()
@@ -88,6 +89,7 @@ class CompaniesController extends Controller
                 // Whether the person may add a whole new branch to the business.
                 'may_add_company' => $user->can('create', Company::class),
                 'has_logo'        => $request->user()->organization->logo_path !== null,
+                'logo_aspect'     => $request->user()->organization->logo_aspect,
                 'may_edit'        => $user->hasPermission('organizations.edit'),
             ],
 

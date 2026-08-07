@@ -215,6 +215,24 @@ class ViewScope
             : "/branding/companies/{$companyId}";
     }
 
+    /** The shape of whichever logo this view resolves to (§12). */
+    public function logoAspect(): ?string
+    {
+        $companyId = match ($this->type) {
+            self::COMPANY   => $this->id,
+            self::FRANCHISE => Franchise::find($this->id)?->company_id,
+            default         => null,
+        };
+
+        $company = $companyId === null ? null : Company::find($companyId);
+
+        // Inherited when the company has none of its own — the same fallback
+        // the branding endpoint makes, so the layout matches the bytes.
+        return $company?->logo_path !== null
+            ? $company?->logo_aspect
+            : $this->user->organization->logo_aspect;
+    }
+
     public function toArray(): array
     {
         return [
@@ -223,6 +241,10 @@ class ViewScope
             'label'     => $this->label(),
             'path'      => $this->path(),
             'logo_path' => $this->logoPath(),
+
+            // Square or wide. A 4:1 lockup rendered in a square slot is
+            // unreadable, so the shape travels with the path.
+            'logo_aspect' => $this->logoAspect(),
         ];
     }
 }

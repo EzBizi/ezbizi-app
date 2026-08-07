@@ -92,6 +92,7 @@ Route::prefix('v1')
         // Served through a controller, never as a public file: a logo at a
         // guessable path enumerates every organization on the platform.
         // Franchises have none — a franchise is a geography, not a brand.
+        Route::get('branding/shapes', [BrandingController::class, 'shapes']);
         Route::post('branding/organization', [BrandingController::class, 'uploadOrganization']);
         Route::delete('branding/organization', [BrandingController::class, 'destroyOrganization']);
         Route::get('branding/organization', [BrandingController::class, 'organization']);
