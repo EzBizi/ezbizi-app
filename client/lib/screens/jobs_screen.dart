@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
 import '../widgets/side_panel.dart';
@@ -181,7 +182,8 @@ class _JobsScreenState extends State<JobsScreen> {
               job['number'],
               customer['name'] ?? '',
               franchise['name'] ?? '',
-              if (job['scheduled_for'] != null) _stamp(job['scheduled_for']),
+              if (job['scheduled_for'] != null)
+                formatStamp(job['scheduled_for'] as String, ''),
               if (amount['display'] != null) '${amount['currency']} ${amount['display']}',
             ].join(' · '),
             style: Theme.of(context).textTheme.bodyMedium,
@@ -189,15 +191,6 @@ class _JobsScreenState extends State<JobsScreen> {
         ),
       ),
     );
-  }
-
-  String _stamp(dynamic iso) {
-    final at = DateTime.tryParse(iso as String)?.toLocal();
-    if (at == null) return '';
-
-    String two(int n) => n.toString().padLeft(2, '0');
-
-    return '${at.year}-${two(at.month)}-${two(at.day)} ${two(at.hour)}:${two(at.minute)}';
   }
 
   Future<void> _create() async {

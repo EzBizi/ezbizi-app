@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/staff_session.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 
 /// Who opened which client's data, when, and why (plan §4.2).
@@ -174,16 +175,5 @@ class _ImpersonationsScreenState extends State<ImpersonationsScreen> {
   Widget _meta(BuildContext context, String text) =>
       Text(text, style: Theme.of(context).textTheme.bodyMedium);
 
-  /// ISO-8601 from the server, shown in the reader's own zone. Formatting is
-  /// deliberately plain — a wrong "2 hours ago" is worse than an exact stamp.
-  String _stamp(dynamic iso) {
-    if (iso is! String) return '—';
-
-    final at = DateTime.tryParse(iso)?.toLocal();
-    if (at == null) return '—';
-
-    String two(int n) => n.toString().padLeft(2, '0');
-
-    return '${at.year}-${two(at.month)}-${two(at.day)} ${two(at.hour)}:${two(at.minute)}';
-  }
+  String _stamp(dynamic iso) => formatStamp(iso, '—');
 }

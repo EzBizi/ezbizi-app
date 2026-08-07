@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/side_panel.dart';
 
@@ -334,7 +335,7 @@ class _Panel extends StatelessWidget {
                   // The whole reason somebody opens this panel is WHEN. The
                   // generic row renderer showed the status and the customer and
                   // dropped both the job and its time.
-                  '${_when(row['scheduled_for'] as String?)}'
+                  '${formatStamp(row['scheduled_for'] as String?, 'Not scheduled')}'
                   '${row['customer'] == null ? '' : ' · ${row['customer']}'}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
@@ -390,19 +391,6 @@ class _Panel extends StatelessWidget {
         rows.isNotEmpty &&
         rows.first is Map &&
         (rows.first as Map).containsKey('amount_minor');
-  }
-
-  /// A scheduled time somebody can read at a glance.
-  static String _when(String? iso) {
-    if (iso == null) return 'Not scheduled';
-
-    final at = DateTime.tryParse(iso)?.toLocal();
-
-    if (at == null) return 'Not scheduled';
-
-    String two(int n) => n.toString().padLeft(2, '0');
-
-    return '${at.year}-${two(at.month)}-${two(at.day)} ${two(at.hour)}:${two(at.minute)}';
   }
 
   /// Minor units to something readable.

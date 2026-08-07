@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/staff_session.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/tag.dart';
 import '../../widgets/enrolment_dialog.dart';
@@ -162,7 +163,8 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
             else
               Text(
                 'Authenticator confirmed · ${account['recovery_code_count']} recovery '
-                'codes left · last signed in ${_stamp(account['last_login_at'])}',
+                'codes left · last signed in '
+                '${formatStamp(account['last_login_at'], 'never')}',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
           ],
@@ -325,17 +327,6 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
             .post('/staff/accounts/${account['id']}/totp/confirm', {'code': code}),
       ),
     );
-  }
-
-  String _stamp(dynamic iso) {
-    if (iso is! String) return 'never';
-
-    final at = DateTime.tryParse(iso)?.toLocal();
-    if (at == null) return 'never';
-
-    String two(int n) => n.toString().padLeft(2, '0');
-
-    return '${at.year}-${two(at.month)}-${two(at.day)} ${two(at.hour)}:${two(at.minute)}';
   }
 }
 

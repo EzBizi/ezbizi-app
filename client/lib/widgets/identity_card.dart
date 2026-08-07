@@ -100,11 +100,7 @@ class _IdentityCardState extends State<IdentityCard> {
       'middle_name': _middle.text.trim().isEmpty ? null : _middle.text.trim(),
       'phone': _phone.text.trim().isEmpty ? null : _phone.text.trim(),
       'gender': _gender.text.trim().isEmpty ? null : _gender.text.trim(),
-      'date_of_birth': _dob == null
-          ? null
-          : '${_dob!.year.toString().padLeft(4, '0')}-'
-              '${_dob!.month.toString().padLeft(2, '0')}-'
-              '${_dob!.day.toString().padLeft(2, '0')}',
+      'date_of_birth': _dob?.toIso8601String().split('T').first,
     });
 
     if (!mounted) return;
@@ -366,10 +362,7 @@ class _IdentityCardState extends State<IdentityCard> {
         child: Row(
           children: [
             Expanded(
-              child: Text(_dob == null
-                  ? 'Not set'
-                  : '${_dob!.year}-${_dob!.month.toString().padLeft(2, '0')}'
-                      '-${_dob!.day.toString().padLeft(2, '0')}'),
+              child: Text(_dob?.toIso8601String().split('T').first ?? 'Not set'),
             ),
             if (_dob != null)
               IconButton(
