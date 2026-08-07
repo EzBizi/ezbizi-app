@@ -30,7 +30,9 @@ class Company extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'organization_id', 'parent_company_id', 'name', 'is_active', 'logo_path', 'logo_aspect',
+        'organization_id', 'parent_company_id', 'name', 'is_active',
+        'logo_path', 'logo_aspect',
+        'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'phone',
     ];
 
     protected function casts(): array

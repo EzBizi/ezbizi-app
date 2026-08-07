@@ -68,6 +68,12 @@ class CompaniesController extends Controller
                 // the screen where you would set or clear it.
                 'has_logo'    => $company->logo_path !== null,
                 'logo_aspect' => $company->logo_aspect,
+                'address_line1' => $company->address_line1,
+                'address_line2' => $company->address_line2,
+                'city'          => $company->city,
+                'state'         => $company->state,
+                'postal_code'   => $company->postal_code,
+                'phone'         => $company->phone,
                 'franchises' => $company->franchises
                     ->sortBy('name')
                     ->values()
@@ -132,6 +138,16 @@ class CompaniesController extends Controller
                     ->where('organization_id', $request->user()->organization_id),
             ],
 
+            // The same five address columns a customer has, validated the same
+            // way. Two address shapes in one system means two of everything
+            // that touches one.
+            'address_line1' => ['nullable', 'string', 'max:200'],
+            'address_line2' => ['nullable', 'string', 'max:200'],
+            'city'          => ['nullable', 'string', 'max:100'],
+            'state'         => ['nullable', 'string', 'size:2'],
+            'postal_code'   => ['nullable', 'string', 'max:12'],
+            'phone'         => ['nullable', 'string', 'max:40'],
+
             'franchise.name'     => ['required', 'string', 'max:120'],
             'franchise.timezone' => ['nullable', 'string', 'timezone'],
             'franchise.currency' => ['nullable', 'string', 'size:3'],
@@ -158,6 +174,7 @@ class CompaniesController extends Controller
                 'organization_id'   => $request->user()->organization_id,
                 'parent_company_id' => $parent?->id,
                 'name'              => trim($input['name']),
+                ...$this->contactFrom($input),
                 'is_active'         => true,
             ]);
 
@@ -206,13 +223,40 @@ class CompaniesController extends Controller
      * `missing` rather than `prohibited`: prohibited is satisfied by an explicit
      * null, which would then reach fill() and quietly detach a sub company.
      */
+    /** The contact columns, present only when they were sent. */
+    private function contactFrom(array $input): array
+    {
+        return array_filter(
+            [
+                'address_line1' => $input['address_line1'] ?? null,
+                'address_line2' => $input['address_line2'] ?? null,
+                'city'          => $input['city'] ?? null,
+                'state'         => isset($input['state']) ? strtoupper($input['state']) : null,
+                'postal_code'   => $input['postal_code'] ?? null,
+                'phone'         => $input['phone'] ?? null,
+            ],
+            fn ($v) => $v !== null,
+        );
+    }
+
     public function update(Request $request, Company $company): array
     {
         $input = $request->validate([
             'name'      => ['sometimes', 'string', 'max:120'],
             'is_active' => ['sometimes', 'boolean'],
             'parent_company_id' => ['missing'],
+
+            'address_line1' => ['sometimes', 'nullable', 'string', 'max:200'],
+            'address_line2' => ['sometimes', 'nullable', 'string', 'max:200'],
+            'city'          => ['sometimes', 'nullable', 'string', 'max:100'],
+            'state'         => ['sometimes', 'nullable', 'string', 'size:2'],
+            'postal_code'   => ['sometimes', 'nullable', 'string', 'max:12'],
+            'phone'         => ['sometimes', 'nullable', 'string', 'max:40'],
         ]);
+
+        if (isset($input['state'])) {
+            $input['state'] = strtoupper($input['state']);
+        }
 
         if (array_key_exists('is_active', $input) && ! $input['is_active']) {
             $this->authorize('deactivate', $company);
