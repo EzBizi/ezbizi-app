@@ -135,6 +135,32 @@ class Session extends ChangeNotifier {
     }
   }
 
+  /// Change which part of the business you are looking at (§3 roll-ups).
+  ///
+  /// Not `setPreference`. That applies the value locally first, which works for
+  /// a theme — the client knows what "dark" looks like — and cannot work here:
+  /// `scope` is RESOLVED by the server, which validates the choice against
+  /// reach and quietly falls back to the organization when it no longer holds.
+  /// Guessing the outcome in Dart would mean a second copy of ViewScope's
+  /// fallback rules, kept in step by hope.
+  ///
+  /// So it writes, then asks. One round trip, and the answer is authoritative.
+  Future<void> setScope(String value) async {
+    final response = await _api.patch('/me/preferences', {
+      'preferences': {'navigation.scope': value},
+    });
+
+    // Refreshed either way. On success to pick up the resolved scope; on
+    // failure to put back whatever is actually stored, rather than leaving the
+    // switcher showing a view the server never accepted.
+    await refresh();
+
+    if (!response.ok) {
+      _unreachable = true;
+      notifyListeners();
+    }
+  }
+
   void signOut() {
     _me = null;
     readOnlyNotice = null;

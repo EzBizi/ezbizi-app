@@ -62,6 +62,11 @@ class CompaniesController extends Controller
                 'is_active'  => $company->is_active,
                 'parent_company_id' => $company->parent_company_id,
                 'may_edit'   => $user->can('update', $company),
+
+                // Whether it has one OF ITS OWN. A company with none renders
+                // the organization's, and the difference matters here: this is
+                // the screen where you would set or clear it.
+                'has_logo'   => $company->logo_path !== null,
                 'franchises' => $company->franchises
                     ->sortBy('name')
                     ->values()
@@ -82,6 +87,8 @@ class CompaniesController extends Controller
                 'name' => $request->user()->organization->name,
                 // Whether the person may add a whole new branch to the business.
                 'may_add_company' => $user->can('create', Company::class),
+                'has_logo'        => $request->user()->organization->logo_path !== null,
+                'may_edit'        => $user->hasPermission('organizations.edit'),
             ],
 
             // Nested rather than flat, so the client cannot render a Sub Company

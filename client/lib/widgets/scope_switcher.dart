@@ -38,7 +38,7 @@ class ScopeSwitcher extends StatelessWidget {
     return PopupMenuButton<String>(
       tooltip: 'Change what you are looking at',
       position: PopupMenuPosition.under,
-      onSelected: (value) => session.setPreference('navigation.scope', value),
+      onSelected: session.setScope,
       itemBuilder: (context) => [
         PopupMenuItem(
           value: 'organization',

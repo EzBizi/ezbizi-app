@@ -441,11 +441,22 @@ class _HomeShellState extends State<HomeShell> {
               ),
             ),
           Expanded(
-            child: pinnedIndex != null
-                ? pinned[pinnedIndex].screen
-                : showingProfile
-                    ? ProfileScreen(api: widget.api, session: widget.session)
-                    : destinations[railIndex ?? 0].screen,
+            // Keyed by the current view, so changing it REMOUNTS the screen and
+            // its initState fetches again.
+            //
+            // Every screen loads once in initState — the ordinary Flutter
+            // shape — so without this the switcher changed the label and left
+            // Connecticut's jobs on the page while claiming to be in Texas.
+            // Making the scope part of the screen's identity is the fix that
+            // needs no screen to know the switcher exists.
+            child: KeyedSubtree(
+              key: ValueKey('${me.scope.type}:${me.scope.id}'),
+              child: pinnedIndex != null
+                  ? pinned[pinnedIndex].screen
+                  : showingProfile
+                      ? ProfileScreen(api: widget.api, session: widget.session)
+                      : destinations[railIndex ?? 0].screen,
+            ),
           ),
         ],
       ),

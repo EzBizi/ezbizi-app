@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
+import '../widgets/logo_badge.dart';
 
 /// The shape of the business (plan §3).
 ///
@@ -129,7 +130,11 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                _OrganizationRow(name: tree['organization']['name'] as String),
+                _OrganizationRow(
+                  api: widget.api,
+                  organization: tree['organization'] as Map<String, dynamic>,
+                  onChanged: _load,
+                ),
 
                 for (final company
                     in (tree['companies'] as List<dynamic>).cast<Map<String, dynamic>>())
@@ -152,6 +157,8 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _CompanyCard(
+            api: widget.api,
+            onChanged: _load,
             company: company,
             isSub: isSub,
             onRename: () => _rename(
@@ -291,31 +298,49 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
 // ── rows ───────────────────────────────────────────────────────
 
 class _OrganizationRow extends StatelessWidget {
-  const _OrganizationRow({required this.name});
+  const _OrganizationRow({
+    required this.api,
+    required this.organization,
+    required this.onChanged,
+  });
 
-  final String name;
+  final ApiClient api;
+  final Map<String, dynamic> organization;
+  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
     return Row(children: [
-      Icon(Icons.hub_outlined, size: 20, color: scheme.primary),
-      const SizedBox(width: 10),
-      Text(name,
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.w700)),
-      const SizedBox(width: 10),
-      Text('the whole business',
-          style: Theme.of(context).textTheme.bodySmall),
+      LogoBadge(
+        api: api,
+        path: '/branding/organization',
+        hasOwn: organization['has_logo'] == true,
+        mayEdit: organization['may_edit'] == true,
+        onChanged: onChanged,
+        size: 52,
+        fallbackIcon: Icons.hub_outlined,
+      ),
+      const SizedBox(width: 14),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(organization['name'] as String,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          Text('the whole business — every company inherits this mark',
+              style: Theme.of(context).textTheme.bodySmall),
+        ],
+      ),
     ]);
   }
 }
 
 class _CompanyCard extends StatelessWidget {
   const _CompanyCard({
+    required this.api,
+    required this.onChanged,
     required this.company,
     required this.isSub,
     required this.onRename,
@@ -326,6 +351,8 @@ class _CompanyCard extends StatelessWidget {
     required this.onToggleFranchise,
   });
 
+  final ApiClient api;
+  final VoidCallback onChanged;
   final Map<String, dynamic> company;
   final bool isSub;
   final VoidCallback onRename;
@@ -352,10 +379,15 @@ class _CompanyCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Icon(Icons.apartment_outlined,
-                  size: 18,
-                  color: active ? scheme.onSurface : scheme.onSurfaceVariant),
-              const SizedBox(width: 10),
+              LogoBadge(
+                api: api,
+                path: '/branding/companies/${company['id']}',
+                hasOwn: company['has_logo'] == true,
+                mayEdit: mayEdit,
+                onChanged: onChanged,
+                size: 36,
+              ),
+              const SizedBox(width: 12),
               Text(
                 company['name'] as String,
                 style: TextStyle(
