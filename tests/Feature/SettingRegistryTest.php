@@ -95,9 +95,18 @@ class SettingRegistryTest extends TestCase
         app(TenantContext::class)->run($org, function () use ($org, $franchise) {
             $resolver = app(SettingsResolver::class);
 
+            // A whole week, because that is what the `hours` type requires. It
+            // used to be two days: valid then, when the type was `json` and
+            // validated nothing, and refused now — a client that drops a day by
+            // accident would otherwise quietly shut the business on that day.
             $hours = [
-                'monday'  => ['open' => '07:00', 'close' => '19:00'],
-                'sunday'  => null,   // closed — distinct from open-for-zero-minutes
+                'monday'    => ['open' => '07:00', 'close' => '19:00'],
+                'tuesday'   => ['open' => '07:00', 'close' => '19:00'],
+                'wednesday' => ['open' => '07:00', 'close' => '19:00'],
+                'thursday'  => ['open' => '07:00', 'close' => '19:00'],
+                'friday'    => ['open' => '07:00', 'close' => '19:00'],
+                'saturday'  => ['open' => '09:00', 'close' => '13:00'],
+                'sunday'    => null,   // closed — distinct from open-for-zero-minutes
             ];
 
             $resolver->set('ops.business_hours', $franchise, $hours);
