@@ -36,6 +36,20 @@
 
 set -uo pipefail
 
+# Nothing this script writes is for anyone but root.
+#
+# The default umask is 022, which made every artefact -rw-r--r-- in a
+# world-traversable directory. That is survivable for the encrypted files and
+# was not for the ones written before encryption landed: an unencrypted
+# app-*.tar.gz carries `.env`, which carries APP_KEY — the key that makes every
+# TOTP secret in a dump readable. Any local account on the box could read it.
+#
+# The plaintext archives are gone and encryption is now the only path, so this
+# is the belt to that braces: even a future artefact written before it reaches
+# encrypt_to is unreadable to anyone else.
+umask 077
+install -d -m 0700 /var/backups/ezbizi
+
 DEST=/var/backups/ezbizi
 KEEP_LOCAL_DAYS=14
 KEEP_REMOTE_DAYS=45
@@ -46,7 +60,6 @@ REMOTE_HOST=${EZBIZI_BACKUP_HOST:-ubuntu@32.194.222.151}
 REMOTE_DIR=${EZBIZI_BACKUP_DIR:-/home/ubuntu/ezbizi-backups}
 REMOTE_KEY=${EZBIZI_BACKUP_SSH_KEY:-/root/.ssh/ezbizi-backup}
 
-mkdir -p "$DEST"
 errors=()
 
 note() { echo "$(date -Is) $*" >> /var/log/ezbizi-backup.log; }
