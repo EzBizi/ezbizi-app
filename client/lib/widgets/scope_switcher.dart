@@ -26,6 +26,35 @@ class ScopeSwitcher extends StatelessWidget {
   final ApiClient api;
   final Session session;
 
+  /// The current view's logo, sized for the top bar.
+  ///
+  /// Separate from the switcher rather than tucked inside it. At 22px behind a
+  /// chip's fill it was barely visible, which defeats the point: the mark is
+  /// the fastest way to tell two Connecticuts apart, and it only works if it
+  /// reads before the words do.
+  ///
+  /// No border and no fill — a logo is artwork, and boxing it makes it look
+  /// like a button that does nothing.
+  static Widget logo(ApiClient api, Session session, {double size = 30}) {
+    final scope = session.me!.scope;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: LogoBadge(
+        // Keyed by path, so switching company swaps the mark rather than
+        // leaving the previous one until something else rebuilds.
+        key: ValueKey(scope.logoPath),
+        api: api,
+        path: scope.logoPath,
+        hasOwn: false,
+        mayEdit: false,
+        bare: true,
+        size: size,
+        fallbackIcon: _iconFor(scope.type),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final me = session.me!;
@@ -69,27 +98,16 @@ class ScopeSwitcher extends StatelessWidget {
           ],
         ],
       ],
+      // Lighter than it was. With the logo standing on its own beside it, a
+      // bordered filled chip made two boxes competing for the same corner —
+      // and the one carrying the brand lost.
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: scheme.outlineVariant),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          // The brand you are working under. A franchise has no logo of its
-          // own, so it shows its company's — which is also the fastest way to
-          // tell two Connecticuts apart, before reading a word.
-          LogoBadge(
-            key: ValueKey(me.scope.logoPath),
-            api: api,
-            path: me.scope.logoPath,
-            hasOwn: false,
-            mayEdit: false,
-            size: 22,
-            fallbackIcon: _iconFor(me.scope.type),
-          ),
-          const SizedBox(width: 9),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 300),
             child: Tooltip(

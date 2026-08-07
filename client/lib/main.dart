@@ -317,6 +317,10 @@ class _HomeShellState extends State<HomeShell> {
           const SizedBox(width: 14),
           Container(width: 1, height: 18, color: Theme.of(context).dividerColor),
           const SizedBox(width: 14),
+          // The brand first, then the control. Reading order matches what the
+          // eye needs: whose business am I in, then where in it.
+          ScopeSwitcher.logo(widget.api, widget.session),
+          const SizedBox(width: 12),
           Flexible(child: ScopeSwitcher(api: widget.api, session: widget.session)),
         ]),
         actions: [

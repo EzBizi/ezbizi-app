@@ -27,6 +27,7 @@ class LogoBadge extends StatefulWidget {
     required this.mayEdit,
     this.onChanged,
     this.size = 44,
+    this.bare = false,
     this.fallbackIcon = Icons.apartment_outlined,
   });
 
@@ -46,6 +47,11 @@ class LogoBadge extends StatefulWidget {
   /// nothing to tell anybody about.
   final VoidCallback? onChanged;
   final double size;
+
+  /// No frame and no padding — for places where the mark is the point rather
+  /// than a slot you might click. Boxed artwork reads as a disabled button.
+  final bool bare;
+
   final IconData fallbackIcon;
 
   @override
@@ -141,9 +147,9 @@ class _LogoBadgeState extends State<LogoBadge> {
       height: widget.size,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: scheme.outlineVariant),
+        color: widget.bare ? null : scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(widget.bare ? 6 : 10),
+        border: widget.bare ? null : Border.all(color: scheme.outlineVariant),
       ),
       child: _busy
           ? const Center(
@@ -160,7 +166,7 @@ class _LogoBadgeState extends State<LogoBadge> {
               // logo with its edges cut off, which is the one thing a brand
               // asset must not have done to it.
               : Padding(
-                  padding: EdgeInsets.all(widget.size * 0.12),
+                  padding: EdgeInsets.all(widget.bare ? 0 : widget.size * 0.12),
                   child: Image.memory(_bytes!, fit: BoxFit.contain),
                 ),
     );
