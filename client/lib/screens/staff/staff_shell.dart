@@ -53,8 +53,9 @@ class _StaffShellState extends State<StaffShell> {
     if (!mounted) return;
 
     if (!response.ok) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(response.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
       return;
     }
 
@@ -85,32 +86,56 @@ class _StaffShellState extends State<StaffShell> {
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
     final destinations = <_Destination>[
-      _Destination('Organizations', Icons.apartment_outlined,
-          OrganizationsScreen(staff: widget.staff)),
-      _Destination('Modules', Icons.toggle_on_outlined,
-          ModulesScreen(staff: widget.staff)),
-      _Destination('Client access', Icons.history_outlined,
-          ImpersonationsScreen(staff: widget.staff)),
-      _Destination('Health', Icons.favorite_outline,
-          HealthScreen(staff: widget.staff)),
+      _Destination(
+        'Organizations',
+        Icons.apartment_outlined,
+        OrganizationsScreen(staff: widget.staff),
+      ),
+      _Destination(
+        'Modules',
+        Icons.toggle_on_outlined,
+        ModulesScreen(staff: widget.staff),
+      ),
+      _Destination(
+        'Client access',
+        Icons.history_outlined,
+        ImpersonationsScreen(staff: widget.staff),
+      ),
+      _Destination(
+        'Health',
+        Icons.favorite_outline,
+        HealthScreen(staff: widget.staff),
+      ),
       // Lead Developer only. The server refuses either way; hiding it keeps a
       // Developer from clicking into a wall.
       if (me.isLead)
-        _Destination('Staff', Icons.badge_outlined,
-            StaffAccountsScreen(staff: widget.staff)),
+        _Destination(
+          'Staff',
+          Icons.badge_outlined,
+          StaffAccountsScreen(staff: widget.staff),
+        ),
     ];
 
     final index = _index.clamp(0, destinations.length - 1);
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(children: [
-          EzBiziTheme.wordmark(context, size: 20),
-          const SizedBox(width: 12),
-          Container(width: 1, height: 20, color: Theme.of(context).dividerColor),
-          const SizedBox(width: 12),
-          Text('CONTROL PLANE', style: Theme.of(context).textTheme.labelSmall),
-        ]),
+        title: Row(
+          children: [
+            EzBiziTheme.wordmark(context, size: 20),
+            const SizedBox(width: 12),
+            Container(
+              width: 1,
+              height: 20,
+              color: Theme.of(context).dividerColor,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'CONTROL PLANE',
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+          ],
+        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -130,7 +155,10 @@ class _StaffShellState extends State<StaffShell> {
               backgroundColor: EzBiziTheme.accent,
               child: Text(
                 me.name.isNotEmpty ? me.name[0].toUpperCase() : '?',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             itemBuilder: (_) => [
@@ -139,15 +167,23 @@ class _StaffShellState extends State<StaffShell> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(me.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(
+                      me.name,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
                     Text(me.email, style: const TextStyle(fontSize: 12)),
-                    Text('${me.recoveryCodeCount} recovery codes left',
-                        style: const TextStyle(fontSize: 12)),
+                    Text(
+                      '${me.recoveryCodeCount} recovery codes left',
+                      style: const TextStyle(fontSize: 12),
+                    ),
                   ],
                 ),
               ),
               const PopupMenuDivider(),
-              const PopupMenuItem(value: 'totp', child: Text('Move authenticator')),
+              const PopupMenuItem(
+                value: 'totp',
+                child: Text('Move authenticator'),
+              ),
               const PopupMenuItem(value: 'out', child: Text('Sign out')),
             ],
             onSelected: (v) {
@@ -170,10 +206,12 @@ class _StaffShellState extends State<StaffShell> {
                     onDestinationSelected: (i) => setState(() => _index = i),
                     labelType: NavigationRailLabelType.all,
                     destinations: destinations
-                        .map((d) => NavigationRailDestination(
-                              icon: Icon(d.icon),
-                              label: Text(d.label),
-                            ))
+                        .map(
+                          (d) => NavigationRailDestination(
+                            icon: Icon(d.icon),
+                            label: Text(d.label),
+                          ),
+                        )
                         .toList(),
                   ),
                 if (wide) const VerticalDivider(width: 1),
@@ -189,7 +227,12 @@ class _StaffShellState extends State<StaffShell> {
               selectedIndex: index,
               onDestinationSelected: (i) => setState(() => _index = i),
               destinations: destinations
-                  .map((d) => NavigationDestination(icon: Icon(d.icon), label: d.label))
+                  .map(
+                    (d) => NavigationDestination(
+                      icon: Icon(d.icon),
+                      label: d.label,
+                    ),
+                  )
                   .toList(),
             ),
     );
@@ -222,8 +265,8 @@ class _Banner extends StatelessWidget {
             child: Text(
               isLead
                   ? 'Platform control plane. Your ordinary activity here is not written '
-                      'to the business audit trail — sign-ins, staff changes and client '
-                      'access always are.'
+                        'to the business audit trail — sign-ins, staff changes and client '
+                        'access always are.'
                   : 'Platform control plane. Everything you do here is recorded.',
               style: TextStyle(fontSize: 12, color: scheme.error),
             ),
@@ -263,16 +306,16 @@ class _ReauthPanelState extends State<_ReauthPanel> {
     super.dispose();
   }
 
-  void _submit() => Navigator.of(context).pop({
-        'password': _password.text,
-        'code': _code.text.trim(),
-      });
+  void _submit() => Navigator.of(
+    context,
+  ).pop({'password': _password.text, 'code': _code.text.trim()});
 
   @override
   Widget build(BuildContext context) {
     return SidePanel(
       title: 'Confirm it is you',
-      subtitle: 'Binding a new authenticator needs your password and a code from '
+      subtitle:
+          'Binding a new authenticator needs your password and a code from '
           'the current one — a session on its own is not enough.',
       actions: [
         TextButton(
@@ -293,7 +336,9 @@ class _ReauthPanelState extends State<_ReauthPanel> {
           const SizedBox(height: 12),
           TextField(
             controller: _code,
-            decoration: const InputDecoration(labelText: 'Code from your current app'),
+            decoration: const InputDecoration(
+              labelText: 'Code from your current app',
+            ),
             onSubmitted: (_) => _submit(),
           ),
         ],

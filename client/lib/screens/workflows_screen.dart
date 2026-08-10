@@ -30,6 +30,15 @@ class WorkflowsScreen extends StatefulWidget {
 
 class _WorkflowsScreenState extends State<WorkflowsScreen> {
   bool _loading = true;
+
+  /// Which load owns the screen — see customers_screen for the whole argument.
+  ///
+  /// A write here ends in a refresh, and the control that triggers it is no
+  /// longer hidden behind a spinner, so two can be in flight together. Whichever
+  /// answer lands LAST used to win regardless of which was asked for last, and
+  /// nothing was scheduled afterwards to correct it: the kill switch could sit
+  /// reading "Off" for a module that was on, until somebody navigated away.
+  int _request = 0;
   String? _error;
   List<Map<String, dynamic>> _workflows = [];
   Map<String, dynamic>? _catalogue;
@@ -41,15 +50,23 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
   }
 
   Future<void> _load() async {
+    final request = ++_request;
+
     setState(() {
-      _loading = true;
+      // A spinner only when there is nothing to keep — see AsyncBody. An
+      // organization with no rules yet is the normal starting state, so an
+      // empty list does not mean "not loaded"; the catalogue does, because it
+      // is the same for everyone and arrives with the first answer. Flipping a
+      // workflow's switch, or deleting one, leaves the rest of the list up.
+      _loading = _workflows.isEmpty && _catalogue == null;
       _error = null;
     });
 
     final workflows = await widget.api.get('/workflows');
     final catalogue = await widget.api.get('/workflows/catalogue');
 
-    if (!mounted) return;
+    // Superseded by a newer load — applying this would undo it.
+    if (!mounted || request != _request) return;
 
     setState(() {
       _loading = false;
@@ -65,7 +82,8 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
       if (catalogue.ok) {
         _catalogue = catalogue.data as Map<String, dynamic>;
       } else {
-        _error = 'Could not load what this system can automate: ${catalogue.message}';
+        _error =
+            'Could not load what this system can automate: ${catalogue.message}';
       }
     });
   }
@@ -77,7 +95,8 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
       children: [
         PanelHeader(
           title: 'Workflows',
-          note: 'When something happens, do something. Rules are yours — they '
+          note:
+              'When something happens, do something. Rules are yours — they '
               'never need a new release.',
           action: FilledButton.icon(
             onPressed: _catalogue == null ? null : _create,
@@ -131,12 +150,15 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                   child: Row(
                     children: [
                       Flexible(
-                        child: Text(workflow['name'] as String,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleMedium),
+                        child: Text(
+                          workflow['name'] as String,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
                       ),
                       Tag(live ? 'Live' : 'Off', warn: !live),
-                      if (disabledReason != null) const Tag('Auto-disabled', warn: true),
+                      if (disabledReason != null)
+                        const Tag('Auto-disabled', warn: true),
                     ],
                   ),
                 ),
@@ -147,7 +169,10 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                 PopupMenuButton<String>(
                   itemBuilder: (_) => const [
                     PopupMenuItem(value: 'runs', child: Text('Run history')),
-                    PopupMenuItem(value: 'test', child: Text('Test against a real event')),
+                    PopupMenuItem(
+                      value: 'test',
+                      child: Text('Test against a real event'),
+                    ),
                     PopupMenuDivider(),
                     PopupMenuItem(value: 'delete', child: Text('Delete')),
                   ],
@@ -174,14 +199,16 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
   }
 
   Future<void> _setActive(Map<String, dynamic> workflow, bool on) async {
-    final response = await widget.api
-        .patch('/workflows/${workflow['id']}', {'is_active': on});
+    final response = await widget.api.patch('/workflows/${workflow['id']}', {
+      'is_active': on,
+    });
 
     if (!mounted) return;
 
     if (!response.ok) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(response.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
       return;
     }
 
@@ -205,8 +232,14 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
       builder: (context) => SidePanel(
         title: 'Delete ${workflow['name']}?',
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Delete')),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
         ],
         child: const Text(
           'Its run history is kept — a record pointing at a rule that no longer '
@@ -222,19 +255,25 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
   }
 
   Future<void> _test(Map<String, dynamic> workflow) async {
-    final response = await widget.api.post('/workflows/${workflow['id']}/test', {});
+    final response = await widget.api.post(
+      '/workflows/${workflow['id']}/test',
+      {},
+    );
 
     if (!mounted) return;
 
     if (!response.ok) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(response.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
       return;
     }
 
     final data = response.data as Map<String, dynamic>;
     final matched = data['matched'] as bool? ?? false;
-    final would = List<Map<String, dynamic>>.from(data['would_do'] as List? ?? []);
+    final would = List<Map<String, dynamic>>.from(
+      data['would_do'] as List? ?? [],
+    );
 
     await showSidePanel<void>(
       context,
@@ -242,7 +281,10 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
         title: matched ? 'It would run' : 'It would not run',
         width: 520,
         actions: [
-          FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
         ],
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -251,18 +293,20 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
             Text(
               matched
                   ? 'Against the most recent real event. Nothing was actually '
-                      'done — this is a rehearsal.'
+                        'done — this is a rehearsal.'
                   : 'The conditions did not match the most recent real event.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 14),
-            ...would.map((w) => ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.play_arrow_outlined, size: 18),
-                  title: Text(w['type'] as String),
-                  subtitle: Text(w['detail'] as String? ?? ''),
-                )),
+            ...would.map(
+              (w) => ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.play_arrow_outlined, size: 18),
+                title: Text(w['type'] as String),
+                subtitle: Text(w['detail'] as String? ?? ''),
+              ),
+            ),
           ],
         ),
       ),
@@ -284,7 +328,10 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
         title: '${workflow['name']} — run history',
         width: 560,
         actions: [
-          FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
         ],
         child: runs.isEmpty
             ? const Text('It has not run yet.')
@@ -300,15 +347,18 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                 itemBuilder: (context, i) {
                   final run = runs[i];
                   final results = List<Map<String, dynamic>>.from(
-                      run['action_results'] as List? ?? []);
+                    run['action_results'] as List? ?? [],
+                  );
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Tag(run['status'] as String,
-                              warn: run['status'] == 'failed'),
+                          Tag(
+                            run['status'] as String,
+                            warn: run['status'] == 'failed',
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -329,23 +379,27 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ),
-                      ...results.map((r) => Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  r['ok'] == true ? Icons.check : Icons.close,
-                                  size: 16,
-                                  color: r['ok'] == true
-                                      ? null
-                                      : Theme.of(context).colorScheme.error,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(child: Text(r['detail'] as String? ?? '')),
-                              ],
-                            ),
-                          )),
+                      ...results.map(
+                        (r) => Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                r['ok'] == true ? Icons.check : Icons.close,
+                                size: 16,
+                                color: r['ok'] == true
+                                    ? null
+                                    : Theme.of(context).colorScheme.error,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(r['detail'] as String? ?? ''),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   );
                 },
@@ -357,7 +411,8 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
   Future<void> _create() async {
     final made = await showSidePanel<bool>(
       context,
-      builder: (_) => _NewWorkflowPanel(api: widget.api, catalogue: _catalogue!),
+      builder: (_) =>
+          _NewWorkflowPanel(api: widget.api, catalogue: _catalogue!),
     );
 
     if (made == true && mounted) _load();
@@ -391,9 +446,9 @@ class _NewWorkflowPanelState extends State<_NewWorkflowPanel> {
   }
 
   List<String> get _triggers => [
-        for (final m in widget.catalogue['modules'] as List)
-          ...List<String>.from((m as Map)['triggers'] as List? ?? []),
-      ];
+    for (final m in widget.catalogue['modules'] as List)
+      ...List<String>.from((m as Map)['triggers'] as List? ?? []),
+  ];
 
   List<Map<String, dynamic>> get _operators =>
       List<Map<String, dynamic>>.from(widget.catalogue['operators'] as List);
@@ -415,12 +470,22 @@ class _NewWorkflowPanelState extends State<_NewWorkflowPanel> {
       if (_conditions.isNotEmpty)
         'conditions': {
           'all': _conditions
-              .map((c) => {'field': c['field'], 'op': c['op'], 'value': c['value']})
+              .map(
+                (c) => {
+                  'field': c['field'],
+                  'op': c['op'],
+                  'value': c['value'],
+                },
+              )
               .toList(),
         },
       'actions': _actions.map((a) {
         return switch (a['type']) {
-          'update_field' => {'type': 'update_field', 'field': a['field'], 'value': a['value']},
+          'update_field' => {
+            'type': 'update_field',
+            'field': a['field'],
+            'value': a['value'],
+          },
           'webhook' => {'type': 'webhook', 'url': a['url']},
           _ => {'type': 'notify', 'message': a['message']},
         };
@@ -462,7 +527,11 @@ class _NewWorkflowPanelState extends State<_NewWorkflowPanel> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: (_busy || _trigger == null || _actions.isEmpty || _name.text.trim().isEmpty)
+          onPressed:
+              (_busy ||
+                  _trigger == null ||
+                  _actions.isEmpty ||
+                  _name.text.trim().isEmpty)
               ? null
               : _submit,
           child: const Text('Create'),
@@ -474,7 +543,9 @@ class _NewWorkflowPanelState extends State<_NewWorkflowPanel> {
         children: [
           TextField(
             controller: _name,
-            decoration: const InputDecoration(labelText: 'Name it something you will recognise'),
+            decoration: const InputDecoration(
+              labelText: 'Name it something you will recognise',
+            ),
             enabled: !_busy,
             autofocus: true,
           ),
@@ -492,87 +563,117 @@ class _NewWorkflowPanelState extends State<_NewWorkflowPanel> {
           ),
 
           const SizedBox(height: 20),
-          _sectionHeader(context, 'And all of these are true', 'Optional — no '
-              'conditions means every time.', () {
-            setState(() => _conditions.add({'field': '', 'op': 'eq', 'value': ''}));
-          }),
+          _sectionHeader(
+            context,
+            'And all of these are true',
+            'Optional — no '
+                'conditions means every time.',
+            () {
+              setState(
+                () => _conditions.add({'field': '', 'op': 'eq', 'value': ''}),
+              );
+            },
+          ),
 
-          ..._conditions.asMap().entries.map((e) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: TextFormField(
-                        initialValue: e.value['field'],
-                        decoration: const InputDecoration(labelText: 'Field', isDense: true),
-                        onChanged: (v) => e.value['field'] = v,
+          ..._conditions.asMap().entries.map(
+            (e) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: TextFormField(
+                      initialValue: e.value['field'],
+                      decoration: const InputDecoration(
+                        labelText: 'Field',
+                        isDense: true,
                       ),
+                      onChanged: (v) => e.value['field'] = v,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 3,
-                      child: DropdownButtonFormField<String>(
-                        initialValue: e.value['op'],
-                        decoration: const InputDecoration(labelText: 'Is', isDense: true),
-                        items: _operators
-                            .map((o) => DropdownMenuItem(
-                                  value: o['key'] as String,
-                                  child: Text(o['label'] as String),
-                                ))
-                            .toList(),
-                        onChanged: (v) => setState(() => e.value['op'] = v ?? 'eq'),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 3,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: e.value['op'],
+                      decoration: const InputDecoration(
+                        labelText: 'Is',
+                        isDense: true,
                       ),
+                      items: _operators
+                          .map(
+                            (o) => DropdownMenuItem(
+                              value: o['key'] as String,
+                              child: Text(o['label'] as String),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) =>
+                          setState(() => e.value['op'] = v ?? 'eq'),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 3,
-                      child: TextFormField(
-                        initialValue: e.value['value'],
-                        decoration: const InputDecoration(labelText: 'Value', isDense: true),
-                        onChanged: (v) => e.value['value'] = v,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 3,
+                    child: TextFormField(
+                      initialValue: e.value['value'],
+                      decoration: const InputDecoration(
+                        labelText: 'Value',
+                        isDense: true,
                       ),
+                      onChanged: (v) => e.value['value'] = v,
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 18),
-                      onPressed: () => setState(() => _conditions.remove(e.value)),
-                    ),
-                  ],
-                ),
-              )),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () =>
+                        setState(() => _conditions.remove(e.value)),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
           const SizedBox(height: 16),
           _sectionHeader(context, 'Then do this', 'At least one.', () {
             setState(() => _actions.add({'type': 'notify', 'message': ''}));
           }),
 
-          ..._actions.asMap().entries.map((e) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: DropdownButtonFormField<String>(
-                        initialValue: e.value['type'],
-                        decoration: const InputDecoration(labelText: 'Action', isDense: true),
-                        items: _actionTypes
-                            .map((a) => DropdownMenuItem(
-                                  value: a['key'] as String,
-                                  child: Text(a['label'] as String),
-                                ))
-                            .toList(),
-                        onChanged: (v) => setState(() => e.value['type'] = v ?? 'notify'),
+          ..._actions.asMap().entries.map(
+            (e) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: e.value['type'],
+                      decoration: const InputDecoration(
+                        labelText: 'Action',
+                        isDense: true,
                       ),
+                      items: _actionTypes
+                          .map(
+                            (a) => DropdownMenuItem(
+                              value: a['key'] as String,
+                              child: Text(a['label'] as String),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) =>
+                          setState(() => e.value['type'] = v ?? 'notify'),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(flex: 5, child: _actionFields(e.value)),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 18),
-                      onPressed: () => setState(() => _actions.remove(e.value)),
-                    ),
-                  ],
-                ),
-              )),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(flex: 5, child: _actionFields(e.value)),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => setState(() => _actions.remove(e.value)),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
           if (_error != null) ...[
             const SizedBox(height: 14),
@@ -592,46 +693,57 @@ class _NewWorkflowPanelState extends State<_NewWorkflowPanel> {
   Widget _actionFields(Map<String, String> action) {
     return switch (action['type']) {
       'update_field' => Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                initialValue: action['field'],
-                decoration: const InputDecoration(labelText: 'Field', isDense: true),
-                onChanged: (v) => action['field'] = v,
+        children: [
+          Expanded(
+            child: TextFormField(
+              initialValue: action['field'],
+              decoration: const InputDecoration(
+                labelText: 'Field',
+                isDense: true,
               ),
+              onChanged: (v) => action['field'] = v,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextFormField(
-                initialValue: action['value'],
-                decoration: const InputDecoration(labelText: 'Set to', isDense: true),
-                onChanged: (v) => action['value'] = v,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextFormField(
+              initialValue: action['value'],
+              decoration: const InputDecoration(
+                labelText: 'Set to',
+                isDense: true,
               ),
+              onChanged: (v) => action['value'] = v,
             ),
-          ],
-        ),
+          ),
+        ],
+      ),
       'webhook' => TextFormField(
-          initialValue: action['url'],
-          decoration: const InputDecoration(
-            labelText: 'https:// URL',
-            isDense: true,
-            helperText: 'Public addresses only — internal ones are refused.',
-          ),
-          onChanged: (v) => action['url'] = v,
+        initialValue: action['url'],
+        decoration: const InputDecoration(
+          labelText: 'https:// URL',
+          isDense: true,
+          helperText: 'Public addresses only — internal ones are refused.',
         ),
+        onChanged: (v) => action['url'] = v,
+      ),
       _ => TextFormField(
-          initialValue: action['message'],
-          decoration: const InputDecoration(
-            labelText: 'Message',
-            isDense: true,
-            helperText: 'Use {{ title }} to include a field.',
-          ),
-          onChanged: (v) => action['message'] = v,
+        initialValue: action['message'],
+        decoration: const InputDecoration(
+          labelText: 'Message',
+          isDense: true,
+          helperText: 'Use {{ title }} to include a field.',
         ),
+        onChanged: (v) => action['message'] = v,
+      ),
     };
   }
 
-  Widget _sectionHeader(BuildContext context, String title, String note, VoidCallback onAdd) {
+  Widget _sectionHeader(
+    BuildContext context,
+    String title,
+    String note,
+    VoidCallback onAdd,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(

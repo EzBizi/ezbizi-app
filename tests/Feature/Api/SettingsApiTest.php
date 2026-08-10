@@ -8,6 +8,9 @@ use App\Models\Franchise;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
+use App\Support\Settings\SettingDefinition;
+use App\Support\Settings\SettingRegistry;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -138,6 +141,165 @@ class SettingsApiTest extends TestCase
         $this->deleteJson("/api/v1/settings/locale?scope_type=franchise&scope_id={$f->id}")
             ->assertOk()
             ->assertJsonPath('data.value', 'es');   // inheriting again
+    }
+
+    // ── a write answers with the row it wrote ────────────────────
+    //
+    // update() used to return a thin {key, value, scope}, which left a client
+    // nothing it could splice — so the settings screen refetched everything
+    // after every change and blanked itself to a spinner in the process. These
+    // pin the contract that removed the refetch: all three endpoints answer in
+    // the shape index() does, built by one method so they cannot drift apart.
+
+    public function test_an_update_answers_in_the_same_shape_as_a_read(): void
+    {
+        ['administrator' => $admin, 'franchise' => $f] = $this->org('Alpha', 'a@a.test');
+        Sanctum::actingAs($admin);
+
+        $read = collect($this->getJson("/api/v1/settings?scope_type=franchise&scope_id={$f->id}")->json('data'))
+            ->firstWhere('key', 'money.tax_rate');
+
+        $written = $this->patchJson(
+            "/api/v1/settings/money.tax_rate?scope_type=franchise&scope_id={$f->id}",
+            ['value' => 6.625]
+        )->assertOk()->json('data');
+
+        // Same keys, same order. Anything a client can read off a listed row it
+        // can read off a written one, which is the whole point.
+        $this->assertSame(array_keys($read), array_keys($written));
+        $this->assertSame(6.625, $written['value']);
+        $this->assertSame('Default tax rate (%)', $written['label']);
+    }
+
+    public function test_a_reset_answers_in_the_same_shape_as_a_read(): void
+    {
+        ['administrator' => $admin, 'franchise' => $f] = $this->org('Alpha', 'a@a.test');
+        Sanctum::actingAs($admin);
+
+        $this->patchJson("/api/v1/settings/money.tax_rate?scope_type=franchise&scope_id={$f->id}", ['value' => 6.625])
+            ->assertOk();
+
+        $read = collect($this->getJson("/api/v1/settings?scope_type=franchise&scope_id={$f->id}")->json('data'))
+            ->firstWhere('key', 'money.tax_rate');
+
+        $reset = $this->deleteJson("/api/v1/settings/money.tax_rate?scope_type=franchise&scope_id={$f->id}")
+            ->assertOk()->json('data');
+
+        $this->assertSame(array_keys($read), array_keys($reset));
+    }
+
+    public function test_the_source_flips_to_here_on_a_write_and_to_the_ancestor_on_a_reset(): void
+    {
+        ['organization' => $org, 'administrator' => $admin, 'franchise' => $f] = $this->org('Alpha', 'a@a.test');
+        Sanctum::actingAs($admin);
+
+        $this->patchJson("/api/v1/settings/locale?scope_type=organization&scope_id={$org->id}", ['value' => 'es'])
+            ->assertOk();
+
+        $written = $this->patchJson(
+            "/api/v1/settings/locale?scope_type=franchise&scope_id={$f->id}",
+            ['value' => 'en']
+        )->assertOk()->json('data');
+
+        // It was inherited from the organization a moment ago and is set here
+        // now. The row has to say so, or the screen goes on offering to reset an
+        // override it does not know exists.
+        $this->assertSame('en', $written['value']);
+        $this->assertSame('franchise', $written['source']['type']);
+        $this->assertSame($f->id, $written['source']['id']);
+        $this->assertFalse($written['source']['inherited']);
+
+        $reset = $this->deleteJson("/api/v1/settings/locale?scope_type=franchise&scope_id={$f->id}")
+            ->assertOk()->json('data');
+
+        // And back the other way, to an ancestor the client had no way to pick
+        // for itself — which is precisely why the server sends it.
+        $this->assertSame('es', $reset['value']);
+        $this->assertSame('organization', $reset['source']['type']);
+        $this->assertSame($org->id, $reset['source']['id']);
+        $this->assertTrue($reset['source']['inherited']);
+    }
+
+    public function test_a_reset_with_nothing_above_it_reports_no_source_at_all(): void
+    {
+        ['organization' => $org, 'administrator' => $admin] = $this->org('Alpha', 'a@a.test');
+        Sanctum::actingAs($admin);
+
+        $this->patchJson("/api/v1/settings/locale?scope_type=organization&scope_id={$org->id}", ['value' => 'es'])
+            ->assertOk();
+
+        $reset = $this->deleteJson("/api/v1/settings/locale?scope_type=organization&scope_id={$org->id}")
+            ->assertOk()->json('data');
+
+        // Organization is the top of the cascade, so clearing it falls back to
+        // the definition's default rather than to a parent. The old response
+        // said `now_inherited: true` unconditionally, which would have the
+        // screen claim "Inherited from Alpha" about a value Alpha does not hold.
+        $this->assertSame('en', $reset['value']);
+        $this->assertNull($reset['source']);
+    }
+
+    public function test_a_sensitive_settings_value_stays_null_when_it_is_written(): void
+    {
+        ['organization' => $org, 'administrator' => $admin] = $this->org('Alpha', 'a@a.test');
+        $this->registerSensitiveSetting();
+        Sanctum::actingAs($admin);
+
+        $secret = 'whsec-never-echo-this';
+
+        $response = $this->patchJson(
+            "/api/v1/settings/integrations.webhook_secret?scope_type=organization&scope_id={$org->id}",
+            ['value' => $secret]
+        )->assertOk();
+
+        // The refactor that made writes return a full row must not make the
+        // write the one route that hands the secret back.
+        $this->assertTrue($response->json('data.is_sensitive'));
+        $this->assertNull($response->json('data.value'));
+        $response->assertDontSee($secret);
+
+        // Withheld, not discarded — the write really happened.
+        app(TenantContext::class)->run($org, function () use ($org, $secret) {
+            $this->assertSame(
+                $secret,
+                app(SettingsResolver::class)->get('integrations.webhook_secret', $org)
+            );
+        });
+
+        // And a read says the same thing, which is the shape the write copies.
+        $listed = collect($this->getJson("/api/v1/settings?scope_type=organization&scope_id={$org->id}")->json('data'))
+            ->firstWhere('key', 'integrations.webhook_secret');
+
+        $this->assertNull($listed['value']);
+        $this->assertFalse($listed['source']['inherited']);
+    }
+
+    /**
+     * A sensitive setting to write to.
+     *
+     * The catalogue holds none today. A test that skipped when it found no
+     * secret would stop checking silently the day somebody adds one, so this
+     * brings its own — the guarantee is about the controller, not about which
+     * settings happen to be registered.
+     */
+    private function registerSensitiveSetting(): void
+    {
+        $registry = new SettingRegistry();
+
+        $registry->register(new SettingDefinition(
+            key: 'integrations.webhook_secret',
+            label: 'Webhook signing secret',
+            type: SettingDefinition::TYPE_STRING,
+            default: '',
+            allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+            isSensitive: true,
+        ));
+
+        $this->app->instance(SettingRegistry::class, $registry);
+
+        // The resolver is a singleton that holds its own registry. Left alone it
+        // would keep the catalogue without this key and getOrFail() on it.
+        $this->app->forgetInstance(SettingsResolver::class);
     }
 
     // ── tenancy boundary ─────────────────────────────────────────

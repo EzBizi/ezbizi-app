@@ -26,6 +26,15 @@ class StaffAccountsScreen extends StatefulWidget {
 
 class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
   bool _loading = true;
+
+  /// Which load owns the screen — see customers_screen for the whole argument.
+  ///
+  /// A write here ends in a refresh, and the control that triggers it is no
+  /// longer hidden behind a spinner, so two can be in flight together. Whichever
+  /// answer lands LAST used to win regardless of which was asked for last, and
+  /// nothing was scheduled afterwards to correct it: the kill switch could sit
+  /// reading "Off" for a module that was on, until somebody navigated away.
+  int _request = 0;
   String? _error;
   List<Map<String, dynamic>> _accounts = [];
 
@@ -36,14 +45,22 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
   }
 
   Future<void> _load() async {
+    final request = ++_request;
+
     setState(() {
-      _loading = true;
+      // A spinner only when there is nothing to keep — see AsyncBody. Enabling
+      // an account, changing a tier and confirming an authenticator all refetch
+      // through here, and the list they came from stays up meanwhile. There is
+      // always at least one account — the one signed in — and a failure leaves
+      // whatever was there alone, so empty means no answer has arrived yet.
+      _loading = _accounts.isEmpty;
       _error = null;
     });
 
     final response = await widget.staff.api.get('/staff/accounts');
 
-    if (!mounted) return;
+    // Superseded by a newer load — applying this would undo it.
+    if (!mounted || request != _request) return;
 
     setState(() {
       _loading = false;
@@ -62,7 +79,8 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
       children: [
         PanelHeader(
           title: 'Staff',
-          note: 'Accounts that work across every organization. Two factors are '
+          note:
+              'Accounts that work across every organization. Two factors are '
               'mandatory — an account without a confirmed authenticator cannot '
               'sign in at all.',
           action: FilledButton.icon(
@@ -109,9 +127,11 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
                       Row(
                         children: [
                           Flexible(
-                            child: Text(account['name'] as String,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.titleMedium),
+                            child: Text(
+                              account['name'] as String,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
                           ),
                           if (isMe) const Tag('You'),
                           if (!active) const Tag('Disabled', warn: true),
@@ -129,25 +149,35 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
                 PopupMenuButton<String>(
                   itemBuilder: (_) => [
                     if (pending)
-                      const PopupMenuItem(value: 'confirm', child: Text('Confirm authenticator')),
+                      const PopupMenuItem(
+                        value: 'confirm',
+                        child: Text('Confirm authenticator'),
+                      ),
                     // Never on your own row. This endpoint kills the live secret
                     // AND every token in one request — on yourself that strands
                     // the account. "Move authenticator" in the account menu is
                     // the self path, and it keeps the current one working.
                     if (!isMe)
-                      const PopupMenuItem(value: 'reset', child: Text('Re-enrol authenticator')),
+                      const PopupMenuItem(
+                        value: 'reset',
+                        child: Text('Re-enrol authenticator'),
+                      ),
                     if (!isMe) const PopupMenuDivider(),
                     if (!isMe)
                       PopupMenuItem(
                         value: 'active',
-                        child: Text(active ? 'Disable account' : 'Enable account'),
+                        child: Text(
+                          active ? 'Disable account' : 'Enable account',
+                        ),
                       ),
                     if (!isMe)
                       PopupMenuItem(
                         value: 'tier',
-                        child: Text(account['tier'] == 'lead_developer'
-                            ? 'Make Developer'
-                            : 'Make Lead Developer'),
+                        child: Text(
+                          account['tier'] == 'lead_developer'
+                              ? 'Make Developer'
+                              : 'Make Lead Developer',
+                        ),
                       ),
                   ],
                   onSelected: (action) => _act(action, account),
@@ -156,10 +186,12 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
             ),
             const SizedBox(height: 8),
             if (!confirmed)
-              ErrorNote(pending
-                  ? 'Waiting on the authenticator. This account cannot sign in '
-                      'until a code confirms it.'
-                  : 'No authenticator enrolled. This account cannot sign in.')
+              ErrorNote(
+                pending
+                    ? 'Waiting on the authenticator. This account cannot sign in '
+                          'until a code confirms it.'
+                    : 'No authenticator enrolled. This account cannot sign in.',
+              )
             else
               Text(
                 'Authenticator confirmed · ${account['recovery_code_count']} recovery '
@@ -180,25 +212,35 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
       case 'reset':
         await _resetTotp(account);
       case 'active':
-        await _patch(account, {'is_active': !(account['is_active'] as bool? ?? false)});
+        await _patch(account, {
+          'is_active': !(account['is_active'] as bool? ?? false),
+        });
       case 'tier':
         await _patch(account, {
-          'tier': account['tier'] == 'lead_developer' ? 'developer' : 'lead_developer',
+          'tier': account['tier'] == 'lead_developer'
+              ? 'developer'
+              : 'lead_developer',
         });
     }
   }
 
-  Future<void> _patch(Map<String, dynamic> account, Map<String, dynamic> body) async {
-    final response =
-        await widget.staff.api.patch('/staff/accounts/${account['id']}', body);
+  Future<void> _patch(
+    Map<String, dynamic> account,
+    Map<String, dynamic> body,
+  ) async {
+    final response = await widget.staff.api.patch(
+      '/staff/accounts/${account['id']}',
+      body,
+    );
 
     if (!mounted) return;
 
     if (!response.ok) {
       // The server's refusals explain themselves ("this is the last active Lead
       // Developer"), so they are shown verbatim rather than reworded here.
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(response.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
       return;
     }
 
@@ -229,11 +271,13 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
         title: 'Re-enrol ${account['name']}?',
         actions: [
           TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Re-enrol')),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Re-enrol'),
+          ),
         ],
         child: const Text(
           'Their current authenticator stops working immediately and every '
@@ -244,18 +288,24 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
 
     if (confirmed != true || !mounted) return;
 
-    final response =
-        await widget.staff.api.post('/staff/accounts/${account['id']}/totp', {});
+    final response = await widget.staff.api.post(
+      '/staff/accounts/${account['id']}/totp',
+      {},
+    );
 
     if (!mounted) return;
 
     if (!response.ok) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(response.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
       return;
     }
 
-    await _showEnrolment(account, response.body['enrolment'] as Map<String, dynamic>);
+    await _showEnrolment(
+      account,
+      response.body['enrolment'] as Map<String, dynamic>,
+    );
     if (mounted) _load();
   }
 
@@ -271,7 +321,9 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
         subtitle: 'Ask them to read out the six digits their app is showing.',
         actions: [
           TextButton(
-              onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(code.text.trim()),
             child: const Text('Confirm'),
@@ -287,14 +339,17 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
 
     if (entered == null || entered.isEmpty || !mounted) return;
 
-    final response = await widget.staff.api
-        .post('/staff/accounts/${account['id']}/totp/confirm', {'code': entered});
+    final response = await widget.staff.api.post(
+      '/staff/accounts/${account['id']}/totp/confirm',
+      {'code': entered},
+    );
 
     if (!mounted) return;
 
     if (!response.ok) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(response.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
       return;
     }
 
@@ -315,7 +370,9 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
   }
 
   Future<void> _showEnrolment(
-      Map<String, dynamic> account, Map<String, dynamic> enrolment) {
+    Map<String, dynamic> account,
+    Map<String, dynamic> enrolment,
+  ) {
     return showSidePanel<bool>(
       context,
       builder: (_) => EnrolmentDialog(
@@ -323,8 +380,10 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
         email: account['email'] as String,
         secret: enrolment['secret'] as String,
         uri: enrolment['uri'] as String,
-        onConfirm: (code) => widget.staff.api
-            .post('/staff/accounts/${account['id']}/totp/confirm', {'code': code}),
+        onConfirm: (code) => widget.staff.api.post(
+          '/staff/accounts/${account['id']}/totp/confirm',
+          {'code': code},
+        ),
       ),
     );
   }
@@ -432,7 +491,8 @@ class _NewStaffPanelState extends State<_NewStaffPanel> {
               labelText: 'Password',
               // Longer than the tenant minimum, and the reason is worth
               // saying rather than leaving as an arbitrary-looking rule.
-              helperText: 'At least 16 characters — this account reaches every customer',
+              helperText:
+                  'At least 16 characters — this account reaches every customer',
             ),
             obscureText: true,
             enabled: !_busy,
@@ -443,19 +503,24 @@ class _NewStaffPanelState extends State<_NewStaffPanel> {
           SegmentedButton<String>(
             segments: const [
               ButtonSegment(value: 'developer', label: Text('Developer')),
-              ButtonSegment(value: 'lead_developer', label: Text('Lead Developer')),
+              ButtonSegment(
+                value: 'lead_developer',
+                label: Text('Lead Developer'),
+              ),
             ],
             selected: {_tier},
-            onSelectionChanged: _busy ? null : (s) => setState(() => _tier = s.first),
+            onSelectionChanged: _busy
+                ? null
+                : (s) => setState(() => _tier = s.first),
           ),
           const SizedBox(height: 8),
           Text(
             _tier == 'lead_developer'
                 ? 'Reaches every organization, may enter a client without their '
-                    'approval, and is exempt from the ordinary audit trail. '
-                    'Client access is still always recorded.'
+                      'approval, and is exempt from the ordinary audit trail. '
+                      'Client access is still always recorded.'
                 : 'Platform work only. Reaching client records needs the client\'s '
-                    'approval on each session.',
+                      'approval on each session.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           if (_error != null) ...[
@@ -467,4 +532,3 @@ class _NewStaffPanelState extends State<_NewStaffPanel> {
     );
   }
 }
-

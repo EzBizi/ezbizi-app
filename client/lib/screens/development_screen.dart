@@ -98,18 +98,30 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
     final me = _staff.me!;
 
     final tabs = <(String, IconData, Widget)>[
-      ('Organizations', Icons.apartment_outlined, OrganizationsScreen(staff: _staff)),
+      (
+        'Organizations',
+        Icons.apartment_outlined,
+        OrganizationsScreen(staff: _staff),
+      ),
       ('Modules', Icons.toggle_on_outlined, ModulesScreen(staff: _staff)),
-      ('Client access', Icons.history_outlined, ImpersonationsScreen(staff: _staff)),
+      (
+        'Client access',
+        Icons.history_outlined,
+        ImpersonationsScreen(staff: _staff),
+      ),
       ('Health', Icons.favorite_outline, HealthScreen(staff: _staff)),
-      if (me.isLead) ('Staff', Icons.badge_outlined, StaffAccountsScreen(staff: _staff)),
+      if (me.isLead)
+        ('Staff', Icons.badge_outlined, StaffAccountsScreen(staff: _staff)),
     ];
 
     final index = _index.clamp(0, tabs.length - 1);
 
     return Column(
       children: [
-        _Banner(isLead: me.isLead, focusedAt: widget.session.me?.development?.focusedAt),
+        _Banner(
+          isLead: me.isLead,
+          focusedAt: widget.session.me?.development?.focusedAt,
+        ),
         // A second row of tabs, not a second sidebar. The section is one
         // destination in the CRM's navigation; nesting a full rail inside it
         // would make it look like a different application, which it is not.
@@ -191,10 +203,10 @@ class _Banner extends StatelessWidget {
             child: Text(
               isLead
                   ? 'Platform control plane — every organization, not just this one. '
-                      'Your ordinary activity here is not written to the business audit '
-                      'trail; sign-ins, staff changes and client access always are.'
+                        'Your ordinary activity here is not written to the business audit '
+                        'trail; sign-ins, staff changes and client access always are.'
                   : 'Platform control plane — every organization, not just this one. '
-                      'Everything you do here is recorded.',
+                        'Everything you do here is recorded.',
               style: TextStyle(fontSize: 12, color: scheme.error),
             ),
           ),

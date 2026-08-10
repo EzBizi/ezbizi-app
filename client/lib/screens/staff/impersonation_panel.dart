@@ -76,7 +76,8 @@ class _ImpersonationPanelState extends State<ImpersonationPanel> {
 
     return SidePanel(
       title: 'Enter ${widget.organizationName}',
-      subtitle: 'This is recorded against your name, whatever your tier, and the '
+      subtitle:
+          'This is recorded against your name, whatever your tier, and the '
           'client can be shown it.',
       actions: [
         TextButton(
@@ -113,21 +114,24 @@ class _ImpersonationPanelState extends State<ImpersonationPanel> {
               ButtonSegment(value: 120, label: Text('2 hours')),
             ],
             selected: {_minutes},
-            onSelectionChanged:
-                _busy ? null : (s) => setState(() => _minutes = s.first),
+            onSelectionChanged: _busy
+                ? null
+                : (s) => setState(() => _minutes = s.first),
           ),
           const SizedBox(height: 8),
 
           CheckboxListTile(
             value: _clientApproved,
-            onChanged: _busy ? null : (v) => setState(() => _clientApproved = v ?? false),
+            onChanged: _busy
+                ? null
+                : (v) => setState(() => _clientApproved = v ?? false),
             contentPadding: EdgeInsets.zero,
             controlAffinity: ListTileControlAffinity.leading,
             title: const Text('The client approved this'),
             subtitle: Text(
               me.mayEnterWithoutApproval
                   ? 'Your tier may enter without approval. Unticked is recorded '
-                      'as unapproved, not as unrecorded.'
+                        'as unapproved, not as unrecorded.'
                   : 'Required for your tier.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),

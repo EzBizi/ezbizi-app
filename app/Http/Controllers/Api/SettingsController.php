@@ -45,47 +45,16 @@ class SettingsController extends Controller
     public function index(Request $request): JsonResponse
     {
         $scope = $this->resolveScope($request);
-        $scopeType = $this->scopeTypeOf($scope);
 
         $settings = [];
 
         foreach ($this->registry->all() as $key => $definition) {
-            $source = $this->resolver->sourceOf($key, $scope);
-
-            $settings[] = [
-                'key'            => $key,
-                'label'          => $definition->label,
-                'type'           => $definition->type,
-                'value'          => $definition->isSensitive ? null : $this->resolver->get($key, $scope),
-                'is_sensitive'   => $definition->isSensitive,
-                'options'        => $definition->options ?: null,
-                'help'           => $definition->help,
-                // Can this SCOPE hold it? Inheritance, not permission.
-                'editable_here'  => $definition->allowsScope($scopeType),
-
-                // Can this PERSON set it here? Two separate questions, and the
-                // client had only the first — so somebody without
-                // `organizations.edit` saw every control live, changed one, and
-                // got a 403 from a switch that had already animated.
-                'may_edit'       => $definition->allowsScope($scopeType)
-                                    && $request->user()->hasPermission($definition->permissionRequired()),
-
-                // Named so a refusal can say which one is missing rather than
-                // "you cannot do that".
-                'permission'     => $definition->permissionRequired(),
-                'allowed_scopes' => $definition->allowedScopes,
-                'source'         => $source === null ? null : [
-                    'type'      => $this->scopeTypeOf($source),
-                    'id'        => $source->getKey(),
-                    'name'      => $source->name,
-                    'inherited' => ! $source->is($scope),
-                ],
-            ];
+            $settings[] = $this->row($request, $key, $definition, $scope);
         }
 
         return response()->json([
             'data' => $settings,
-            'meta' => ['scope_type' => $scopeType, 'scope_id' => $scope->getKey()],
+            'meta' => $this->metaFor($scope),
         ]);
     }
 
@@ -107,9 +76,10 @@ class SettingsController extends Controller
         $request->validate(['value' => ['present']]);
 
         try {
-            $setting = DB::transaction(function () use ($key, $scope, $request, $definition) {
+            DB::transaction(function () use ($key, $scope, $request, $definition) {
                 $before = $this->resolver->get($key, $scope);
-                $saved  = $this->resolver->set($key, $scope, $request->input('value'));
+
+                $this->resolver->set($key, $scope, $request->input('value'));
 
                 // Inside the transaction — the change and its record commit
                 // together or not at all (§10, R-11).
@@ -122,8 +92,6 @@ class SettingsController extends Controller
                         'after'  => $definition->isSensitive ? '[redacted]' : $this->resolver->get($key, $scope),
                     ],
                 );
-
-                return $saved;
             });
         } catch (InvalidArgumentException $e) {
             // Definition-level validation: bad enum value, wrong scope, wrong type.
@@ -131,11 +99,8 @@ class SettingsController extends Controller
         }
 
         return response()->json([
-            'data' => [
-                'key'   => $key,
-                'value' => $definition->isSensitive ? null : $this->resolver->get($key, $scope),
-                'scope' => ['type' => $this->scopeTypeOf($scope), 'id' => $scope->getKey()],
-            ],
+            'data' => $this->row($request, $key, $definition, $scope),
+            'meta' => $this->metaFor($scope),
         ]);
     }
 
@@ -165,15 +130,74 @@ class SettingsController extends Controller
         });
 
         return response()->json([
-            'data' => [
-                'key'             => $key,
-                'value'           => $this->resolver->get($key, $scope),
-                'now_inherited'   => true,
-            ],
+            'data' => $this->row($request, $key, $definition, $scope),
+            'meta' => $this->metaFor($scope),
         ]);
     }
 
     // ── helpers ──────────────────────────────────────────────────
+
+    /**
+     * One setting, in the single shape every endpoint here answers with.
+     *
+     * index(), update() and destroy() all build their rows from this, so a write
+     * returns the new state of the thing it wrote. That is what lets a client
+     * put the answer straight back into the row it came from. Without it the
+     * only honest thing a client could do after changing one dropdown was
+     * refetch the entire screen — which is why the settings screen used to blank
+     * itself to a spinner every time somebody switched the clock to 24 hours.
+     *
+     * `source` is the part that has to be recomputed here rather than guessed at
+     * the other end, and it is the reason the whole row travels back. A write
+     * moves it to this scope. A reset moves it to whichever ancestor still holds
+     * a value — which is not necessarily the one directly above, and may be
+     * nowhere at all, in which case the definition's default applies and there
+     * is no source to name.
+     *
+     * A sensitive setting answers with a null value here exactly as it does in
+     * index(). A write must not become the one route that hands the secret back.
+     */
+    private function row(Request $request, string $key, SettingDefinition $definition, Model $scope): array
+    {
+        $scopeType = $this->scopeTypeOf($scope);
+        $source    = $this->resolver->sourceOf($key, $scope);
+
+        return [
+            'key'            => $key,
+            'label'          => $definition->label,
+            'type'           => $definition->type,
+            'value'          => $definition->isSensitive ? null : $this->resolver->get($key, $scope),
+            'is_sensitive'   => $definition->isSensitive,
+            'options'        => $definition->options ?: null,
+            'help'           => $definition->help,
+            // Can this SCOPE hold it? Inheritance, not permission.
+            'editable_here'  => $definition->allowsScope($scopeType),
+
+            // Can this PERSON set it here? Two separate questions, and the
+            // client had only the first — so somebody without
+            // `organizations.edit` saw every control live, changed one, and
+            // got a 403 from a switch that had already animated.
+            'may_edit'       => $definition->allowsScope($scopeType)
+                                && $request->user()->hasPermission($definition->permissionRequired()),
+
+            // Named so a refusal can say which one is missing rather than
+            // "you cannot do that".
+            'permission'     => $definition->permissionRequired(),
+            'allowed_scopes' => $definition->allowedScopes,
+            'source'         => $source === null ? null : [
+                'type'      => $this->scopeTypeOf($source),
+                'id'        => $source->getKey(),
+                'name'      => $source->name,
+                'inherited' => ! $source->is($scope),
+            ],
+        ];
+    }
+
+    /** Which scope the rows in this response were resolved against. */
+    private function metaFor(Model $scope): array
+    {
+        return ['scope_type' => $this->scopeTypeOf($scope), 'scope_id' => $scope->getKey()];
+    }
 
     /**
      * Resolve the scope from the request.

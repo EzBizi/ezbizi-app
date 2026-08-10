@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -6,6 +7,7 @@ import 'package:ezbizi_client/core/staff_session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/signup_screen.dart';
+import 'package:ezbizi_client/screens/staff/modules_screen.dart';
 import 'package:ezbizi_client/screens/staff/staff_login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -404,6 +406,94 @@ void main() {
       },
     );
   }
+
+  // ── a refresh must not blank a screen that has something on it ──
+  //
+  // The owner's complaint, in their words: "whenever you change a value ... the
+  // whole page reloads". It was not a Settings bug. Fifteen screens set
+  // `_loading = true` at the top of every fetch, so every save, toggle and
+  // delete tore the page down to a CircularProgressIndicator and rebuilt it.
+  //
+  // Modules stands in for all of them: one list, a refresh that goes through
+  // the same `_load()` every write does, and no session state to fake. What is
+  // asserted is the distinction the fix turns on — a first load blanks, because
+  // there is genuinely nothing to show, and every load after it does not.
+  testWidgets('a refresh replaces content in place, a first load blanks', (
+    tester,
+  ) async {
+    var loads = 0;
+
+    // Held open so the assertion lands DURING the request rather than after it.
+    // Completing immediately would make a spinner and no spinner
+    // indistinguishable, which is the whole thing being tested.
+    var gate = Completer<void>();
+
+    final api = ApiClient(
+      client: MockClient((request) async {
+        loads++;
+        await gate.future;
+
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {
+                'key': 'jobs',
+                'label': 'Jobs',
+                'state': 'enabled',
+                'permissions': <String>[],
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(body: ModulesScreen(staff: StaffSession(api))),
+      ),
+    );
+    await tester.pump();
+
+    // First load: nothing to preserve, so the spinner is the honest thing to
+    // draw. If this ever stops holding, the isEmpty target is pointed at
+    // something that is never empty and the screen shows a false empty state.
+    expect(loads, 1);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('Jobs'), findsNothing);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('Jobs'), findsOneWidget);
+
+    // Now the refresh, through the same _load() every write on this screen
+    // calls when the server accepts it.
+    gate = Completer<void>();
+    await tester.tap(find.byTooltip('Refresh'));
+    await tester.pump();
+
+    expect(loads, 2, reason: 'The refresh did not actually re-request.');
+    expect(
+      find.byType(CircularProgressIndicator),
+      findsNothing,
+      reason: 'A refresh blanked a screen that already had a row on it.',
+    );
+    expect(
+      find.text('Jobs'),
+      findsOneWidget,
+      reason: 'The row on screen should stay put until the new one lands.',
+    );
+
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Jobs'), findsOneWidget);
+  });
 
   // The alignment test that used to live here has been deleted, not fixed.
   //

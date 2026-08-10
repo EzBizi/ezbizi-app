@@ -32,6 +32,15 @@ class OrganizationScreen extends StatefulWidget {
 
 class _OrganizationScreenState extends State<OrganizationScreen> {
   bool _loading = true;
+
+  /// Which load owns the screen — see customers_screen for the whole argument.
+  ///
+  /// A write here ends in a refresh, and the control that triggers it is no
+  /// longer hidden behind a spinner, so two can be in flight together. Whichever
+  /// answer lands LAST used to win regardless of which was asked for last, and
+  /// nothing was scheduled afterwards to correct it: the kill switch could sit
+  /// reading "Off" for a module that was on, until somebody navigated away.
+  int _request = 0;
   String? _error;
   Map<String, dynamic>? _tree;
 
@@ -42,14 +51,21 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   }
 
   Future<void> _load() async {
+    final request = ++_request;
+
     setState(() {
-      _loading = true;
+      // A spinner only when there is nothing to keep — see AsyncBody. There is
+      // no collection here; the tree IS the screen, and its absence is the
+      // honest test. Every edit on this page ends in a refetch, so renaming one
+      // place used to tear down the whole structure to show the new name.
+      _loading = _tree == null;
       _error = null;
     });
 
     final response = await widget.api.get('/companies');
 
-    if (!mounted) return;
+    // Superseded by a newer load — applying this would undo it.
+    if (!mounted || request != _request) return;
 
     setState(() {
       _loading = false;

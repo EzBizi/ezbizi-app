@@ -44,31 +44,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// edited.
   String get _scopeLabel => widget.session.me!.scope.fullPath;
 
-  /// The scope the last load ran against, so a change in the top bar refetches.
-  String? _loadedFor;
-
   @override
   void initState() {
     super.initState();
     _load();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-
-    final current = '$_scopeType:$_scopeId';
-
-    if (_loadedFor != null && _loadedFor != current) _load();
-  }
-
+  /// A scope change refetches because the SHELL remounts this screen, not
+  /// because anything here watches for one.
+  ///
+  /// There was a `_loadedFor` field and a `didChangeDependencies` comparing it,
+  /// commented as "the scope the last load ran against, so a change in the top
+  /// bar refetches". It never fired: nothing in this build depends on an
+  /// inherited widget that changes when the scope does, so the callback does not
+  /// run, and switching scope with that code in place left the previous scope's
+  /// values on screen under the new scope's heading.
+  ///
+  /// What actually does the work is main.dart's
+  /// `KeyedSubtree(key: ValueKey('type:id'))` around the body — a new key is a
+  /// new element, so this State is discarded and rebuilt from initState. That is
+  /// also why the first load below can safely blank the screen: after a scope
+  /// change there is genuinely nothing to keep.
   Future<void> _load() async {
     setState(() {
-      _loading = true;
+      // Only when there is nothing to show. A refresh — the fallback in _apply,
+      // or Try again — keeps the rows up rather than replacing the page with a
+      // spinner.
+      _loading = _settings.isEmpty;
       _error = null;
     });
-
-    _loadedFor = '$_scopeType:$_scopeId';
 
     final response = await widget.api.get('/settings', {
       'scope_type': _scopeType,
@@ -105,12 +109,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     if (!response.ok) {
+      // Nothing on screen moves. A control showing a value the server refused
+      // is worse than one that never changed, because it looks saved.
       _snack(response.message, isError: true);
       return;
     }
 
+    _apply(key, response.data);
     _snack('Saved');
-    _load();
   }
 
   Future<void> _reset(String key) async {
@@ -121,15 +127,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (!mounted) return;
 
+    if (!response.ok) {
+      _snack(response.message, isError: true);
+      return;
+    }
+
+    // Applied FIRST, and the message read off the row that was accepted.
+    //
+    // This used to reach into the body for `source` before anything had checked
+    // the body's shape, with a hard cast — so a `source` that was present but
+    // not an object threw before _apply could run, and the fallback below never
+    // happened: the control kept showing the value the server had just replaced,
+    // with no snackbar at all. It could also announce "Back to the EzBizi
+    // default" a moment before the fallback reload redrew the row as inherited
+    // from somewhere, which is two contradictory statements about one setting.
+    final applied = _apply(key, response.data);
+
+    if (applied == null) {
+      // _apply is refetching. It will show what is actually true in a moment,
+      // so say only the part that is certain — the server accepted the reset.
+      _snack('Reset');
+      return;
+    }
+
+    // What it fell back TO is in the answer, so say that rather than guessing
+    // from the scope we are sitting at. Dropping an override on a franchise
+    // usually means inheriting from the company above — but when nothing above
+    // holds a value either, the platform default applies and "Now inherited"
+    // would name a level with nothing set on it.
+    final source = applied['source'] as Map<String, dynamic>?;
+
     _snack(
-      response.ok
-          ? (_scopeType == 'organization'
-                ? 'Back to the default'
-                : 'Now inherited')
-          : response.message,
-      isError: !response.ok,
+      source == null
+          ? 'Back to the EzBizi default'
+          : 'Now inherited from ${source['name']}',
     );
-    if (response.ok) _load();
+  }
+
+  /// Put the row the write just returned back where the old one was.
+  ///
+  /// The server answers a write with the setting's whole new state — value,
+  /// source and all — so going back for the entire screen to learn what we have
+  /// just been told is a round trip that buys nothing. It is also what the owner
+  /// was complaining about: every write ended in `_load()`, and changing one
+  /// dropdown refetched and rebuilt every setting on the page. Changing one
+  /// dropdown should move one row.
+  ///
+  /// It splices the SERVER's row rather than patching the value locally because
+  /// `source` is not something this end can work out. After a write it becomes
+  /// "Set here"; after a reset it falls back to whichever ancestor still holds a
+  /// value, which may not be the one directly above and may not exist at all.
+  Map<String, dynamic>? _apply(String key, dynamic row) {
+    final index = _settings.indexWhere((s) => s['key'] == key);
+
+    // A body that is not the row we asked about — an unexpected shape, a
+    // different key, or a setting this screen is not showing — leaves us unable
+    // to say what the setting now is. Going back for the whole list is the slow
+    // answer, but the alternative is a control still displaying the value the
+    // server has replaced, and a wrong value that looks saved is the failure
+    // worth paying to avoid.
+    if (row is! Map<String, dynamic> || row['key'] != key || index < 0) {
+      _load();
+      return null;
+    }
+
+    setState(() => _settings[index] = row);
+
+    return row;
   }
 
   void _snack(String message, {bool isError = false}) {

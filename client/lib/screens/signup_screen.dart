@@ -150,7 +150,8 @@ class _SignupScreenState extends State<SignupScreen> {
     // real either way, and saying so is what stops somebody trying again.
     setState(() {
       _busy = false;
-      _error = 'Your account was created, but it could not be opened. '
+      _error =
+          'Your account was created, but it could not be opened. '
           'Sign in with the email address and password you just chose.';
     });
   }
@@ -212,7 +213,8 @@ class _SignupScreenState extends State<SignupScreen> {
       pill: 'Early access',
       eyebrow: 'One platform, every location',
       headline: 'Run your entire business from one platform.',
-      blurb: 'Customers, scheduling, field work and billing on the same record. '
+      blurb:
+          'Customers, scheduling, field work and billing on the same record. '
           "Most software assumes you run one site — EzBizi assumes you don't.",
       preview: const CustomerPreview(),
       footnote: 'Your data. Your organization. Nobody else can see it.',
@@ -278,9 +280,11 @@ class _SignupScreenState extends State<SignupScreen> {
             // Shown on request, as on the sign-in screen. A password nobody can
             // read is how somebody locks themselves out of an account they are
             // creating this minute.
-            icon: Icon(_showPassword
-                ? Icons.visibility_off_outlined
-                : Icons.visibility_outlined),
+            icon: Icon(
+              _showPassword
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+            ),
             onPressed: () => setState(() => _showPassword = !_showPassword),
           ),
         ),
@@ -297,7 +301,8 @@ class _SignupScreenState extends State<SignupScreen> {
           // What the server does with it, in a sentence that does not need the
           // word "organization" explained first. You can add more companies
           // later — the organization screen offers it.
-          helper: 'The name your customers know you by. If the business trades '
+          helper:
+              'The name your customers know you by. If the business trades '
               'under more than one name, you can add the others later.',
           capitalize: TextCapitalization.words,
         ),
@@ -311,15 +316,13 @@ class _SignupScreenState extends State<SignupScreen> {
           // second one a month later.
           label: 'Its first place',
           icon: Icons.place_outlined,
-          helper: 'Where work happens — a state, a city, a region. A business '
+          helper:
+              'Where work happens — a state, a city, a region. A business '
               'must have at least one; you can add more later.',
           capitalize: TextCapitalization.words,
         ),
 
-        if (_error != null) ...[
-          const SizedBox(height: 18),
-          ErrorNote(_error!),
-        ],
+        if (_error != null) ...[const SizedBox(height: 18), ErrorNote(_error!)],
 
         const SizedBox(height: 24),
         FilledButton(
@@ -331,7 +334,10 @@ class _SignupScreenState extends State<SignupScreen> {
                   height: 18,
                   width: 18,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white))
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
               : const Text('Create account'),
         ),
 
@@ -340,8 +346,11 @@ class _SignupScreenState extends State<SignupScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Flexible(
-              child: Text('Already have an account?',
-                  style: text.bodySmall, overflow: TextOverflow.ellipsis),
+              child: Text(
+                'Already have an account?',
+                style: text.bodySmall,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             TextButton(
               // Available even after the account exists. If /me failed above,
@@ -356,13 +365,13 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   Widget _heading(BuildContext context, String label) => Text(
-        label.toUpperCase(),
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              letterSpacing: 1.2,
-              fontWeight: FontWeight.w700,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-      );
+    label.toUpperCase(),
+    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+      letterSpacing: 1.2,
+      fontWeight: FontWeight.w700,
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    ),
+  );
 
   Widget _field({
     required TextEditingController controller,

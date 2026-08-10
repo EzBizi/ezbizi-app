@@ -34,7 +34,12 @@ class _DataScreenState extends State<DataScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    // A spinner only when there is nothing to keep — see AsyncBody. Nothing
+    // refetches this list today, so this changes no behaviour yet; it is here
+    // because the first thing that does — a reload after an import, most
+    // likely — would otherwise reintroduce the blank on the one screen that
+    // never had it.
+    setState(() => _loading = _resources.isEmpty);
 
     final response = await widget.api.get('/exports');
 

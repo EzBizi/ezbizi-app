@@ -31,6 +31,13 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
     _load();
   }
 
+  /// Note what this does NOT do: set `_loading` back to true.
+  ///
+  /// It is only ever true before the first answer arrives. Turning two-factor
+  /// on, moving it to a new phone and turning it off all end here, and each one
+  /// leaves the card on screen with what it last knew until the new state
+  /// lands — a card that flickers to a progress bar after every one of those is
+  /// the same reload complaint the list screens had.
   Future<void> _load() async {
     final response = await widget.api.get('/me/totp');
 

@@ -88,7 +88,10 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
   /// take over a working one.
   Future<void> _setUpAuthenticator() async {
     if (_email.text.trim().isEmpty || _password.text.isEmpty) {
-      setState(() => _error = 'Enter your email and password first, then set up the code.');
+      setState(
+        () => _error =
+            'Enter your email and password first, then set up the code.',
+      );
       return;
     }
 
@@ -122,11 +125,13 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     final done = await showSidePanel<bool>(
       context,
       builder: (_) => TotpSetupDialog(
-        accountLabel: (begin.body['account'] as Map<String, dynamic>)['email'] as String,
+        accountLabel:
+            (begin.body['account'] as Map<String, dynamic>)['email'] as String,
         secret: enrolment['secret'] as String,
         uri: enrolment['uri'] as String,
         intro: 'Your account needs an authenticator before it can sign in.',
-        onConfirm: (code) => enrolApi.post('/staff/auth/enrolment/confirm', {'code': code}),
+        onConfirm: (code) =>
+            enrolApi.post('/staff/auth/enrolment/confirm', {'code': code}),
       ),
     );
 
@@ -144,104 +149,113 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       // location.", "Every module, one record" — so the control plane reads as
       // the same product rather than an internal tool somebody bolted on.
       headline: 'One console. Every organization.',
-      blurb: 'Modules, access, subscriptions and health — for the whole '
+      blurb:
+          'Modules, access, subscriptions and health — for the whole '
           'platform at once.',
       preview: const StaffPreview(),
       // Said plainly on the way in, because it is true and because somebody who
       // reached this screen by accident should understand what it is.
       footnote: 'Every action here is audited, including this sign-in.',
       form: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // The panel beside this already says what this is.
-                      Text('Staff sign-in',
-                          style: Theme.of(context).textTheme.headlineSmall),
-                      const SizedBox(height: 6),
-                      Text('Your account, your password, and a code.',
-                          style: Theme.of(context).textTheme.bodyMedium),
-                      const SizedBox(height: 24),
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // The panel beside this already says what this is.
+            Text(
+              'Staff sign-in',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Your account, your password, and a code.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 24),
 
-                      TextFormField(
-                        controller: _email,
-                        decoration: const InputDecoration(
-                          labelText: 'Staff email',
-                          prefixIcon: Icon(Icons.alternate_email, size: 18),
-                        ),
-                        keyboardType: TextInputType.emailAddress,
-                        autofillHints: const [AutofillHints.username],
-                        enabled: !_busy,
-                        validator: (v) =>
-                            (v == null || !v.contains('@')) ? 'Enter your email address' : null,
-                      ),
-                      const SizedBox(height: 14),
+            TextFormField(
+              controller: _email,
+              decoration: const InputDecoration(
+                labelText: 'Staff email',
+                prefixIcon: Icon(Icons.alternate_email, size: 18),
+              ),
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.username],
+              enabled: !_busy,
+              validator: (v) => (v == null || !v.contains('@'))
+                  ? 'Enter your email address'
+                  : null,
+            ),
+            const SizedBox(height: 14),
 
-                      TextFormField(
-                        controller: _password,
-                        decoration: const InputDecoration(labelText: 'Password'),
-                        obscureText: true,
-                        autofillHints: const [AutofillHints.password],
-                        enabled: !_busy,
-                        validator: (v) =>
-                            (v == null || v.isEmpty) ? 'Enter your password' : null,
-                      ),
-                      const SizedBox(height: 14),
+            TextFormField(
+              controller: _password,
+              decoration: const InputDecoration(labelText: 'Password'),
+              obscureText: true,
+              autofillHints: const [AutofillHints.password],
+              enabled: !_busy,
+              validator: (v) =>
+                  (v == null || v.isEmpty) ? 'Enter your password' : null,
+            ),
+            const SizedBox(height: 14),
 
-                      TextFormField(
-                        controller: _code,
-                        decoration: const InputDecoration(
-                          labelText: 'Authenticator code',
-                          helperText: 'Six digits, or a recovery code',
-                        ),
-                        keyboardType: TextInputType.text,
-                        autofillHints: const [AutofillHints.oneTimeCode],
-                        // Six digits or a recovery code (XXXXX-XXXXX); the
-                        // server decides which, so the field accepts both.
-                        inputFormatters: [LengthLimitingTextInputFormatter(20)],
-                        enabled: !_busy,
-                        validator: (v) =>
-                            (v == null || v.trim().isEmpty) ? 'Enter the code' : null,
-                        onFieldSubmitted: (_) => _submit(),
-                      ),
+            TextFormField(
+              controller: _code,
+              decoration: const InputDecoration(
+                labelText: 'Authenticator code',
+                helperText: 'Six digits, or a recovery code',
+              ),
+              keyboardType: TextInputType.text,
+              autofillHints: const [AutofillHints.oneTimeCode],
+              // Six digits or a recovery code (XXXXX-XXXXX); the
+              // server decides which, so the field accepts both.
+              inputFormatters: [LengthLimitingTextInputFormatter(20)],
+              enabled: !_busy,
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Enter the code' : null,
+              onFieldSubmitted: (_) => _submit(),
+            ),
 
-                      if (_error != null) ...[
-                        const SizedBox(height: 16),
-                        ErrorNote(_error!),
-                      ],
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              ErrorNote(_error!),
+            ],
 
-                      const SizedBox(height: 24),
-                      FilledButton(
-                        onPressed: _busy ? null : _submit,
-                        child: _busy
-                            ? const SizedBox(
-                                height: 18,
-                                width: 18,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : const Text('Sign in'),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: _busy ? null : _submit,
+              child: _busy
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
                       ),
-                      const SizedBox(height: 4),
-                      // The bootstrap path. A staff account cannot sign in until
-                      // it has an authenticator, so it cannot enrol from inside —
-                      // this is how somebody sets one up without a console and
-                      // without anybody else being present.
-                      TextButton(
-                        onPressed: _busy ? null : _setUpAuthenticator,
-                        child: const Text('Set up my authenticator'),
-                      ),
-                      const SizedBox(height: 4),
-                      Center(
-                        child: Text(
-                          'Customers sign in at app.ezbizi.com.',
-                          style: Theme.of(context).textTheme.bodySmall,
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                    )
+                  : const Text('Sign in'),
+            ),
+            const SizedBox(height: 4),
+            // The bootstrap path. A staff account cannot sign in until
+            // it has an authenticator, so it cannot enrol from inside —
+            // this is how somebody sets one up without a console and
+            // without anybody else being present.
+            TextButton(
+              onPressed: _busy ? null : _setUpAuthenticator,
+              child: const Text('Set up my authenticator'),
+            ),
+            const SizedBox(height: 4),
+            Center(
+              child: Text(
+                'Customers sign in at app.ezbizi.com.',
+                style: Theme.of(context).textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

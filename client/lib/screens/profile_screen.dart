@@ -40,7 +40,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _load() async {
     setState(() {
-      _loading = true;
+      // A spinner only when there is nothing to keep — see AsyncBody. This
+      // fetch is just the sessions list, but AsyncBody wraps the whole account
+      // page, so blanking on refresh took the identity card, two-factor and the
+      // password form down with it — and signing out other devices is exactly
+      // when somebody is looking at the rest of the page. There is always at
+      // least one session, the one reading this, so empty means the first load.
+      _loading = _sessions.isEmpty;
       _error = null;
     });
 
@@ -52,7 +58,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _loading = false;
       _error = response.ok ? null : response.message;
       _sessions = response.ok
-          ? (response.body['sessions'] as List<dynamic>).cast<Map<String, dynamic>>()
+          ? (response.body['sessions'] as List<dynamic>)
+                .cast<Map<String, dynamic>>()
           : [];
     });
   }
@@ -64,11 +71,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: 'Sign out everywhere else?',
         actions: [
           TextButton(
-              onPressed: () => Navigator.of(c).pop(false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.of(c).pop(false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.of(c).pop(true),
-              child: const Text('Sign them out')),
+            onPressed: () => Navigator.of(c).pop(true),
+            child: const Text('Sign them out'),
+          ),
         ],
         child: const Text(
           'Every other browser and device is signed out immediately. This one '
@@ -83,11 +92,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(response.ok
-          ? 'Signed out of ${response.body['revoked']} other session(s).'
-          : response.message),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          response.ok
+              ? 'Signed out of ${response.body['revoked']} other session(s).'
+              : response.message,
+        ),
+      ),
+    );
 
     if (response.ok) _load();
   }
@@ -101,7 +114,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Text('Your account', style: Theme.of(context).textTheme.headlineSmall),
+          Text(
+            'Your account',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
           const SizedBox(height: 4),
           Text(
             'Yours, not the organization\'s. What an administrator controls is '
@@ -132,8 +148,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Where you are signed in',
-                style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Where you are signed in',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 4),
             Text(
               // The honest description. A token list is not a device list, and
@@ -158,18 +176,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(children: [
-                            Flexible(
-                              child: Text(
-                                s['label'] as String? ?? 'Unknown device',
-                                overflow: TextOverflow.ellipsis,
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  s['label'] as String? ?? 'Unknown device',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
-                            if (s['current'] == true) ...[
-                              const SizedBox(width: 6),
-                              const Tag('This one'),
+                              if (s['current'] == true) ...[
+                                const SizedBox(width: 6),
+                                const Tag('This one'),
+                              ],
                             ],
-                          ]),
+                          ),
                           Text(
                             [
                               if (s['ip'] != null) s['ip'] as String,
@@ -201,12 +221,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// for "the Mac I left at the office" and seeing a Windows logo will not
   /// revoke it.
   IconData _deviceIcon(String? kind) => switch (kind) {
-        'mobile' => Icons.smartphone,
-        'apple' => Icons.laptop_mac,
-        'windows' => Icons.laptop_windows,
-        'desktop' => Icons.desktop_windows_outlined,
-        _ => Icons.device_unknown_outlined,
-      };
+    'mobile' => Icons.smartphone,
+    'apple' => Icons.laptop_mac,
+    'windows' => Icons.laptop_windows,
+    'desktop' => Icons.desktop_windows_outlined,
+    _ => Icons.device_unknown_outlined,
+  };
 
   String _lastUsed(String? iso) {
     if (iso == null) return 'Never used';

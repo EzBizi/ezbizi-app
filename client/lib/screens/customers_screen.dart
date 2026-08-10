@@ -40,7 +40,29 @@ class _CustomersScreenState extends State<CustomersScreen> {
   // collapsing them meant one bad request blanked every row already on screen
   // and dropped the reader back to the top of a list they were halfway down.
   String? _pageError;
-  bool _loadingMore = false;
+
+  // One request at a time, whichever page it is for.
+  //
+  // This used to guard the append alone, which was enough while a page-one
+  // refetch covered the list with a spinner — the "Load more" control went with
+  // it, so nothing could ask for page four mid-refresh. Now that a refresh
+  // leaves the rows on screen that control stays reachable, and page one
+  // REPLACES the list where page four APPENDS to it: whichever answer lands
+  // second wins, and the other page's rows are either lost or shown twice.
+  bool _fetching = false;
+
+  /// Which request is the current one.
+  ///
+  /// A page-one load must be allowed to SUPERSEDE another page-one load rather
+  /// than be dropped. Refusing it outright — which a plain in-flight guard does
+  /// — loses the newer intent permanently: clearing the search box while the
+  /// search is still in flight left the box empty and the list still filtered,
+  /// with nothing scheduled to correct it.
+  ///
+  /// So every load takes a ticket, and a response that is no longer holding the
+  /// current one is discarded. That also fixes the out-of-order case, where the
+  /// slower of two answers lands last and wins.
+  int _request = 0;
 
   @override
   void initState() {
@@ -57,14 +79,20 @@ class _CustomersScreenState extends State<CustomersScreen> {
   Future<void> _load({int page = 1}) async {
     // A second tap while the first request is in flight appends the same page
     // twice, so the list grows with duplicate rows.
-    if (_loadingMore) return;
+    // Appends only. Two appends at once duplicate rows, and an append landing
+    // during a page-one refresh appends to a list that is being replaced. A
+    // page-one load is never refused — it supersedes instead, via _request.
+    if (page > 1 && _fetching) return;
+
+    final request = ++_request;
 
     setState(() {
-      if (page == 1) {
-        _loading = true;
-      } else {
-        _loadingMore = true;
-      }
+      // A spinner only when there is nothing to keep — see AsyncBody. A search,
+      // a cleared search and the refetch after creating a customer all come
+      // through here with rows already on screen, and those rows stay until the
+      // new ones arrive. A later page never blanks anything either way.
+      _loading = page == 1 && _customers.isEmpty;
+      _fetching = true;
       _error = null;
       _pageError = null;
     });
@@ -74,15 +102,20 @@ class _CustomersScreenState extends State<CustomersScreen> {
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
     });
 
-    if (!mounted) return;
+    // Superseded while this was in flight — a newer load owns the screen now,
+    // and applying this answer would undo it.
+    if (!mounted || request != _request) return;
 
     setState(() {
       _loading = false;
-      _loadingMore = false;
+      _fetching = false;
 
       if (!response.ok) {
-        // Only a first-page failure takes over the screen — there is nothing to
-        // preserve in that case. A later page reports beside the rows.
+        // A first-page failure takes over the screen. Any rows still in hand
+        // are from before whatever the write did, and a refusal to re-read them
+        // is not something to whisper — the retry has to be the obvious next
+        // thing. A later page failing leaves page one intact, so that one
+        // reports beside the rows rather than over them.
         if (page == 1) {
           _error = response.message;
         } else {
@@ -175,11 +208,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
                                   const SizedBox(height: 8),
                                 ],
                                 TextButton(
-                                  onPressed: _loadingMore
+                                  onPressed: _fetching
                                       ? null
                                       : () => _load(page: _page + 1),
                                   child: Text(
-                                    _loadingMore
+                                    _fetching
                                         ? 'Loading…'
                                         : _pageError != null
                                         ? 'Try again'

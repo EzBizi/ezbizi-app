@@ -24,6 +24,15 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   bool _loading = true;
+
+  /// Which load owns the screen — see customers_screen for the whole argument.
+  ///
+  /// A write here ends in a refresh, and the control that triggers it is no
+  /// longer hidden behind a spinner, so two can be in flight together. Whichever
+  /// answer lands LAST used to win regardless of which was asked for last, and
+  /// nothing was scheduled afterwards to correct it: the kill switch could sit
+  /// reading "Off" for a module that was on, until somebody navigated away.
+  int _request = 0;
   String? _error;
   List<Map<String, dynamic>> _panels = [];
   List<Map<String, dynamic>> _catalogue = [];
@@ -35,8 +44,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _load() async {
+    final request = ++_request;
+
     setState(() {
-      _loading = true;
+      // A spinner only when there is nothing to keep — see AsyncBody. Both
+      // collections, not just the panels: choosing NO panels is a legitimate
+      // answer, and an organization sitting on the empty state would otherwise
+      // have it — and the "Choose panels" button on it — replaced by a spinner
+      // every time the chooser saved. The catalogue is empty only before the
+      // first answer arrives, so together they say whether anything is loaded.
+      _loading = _panels.isEmpty && _catalogue.isEmpty;
       _error = null;
     });
 
@@ -45,7 +62,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       widget.api.get('/dashboard/catalogue'),
     ]);
 
-    if (!mounted) return;
+    // Superseded by a newer load — applying this would undo it.
+    if (!mounted || request != _request) return;
 
     setState(() {
       _loading = false;
@@ -56,22 +74,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ? (results[1].ok ? null : results[1].message)
           : results[0].message;
       _panels = results[0].ok
-          ? (results[0].body['panels'] as List<dynamic>).cast<Map<String, dynamic>>()
+          ? (results[0].body['panels'] as List<dynamic>)
+                .cast<Map<String, dynamic>>()
           : [];
       _catalogue = results[1].ok
-          ? (results[1].body['widgets'] as List<dynamic>).cast<Map<String, dynamic>>()
+          ? (results[1].body['widgets'] as List<dynamic>)
+                .cast<Map<String, dynamic>>()
           : [];
     });
   }
 
   Future<void> _setLayout(List<Map<String, dynamic>> widgets) async {
-    final response = await widget.api.put('/dashboard/layout', {'widgets': widgets});
+    final response = await widget.api.put('/dashboard/layout', {
+      'widgets': widgets,
+    });
 
     if (!mounted) return;
 
     if (!response.ok) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(response.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
       return;
     }
 
@@ -96,8 +119,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: Text('Dashboard',
-                        style: Theme.of(context).textTheme.headlineSmall),
+                    child: Text(
+                      'Dashboard',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
                   ),
                   IconButton(
                     onPressed: _load,
@@ -159,9 +184,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   if (shown.contains(entry['key']))
                     {
                       'key': entry['key'],
-                      'options': _panels.firstWhere(
+                      'options':
+                          _panels.firstWhere(
                             (p) => p['key'] == entry['key'],
-                            orElse: () => const {'options': <String, dynamic>{}},
+                            orElse: () => const {
+                              'options': <String, dynamic>{},
+                            },
                           )['options'] ??
                           <String, dynamic>{},
                     },
@@ -207,8 +235,10 @@ class _EmptyState extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            Text('Nothing chosen yet',
-                style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Nothing chosen yet',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
             Text(
               'Pick the numbers you want to see. Nothing here is fixed — '
@@ -217,7 +247,10 @@ class _EmptyState extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),
-            FilledButton(onPressed: onChoose, child: const Text('Choose panels')),
+            FilledButton(
+              onPressed: onChoose,
+              child: const Text('Choose panels'),
+            ),
           ],
         ),
       ),
@@ -245,8 +278,10 @@ class _Panel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(panel['label'] as String,
-                style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              panel['label'] as String,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 12),
             ..._body(context, data),
           ],
@@ -258,8 +293,10 @@ class _Panel extends StatelessWidget {
   List<Widget> _body(BuildContext context, Map<String, dynamic> data) {
     if (data['needs_configuring'] == true) {
       return [
-        Text(data['message'] as String? ?? 'Needs configuring.',
-            style: Theme.of(context).textTheme.bodyMedium),
+        Text(
+          data['message'] as String? ?? 'Needs configuring.',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
       ];
     }
 
@@ -281,10 +318,14 @@ class _Panel extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(_money(row['amount_minor'] as int, row['currency'] as String),
-                    style: Theme.of(context).textTheme.headlineSmall),
-                Text('${row['jobs']} jobs',
-                    style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  _money(row['amount_minor'] as int, row['currency'] as String),
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                Text(
+                  '${row['jobs']} jobs',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
           ),
@@ -302,17 +343,23 @@ class _Panel extends StatelessWidget {
         return [
           const Text('No automations have run in this period.'),
           if (waiting > 0)
-            Text('$waiting event${waiting == 1 ? '' : 's'} waiting to be delivered.',
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(
+              '$waiting event${waiting == 1 ? '' : 's'} waiting to be delivered.',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
         ];
       }
 
       return [
-        Text('${data['runs']} runs',
-            style: Theme.of(context).textTheme.headlineSmall),
+        Text(
+          '${data['runs']} runs',
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
         if ((data['failed'] as int) > 0)
-          Text('${data['failed']} failed',
-              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          Text(
+            '${data['failed']} failed',
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
         if (waiting > 0) Text('$waiting waiting'),
       ];
     }
@@ -329,8 +376,10 @@ class _Panel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('${row['number']} · ${row['title']}',
-                    overflow: TextOverflow.ellipsis),
+                Text(
+                  '${row['number']} · ${row['title']}',
+                  overflow: TextOverflow.ellipsis,
+                ),
                 Text(
                   // The whole reason somebody opens this panel is WHEN. The
                   // generic row renderer showed the status and the customer and
@@ -363,8 +412,10 @@ class _Panel extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Text((row['total'] ?? row['customer'] ?? '').toString(),
-                    style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  (row['total'] ?? row['customer'] ?? '').toString(),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
           ),
@@ -373,10 +424,15 @@ class _Panel extends StatelessWidget {
 
     if (data.containsKey('total')) {
       return [
-        Text('${data['total']}', style: Theme.of(context).textTheme.headlineMedium),
+        Text(
+          '${data['total']}',
+          style: Theme.of(context).textTheme.headlineMedium,
+        ),
         if (data.containsKey('organization_total'))
-          Text('${data['organization_total']} across the organization',
-              style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            '${data['organization_total']} across the organization',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
       ];
     }
 

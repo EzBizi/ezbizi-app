@@ -26,6 +26,15 @@ class ModulesScreen extends StatefulWidget {
 
 class _ModulesScreenState extends State<ModulesScreen> {
   bool _loading = true;
+
+  /// Which load owns the screen — see customers_screen for the whole argument.
+  ///
+  /// A write here ends in a refresh, and the control that triggers it is no
+  /// longer hidden behind a spinner, so two can be in flight together. Whichever
+  /// answer lands LAST used to win regardless of which was asked for last, and
+  /// nothing was scheduled afterwards to correct it: the kill switch could sit
+  /// reading "Off" for a module that was on, until somebody navigated away.
+  int _request = 0;
   String? _error;
   List<Map<String, dynamic>> _modules = [];
 
@@ -36,14 +45,20 @@ class _ModulesScreenState extends State<ModulesScreen> {
   }
 
   Future<void> _load() async {
+    final request = ++_request;
+
     setState(() {
-      _loading = true;
+      // A spinner only when there is nothing to keep — see AsyncBody. Every
+      // switch flip refetches, and tearing the whole list down to show one
+      // module's new state is precisely the reload this rule exists to stop.
+      _loading = _modules.isEmpty;
       _error = null;
     });
 
     final response = await widget.staff.api.get('/staff/modules');
 
-    if (!mounted) return;
+    // Superseded by a newer load — applying this would undo it.
+    if (!mounted || request != _request) return;
 
     setState(() {
       _loading = false;
@@ -70,15 +85,17 @@ class _ModulesScreenState extends State<ModulesScreen> {
       body.addAll(details);
     }
 
-    final response =
-        await widget.staff.api.patch('/staff/modules/${module['key']}', body);
+    final response = await widget.staff.api.patch(
+      '/staff/modules/${module['key']}',
+      body,
+    );
 
     if (!mounted) return;
 
     if (!response.ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
       return;
     }
 
@@ -95,8 +112,9 @@ class _ModulesScreenState extends State<ModulesScreen> {
 
       if (!response.ok) {
         if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(response.message)));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(response.message)));
         }
         return null;
       }
@@ -143,26 +161,30 @@ class _ModulesScreenState extends State<ModulesScreen> {
               ),
               if (state == 'beta') ...[
                 const SizedBox(height: 16),
-                Text('Available to',
-                    style: Theme.of(context).textTheme.titleMedium),
+                Text(
+                  'Available to',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
                 const SizedBox(height: 4),
                 Text(
                   'Everyone else sees the module as switched off.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 8),
-                ...organizations.map((org) => CheckboxListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      value: selected.contains(org['id']),
-                      title: Text(org['name'] as String),
-                      onChanged: (on) => setLocal(() {
-                        on == true
-                            ? selected.add(org['id'] as String)
-                            : selected.remove(org['id']);
-                      }),
-                    )),
+                ...organizations.map(
+                  (org) => CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    value: selected.contains(org['id']),
+                    title: Text(org['name'] as String),
+                    onChanged: (on) => setLocal(() {
+                      on == true
+                          ? selected.add(org['id'] as String)
+                          : selected.remove(org['id']);
+                    }),
+                  ),
+                ),
               ],
             ],
           ),
@@ -178,7 +200,8 @@ class _ModulesScreenState extends State<ModulesScreen> {
       children: [
         PanelHeader(
           title: 'Modules',
-          note: 'Platform-wide availability. This is the gate above every '
+          note:
+              'Platform-wide availability. This is the gate above every '
               'organization\'s own permissions — disabled beats everything.',
           action: IconButton(
             tooltip: 'Refresh',
@@ -230,11 +253,15 @@ class _ModulesScreenState extends State<ModulesScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(module['label'] as String,
-                          style: Theme.of(context).textTheme.titleMedium),
+                      Text(
+                        module['label'] as String,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                       const SizedBox(height: 2),
-                      Text(module['key'] as String,
-                          style: Theme.of(context).textTheme.bodyMedium),
+                      Text(
+                        module['key'] as String,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
                     ],
                   ),
                 ),
@@ -260,8 +287,10 @@ class _ModulesScreenState extends State<ModulesScreen> {
               ),
             if ((module['reason'] as String?)?.isNotEmpty ?? false) ...[
               const SizedBox(height: 12),
-              ErrorNote('${module['reason']}'
-                  '${module['changed_by'] != null ? ' — ${module['changed_by']}' : ''}'),
+              ErrorNote(
+                '${module['reason']}'
+                '${module['changed_by'] != null ? ' — ${module['changed_by']}' : ''}',
+              ),
             ],
             if (permissions.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -269,11 +298,13 @@ class _ModulesScreenState extends State<ModulesScreen> {
                 spacing: 6,
                 runSpacing: 6,
                 children: permissions
-                    .map((p) => Chip(
-                          label: Text(p, style: const TextStyle(fontSize: 11)),
-                          visualDensity: VisualDensity.compact,
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ))
+                    .map(
+                      (p) => Chip(
+                        label: Text(p, style: const TextStyle(fontSize: 11)),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    )
                     .toList(),
               ),
             ],

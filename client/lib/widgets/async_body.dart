@@ -7,6 +7,23 @@ import 'error_note.dart';
 /// show the server's message if it fails, otherwise show the content. Four
 /// copies of that would be four chances for one screen to swallow an error and
 /// render an empty list that looks like "no results".
+///
+/// ── What [loading] means ─────────────────────────────────────────
+///
+/// It means "there is nothing on screen yet", NOT "a request is in flight".
+/// Every screen used to set its flag true at the top of every fetch, so saving
+/// one field tore the whole page down to this spinner and rebuilt it from a
+/// fresh request — the owner's complaint that the app "reloads for every
+/// change". A refresh after a save, a delete or a toggle keeps what is already
+/// rendered and swaps it when the new data lands. Only a first load and a retry
+/// after a failure have nothing to preserve, and those are the two cases where
+/// a spinner is the honest thing to draw.
+///
+/// Each caller works out which case it is in by asking whether it is holding
+/// anything — typically `_loading = <what it renders>.isEmpty` at the top of
+/// its `_load()`. That is deliberately not a `quietly:` parameter threaded
+/// through every call site: the screen already knows, and a flag somebody has
+/// to remember to pass is a flag somebody will forget.
 class AsyncBody extends StatelessWidget {
   const AsyncBody({
     super.key,

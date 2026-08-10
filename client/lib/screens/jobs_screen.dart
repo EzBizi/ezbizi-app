@@ -36,10 +36,27 @@ class _JobsScreenState extends State<JobsScreen> {
   int _page = 1;
   int _lastPage = 1;
 
-  // See customers_screen: a failed next page must not blank the rows already
-  // being read, and a double tap must not append the same page twice.
+  // See customers_screen for both of these: a failed next page must not blank
+  // the rows already being read, and only one request may be in flight at a
+  // time whichever page it is for. The second matters more than it used to —
+  // a page-one refresh no longer hides the "Load more" control behind a
+  // spinner, so page one (which replaces the list) and page four (which appends
+  // to it) can now be asked for together.
   String? _pageError;
-  bool _loadingMore = false;
+  bool _fetching = false;
+
+  /// Which request is the current one.
+  ///
+  /// A page-one load must be allowed to SUPERSEDE another page-one load rather
+  /// than be dropped. Refusing it outright — which a plain in-flight guard does
+  /// — loses the newer intent permanently: clearing the search box while the
+  /// search is still in flight left the box empty and the list still filtered,
+  /// with nothing scheduled to correct it.
+  ///
+  /// So every load takes a ticket, and a response that is no longer holding the
+  /// current one is discarded. That also fixes the out-of-order case, where the
+  /// slower of two answers lands last and wins.
+  int _request = 0;
 
   @override
   void initState() {
@@ -48,22 +65,37 @@ class _JobsScreenState extends State<JobsScreen> {
   }
 
   Future<void> _load({int page = 1}) async {
+    // Appends only. Two appends at once duplicate rows, and an append landing
+    // during a page-one refresh appends to a list that is being replaced. A
+    // page-one load is never refused — it supersedes instead, via _request.
+    if (page > 1 && _fetching) return;
+
+    final request = ++_request;
+
     setState(() {
-      if (page == 1) _loading = true;
+      // A spinner only when there is nothing to keep — see AsyncBody. The
+      // refetch after creating a job comes through here with rows on screen,
+      // and they stay up until the new ones land.
+      _loading = page == 1 && _jobs.isEmpty;
+      _fetching = true;
       _error = null;
       _pageError = null;
-      if (page > 1) _loadingMore = true;
     });
 
     final response = await widget.api.get('/jobs', {'page': '$page'});
 
-    if (!mounted) return;
+    // Superseded while this was in flight — a newer load owns the screen now,
+    // and applying this answer would undo it.
+    if (!mounted || request != _request) return;
 
     setState(() {
       _loading = false;
-      _loadingMore = false;
+      _fetching = false;
 
       if (!response.ok) {
+        // A first-page failure takes over the screen even when rows are still
+        // in hand: they predate whatever the write did, and a refusal to
+        // re-read them has to be said out loud rather than whispered.
         if (page == 1) {
           _error = response.message;
         } else {
@@ -133,11 +165,11 @@ class _JobsScreenState extends State<JobsScreen> {
                                   const SizedBox(height: 8),
                                 ],
                                 TextButton(
-                                  onPressed: _loadingMore
+                                  onPressed: _fetching
                                       ? null
                                       : () => _load(page: _page + 1),
                                   child: Text(
-                                    _loadingMore
+                                    _fetching
                                         ? 'Loading…'
                                         : _pageError != null
                                         ? 'Try again'

@@ -30,7 +30,12 @@ class _ImpersonationsScreenState extends State<ImpersonationsScreen> {
 
   Future<void> _load() async {
     setState(() {
-      _loading = true;
+      // A spinner only when there is nothing to keep — see AsyncBody. Refresh,
+      // the "Active only" filter and "End now" all arrive here with rows on
+      // screen; only the first load has nothing to preserve. The filter shows
+      // the previous rows for the length of one request, which is the same
+      // history either way — the chip is what says a narrower set is coming.
+      _loading = _sessions.isEmpty;
       _error = null;
     });
 
@@ -52,14 +57,16 @@ class _ImpersonationsScreenState extends State<ImpersonationsScreen> {
   }
 
   Future<void> _end(Map<String, dynamic> session) async {
-    final response =
-        await widget.staff.api.delete('/staff/impersonations/${session['id']}');
+    final response = await widget.staff.api.delete(
+      '/staff/impersonations/${session['id']}',
+    );
 
     if (!mounted) return;
 
     if (!response.ok) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(response.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
       return;
     }
 
@@ -73,7 +80,8 @@ class _ImpersonationsScreenState extends State<ImpersonationsScreen> {
       children: [
         PanelHeader(
           title: 'Client access',
-          note: 'Every time EzBizi staff opened a client\'s data. Written for '
+          note:
+              'Every time EzBizi staff opened a client\'s data. Written for '
               'every tier, including Lead Developer.',
           action: Row(
             mainAxisSize: MainAxisSize.min,
@@ -144,18 +152,26 @@ class _ImpersonationsScreenState extends State<ImpersonationsScreen> {
                 // Only the staff member who opened it may close it — anyone else
                 // would write an end time attributed to the wrong person.
                 if (active && mine)
-                  TextButton(onPressed: () => _end(session), child: const Text('End now')),
+                  TextButton(
+                    onPressed: () => _end(session),
+                    child: const Text('End now'),
+                  ),
               ],
             ),
             const SizedBox(height: 8),
-            Text(session['reason'] as String? ?? '',
-                style: Theme.of(context).textTheme.bodyMedium),
+            Text(
+              session['reason'] as String? ?? '',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
             const SizedBox(height: 10),
             Wrap(
               spacing: 16,
               runSpacing: 4,
               children: [
-                _meta(context, '${who['name'] ?? 'unknown'} <${who['email'] ?? ''}>'),
+                _meta(
+                  context,
+                  '${who['name'] ?? 'unknown'} <${who['email'] ?? ''}>',
+                ),
                 _meta(context, 'Started ${_stamp(session['started_at'])}'),
                 _meta(
                   context,
@@ -163,7 +179,10 @@ class _ImpersonationsScreenState extends State<ImpersonationsScreen> {
                       ? 'Ended ${_stamp(session['ended_at'])}'
                       : 'Expires ${_stamp(session['expires_at'])}',
                 ),
-                _meta(context, approved ? 'Client approved' : 'No client approval'),
+                _meta(
+                  context,
+                  approved ? 'Client approved' : 'No client approval',
+                ),
               ],
             ),
           ],

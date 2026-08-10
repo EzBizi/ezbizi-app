@@ -27,6 +27,15 @@ class _HealthScreenState extends State<HealthScreen> {
   final _address = TextEditingController();
 
   bool _loading = true;
+
+  /// Which load owns the screen — see customers_screen for the whole argument.
+  ///
+  /// A write here ends in a refresh, and the control that triggers it is no
+  /// longer hidden behind a spinner, so two can be in flight together. Whichever
+  /// answer lands LAST used to win regardless of which was asked for last, and
+  /// nothing was scheduled afterwards to correct it: the kill switch could sit
+  /// reading "Off" for a module that was on, until somebody navigated away.
+  int _request = 0;
   String? _error;
   Map<String, dynamic>? _health;
   String? _testResult;
@@ -45,14 +54,22 @@ class _HealthScreenState extends State<HealthScreen> {
   }
 
   Future<void> _load() async {
+    final request = ++_request;
+
     setState(() {
-      _loading = true;
+      // A spinner only when there is nothing to keep — see AsyncBody. The four
+      // cards are the screen, so their absence is the test. "Check again" used
+      // to replace them — and the button that had just been pressed — with a
+      // spinner, which on a screen read during an incident is the worst moment
+      // to lose the numbers you were comparing against.
+      _loading = _health == null;
       _error = null;
     });
 
     final response = await widget.staff.api.get('/staff/health');
 
-    if (!mounted) return;
+    // Superseded by a newer load — applying this would undo it.
+    if (!mounted || request != _request) return;
 
     setState(() {
       _loading = false;

@@ -78,7 +78,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submit({bool skipValidation = false}) async {
-    if (!skipValidation && !(_formKey.currentState?.validate() ?? false)) return;
+    if (!skipValidation && !(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
 
     setState(() {
       _busy = true;
@@ -114,7 +116,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (response.body['status'] == 'choose_organization') {
       setState(() {
         _busy = false;
-        _choices = List<Map<String, dynamic>>.from(response.body['choices'] as List);
+        _choices = List<Map<String, dynamic>>.from(
+          response.body['choices'] as List,
+        );
       });
       return;
     }
@@ -136,7 +140,10 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _adopt(Map<String, dynamic> body) async {
     // The signup screen goes through the same Session method — its response body
     // is this one, by design — so the staff token cannot be handled two ways.
-    final signedIn = await widget.session.adoptAuthResponse(body, persist: _stayed);
+    final signedIn = await widget.session.adoptAuthResponse(
+      body,
+      persist: _stayed,
+    );
 
     if (!mounted || signedIn) return;
 
@@ -200,15 +207,16 @@ class _LoginScreenState extends State<LoginScreen> {
       // line on the page that says why this rather than any of the others.
       eyebrow: 'One platform, every location',
       headline: 'Run your entire business from one platform.',
-      blurb: 'Customers, scheduling, field work and billing on the same record. '
+      blurb:
+          'Customers, scheduling, field work and billing on the same record. '
           "Most software assumes you run one site — EzBizi assumes you don't.",
       preview: const CustomerPreview(),
       footnote: 'Your data. Your organization. Nobody else can see it.',
       form: _choices != null
           ? _organizationPicker(context)
           : _needsCode
-              ? _codeForm(context)
-              : _loginForm(context),
+          ? _codeForm(context)
+          : _loginForm(context),
     );
   }
 
@@ -222,10 +230,15 @@ class _LoginScreenState extends State<LoginScreen> {
           // No wordmark here: the panel beside it already carries the brand,
           // and on a narrow screen AuthShell puts one at the top. Two on one
           // screen is a logo competing with itself.
-          Text('Welcome back', style: Theme.of(context).textTheme.headlineSmall),
+          Text(
+            'Welcome back',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
           const SizedBox(height: 6),
-          Text('Sign in to your workspace.',
-              style: Theme.of(context).textTheme.bodyMedium),
+          Text(
+            'Sign in to your workspace.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
           const SizedBox(height: 28),
 
           TextFormField(
@@ -237,8 +250,9 @@ class _LoginScreenState extends State<LoginScreen> {
             keyboardType: TextInputType.emailAddress,
             autofillHints: const [AutofillHints.username],
             enabled: !_busy,
-            validator: (v) =>
-                (v == null || !v.contains('@')) ? 'Enter your email address' : null,
+            validator: (v) => (v == null || !v.contains('@'))
+                ? 'Enter your email address'
+                : null,
             onFieldSubmitted: (_) => _submit(),
           ),
           const SizedBox(height: 14),
@@ -251,16 +265,19 @@ class _LoginScreenState extends State<LoginScreen> {
               suffixIcon: IconButton(
                 // Shown on request. A password field nobody can read is how
                 // people end up locked out by a keyboard layout they cannot see.
-                icon: Icon(_showPassword
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined),
+                icon: Icon(
+                  _showPassword
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                ),
                 onPressed: () => setState(() => _showPassword = !_showPassword),
               ),
             ),
             obscureText: !_showPassword,
             autofillHints: const [AutofillHints.password],
             enabled: !_busy,
-            validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
+            validator: (v) =>
+                (v == null || v.isEmpty) ? 'Enter your password' : null,
             onFieldSubmitted: (_) => _submit(),
           ),
 
@@ -276,7 +293,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   value: _stayed,
                   visualDensity: VisualDensity.compact,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  onChanged: _busy ? null : (v) => setState(() => _stayed = v ?? false),
+                  onChanged: _busy
+                      ? null
+                      : (v) => setState(() => _stayed = v ?? false),
                 ),
               ),
               const SizedBox(width: 6),
@@ -285,8 +304,11 @@ class _LoginScreenState extends State<LoginScreen> {
               // 110px the moment the panel was narrower than the label plus the
               // button. This fills the gap AND gives way when it has to.
               const Expanded(
-                child: Text('Keep me signed in',
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                child: Text(
+                  'Keep me signed in',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               const SizedBox(width: 8),
               TextButton(
@@ -306,8 +328,13 @@ class _LoginScreenState extends State<LoginScreen> {
             onPressed: _busy ? null : _submit,
             child: _busy
                 ? const SizedBox(
-                    height: 18, width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Text('Sign in'),
           ),
 
@@ -354,8 +381,10 @@ class _LoginScreenState extends State<LoginScreen> {
           Center(child: EzBiziTheme.wordmark(context, size: 32)),
           const SizedBox(height: 8),
           Center(
-            child: Text('Enter your authenticator code',
-                style: Theme.of(context).textTheme.bodyMedium),
+            child: Text(
+              'Enter your authenticator code',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
           ),
           const SizedBox(height: 6),
           Center(
@@ -376,7 +405,8 @@ class _LoginScreenState extends State<LoginScreen> {
             keyboardType: TextInputType.number,
             autofillHints: const [AutofillHints.oneTimeCode],
             enabled: !_busy,
-            validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter the code' : null,
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Enter the code' : null,
             onFieldSubmitted: (_) => _submitCode(),
           ),
 
@@ -390,8 +420,13 @@ class _LoginScreenState extends State<LoginScreen> {
             onPressed: _busy ? null : _submitCode,
             child: _busy
                 ? const SizedBox(
-                    height: 18, width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Text('Sign in'),
           ),
           const SizedBox(height: 4),
@@ -447,7 +482,8 @@ class _LoginScreenState extends State<LoginScreen> {
       context,
       builder: (context) => SidePanel(
         title: 'Reset your password',
-        subtitle: 'We will email you a link. It works once and expires in an hour.',
+        subtitle:
+            'We will email you a link. It works once and expires in an hour.',
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -487,8 +523,11 @@ class _LoginScreenState extends State<LoginScreen> {
       children: [
         Center(child: EzBiziTheme.wordmark(context, size: 28)),
         const SizedBox(height: 20),
-        Text('Choose an organization',
-            style: Theme.of(context).textTheme.titleMedium, textAlign: TextAlign.center),
+        Text(
+          'Choose an organization',
+          style: Theme.of(context).textTheme.titleMedium,
+          textAlign: TextAlign.center,
+        ),
         const SizedBox(height: 6),
         Text(
           'This address is used by more than one organization.',
@@ -497,30 +536,29 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         const SizedBox(height: 20),
 
-        ..._choices!.map((choice) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: OutlinedButton(
-                onPressed: _busy ? null : () => _choose(choice),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  alignment: Alignment.centerLeft,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(child: Text(choice['organization_name'] as String)),
-                    // Marked, so choosing one and immediately being asked for a
-                    // code is expected rather than a surprise.
-                    if (choice['needs_code'] == true)
-                      const Icon(Icons.lock_outline, size: 16),
-                  ],
-                ),
+        ..._choices!.map(
+          (choice) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: OutlinedButton(
+              onPressed: _busy ? null : () => _choose(choice),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                alignment: Alignment.centerLeft,
               ),
-            )),
+              child: Row(
+                children: [
+                  Expanded(child: Text(choice['organization_name'] as String)),
+                  // Marked, so choosing one and immediately being asked for a
+                  // code is expected rather than a surprise.
+                  if (choice['needs_code'] == true)
+                    const Icon(Icons.lock_outline, size: 16),
+                ],
+              ),
+            ),
+          ),
+        ),
 
-        if (_error != null) ...[
-          const SizedBox(height: 12),
-          ErrorNote(_error!),
-        ],
+        if (_error != null) ...[const SizedBox(height: 12), ErrorNote(_error!)],
 
         const SizedBox(height: 8),
         TextButton(
@@ -531,4 +569,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-

@@ -120,8 +120,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       children: [
         EzBiziTheme.wordmark(context, size: 26),
         const SizedBox(height: 20),
-        Text('Choose a new password',
-            style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          'Choose a new password',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: 8),
         Text(
           '${PasswordPolicy.hint} Every other session is signed out when you '
@@ -151,10 +153,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           onSubmitted: (_) => _canSubmit ? _submit() : null,
           onChanged: (_) => setState(() {}),
         ),
-        if (_error != null) ...[
-          const SizedBox(height: 12),
-          ErrorNote(_error!),
-        ],
+        if (_error != null) ...[const SizedBox(height: 12), ErrorNote(_error!)],
         const SizedBox(height: 16),
         FilledButton(
           onPressed: _canSubmit ? _submit : null,
@@ -176,10 +175,16 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.check_circle_outline,
-            size: 36, color: Theme.of(context).colorScheme.primary),
+        Icon(
+          Icons.check_circle_outline,
+          size: 36,
+          color: Theme.of(context).colorScheme.primary,
+        ),
         const SizedBox(height: 12),
-        Text('Password changed', style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          'Password changed',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: 8),
         Text(
           _needsSecondFactor
@@ -187,10 +192,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               // is that it replaced everything. It did not — proving control of
               // a mailbox says nothing about the authenticator.
               ? 'You will still need your authenticator code to sign in. A reset '
-                  'proves you can read your email; it does not replace your '
-                  'second factor.'
+                    'proves you can read your email; it does not replace your '
+                    'second factor.'
               : 'Every other session has been signed out. Sign in with the new '
-                  'password.',
+                    'password.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium,
         ),

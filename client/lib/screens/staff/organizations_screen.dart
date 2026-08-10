@@ -32,7 +32,11 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
 
   Future<void> _load() async {
     setState(() {
-      _loading = true;
+      // A spinner only when there is nothing to keep — see AsyncBody. Refresh
+      // is the only way back in here, and it should read as the list catching
+      // up rather than the screen starting over. The count in the header is
+      // already guarded on `_loading`, so it keeps matching the rows below it.
+      _loading = _organizations.isEmpty;
       _error = null;
     });
 
@@ -62,7 +66,7 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
           note: (_loading || _error != null)
               ? 'Opening a client\'s records needs an impersonation session.'
               : '${_organizations.length} on the platform. '
-                  'Opening a client\'s records needs an impersonation session.',
+                    'Opening a client\'s records needs an impersonation session.',
           action: IconButton(
             tooltip: 'Refresh',
             onPressed: _load,
@@ -80,7 +84,8 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                     itemCount: _organizations.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) => _row(context, _organizations[i]),
+                    itemBuilder: (context, i) =>
+                        _row(context, _organizations[i]),
                   ),
           ),
         ),
@@ -95,7 +100,10 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
 
     return Card(
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 10,
+        ),
         title: Row(
           children: [
             Flexible(
@@ -139,9 +147,10 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
 
     if (started == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Session opened on ${org['name']}. It is recorded.')),
+        SnackBar(
+          content: Text('Session opened on ${org['name']}. It is recorded.'),
+        ),
       );
     }
   }
 }
-
