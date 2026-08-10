@@ -2,7 +2,14 @@
 
 namespace App\Providers;
 
+use App\Models\Company;
+use App\Models\Customer;
+use App\Models\Franchise;
+use App\Models\Job;
+use App\Models\Organization;
+use App\Models\User;
 use App\Support\Modules\ActionDefinition;
+use App\Support\Modules\AutomationSubject;
 use App\Support\Modules\ModuleDefinition;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Modules\TriggerDefinition;
@@ -49,6 +56,11 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key:   'organizations',
                 label: 'Organization settings',
+                // What its events are about, and therefore what a rule built on
+                // one could change. Nothing on an organization is writable by
+                // automation, and saying which record it is anyway is what lets
+                // the builder explain that rather than offer an empty picker.
+                subject: new AutomationSubject(Organization::class, 'Organization'),
                 // No create/delete: an organization isn't created from inside
                 // itself. Self-serve signup and staff creation both live in the
                 // control plane (§4.2), outside tenant permissions.
@@ -78,6 +90,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key:   'companies',
                 label: 'Companies',
+                subject: new AutomationSubject(Company::class, 'Company'),
                 triggers: [
                     new TriggerDefinition(
                         key:   'company.created',
@@ -111,6 +124,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key:   'franchises',
                 label: 'Franchises',
+                subject: new AutomationSubject(Franchise::class, 'Franchise'),
                 triggers: [
                     new TriggerDefinition(
                         key:   'franchise.created',
@@ -145,6 +159,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key:   'users',
                 label: 'Users',
+                subject: new AutomationSubject(User::class, 'User'),
                 // Nothing in user management reaches the outbox yet, so all
                 // three say so rather than being quietly listed as if they work.
                 triggers: [
@@ -241,6 +256,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key:   'customers',
                 label: 'Customers',
+                subject: new AutomationSubject(Customer::class, 'Customer'),
                 triggers: [
                     new TriggerDefinition(
                         key:   'customer.created',
@@ -301,6 +317,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key:   'jobs',
                 label: 'Jobs',
+                subject: new AutomationSubject(Job::class, 'Job'),
                 triggers: [
                     new TriggerDefinition(
                         key:   'job.created',

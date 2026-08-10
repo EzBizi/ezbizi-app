@@ -81,7 +81,21 @@ class AutomationsApiTest extends TestCase
         );
 
         foreach ($data['modules'] as $module) {
-            $this->assertSame(['key', 'label', 'triggers', 'declared_actions'], array_keys($module));
+            $this->assertSame(
+                ['key', 'label', 'subject', 'triggers', 'declared_actions'],
+                array_keys($module)
+            );
+
+            if ($module['subject'] !== null) {
+                $this->assertSame(
+                    ['key', 'label', 'writable_fields'],
+                    array_keys($module['subject'])
+                );
+
+                foreach ($module['subject']['writable_fields'] as $field) {
+                    $this->assertSame(['key', 'label'], array_keys($field));
+                }
+            }
 
             foreach ($module['triggers'] as $trigger) {
                 $this->assertSame(['key', 'label', 'description'], array_keys($trigger));
@@ -230,6 +244,165 @@ class AutomationsApiTest extends TestCase
         // The key is the literal string 'actions.0.url', so dot traversal walks past it.
         $errors = $response->json('errors');
         $this->assertStringContainsString('internal address', $errors['actions.0.url'][0]);
+    }
+
+    /**
+     * What a rule may SET, published — and derived from the one list that
+     * enforces it.
+     *
+     * The field was a free-text box because the allowlist lived somewhere the
+     * form could not see. Asserted against `ActionRunner::writableOn` rather
+     * than against a list retyped here, because a second copy in the test is the
+     * same mistake one layer further out: it would pass while the wire and the
+     * engine disagreed.
+     */
+    public function test_the_catalogue_publishes_what_a_rule_may_set_on_each_subject(): void
+    {
+        $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
+
+        $modules = collect($data['modules'])->keyBy('key');
+
+        $this->assertSame('job', $modules['jobs']['subject']['key']);
+        $this->assertSame('Job', $modules['jobs']['subject']['label']);
+
+        foreach ([\App\Models\Job::class => 'jobs', \App\Models\Customer::class => 'customers'] as $model => $key) {
+            $this->assertSame(
+                \App\Support\Automations\ActionRunner::writableOn($model),
+                collect($modules[$key]['subject']['writable_fields'])->pluck('label', 'key')->all(),
+                "The catalogue and the engine disagree about what is writable on {$model}."
+            );
+        }
+
+        // A picker a business owner reads. "scheduled_for" is a wire name.
+        $fields = collect($modules['jobs']['subject']['writable_fields'])->pluck('label', 'key');
+
+        $this->assertSame('Date and time', $fields['scheduled_for']);
+        $this->assertSame('Amount in cents', $fields['amount_minor']);
+
+        foreach ($fields as $key => $label) {
+            $this->assertNotSame($key, $label, $key);
+            $this->assertDoesNotMatchRegularExpression('/[._]/', $label, $key);
+        }
+
+        // Empty, not absent. "A rule can react to a company but cannot change
+        // one" is an answer; a missing key is indistinguishable from an older
+        // server, and the client would have to guess which.
+        $this->assertSame('Company', $modules['companies']['subject']['label']);
+        $this->assertSame([], $modules['companies']['subject']['writable_fields']);
+    }
+
+    /**
+     * The probe that returned 201.
+     *
+     * `{'type':'update_field','field':'organization_id'}` on a job trigger was
+     * accepted, and then refused by ActionRunner on every run for the life of
+     * the rule — in a queue worker, where the only trace is a run log nobody is
+     * watching. Refusing it here is the same call the webhook check already
+     * makes one action along.
+     */
+    public function test_a_field_no_rule_may_set_is_refused_while_someone_is_looking_at_the_form(): void
+    {
+        $response = $this->as()->postJson('/api/v1/automations', [
+            'name'        => 'Move the job',
+            'trigger_key' => 'job.status_changed',
+            'actions'     => [['type' => 'update_field', 'field' => 'organization_id', 'value' => 'x']],
+        ])->assertStatus(422);
+
+        // The key is the literal string 'actions.0.field', so dot traversal walks past it.
+        $message = $response->json('errors')['actions.0.field'][0];
+
+        // Names the field, and says what IS allowed — a 422 reading "invalid"
+        // makes somebody guess.
+        $this->assertStringContainsString('organization_id', $message);
+        $this->assertStringContainsString('Job', $message);
+        $this->assertStringContainsString('title, description, status', $message);
+    }
+
+    /**
+     * The other subject's fields are refused too, which is the second half of
+     * the same defect: the picker offered "Customers › Update a field" under a
+     * job trigger, and the engine writes to the JOB.
+     */
+    public function test_a_field_belonging_to_the_other_subject_is_refused(): void
+    {
+        $response = $this->as()->postJson('/api/v1/automations', [
+            'name'        => 'Email the job',
+            'trigger_key' => 'job.status_changed',
+            'actions'     => [['type' => 'update_field', 'field' => 'email', 'value' => 'a@b.test']],
+        ])->assertStatus(422);
+
+        $this->assertStringContainsString(
+            'not a field an automation may set on Job',
+            $response->json('errors')['actions.0.field'][0]
+        );
+    }
+
+    public function test_a_field_writable_on_the_triggers_subject_still_saves(): void
+    {
+        $this->as()->postJson('/api/v1/automations', [
+            'name'        => 'Close it',
+            'trigger_key' => 'job.status_changed',
+            'actions'     => [['type' => 'update_field', 'field' => 'status', 'value' => 'completed']],
+        ])->assertCreated();
+
+        // The same field name would be wrong on the other subject, so this is
+        // not "any known field" — it is this trigger's record.
+        $this->as()->postJson('/api/v1/automations', [
+            'name'        => 'Note it',
+            'trigger_key' => 'customer.created',
+            'actions'     => [['type' => 'update_field', 'field' => 'notes', 'value' => 'New']],
+        ])->assertCreated();
+
+        $this->as()->postJson('/api/v1/automations', [
+            'name'        => 'Wrong way round',
+            'trigger_key' => 'customer.created',
+            'actions'     => [['type' => 'update_field', 'field' => 'status', 'value' => 'completed']],
+        ])->assertStatus(422);
+    }
+
+    /**
+     * A trigger whose record nothing may change says so, rather than listing an
+     * empty allowance and leaving somebody to conclude they typed it wrong.
+     */
+    public function test_a_trigger_about_a_record_no_rule_may_change_says_so(): void
+    {
+        $response = $this->as()->postJson('/api/v1/automations', [
+            'name'        => 'Rename the company',
+            'trigger_key' => 'company.created',
+            'actions'     => [['type' => 'update_field', 'field' => 'name', 'value' => 'Other']],
+        ])->assertStatus(422);
+
+        $message = $response->json('errors')['actions.0.field'][0];
+
+        $this->assertStringContainsString('cannot set any field on Company', $message);
+        // And points at the records that CAN be changed, read off the registry
+        // rather than written into the sentence.
+        $this->assertStringContainsString('a Customer or a Job', $message);
+    }
+
+    /**
+     * An edit is checked against the trigger the rule already has.
+     *
+     * A PATCH may not carry `trigger_key` at all, so the subject has to come off
+     * the record — and a check that quietly passed because the request had no
+     * trigger in it would leave the update path exactly as open as the create
+     * path used to be.
+     */
+    public function test_replacing_the_actions_is_checked_against_the_rules_own_trigger(): void
+    {
+        $id = $this->as()->postJson('/api/v1/automations', [
+            'name'        => 'Close it',
+            'trigger_key' => 'job.status_changed',
+            'actions'     => [['type' => 'update_field', 'field' => 'status', 'value' => 'completed']],
+        ])->assertCreated()->json('data.id');
+
+        $this->as()->patchJson("/api/v1/automations/{$id}", [
+            'actions' => [['type' => 'update_field', 'field' => 'email', 'value' => 'a@b.test']],
+        ])->assertStatus(422);
+
+        $this->as()->patchJson("/api/v1/automations/{$id}", [
+            'actions' => [['type' => 'update_field', 'field' => 'title', 'value' => 'Done']],
+        ])->assertOk();
     }
 
     public function test_editing_writes_a_new_version_and_leaves_the_old_one_alone(): void

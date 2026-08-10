@@ -120,6 +120,248 @@ void main() {
     expect(_saveButton(tester).onPressed, isNull);
   });
 
+  /// ── The field, and the record it belongs to ──────────────────────
+  ///
+  /// It was a free-text box, and the server took whatever was in it:
+  /// `organization_id` on a job trigger saved with a 201 and was then refused
+  /// by the engine on every run, forever. The options are the SUBJECT's — the
+  /// record the trigger is about — because that is what `update_field` writes
+  /// to, whichever module's action was chosen from the list.
+  testWidgets(
+    'the field offers the subject’s fields, by name, and sends keys',
+    (tester) async {
+      Map<String, dynamic>? sent;
+
+      await _pump(tester, _handler(onCreate: (body) => sent = body));
+      await _tap(tester, find.text('Build'));
+
+      await _type(tester, 'Name', 'Close it');
+      await _tap(tester, find.text('Jobs'));
+      await _tap(tester, find.text('Status changed'));
+
+      await _tap(tester, find.text('Add a step'));
+      await _tap(tester, _inStep(find.text('Update a field')));
+
+      // The button inside the form field, which is where the options live.
+      final field = tester.widget<DropdownButton<String>>(
+        find.byType(DropdownButton<String>),
+      );
+
+      // The job's fields and only the job's — `email` is a customer's, and the
+      // engine would have refused it every time.
+      expect(field.items!.map((i) => i.value), ['status', 'scheduled_for']);
+
+      // And read as words. "scheduled_for" is a wire name, and the person
+      // choosing runs a chimney business.
+      expect(field.items!.map((i) => (i.child as Text).data), [
+        'Status',
+        'Date and time',
+      ]);
+
+      await _tap(tester, find.byType(DropdownButtonFormField<String>));
+      await _tap(tester, find.text('Date and time').last);
+      await _type(tester, 'Set to', '2026-09-01');
+
+      await _tap(tester, find.text('Create automation'));
+
+      // Names on screen, keys on the wire.
+      expect(sent, {
+        'name': 'Close it',
+        'description': null,
+        'trigger_key': 'job.status_changed',
+        'conditions': null,
+        'actions': [
+          {
+            'type': 'update_field',
+            'field': 'scheduled_for',
+            'value': '2026-09-01',
+          },
+        ],
+      });
+    },
+  );
+
+  testWidgets('with nothing to react to chosen yet, the step says so', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('Build'));
+
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Update a field')));
+
+    // An empty dropdown is a dead end that explains nothing.
+    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+    expect(
+      find.textContaining('Choose what this reacts to first'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a record no rule may change refuses the step, and says why', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('Build'));
+
+    await _tap(tester, find.text('Companies'));
+    await _tap(tester, find.text('Opened'));
+    await _tap(tester, find.text('Add a step'));
+
+    expect(find.text('Nothing to set here'), findsOneWidget);
+    expect(
+      find.textContaining('a rule may not change a company'),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      _inStep(find.text('Update a field')).first,
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Choose what this step does'), findsOneWidget);
+  });
+
+  /// The other half of the same defect.
+  ///
+  /// "Customers › Update a field" was offered under a job trigger, enabled,
+  /// with a description promising to set a field on the customer — and
+  /// `ActionRunner::updateField` writes to the EVENT's subject, so it wrote to
+  /// the job. Same mechanism as "Not built yet", because it is the same kind of
+  /// answer: shown, marked, and not selectable.
+  testWidgets('an action about another record is shown, marked and refused', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('Build'));
+
+    await _type(tester, 'Name', 'Anything');
+    await _tap(tester, find.text('Jobs'));
+    await _tap(tester, find.text('Status changed'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Customers')));
+
+    expect(find.text('Update a field on the customer'), findsOneWidget);
+    expect(find.text('Not for this trigger'), findsOneWidget);
+    expect(
+      find.textContaining('it cannot act on a customer'),
+      findsOneWidget,
+      reason: 'A disabled row with no reason is just a bug.',
+    );
+
+    await tester.tap(
+      find.text('Update a field on the customer'),
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Choose what this step does'), findsOneWidget);
+    expect(_saveButton(tester).onPressed, isNull);
+  });
+
+  testWidgets('changing the trigger clears a field the new record lacks', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('Build'));
+
+    await _type(tester, 'Name', 'Anything');
+    await _tap(tester, find.text('Created'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Update a field')));
+
+    await _tap(tester, find.byType(DropdownButtonFormField<String>));
+    await _tap(tester, find.text('Email').last);
+
+    expect(_saveButton(tester).onPressed, isNotNull);
+
+    // Now it is a job rule, and a job has no email.
+    await _tap(tester, find.text('Jobs'));
+    await _tap(tester, find.text('Status changed'));
+
+    // Cleared — leaving it would save a rule the server refuses — and said out
+    // loud, because somebody chose it. Named the way they saw it, too: "Email",
+    // not the wire key they never typed.
+    expect(find.textContaining('the field “Email” on step 1'), findsOneWidget);
+    expect(find.textContaining('This rule is now about a job'), findsOneWidget);
+
+    expect(_saveButton(tester).onPressed, isNull);
+    expect(find.text('Which field should the step set?'), findsOneWidget);
+  });
+
+  testWidgets(
+    'changing the trigger takes back an action about the old record',
+    (tester) async {
+      await _pump(tester, _handler());
+      await _tap(tester, find.text('Build'));
+
+      await _type(tester, 'Name', 'Anything');
+      await _tap(tester, find.text('Created'));
+      await _tap(tester, find.text('Add a step'));
+      await _tap(tester, _inStep(find.text('Customers')));
+      await _tap(tester, find.text('Update a field on the customer'));
+
+      expect(
+        find.text('Customers › Update a field on the customer'),
+        findsOneWidget,
+      );
+
+      await _tap(tester, find.text('Jobs'));
+      await _tap(tester, find.text('Status changed'));
+
+      // The whole choice went, not just the field: the card's own header said
+      // Customers while the engine would have written to the job.
+      expect(
+        find.textContaining(
+          'step 1, “Customers › Update a field on the customer”',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Choose what this step does'), findsOneWidget);
+    },
+  );
+
+  /// "No fields" and "I cannot tell" are different answers.
+  ///
+  /// A server that does not publish subjects — one older than this build, or a
+  /// module that declares no record — must not dead-end the form. Refusing to
+  /// offer a list is honest; refusing to let anything be typed would strand an
+  /// edit over a rule that has been running for months.
+  testWidgets('a server that publishes no subject degrades to a text box', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(
+      tester,
+      _handler(
+        catalogue: _catalogueWithoutSubjects(),
+        onCreate: (body) => sent = body,
+      ),
+    );
+    await _tap(tester, find.text('Build'));
+
+    await _type(tester, 'Name', 'Close it');
+    await _tap(tester, find.text('Jobs'));
+    await _tap(tester, find.text('Status changed'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Update a field')));
+
+    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+    expect(find.textContaining('cannot offer the list'), findsOneWidget);
+
+    await _type(tester, 'Field', 'status');
+    await _type(tester, 'Set to', 'completed');
+
+    expect(_saveButton(tester).onPressed, isNotNull);
+    await _tap(tester, find.text('Create automation'));
+
+    expect(sent!['actions'], [
+      {'type': 'update_field', 'field': 'status', 'value': 'completed'},
+    ]);
+  });
+
   testWidgets('the condition editor still sends the payload it always did', (
     tester,
   ) async {
@@ -369,6 +611,31 @@ void main() {
       reason: 'The row vanished as though the delete had worked.',
     );
   });
+
+  /// English picks an article by SOUND, not spelling.
+  ///
+  /// `_article` was a vowel test, and "User" is a real subject with real
+  /// triggers, so the picker read "This rule reacts to something about an user,
+  /// and a rule may not change an user" — twice in one sentence, on the screen
+  /// whose whole purpose was to stop the product sounding like a database.
+  testWidgets('a subject beginning with a vowel sound still reads correctly', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(catalogue: _catalogueWithUserSubject()));
+    await _tap(tester, find.text('Build'));
+
+    await _type(tester, 'Name', 'Greet them');
+    await _tap(tester, find.text('People'));
+    await _tap(tester, find.text('Invited'));
+    await _tap(tester, find.text('Add a step'));
+
+    expect(
+      find.textContaining('an user'),
+      findsNothing,
+      reason: 'A vowel test says "an user". English does not.',
+    );
+    expect(find.textContaining('a user'), findsWidgets);
+  });
 }
 
 // ── driving the screen ─────────────────────────────────────────────
@@ -442,11 +709,50 @@ FilledButton _saveButton(WidgetTester tester) => tester.widget<FilledButton>(
   find.widgetWithText(FilledButton, 'Create automation'),
 );
 
+/// The catalogue with a User subject that nothing may write to.
+///
+/// "User" is the one subject label in the real registry that breaks a naive
+/// article rule: it begins with a vowel and takes "a". The empty writable set is
+/// what routes the form into the sentence that names the subject twice.
+Map<String, Object?> _catalogueWithUserSubject() => {
+  ..._catalogue,
+  'modules': [
+    ...(_catalogue['modules'] as List),
+    {
+      'key': 'users',
+      'label': 'People',
+      'subject': {'key': 'user', 'label': 'User', 'writable_fields': []},
+      'triggers': [
+        {
+          'key': 'user.invited',
+          'label': 'Invited',
+          'description': 'Somebody was invited to the organization.',
+        },
+      ],
+      'declared_actions': [],
+    },
+  ],
+};
+
+/// The same catalogue with every `subject` stripped — a server older than this
+/// build, during the minutes of a deploy, or a module that declares no record.
+Map<String, Object?> _catalogueWithoutSubjects() => {
+  ..._catalogue,
+  'modules': [
+    for (final module in _catalogue['modules'] as List)
+      {
+        for (final entry in (module as Map).entries)
+          if (entry.key != 'subject') entry.key: entry.value,
+      },
+  ],
+};
+
 MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onCreate,
   void Function(Map<String, dynamic> body)? onUpdate,
   void Function(String path)? onActivate,
   Map<String, dynamic> detail = _detail,
+  Object catalogue = _catalogue,
   int deleteStatus = 200,
 }) {
   return (request) async {
@@ -455,7 +761,7 @@ MockClientHandler _handler({
     if (path.endsWith('/me')) return _json({'data': _me});
 
     if (path.endsWith('/automations/catalogue')) {
-      return _json({'data': _catalogue});
+      return _json({'data': catalogue});
     }
 
     if (path.endsWith('/runs')) return _json({'data': _runs});
@@ -589,12 +895,27 @@ const _detailWithSecret = {
 };
 
 /// Shaped exactly like the catalogue contract: triggers and declared actions
-/// are objects carrying a label and a sentence, not bare keys.
+/// are objects carrying a label and a sentence, not bare keys, and each module
+/// says which RECORD its events are about and what a rule may set on it.
+///
+/// Three modules, on purpose. Two with different writable sets, so "the picker
+/// offers the wrong subject's fields" is a failure this can see; and one with
+/// an empty set, because "you can react to a company and cannot change one" is
+/// an answer the form has to be able to give.
 const _catalogue = {
   'modules': [
     {
       'key': 'customers',
       'label': 'Customers',
+      'subject': {
+        'key': 'customer',
+        'label': 'Customer',
+        'writable_fields': [
+          {'key': 'name', 'label': 'Name'},
+          {'key': 'email', 'label': 'Email'},
+          {'key': 'is_active', 'label': 'Active'},
+        ],
+      },
       'triggers': [
         {
           'key': 'customer.created',
@@ -626,6 +947,14 @@ const _catalogue = {
     {
       'key': 'jobs',
       'label': 'Jobs',
+      'subject': {
+        'key': 'job',
+        'label': 'Job',
+        'writable_fields': [
+          {'key': 'status', 'label': 'Status'},
+          {'key': 'scheduled_for', 'label': 'Date and time'},
+        ],
+      },
       'triggers': [
         {
           'key': 'job.status_changed',
@@ -641,6 +970,20 @@ const _catalogue = {
           'implemented': false,
         },
       ],
+    },
+    {
+      'key': 'companies',
+      'label': 'Companies',
+      // Reactable, unchangeable. The empty list is the point.
+      'subject': {'key': 'company', 'label': 'Company', 'writable_fields': []},
+      'triggers': [
+        {
+          'key': 'company.created',
+          'label': 'Opened',
+          'description': 'A new company was added to the organization.',
+        },
+      ],
+      'declared_actions': [],
     },
   ],
   'operators': [

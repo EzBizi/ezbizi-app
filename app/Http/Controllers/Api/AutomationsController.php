@@ -7,9 +7,11 @@ use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
 use App\Support\Audit\AuditLogger;
+use App\Support\Automations\ActionRunner;
 use App\Support\Automations\AutomationEngine;
 use App\Support\Automations\OutboundWebhook;
 use App\Support\Modules\ActionDefinition;
+use App\Support\Modules\ModuleDefinition;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Modules\TriggerDefinition;
 use App\Support\Tenancy\TenantContext;
@@ -67,6 +69,25 @@ class AutomationsController extends Controller
                 'key'   => $key,
                 'label' => $module->label,
                 /*
+                 * The RECORD these events are about, and what a rule may set on
+                 * it.
+                 *
+                 * It belongs to the module rather than to the actions, because
+                 * that is where the fact lives: `ActionRunner::updateField`
+                 * writes to the subject of the EVENT, so the trigger decides the
+                 * field list and the action has no say in it. Hanging the list
+                 * off `update_field` would put the same answer under two module
+                 * actions that can disagree with the one trigger — and would
+                 * leave the generic "Update a field", which belongs to no
+                 * module at all, with nowhere to read it from.
+                 *
+                 * The fields come from ActionRunner, the class that enforces
+                 * them. A copy assembled here would be a second allowlist, and
+                 * the whole reason the field was a free-text box is that the
+                 * only list lived somewhere the form could not see.
+                 */
+                'subject' => $this->subjectPayload($module),
+                /*
                  * Words, not wire keys.
                  *
                  * This used to be a bare list of strings, and the builder drew
@@ -92,11 +113,19 @@ class AutomationsController extends Controller
                  * names that POST /automations then rejected — the catalogue
                  * and the validator were two different vocabularies.
                  *
-                 * `implemented` is the whole of that distinction, so the wording
+                 * `implemented` is HALF of that distinction, and the wording
                  * beside it has to stand on its own: the description says what
                  * the action would do, and never that it is missing. A client
                  * renders "not built yet" from the flag and the sentence still
                  * reads correctly on the day it flips.
+                 *
+                 * The other half is not answerable here. Whether an action
+                 * applies at all depends on the TRIGGER of the rule being
+                 * written — "Customers › Update a field" means nothing under a
+                 * job trigger, because the engine writes to the event's subject
+                 * — and the catalogue is asked before any rule exists. So it
+                 * publishes `subject` above and lets the builder compare the
+                 * two, and the save-time check refuses the mismatch for real.
                  */
                 'declared_actions' => array_map(fn (ActionDefinition $a) => [
                     'key'         => $a->key,
@@ -142,6 +171,35 @@ class AutomationsController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /**
+     * A module's subject, with the fields a rule may set on it.
+     *
+     * `writable_fields` is empty rather than absent for a subject nothing is
+     * writable on — a company, a user. Empty is an answer ("a rule can react to
+     * this, but it cannot change it"); a missing key is indistinguishable from
+     * an older server, and the client would have to guess which.
+     */
+    private function subjectPayload(ModuleDefinition $module): ?array
+    {
+        if ($module->subject === null) {
+            return null;
+        }
+
+        $writable = ActionRunner::writableOn($module->subject->model);
+
+        return [
+            'key'   => $module->subject->key(),
+            'label' => $module->subject->label,
+            // Keys AND names. "scheduled_for" is a wire name, and the person
+            // reading this picker runs a chimney business.
+            'writable_fields' => array_map(
+                fn (string $field, string $label) => ['key' => $field, 'label' => $label],
+                array_keys($writable),
+                array_values($writable),
+            ),
+        ];
     }
 
     /** GET /api/v1/automations */
@@ -231,7 +289,9 @@ class AutomationsController extends Controller
         $this->assertMine($automation);
         $this->authorize('update', $automation);
 
-        $input = $this->validated($request, forUpdate: true);
+        // The automation itself, because an action's legality depends on the
+        // trigger and a PATCH is forbidden from carrying one.
+        $input = $this->validated($request, existing: $automation);
 
         DB::transaction(function () use ($automation, $input, $request) {
             $automation->fill(array_intersect_key($input, array_flip([
@@ -415,8 +475,12 @@ class AutomationsController extends Controller
         $automation->forceFill(['active_version_id' => $version->getKey()])->save();
     }
 
-    private function validated(Request $request, bool $forUpdate = false): array
+    /**
+     * @param  Automation|null  $existing  the rule being edited, or null for a new one
+     */
+    private function validated(Request $request, ?Automation $existing = null): array
     {
+        $forUpdate = $existing !== null;
         $required = $forUpdate ? 'sometimes' : 'required';
 
         $input = $request->validate([
@@ -481,8 +545,18 @@ class AutomationsController extends Controller
             }
         }
 
+        /*
+         * The subject comes from the TRIGGER, and on an update the trigger is
+         * not in the request — `trigger_key` validates as 'missing' there,
+         * because changing it would make every recorded run describe something
+         * the rule no longer does. So it is read off the record instead. An
+         * edit that replaces the actions is checked against the trigger the rule
+         * has always had.
+         */
+        $trigger = $input['trigger_key'] ?? $existing?->trigger_key;
+
         foreach ($input['actions'] ?? [] as $i => $action) {
-            $this->assertActionUsable($action, $i);
+            $this->assertActionUsable($action, $i, $trigger);
         }
 
         return $input;
@@ -512,7 +586,7 @@ class AutomationsController extends Controller
      * is looking at the form, not silently fail hours later in a queue worker
      * where only the run log mentions it.
      */
-    private function assertActionUsable(array $action, int $index): void
+    private function assertActionUsable(array $action, int $index, ?string $triggerKey): void
     {
         $type = $action['type'] ?? null;
 
@@ -532,10 +606,8 @@ class AutomationsController extends Controller
             }
         }
 
-        if ($type === 'update_field' && blank($action['field'] ?? null)) {
-            throw ValidationException::withMessages([
-                "actions.{$index}.field" => 'Which field should it set?',
-            ]);
+        if ($type === 'update_field') {
+            $this->assertFieldWritable($action['field'] ?? null, $index, $triggerKey);
         }
 
         if ($type === 'notify' && blank($action['message'] ?? null)) {
@@ -543,6 +615,92 @@ class AutomationsController extends Controller
                 "actions.{$index}.message" => 'What should the notification say?',
             ]);
         }
+    }
+
+    /**
+     * Can a rule on this trigger set this field?
+     *
+     * Only `blank()` was checked, so `{'type':'update_field','field':
+     * 'organization_id'}` on a job trigger was answered 201 CREATED — and then
+     * refused by ActionRunner on every run for the life of the rule, in a queue
+     * worker, where the only trace is a run log nobody is watching. That is the
+     * exact failure the header of this section describes for webhooks, one
+     * action along.
+     *
+     * The question is asked of the TRIGGER, not of the action: update_field
+     * writes to the subject of the event, so what is legal depends entirely on
+     * what the rule reacts to. Which is also why the two declared actions
+     * `customer.update_field` and `job.update_field` need nothing checked
+     * against each other — they reduce to the same generic action, and the
+     * trigger already decided which record it lands on.
+     *
+     * Against ActionRunner's own list, so the answer here and the answer at run
+     * time cannot drift, and so the sentence a person reads while looking at the
+     * form is the sentence the run log would have shown them hours later.
+     */
+    private function assertFieldWritable(mixed $field, int $index, ?string $triggerKey): void
+    {
+        $key = "actions.{$index}.field";
+
+        if (blank($field)) {
+            throw ValidationException::withMessages([$key => 'Which field should it set?']);
+        }
+
+        $subject  = $this->registry->subjectOfTrigger((string) $triggerKey);
+        $writable = ActionRunner::writableOn($subject?->model);
+
+        if (array_key_exists($field, $writable)) {
+            return;
+        }
+
+        // Named, so nobody has to guess which of the twenty-five actions is
+        // wrong or what they were supposed to put there.
+        throw ValidationException::withMessages([$key => $writable === []
+            ? sprintf(
+                "A rule cannot set any field on %s, so it cannot set '%s'. Only %s can be "
+                .'changed by a rule; anything else needs a different kind of action.',
+                $subject?->label ?? "whatever '{$triggerKey}' is about",
+                $field,
+                $this->subjectsWithWritableFields(),
+            )
+            // Word for word what the run log would have said, because the point
+            // of moving the check forward is that the person sees the same
+            // answer at the form that they would otherwise have found hours
+            // later in a queue worker's output.
+            : sprintf(
+                "'%s' is not a field an automation may set on %s. Allowed: %s. Saved as it "
+                .'is, this rule would be refused on every single run.',
+                $field,
+                $subject->label,
+                implode(', ', array_keys($writable)),
+            ),
+        ]);
+    }
+
+    /**
+     * "a Job or a Customer" — the records a rule can actually change.
+     *
+     * Read off the registry rather than written into the sentence, so the day a
+     * third model becomes writable the refusal starts mentioning it without
+     * anybody remembering to come back here.
+     */
+    private function subjectsWithWritableFields(): string
+    {
+        $labels = [];
+
+        foreach ($this->registry->all() as $module) {
+            if ($module->subject !== null && ActionRunner::writableOn($module->subject->model) !== []) {
+                $labels[] = 'a '.$module->subject->label;
+            }
+        }
+
+        if ($labels === []) {
+            return 'nothing';   // unreachable today; not worth an empty sentence if it ever is
+        }
+
+        $last = array_pop($labels);
+
+        return $labels === [] ? $last : implode(', ', $labels).' or '.$last;
     }
 
     /** @param array<int,array> $actions */

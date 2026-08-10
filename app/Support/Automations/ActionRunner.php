@@ -34,16 +34,73 @@ class ActionRunner
      *
      * So: only fields where an automated change is meaningful and reversible.
      * Anything with its own endpoint belongs to that endpoint.
+     *
+     * ── Why the WORDING lives here too ───────────────────────────
+     *
+     * This is a security invariant, so it stays in code and is PUBLISHED rather
+     * than made editable (§2.1). Publishing means a picker, and a picker needs
+     * names: `scheduled_for` and `amount_minor` are wire names, and the person
+     * choosing between them runs a chimney business.
+     *
+     * The client DOES name some of these on its own forms — jobs_screen calls
+     * `status` "Status" and `amount_minor` "Price", customers_screen names
+     * `name`, `email` and `phone` — but those are the words for a person filling
+     * in one record by hand, and they are neither complete (nothing labels
+     * `duration_minutes`) nor always right here: a rule writes raw minor units,
+     * so "Price" would be an invitation to type 199.99 and get \$1.99. The data
+     * export is the only other place that lists these columns and it prints the
+     * keys raw. So the picker's wording had to be written somewhere.
+     *
+     * It lives beside the keys because a second array mapping field to name is
+     * the one thing this whole arrangement exists to avoid. One array carries
+     * both, which makes a field without a name impossible instead of merely
+     * unlikely, and makes adding a field a single edit.
+     *
+     * @var array<class-string<Model>, array<string, string>> model => field => label
      */
     private const WRITABLE = [
         \App\Models\Job::class => [
-            'title', 'description', 'status', 'scheduled_for', 'duration_minutes', 'amount_minor',
+            'title'            => 'Title',
+            'description'      => 'Description',
+            'status'           => 'Status',
+            'scheduled_for'    => 'Date and time',
+            'duration_minutes' => 'Duration in minutes',
+            // Minor units, deliberately named as such. The job form takes
+            // DOLLARS and converts (see the client's parseAmountMinor, and the
+            // hundredfold error it was written to stop); a rule writes the
+            // column directly, so calling it "Price" here would invite exactly
+            // that mistake through the other door.
+            'amount_minor'     => 'Amount in cents',
         ],
         \App\Models\Customer::class => [
-            'name', 'email', 'phone', 'notes', 'is_active',
-            'address_line1', 'address_line2', 'city', 'state', 'postal_code',
+            'name'          => 'Name',
+            'email'         => 'Email',
+            'phone'         => 'Phone',
+            'notes'         => 'Notes',
+            'is_active'     => 'Active',
+            'address_line1' => 'Address line 1',
+            'address_line2' => 'Address line 2',
+            'city'          => 'City',
+            'state'         => 'State',
+            'postal_code'   => 'Postal code',
         ],
     ];
+
+    /**
+     * The fields a rule may set on a model, and what each one is called.
+     *
+     * Public because the save-time check and the catalogue both need it, and the
+     * alternative — either of them keeping its own list — is how a rule came to
+     * be accepted with `field: organization_id` and then refused on every single
+     * run, forever. One list, three readers.
+     *
+     * @param  class-string|null  $model
+     * @return array<string, string> field => label, empty when nothing is writable
+     */
+    public static function writableOn(?string $model): array
+    {
+        return $model === null ? [] : (self::WRITABLE[$model] ?? []);
+    }
 
     /**
      * Field changes that mean something more specific than "updated".
@@ -123,14 +180,14 @@ class ActionRunner
             throw new InvalidArgumentException('update_field needs a field.');
         }
 
-        $writable = self::WRITABLE[$subject::class] ?? [];
+        $writable = self::writableOn($subject::class);
 
-        if (! in_array($field, $writable, strict: true)) {
+        if (! array_key_exists($field, $writable)) {
             return [
                 'type'   => 'update_field',
                 'ok'     => false,
                 'detail' => "'{$field}' is not a field an automation may set on "
-                    .class_basename($subject).'. Allowed: '.implode(', ', $writable).'.',
+                    .class_basename($subject).'. Allowed: '.implode(', ', array_keys($writable)).'.',
             ];
         }
 

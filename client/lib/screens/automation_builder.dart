@@ -196,6 +196,15 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// What was loaded, for the read-only view when [_lockedBecause] is set.
   List<Map<String, dynamic>> _loadedActions = [];
 
+  /// What changing the trigger took away, in the words of what was lost.
+  ///
+  /// Changing what a rule reacts to changes the RECORD it is about, and with it
+  /// which fields exist and which module's actions mean anything. Leaving a
+  /// stale field selected would save a rule the server refuses; clearing it
+  /// without a word is worse, because somebody chose it. So it is cleared and
+  /// said out loud, here, until they dismiss it.
+  String? _triggerNotice;
+
   /// Why the version's contents — conditions and actions — cannot be edited.
   ///
   /// Only one thing causes it today: an action carrying a webhook signing
@@ -405,6 +414,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         ),
   ];
 
+  /// The record this rule is about, decided by the trigger and nothing else.
+  CatalogueSubject? get _subject => widget.catalogue.subjectOf(_trigger);
+
+  /// The fields a step may set — the subject's, never the picked action's.
+  List<CatalogueField> get _writableFields =>
+      widget.catalogue.writableFieldsFor(_trigger);
+
   /// The generic actions first, then what each module declares.
   ///
   /// Both, because neither list alone is the truth. The generic three are the
@@ -413,43 +429,150 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// hide the most useful things it can do. The module lists are what this
   /// system is going to be able to do, marked so nobody plans a rule around
   /// one and finds out at save time.
-  List<PickerGroup> get _actionGroups => [
-    PickerGroup(
-      key: '_generic',
-      label: 'Works with anything',
-      items: [
-        for (final type in widget.catalogue.actionTypes)
-          PickerItem(
-            key: type.key,
-            label: type.label,
-            // Same treatment the module actions already got. The catalogue can
-            // name a type this build has no form for — that is the point of it
-            // being server-driven — and offering one produced a card saying
-            // "Create a task" that saved as a notification.
-            enabled: _ActionRow.knownTypes.contains(type.key),
-            badge: _ActionRow.knownTypes.contains(type.key)
-                ? null
-                : 'Needs a newer version of the app',
+  ///
+  /// A third reason a row can be refused now: it does not apply to THIS rule.
+  /// "Customers › Update a field" was offered under a job trigger, enabled,
+  /// with a description promising to set a field on the customer — and the
+  /// engine wrote to the job. Marked and disabled, in the same way and for the
+  /// same reason as "Not built yet": hiding it answers nobody's question about
+  /// why an obvious action is missing.
+  List<PickerGroup> get _actionGroups {
+    final subject = _subject;
+    // Only when a trigger has been chosen. Before that, "nothing is writable"
+    // and "we do not know yet" look identical, and refusing on the second would
+    // grey out the picker for a form nobody has filled in yet.
+    final nothingWritable = subject != null && subject.writableFields.isEmpty;
+
+    return [
+      PickerGroup(
+        key: '_generic',
+        label: 'Works with anything',
+        items: [
+          for (final type in widget.catalogue.actionTypes)
+            _genericItem(type, subject, nothingWritable),
+        ],
+      ),
+      for (final module in widget.catalogue.modules)
+        if (module.actions.isNotEmpty)
+          PickerGroup(
+            key: module.key,
+            label: module.label,
+            items: [
+              for (final action in module.actions)
+                _moduleItem(module, action, subject),
+            ],
           ),
-      ],
-    ),
-    for (final module in widget.catalogue.modules)
-      if (module.actions.isNotEmpty)
-        PickerGroup(
-          key: module.key,
-          label: module.label,
-          items: [
-            for (final action in module.actions)
-              PickerItem(
-                key: action.key,
-                label: action.label,
-                description: action.description,
-                enabled: widget.catalogue.canUse(action),
-                badge: widget.catalogue.canUse(action) ? null : 'Not built yet',
-              ),
-          ],
-        ),
-  ];
+    ];
+  }
+
+  PickerItem _genericItem(
+    CatalogueChoice type,
+    CatalogueSubject? subject,
+    bool nothingWritable,
+  ) {
+    // The catalogue can name a type this build has no form for — that is the
+    // point of it being server-driven — and offering one produced a card saying
+    // "Create a task" that saved as a notification. Checked first, because
+    // "this app is too old" is true regardless of the trigger.
+    if (!_ActionRow.knownTypes.contains(type.key)) {
+      return PickerItem(
+        key: type.key,
+        label: type.label,
+        enabled: false,
+        badge: 'Needs a newer version of the app',
+      );
+    }
+
+    if (type.key == 'update_field' && nothingWritable) {
+      return PickerItem(
+        key: type.key,
+        label: type.label,
+        enabled: false,
+        badge: 'Nothing to set here',
+        description:
+            'This rule reacts to something about ${_article(subject!.label)}, '
+            'and a rule may not change ${_article(subject.label)}.',
+      );
+    }
+
+    return PickerItem(key: type.key, label: type.label);
+  }
+
+  PickerItem _moduleItem(
+    CatalogueModule module,
+    CatalogueAction action,
+    CatalogueSubject? subject,
+  ) {
+    // "Not built yet" wins. An action the engine cannot run is not usable for
+    // any trigger, so saying it is the wrong trigger would be a smaller truth
+    // in front of a larger one.
+    if (!widget.catalogue.canUse(action)) {
+      return PickerItem(
+        key: action.key,
+        label: action.label,
+        description: action.description,
+        enabled: false,
+        badge: 'Not built yet',
+      );
+    }
+
+    if (widget.catalogue.moduleActionApplies(module, _trigger)) {
+      return PickerItem(
+        key: action.key,
+        label: action.label,
+        description: action.description,
+      );
+    }
+
+    return PickerItem(
+      key: action.key,
+      label: action.label,
+      enabled: false,
+      badge: 'Not for this trigger',
+      // The catalogue's own sentence, then why it cannot happen here. The
+      // sentence is not wrong — it is about a customer — and that is exactly
+      // what makes it misleading under a job trigger.
+      description:
+          '${action.description ?? ''} This rule reacts to something about '
+                  '${_article(subject!.label)}, so it cannot act on '
+                  '${_article(module.subject!.label)}.'
+              .trim(),
+    );
+  }
+
+  /// "a job", "an organization" — the record named the way a sentence needs it.
+  /// "a job", "an organization" — and "a user", which is why this is not a
+  /// vowel test.
+  ///
+  /// It was `'aeiou'.contains(word[0])`, and the users module is a real subject
+  /// with three real triggers, so the picker said "This rule reacts to something
+  /// about an user, and a rule may not change an user" — twice in one sentence,
+  /// on a screen whose entire purpose this week was to stop the product sounding
+  /// like a database.
+  ///
+  /// English picks the article by SOUND, not spelling: a leading "u" that says
+  /// "you" takes "a" (user, unit), and a silent h or a vowel-sounding initialism
+  /// takes "an" (hour, SMS). Those are the cases the subjects here can actually
+  /// hit, so they are the cases handled; anything else falls back to the vowel
+  /// rule, which is right far more often than not.
+  static String _article(String label) {
+    final word = label.toLowerCase();
+
+    if (word.isEmpty) return word;
+
+    // "you"-sounding u: a user, a unit, a URL.
+    final saysYou =
+        word.startsWith('u') &&
+        !RegExp(r'^u[aeiou]').hasMatch(word) &&
+        !word.startsWith('un') &&
+        !word.startsWith('up');
+
+    final silentH = word.startsWith('hour') || word.startsWith('honest');
+
+    final needsAn = silentH || (!saysYou && 'aeiou'.contains(word[0]));
+
+    return '${needsAn ? 'an' : 'a'} $word';
+  }
 
   /// The `type` a picked key stores as, or null when this build cannot run it.
   ///
@@ -469,7 +592,18 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     for (final module in widget.catalogue.modules) {
       for (final action in module.actions) {
         if (action.key == picked) {
-          return widget.catalogue.canUse(action)
+          // And a third "no": it does not apply to this rule's subject.
+          //
+          // Belt to the picker's braces, and unreachable today — catalogue_picker
+          // sets `onTap: null` on a disabled row, so an inapplicable action
+          // cannot get here. Kept because this method is what turns a KEY into a
+          // stored type, and the next caller may not come from the picker; the
+          // one thing it must never do is answer "yes" for something the engine
+          // would refuse. An earlier version of this comment claimed the
+          // trigger-change sweep read it, which was simply untrue —
+          // _dropWhatNoLongerApplies does its own check and clears the row.
+          return widget.catalogue.canUse(action) &&
+                  widget.catalogue.moduleActionApplies(module, _trigger)
               ? widget.catalogue.payloadTypeFor(action)
               : null;
         }
@@ -506,6 +640,93 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     }
 
     return picked;
+  }
+
+  // ── changing what it reacts to ───────────────────────────────────
+
+  /// Picking a trigger, and dealing honestly with what the last one allowed.
+  ///
+  /// Only reachable while BUILDING: the trigger is fixed once a rule exists,
+  /// because every run already recorded would otherwise describe something the
+  /// rule no longer does. Which is also why this only has to cope with a form
+  /// somebody is still filling in.
+  void _chooseTrigger(String key) {
+    if (_trigger == key) return;
+
+    final previous = _trigger;
+
+    setState(() {
+      _trigger = key;
+      _triggerNotice = _dropWhatNoLongerApplies(previous);
+    });
+  }
+
+  /// Clear the steps the new subject makes impossible, and say which.
+  ///
+  /// Two things can go stale, and they are different. A step can be pointed at
+  /// ANOTHER module's action — "Customers › Update a field" under a job trigger
+  /// — and that whole choice is wrong, label and all. Or the action is fine and
+  /// only the FIELD belongs to the old record: `email` on a job. The first
+  /// reopens the picker; the second empties one box. Clearing more than the
+  /// change requires is its own kind of rude.
+  ///
+  /// Returns the sentence to show, or null when nothing had to go.
+  ///
+  /// [previous] is the trigger being left behind, and it is needed for one
+  /// reason: to name what is being cleared the way the reader saw it. They
+  /// chose "Email" from a list; a sentence about `email` would be the wire key
+  /// leaking back out at exactly the moment somebody is being asked to trust
+  /// the form.
+  String? _dropWhatNoLongerApplies(String? previous) {
+    final subject = _subject;
+    final writable = _writableFields;
+    final before = widget.catalogue.writableFieldsFor(previous);
+    final lost = <String>[];
+
+    for (var i = 0; i < _actions.length; i++) {
+      final row = _actions[i];
+      final picked = row.catalogueKey;
+      final module = picked == null
+          ? null
+          : widget.catalogue.moduleOwning(picked);
+
+      if (module != null &&
+          !widget.catalogue.moduleActionApplies(module, _trigger)) {
+        lost.add('step ${i + 1}, “${_actionLabel(picked!)}”');
+        row.catalogueKey = null;
+        row.type = null;
+        row.picking = true;
+        row.field.text = '';
+        continue;
+      }
+
+      final field = row.field.text.trim();
+
+      // Only when the new subject is KNOWN. An unplaceable trigger has an empty
+      // field list for want of information, and clearing somebody's field on
+      // the strength of that would be the silent deletion this exists to avoid.
+      if (row.type == 'update_field' &&
+          subject != null &&
+          field.isNotEmpty &&
+          !writable.any((f) => f.key == field)) {
+        final named = before
+            .where((f) => f.key == field)
+            .map((f) => f.label)
+            .firstOrNull;
+
+        lost.add('the field “${named ?? field}” on step ${i + 1}');
+        row.field.text = '';
+      }
+    }
+
+    if (lost.isEmpty) return null;
+
+    final last = lost.removeLast();
+    final list = lost.isEmpty ? last : '${lost.join(', ')} and $last';
+
+    return 'This rule is now about ${_article(subject?.label ?? 'record')}, so '
+        '$list did not survive the change and ${lost.isEmpty ? 'has' : 'have'} '
+        'been cleared. Everything else is as you left it — choose again below.';
   }
 
   // ── whether it can be saved, and why not ─────────────────────────
@@ -553,6 +774,23 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       final missing = switch (action.type) {
         'update_field' when action.field.text.trim().isEmpty =>
           'Which field should the step set?',
+        // A field the subject does not have. Reachable two ways: a rule saved
+        // before the field list was published, and a trigger changed under a
+        // step whose choice this build could not clear. The server refuses
+        // both; saying so here means nobody fills the form in first.
+        //
+        // Only when the subject is KNOWN. A trigger this build cannot place
+        // has an empty field list for want of information, not because nothing
+        // is writable, and blocking on that would strand an edit over a rule
+        // that is very likely fine.
+        'update_field'
+            when _subject != null &&
+                !_writableFields.any(
+                  (f) => f.key == action.field.text.trim(),
+                ) =>
+          '“${action.field.text.trim()}” cannot be set on '
+              '${_article(_subject?.label ?? 'record')}. Choose a field from '
+              'the list.',
         'webhook' when action.url.text.trim().isEmpty =>
           'The webhook step needs an address to call.',
         'notify' when action.message.text.trim().isEmpty =>
@@ -803,7 +1041,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             selected: chosen,
             searchHint: 'Search events',
             height: 300,
-            onSelected: (key) => setState(() => _trigger = key),
+            onSelected: _chooseTrigger,
           ),
           if (chosen != null) ...[
             const SizedBox(height: 10),
@@ -1007,6 +1245,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_triggerNotice != null) ...[
+            _triggerNoticeBanner(context),
+            const SizedBox(height: 12),
+          ],
           for (var i = 0; i < _actions.length; i++)
             Padding(
               key: _actions[i].key,
@@ -1031,6 +1273,44 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               }),
         icon: const Icon(Icons.add, size: 16),
         label: const Text('Add a step'),
+      ),
+    );
+  }
+
+  /// What the last trigger change took away.
+  ///
+  /// It sits inside step 4 rather than over the page, because that is where the
+  /// gap it describes now is. Dismissible and not automatic: it stops being
+  /// news when the reader says so, not when the form guesses they have read it.
+  Widget _triggerNoticeBanner(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Icon(Icons.info_outline, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _triggerNotice!,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            tooltip: 'Dismiss',
+            onPressed: () => setState(() => _triggerNotice = null),
+          ),
+        ],
       ),
     );
   }
@@ -1113,31 +1393,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
 
   Widget _actionFields(_ActionRow row) {
     return switch (row.type) {
-      'update_field' => Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: row.field,
-              enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: 'Field',
-                isDense: true,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: TextField(
-              controller: row.value,
-              enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: 'Set to',
-                isDense: true,
-              ),
-            ),
-          ),
-        ],
-      ),
+      'update_field' => _updateFieldForm(row),
       'webhook' => TextField(
         controller: row.url,
         enabled: !_busy,
@@ -1158,6 +1414,121 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       ),
     };
   }
+
+  /// Which field, and what to set it to.
+  ///
+  /// The field was a free-text box, and the server took whatever was in it:
+  /// `organization_id` on a job trigger saved with a 201 and was then refused
+  /// by the engine on every run, forever. It is a picker now, and the options
+  /// are the SUBJECT's — the record the trigger is about — because that is what
+  /// the engine writes to, whichever module's action was chosen.
+  Widget _updateFieldForm(_ActionRow row) {
+    final subject = _subject;
+    final fields = _writableFields;
+
+    if (_trigger == null) {
+      // An empty dropdown is a dead end that explains nothing. Which fields
+      // exist is not knowable until step 2 is answered, so it says so.
+      return _note(
+        'Choose what this reacts to first, in step 2. Which fields a step can '
+        'set depends on the record the event is about.',
+      );
+    }
+
+    if (subject == null) {
+      // A trigger this build cannot place: a module removed, or a server older
+      // than this app. "No fields" and "I cannot tell" are different answers,
+      // and treating the second as the first would dead-end the form over a
+      // rule that is probably fine — including, on an edit, one that has been
+      // running for months. So it degrades to what this box always was, says
+      // why, and lets the server be the one that refuses.
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: TextField(
+              controller: row.field,
+              enabled: !_busy,
+              decoration: const InputDecoration(
+                labelText: 'Field',
+                isDense: true,
+                helperText:
+                    'This app cannot tell what that event is about, so it '
+                    'cannot offer the list. Saving will check it.',
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: _valueBox(row)),
+        ],
+      );
+    }
+
+    if (fields.isEmpty) {
+      return _note(
+        'Nothing on ${_article(subject.label)} can be set by a rule, so there '
+        'is no field to choose. Pick a different kind of step.',
+      );
+    }
+
+    final current = row.field.text.trim();
+    final known = fields.any((f) => f.key == current);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: DropdownButtonFormField<String>(
+            // Null for anything the subject does not have, because the dropdown
+            // asserts on a value with no matching item — and a saved rule can
+            // legitimately carry one, from before any of this was checked.
+            initialValue: known ? current : null,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: 'Field',
+              isDense: true,
+              helperText: known || current.isEmpty
+                  ? 'On ${_article(subject.label)} — whichever one the event '
+                        'was about.'
+                  : null,
+              // Named, not silently dropped. Somebody chose that value, or the
+              // server stored it, and a box that just went blank is the thing
+              // people file bugs about.
+              errorText: known || current.isEmpty
+                  ? null
+                  : '“$current” is not something a rule may set on '
+                        '${_article(subject.label)}.',
+            ),
+            items: [
+              for (final field in fields)
+                DropdownMenuItem(
+                  value: field.key,
+                  child: Text(field.label, overflow: TextOverflow.ellipsis),
+                ),
+            ],
+            onChanged: _busy
+                ? null
+                : (value) => setState(() {
+                    if (value != null) row.field.text = value;
+                  }),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: _valueBox(row)),
+      ],
+    );
+  }
+
+  Widget _valueBox(_ActionRow row) => TextField(
+    controller: row.value,
+    enabled: !_busy,
+    decoration: const InputDecoration(labelText: 'Set to', isDense: true),
+  );
+
+  Widget _note(String text) => Builder(
+    builder: (context) =>
+        Text(text, style: Theme.of(context).textTheme.bodySmall),
+  );
 
   Widget _historyStep(BuildContext context) {
     final versions = (widget.editing?['versions'] as List? ?? [])

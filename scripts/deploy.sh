@@ -37,7 +37,10 @@ cd "$(dirname "$0")/.."
 #
 # Commit before deploying: this tests main, not your uncommitted edits.
 echo "→ testing the tree about to ship"
-git archive main | ssh "$REMOTE" '
+# Captured, not just streamed. STATUS.md's test count was retyped by hand and was
+# wrong three times in one day; the number is right here, in the run that gates
+# the deploy, so it is taken from there rather than remembered.
+BACKEND_OUT=$(git archive main | ssh "$REMOTE" '
   set -e
   # /opt, not /var/www. The sandbox holds dev dependencies and a full Laravel
   # tree; sitting it beside the production .env is what let `--env=testing` fall
@@ -50,13 +53,17 @@ git archive main | ssh "$REMOTE" '
   # its own .env and its own test database.
   composer install --no-interaction -q
   php8.4 artisan test --compact
-' || { echo "✗ backend tests failed — nothing deployed"; exit 1; }
+' 2>&1) || { echo "$BACKEND_OUT"; echo "✗ backend tests failed — nothing deployed"; exit 1; }
+echo "$BACKEND_OUT" | tail -3
+BACKEND_TESTS=$(echo "$BACKEND_OUT" | grep -oE '[0-9]+ passed' | tail -1 | grep -oE '[0-9]+')
 
 if [ "$CODE_ONLY" != "--code" ]; then
   echo "→ client analyze + tests"
-  (cd client && flutter analyze && flutter test) || {
-    echo "✗ client checks failed — nothing deployed"; exit 1;
+  CLIENT_OUT=$( (cd client && flutter analyze && flutter test) 2>&1 ) || {
+    echo "$CLIENT_OUT"; echo "✗ client checks failed — nothing deployed"; exit 1;
   }
+  echo "$CLIENT_OUT" | tail -2
+  CLIENT_TESTS=$(echo "$CLIENT_OUT" | grep -oE '\+[0-9]+' | tail -1 | tr -d '+')
 
   echo "→ building web"
   # Same-origin by default, so the built app talks to whatever host serves it
@@ -101,5 +108,12 @@ if [ "$CODE_ONLY" != "--code" ]; then
     mv '$SHARED.new' '$SHARED'
   "
 fi
+
+# The four volatile rows of STATUS.md, from the things themselves. This is the
+# one moment all of them are known at once — both suites have just run and the
+# release is live — and the reason it is automated at all is that every one of
+# them was hand-written, correct at the time, and wrong within hours.
+echo "→ refreshing the STATUS numbers"
+scripts/status-numbers.sh "${BACKEND_TESTS:-}" "${CLIENT_TESTS:-}" || true
 
 echo "✓ done — https://app.ezbizi.com"

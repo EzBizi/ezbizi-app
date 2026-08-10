@@ -81,6 +81,71 @@ class CatalogueTrigger {
   }
 }
 
+/// One field a rule is allowed to set, and what it is called.
+///
+/// The key is what goes on the wire; the label is what somebody reads. Both
+/// come from the server, from the same array the engine enforces — a client
+/// that invented "Date and time" for `scheduled_for` would be a second
+/// dictionary, and the field list is a security invariant, so the copy that
+/// drifts would be the one deciding what the form offers.
+class CatalogueField {
+  const CatalogueField({required this.key, required this.label});
+
+  final String key;
+  final String label;
+
+  static CatalogueField? tryFrom(Object? json) {
+    if (json is! Map) return null;
+
+    final key = json['key'];
+
+    if (key is! String || key.isEmpty) return null;
+
+    return CatalogueField(key: key, label: json['label'] as String? ?? key);
+  }
+}
+
+/// The RECORD a module's events are about.
+///
+/// This is what makes the field picker possible: `update_field` writes to the
+/// subject of the event, so the trigger — not the action — decides which fields
+/// exist. A rule on "Job › Status changed" can set a job's fields, whichever
+/// module's "Update a field" was chosen from the list.
+///
+/// [writableFields] empty is an ANSWER, not a gap: a rule can react to a
+/// company being created and cannot change anything about the company.
+class CatalogueSubject {
+  const CatalogueSubject({
+    required this.key,
+    required this.label,
+    required this.writableFields,
+  });
+
+  /// `job`, `customer` — the same word the trigger keys begin with.
+  final String key;
+
+  /// Singular, and how it reads in a sentence: "on a Job".
+  final String label;
+
+  final List<CatalogueField> writableFields;
+
+  bool allows(String field) => writableFields.any((f) => f.key == field);
+
+  static CatalogueSubject? tryFrom(Object? json) {
+    if (json is! Map) return null;
+
+    final key = json['key'];
+
+    if (key is! String || key.isEmpty) return null;
+
+    return CatalogueSubject(
+      key: key,
+      label: json['label'] as String? ?? key,
+      writableFields: _list(json['writable_fields'], CatalogueField.tryFrom),
+    );
+  }
+}
+
 /// An action a module says it wants to offer.
 ///
 /// [implemented] is the server's answer to "can the engine run this today", and
@@ -124,12 +189,21 @@ class CatalogueModule {
     required this.label,
     required this.triggers,
     required this.actions,
+    this.subject,
   });
 
   final String key;
   final String label;
   final List<CatalogueTrigger> triggers;
   final List<CatalogueAction> actions;
+
+  /// The record this module's events carry, and what may be set on it.
+  ///
+  /// Null means a server that predates this field, or a module whose events
+  /// are about no record at all. Both are read the same way and deliberately:
+  /// "I cannot tell" must never become "this does not apply", because the
+  /// wrong direction there is a picker that hides the only action that works.
+  final CatalogueSubject? subject;
 
   static CatalogueModule? tryFrom(Object? json) {
     if (json is! Map) return null;
@@ -141,6 +215,7 @@ class CatalogueModule {
     return CatalogueModule(
       key: key,
       label: json['label'] as String? ?? key,
+      subject: CatalogueSubject.tryFrom(json['subject']),
       triggers: _list(json['triggers'], CatalogueTrigger.tryFrom),
       actions: _list(json['declared_actions'], CatalogueAction.tryFrom),
     );
@@ -207,6 +282,50 @@ class AutomationCatalogue {
     return found == null ? triggerKey : '${found.$1.label} › ${found.$2.label}';
   }
 
+  /// The record a rule on [triggerKey] is about, or null when nothing here
+  /// declares that trigger — a module removed, or a server older than this
+  /// build.
+  CatalogueSubject? subjectOf(String? triggerKey) =>
+      triggerKey == null ? null : locate(triggerKey)?.$1.subject;
+
+  /// The fields a rule on [triggerKey] may set. Empty for "nothing may be set"
+  /// AND for "we cannot tell" — the caller distinguishes them by asking for the
+  /// subject, because the two need different words on screen.
+  List<CatalogueField> writableFieldsFor(String? triggerKey) =>
+      subjectOf(triggerKey)?.writableFields ?? const [];
+
+  /// Which module declares an action, so a picked key can be traced back to the
+  /// record it is about.
+  CatalogueModule? moduleOwning(String actionKey) {
+    for (final module in modules) {
+      for (final action in module.actions) {
+        if (action.key == actionKey) return module;
+      }
+    }
+
+    return null;
+  }
+
+  /// Can a module's declared action be used by a rule on [triggerKey]?
+  ///
+  /// Every module action is a thing done to that module's records, and the
+  /// generic behaviour behind it acts on the subject of the EVENT. So
+  /// "Customers › Update a field" under a job trigger is not a near miss, it is
+  /// a contradiction: the card said Customers, the catalogue said "sets one
+  /// field on the customer", and the engine wrote to the job.
+  ///
+  /// Answers TRUE whenever it cannot tell — no trigger chosen yet, a module
+  /// with no subject, a server too old to send one. Guessing "no" would hide
+  /// working actions, and the server refuses the real mismatch anyway.
+  bool moduleActionApplies(CatalogueModule module, String? triggerKey) {
+    final mine = module.subject?.key;
+    final theirs = subjectOf(triggerKey)?.key;
+
+    if (mine == null || theirs == null) return true;
+
+    return mine == theirs;
+  }
+
   String operatorLabel(String key) {
     for (final operator in operators) {
       if (operator.key == key) return operator.label;
@@ -234,10 +353,15 @@ class AutomationCatalogue {
     return null;
   }
 
-  /// Selectable means: the server says it is implemented AND it reduces to a
+  /// Runnable means: the server says it is implemented AND it reduces to a
   /// type the server accepts. Both, because a save the form allowed and the
   /// server refused is the failure this whole distinction exists to prevent —
   /// and if the two ever disagree, refusing to offer it is the safe direction.
+  ///
+  /// Runnable is not the same as SELECTABLE. An action can be perfectly
+  /// runnable and still be wrong for the rule in front of you — see
+  /// [moduleActionApplies], which is the other half and depends on the trigger
+  /// this catalogue knows nothing about.
   bool canUse(CatalogueAction action) =>
       action.implemented && payloadTypeFor(action) != null;
 }

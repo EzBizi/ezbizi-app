@@ -38,6 +38,16 @@ final class ModuleDefinition
         public readonly array $automationActions = [],
         /** Non-null = deliberately outside automation, with a stated reason. */
         public readonly ?string $automationExemptBecause = null,
+        /**
+         * The record this module's events are about — the thing a rule built on
+         * one of them can then change.
+         *
+         * Null for a module whose events carry no record, and for an exempt
+         * module that raises none at all. Null is not "we didn't get round to
+         * it": it means an `update_field` action under such a trigger has
+         * nothing to write to, and the catalogue and the validator both say so.
+         */
+        public readonly ?AutomationSubject $subject = null,
     ) {
         if ($key === '' || ! preg_match('/^[a-z][a-z0-9_]*$/', $key)) {
             throw new InvalidArgumentException(
@@ -55,6 +65,49 @@ final class ModuleDefinition
         // this whole thing exists to fix.
         $this->assertAllAre($triggers, TriggerDefinition::class, 'triggers');
         $this->assertAllAre($automationActions, ActionDefinition::class, 'automationActions');
+        $this->assertKeysMatchSubject();
+    }
+
+    /**
+     * A declared subject has to be the one the keys already name.
+     *
+     * `AutomationSubject::key()` derives `job` from `App\Models\Job`, and the
+     * whole field picker rests on that being the same `job` the trigger keys are
+     * prefixed with. A module whose keys disagree with its subject produces a
+     * picker offering a customer's fields on a job's trigger — precisely the bug
+     * this declaration was added to fix — and the failure is not a crash, so it
+     * fails at boot instead, where whoever wrote the module is still looking.
+     *
+     * ── What it does NOT catch ───────────────────────────────────
+     *
+     * Only the declared KEYS, against the declared subject. A module that
+     * declared `job.customer_notified` and then emitted it carrying a Customer
+     * would pass this and still mislead the picker, because nothing here sees
+     * the emit. Every one of the sixteen `->emit()` call sites currently carries
+     * the model its key names, so the invariant holds today by discipline rather
+     * than by construction. The place that could enforce it properly is
+     * EventEmitter::emit, which has both the key and the subject in hand.
+     */
+    private function assertKeysMatchSubject(): void
+    {
+        if ($this->subject === null) {
+            return;
+        }
+
+        $expected = $this->subject->key();
+
+        foreach ([...$this->triggers, ...$this->automationActions] as $declaration) {
+            $prefix = strstr($declaration->key, '.', before_needle: true);
+
+            if ($prefix !== $expected) {
+                throw new InvalidArgumentException(
+                    "Module '{$this->key}' declares '{$declaration->key}', but says its events "
+                    ."are about {$this->subject->label}, whose keys begin '{$expected}.'. One "
+                    .'module cannot be about two kinds of record — the field picker reads the '
+                    .'subject off the trigger and would offer the wrong list.'
+                );
+            }
+        }
     }
 
     /** @param array<int,mixed> $declarations */

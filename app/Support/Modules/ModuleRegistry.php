@@ -59,6 +59,26 @@ class ModuleRegistry
         return null;
     }
 
+    /**
+     * The record a trigger fires about, or null when nothing declares it.
+     *
+     * The one question the save-time check asks: an `update_field` action writes
+     * to the subject of the event, so "may this rule set this field" is really
+     * "is this field writable on the thing this TRIGGER is about". Asked here so
+     * the controller does not walk the registry itself — findTrigger's comment
+     * already records what happens when two loops with the same job drift apart.
+     */
+    public function subjectOfTrigger(string $key): ?AutomationSubject
+    {
+        foreach ($this->modules as $module) {
+            if ($module->trigger($key) !== null) {
+                return $module->subject;
+            }
+        }
+
+        return null;
+    }
+
     /** Every permission key across every module — what the sync command writes. */
     public function allPermissionKeys(): array
     {
