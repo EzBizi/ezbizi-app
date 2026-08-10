@@ -18,6 +18,15 @@ return Application::configure(basePath: dirname(__DIR__))
             // auth -> tenant -> subscription. See the note there.
             'tenant'       => App\Http\Middleware\SetTenantContext::class,
             'subscription' => App\Http\Middleware\EnforceSubscriptionState::class,
+
+            // The two halves of §6's security policy that are enforced per
+            // REQUEST rather than at sign-in. Both read a setting against the
+            // caller's organization, and both do so through a helper that enters
+            // that organization itself — so neither depends on where the
+            // framework's priority sort happens to place it.
+            'two-factor'   => App\Http\Middleware\RequireTwoFactorEnrolment::class,
+            'idle'         => App\Http\Middleware\SlideIdleWindow::class,
+
             // The control plane (§4.2) — deliberately not 'tenant'.
             'staff'        => App\Http\Middleware\StaffOnly::class,
         ]);

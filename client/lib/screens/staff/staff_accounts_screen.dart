@@ -196,7 +196,10 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
               Text(
                 'Authenticator confirmed · ${account['recovery_code_count']} recovery '
                 'codes left · last signed in '
-                '${formatStamp(account['last_login_at'], 'never')}',
+                // Platform format, stated rather than defaulted: a staff
+                // account belongs to no organization (§4.2), so no
+                // organization's `date_format` governs when it last signed in.
+                '${formatStamp(account['last_login_at'], 'never', formats: DisplayFormats.platform)}',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
           ],

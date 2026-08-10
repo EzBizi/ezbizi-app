@@ -183,4 +183,83 @@ class SettingsVisibilityTest extends TestCase
             $this->assertArrayHasKey('help', $setting);
         }
     }
+
+    /**
+     * A franchise assignment must not reach the organization (§4, TODO #12).
+     *
+     * Measured before the fix, on a plain non-administrator role carrying only
+     * `organizations.edit` and assigned to ONE franchise: it lowered
+     * security.password_min_length from 12 to 4 and switched
+     * security.require_two_factor on, both 200 OK, for the whole tenant.
+     *
+     * authorizeEdit had a branch for Franchise and one for Company and simply
+     * none for Organization, so holding the permission was the entire test.
+     */
+    public function test_a_franchise_user_cannot_rewrite_organization_settings(): void
+    {
+        $email = app(TenantContext::class)->run($this->alpha['org'], function () {
+            $role = Role::create([
+                'organization_id' => $this->alpha['org']->id,
+                'name' => 'Branch Manager', 'is_administrator' => false,
+            ]);
+
+            // firstOrCreate, because the catalogue is synced by an artisan
+            // command rather than a migration and the test database has none.
+            // Skipping when it is absent would make this test quietly stop
+            // covering anything, which is the failure mode it exists to catch.
+            $edit = Permission::firstOrCreate(
+                ['key' => 'organizations.edit'],
+                ['module' => 'organizations', 'action' => 'edit', 'label' => 'Change organization settings'],
+            );
+
+            $role->permissions()->attach($edit->getKey());
+
+            $user = User::create([
+                'organization_id' => $this->alpha['org']->id,
+                'role_id' => $role->getKey(),
+                'name' => 'Branch Manager', 'email' => 'bm@alpha.test',
+                'password' => 'a-real-password', 'is_active' => true,
+            ]);
+
+            \App\Models\Assignment::create([
+                'organization_id'       => $this->alpha['org']->id,
+                'user_id'               => $user->id,
+                'assigned_franchise_id' => $this->alpha['franchise']->id,
+            ]);
+
+            return 'bm@alpha.test';
+        });
+
+        $token = $this->tokenFor($email);
+        $org   = $this->alpha['org']->id;
+
+        // The write is refused...
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->patchJson(
+                '/api/v1/settings/security.password_min_length'
+                ."?scope_type=organization&scope_id={$org}",
+                ['value' => 4],
+            )
+            ->assertForbidden();
+
+        // ...and, just as importantly, the screen never offered it. A control
+        // that animates and then 403s is the regression this file exists for.
+        $row = collect(
+            $this->withHeader('Authorization', 'Bearer '.$token)
+                ->getJson("/api/v1/settings?scope_type=organization&scope_id={$org}")
+                ->assertOk()->json('data')
+        )->firstWhere('key', 'security.password_min_length');
+
+        $this->assertFalse($row['may_edit'], 'may_edit disagreed with what the write does.');
+
+        // And the franchise they ARE assigned to still works, so this is a reach
+        // check and not a blanket refusal.
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->patchJson(
+                '/api/v1/settings/money.tax_rate'
+                .'?scope_type=franchise&scope_id='.$this->alpha['franchise']->id,
+                ['value' => 6.35],
+            )
+            ->assertOk();
+    }
 }

@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\PlatformStaffLink;
 use App\Support\Audit\AuditLogger;
 use App\Support\Auth\TotpEnrolment;
-use App\Support\Settings\SettingsResolver;
+use App\Support\Auth\TwoFactorPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -14,10 +14,23 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * A tenant user's own second factor (plan §6 — `security.require_two_factor`).
  *
- * The setting has been in the registry since the settings work and nothing
- * implemented it. This is the other half, and it is self-service by design:
- * anybody signed in can switch it on for themselves, without an administrator
- * and without anyone from EzBizi being available.
+ * Self-service by design: anybody signed in can switch it on for themselves,
+ * without an administrator and without anyone from EzBizi being available.
+ *
+ * These endpoints are also the EXIT from the organization-wide requirement.
+ * RequireTwoFactorEnrolment closes the rest of the app to somebody who has not
+ * enrolled, and exempts everything under /me precisely so this controller stays
+ * reachable — a requirement whose only remedy is behind the refusal is a
+ * lockout. Nothing here may grow a precondition that an un-enrolled user cannot
+ * satisfy: `begin` asks for a password only when a CONFIRMED factor already
+ * exists, and that word is load-bearing rather than a convenience.
+ *
+ * This sentence used to say "when a factor already exists", and the code matched
+ * it — including a merely pending one. That is the whole lockout: an abandoned
+ * setup left a pending secret, `begin` then demanded a password the card does
+ * not draw, and the rest of the app was already answering 403. The invariant
+ * held in prose and was false in practice, which is why the test below drives
+ * the ABANDONED path rather than the happy one.
  *
  * No policy on these routes, deliberately. Every one is bound to
  * $request->user() — there is nothing to authorize beyond being signed in, and a
@@ -27,7 +40,7 @@ class TwoFactorController extends Controller
 {
     public function __construct(
         private readonly TotpEnrolment $totp,
-        private readonly SettingsResolver $settings,
+        private readonly TwoFactorPolicy $policy,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -68,7 +81,25 @@ class TwoFactorController extends Controller
         // strip their only factor to move to a new phone leaves a window with
         // no protection at all, and the old secret is replaced the moment the
         // new one is confirmed rather than the moment it is issued.
-        if ($subject->hasTotp() || $subject->hasPendingTotp()) {
+        //
+        // ── Why a PENDING secret does not count ──────────────────
+        //
+        // This asked for the password when a factor was merely pending too, and
+        // that turned an abandoned setup into a permanent lockout. Start
+        // enrolment, mis-scan the QR, close the panel — now `pending` is true
+        // and `enabled` is false, so the card still offers "Turn on" and posts
+        // no password, and this refused it with 422 "the password field is
+        // required" against a field the card does not draw. With
+        // `security.require_two_factor` on, every other page answers 403, so
+        // there was no way back: not sign-out, not Settings, and not a password
+        // reset, because nothing on this platform can send mail.
+        //
+        // A pending secret is not something worth protecting. It has never been
+        // proven — nobody has entered a code from it, so it grants nothing, and
+        // discarding it costs an attacker nothing they did not already have.
+        // The thing re-authentication exists to protect is a CONFIRMED factor,
+        // which is the only one an account is actually relying on.
+        if ($subject->hasTotp()) {
             $refusal = $this->reauthenticate($request, $subject);
 
             if ($refusal !== null) {
@@ -147,7 +178,7 @@ class TwoFactorController extends Controller
 
     private function required($user): bool
     {
-        return (bool) $this->settings->get('security.require_two_factor', $user->organization);
+        return $this->policy->requiredFor($user);
     }
 
     /**
@@ -158,11 +189,16 @@ class TwoFactorController extends Controller
      * on the user row instead would enrol a second authenticator that nothing
      * ever asks for, and leave the real one untouched — the change appears to
      * work and protects nothing.
+     *
+     * Answered by TwoFactorPolicy rather than here, because RequireTwoFactorEnrolment
+     * has to reach the same conclusion: if this controller and that middleware
+     * ever disagreed about whose factor counts, a linked account would be told
+     * to enrol one it already has and sent to a screen that manages a different
+     * record.
      */
     private function subject(Request $request)
     {
-        return PlatformStaffLink::staffFor($request->user()->getKey())
-            ?? $request->user();
+        return $this->policy->subjectFor($request->user());
     }
 
     /**

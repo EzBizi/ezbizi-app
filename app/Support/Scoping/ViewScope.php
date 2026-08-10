@@ -5,6 +5,7 @@ namespace App\Support\Scoping;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Which part of the business you are looking at (plan §3 roll-ups, §4 reach).
@@ -139,6 +140,34 @@ class ViewScope
     public function defaultFranchiseId(): ?string
     {
         return $this->type === self::FRANCHISE ? $this->id : null;
+    }
+
+    /**
+     * The model the settings cascade should resolve against for this view (§6).
+     *
+     * ── Why the VIEW scope and not the user's home franchise ─────
+     *
+     * §6 resolves settings per scope, and a person standing in more than one
+     * place has no single home. Somebody with organization-level reach could
+     * be given any of a dozen franchises as "theirs", and picking one would
+     * mean the dates on their dashboard came from a place they were not
+     * looking at. The view scope is the one answer the whole app already
+     * agrees on — it is what the lists filter by, what the settings screen
+     * edits, and what the top bar names — so display formats resolved against
+     * it match what is on screen beside them. Switch to Connecticut and you
+     * read Connecticut's clock; switch back and you read the organization's.
+     *
+     * Falls back to the organization on a missing row for the same reason
+     * forUser() does: this is on the path to loading the app at all, and the
+     * only control that could fix a bad stored scope lives inside the app.
+     */
+    public function settingsScope(): Model
+    {
+        return match ($this->type) {
+            self::COMPANY   => Company::find($this->id) ?? $this->user->organization,
+            self::FRANCHISE => Franchise::find($this->id) ?? $this->user->organization,
+            default         => $this->user->organization,
+        };
     }
 
     /** The scoped thing's own name — "Connecticut". */

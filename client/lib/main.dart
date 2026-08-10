@@ -422,6 +422,30 @@ class _HomeShellState extends State<HomeShell> {
                 ),
               ),
               NotificationBell(api: widget.api),
+              // The organization requires a second factor and this person has
+              // not set one up (§6). Every screen except their own account is
+              // answering 403 until they do, so the chrome has to say why and
+              // point at the one place that fixes it — otherwise the app simply
+              // looks broken.
+              //
+              // A chip beside the read-only one rather than a modal: same kind
+              // of statement about the state of the session, and it stays
+              // visible while they act on it.
+              if (me.twoFactorEnrolmentRequired)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: ActionChip(
+                    avatar: const Icon(Icons.shield_outlined, size: 16),
+                    label: const Text('Set up two-factor'),
+                    tooltip: 'Your organization requires two-factor '
+                        'authentication. The rest of the app is on hold until '
+                        'your authenticator is set up.',
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.errorContainer.withValues(alpha: 0.4),
+                    onPressed: () => setState(() => _index = profileIndex),
+                  ),
+                ),
               if (me.organization.isReadOnly)
                 Padding(
                   padding: const EdgeInsets.only(right: 12),

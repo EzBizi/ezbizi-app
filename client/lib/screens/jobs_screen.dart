@@ -219,7 +219,11 @@ class _JobsScreenState extends State<JobsScreen> {
               customer['name'] ?? '',
               franchise['name'] ?? '',
               if (job['scheduled_for'] != null)
-                formatStamp(job['scheduled_for'] as String, ''),
+                formatStamp(
+                  job['scheduled_for'] as String,
+                  '',
+                  formats: widget.session.me!.display,
+                ),
               if (amount['display'] != null)
                 '${amount['currency']} ${amount['display']}',
             ].join(' · '),

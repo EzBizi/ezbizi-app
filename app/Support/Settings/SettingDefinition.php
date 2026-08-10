@@ -75,6 +75,34 @@ final class SettingDefinition
         /** Permission required to change it. Null = organizations.edit. */
         public readonly ?string $editPermission = null,
         public readonly ?string $help = null,
+
+        /**
+         * Nothing reads this yet, and this sentence says when something will.
+         *
+         * Null means the setting is in effect. Anything else is shown to the
+         * administrator on the settings screen, so it is written for them and
+         * not for us: "Takes effect when invoicing ships", not "no reader".
+         *
+         * ── Why a sentence and not a flag ────────────────────────
+         *
+         * Because the administrator's next question is always "then when?", and
+         * a boolean cannot answer it. A screen that says only "not active"
+         * leaves somebody to guess whether the feature is coming, broken, or
+         * theirs to switch on somewhere else — and guessing wrong about a
+         * security control is the expensive kind of wrong.
+         *
+         * The other reason is that a reason is auditable and a flag is not.
+         * `true` says nothing about whether it is still true; a sentence naming
+         * what it waits for can be checked against whether that thing shipped.
+         *
+         * ── What it is not ──────────────────────────────────────
+         *
+         * Not a licence to leave a setting unwired. {@see SettingReaders} reads
+         * the codebase and the test suite fails both ways: a setting in effect
+         * with no reader, and a setting saying "not yet" that something already
+         * reads. Declaring this is the honest option, never the cheap one.
+         */
+        public readonly ?string $notYetInEffect = null,
     ) {
         if (! preg_match('/^[a-z][a-z0-9_.]*$/', $key)) {
             throw new InvalidArgumentException("Setting key '{$key}' must be lower_snake_case.");
@@ -95,11 +123,29 @@ final class SettingDefinition
         if ($type === self::TYPE_ENUM && $options === []) {
             throw new InvalidArgumentException("Enum setting '{$key}' lists no options.");
         }
+
+        // `?string` without strict_types would turn `notYetInEffect: true` into
+        // the string "1" and print it on the settings screen. Requiring more
+        // than one word rejects that, and rejects "pending" and "TODO" with it.
+        if ($notYetInEffect !== null && ! str_contains(trim($notYetInEffect), ' ')) {
+            throw new InvalidArgumentException(
+                "Setting '{$key}' says it is not yet in effect but gives no reason an "
+                ."administrator could read. This text appears on the settings screen — it has "
+                ."to say what the setting is waiting for, e.g. 'Takes effect when invoicing "
+                ."ships.' A flag would only move the silence up one level."
+            );
+        }
     }
 
     public function allowsScope(string $scope): bool
     {
         return in_array($scope, $this->allowedScopes, strict: true);
+    }
+
+    /** Does anything act on this setting today? */
+    public function isInEffect(): bool
+    {
+        return $this->notYetInEffect === null;
     }
 
     public function permissionRequired(): string

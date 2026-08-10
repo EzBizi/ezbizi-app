@@ -36,9 +36,23 @@ use Illuminate\Support\Facades\Route;
 |   auth:sanctum   who is this?
 |   tenant         which organization? (from the USER, never the request)
 |   subscription   may they write? (§13)
+|   two-factor     has the organization made a second factor mandatory? (§6)
+|   idle           keep the inactivity window open (§6)
 |
 | Tenant must come after auth — there is no organization before there is a
 | user. Subscription must come after tenant, since it reads the organization.
+|
+| The last two read settings, and both enter the caller's organization
+| themselves rather than relying on `tenant` having run first — the framework
+| sorts this list against its own priority map, so a list position is a
+| statement of intent and not a guarantee.
+|
+| `two-factor` refuses nothing under /me or /auth: the way OUT of the refusal is
+| the enrolment screen, and a control somebody cannot reach is a lockout. See
+| RequireTwoFactorEnrolment.
+|
+| `idle` refuses nothing at all. It moves each token's expiry forward, and
+| Sanctum does the refusing when it stops moving. See SlideIdleWindow.
 |
 */
 
@@ -66,7 +80,7 @@ Route::prefix('v1/auth')->group(function () {
 
 // ── Authenticated ────────────────────────────────────────────────
 Route::prefix('v1')
-    ->middleware(['auth:sanctum', 'tenant', 'subscription'])
+    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'two-factor', 'idle'])
     ->group(function () {
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
@@ -204,6 +218,12 @@ Route::prefix('v1')
         Route::get('me', function (Illuminate\Http\Request $request) {
             $user = $request->user();
 
+            // Resolved once and used twice, below: the client is told where it
+            // is standing AND what that place's settings say, and the two must
+            // describe the same place or the dates on screen belong to a scope
+            // the top bar is not naming.
+            $view = \App\Support\Scoping\ViewScope::forUser($user);
+
             return response()->json([
                 'data' => [
                     'id'    => $user->id,
@@ -238,6 +258,29 @@ Route::prefix('v1')
                             'focused_at' => 'https://dev.ezbizi.com',
                         ];
                     })(),
+                    // The organization requires a second factor and this account
+                    // has none (§6). Carried here as well as on the login body
+                    // because a page refresh restores the session from a stored
+                    // token and never sees a login body — without it the app
+                    // would come back with every screen quietly answering 403
+                    // and nothing on screen saying why.
+                    'two_factor_enrolment_required' =>
+                        app(\App\Support\Auth\TwoFactorPolicy::class)->mustEnrol($user),
+
+                    // What the change-password form should ASK for: the platform
+                    // floor, or this organization's own minimum where that is
+                    // higher (§6). The client used to state a constant it kept
+                    // in Dart, which was right until an administrator raised the
+                    // setting and then told everybody the wrong number.
+                    //
+                    // Signup and password-reset cannot be told this — neither has
+                    // a session, and reset has no organization until the token is
+                    // examined server-side — so those two screens still state the
+                    // platform floor and the server corrects them. See
+                    // client/lib/core/password_policy.dart.
+                    'password_min_length' => \App\Support\Auth\PasswordPolicy::minLengthFor(
+                        $user->organization,
+                    ),
                     'organization' => [
                         'id'              => $user->organization->id,
                         'name'            => $user->organization->name,
@@ -273,7 +316,25 @@ Route::prefix('v1')
                     // that has stopped being valid — a franchise removed, an
                     // assignment narrowed — must not come back as the client's
                     // idea of where it is.
-                    'scope' => \App\Support\Scoping\ViewScope::forUser($user)->toArray(),
+                    'scope' => $view->toArray(),
+
+                    // How this scope writes a date and a clock (§6).
+                    //
+                    // Here rather than on the settings endpoint because every
+                    // screen needs them and only one screen calls /settings.
+                    // /me is already fetched on launch and again on every scope
+                    // change — Session.setScope() refetches it, precisely
+                    // because `scope` above is resolved server-side — so the
+                    // formats arrive with the view they belong to and change
+                    // when it does, with nothing extra to keep in step.
+                    //
+                    // The client formats FROM these instead of from the
+                    // browser's locale. That is the whole point: an owner who
+                    // sets 24h must get 24h on a machine set to US English,
+                    // and until this existed there was no resolved setting on
+                    // the client at all for any screen to read.
+                    'display' => app(\App\Support\Settings\DisplaySettings::class)
+                        ->forScope($view->settingsScope()),
 
                     'franchises' => $user->reachableFranchises()->map(fn ($f) => [
                         'id'         => $f->id,

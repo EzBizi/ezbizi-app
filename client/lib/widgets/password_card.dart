@@ -112,7 +112,14 @@ class _PasswordCardState extends State<PasswordCard> {
                   ? 'One password covers the app and the control plane. Changing it '
                       'signs out every other session, including this tab\'s Development '
                       'section.'
-                  : '${PasswordPolicy.hint} Changing it signs out your other devices.',
+                  // The organization's own minimum, resolved by the server (§6
+                  // `security.password_min_length`). This card is behind a
+                  // session, so it can state the number that will actually be
+                  // enforced instead of the compiled floor — an administrator
+                  // who raised it to 16 should not have their staff told 12 and
+                  // then refused.
+                  : '${PasswordPolicy.hintFor(widget.session.me?.passwordMinLength ?? PasswordPolicy.minLength)}'
+                      ' Changing it signs out your other devices.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
 

@@ -63,13 +63,41 @@ class PasswordController extends Controller
         return $this->sameAnswer();
     }
 
-    /** POST /api/v1/auth/reset */
+    /**
+     * POST /api/v1/auth/reset
+     *
+     * ── Two validation passes, on purpose ────────────────────────
+     *
+     * The minimum length belongs to the ORGANIZATION
+     * (`security.password_min_length`, §6), and this route has no session to
+     * read one from. The token is the only thing that names an account, so the
+     * platform floor is checked first — that is what makes the token worth
+     * looking up at all — and the organization's own minimum, which can only be
+     * higher, is checked once the token has said whose it is.
+     *
+     * Without the second pass the reset screen is a way around the policy: an
+     * administrator sets 16, and anybody who wants a twelve-character password
+     * asks for a reset link instead of using the change form.
+     *
+     * Nothing here reveals whether a token is valid — the length message is only
+     * reachable with one that is, and every other outcome converges on the single
+     * "expired or already used" answer below.
+     */
     public function reset(Request $request): JsonResponse
     {
         $input = $request->validate([
             'token'    => ['required', 'string'],
             'password' => [...PasswordPolicy::rules(), 'confirmed'],
         ]);
+
+        $organization = $this->resets->organizationFor($input['token']);
+
+        // Re-validated rather than compared by hand, so the refusal is the same
+        // 422 with the same `errors.password` shape the first pass produces and
+        // the reset screen already renders.
+        if ($organization !== null) {
+            $request->validate(['password' => PasswordPolicy::rulesFor($organization)]);
+        }
 
         $subject = $this->resets->redeem($input['token'], $input['password']);
 
@@ -97,12 +125,22 @@ class PasswordController extends Controller
      */
     public function change(Request $request): JsonResponse
     {
+        $user = $request->user();
+
         $input = $request->validate([
             'current_password' => ['required', 'string'],
-            'password'         => [...PasswordPolicy::rules(), 'confirmed'],
-        ]);
 
-        $user = $request->user();
+            // The organization's minimum, which may be higher than the platform
+            // floor and can never be lower (§6, PasswordPolicy). Read from the
+            // signed-in user's organization rather than from the request — a
+            // caller naming its own policy would be a caller choosing it.
+            //
+            // A linked account's password lives on the staff record, but the
+            // POLICY still comes from the organization whose app they are using.
+            // Staff have a separate, higher floor at the point staff accounts are
+            // created; nothing here can lower either.
+            'password' => [...PasswordPolicy::rulesFor($user->organization), 'confirmed'],
+        ]);
 
         // A linked account's password lives on the STAFF record (§4.2, revised).
         // Writing it to the user row would change a value nothing reads, and the

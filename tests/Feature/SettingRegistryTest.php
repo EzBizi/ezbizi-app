@@ -145,13 +145,36 @@ class SettingRegistryTest extends TestCase
 
     // ── grouping for the settings UI ─────────────────────────────
 
-    public function test_settings_group_by_prefix(): void
+    /**
+     * Grouping is declared, not derived from the key.
+     *
+     * It used to split on the dot, which gave `general`, `ops` and `jobs` —
+     * identifiers, not names, and the settings screen printed them upper-cased
+     * because there was nothing better to print. The group a setting belongs to
+     * and the words for it are now stated where the definitions are.
+     */
+    public function test_every_setting_declares_a_named_group(): void
     {
         $groups = $this->registry->grouped();
 
-        foreach (['general', 'ops', 'money', 'numbering', 'security', 'notifications', 'customers'] as $g) {
+        foreach ([
+            'localisation', 'operations', 'money', 'numbering',
+            'security', 'notifications', 'customers', 'jobs',
+        ] as $g) {
             $this->assertArrayHasKey($g, $groups, "Expected a '{$g}' settings group.");
         }
+
+        $this->assertArrayNotHasKey('other', $groups, 'A registered setting named no group.');
+
+        // The label is the part a client cannot work out for itself.
+        $this->assertSame(
+            ['key' => 'numbering', 'label' => 'Document numbering'],
+            $this->registry->groupOf('numbering.pad_to_digits'),
+        );
+
+        // Declared in its own section rather than inheriting Customers', which
+        // is where the constructor call used to sit.
+        $this->assertSame('jobs', $this->registry->groupOf('jobs.statuses')['key']);
     }
 
     public function test_scope_filtering_hides_organization_only_settings(): void

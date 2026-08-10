@@ -18,16 +18,24 @@ import 'package:http/testing.dart';
 /// the screen with a spinner and refetched every setting to learn something the
 /// write had already answered.
 ///
-/// So the assertion running through all of these is the count of GET /settings.
-/// It must stay at one. "No spinner" is the symptom; "no second request" is the
-/// cause, and only the second one can be checked without racing an animation.
+/// So the assertion running through the first group of these is the count of
+/// GET /settings. It must stay at one. "No spinner" is the symptom; "no second
+/// request" is the cause, and only the second one can be checked without racing
+/// an animation.
+///
+/// The second group is about what a row SAYS. Three things a settings screen
+/// can be wrong about, all of which it was:
+///
+///   - where a value came from, which it stopped saying the moment a row was
+///     read-only, on the screen whose whole purpose is showing inheritance;
+///   - what a group of settings is called, which it invented by upper-casing
+///     the front of the key;
+///   - whether changing something will do anything at all.
 void main() {
   testWidgets('changing a setting moves its row and nothing else', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(1280, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    _wide(tester);
 
     var reads = 0;
 
@@ -98,61 +106,116 @@ void main() {
     // The row picked up BOTH halves of the answer — the value and where it now
     // comes from. Source is the half the client could not have worked out.
     expect(
-      tester.widget<DropdownButton<String>>(find.byType(DropdownButton<String>)).value,
+      tester
+          .widget<DropdownButton<String>>(find.byType(DropdownButton<String>))
+          .value,
       '24h',
     );
     expect(find.text('Set here'), findsOneWidget);
     expect(find.text('Inherited from Everdoors'), findsNothing);
   });
 
-  testWidgets('a refused change leaves the control on the value the server has', (
+  testWidgets(
+    'a refused change leaves the control on the value the server has',
+    (tester) async {
+      _wide(tester);
+
+      var reads = 0;
+
+      await _pumpSettings(tester, (request) async {
+        if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+        if (request.method == 'GET') {
+          reads++;
+          return _json({
+            'data': [
+              _row(
+                'notifications.email_enabled',
+                label: 'Send email notifications',
+                type: 'bool',
+                value: false,
+                source: null,
+              ),
+            ],
+          });
+        }
+
+        return _json({
+          'message': 'That franchise is outside your assignments.',
+        }, 403);
+      });
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+
+      // A switch left sitting in the position the server refused reads as saved,
+      // which is worse than one that never moved.
+      expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
+      expect(
+        find.text('That franchise is outside your assignments.'),
+        findsOneWidget,
+      );
+      expect(
+        reads,
+        1,
+        reason: 'A refusal changes nothing, so there is nothing to refetch.',
+      );
+    },
+  );
+
+  /// The same promise, for the one control that could not keep it.
+  ///
+  /// A switch and a dropdown are drawn from the row, so a refused write leaves
+  /// them where they were for free. A text field holds its own copy of what was
+  /// typed, and nothing put it back — so the rejected number sat in the box
+  /// looking exactly like a saved one. `_update`'s comment said "nothing on
+  /// screen moves"; for this control it did, and stayed moved.
+  testWidgets('a refused number goes back to the value the server still has', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(1280, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-
-    var reads = 0;
+    _wide(tester);
 
     await _pumpSettings(tester, (request) async {
       if (request.url.path.endsWith('/me')) return _json({'data': _me});
 
       if (request.method == 'GET') {
-        reads++;
         return _json({
           'data': [
             _row(
-              'notifications.email_enabled',
-              label: 'Send email notifications',
-              type: 'bool',
-              value: false,
+              'money.tax_rate',
+              label: 'Default tax rate (%)',
+              type: 'decimal',
+              value: 6.625,
               source: null,
             ),
           ],
         });
       }
 
-      return _json({
-        'message': 'That franchise is outside your assignments.',
-      }, 403);
+      return _json({'message': 'Missing permission: organizations.edit.'}, 403);
     });
 
-    await tester.tap(find.byType(Switch));
+    await tester.enterText(_valueField, '99');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
-    // A switch left sitting in the position the server refused reads as saved,
-    // which is worse than one that never moved.
-    expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
-    expect(find.text('That franchise is outside your assignments.'), findsOneWidget);
-    expect(reads, 1, reason: 'A refusal changes nothing, so there is nothing to refetch.');
+    expect(
+      find.text('Missing permission: organizations.edit.'),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<TextField>(_valueField).controller?.text,
+      '6.625',
+      reason:
+          'The server still holds 6.625. A box showing 99 after a refusal is a '
+          'value that looks saved and is not.',
+    );
   });
 
   testWidgets('resetting a setting splices in the row it now inherits', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(1280, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    _wide(tester);
 
     var reads = 0;
 
@@ -198,18 +261,13 @@ void main() {
     expect(find.text('Inherited from Northeast'), findsOneWidget);
     expect(find.text('Now inherited from Northeast'), findsOneWidget);
 
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).controller?.text,
-      '8.5',
-    );
+    expect(tester.widget<TextField>(_valueField).controller?.text, '8.5');
   });
 
   testWidgets('a write answering with an unexpected body falls back to a reload', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(1280, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    _wide(tester);
 
     var reads = 0;
 
@@ -251,37 +309,330 @@ void main() {
     );
     expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
   });
+
+  // ── what the row says ──────────────────────────────────────────────
+
+  /// Headings are the server's words, not the front of the key.
+  ///
+  /// They used to be `key.split('.').first.toUpperCase()`, so the numbering
+  /// settings sat under "NUMBERING" and everything without a dot under
+  /// "GENERAL". Nobody wrote those; they fell out of identifiers. A Dart map of
+  /// prefix to English would have been the same bug one layer along — the fact
+  /// that `numbering.*` means "Document numbering" is not recoverable from the
+  /// string, so it travels with the row.
+  testWidgets('group headings come from the server', (tester) async {
+    _wide(tester);
+
+    await _pumpSettings(tester, (request) async {
+      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+      return _json({
+        'data': [
+          _row(
+            'numbering.pad_to_digits',
+            label: 'Pad numbers to',
+            type: 'int',
+            value: 5,
+            source: null,
+            group: 'numbering',
+            groupLabel: 'Document numbering',
+          ),
+          _row(
+            'security.password_min_length',
+            label: 'Minimum password length',
+            type: 'int',
+            value: 12,
+            source: null,
+            group: 'security',
+            groupLabel: 'Security',
+          ),
+        ],
+      });
+    });
+
+    expect(find.text('Document numbering'), findsOneWidget);
+    expect(find.text('Security'), findsOneWidget);
+    expect(find.text('NUMBERING'), findsNothing);
+    expect(find.text('SECURITY'), findsNothing);
+  });
+
+  /// A row with no group is not given an invented one.
+  testWidgets('a row the server did not group gets no made-up heading', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpSettings(tester, (request) async {
+      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+      return _json({
+        'data': [
+          _row(
+            'ops.default_job_duration_minutes',
+            label: 'Default job duration',
+            type: 'int',
+            value: 60,
+            source: null,
+            group: null,
+            groupLabel: null,
+          ),
+        ],
+      });
+    });
+
+    expect(find.text('Default job duration'), findsOneWidget);
+    expect(find.text('OPS'), findsNothing);
+    expect(find.text('Ops'), findsNothing);
+  });
+
+  /// The distinction the screen has to draw, in one list.
+  ///
+  /// Two rows nobody can act on today, for entirely different reasons, and they
+  /// must not look the same. One is read-only because of who you are; its
+  /// control is dead and the row names the permission. The other is live — the
+  /// value saves, audits and inherits exactly as any other — and does nothing,
+  /// because no code reads it yet. Greying the second would say "not for you",
+  /// which is a different lie from the one being fixed.
+  testWidgets(
+    'a setting that is not in effect is marked, and does not read as disabled',
+    (tester) async {
+      _wide(tester);
+
+      await _pumpSettings(tester, (request) async {
+        if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+        return _json({
+          'data': [
+            _row(
+              'money.tax_inclusive_pricing',
+              label: 'Prices include tax',
+              type: 'bool',
+              value: false,
+              source: null,
+              group: 'money',
+              groupLabel: 'Money and tax',
+              notYetInEffect: 'Takes effect when invoicing ships.',
+            ),
+            _row(
+              'notifications.email_enabled',
+              label: 'Send email notifications',
+              type: 'bool',
+              value: true,
+              source: null,
+              group: 'money',
+              groupLabel: 'Money and tax',
+              mayEdit: false,
+            ),
+          ],
+        });
+      });
+
+      // Said out loud, in the server's own words about what it is waiting for.
+      expect(
+        find.text('Not in effect yet — Takes effect when invoicing ships.'),
+        findsOneWidget,
+      );
+
+      final switches = find.byType(Switch);
+
+      expect(
+        tester.widget<Switch>(switches.at(0)).onChanged,
+        isNotNull,
+        reason:
+            'Pending is not read-only. The value is still worth setting up in '
+            'advance, and locking the control would trade one lie for another.',
+      );
+
+      // The row beside it, which IS read-only, still looks read-only.
+      expect(tester.widget<Switch>(switches.at(1)).onChanged, isNull);
+      expect(find.text('Read-only — needs organizations.edit'), findsOneWidget);
+    },
+  );
+
+  /// Provenance survives everything else the row has to say.
+  ///
+  /// It used to be one chain of ternaries printing EITHER where the value came
+  /// from OR why you could not change it, so a read-only row went silent about
+  /// its inheritance — on the screen that exists to show inheritance.
+  testWidgets('a read-only row still says where its value came from', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpSettings(tester, (request) async {
+      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+      return _json({
+        'data': [
+          _row(
+            'money.tax_rate',
+            label: 'Default tax rate (%)',
+            type: 'decimal',
+            value: 8.5,
+            source: _source('company', 'co-1', 'Northeast', true),
+            mayEdit: false,
+          ),
+        ],
+      });
+    });
+
+    expect(find.text('Inherited from Northeast'), findsOneWidget);
+    expect(find.text('Read-only — needs organizations.edit'), findsOneWidget);
+  });
+
+  /// A setting this scope cannot hold names the levels that can — from
+  /// `allowed_scopes`, in the tenant's word for a franchise.
+  ///
+  /// The row used to print the fixed words "Set at organization level only",
+  /// which is true of every restricted setting today and false the first time
+  /// one is company-and-franchise. It also lost to the "EzBizi default" branch
+  /// whenever nothing was set anywhere, so a franchise looking at a security
+  /// policy was told the platform default and nothing about why the control was
+  /// dead.
+  testWidgets('a setting this scope cannot hold says which levels can', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpSettings(tester, (request) async {
+      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+      return _json({
+        'data': [
+          _row(
+            'security.password_min_length',
+            label: 'Minimum password length',
+            type: 'int',
+            value: 12,
+            source: null,
+            editableHere: false,
+            mayEdit: false,
+            allowedScopes: const ['organization', 'company'],
+          ),
+        ],
+      });
+    });
+
+    expect(
+      find.text('EzBizi default'),
+      findsOneWidget,
+      reason: 'Still true, and still the answer to a different question.',
+    );
+    expect(
+      find.text('Only the organization or a company can set this.'),
+      findsOneWidget,
+    );
+  });
+
+  /// Thirty rows is a list people scroll past. Search is how they stop.
+  testWidgets('search narrows the list, and the counts say what is set here', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpSettings(tester, (request) async {
+      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+      return _json({
+        'data': [
+          _row(
+            'security.password_min_length',
+            label: 'Minimum password length',
+            type: 'int',
+            value: 16,
+            source: _source('franchise', 'fr-1', 'Connecticut', false),
+            group: 'security',
+            groupLabel: 'Security',
+          ),
+          _row(
+            'money.tax_rate',
+            label: 'Default tax rate (%)',
+            type: 'decimal',
+            value: 8.5,
+            source: _source('company', 'co-1', 'Northeast', true),
+            group: 'money',
+            groupLabel: 'Money and tax',
+          ),
+        ],
+      });
+    });
+
+    // One of the two is this scope's own doing. That count is the summary the
+    // screen owes somebody arriving at a franchise they did not configure.
+    expect(find.text('Set here · 1'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).first, 'tax');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Default tax rate (%)'), findsOneWidget);
+    expect(find.text('Minimum password length'), findsNothing);
+    expect(find.text('Security'), findsNothing);
+
+    // Nothing matching is a state with a way out of it.
+    await tester.enterText(find.byType(TextField).first, 'zzz');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nothing matches “zzz”.'), findsOneWidget);
+
+    await tester.tap(find.text('Show all settings'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Minimum password length'), findsOneWidget);
+    expect(find.text('Default tax rate (%)'), findsOneWidget);
+  });
 }
 
 // ── harness ────────────────────────────────────────────────────────
+
+void _wide(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1280, 900);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+}
+
+/// The text field holding a setting's VALUE, as opposed to the search box in
+/// the toolbar. Only the value fields live inside the cards.
+final Finder _valueField = find.descendant(
+  of: find.byType(Card),
+  matching: find.byType(TextField),
+);
 
 /// Put the settings screen on screen with a canned server behind it.
 ///
 /// The session is adopted through /me exactly as the real app does, because the
 /// screen reads its scope off `session.me` and a hand-built one would let the
 /// test disagree with the client's own parsing.
-Future<void> _pumpSettings(WidgetTester tester, MockClientHandler handler) async {
+Future<void> _pumpSettings(
+  WidgetTester tester,
+  MockClientHandler handler,
+) async {
   final api = ApiClient(client: MockClient(handler));
   final session = Session(api);
 
   await tester.runAsync(() => session.adopt('tok'));
 
-  expect(session.signedIn, isTrue, reason: 'The /me stub did not produce a session.');
+  expect(
+    session.signedIn,
+    isTrue,
+    reason: 'The /me stub did not produce a session.',
+  );
 
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: SettingsScreen(api: api, session: session)),
+      home: Scaffold(
+        body: SettingsScreen(api: api, session: session),
+      ),
     ),
   );
   await tester.pumpAndSettle();
 }
 
 http.Response _json(Object body, [int status = 200]) => http.Response(
-      jsonEncode(body),
-      status,
-      headers: {'content-type': 'application/json'},
-    );
+  jsonEncode(body),
+  status,
+  headers: {'content-type': 'application/json'},
+);
 
 /// One row in the shape SettingsController builds for every endpoint.
 Map<String, dynamic> _row(
@@ -291,27 +642,40 @@ Map<String, dynamic> _row(
   required dynamic value,
   required Map<String, dynamic>? source,
   List<String>? options,
-}) => {
-      'key': key,
-      'label': label,
-      'type': type,
-      'value': value,
-      'is_sensitive': false,
-      'options': options,
-      'help': null,
-      'editable_here': true,
-      'may_edit': true,
-      'permission': 'organizations.edit',
-      'allowed_scopes': const ['organization', 'company', 'franchise'],
-      'source': source,
-    };
+  String? group = 'general',
+  String? groupLabel = 'General',
+  bool editableHere = true,
+  bool mayEdit = true,
+  List<String> allowedScopes = const ['organization', 'company', 'franchise'],
+  bool isSensitive = false,
 
-Map<String, dynamic> _source(String type, String id, String name, bool inherited) => {
-      'type': type,
-      'id': id,
-      'name': name,
-      'inherited': inherited,
-    };
+  /// Null means the setting does something. A sentence says what has to ship
+  /// before it does — one field, so the flag and the reason cannot disagree.
+  String? notYetInEffect,
+}) => {
+  'key': key,
+  'label': label,
+  'type': type,
+  'group': group,
+  'group_label': groupLabel,
+  'value': value,
+  'is_sensitive': isSensitive,
+  'options': options,
+  'help': null,
+  'not_yet_in_effect': notYetInEffect,
+  'editable_here': editableHere,
+  'may_edit': mayEdit,
+  'permission': 'organizations.edit',
+  'allowed_scopes': allowedScopes,
+  'source': source,
+};
+
+Map<String, dynamic> _source(
+  String type,
+  String id,
+  String name,
+  bool inherited,
+) => {'type': type, 'id': id, 'name': name, 'inherited': inherited};
 
 /// Signed in, looking at a franchise — the scope where inheritance is visible
 /// and therefore where a wrong `source` would show.

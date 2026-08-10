@@ -117,26 +117,54 @@ class PasswordResets
     }
 
     /**
+     * Whose account a live token belongs to, WITHOUT spending it.
+     *
+     * Exists because the password policy is a property of the organization
+     * (`security.password_min_length`, §6) and the reset form arrives with no
+     * session — so the only route to the right minimum is the token. The check
+     * has to happen before the write, and the write consumes the token, so the
+     * lookup has to be separable from redeeming.
+     *
+     * Returns null for anything expired, spent or unknown, exactly as redeem()
+     * does. A caller that gets null should NOT branch on it: hand the token to
+     * redeem() and let that produce the single "expired or already used" answer,
+     * or this becomes a second place where the wording could differ.
+     */
+    public function subjectFor(string $token): ?Model
+    {
+        $row = $this->liveToken($token);
+
+        return $row === null ? null : $this->subjectOf($row);
+    }
+
+    /**
+     * The organization whose policy governs this token's password, if any.
+     *
+     * Null for a platform staff reset: staff are not tenant-scoped, so no
+     * organization's setting has any claim on their password. Their floor is the
+     * one in StaffAccountsController, which is higher than any tenant's anyway.
+     */
+    public function organizationFor(string $token): ?\App\Models\Organization
+    {
+        $subject = $this->subjectFor($token);
+
+        return $subject instanceof User ? $subject->organization : null;
+    }
+
+    /**
      * Redeem a token and set the new password.
      *
      * @return Model|null the account whose password changed, or null
      */
     public function redeem(string $token, string $password): ?Model
     {
-        $row = DB::table('password_resets')
-            ->where('token_hash', hash('sha256', $token))
-            ->whereNull('used_at')
-            ->where('expires_at', '>', now())
-            ->first();
+        $row = $this->liveToken($token);
 
         if ($row === null) {
             return null;
         }
 
-        /** @var Model|null $subject */
-        $subject = $row->subject_type === PlatformStaff::class
-            ? PlatformStaff::find($row->subject_id)
-            : $this->tenant->runWithoutTenant(fn () => User::find($row->subject_id));
+        $subject = $this->subjectOf($row);
 
         if ($subject === null) {
             return null;
@@ -183,6 +211,33 @@ class PasswordResets
         $this->audit->log('auth.password_changed', $subject instanceof User ? $subject : null, metadata: [
             'subject' => class_basename($subject),
         ]);
+    }
+
+    /** The row for a token that is still good, or null. */
+    private function liveToken(string $token): ?object
+    {
+        return DB::table('password_resets')
+            ->where('token_hash', hash('sha256', $token))
+            ->whereNull('used_at')
+            ->where('expires_at', '>', now())
+            ->first();
+    }
+
+    /**
+     * The account a reset row points at.
+     *
+     * `with('organization')` on the user branch because both callers need it —
+     * the write below enters that organization, and the policy check reads a
+     * setting against it — and a lazy load would run outside any tenant, where
+     * the read scope refuses rather than quietly matching every row.
+     */
+    private function subjectOf(object $row): ?Model
+    {
+        return $row->subject_type === PlatformStaff::class
+            ? PlatformStaff::find($row->subject_id)
+            : $this->tenant->runWithoutTenant(
+                fn () => User::with('organization')->find($row->subject_id)
+            );
     }
 
     /**

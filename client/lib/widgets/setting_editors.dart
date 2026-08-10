@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/timestamps.dart';
 import 'side_panel.dart';
 
 /// Editors for the settings that have a shape (plan §6, §2.1 layer 5).
@@ -32,35 +33,38 @@ import 'side_panel.dart';
 /// A time of day, in quarter-hour steps.
 ///
 /// Values are 24-hour `HH:MM` because that is what the server stores and
-/// compares. What is shown follows the reader's locale and their 24-hour
-/// preference, so the same stored value reads as "5:00 PM" or "17:00" without
-/// either end having to know which.
+/// compares. What is SHOWN follows the organization's `time_format` (§6), so
+/// the same stored value reads as "5:00 PM" or "17:00" without either end
+/// having to know which.
+///
+/// ── It used to follow the browser, and that was the same bug ─────
+///
+/// This formatted through `MaterialLocalizations.formatTimeOfDay` with
+/// `alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context)` — the
+/// reader's MACHINE preference, and a locale for the rest. So an owner who set
+/// Time format to 24h and then opened Business hours on the very next row
+/// still saw "5:00 PM", from the screen where they had just changed it. A
+/// setting that the screen presenting it ignores is worse than no setting at
+/// all, which is the whole reason this work exists.
 class TimeField extends StatelessWidget {
   const TimeField({
     super.key,
     required this.value,
+    required this.formats,
     required this.onChanged,
     this.enabled = true,
   });
 
   final String value;
+
+  /// The organization's, resolved for the scope being edited. Required, not
+  /// defaulted: a default is how a control silently goes back to guessing.
+  final DisplayFormats formats;
+
   final ValueChanged<String> onChanged;
   final bool enabled;
 
   static const int _stepMinutes = 15;
-
-  static String format(BuildContext context, String hhmm) {
-    final parts = hhmm.split(':');
-    final time = TimeOfDay(
-      hour: int.tryParse(parts.first) ?? 0,
-      minute: int.tryParse(parts.last) ?? 0,
-    );
-
-    return MaterialLocalizations.of(context).formatTimeOfDay(
-      time,
-      alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -86,7 +90,10 @@ class TimeField extends StatelessWidget {
       onChanged: enabled ? (v) => v == null ? null : onChanged(v) : null,
       items: [
         for (final slot in slots)
-          DropdownMenuItem(value: slot, child: Text(format(context, slot))),
+          DropdownMenuItem(
+            value: slot,
+            child: Text(formats.formatWallClock(slot)),
+          ),
       ],
     );
   }
@@ -99,12 +106,19 @@ class HoursButton extends StatelessWidget {
     required this.label,
     required this.value,
     required this.editable,
+    required this.formats,
     required this.onChanged,
   });
 
   final String label;
   final dynamic value;
   final bool editable;
+
+  /// Passed straight through to the TimeFields inside, and used by the summary
+  /// on the button itself — which is the part somebody reads without opening
+  /// anything, so it is the part that most needs to obey the setting.
+  final DisplayFormats formats;
+
   final ValueChanged<Map<String, dynamic>> onChanged;
 
   static const List<String> weekdays = [
@@ -129,7 +143,7 @@ class HoursButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return OutlinedButton(
       onPressed: editable ? () => _open(context) : null,
-      child: Text(_summary(context)),
+      child: Text(_summary()),
     );
   }
 
@@ -138,7 +152,7 @@ class HoursButton extends StatelessWidget {
   /// Almost every business is open the same hours on the days it is open, so
   /// the useful summary is which days and what time. When they differ, saying
   /// so is more honest than picking one day's hours to stand for all of them.
-  String _summary(BuildContext context) {
+  String _summary() {
     final open = _week.entries.where((e) => e.value != null).toList();
 
     if (open.isEmpty) return 'Closed all week';
@@ -152,8 +166,8 @@ class HoursButton extends StatelessWidget {
 
     final first = open.first.value as Map;
 
-    return '$days · ${TimeField.format(context, first['open'] as String)}'
-        ' – ${TimeField.format(context, first['close'] as String)}';
+    return '$days · ${formats.formatWallClock(first['open'] as String)}'
+        ' – ${formats.formatWallClock(first['close'] as String)}';
   }
 
   Future<void> _open(BuildContext context) async {
@@ -210,12 +224,14 @@ class HoursButton extends StatelessWidget {
                       else ...[
                         TimeField(
                           value: week[day]['open'] as String,
+                          formats: formats,
                           onChanged: (v) =>
                               repaint(() => week[day]['open'] = v),
                         ),
                         const Text(' – '),
                         TimeField(
                           value: week[day]['close'] as String,
+                          formats: formats,
                           onChanged: (v) =>
                               repaint(() => week[day]['close'] = v),
                         ),
@@ -247,6 +263,7 @@ class TimeRangeButton extends StatelessWidget {
     required this.label,
     required this.value,
     required this.editable,
+    required this.formats,
     required this.onChanged,
     this.help,
   });
@@ -254,6 +271,10 @@ class TimeRangeButton extends StatelessWidget {
   final String label;
   final dynamic value;
   final bool editable;
+
+  /// The organization's clock (§6), for the same reason HoursButton takes one.
+  final DisplayFormats formats;
+
   final String? help;
   final ValueChanged<Map<String, dynamic>> onChanged;
 
@@ -268,8 +289,8 @@ class TimeRangeButton extends StatelessWidget {
       child: Text(
         _start == null || _end == null
             ? 'Off'
-            : '${TimeField.format(context, _start!)}'
-                  ' – ${TimeField.format(context, _end!)}',
+            : '${formats.formatWallClock(_start!)}'
+                  ' – ${formats.formatWallClock(_end!)}',
       ),
     );
   }
@@ -318,11 +339,13 @@ class TimeRangeButton extends StatelessWidget {
                     const Text('From '),
                     TimeField(
                       value: start!,
+                      formats: formats,
                       onChanged: (v) => repaint(() => start = v),
                     ),
                     const Text(' until '),
                     TimeField(
                       value: end!,
+                      formats: formats,
                       onChanged: (v) => repaint(() => end = v),
                     ),
                   ],

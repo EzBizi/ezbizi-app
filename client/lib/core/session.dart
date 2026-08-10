@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'api_client.dart';
+import 'password_policy.dart';
+import 'timestamps.dart';
 import 'token_store.dart';
 
 /// Who is signed in, and what they can reach.
@@ -158,6 +160,13 @@ class Session extends ChangeNotifier {
   /// fallback rules, kept in step by hope.
   ///
   /// So it writes, then asks. One round trip, and the answer is authoritative.
+  ///
+  /// That refetch is also what keeps [Me.display] honest. Settings cascade per
+  /// scope (§6), so moving from the organization to a franchise that keeps a
+  /// 24-hour clock changes how every date on screen should be written — and
+  /// because the formats ride on /me rather than on a request of their own,
+  /// they arrive with the new scope instead of needing a second call that
+  /// somebody would eventually forget to make.
   Future<void> setScope(String value) async {
     final response = await _api.patch('/me/preferences', {
       'preferences': {'navigation.scope': value},
@@ -198,8 +207,11 @@ class Me {
     required this.hasAvatar,
     required this.preferences,
     required this.development,
+    required this.twoFactorEnrolmentRequired,
+    required this.passwordMinLength,
     required this.organization,
     required this.scope,
+    required this.display,
     required this.companies,
     required this.franchises,
   });
@@ -226,6 +238,25 @@ class Me {
   /// somebody with no staff account behind them, whatever the client believes.
   final DevelopmentAccess? development;
 
+  /// The organization has made a second factor mandatory (§6
+  /// `security.require_two_factor`) and this account has not set one up.
+  ///
+  /// Sign-in still succeeds — the server deliberately routes people TO enrolment
+  /// rather than refusing them, because the only recovery from a mistaken
+  /// lockout is a password reset email this platform cannot send. What the
+  /// server does refuse is everything outside `/me`, so the shell reads this and
+  /// says why instead of letting somebody meet a wall of failed screens.
+  final bool twoFactorEnrolmentRequired;
+
+  /// The minimum length THIS organization's passwords must reach — the platform
+  /// floor, or higher where an administrator has raised it (§6
+  /// `security.password_min_length`).
+  ///
+  /// Resolved by the server, because only the server knows the setting. The
+  /// account screen states this number; sign-up and reset cannot, and state the
+  /// platform floor instead — see core/password_policy.dart for why.
+  final int passwordMinLength;
+
   final OrganizationSummary organization;
 
   /// Only franchises this user can actually act on (§4). The server sends reach,
@@ -236,6 +267,18 @@ class Me {
   /// stopped being valid — a franchise removed, an assignment narrowed — comes
   /// back as the organization rather than as something that no longer exists.
   final ViewScope scope;
+
+  /// How to write a date and a clock here (§6 `date_format`, `time_format`).
+  ///
+  /// Resolved by the server against [scope] — the SAME scope named above — so a
+  /// franchise that keeps a 24-hour clock reads as one the moment the switcher
+  /// points at it. It rides on /me for exactly that reason: /me is refetched by
+  /// [Session.setScope], so the formats cannot drift out of step with the view
+  /// they describe, and there is no second request to remember to make.
+  ///
+  /// Never null. An absent block means a server older than this build, and
+  /// DisplayFormats.fallback answers in ISO rather than guessing the default.
+  final DisplayFormats display;
 
   /// The companies behind the franchises this person can reach (§6). Needed so
   /// the settings screen can offer the middle tier of the cascade, which was
@@ -254,8 +297,11 @@ class Me {
         hasAvatar: hasAvatar,
         preferences: {...preferences, key: value},
         development: development,
+        twoFactorEnrolmentRequired: twoFactorEnrolmentRequired,
+        passwordMinLength: passwordMinLength,
         organization: organization,
         scope: scope,
+        display: display,
         companies: companies,
         franchises: franchises,
       );
@@ -296,10 +342,17 @@ class Me {
         development: json['development'] == null
             ? null
             : DevelopmentAccess.fromJson(json['development'] as Map<String, dynamic>),
+        twoFactorEnrolmentRequired: json['two_factor_enrolment_required'] == true,
+        // Falls back to the compiled floor rather than to zero. A server that
+        // does not send this is an older one, and its own minimum is the floor —
+        // asking for nothing would be a form that promises to accept `a`.
+        passwordMinLength:
+            (json['password_min_length'] as num?)?.toInt() ?? PasswordPolicy.minLength,
         organization:
             OrganizationSummary.fromJson(json['organization'] as Map<String, dynamic>),
         scope: ViewScope.fromJson(
             json['scope'] as Map<String, dynamic>? ?? const {}),
+        display: DisplayFormats.fromJson(json['display']),
         companies: (json['companies'] as List<dynamic>? ?? [])
             .map((c) => CompanySummary.fromJson(c as Map<String, dynamic>))
             .toList(),

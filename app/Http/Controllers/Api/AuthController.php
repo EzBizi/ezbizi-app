@@ -7,6 +7,8 @@ use App\Services\Auth\AuthenticateUser;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Auth\PasswordPolicy;
 use App\Support\Auth\SessionContext;
+use App\Support\Auth\SessionLifetime;
+use App\Support\Auth\TwoFactorPolicy;
 use App\Services\Auth\AuthenticationResult;
 use App\Support\Audit\AuditLogger;
 use App\Support\Tenancy\TenantContext;
@@ -317,9 +319,20 @@ class AuthController extends Controller
         // caller's validation, because this is the line that cannot accept it.
         $deviceName = trim((string) $request->input('device_name')) ?: 'web';
 
+        /*
+         * The idle window, not a flat month (§6 — `security.session_timeout_minutes`).
+         *
+         * It was `now()->addDays(30)`, which was the only lifetime this app had:
+         * the setting labelled "Sign out after inactivity" was read by nothing,
+         * so an unattended browser stayed signed in for thirty days.
+         *
+         * SlideIdleWindow pushes this forward on every request the token makes,
+         * so the thirty days survives as the absolute ceiling and the setting
+         * decides how long a session may sit untouched inside it.
+         */
         $token = $user->createToken(
             $deviceName,
-            expiresAt: now()->addDays(30),
+            expiresAt: app(SessionLifetime::class)->expiryFor($user->organization, now()),
         );
 
         // The user agent and address, so the session list can name this row
@@ -386,6 +399,12 @@ class AuthController extends Controller
                 'name'  => $user->name,
                 'email' => $user->email,
             ],
+            // The organization requires a second factor and this account has
+            // none (§6). Sent at sign-in, so the client can take somebody
+            // straight to enrolment rather than letting them find out by way of
+            // a dashboard that answers 403. See RequireTwoFactorEnrolment for
+            // why this is a detour and not a refusal.
+            'two_factor_enrolment_required' => app(TwoFactorPolicy::class)->mustEnrol($user),
             'organization' => [
                 'id'           => $user->organization->id,
                 'name'         => $user->organization->name,

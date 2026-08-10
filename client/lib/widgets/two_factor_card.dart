@@ -8,8 +8,21 @@ import 'totp_setup_dialog.dart';
 /// A client switching two-factor on for themselves (plan §6).
 ///
 /// Self-service by design: no administrator, and nobody from EzBizi needs to be
-/// available. Lives in Settings because that is where somebody goes looking for
-/// it, and because the organization-wide requirement lives there too.
+/// available.
+///
+/// Lives on the ACCOUNT screen, not on Settings — an earlier version of this
+/// comment said Settings, which is where the organization-wide requirement is
+/// configured but not where anybody's own authenticator has ever been managed.
+/// §2.1 keeps the two apart: Settings belongs to the organization and is set by
+/// an administrator, this belongs to the person.
+///
+/// It is also the way OUT of that organization-wide requirement. When
+/// `security.require_two_factor` is on and this person has not enrolled, the
+/// server refuses everything except `/me` and its sub-resources, and the shell
+/// puts a chip in the top bar pointing here. Anything that made this card
+/// unreachable — moving it behind a screen the server refuses, or adding a
+/// precondition an un-enrolled account cannot meet — would turn that
+/// requirement into a lockout.
 class TwoFactorCard extends StatefulWidget {
   const TwoFactorCard({super.key, required this.api, required this.session});
 

@@ -149,7 +149,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         width: columns == 1
                             ? constraints.maxWidth - 48
                             : (constraints.maxWidth - 64) / 2,
-                        child: _Panel(panel: panel),
+                        child: _Panel(
+                          panel: panel,
+                          formats: widget.session.me!.display,
+                        ),
                       ),
                   ],
                 ),
@@ -264,9 +267,14 @@ class _EmptyState extends StatelessWidget {
 /// A widget returning `rows` gets a list, one returning `total` gets a big
 /// number. A new widget that reuses a shape needs nothing here.
 class _Panel extends StatelessWidget {
-  const _Panel({required this.panel});
+  const _Panel({required this.panel, required this.formats});
 
   final Map<String, dynamic> panel;
+
+  /// How this scope writes a date (§6). Passed down rather than reached for,
+  /// because a panel that formatted from the browser's locale would show a
+  /// 12-hour clock to an organization that set 24 and look correct doing it.
+  final DisplayFormats formats;
 
   @override
   Widget build(BuildContext context) {
@@ -384,7 +392,7 @@ class _Panel extends StatelessWidget {
                   // The whole reason somebody opens this panel is WHEN. The
                   // generic row renderer showed the status and the customer and
                   // dropped both the job and its time.
-                  '${formatStamp(row['scheduled_for'] as String?, 'Not scheduled')}'
+                  '${formatStamp(row['scheduled_for'] as String?, 'Not scheduled', formats: formats)}'
                   '${row['customer'] == null ? '' : ' · ${row['customer']}'}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),

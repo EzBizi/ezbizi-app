@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Organization;
+use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
@@ -161,15 +162,44 @@ class SettingsController extends Controller
     {
         $scopeType = $this->scopeTypeOf($scope);
         $source    = $this->resolver->sourceOf($key, $scope);
+        $group     = $this->registry->groupOf($key);
 
         return [
             'key'            => $key,
             'label'          => $definition->label,
             'type'           => $definition->type,
+
+            // Which concern it belongs to, and what that concern is called.
+            //
+            // The client used to split the key on its dot and upper-case the
+            // first part, producing headings reading "OPS" and "NUMBERING" —
+            // words nobody chose. It cannot do better on its own: the fact
+            // that `numbering.*` means "Document numbering" is not in the
+            // string. So the grouping travels with the row, from the registry
+            // that actually knows it, in registration order.
+            'group'          => $group['key'],
+            'group_label'    => $group['label'],
             'value'          => $definition->isSensitive ? null : $this->resolver->get($key, $scope),
             'is_sensitive'   => $definition->isSensitive,
             'options'        => $definition->options ?: null,
             'help'           => $definition->help,
+
+            // Does this setting do anything yet, and if not, what is it waiting
+            // for? Null means it is in effect. A string is a sentence written
+            // for the administrator — "Takes effect when invoicing ships" — and
+            // is meant to be shown, not just to exist.
+            //
+            // One field rather than a flag beside a reason: two fields can
+            // disagree, and the disagreement would be invisible from here. A
+            // client asks `not_yet_in_effect != null` and has both answers.
+            //
+            // It deliberately does NOT change `may_edit`. The value is still
+            // stored, still audited, and still applies the day the feature
+            // lands, so an administrator setting it up in advance is doing
+            // something reasonable. Locking the control would trade one lie for
+            // another. What the screen owes them is the sentence.
+            'not_yet_in_effect' => $definition->notYetInEffect,
+
             // Can this SCOPE hold it? Inheritance, not permission.
             'editable_here'  => $definition->allowsScope($scopeType),
 
@@ -177,8 +207,7 @@ class SettingsController extends Controller
             // client had only the first — so somebody without
             // `organizations.edit` saw every control live, changed one, and
             // got a 403 from a switch that had already animated.
-            'may_edit'       => $definition->allowsScope($scopeType)
-                                && $request->user()->hasPermission($definition->permissionRequired()),
+            'may_edit'       => $this->mayEdit($request->user(), $definition, $scope),
 
             // Named so a refusal can say which one is missing rather than
             // "you cannot do that".
@@ -236,6 +265,73 @@ class SettingsController extends Controller
      * rate; reach without permission lets anyone who can see a franchise
      * reconfigure it.
      */
+    /**
+     * May this person set this setting AT THIS SCOPE?
+     *
+     * One predicate, asked in two places: `may_edit` on every row, and
+     * `authorizeEdit` before every write. They used to be computed differently —
+     * the row asked only about permission — so the screen drew a live control
+     * for a scope the person could not write to, and the save came back 403 from
+     * a switch that had already animated. That is the exact regression
+     * SettingsVisibilityTest exists to prevent, live again for every scope
+     * outside the person's reach.
+     */
+    private function mayEdit(User $user, SettingDefinition $definition, Model $scope): bool
+    {
+        return $definition->allowsScope($this->scopeTypeOf($scope))
+            && $user->hasPermission($definition->permissionRequired())
+            && $this->reaches($user, $scope);
+    }
+
+    /**
+     * Authority over a scope, and never upward out of it (§4, TODO #12).
+     *
+     * The owner's rule in their words: "a franchise user should not be able to
+     * modify parent preferences, a company user should not be able to modify org
+     * preferences."
+     */
+    private function reaches(User $user, Model $scope): bool
+    {
+        if ($scope instanceof Franchise) {
+            return $user->canActOnFranchise($scope);
+        }
+
+        // canActOnCompany, not a reach derivation of our own.
+        //
+        // This used to be `reachableFranchises()->pluck('company_id')` merged
+        // with each of those companies' PARENT ids — which is the inverse of the
+        // rule. It let somebody assigned to one franchise write settings on the
+        // company above it AND on that company's parent, cascading to every
+        // sibling branch they have no authority over at all. ReachesCompanies
+        // walks the other way, deliberately: the assignment must sit AT or ABOVE
+        // the company, because §4 says authority flows down a subtree and never
+        // up out of one.
+        if ($scope instanceof Company) {
+            return $user->canActOnCompany($scope);
+        }
+
+        // And the branch that was simply absent.
+        //
+        // With no Organization case, holding `organizations.edit` was the whole
+        // test — so a user assigned to ONE franchise could rewrite settings for
+        // the entire tenant. Not theoretical, and not limited to administrators:
+        // a plain role carrying only that permission, assigned to a single
+        // franchise, was measured lowering password_min_length from 12 to 4 and
+        // switching security.require_two_factor on, both 200 OK.
+        //
+        // The owner's rule, in their words: "a franchise user should not be able
+        // to modify parent preferences, a company user should not be able to
+        // modify org preferences" (TODO #12).
+        //
+        // The test is CompanyPolicy::create's, deliberately the same one: an
+        // assignment covering the organization itself. Reaching every company
+        // that happens to exist today is not the same thing — it is a set that
+        // changes when somebody adds a branch, and organization scope is not.
+        return $user->assignments->contains(
+            fn ($a) => $a->assigned_organization_id === $user->organization_id
+        );
+    }
+
     private function authorizeEdit(Request $request, SettingDefinition $definition, Model $scope): void
     {
         $user = $request->user();
@@ -246,23 +342,13 @@ class SettingsController extends Controller
             "Missing permission: {$definition->permissionRequired()}."
         );
 
-        if ($scope instanceof Franchise) {
-            abort_unless(
-                $user->canActOnFranchise($scope),
-                Response::HTTP_FORBIDDEN,
-                'That franchise is outside your assignments.'
-            );
-        }
-
-        if ($scope instanceof Company) {
-            $reachable = $user->reachableFranchises()
-                ->pluck('company_id')
-                ->merge($user->reachableFranchises()->map(fn ($f) => $f->company?->parent_company_id))
-                ->filter()
-                ->contains($scope->getKey());
-
-            abort_unless($reachable, Response::HTTP_FORBIDDEN, 'That company is outside your assignments.');
-        }
+        abort_unless(
+            $this->reaches($user, $scope),
+            Response::HTTP_FORBIDDEN,
+            $scope instanceof Organization
+                ? 'Organization-wide settings need an organization-level assignment.'
+                : 'That scope is outside your assignments.'
+        );
     }
 
     private function scopeTypeOf(Model $scope): string

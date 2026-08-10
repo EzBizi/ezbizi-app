@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/timestamps.dart';
 import '../widgets/error_note.dart';
 import '../widgets/setting_editors.dart';
 import '../widgets/side_panel.dart';
@@ -12,6 +13,15 @@ import '../widgets/side_panel.dart';
 /// organization looks different from one set here, because "what is this set
 /// to" and "where did it come from" are different questions — and without the
 /// second, people change the wrong level and wonder why nothing happened.
+///
+/// ── Why there is a toolbar above the list ────────────────────────
+///
+/// Thirty rows in eight cards is not a screen anybody reads; it is one people
+/// scroll past hunting for a single thing. An administrator arrives having
+/// already decided what they want — "make passwords longer", "the tax rate for
+/// this territory" — so the first control is a search box. The second answers
+/// the question this screen exists for: how much of what you are looking at is
+/// decided HERE, rather than somewhere above you.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.api, required this.session});
 
@@ -22,10 +32,54 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
+/// Which question the list is answering at the moment.
+enum _Filter { all, setHere, notInEffect }
+
+/// One heading and the rows under it, as the SERVER grouped them.
+///
+/// Keyed on the group's identifier rather than on the words printed above it:
+/// two concerns could reasonably be given the same name, and the label is only
+/// ever printed, never matched on.
+class _Group {
+  _Group(this.key, this.label);
+
+  final String key;
+  final String? label;
+  final List<Map<String, dynamic>> rows = [];
+}
+
+/// What this setting is waiting for, when it is waiting for something.
+///
+/// `not_yet_in_effect` is one nullable sentence rather than a flag beside a
+/// reason, so the two halves cannot disagree — null means the setting does
+/// something, a string says what has to ship before it does. A setting that
+/// saves, audits and changes no behaviour is the failure this whole area of
+/// work exists to correct, and the honest thing a screen can do about one
+/// nobody has wired yet is refuse to imply otherwise.
+String? _notYetInEffect(Map<String, dynamic> setting) {
+  final reason = setting['not_yet_in_effect'];
+
+  return reason is String && reason.trim().isNotEmpty ? reason : null;
+}
+
+/// The value on this row was chosen at the scope being looked at.
+///
+/// Distinct from "has a value" — nearly everything has one. This is the count
+/// that says whether you are looking at a scope that overrides much, or at one
+/// that simply follows its parent.
+bool _setHere(Map<String, dynamic> setting) {
+  final source = setting['source'] as Map<String, dynamic>?;
+
+  return source != null && source['inherited'] != true;
+}
+
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _loading = true;
   String? _error;
   List<dynamic> _settings = [];
+
+  final TextEditingController _search = TextEditingController();
+  _Filter _filter = _Filter.all;
 
   /// Whatever the top bar's switcher is pointing at.
   ///
@@ -44,10 +98,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// edited.
   String get _scopeLabel => widget.session.me!.scope.fullPath;
 
+  /// The rows, typed. Anything in the response that is not a row is skipped
+  /// rather than taking the screen down around it.
+  Iterable<Map<String, dynamic>> get _rows =>
+      _settings.whereType<Map<String, dynamic>>();
+
   @override
   void initState() {
     super.initState();
+    // Filtering is the only thing typing does, so a listener is the whole
+    // wiring — no submit button, no debounce. Thirty rows do not need one.
+    _search.addListener(() => setState(() {}));
     _load();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
   /// A scope change refetches because the SHELL remounts this screen, not
@@ -111,12 +179,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!response.ok) {
       // Nothing on screen moves. A control showing a value the server refused
       // is worse than one that never changed, because it looks saved.
+      //
+      // For a switch or a dropdown that is free: they are drawn from the row,
+      // and the row has not changed. A text field holds its own text, so it is
+      // the one control that CAN sit there displaying a rejected value as
+      // though it had been accepted — and it did. _InlineField puts itself back
+      // when the future this returns completes.
       _snack(response.message, isError: true);
       return;
     }
 
     _apply(key, response.data);
     _snack('Saved');
+
+    await _refreshDisplayFormats(key);
+  }
+
+  /// Pick up a display setting the server has just changed (§6).
+  ///
+  /// Changing how a date is written has to change the dates already on this
+  /// page — the business-hours summary two rows down, and the quiet-hours one
+  /// under it. Those read `session.me.display`, which came from /me and is now
+  /// a value the server has replaced. Nothing else refetches /me, so without
+  /// this the owner switches to 24h, watches the row say "Saved", and reads
+  /// "5:00 PM" immediately beneath it — the original complaint, reproduced on
+  /// the screen built to fix it.
+  ///
+  /// It does NOT reload this screen. /me is a different request; the rows here
+  /// stay exactly as they are, main.dart's listener repaints the tree with the
+  /// new formats, and the KeyedSubtree around the body is keyed on the SCOPE,
+  /// which has not changed — so this State survives and nothing blanks. That
+  /// matters: refetching /settings on every write is the behaviour the owner
+  /// complained about and it is not being reintroduced by the back door.
+  ///
+  /// Asks DisplayFormats which keys those are rather than naming them here.
+  /// One list, in the file that formats from it, so a third display setting
+  /// starts refreshing the moment it starts being read.
+  Future<void> _refreshDisplayFormats(String key) async {
+    if (!DisplayFormats.known.containsKey(key)) return;
+
+    await widget.session.refresh();
   }
 
   Future<void> _reset(String key) async {
@@ -147,21 +249,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // _apply is refetching. It will show what is actually true in a moment,
       // so say only the part that is certain — the server accepted the reset.
       _snack('Reset');
-      return;
+    } else {
+      // What it fell back TO is in the answer, so say that rather than guessing
+      // from the scope we are sitting at. Dropping an override on a franchise
+      // usually means inheriting from the company above — but when nothing
+      // above holds a value either, the platform default applies and "Now
+      // inherited" would name a level with nothing set on it.
+      final source = applied['source'] as Map<String, dynamic>?;
+
+      _snack(
+        source == null
+            ? 'Back to the EzBizi default'
+            : 'Now inherited from ${source['name']}',
+      );
     }
 
-    // What it fell back TO is in the answer, so say that rather than guessing
-    // from the scope we are sitting at. Dropping an override on a franchise
-    // usually means inheriting from the company above — but when nothing above
-    // holds a value either, the platform default applies and "Now inherited"
-    // would name a level with nothing set on it.
-    final source = applied['source'] as Map<String, dynamic>?;
-
-    _snack(
-      source == null
-          ? 'Back to the EzBizi default'
-          : 'Now inherited from ${source['name']}',
-    );
+    // Inheriting a clock again changes it just as setting one does.
+    await _refreshDisplayFormats(key);
   }
 
   /// Put the row the write just returned back where the old one was.
@@ -207,6 +311,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// Does this row survive the search box and the chips?
+  ///
+  /// The key is searched as well as the label, because the words somebody has
+  /// been handed by a support article or a security questionnaire are sometimes
+  /// the key itself — a person told to check `password_min_length` should not
+  /// have to translate it into English before they can find it.
+  bool _matches(Map<String, dynamic> setting) {
+    if (_filter == _Filter.setHere && !_setHere(setting)) return false;
+
+    if (_filter == _Filter.notInEffect && _notYetInEffect(setting) == null) {
+      return false;
+    }
+
+    final query = _search.text.trim().toLowerCase();
+
+    if (query.isEmpty) return true;
+
+    return [
+      setting['label'],
+      setting['key'],
+      setting['help'],
+      setting['group_label'],
+    ].whereType<String>().any((text) => text.toLowerCase().contains(query));
+  }
+
   @override
   Widget build(BuildContext context) {
     final me = widget.session.me!;
@@ -218,7 +347,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // where you are; this says what changing something here would affect,
         // which is the question people actually get wrong.
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
           child: Text(
             _scopeType == 'organization'
                 ? 'Settings for ${me.organization.name} — everything inherits these '
@@ -228,9 +357,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ),
+        // Nothing to search and nothing to count until the first load lands.
+        if (_rows.isNotEmpty) _toolbar(context),
+        const SizedBox(height: 12),
         const Divider(height: 1),
         Expanded(child: _body(context)),
       ],
+    );
+  }
+
+  /// Search, and the two counts worth knowing before reading anything.
+  Widget _toolbar(BuildContext context) {
+    final total = _rows.length;
+    final setHere = _rows.where(_setHere).length;
+    final pending = _rows.where((s) => _notYetInEffect(s) != null).length;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(
+            width: 300,
+            child: TextField(
+              controller: _search,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Search $total settings',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _search.text.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        tooltip: 'Clear',
+                        onPressed: _search.clear,
+                      ),
+              ),
+            ),
+          ),
+
+          // The one number that says how much of this scope is its own doing.
+          // Zero is worth printing too: "nothing is overridden here, all of it
+          // comes from above" is an answer, and it is the answer people are
+          // most often surprised by.
+          FilterChip(
+            label: Text('Set here · $setHere'),
+            selected: _filter == _Filter.setHere,
+            onSelected: (on) =>
+                setState(() => _filter = on ? _Filter.setHere : _Filter.all),
+            tooltip: 'Decided at this level rather than inherited',
+          ),
+
+          // Only when there are any. A filter that can never match teaches
+          // people the screen has dead buttons on it.
+          if (pending > 0)
+            FilterChip(
+              label: Text('Not in effect · $pending'),
+              selected: _filter == _Filter.notInEffect,
+              onSelected: (on) => setState(
+                () => _filter = on ? _Filter.notInEffect : _Filter.all,
+              ),
+              tooltip: 'Saved and audited, but nothing reads them yet',
+            ),
+        ],
+      ),
     );
   }
 
@@ -253,13 +445,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     }
 
-    // Grouped by key prefix, matching the server's own grouping.
-    final groups = <String, List<dynamic>>{};
-    for (final s in _settings) {
-      final key = s['key'] as String;
-      final group = key.contains('.') ? key.split('.').first : 'general';
-      groups.putIfAbsent(group, () => []).add(s);
+    if (_rows.isEmpty) {
+      return const Center(
+        child: Text('There are no settings to show at this scope.'),
+      );
     }
+
+    // Grouped the way the SERVER groups them, in the order it sent.
+    //
+    // This used to split the key on its dot and upper-case the front, so the
+    // headings read "GENERAL", "OPS", "NUMBERING" — words nobody wrote, falling
+    // out of identifiers. Replacing that with a Dart map of prefix to English
+    // would have been the same bug one layer along, with the client still
+    // deciding what the platform's concerns are called. So the row carries its
+    // group and the words for it, and this end only prints them.
+    //
+    // A row that names no group is not given an invented heading. It goes in an
+    // unlabelled section, which is honest about the client not knowing.
+    final groups = <String, _Group>{};
+
+    for (final setting in _rows) {
+      if (!_matches(setting)) continue;
+
+      groups
+          .putIfAbsent(
+            setting['group'] as String? ?? '',
+            () => _Group(
+              setting['group'] as String? ?? '',
+              setting['group_label'] as String?,
+            ),
+          )
+          .rows
+          .add(setting);
+    }
+
+    if (groups.isEmpty) return _nothingMatches(context);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -269,23 +489,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // "Your account" — they were here, directly above the organization's
         // job statuses, which implied whoever could change one could change the
         // other. §2.1 is explicit that the two categories are not to be merged.
-        for (final entry in groups.entries) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
-            child: Text(
-              entry.key.toUpperCase(),
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-          ),
+        for (final group in groups.values) ...[
+          if (group.label != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 22, 4, 8),
+              child: Text(
+                group.label!,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            )
+          else
+            const SizedBox(height: 12),
           Card(
             child: Column(
               children: [
-                for (var i = 0; i < entry.value.length; i++) ...[
+                for (var i = 0; i < group.rows.length; i++) ...[
                   if (i > 0) const Divider(height: 1),
                   _SettingRow(
-                    setting: entry.value[i] as Map<String, dynamic>,
-                    scopeLabel: _scopeLabel,
+                    setting: group.rows[i],
                     scopeType: _scopeType,
+                    franchiseWord:
+                        widget.session.me!.organization.franchiseLabel,
+                    // Resolved by /me against this same scope (§6), so the
+                    // times inside Business hours are written the way the
+                    // Time format row three lines up says they should be.
+                    formats: widget.session.me!.display,
                     onChanged: _update,
                     onReset: _reset,
                   ),
@@ -297,29 +527,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ],
     );
   }
+
+  Widget _nothingMatches(BuildContext context) {
+    final query = _search.text.trim();
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            query.isEmpty
+                ? 'Nothing here matches that filter.'
+                : 'Nothing matches “$query”.',
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
+          const SizedBox(height: 12),
+          // One button clears both, because somebody staring at an empty list
+          // rarely remembers which of the two narrowed it.
+          OutlinedButton(
+            onPressed: () => setState(() {
+              _search.clear();
+              _filter = _Filter.all;
+            }),
+            child: const Text('Show all settings'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SettingRow extends StatelessWidget {
   const _SettingRow({
     required this.setting,
-    required this.scopeLabel,
     required this.scopeType,
+    required this.franchiseWord,
+    required this.formats,
     required this.onChanged,
     required this.onReset,
   });
 
   final Map<String, dynamic> setting;
-  final String scopeLabel;
+
+  /// In force at this scope. Used by the shaped editors below, which show
+  /// times, and to say so when the value in a row is one this build cannot
+  /// draw.
+  final DisplayFormats formats;
 
   /// Organization is the top of the cascade, so it inherits from nothing. The
   /// row has to know, or it offers to "reset to inherited" at a level with
   /// nothing above it.
   final String scopeType;
-  final void Function(String key, dynamic value) onChanged;
+
+  /// The tenant's own word for a franchise — "Territory", "Branch", "Location".
+  /// A row explaining which levels may set something has to use the word the
+  /// switcher above it uses, or it is describing a different app (§2.1).
+  final String franchiseWord;
+
+  /// Returns once the write has been answered, so a control holding its own
+  /// text can put itself back when the server refuses it.
+  final Future<void> Function(String key, dynamic value) onChanged;
   final void Function(String key) onReset;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final key = setting['key'] as String;
     final type = setting['type'] as String;
     // Two separate questions, and the screen used to ask only the first.
@@ -335,6 +607,30 @@ class _SettingRow extends StatelessWidget {
     final source = setting['source'] as Map<String, dynamic>?;
     final inherited = source?['inherited'] as bool? ?? false;
 
+    // Null for every setting this build understands, which is all of them
+    // until the server's registry moves ahead of the client's.
+    final unsupported = DisplayFormats.unsupportedNote(key, setting['value']);
+
+    final pending = _notYetInEffect(setting);
+
+    // Why the controls are dead, when they are.
+    //
+    // Separate from the provenance line below, which it used to BE: one chain
+    // of ternaries printed either where the value came from or why you could
+    // not change it. So the moment a row went read-only it stopped saying what
+    // it had inherited and from where — on the screen whose entire purpose is
+    // showing that. Worse, "EzBizi default" was tested first, so an
+    // organization-only setting viewed from a franchise with nothing set
+    // anywhere printed the platform default and gave no hint that this was the
+    // wrong level to be looking at.
+    final locked = !scopeAllows
+        ? _scopeSentence()
+        : !editable
+        // Names the permission. "You cannot do that" sends somebody to ask an
+        // administrator for something neither of them can name.
+        ? 'Read-only — needs ${setting['permission'] ?? 'permission'}'
+        : null;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
@@ -345,30 +641,65 @@ class _SettingRow extends StatelessWidget {
               children: [
                 Text(
                   setting['label'] as String,
-                  style: Theme.of(context).textTheme.titleMedium,
+                  style: theme.textTheme.titleMedium,
                 ),
                 const SizedBox(height: 2),
-                // Where the value came from. The whole reason the API returns
-                // `source` — an admin who can't see this changes the wrong level.
+
+                // Where the value came from — always, whatever else is true of
+                // the row. The whole reason the API returns `source` is that an
+                // admin who cannot see it changes the wrong level.
                 Text(
                   source == null
                       // Nothing set anywhere in the cascade — the value on
                       // screen is the platform's, not this organization's.
                       ? 'EzBizi default'
-                      : !scopeAllows
-                      ? 'Set at organization level only'
-                      : !editable
-                      // Names the permission. "You cannot do that" sends
-                      // somebody to ask an administrator for something
-                      // neither of them can name.
-                      ? 'Read-only — needs ${setting['permission'] ?? 'permission'}'
                       : inherited
                       ? 'Inherited from ${source['name']}'
                       : 'Set here',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontSize: 12),
+                  style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
                 ),
+
+                if (locked != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    locked,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+
+                // Not the same thing as read-only, and it must not look like
+                // it. A locked row is one you may not change. This is one you
+                // MAY change and that will change nothing: the control is live,
+                // the save is real, the value is stored, audited and inherited
+                // exactly as any other, and no code reads it yet. Greying it
+                // would say "not for you", which is a different lie — and the
+                // sentence comes from the server, which is the only end that
+                // knows what the setting is waiting for.
+                if (pending != null) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.schedule,
+                        size: 14,
+                        color: theme.colorScheme.tertiary,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Not in effect yet — $pending',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.tertiary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
 
                 // The server sends `help` for every setting and nothing showed
                 // it, so the reasoning behind each one lived only in the code.
@@ -376,7 +707,26 @@ class _SettingRow extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     setting['help'] as String,
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+
+                // A value the server accepts and this bundle cannot draw.
+                //
+                // Only reachable when the registry has gained an option since
+                // this build was compiled — one deploy landing before the
+                // other. Said out loud, and here, because the alternative is a
+                // setting that saves, audits, and visibly does nothing, which
+                // is the exact complaint this whole change answers. Somebody
+                // looking at this row deserves to know it is the app that is
+                // behind, not their choice that was ignored.
+                if (unsupported != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    unsupported,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
                   ),
                 ],
               ],
@@ -384,21 +734,60 @@ class _SettingRow extends StatelessWidget {
           ),
           const SizedBox(width: 16),
           _control(context, key, type, editable),
-          if (editable && !inherited && source != null)
-            IconButton(
-              icon: const Icon(Icons.settings_backup_restore, size: 18),
-              // At organization scope there is nothing above to inherit FROM —
-              // it is the top of the cascade. Clearing the value there still
-              // does something useful, it just falls back to the platform's
-              // default rather than to a parent, and the label should say which.
-              tooltip: scopeType == 'organization'
-                  ? 'Reset to the EzBizi default'
-                  : 'Reset to inherited',
-              onPressed: () => onReset(key),
-            ),
+
+          // A slot of the same width whether or not there is a button in it.
+          // Without one, the controls down a card sat at different distances
+          // from the right edge depending on which rows happened to be
+          // overridden — a ragged column that read as a rendering fault.
+          SizedBox(
+            width: 48,
+            child: editable && !inherited && source != null
+                ? IconButton(
+                    icon: const Icon(Icons.settings_backup_restore, size: 18),
+                    // At organization scope there is nothing above to inherit
+                    // FROM — it is the top of the cascade. Clearing the value
+                    // there still does something useful, it just falls back to
+                    // the platform's default rather than to a parent, and the
+                    // label should say which.
+                    tooltip: scopeType == 'organization'
+                        ? 'Reset to the EzBizi default'
+                        : 'Reset to inherited',
+                    onPressed: () => onReset(key),
+                  )
+                : null,
+          ),
         ],
       ),
     );
+  }
+
+  /// Which levels may hold this setting, in the tenant's own vocabulary.
+  ///
+  /// Built from `allowed_scopes`, which the API has always sent and which this
+  /// screen ignored in favour of the fixed words "Set at organization level
+  /// only" — true of every restricted setting TODAY, and a plain falsehood the
+  /// first time one is company-and-franchise. A sentence that happens to be
+  /// right is not the same as one derived from the answer.
+  String _scopeSentence() {
+    final scopes = (setting['allowed_scopes'] as List<dynamic>? ?? [])
+        .whereType<String>()
+        .map(
+          (scope) => switch (scope) {
+            'organization' => 'the organization',
+            'company' => 'a company',
+            'franchise' => 'a ${franchiseWord.toLowerCase()}',
+            _ => scope,
+          },
+        )
+        .toList();
+
+    if (scopes.isEmpty) return 'This cannot be set at this level.';
+
+    final last = scopes.removeLast();
+
+    return scopes.isEmpty
+        ? 'Only $last can set this.'
+        : 'Only ${scopes.join(', ')} or $last can set this.';
   }
 
   Widget _control(
@@ -439,6 +828,7 @@ class _SettingRow extends StatelessWidget {
         label: setting['label'] as String,
         value: value,
         editable: editable,
+        formats: formats,
         onChanged: (v) => onChanged(key, v),
       );
     }
@@ -448,6 +838,7 @@ class _SettingRow extends StatelessWidget {
         label: setting['label'] as String,
         value: value,
         editable: editable,
+        formats: formats,
         help: setting['help'] as String?,
         onChanged: (v) => onChanged(key, v),
       );
@@ -479,14 +870,21 @@ class _SettingRow extends StatelessWidget {
       );
     }
 
+    // A sensitive setting comes back with `value: null` however it is set — the
+    // API never hands the secret out, on any route. An empty box beside the
+    // words "Set here" reads as "this is blank", which is the opposite of true,
+    // so the field says what is actually the case and takes a replacement.
+    final sensitive = setting['is_sensitive'] == true;
+
     // int / decimal / string.
     return SizedBox(
       width: 150,
       child: _InlineField(
         // Keyed by value, so a save elsewhere or a scope switch rebuilds the
         // field instead of leaving the old text sitting in it.
-        key: ValueKey('$key:${value?.toString()}'),
-        initial: value?.toString() ?? '',
+        key: ValueKey('$key:${sensitive ? 'hidden' : value?.toString()}'),
+        initial: sensitive ? '' : value?.toString() ?? '',
+        hint: sensitive ? 'Hidden' : null,
         enabled: editable,
         numeric: type == 'int' || type == 'decimal',
         onCommitted: (v) => onChanged(key, v),
@@ -511,12 +909,18 @@ class _InlineField extends StatefulWidget {
     required this.enabled,
     required this.numeric,
     required this.onCommitted,
+    this.hint,
   });
 
   final String initial;
+
+  /// What to show when the box is empty because the value is not ours to see.
+  final String? hint;
   final bool enabled;
   final bool numeric;
-  final ValueChanged<String> onCommitted;
+
+  /// Completes when the write has been answered — see `_commit`.
+  final Future<void> Function(String) onCommitted;
 
   @override
   State<_InlineField> createState() => _InlineFieldState();
@@ -543,7 +947,7 @@ class _InlineFieldState extends State<_InlineField> {
     super.dispose();
   }
 
-  void _commit() {
+  Future<void> _commit() async {
     final typed = _controller.text.trim();
 
     // Unchanged means nothing to save. Without this, tabbing across a row of
@@ -551,7 +955,26 @@ class _InlineFieldState extends State<_InlineField> {
     // changes nobody made.
     if (typed == widget.initial.trim()) return;
 
-    widget.onCommitted(typed);
+    await widget.onCommitted(typed);
+
+    // Then show what the SCREEN holds, which is not necessarily what was typed.
+    //
+    // Reaching this line at all means the stored value is still `initial`: a
+    // write the server accepted with a different value splices a new row, the
+    // row keys this field by that value, and this State is disposed before the
+    // await returns. So still being here means one of three things —
+    //
+    //   - the server refused it, and the box was left sitting there showing a
+    //     rejected number as though it had saved. Every other control reverts
+    //     for free because it is drawn from the row; this is the one that keeps
+    //     its own copy, and it was the one place where the "nothing on screen
+    //     moves" promise in _update was quietly not kept;
+    //   - it was accepted and normalised back to the same value — "8.50" for a
+    //     rate already 8.5 — where the canonical spelling is what belongs in
+    //     the box;
+    //   - it is a sensitive setting, whose value never comes back, so the field
+    //     empties and returns to saying "Hidden".
+    if (mounted) _controller.text = widget.initial;
   }
 
   @override
@@ -561,9 +984,13 @@ class _InlineFieldState extends State<_InlineField> {
       focusNode: _focus,
       enabled: widget.enabled,
       textAlign: TextAlign.right,
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         isDense: true,
-        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        hintText: widget.hint,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 10,
+        ),
       ),
       keyboardType: widget.numeric
           ? const TextInputType.numberWithOptions(decimal: true)

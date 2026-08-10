@@ -194,5 +194,11 @@ class _ImpersonationsScreenState extends State<ImpersonationsScreen> {
   Widget _meta(BuildContext context, String text) =>
       Text(text, style: Theme.of(context).textTheme.bodyMedium);
 
-  String _stamp(dynamic iso) => formatStamp(iso, '—');
+  /// The control plane spans every tenant (§4.2), so there is no organization
+  /// whose `date_format` could apply — a list of impersonations across four
+  /// customers has four answers and must pick none of them. It states the
+  /// platform format rather than defaulting to it, and ISO is the right choice
+  /// for a reader comparing timestamps between organizations anyway.
+  String _stamp(dynamic iso) =>
+      formatStamp(iso, '—', formats: DisplayFormats.platform);
 }
