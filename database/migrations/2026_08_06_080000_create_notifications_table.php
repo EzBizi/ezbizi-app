@@ -27,6 +27,9 @@ return new class extends Migration
 
             // 'workflow', 'system'. Not an enum: the set grows with every module
             // that learns to tell somebody something.
+            //
+            // 'workflow' became 'automation' on 2026-08-10 along with the rest
+            // of the rename — see that date's migration.
             $table->string('source', 40)->default('system');
 
             $table->string('title');
@@ -41,7 +44,8 @@ return new class extends Migration
             $table->timestamp('read_at')->nullable();
 
             // Who or what caused it, so a flood can be traced to the rule that
-            // produced it rather than guessed at.
+            // produced it rather than guessed at. Renamed to automation_id on
+            // 2026-08-10; the column below is what this migration created.
             $table->uuid('workflow_id')->nullable();
             $table->uuid('event_id')->nullable();
 

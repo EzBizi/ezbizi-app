@@ -1,9 +1,9 @@
 <?php
 
-namespace App\Support\Workflows;
+namespace App\Support\Automations;
 
+use App\Models\AutomationEvent;
 use App\Models\User;
-use App\Models\WorkflowEvent;
 use App\Support\Audit\AuditLogger;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Tenancy\TenantContext;
@@ -28,24 +28,25 @@ class EventEmitter
 
     /**
      * @param  array  $payload  typically ['before' => [...], 'after' => [...]]
-     * @param  WorkflowEvent|null  $causedBy  set when a workflow action caused
-     *                                        this — carries the cascade's root
-     *                                        and depth so loop protection works
-     *                                        across separate delayed runs.
+     * @param  AutomationEvent|null  $causedBy  set when an automation action
+     *                                          caused this — carries the
+     *                                          cascade's root and depth so loop
+     *                                          protection works across separate
+     *                                          delayed runs.
      */
     public function emit(
         string $eventKey,
         ?Model $subject = null,
         array $payload = [],
         ?User $actor = null,
-        ?WorkflowEvent $causedBy = null,
+        ?AutomationEvent $causedBy = null,
         ?\DateTimeInterface $availableAt = null,
-    ): WorkflowEvent {
+    ): AutomationEvent {
         $this->assertRegistered($eventKey);
 
         $actor ??= auth()->user() instanceof User ? auth()->user() : null;
 
-        return WorkflowEvent::create([
+        return AutomationEvent::create([
             'organization_id' => $this->tenant->idOrFail(),
             'event_key'       => $eventKey,
             'subject_type'    => $subject ? $subject::class : null,
@@ -66,7 +67,7 @@ class EventEmitter
     }
 
     /**
-     * A trigger no module declares is a typo, and a workflow listening for one
+     * A trigger no module declares is a typo, and an automation listening for one
      * would look configured and never fire — the most confusing possible
      * failure, because nothing anywhere reports an error.
      *
@@ -75,20 +76,22 @@ class EventEmitter
      */
     private function assertRegistered(string $eventKey): void
     {
-        foreach ($this->registry->all() as $module) {
-            if (in_array($eventKey, $module->triggers, strict: true)) {
-                return;
-            }
+        if ($this->registry->findTrigger($eventKey) !== null) {
+            return;
         }
 
         throw new InvalidArgumentException(
             "No module declares the trigger '{$eventKey}'. Add it to the module's "
-            .'ModuleDefinition, or the workflow engine can never route it.'
+            .'ModuleDefinition, or the automation engine can never route it.'
         );
     }
 
     /**
-     * Every trigger any module declares — what the workflow builder offers.
+     * Every trigger key any module declares, grouped by module.
+     *
+     * Keys only. What the automation builder OFFERS is the catalogue endpoint,
+     * which carries each trigger's label and description as well — this is the
+     * engine's view, and the engine routes on the key alone.
      *
      * @return array<string, string[]> module key => trigger keys
      */
@@ -98,7 +101,7 @@ class EventEmitter
 
         foreach ($this->registry->all() as $key => $module) {
             if ($module->triggers !== []) {
-                $triggers[$key] = $module->triggers;
+                $triggers[$key] = $module->triggerKeys();
             }
         }
 

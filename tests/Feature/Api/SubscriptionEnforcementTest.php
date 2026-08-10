@@ -3,24 +3,24 @@
 namespace Tests\Feature\Api;
 
 use App\Exceptions\SubscriptionLapsedException;
+use App\Models\Automation;
+use App\Models\AutomationEvent;
+use App\Models\AutomationVersion;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Notification;
 use App\Models\User;
-use App\Models\Workflow;
-use App\Models\WorkflowEvent;
-use App\Models\WorkflowVersion;
 use App\Services\Organizations\ProvisionOrganization;
+use App\Support\Automations\AutomationEngine;
 use App\Support\Subscriptions\SubscriptionGuard;
 use App\Support\Tenancy\TenantContext;
-use App\Support\Workflows\WorkflowEngine;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
  * Subscription enforcement below the edge (plan §13).
  *
- * §13 is explicit that middleware is not sufficient: "A workflow that keeps
+ * §13 is explicit that middleware is not sufficient: "An automation that keeps
  * firing after expiry, or an import that still runs, means the product works
  * fine without paying. Enforce at the service layer, where every path
  * converges."
@@ -100,7 +100,7 @@ class SubscriptionEnforcementTest extends TestCase
         $this->assertNotNull($this->inTenant(fn () => Customer::find($customer->id)));
     }
 
-    public function test_a_workflow_cannot_keep_acting_after_expiry(): void
+    public function test_an_automation_cannot_keep_acting_after_expiry(): void
     {
         $customer = $this->customer();
 
@@ -111,29 +111,29 @@ class SubscriptionEnforcementTest extends TestCase
         ]));
 
         $this->inTenant(function () use ($job) {
-            $w = Workflow::create([
+            $w = Automation::create([
                 'organization_id' => $this->org['organization']->id,
                 'name' => 'Touch it', 'trigger_key' => 'job.created', 'is_active' => true,
             ]);
 
-            $v = WorkflowVersion::create([
+            $v = AutomationVersion::create([
                 'organization_id' => $this->org['organization']->id,
-                'workflow_id' => $w->id, 'version' => 1,
+                'automation_id' => $w->id, 'version' => 1,
                 'actions' => [['type' => 'update_field', 'field' => 'title', 'value' => 'Touched']],
                 'created_at' => now(),
             ]);
 
             $w->forceFill(['active_version_id' => $v->id])->save();
 
-            app(\App\Support\Workflows\EventEmitter::class)
+            app(\App\Support\Automations\EventEmitter::class)
                 ->emit('job.created', $job, ['after' => ['status' => 'scheduled']]);
         });
 
         $this->lapse();
 
-        $event = $this->inTenant(fn () => WorkflowEvent::whereNull('delivered_at')->first());
+        $event = $this->inTenant(fn () => AutomationEvent::whereNull('delivered_at')->first());
 
-        app(WorkflowEngine::class)->deliver($event);
+        app(AutomationEngine::class)->deliver($event);
 
         // The rule matched and its action was refused. "The product works fine
         // without paying" is precisely what §13 says this must not be.

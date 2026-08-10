@@ -37,7 +37,7 @@ return new class extends Migration
             // ── who ──
             // 'user'   tenant user
             // 'staff'  EzBizi platform staff (§4.2)
-            // 'system' workflows, scheduled tasks, migrations
+            // 'system' automations, scheduled tasks, migrations
             $table->enum('actor_type', ['user', 'staff', 'system']);
             $table->uuid('actor_id')->nullable();
 
@@ -63,7 +63,7 @@ return new class extends Migration
             $table->json('metadata')->nullable();
 
             // Ties events from one request together, and one event to whatever
-            // caused it. Without these, a workflow that fires five actions is
+            // caused it. Without these, an automation that fires five actions is
             // five unrelated rows and the chain is unreconstructable.
             $table->uuid('correlation_id')->nullable()->index();
             $table->uuid('causation_id')->nullable();

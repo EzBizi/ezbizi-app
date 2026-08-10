@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Jobs\DeliverWorkflowEvent;
-use App\Models\WorkflowEvent;
+use App\Jobs\DeliverAutomationEvent;
+use App\Models\AutomationEvent;
 use Illuminate\Console\Command;
 
 /**
@@ -16,11 +16,11 @@ use Illuminate\Console\Command;
  *
  * So the write path only ever inserts a row, and this sweeps.
  */
-class DispatchWorkflowEvents extends Command
+class DispatchAutomationEvents extends Command
 {
-    protected $signature = 'ezbizi:dispatch-workflow-events {--limit=500}';
+    protected $signature = 'ezbizi:dispatch-automation-events {--limit=500}';
 
-    protected $description = 'Queue delivery for workflow events that are due';
+    protected $description = 'Queue delivery for automation events that are due';
 
     public function handle(): int
     {
@@ -39,11 +39,11 @@ class DispatchWorkflowEvents extends Command
          */
         $lease = now()->subSeconds(1200);
 
-        $due = WorkflowEvent::withoutGlobalScopes()
+        $due = AutomationEvent::withoutGlobalScopes()
             ->whereNull('delivered_at')
             ->whereNull('failed_at')
             ->where('available_at', '<=', now())
-            ->where('attempts', '<', WorkflowEvent::MAX_ATTEMPTS)
+            ->where('attempts', '<', AutomationEvent::MAX_ATTEMPTS)
             ->where(fn ($q) => $q->whereNull('queued_at')->orWhere('queued_at', '<', $lease))
             ->orderBy('occurred_at')
             ->limit((int) $this->option('limit'))
@@ -52,19 +52,19 @@ class DispatchWorkflowEvents extends Command
         foreach ($due as $event) {
             // Claimed before dispatch, so two overlapping sweeps cannot both
             // queue the same event.
-            $claimed = WorkflowEvent::withoutGlobalScopes()
+            $claimed = AutomationEvent::withoutGlobalScopes()
                 ->whereKey($event->getKey())
                 ->where(fn ($q) => $q->whereNull('queued_at')->orWhere('queued_at', '<', $lease))
                 ->update(['queued_at' => now()]);
 
             if ($claimed === 1) {
-                DeliverWorkflowEvent::dispatch($event->getKey());
+                DeliverAutomationEvent::dispatch($event->getKey());
             }
         }
 
         $this->info($due->isEmpty()
-            ? 'No workflow events were due.'
-            : "Queued {$due->count()} workflow event(s).");
+            ? 'No automation events were due.'
+            : "Queued {$due->count()} automation event(s).");
 
         return self::SUCCESS;
     }

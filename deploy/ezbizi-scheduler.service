@@ -1,9 +1,9 @@
 # Laravel's scheduler (plan §5.5, §10).
 #
 # Everything time-based in EzBizi hangs off this: audit retention, closing
-# expired impersonation sessions, and — since the workflow engine landed —
+# expired impersonation sessions, and — since the automation engine landed —
 # draining the outbox. Without it the whole automation subsystem is decorative:
-# events pile up in workflow_events, nothing is ever delivered, and no error is
+# events pile up in automation_events, nothing is ever delivered, and no error is
 # raised anywhere because nothing is broken. It simply never runs.
 #
 # A systemd timer rather than a crontab line, so failures land in the journal

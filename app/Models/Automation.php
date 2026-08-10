@@ -15,9 +15,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  *
  * The rule itself is a pointer: what triggers it, whether it is on, and which
  * immutable version is currently live. Everything that can change lives in
- * workflow_versions, so history stays readable after an edit.
+ * automation_versions, so history stays readable after an edit.
  */
-class Workflow extends Model
+class Automation extends Model
 {
     use HasFactory;
     use HasUuids;
@@ -42,25 +42,25 @@ class Workflow extends Model
 
     public function versions(): HasMany
     {
-        return $this->hasMany(WorkflowVersion::class)->orderByDesc('version');
+        return $this->hasMany(AutomationVersion::class)->orderByDesc('version');
     }
 
     public function activeVersion(): BelongsTo
     {
-        return $this->belongsTo(WorkflowVersion::class, 'active_version_id');
+        return $this->belongsTo(AutomationVersion::class, 'active_version_id');
     }
 
     public function runs(): HasMany
     {
-        return $this->hasMany(WorkflowRun::class);
+        return $this->hasMany(AutomationRun::class);
     }
 
     /**
-     * Would this workflow act on an event from the given scope?
+     * Would this automation act on an event from the given scope?
      *
-     * An organization-scoped workflow covers everything. A franchise-scoped one
+     * An organization-scoped automation covers everything. A franchise-scoped one
      * covers only that franchise. Deliberately NOT the settings cascade in
-     * reverse: a franchise workflow must not fire on a sibling franchise's work
+     * reverse: a franchise automation must not fire on a sibling franchise's work
      * just because they share a parent.
      */
     public function coversScope(?string $scopeType, ?string $scopeId, array $companyChain = []): bool
@@ -89,11 +89,11 @@ class Workflow extends Model
     }
 
     /**
-     * Record a failure, and stop the workflow if it keeps failing.
+     * Record a failure, and stop the automation if it keeps failing.
      *
      * §5.5 asks for auto-disable after repeated failure. The reason it matters:
-     * a workflow calling a webhook that has started returning 500 will otherwise
-     * retry on every event forever, and the noise buries whatever broke.
+     * an automation calling a webhook that has started returning 500 will
+     * otherwise retry on every event forever, and the noise buries what broke.
      */
     public function noteFailure(string $reason): void
     {

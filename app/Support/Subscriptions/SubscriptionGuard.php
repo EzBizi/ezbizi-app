@@ -2,11 +2,11 @@
 
 namespace App\Support\Subscriptions;
 
+use App\Models\AutomationEvent;
+use App\Models\AutomationRun;
 use App\Models\Notification;
 use App\Models\Organization;
 use App\Models\User;
-use App\Models\WorkflowEvent;
-use App\Models\WorkflowRun;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -16,12 +16,12 @@ use Illuminate\Database\Eloquent\Model;
  *
  * §13 says it in as many words: "Middleware on HTTP endpoints is not
  * sufficient. A deactivated organization must be unable to write via HTTP, the
- * public API, scheduled tasks, workflow actions, queued jobs, imports, API
- * tokens and WebSocket events. A workflow that keeps firing after expiry, or an
- * import that still runs, means the product works fine without paying."
+ * public API, scheduled tasks, automation actions, queued jobs, imports, API
+ * tokens and WebSocket events. An automation that keeps firing after expiry,
+ * or an import that still runs, means the product works fine without paying."
  *
  * EnforceSubscriptionState covers the first of those and nothing else. The
- * workflow engine runs in a queue worker with no request at all; so does the
+ * automation engine runs in a queue worker with no request at all; so does the
  * outbox sweep, the retention command, and anything imported.
  *
  * This is consulted from BelongsToTenant's write hooks instead — the one place
@@ -56,10 +56,10 @@ class SubscriptionGuard
         // did, including what it REFUSED to do. Blocking them would leave every
         // event permanently undelivered, so the outbox would grow without bound
         // and the retry sweep would pick the same rows up forever. The actions
-        // themselves are still refused; WorkflowEngine::deliver() checks once up
-        // front and stops the event with a reason.
-        WorkflowEvent::class,
-        WorkflowRun::class,
+        // themselves are still refused; AutomationEngine::deliver() checks
+        // once up front and stops the event with a reason.
+        AutomationEvent::class,
+        AutomationRun::class,
     ];
 
     /**

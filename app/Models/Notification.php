@@ -25,7 +25,7 @@ class Notification extends Model
 
     protected $fillable = [
         'organization_id', 'user_id', 'source', 'title', 'body',
-        'subject_type', 'subject_id', 'workflow_id', 'event_id', 'created_at',
+        'subject_type', 'subject_id', 'automation_id', 'event_id', 'created_at',
     ];
 
     protected function casts(): array

@@ -301,7 +301,7 @@ class _HealthScreenState extends State<HealthScreen> {
 
     return _card(
       ok: ok && failed == 0,
-      title: 'Workflow outbox',
+      title: 'Automation outbox',
       headline: ok
           ? 'Nothing waiting. The scheduler is sweeping.'
           // A backlog here means schedule:run has stopped — the outbox is the

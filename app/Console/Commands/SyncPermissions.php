@@ -30,7 +30,7 @@ class SyncPermissions extends Command
         // a module reaching production without automation support is the exact
         // drift the rule exists to prevent.
         if ($violations = $registry->violatingAutomationRule()) {
-            $this->error('These modules declare no workflow triggers/actions and no exemption:');
+            $this->error('These modules declare no automation triggers/actions and no exemption:');
             foreach ($violations as $key => $_) {
                 $this->line("  - {$key}");
             }

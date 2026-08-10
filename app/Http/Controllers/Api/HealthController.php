@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\WorkflowEvent;
+use App\Models\AutomationEvent;
 use App\Support\Mail\MailStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -156,13 +156,13 @@ class HealthController extends Controller
      */
     private function outbox(): array
     {
-        $oldest = WorkflowEvent::withoutGlobalScopes()
+        $oldest = AutomationEvent::withoutGlobalScopes()
             ->whereNull('delivered_at')
             ->orderBy('occurred_at')
             ->value('occurred_at');
 
         return [
-            'pending'        => WorkflowEvent::withoutGlobalScopes()->whereNull('delivered_at')->count(),
+            'pending'        => AutomationEvent::withoutGlobalScopes()->whereNull('delivered_at')->count(),
             'oldest_minutes' => $oldest ? (int) Carbon::parse($oldest)->diffInMinutes(now()) : null,
             'failed_jobs'    => DB::table('failed_jobs')->count(),
             'ok'             => $oldest === null || Carbon::parse($oldest)->diffInMinutes(now()) < 15,

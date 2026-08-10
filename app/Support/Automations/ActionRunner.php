@@ -1,13 +1,13 @@
 <?php
 
-namespace App\Support\Workflows;
+namespace App\Support\Automations;
 
-use App\Models\WorkflowEvent;
+use App\Models\AutomationEvent;
 use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
 
 /**
- * Performing one action from a workflow (plan §5.5).
+ * Performing one action from an automation (plan §5.5).
  *
  * Every action returns a RESULT rather than throwing on a business failure —
  * "the webhook returned 500" is something the run log has to record, not
@@ -28,9 +28,9 @@ class ActionRunner
      * Job::franchise_id, customer_id and currency are all fillable — and the
      * HTTP API deliberately REFUSES all of them, because moving a customer's
      * accountability is a separate audited act (§5.2) and a job that changes
-     * franchise rewrites two franchises' history. A workflow could do every one
-     * of those silently, skipping the authorization check, the tenant-existence
-     * validation and the audit entry that exist for exactly that reason.
+     * franchise rewrites two franchises' history. An automation could do
+     * every one of those silently, skipping the authorization check, the
+     * tenant-existence validation and the audit entry that exist for that.
      *
      * So: only fields where an automated change is meaningful and reversible.
      * Anything with its own endpoint belongs to that endpoint.
@@ -70,12 +70,12 @@ class ActionRunner
     /**
      * @return array{type: string, ok: bool, detail: string, skipped?: bool}
      */
-    public function run(array $action, WorkflowEvent $event, ?Model $subject, bool $isTest = false): array
+    public function run(array $action, AutomationEvent $event, ?Model $subject, bool $isTest = false): array
     {
         $type = $action['type'] ?? null;
 
         if ($type === null) {
-            throw new InvalidArgumentException('A workflow action needs a type.');
+            throw new InvalidArgumentException('An automation action needs a type.');
         }
 
         // Test mode performs nothing (§5.5). It reports what it WOULD do, which
@@ -96,7 +96,7 @@ class ActionRunner
             'notify'       => $this->notify($action, $event, $subject),
 
             default => throw new InvalidArgumentException(
-                "Unknown workflow action '{$type}'. Actions are declared by modules "
+                "Unknown automation action '{$type}'. Actions are declared by modules "
                 .'in code (§5.5) — a rule cannot invent one.'
             ),
         };
@@ -110,7 +110,7 @@ class ActionRunner
      * make automation invisible to automation, which is a surprising and
      * hard-to-debug asymmetry.
      */
-    private function updateField(array $action, WorkflowEvent $event, ?Model $subject): array
+    private function updateField(array $action, AutomationEvent $event, ?Model $subject): array
     {
         if ($subject === null) {
             return ['type' => 'update_field', 'ok' => false, 'detail' => 'The record no longer exists.'];
@@ -129,7 +129,7 @@ class ActionRunner
             return [
                 'type'   => 'update_field',
                 'ok'     => false,
-                'detail' => "'{$field}' is not a field a workflow may set on "
+                'detail' => "'{$field}' is not a field an automation may set on "
                     .class_basename($subject).'. Allowed: '.implode(', ', $writable).'.',
             ];
         }
@@ -149,11 +149,12 @@ class ActionRunner
 
         $subject->setAttribute($field, $value);
 
-        // Audited like any other change (§2.2). A workflow altering a customer's
-        // email or a job's price left nothing in the audit log at all, which is
-        // the one place somebody would look to find out what happened.
+        // Audited like any other change (§2.2). An automation altering a
+        // customer's email or a job's price left nothing in the audit log at
+        // all, which is the one place somebody would look to find out what
+        // happened.
         $this->audit->log(
-            action: strtolower(class_basename($subject)).'.updated_by_workflow',
+            action: strtolower(class_basename($subject)).'.updated_by_automation',
             target: $subject,
             changes: ['before' => [$field => $before], 'after' => [$field => $value]],
             metadata: ['caused_by_event' => $event->getKey(), 'trigger' => $event->event_key],
@@ -184,7 +185,7 @@ class ActionRunner
         ];
     }
 
-    private function callWebhook(array $action, WorkflowEvent $event, ?Model $subject): array
+    private function callWebhook(array $action, AutomationEvent $event, ?Model $subject): array
     {
         $url = $action['url'] ?? null;
 
@@ -221,7 +222,7 @@ class ActionRunner
      * record they are not allowed to read is a leak dressed up as a feature: the
      * title alone usually gives the record away.
      */
-    private function notify(array $action, WorkflowEvent $event, ?Model $subject): array
+    private function notify(array $action, AutomationEvent $event, ?Model $subject): array
     {
         $message = $action['message'] ?? null;
 
@@ -235,7 +236,7 @@ class ActionRunner
             title: $title,
             body: $action['body'] ?? null,
             subject: $subject,
-            source: 'workflow',
+            source: 'automation',
             eventId: $event->getKey(),
         );
 
@@ -259,7 +260,7 @@ class ActionRunner
      * substitutes attribute values, and an unknown field becomes an empty string
      * rather than an error nobody can act on.
      */
-    private function interpolate(string $template, WorkflowEvent $event, ?Model $subject): string
+    private function interpolate(string $template, AutomationEvent $event, ?Model $subject): string
     {
         return preg_replace_callback('/\{\{\s*([a-z0-9_.]+)\s*\}\}/i', function ($m) use ($subject) {
             $value = $subject?->getAttribute($m[1]);

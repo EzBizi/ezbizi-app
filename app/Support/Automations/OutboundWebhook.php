@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Support\Workflows;
+namespace App\Support\Automations;
 
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -78,7 +78,7 @@ class OutboundWebhook
 
         $headers = [
             'Content-Type' => 'application/json',
-            'User-Agent'   => 'EzBizi-Workflows/1.0',
+            'User-Agent'   => 'EzBizi-Automations/1.0',
         ];
 
         if ($secret !== null) {

@@ -2,15 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\Workflow;
-use App\Models\WorkflowEvent;
-use App\Models\WorkflowRun;
-use App\Models\WorkflowVersion;
+use App\Models\Automation;
+use App\Models\AutomationEvent;
+use App\Models\AutomationRun;
+use App\Models\AutomationVersion;
 use App\Support\Audit\AuditLogger;
+use App\Support\Automations\AutomationEngine;
+use App\Support\Automations\OutboundWebhook;
+use App\Support\Modules\ActionDefinition;
 use App\Support\Modules\ModuleRegistry;
+use App\Support\Modules\TriggerDefinition;
 use App\Support\Tenancy\TenantContext;
-use App\Support\Workflows\OutboundWebhook;
-use App\Support\Workflows\WorkflowEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,24 +29,24 @@ use Symfony\Component\HttpFoundation\Response;
  * builds its own rules from the triggers and actions the modules declare, and
  * never asks for a deployment to do it.
  *
- * Editing writes a NEW VERSION and repoints the workflow. Nothing here can
+ * Editing writes a NEW VERSION and repoints the automation. Nothing here can
  * change a version in place, because every run recorded which one it executed.
  */
-class WorkflowsController extends Controller
+class AutomationsController extends Controller
 {
     /** What ActionRunner can actually perform. The validator agrees with this. */
     private const IMPLEMENTED_ACTIONS = ['update_field', 'webhook', 'notify'];
 
     public function __construct(
         private readonly ModuleRegistry $registry,
-        private readonly WorkflowEngine $engine,
+        private readonly AutomationEngine $engine,
         private readonly OutboundWebhook $webhook,
         private readonly AuditLogger $audit,
         private readonly TenantContext $tenant,
     ) {}
 
     /**
-     * GET /api/v1/workflows/catalogue
+     * GET /api/v1/automations/catalogue
      *
      * What can be built. Comes from the module registry rather than a list kept
      * here, so a module added next year appears the moment it declares itself —
@@ -52,19 +54,34 @@ class WorkflowsController extends Controller
      */
     public function catalogue(Request $request): JsonResponse
     {
-        $this->authorize('viewAny', Workflow::class);
+        $this->authorize('viewAny', Automation::class);
 
         $modules = [];
 
         foreach ($this->registry->all() as $key => $module) {
-            if ($module->triggers === [] && $module->workflowActions === []) {
+            if ($module->triggers === [] && $module->automationActions === []) {
                 continue;
             }
 
             $modules[] = [
-                'key'      => $key,
-                'label'    => $module->label,
-                'triggers' => $module->triggers,
+                'key'   => $key,
+                'label' => $module->label,
+                /*
+                 * Words, not wire keys.
+                 *
+                 * This used to be a bare list of strings, and the builder drew
+                 * exactly that: twenty rows reading `organization.settings_changed`
+                 * with nothing to say when one fires or how it differs from the
+                 * row above. The label and the description come from the module
+                 * that raises the event (§5.5) — the client is not expected to
+                 * keep a dictionary, because a dictionary in the client is a
+                 * second place to forget.
+                 */
+                'triggers' => array_map(fn (TriggerDefinition $t) => [
+                    'key'         => $t->key,
+                    'label'       => $t->label,
+                    'description' => $t->description,
+                ], $module->triggers),
                 /*
                  * Marked, not merely listed.
                  *
@@ -72,17 +89,21 @@ class WorkflowsController extends Controller
                  * standing rule makes that mandatory at the moment the module is
                  * written). The engine implements a smaller generic set. Listing
                  * them together without saying which is which advertised action
-                 * names that POST /workflows then rejected — the catalogue and
-                 * the validator were two different vocabularies.
+                 * names that POST /automations then rejected — the catalogue
+                 * and the validator were two different vocabularies.
+                 *
+                 * `implemented` is the whole of that distinction, so the wording
+                 * beside it has to stand on its own: the description says what
+                 * the action would do, and never that it is missing. A client
+                 * renders "not built yet" from the flag and the sentence still
+                 * reads correctly on the day it flips.
                  */
-                'declared_actions' => array_map(fn (string $a) => [
-                    'key'         => $a,
-                    'implemented' => in_array(
-                        str_contains($a, '.') ? substr($a, strpos($a, '.') + 1) : $a,
-                        self::IMPLEMENTED_ACTIONS,
-                        strict: true,
-                    ),
-                ], $module->workflowActions),
+                'declared_actions' => array_map(fn (ActionDefinition $a) => [
+                    'key'         => $a->key,
+                    'label'       => $a->label,
+                    'description' => $a->description,
+                    'implemented' => in_array($a->type(), self::IMPLEMENTED_ACTIONS, strict: true),
+                ], $module->automationActions),
             ];
         }
 
@@ -108,7 +129,7 @@ class WorkflowsController extends Controller
                     ['key' => 'changed_to', 'label' => 'changed to'],
                     ['key' => 'changed_from', 'label' => 'changed from'],
                 ],
-                // The vocabulary POST /workflows accepts. Anything not here is
+                // The vocabulary POST /automations accepts. Anything not here is
                 // declared intent, not a usable action.
                 'action_types' => [
                     ['key' => 'update_field', 'label' => 'Update a field'],
@@ -116,26 +137,26 @@ class WorkflowsController extends Controller
                     ['key' => 'notify', 'label' => 'Send a notification'],
                 ],
                 'limits' => [
-                    'max_depth'     => WorkflowEvent::MAX_DEPTH,
-                    'action_budget' => WorkflowEvent::ACTION_BUDGET,
+                    'max_depth'     => AutomationEvent::MAX_DEPTH,
+                    'action_budget' => AutomationEvent::ACTION_BUDGET,
                 ],
             ],
         ]);
     }
 
-    /** GET /api/v1/workflows */
+    /** GET /api/v1/automations */
     public function index(Request $request): JsonResponse
     {
-        $this->authorize('viewAny', Workflow::class);
+        $this->authorize('viewAny', Automation::class);
 
-        $workflows = Workflow::query()
+        $automations = Automation::query()
             ->with('activeVersion')
             ->withCount(['runs'])
             ->orderBy('name')
             ->get()
-            ->map(fn (Workflow $w) => $this->present($w));
+            ->map(fn (Automation $a) => $this->present($a));
 
-        return response()->json(['data' => $workflows]);
+        return response()->json(['data' => $automations]);
     }
 
     /**
@@ -150,29 +171,29 @@ class WorkflowsController extends Controller
      * platform and 404 does not, which is the same existence oracle the `exists`
      * validation rules had.
      */
-    private function assertMine(Workflow $workflow): void
+    private function assertMine(Automation $automation): void
     {
-        abort_unless($workflow->organization_id === $this->tenant->idOrFail(), 404);
+        abort_unless($automation->organization_id === $this->tenant->idOrFail(), 404);
     }
 
-    /** GET /api/v1/workflows/{workflow} */
-    public function show(Workflow $workflow): JsonResponse
+    /** GET /api/v1/automations/{automation} */
+    public function show(Automation $automation): JsonResponse
     {
-        $this->assertMine($workflow);
-        $this->authorize('view', $workflow);
+        $this->assertMine($automation);
+        $this->authorize('view', $automation);
 
-        return response()->json(['data' => $this->present($workflow, detailed: true)]);
+        return response()->json(['data' => $this->present($automation, detailed: true)]);
     }
 
-    /** POST /api/v1/workflows */
+    /** POST /api/v1/automations */
     public function store(Request $request): JsonResponse
     {
-        $this->authorize('create', Workflow::class);
+        $this->authorize('create', Automation::class);
 
         $input = $this->validated($request);
 
-        $workflow = DB::transaction(function () use ($input, $request) {
-            $workflow = Workflow::create([
+        $automation = DB::transaction(function () use ($input, $request) {
+            $automation = Automation::create([
                 'name'        => $input['name'],
                 'description' => $input['description'] ?? null,
                 'trigger_key' => $input['trigger_key'],
@@ -184,144 +205,144 @@ class WorkflowsController extends Controller
                 'created_by'  => $request->user()->getKey(),
             ]);
 
-            $this->addVersion($workflow, $input, $request);
+            $this->addVersion($automation, $input, $request);
 
-            $this->audit->log('workflow.created', $workflow, metadata: [
-                'trigger' => $workflow->trigger_key,
+            $this->audit->log('automation.created', $automation, metadata: [
+                'trigger' => $automation->trigger_key,
             ]);
 
-            return $workflow;
+            return $automation;
         });
 
         return response()->json(
-            ['data' => $this->present($workflow->fresh(), detailed: true)],
+            ['data' => $this->present($automation->fresh(), detailed: true)],
             Response::HTTP_CREATED
         );
     }
 
     /**
-     * PATCH /api/v1/workflows/{workflow}
+     * PATCH /api/v1/automations/{automation}
      *
      * Writes a new version rather than editing the live one. The previous
      * version stays exactly as it was, because runs point at it.
      */
-    public function update(Request $request, Workflow $workflow): JsonResponse
+    public function update(Request $request, Automation $automation): JsonResponse
     {
-        $this->assertMine($workflow);
-        $this->authorize('update', $workflow);
+        $this->assertMine($automation);
+        $this->authorize('update', $automation);
 
         $input = $this->validated($request, forUpdate: true);
 
-        DB::transaction(function () use ($workflow, $input, $request) {
-            $workflow->fill(array_intersect_key($input, array_flip([
+        DB::transaction(function () use ($automation, $input, $request) {
+            $automation->fill(array_intersect_key($input, array_flip([
                 'name', 'description', 'scope_type', 'scope_id',
             ])));
 
             // Re-enabling clears the auto-disable, which is what makes it a
             // deliberate act rather than something that quietly heals.
             if (($input['is_active'] ?? false) === true) {
-                $workflow->forceFill([
+                $automation->forceFill([
                     'is_active' => true,
                     'disabled_at' => null,
                     'disabled_reason' => null,
                     'consecutive_failures' => 0,
                 ]);
             } elseif (array_key_exists('is_active', $input)) {
-                $workflow->is_active = false;
+                $automation->is_active = false;
             }
 
-            $this->audit->logChange('workflow.updated', $workflow);
-            $workflow->save();
+            $this->audit->logChange('automation.updated', $automation);
+            $automation->save();
 
             if (isset($input['actions'])) {
-                $this->addVersion($workflow, $input, $request);
+                $this->addVersion($automation, $input, $request);
             }
         });
 
-        return response()->json(['data' => $this->present($workflow->fresh(), detailed: true)]);
+        return response()->json(['data' => $this->present($automation->fresh(), detailed: true)]);
     }
 
     /**
-     * POST /api/v1/workflows/{workflow}/activate/{version}
+     * POST /api/v1/automations/{automation}/activate/{version}
      *
      * Rollback, and the reason versions are immutable (§5.5). Pointing back at
      * an older definition is the whole recovery path when a new rule turns out
      * to be wrong.
      */
-    public function activateVersion(Request $request, Workflow $workflow, WorkflowVersion $version): JsonResponse
+    public function activateVersion(Request $request, Automation $automation, AutomationVersion $version): JsonResponse
     {
-        $this->assertMine($workflow);
-        $this->authorize('update', $workflow);
+        $this->assertMine($automation);
+        $this->authorize('update', $automation);
 
-        abort_unless($version->workflow_id === $workflow->getKey(), 404);
+        abort_unless($version->automation_id === $automation->getKey(), 404);
 
-        $previous = $workflow->active_version_id;
+        $previous = $automation->active_version_id;
 
-        $workflow->forceFill(['active_version_id' => $version->getKey()])->save();
+        $automation->forceFill(['active_version_id' => $version->getKey()])->save();
 
-        $this->audit->log('workflow.version_activated', $workflow, metadata: [
+        $this->audit->log('automation.version_activated', $automation, metadata: [
             'from' => $previous,
             'to'   => $version->getKey(),
             'version' => $version->version,
         ]);
 
-        return response()->json(['data' => $this->present($workflow->fresh(), detailed: true)]);
+        return response()->json(['data' => $this->present($automation->fresh(), detailed: true)]);
     }
 
     /**
-     * POST /api/v1/workflows/{workflow}/test
+     * POST /api/v1/automations/{automation}/test
      *
      * Rehearse against a real past event (§5.5 test mode). The conditions are
      * evaluated for real — that is the part people get wrong — and the actions
      * report what they WOULD do without doing it.
      */
-    public function test(Request $request, Workflow $workflow): JsonResponse
+    public function test(Request $request, Automation $automation): JsonResponse
     {
-        $this->assertMine($workflow);
-        $this->authorize('update', $workflow);
+        $this->assertMine($automation);
+        $this->authorize('update', $automation);
 
         $input = $request->validate([
             'event_id' => ['nullable', 'uuid'],
         ]);
 
         $event = $input['event_id'] ?? null
-            ? WorkflowEvent::findOrFail($input['event_id'])
-            : WorkflowEvent::where('event_key', $workflow->trigger_key)
+            ? AutomationEvent::findOrFail($input['event_id'])
+            : AutomationEvent::where('event_key', $automation->trigger_key)
                 ->latest('occurred_at')
                 ->first();
 
         if ($event === null) {
             return response()->json([
-                'message' => "Nothing has triggered '{$workflow->trigger_key}' yet, so there "
+                'message' => "Nothing has triggered '{$automation->trigger_key}' yet, so there "
                     .'is no real event to try this against. Create or change a record first.',
                 'code'    => 'no_event_to_test',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        return response()->json(['data' => $this->engine->rehearse($workflow, $event)]);
+        return response()->json(['data' => $this->engine->rehearse($automation, $event)]);
     }
 
-    /** GET /api/v1/workflows/{workflow}/runs */
-    public function runs(Request $request, Workflow $workflow): JsonResponse
+    /** GET /api/v1/automations/{automation}/runs */
+    public function runs(Request $request, Automation $automation): JsonResponse
     {
-        $this->assertMine($workflow);
-        $this->authorize('view', $workflow);
+        $this->assertMine($automation);
+        $this->authorize('view', $automation);
 
         // Jobs are never shared (§5.2), so a run log that shows every franchise's
         // work would hand a franchise-scoped user exactly what JobPolicy refuses
         // them — including the field values in the condition trace.
         $reachable = $request->user()->reachableFranchises()->pluck('id')->all();
 
-        $runs = WorkflowRun::query()
-            ->where('workflow_id', $workflow->getKey())
+        $runs = AutomationRun::query()
+            ->where('automation_id', $automation->getKey())
             ->with('event:id,event_key,subject_type,subject_id,occurred_at')
             ->when($request->query('status'), fn ($q, $s) => $q->where('status', $s))
             ->latest('started_at')
             ->limit(100)
             ->get()
-            ->filter(fn (WorkflowRun $r) => $this->maySeeSubjectOf($r, $reachable))
+            ->filter(fn (AutomationRun $r) => $this->maySeeSubjectOf($r, $reachable))
             ->values()
-            ->map(fn (WorkflowRun $r) => [
+            ->map(fn (AutomationRun $r) => [
                 'id'      => $r->id,
                 'status'  => $r->status,
                 'is_test' => $r->is_test,
@@ -347,7 +368,7 @@ class WorkflowsController extends Controller
      * A run whose subject has been deleted is shown — there is nothing left to
      * leak, and hiding it would make the log lie about what happened.
      */
-    private function maySeeSubjectOf(WorkflowRun $run, array $reachable): bool
+    private function maySeeSubjectOf(AutomationRun $run, array $reachable): bool
     {
         $type = $run->event?->subject_type;
 
@@ -360,30 +381,30 @@ class WorkflowsController extends Controller
         return $job === null || in_array($job->franchise_id, $reachable, strict: true);
     }
 
-    /** DELETE /api/v1/workflows/{workflow} */
-    public function destroy(Workflow $workflow): JsonResponse
+    /** DELETE /api/v1/automations/{automation} */
+    public function destroy(Automation $automation): JsonResponse
     {
-        $this->assertMine($workflow);
-        $this->authorize('delete', $workflow);
+        $this->assertMine($automation);
+        $this->authorize('delete', $automation);
 
-        DB::transaction(function () use ($workflow) {
-            $this->audit->log('workflow.deleted', $workflow);
+        DB::transaction(function () use ($automation) {
+            $this->audit->log('automation.deleted', $automation);
             // Soft delete: the runs reference it, and a run pointing at a rule
             // that no longer exists is unreadable.
-            $workflow->delete();
+            $automation->delete();
         });
 
-        return response()->json(['message' => 'Workflow deleted.']);
+        return response()->json(['message' => 'Automation deleted.']);
     }
 
     // ── shared ───────────────────────────────────────────────────
 
-    private function addVersion(Workflow $workflow, array $input, Request $request): void
+    private function addVersion(Automation $automation, array $input, Request $request): void
     {
-        $next = ($workflow->versions()->max('version') ?? 0) + 1;
+        $next = ($automation->versions()->max('version') ?? 0) + 1;
 
-        $version = WorkflowVersion::create([
-            'workflow_id' => $workflow->getKey(),
+        $version = AutomationVersion::create([
+            'automation_id' => $automation->getKey(),
             'version'     => $next,
             'conditions'  => $input['conditions'] ?? null,
             'actions'     => $input['actions'],
@@ -391,7 +412,7 @@ class WorkflowsController extends Controller
             'created_at'  => now(),
         ]);
 
-        $workflow->forceFill(['active_version_id' => $version->getKey()])->save();
+        $automation->forceFill(['active_version_id' => $version->getKey()])->save();
     }
 
     private function validated(Request $request, bool $forUpdate = false): array
@@ -407,8 +428,9 @@ class WorkflowsController extends Controller
                 ? ['missing']
                 : ['required', 'string', 'max:100'],
             // 'company' is accepted because the engine resolves it (see
-            // WorkflowEngine::scopeOf). It previously validated as legal and then
-            // could never match anything, which is worse than refusing it.
+            // AutomationEngine::scopeOf). It previously validated as legal
+            // and then could never match anything, which is worse than
+            // refusing it.
             'scope_type'  => ['nullable', Rule::in(['company', 'franchise'])],
             'scope_id'    => ['nullable', 'uuid', 'required_with:scope_type'],
             'is_active'   => ['boolean'],
@@ -472,10 +494,8 @@ class WorkflowsController extends Controller
      */
     private function assertTriggerExists(string $trigger): void
     {
-        foreach ($this->registry->all() as $module) {
-            if (in_array($trigger, $module->triggers, strict: true)) {
-                return;
-            }
+        if ($this->registry->findTrigger($trigger) !== null) {
+            return;
         }
 
         throw ValidationException::withMessages([
@@ -537,25 +557,25 @@ class WorkflowsController extends Controller
         }, $actions);
     }
 
-    private function present(Workflow $workflow, bool $detailed = false): array
+    private function present(Automation $automation, bool $detailed = false): array
     {
         $base = [
-            'id'          => $workflow->id,
-            'name'        => $workflow->name,
-            'description' => $workflow->description,
-            'trigger_key' => $workflow->trigger_key,
-            'is_active'   => $workflow->is_active,
-            'is_live'     => $workflow->isLive(),
+            'id'          => $automation->id,
+            'name'        => $automation->name,
+            'description' => $automation->description,
+            'trigger_key' => $automation->trigger_key,
+            'is_active'   => $automation->is_active,
+            'is_live'     => $automation->isLive(),
             'scope'       => [
-                'type' => $workflow->scope_type,
-                'id'   => $workflow->scope_id,
+                'type' => $automation->scope_type,
+                'id'   => $automation->scope_id,
             ],
             // Surfaced rather than buried: a rule that switched itself off after
             // repeated failure must say so where somebody will see it.
-            'disabled_at'     => $workflow->disabled_at?->toIso8601String(),
-            'disabled_reason' => $workflow->disabled_reason,
-            'runs_count'      => $workflow->runs_count ?? $workflow->runs()->count(),
-            'version'         => $workflow->activeVersion?->version,
+            'disabled_at'     => $automation->disabled_at?->toIso8601String(),
+            'disabled_reason' => $automation->disabled_reason,
+            'runs_count'      => $automation->runs_count ?? $automation->runs()->count(),
+            'version'         => $automation->activeVersion?->version,
         ];
 
         if (! $detailed) {
@@ -563,17 +583,17 @@ class WorkflowsController extends Controller
         }
 
         return $base + [
-            'conditions' => $workflow->activeVersion?->conditions,
+            'conditions' => $automation->activeVersion?->conditions,
             // Secrets are masked on the way out. §5.5 says webhook secrets are
             // stored encrypted and never in the settings table; returning them
             // in clear from the API is the same exposure by another route —
-            // anyone who can read a workflow could forge signed calls to the
+            // anyone who can read an automation could forge signed calls to the
             // tenant's own endpoint.
-            'actions'    => $this->maskSecrets($workflow->activeVersion?->actions ?? []),
-            'versions'   => $workflow->versions->map(fn (WorkflowVersion $v) => [
+            'actions'    => $this->maskSecrets($automation->activeVersion?->actions ?? []),
+            'versions'   => $automation->versions->map(fn (AutomationVersion $v) => [
                 'id'         => $v->id,
                 'version'    => $v->version,
-                'is_active'  => $v->id === $workflow->active_version_id,
+                'is_active'  => $v->id === $automation->active_version_id,
                 'created_at' => $v->created_at?->toIso8601String(),
             ]),
         ];

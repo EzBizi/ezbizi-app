@@ -2,7 +2,7 @@
 # actually due, so this is deliberately dumb.
 #
 # Persistent=false: a missed minute is skipped rather than caught up. Catching
-# up would fire a minute's worth of workflow deliveries at once after a reboot,
+# up would fire a minute's worth of automation deliveries at once after a reboot,
 # and everything scheduled here is idempotent-by-sweep anyway — the next run
 # picks up whatever the missed one would have.
 

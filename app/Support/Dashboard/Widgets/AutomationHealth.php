@@ -2,9 +2,9 @@
 
 namespace App\Support\Dashboard\Widgets;
 
+use App\Models\AutomationEvent;
+use App\Models\AutomationRun;
 use App\Models\User;
-use App\Models\WorkflowEvent;
-use App\Models\WorkflowRun;
 use App\Support\Dashboard\Widget;
 
 /**
@@ -21,13 +21,13 @@ use App\Support\Dashboard\Widget;
  * is for us. This is the same question asked on behalf of one organization, by
  * somebody who can actually fix the rule.
  */
-class WorkflowHealth implements Widget
+class AutomationHealth implements Widget
 {
-    public function key(): string { return 'workflows.health'; }
+    public function key(): string { return 'automations.health'; }
 
     public function label(): string { return 'Automation health'; }
 
-    public function permission(): string { return 'workflows.view'; }
+    public function permission(): string { return 'automations.view'; }
 
     public function options(User $user): array
     {
@@ -45,10 +45,10 @@ class WorkflowHealth implements Widget
     {
         $since = now()->subDays(max(1, min((int) ($options['days'] ?? 7), 30)));
 
-        // No reach filter: a workflow belongs to the organization and is scoped
-        // by the rule's own configuration, not by the reader's assignments.
-        // Permission to view workflows is the whole gate here (§4).
-        $runs = WorkflowRun::query()->where('started_at', '>=', $since);
+        // No reach filter: an automation belongs to the organization and is
+        // scoped by the rule's own configuration, not by the reader's own.
+        // Permission to view automations is the whole gate here (§4).
+        $runs = AutomationRun::query()->where('started_at', '>=', $since);
 
         // `status`, not a failed_at timestamp — a run records its outcome as a
         // word (matched / skipped / succeeded / failed) so the trace can say
@@ -56,7 +56,7 @@ class WorkflowHealth implements Widget
         $failed = (clone $runs)->where('status', 'failed')->count();
         $total  = $runs->count();
 
-        $waiting = WorkflowEvent::query()->whereNull('delivered_at')->count();
+        $waiting = AutomationEvent::query()->whereNull('delivered_at')->count();
 
         return [
             'runs'    => $total,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/staff_session.dart';
+import '../widgets/tab_bar_like.dart';
 import 'staff/health_screen.dart';
 import 'staff/impersonations_screen.dart';
 import 'staff/modules_screen.dart';
@@ -136,46 +137,6 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
         const Divider(height: 1),
         Expanded(child: tabs[index].$3),
       ],
-    );
-  }
-}
-
-/// A simple segmented row of destinations.
-///
-/// Not a real TabBar: that needs a TabController and a DefaultTabController
-/// ancestor, and the surrounding shell already owns navigation state. This keeps
-/// the selection in one obvious place.
-class TabBarLike extends StatelessWidget {
-  const TabBarLike({
-    super.key,
-    required this.labels,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  final List<(String, IconData)> labels;
-  final int selected;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          for (var i = 0; i < labels.length; i++)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                avatar: Icon(labels[i].$2, size: 16),
-                label: Text(labels[i].$1),
-                selected: i == selected,
-                onSelected: (_) => onSelected(i),
-              ),
-            ),
-        ],
-      ),
     );
   }
 }

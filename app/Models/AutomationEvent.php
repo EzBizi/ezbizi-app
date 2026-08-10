@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\Model;
  * the commit can fail after the job was queued and act on something that never
  * happened.
  */
-class WorkflowEvent extends Model
+class AutomationEvent extends Model
 {
     use HasFactory;
     use HasUuids;
@@ -31,8 +31,8 @@ class WorkflowEvent extends Model
     /**
      * How deep a cascade may go.
      *
-     * A workflow updating a field emits an update event, which may trigger
-     * another workflow. Five is enough for any rule anyone means to write and
+     * An automation updating a field emits an update event, which may trigger
+     * another automation. Five is enough for any rule anyone means to write and
      * short enough that a loop stops being expensive quickly.
      */
     public const MAX_DEPTH = 5;
@@ -97,15 +97,15 @@ class WorkflowEvent extends Model
         $root = $this->rootId();
 
         return static::query()
-            ->join('workflow_runs', 'workflow_runs.event_id', '=', 'workflow_events.id')
+            ->join('automation_runs', 'automation_runs.event_id', '=', 'automation_events.id')
             // Grouped and qualified. Ungrouped, `A or B and C` binds as
             // `A or (B and C)`, which quietly counts every run in the
             // organization rather than this cascade's — and `id` is ambiguous
             // once both tables are in the query.
             ->where(function ($q) use ($root) {
-                $q->where('workflow_events.root_event_id', $root)
-                    ->orWhere('workflow_events.id', $root);
+                $q->where('automation_events.root_event_id', $root)
+                    ->orWhere('automation_events.id', $root);
             })
-            ->sum('workflow_runs.action_count');
+            ->sum('automation_runs.action_count');
     }
 }

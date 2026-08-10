@@ -10,14 +10,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use RuntimeException;
 
 /**
- * An immutable workflow definition (plan §5.5).
+ * An immutable automation definition (plan §5.5).
  *
- * Editing a workflow writes a new version and repoints the workflow at it.
+ * Editing an automation writes a new version and repoints the automation at it.
  * Nothing ever edits one of these, because every run records which version it
  * executed — and a version that can change turns the run log into a description
  * of a rule that no longer exists.
  */
-class WorkflowVersion extends Model
+class AutomationVersion extends Model
 {
     use HasFactory;
     use HasUuids;
@@ -26,7 +26,7 @@ class WorkflowVersion extends Model
     public const UPDATED_AT = null;   // versions are written once
 
     protected $fillable = [
-        'organization_id', 'workflow_id', 'version', 'conditions', 'actions', 'created_by',
+        'organization_id', 'automation_id', 'version', 'conditions', 'actions', 'created_by',
     ];
 
     protected function casts(): array
@@ -41,15 +41,15 @@ class WorkflowVersion extends Model
     {
         static::updating(function () {
             throw new RuntimeException(
-                'Workflow versions are immutable. Changing a rule means creating a '
+                'Automation versions are immutable. Changing a rule means creating a '
                 .'new version — editing this one would rewrite the meaning of every '
                 .'run that already referenced it.'
             );
         });
     }
 
-    public function workflow(): BelongsTo
+    public function automation(): BelongsTo
     {
-        return $this->belongsTo(Workflow::class);
+        return $this->belongsTo(Automation::class);
     }
 }

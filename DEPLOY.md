@@ -259,7 +259,7 @@ Two systemd units, both versioned in `deploy/` and installed on the app box:
 | `ezbizi-worker.service` | `artisan queue:work`, restarted on deploy |
 
 **Neither existed until 2026-08-06**, which meant audit retention, impersonation
-expiry and the workflow outbox had never run once — and nothing anywhere reported
+expiry and the automation outbox had never run once — and nothing anywhere reported
 an error, because nothing was broken. They simply never executed. If automation
 ever looks inert again, check these first:
 

@@ -1,13 +1,14 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\AutomationsController;
 use App\Http\Controllers\Api\BrandingController;
 use App\Http\Controllers\Api\CompaniesController;
 use App\Http\Controllers\Api\CustomersController;
-use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\EnrolmentController;
+use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\NotificationsController;
@@ -15,7 +16,6 @@ use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\SettingsController;
-use App\Http\Controllers\Api\WorkflowsController;
 use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
 use App\Http\Controllers\Api\StaffController;
@@ -150,17 +150,17 @@ Route::prefix('v1')
 
         Route::post('imports/{resource}', [DataController::class, 'import']);
 
-        // ── Workflows & automations (§5.5) ───────────────────────
+        // ── Automations (§5.5) ───────────────────────────────────
         //
-        // The catalogue route sits BEFORE the resource, or /workflows/catalogue
-        // binds as a workflow id and 404s.
-        Route::get('workflows/catalogue', [WorkflowsController::class, 'catalogue']);
-        Route::get('workflows/{workflow}/runs', [WorkflowsController::class, 'runs']);
-        Route::post('workflows/{workflow}/test', [WorkflowsController::class, 'test']);
-        Route::post('workflows/{workflow}/activate/{version}', [WorkflowsController::class, 'activateVersion']);
-        Route::apiResource('workflows', WorkflowsController::class)->except(['store'])
-            ->parameters(['workflows' => 'workflow']);
-        Route::post('workflows', [WorkflowsController::class, 'store']);
+        // The catalogue route sits BEFORE the resource, or /automations/catalogue
+        // binds as an automation id and 404s.
+        Route::get('automations/catalogue', [AutomationsController::class, 'catalogue']);
+        Route::get('automations/{automation}/runs', [AutomationsController::class, 'runs']);
+        Route::post('automations/{automation}/test', [AutomationsController::class, 'test']);
+        Route::post('automations/{automation}/activate/{version}', [AutomationsController::class, 'activateVersion']);
+        Route::apiResource('automations', AutomationsController::class)->except(['store'])
+            ->parameters(['automations' => 'automation']);
+        Route::post('automations', [AutomationsController::class, 'store']);
 
         // Changing it while signed in. Needs the current password: a session
         // proves somebody sat down at an unlocked laptop, not that they are the

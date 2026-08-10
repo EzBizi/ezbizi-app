@@ -1,6 +1,6 @@
 # The queue worker (plan §5.5).
 #
-# Workflow actions run here, never inline — a slow external webhook must not
+# Automation actions run here, never inline — a slow external webhook must not
 # delay a user's save. Nothing else on the box processes queued work, so without
 # this every dispatched job sits in queue_jobs forever.
 #
@@ -9,14 +9,14 @@
 # --max-time=3600 recycles the process hourly. A long-lived PHP worker
 # accumulates state, and this codebase has two pieces of it that would be
 # actively dangerous to leak between jobs: TenantContext and SettingsResolver are
-# both singletons. WorkflowEngine sets the tenant explicitly per event and
+# both singletons. AutomationEngine sets the tenant explicitly per event and
 # restores it in a finally block, so a leak should be impossible — recycling is
 # the belt to that braces, because a cross-tenant write is the one bug the plan
 # says ends the business.
 #
 # --tries=1 because retry policy belongs to the job, not the worker.
-# DeliverWorkflowEvent declares its own tries and widening backoff; a worker-level
-# retry count would silently override it.
+# DeliverAutomationEvent declares its own tries and widening backoff; a
+# worker-level retry count would silently override it.
 #
 # Install:
 #   sudo cp deploy/ezbizi-worker.service /etc/systemd/system/

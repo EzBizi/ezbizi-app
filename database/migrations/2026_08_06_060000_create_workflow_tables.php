@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * The workflow & automation engine (plan §5.5).
+ * The automation engine (plan §5.5).
  *
  * "A first-class subsystem, not a feature bolted on later. It is the main
  * expression of the no-hardcoding rule (§2.1)."
@@ -16,6 +16,14 @@ use Illuminate\Support\Facades\Schema;
  *   workflow_versions  IMMUTABLE definitions — editing makes a new one
  *   workflow_events    the transactional outbox
  *   workflow_runs      what actually happened, once per (event, version)
+ *
+ * ── The names here are historical ────────────────────────────────
+ *
+ * The feature was called "workflows" until 2026-08-10, when it was renamed to
+ * "automations" everywhere — tables, columns, classes and permission keys. See
+ * `2026_08_10_000000_rename_workflows_to_automations`. This migration keeps the
+ * old names because it has already run against every database that exists;
+ * editing it would only make it disagree with what it actually did.
  */
 return new class extends Migration
 {

@@ -3,11 +3,11 @@
 namespace App\Support\Dashboard;
 
 use App\Models\User;
+use App\Support\Dashboard\Widgets\AutomationHealth;
 use App\Support\Dashboard\Widgets\CustomersAdded;
 use App\Support\Dashboard\Widgets\JobsByStatus;
 use App\Support\Dashboard\Widgets\Revenue;
 use App\Support\Dashboard\Widgets\UpcomingJobs;
-use App\Support\Dashboard\Widgets\WorkflowHealth;
 
 /**
  * Every widget the platform knows about (plan §18 Phase 4).
@@ -24,7 +24,7 @@ class WidgetRegistry
         UpcomingJobs::class,
         Revenue::class,
         CustomersAdded::class,
-        WorkflowHealth::class,
+        AutomationHealth::class,
     ];
 
     /** @return Widget[] */

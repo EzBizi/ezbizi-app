@@ -2,8 +2,8 @@
 
 namespace App\Jobs;
 
-use App\Models\WorkflowEvent;
-use App\Support\Workflows\WorkflowEngine;
+use App\Models\AutomationEvent;
+use App\Support\Automations\AutomationEngine;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -16,11 +16,11 @@ use Throwable;
  * save. Retries with backoff, and a permanent failure dead-letters the event
  * rather than retrying forever.
  */
-class DeliverWorkflowEvent implements ShouldBeUnique, ShouldQueue
+class DeliverAutomationEvent implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
-    public int $tries = WorkflowEvent::MAX_ATTEMPTS;
+    public int $tries = AutomationEvent::MAX_ATTEMPTS;
 
     /**
      * Backoff in seconds.
@@ -51,9 +51,9 @@ class DeliverWorkflowEvent implements ShouldBeUnique, ShouldQueue
         return $this->eventId;
     }
 
-    public function handle(WorkflowEngine $engine): void
+    public function handle(AutomationEngine $engine): void
     {
-        $event = WorkflowEvent::withoutGlobalScopes()->find($this->eventId);
+        $event = AutomationEvent::withoutGlobalScopes()->find($this->eventId);
 
         if ($event === null || $event->delivered_at !== null) {
             return;   // already handled, or the organization was removed
@@ -64,7 +64,7 @@ class DeliverWorkflowEvent implements ShouldBeUnique, ShouldQueue
         // attempt counter, of all things, would abort the delivery it exists to
         // count. The guard is right to refuse; this write simply does not belong
         // inside a tenant.
-        WorkflowEvent::withoutGlobalScopes()
+        AutomationEvent::withoutGlobalScopes()
             ->whereKey($this->eventId)
             ->update(['attempts' => $event->attempts + 1]);
 
@@ -80,7 +80,7 @@ class DeliverWorkflowEvent implements ShouldBeUnique, ShouldQueue
      */
     public function failed(Throwable $e): void
     {
-        WorkflowEvent::withoutGlobalScopes()
+        AutomationEvent::withoutGlobalScopes()
             ->whereKey($this->eventId)
             ->update(['failed_at' => now(), 'last_error' => $e->getMessage()]);
     }

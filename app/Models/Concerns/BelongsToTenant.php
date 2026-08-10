@@ -107,9 +107,9 @@ trait BelongsToTenant
      * The subscription floor (§13).
      *
      * Here rather than in middleware because §13 is explicit that HTTP is not
-     * the only write path: workflow actions, queued jobs, scheduled tasks and
-     * imports all run with no request at all, and "a workflow that keeps firing
-     * after expiry means the product works fine without paying".
+     * the only write path: automation actions, queued jobs, scheduled tasks and
+     * imports all run with no request at all, and "an automation that keeps
+     * firing after expiry means the product works fine without paying".
      *
      * This is the one place every tenant-owned write converges, whatever started
      * it — which is the difference between an edge that can be walked around and

@@ -340,7 +340,7 @@ class _Panel extends StatelessWidget {
       ];
     }
 
-    if (panel['key'] == 'workflows.health') {
+    if (panel['key'] == 'automations.health') {
       final waiting = data['waiting'] as int;
 
       if (data['idle'] == true) {

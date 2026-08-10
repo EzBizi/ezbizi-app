@@ -3,20 +3,20 @@
 namespace Tests\Feature\Api;
 
 use App\Models\Assignment;
+use App\Models\Automation;
+use App\Models\AutomationEvent;
+use App\Models\AutomationVersion;
 use App\Models\Franchise;
 use App\Models\Notification;
 use App\Models\User;
-use App\Models\Workflow;
-use App\Models\WorkflowEvent;
-use App\Models\WorkflowVersion;
 use App\Services\Organizations\ProvisionOrganization;
+use App\Support\Automations\AutomationEngine;
 use App\Support\Tenancy\TenantContext;
-use App\Support\Workflows\WorkflowEngine;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * In-app notifications (plan §12), and the workflow action that produces them.
+ * In-app notifications (plan §12), and the automation action that produces them.
  *
  * The property worth defending: a notification must never tell somebody about a
  * record they are not allowed to read. The title alone usually gives it away.
@@ -64,14 +64,14 @@ class NotificationsTest extends TestCase
     private function ruleThatNotifies(): void
     {
         $this->inTenant(function () {
-            $w = Workflow::create([
+            $w = Automation::create([
                 'organization_id' => $this->org['organization']->id,
                 'name' => 'Tell someone', 'trigger_key' => 'job.created', 'is_active' => true,
             ]);
 
-            $v = WorkflowVersion::create([
+            $v = AutomationVersion::create([
                 'organization_id' => $this->org['organization']->id,
-                'workflow_id' => $w->id, 'version' => 1,
+                'automation_id' => $w->id, 'version' => 1,
                 'actions' => [['type' => 'notify', 'message' => 'New job: {{ title }}']],
                 'created_at' => now(),
             ]);
@@ -82,11 +82,11 @@ class NotificationsTest extends TestCase
 
     private function drain(): void
     {
-        $engine = app(WorkflowEngine::class);
+        $engine = app(AutomationEngine::class);
 
-        $this->inTenant(fn () => WorkflowEvent::whereNull('delivered_at')
+        $this->inTenant(fn () => AutomationEvent::whereNull('delivered_at')
             ->orderBy('occurred_at')->get()
-            ->each(fn (WorkflowEvent $e) => $engine->deliver($e)));
+            ->each(fn (AutomationEvent $e) => $engine->deliver($e)));
     }
 
     private function makeJob(): void
@@ -121,7 +121,7 @@ class NotificationsTest extends TestCase
         });
     }
 
-    public function test_a_workflow_notify_reaches_the_people_who_can_see_the_record(): void
+    public function test_an_automation_notify_reaches_the_people_who_can_see_the_record(): void
     {
         $this->ruleThatNotifies();
         $this->makeJob();

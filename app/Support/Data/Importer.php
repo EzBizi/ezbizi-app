@@ -84,7 +84,7 @@ class Importer
         $errors = array_values(array_filter($errors));
 
         if (! $dryRun && $imported > 0) {
-            // ONE audit entry for the whole file, and deliberately NO workflow
+            // ONE audit entry for the whole file, and deliberately NO automation
             // events at all.
             //
             // Per-row events would mean a three-thousand-customer migration

@@ -10,7 +10,7 @@ import '../widgets/side_panel.dart';
 /// Import and export (plan §12, §9).
 ///
 /// The list of resources comes from the server, so a new one appears here
-/// without a client release — the same rule the settings and workflow screens
+/// without a client release — the same rule the settings and automation screens
 /// follow.
 class DataScreen extends StatefulWidget {
   const DataScreen({super.key, required this.api, required this.session});

@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Support\Workflows;
+namespace App\Support\Automations;
 
-use App\Models\Workflow;
-use App\Models\WorkflowEvent;
-use App\Models\WorkflowRun;
+use App\Models\Automation;
+use App\Models\AutomationEvent;
+use App\Models\AutomationRun;
 use App\Support\Audit\AuditLogger;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -18,7 +18,7 @@ use Throwable;
  * must not delay a user's save. By the time this executes, the business change
  * has already committed.
  */
-class WorkflowEngine
+class AutomationEngine
 {
     public function __construct(
         private readonly TenantContext $tenant,
@@ -28,9 +28,9 @@ class WorkflowEngine
     ) {}
 
     /**
-     * @return int how many workflows acted on it
+     * @return int how many automations acted on it
      */
-    public function deliver(WorkflowEvent $event): int
+    public function deliver(AutomationEvent $event): int
     {
         // The tenant is established FIRST, around everything — including the loop
         // guards, which read and write tenant-owned rows. A queue worker has no
@@ -45,11 +45,11 @@ class WorkflowEngine
 
         if ($organization->isReadOnly()) {
             // Checked ONCE here rather than letting each action be refused
-            // individually: §13 says a workflow that keeps firing after expiry
-            // means the product works fine without paying, and a rule that fails
-            // action-by-action still burns retries and fills the log with the
-            // same refusal. Stopping the event drains the outbox and leaves one
-            // legible reason on the run somebody can see in the UI.
+            // individually: §13 says an automation that keeps firing after
+            // expiry means the product works fine without paying, and a rule
+            // that fails action-by-action still burns retries and fills the
+            // log with the same refusal. Stopping the event drains the outbox
+            // and leaves one legible reason somebody can see in the UI.
             return $this->tenant->run($organization, function () use ($event) {
                 $this->stop($event,
                     'Not run — this organization is read-only because its subscription '
@@ -66,7 +66,7 @@ class WorkflowEngine
             // A→B→A across separate delayed runs — which depth alone does not.
             if ($event->isTooDeep()) {
                 $this->stop($event, sprintf(
-                    'Stopped at depth %d. A workflow action caused another workflow '
+                    'Stopped at depth %d. An automation action caused another automation '
                     .'to run, and so on — the chain is looping or longer than intended.',
                     $event->depth,
                 ));
@@ -74,11 +74,11 @@ class WorkflowEngine
                 return 0;
             }
 
-            if ($event->actionsSpent() >= WorkflowEvent::ACTION_BUDGET) {
+            if ($event->actionsSpent() >= AutomationEvent::ACTION_BUDGET) {
                 $this->stop($event, sprintf(
                     'Stopped after %d actions from one originating event. The rules '
                     .'are fanning out further than anything deliberate would.',
-                    WorkflowEvent::ACTION_BUDGET,
+                    AutomationEvent::ACTION_BUDGET,
                 ));
 
                 return 0;
@@ -86,22 +86,22 @@ class WorkflowEngine
 
             $subject = $this->subjectOf($event);
 
-            $workflows = Workflow::query()
+            $automations = Automation::query()
                 ->where('trigger_key', $event->event_key)
                 ->where('is_active', true)
                 ->whereNull('disabled_at')
                 ->whereNotNull('active_version_id')
                 ->with('activeVersion')
                 ->get()
-                ->filter(fn (Workflow $w) => $w->coversScope(
+                ->filter(fn (Automation $a) => $a->coversScope(
                     ...$this->scopeOf($subject),
                     companyChain: $this->companyChainFor($subject),
                 ));
 
             $acted = 0;
 
-            foreach ($workflows as $workflow) {
-                if ($this->runOne($workflow, $event, $subject)) {
+            foreach ($automations as $automation) {
+                if ($this->runOne($automation, $event, $subject)) {
                     $acted++;
                 }
             }
@@ -112,9 +112,9 @@ class WorkflowEngine
         });
     }
 
-    private function runOne(Workflow $workflow, WorkflowEvent $event, $subject): bool
+    private function runOne(Automation $automation, AutomationEvent $event, $subject): bool
     {
-        $version = $workflow->activeVersion;
+        $version = $automation->activeVersion;
 
         if ($version === null) {
             return false;
@@ -126,10 +126,10 @@ class WorkflowEngine
             $verdict = $this->conditions->evaluate($version->conditions, $event, $subject);
         } catch (Throwable $e) {
             // A malformed rule is the rule's fault, not the event's. Record it
-            // against this workflow and carry on with the others — one broken
+            // against this automation and carry on with the others — one broken
             // automation must not stop everybody else's.
-            $this->record($workflow, $version, $event, WorkflowRun::FAILED, $started, error: $e->getMessage());
-            $workflow->noteFailure($e->getMessage());
+            $this->record($automation, $version, $event, AutomationRun::FAILED, $started, error: $e->getMessage());
+            $automation->noteFailure($e->getMessage());
 
             return false;
         }
@@ -139,7 +139,7 @@ class WorkflowEngine
             // saw it" are completely different answers to give someone asking
             // why their automation did not fire, and only this tells them apart.
             $this->record(
-                $workflow, $version, $event, WorkflowRun::SKIPPED, $started,
+                $automation, $version, $event, AutomationRun::SKIPPED, $started,
                 trace: $verdict['trace'],
             );
 
@@ -161,7 +161,7 @@ class WorkflowEngine
          * Claiming first moves the index to where it can still prevent the POST.
          * The residual is a crash mid-request, which no database can close.
          */
-        $run = $this->claim($workflow, $version, $event, $started);
+        $run = $this->claim($automation, $version, $event, $started);
 
         if ($run === null) {
             return false;   // already claimed — a redelivery, correctly ignored
@@ -174,7 +174,7 @@ class WorkflowEngine
             // Re-checked inside the loop: one version with two hundred actions
             // would otherwise blow through the cascade budget in a single run,
             // because the budget is only consulted between events.
-            if ($event->actionsSpent() >= WorkflowEvent::ACTION_BUDGET) {
+            if ($event->actionsSpent() >= AutomationEvent::ACTION_BUDGET) {
                 $results[] = [
                     'type' => $action['type'] ?? 'unknown',
                     'ok' => false,
@@ -207,7 +207,7 @@ class WorkflowEngine
             ])->save();
         }
 
-        $status = $failed === null ? WorkflowRun::SUCCEEDED : WorkflowRun::FAILED;
+        $status = $failed === null ? AutomationRun::SUCCEEDED : AutomationRun::FAILED;
 
         $run->forceFill([
             'status'         => $status,
@@ -218,7 +218,7 @@ class WorkflowEngine
             'finished_at'    => now(),
         ])->save();
 
-        $failed === null ? $workflow->noteSuccess() : $workflow->noteFailure($failed);
+        $failed === null ? $automation->noteSuccess() : $automation->noteFailure($failed);
 
         return true;
     }
@@ -230,18 +230,18 @@ class WorkflowEngine
      * any action runs. The insert either wins — and this delivery owns the run —
      * or it loses to the unique index, and nothing is performed.
      *
-     * @return WorkflowRun|null null when this exact run was already claimed
+     * @return AutomationRun|null null when this exact run was already claimed
      */
-    private function claim(Workflow $workflow, $version, WorkflowEvent $event, $started): ?WorkflowRun
+    private function claim(Automation $automation, $version, AutomationEvent $event, $started): ?AutomationRun
     {
         try {
-            return WorkflowRun::create([
-                'organization_id'     => $event->organization_id,
-                'workflow_id'         => $workflow->getKey(),
-                'workflow_version_id' => $version->getKey(),
-                'event_id'            => $event->getKey(),
-                'status'              => WorkflowRun::MATCHED,
-                'started_at'          => $started,
+            return AutomationRun::create([
+                'organization_id'       => $event->organization_id,
+                'automation_id'         => $automation->getKey(),
+                'automation_version_id' => $version->getKey(),
+                'event_id'              => $event->getKey(),
+                'status'                => AutomationRun::MATCHED,
+                'started_at'            => $started,
             ]);
         } catch (UniqueConstraintViolationException) {
             return null;
@@ -250,9 +250,9 @@ class WorkflowEngine
 
     /** Records a run that did nothing — a skip, or a rule that would not parse. */
     private function record(
-        Workflow $workflow,
+        Automation $automation,
         $version,
-        WorkflowEvent $event,
+        AutomationEvent $event,
         string $status,
         $started,
         array $trace = [],
@@ -260,17 +260,17 @@ class WorkflowEngine
         ?string $error = null,
     ): bool {
         try {
-            WorkflowRun::create([
-                'organization_id'     => $event->organization_id,
-                'workflow_id'         => $workflow->getKey(),
-                'workflow_version_id' => $version->getKey(),
-                'event_id'            => $event->getKey(),
-                'status'              => $status,
-                'condition_trace'     => $trace ?: null,
-                'action_results'      => $results ?: null,
-                'error'               => $error,
-                'started_at'          => $started,
-                'finished_at'         => now(),
+            AutomationRun::create([
+                'organization_id'       => $event->organization_id,
+                'automation_id'         => $automation->getKey(),
+                'automation_version_id' => $version->getKey(),
+                'event_id'              => $event->getKey(),
+                'status'                => $status,
+                'condition_trace'       => $trace ?: null,
+                'action_results'        => $results ?: null,
+                'error'                 => $error,
+                'started_at'            => $started,
+                'finished_at'           => now(),
             ]);
 
             return true;
@@ -286,14 +286,14 @@ class WorkflowEngine
      * suppression (§4.2) — a runaway cascade is exactly the kind of thing that
      * must not be invisible because of who happened to trigger it.
      */
-    private function stop(WorkflowEvent $event, string $reason): void
+    private function stop(AutomationEvent $event, string $reason): void
     {
         // Called from inside deliver()'s tenant block, so this save passes the
         // BelongsToTenant guard. It did not always — that guard caught a real
         // bug where the queue worker had no tenant, which is exactly its job.
         $event->forceFill(['delivered_at' => now(), 'failed_at' => now(), 'last_error' => $reason])->save();
 
-        $this->audit->logError('workflow.cascade_stopped', [
+        $this->audit->logError('automation.cascade_stopped', [
             'event'         => $event->event_key,
             'event_id'      => $event->getKey(),
             'root_event_id' => $event->rootId(),
@@ -302,7 +302,7 @@ class WorkflowEngine
         ]);
     }
 
-    private function subjectOf(WorkflowEvent $event)
+    private function subjectOf(AutomationEvent $event)
     {
         if ($event->subject_type === null || ! class_exists($event->subject_type)) {
             return null;
@@ -315,7 +315,7 @@ class WorkflowEngine
 
     /**
      * Which scope an event belongs to, for matching franchise- or company-scoped
-     * workflows. Read off the subject, because the event itself is deliberately
+     * automations. Read off the subject, because the event itself is deliberately
      * generic.
      *
      * @return array{0: string|null, 1: string|null}
@@ -338,10 +338,10 @@ class WorkflowEngine
     /**
      * Every company a franchise sits beneath, nearest first.
      *
-     * Needed because a company-scoped workflow has to fire on its Sub Companies'
-     * franchises too — the same step §6 flags as the one most easily missed in
-     * the settings cascade, and missing it here meant a company-scoped rule could
-     * be saved through the API and then never match anything at all.
+     * Needed because a company-scoped automation has to fire on its Sub
+     * Companies' franchises too — the same step §6 flags as the one most easily
+     * missed in the settings cascade, and missing it here meant a company-scoped
+     * rule could be saved through the API and then never match anything at all.
      *
      * @return string[] company ids
      */
@@ -371,15 +371,15 @@ class WorkflowEngine
      * §5.5 test mode. The conditions are evaluated for real — that is the part
      * people get wrong — and the actions report what they would have done.
      */
-    public function rehearse(Workflow $workflow, WorkflowEvent $event): array
+    public function rehearse(Automation $automation, AutomationEvent $event): array
     {
-        return $this->tenant->run($event->organization, function () use ($workflow, $event) {
+        return $this->tenant->run($event->organization, function () use ($automation, $event) {
             // Resolved INSIDE the tenant, like everything in deliver(). It used
             // to be read a line above the run() and worked only because the
             // caller happened to be a request that already had a tenant — the
             // same assumption deliver()'s header says nothing below it may make.
-            // Reading a WorkflowVersion is a tenant-scoped read whoever asks.
-            $version = $workflow->activeVersion ?? $workflow->versions()->first();
+            // Reading an AutomationVersion is a tenant-scoped read whoever asks.
+            $version = $automation->activeVersion ?? $automation->versions()->first();
 
             $subject = $this->subjectOf($event);
             $verdict = $this->conditions->evaluate($version?->conditions, $event, $subject);

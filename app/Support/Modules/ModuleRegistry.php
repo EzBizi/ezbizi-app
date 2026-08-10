@@ -40,6 +40,25 @@ class ModuleRegistry
         return $this->modules[$key] ?? null;
     }
 
+    /**
+     * The module-declared event with this key, or null if nothing declares it.
+     *
+     * Both the emitter and the automation validator need to ask this, and they
+     * were each walking the registry themselves. Two loops with the same job
+     * eventually disagree by one condition, and the one that differs is the one
+     * that lets a rule be saved for an event that can never arrive.
+     */
+    public function findTrigger(string $key): ?TriggerDefinition
+    {
+        foreach ($this->modules as $module) {
+            if (($trigger = $module->trigger($key)) !== null) {
+                return $trigger;
+            }
+        }
+
+        return null;
+    }
+
     /** Every permission key across every module — what the sync command writes. */
     public function allPermissionKeys(): array
     {

@@ -7,6 +7,7 @@ import 'core/files.dart';
 import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
+import 'screens/automations_screen.dart';
 import 'screens/customers_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/data_screen.dart';
@@ -17,7 +18,6 @@ import 'screens/organization_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'screens/signup_screen.dart';
-import 'screens/workflows_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/staff/staff_login_screen.dart';
 import 'screens/staff/staff_shell.dart';
@@ -227,9 +227,9 @@ class _HomeShellState extends State<HomeShell> {
         JobsScreen(api: widget.api, session: widget.session),
       ),
       Destination(
-        'Workflows',
+        'Automations',
         Icons.bolt_outlined,
-        WorkflowsScreen(api: widget.api, session: widget.session),
+        AutomationsScreen(api: widget.api, session: widget.session),
       ),
       Destination(
         'Import & export',

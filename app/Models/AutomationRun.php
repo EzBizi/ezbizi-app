@@ -9,14 +9,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * What one workflow did about one event (plan §5.5).
+ * What one automation did about one event (plan §5.5).
  *
  * Written for skipped runs as well as acted-on ones. "The rule did not match"
  * and "the rule never saw it" are completely different answers to give someone
  * asking why their automation did not fire, and only a recorded skip can tell
  * them apart.
  */
-class WorkflowRun extends Model
+class AutomationRun extends Model
 {
     use HasFactory;
     use HasUuids;
@@ -39,7 +39,7 @@ class WorkflowRun extends Model
     public const FAILED    = 'failed';
 
     protected $fillable = [
-        'organization_id', 'workflow_id', 'workflow_version_id', 'event_id',
+        'organization_id', 'automation_id', 'automation_version_id', 'event_id',
         'status', 'condition_trace', 'action_results', 'action_count', 'error',
         'is_test', 'started_at', 'finished_at',
     ];
@@ -55,13 +55,13 @@ class WorkflowRun extends Model
         ];
     }
 
-    public function workflow(): BelongsTo
+    public function automation(): BelongsTo
     {
-        return $this->belongsTo(Workflow::class);
+        return $this->belongsTo(Automation::class);
     }
 
     public function event(): BelongsTo
     {
-        return $this->belongsTo(WorkflowEvent::class, 'event_id');
+        return $this->belongsTo(AutomationEvent::class, 'event_id');
     }
 }

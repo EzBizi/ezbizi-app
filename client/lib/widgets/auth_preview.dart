@@ -6,7 +6,7 @@ import '../core/theme.dart';
 ///
 /// ── Why a preview and not a feature list ─────────────────────────
 ///
-/// A row of nouns with arrows between them — Customers → Jobs → Workflows —
+/// A row of nouns with arrows between them — Customers → Jobs → Automations —
 /// says nothing a person could not guess from the word "CRM". It is the shape
 /// every SaaS sign-in page has, which is exactly why it reads as decoration.
 ///
@@ -444,7 +444,7 @@ class _HealthCard extends StatelessWidget {
 
   static const _rows = [
     ('Backups', 'Verified 4h ago'),
-    ('Workflow outbox', 'Nothing waiting'),
+    ('Automation outbox', 'Nothing waiting'),
     ('Mail', 'Not configured'),
   ];
 

@@ -3,28 +3,28 @@
 namespace Tests\Feature\Api;
 
 use App\Models\AuditEvent;
+use App\Models\Automation;
+use App\Models\AutomationEvent;
+use App\Models\AutomationRun;
+use App\Models\AutomationVersion;
 use App\Models\Customer;
 use App\Models\Job;
-use App\Models\Workflow;
-use App\Models\WorkflowEvent;
-use App\Models\WorkflowRun;
-use App\Models\WorkflowVersion;
 use App\Services\Organizations\ProvisionOrganization;
+use App\Support\Automations\AutomationEngine;
+use App\Support\Automations\OutboundWebhook;
 use App\Support\Tenancy\TenantContext;
-use App\Support\Workflows\OutboundWebhook;
-use App\Support\Workflows\WorkflowEngine;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
 use Tests\TestCase;
 
 /**
- * The workflow engine (plan §5.5).
+ * The automation engine (plan §5.5).
  *
  * The plan is blunt about why this matters: "Automation that fires twice, or not
  * at all, or at the wrong moment, destroys trust faster than a missing feature."
  * So these test the guarantees rather than the happy path.
  */
-class WorkflowEngineTest extends TestCase
+class AutomationEngineTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -63,40 +63,40 @@ class WorkflowEngineTest extends TestCase
         return $this->withHeader('Authorization', "Bearer {$token}");
     }
 
-    private function workflow(string $trigger, ?array $conditions, array $actions): Workflow
+    private function automation(string $trigger, ?array $conditions, array $actions): Automation
     {
         return $this->inTenant(function () use ($trigger, $conditions, $actions) {
-            $workflow = Workflow::create([
+            $automation = Automation::create([
                 'organization_id' => $this->org['organization']->id,
                 'name'            => "When {$trigger}",
                 'trigger_key'     => $trigger,
                 'is_active'       => true,
             ]);
 
-            $version = WorkflowVersion::create([
+            $version = AutomationVersion::create([
                 'organization_id' => $this->org['organization']->id,
-                'workflow_id'     => $workflow->id,
+                'automation_id'     => $automation->id,
                 'version'         => 1,
                 'conditions'      => $conditions,
                 'actions'         => $actions,
                 'created_at'      => now(),
             ]);
 
-            $workflow->forceFill(['active_version_id' => $version->id])->save();
+            $automation->forceFill(['active_version_id' => $version->id])->save();
 
-            return $workflow->fresh();
+            return $automation->fresh();
         });
     }
 
     /** Deliver everything sitting in the outbox, the way the scheduled sweep does. */
     private function drain(): int
     {
-        $engine = app(WorkflowEngine::class);
+        $engine = app(AutomationEngine::class);
 
-        return $this->inTenant(fn () => WorkflowEvent::whereNull('delivered_at')
+        return $this->inTenant(fn () => AutomationEvent::whereNull('delivered_at')
             ->orderBy('occurred_at')
             ->get()
-            ->sum(fn (WorkflowEvent $e) => $engine->deliver($e)));
+            ->sum(fn (AutomationEvent $e) => $engine->deliver($e)));
     }
 
     private function makeJob(array $overrides = []): array
@@ -120,7 +120,7 @@ class WorkflowEngineTest extends TestCase
     {
         [, $job] = $this->makeJob();
 
-        $event = $this->inTenant(fn () => WorkflowEvent::where('event_key', 'job.created')->first());
+        $event = $this->inTenant(fn () => AutomationEvent::where('event_key', 'job.created')->first());
 
         $this->assertNotNull($event);
         $this->assertSame($job, $event->subject_id);
@@ -130,11 +130,12 @@ class WorkflowEngineTest extends TestCase
 
     public function test_an_event_for_a_trigger_no_module_declares_is_refused(): void
     {
-        // A workflow listening for a typo would look configured and never fire —
-        // the most confusing failure there is, because nothing reports an error.
+        // An automation listening for a typo would look configured and never
+        // fire — the most confusing failure there is, because nothing at all
+        // reports an error.
         $this->expectException(\InvalidArgumentException::class);
 
-        $this->inTenant(fn () => app(\App\Support\Workflows\EventEmitter::class)
+        $this->inTenant(fn () => app(\App\Support\Automations\EventEmitter::class)
             ->emit('job.levitated', null, []));
     }
 
@@ -142,7 +143,7 @@ class WorkflowEngineTest extends TestCase
 
     public function test_a_matching_rule_acts_and_a_non_matching_one_records_why_not(): void
     {
-        $this->workflow('job.status_changed',
+        $this->automation('job.status_changed',
             ['all' => [['field' => 'status', 'op' => 'eq', 'value' => 'completed']]],
             [['type' => 'update_field', 'field' => 'title', 'value' => 'Done']],
         );
@@ -153,7 +154,7 @@ class WorkflowEngineTest extends TestCase
         $this->as()->patchJson("/api/v1/jobs/{$job}", ['status' => 'in_progress'])->assertOk();
         $this->drain();
 
-        $skipped = $this->inTenant(fn () => WorkflowRun::where('status', WorkflowRun::SKIPPED)->first());
+        $skipped = $this->inTenant(fn () => AutomationRun::where('status', AutomationRun::SKIPPED)->first());
 
         // A recorded skip is the difference between "the rule did not match" and
         // "the rule never saw it" — completely different answers for whoever is
@@ -169,7 +170,7 @@ class WorkflowEngineTest extends TestCase
 
     public function test_changed_to_does_not_fire_on_creation(): void
     {
-        $this->workflow('job.created',
+        $this->automation('job.created',
             ['all' => [['field' => 'status', 'op' => 'changed_to', 'value' => 'scheduled']]],
             [['type' => 'update_field', 'field' => 'title', 'value' => 'Should not happen']],
         );
@@ -184,7 +185,7 @@ class WorkflowEngineTest extends TestCase
 
     public function test_nested_any_and_all_evaluate_as_written(): void
     {
-        $this->workflow('job.status_changed',
+        $this->automation('job.status_changed',
             ['any' => [
                 ['field' => 'status', 'op' => 'eq', 'value' => 'cancelled'],
                 ['all' => [
@@ -213,14 +214,14 @@ class WorkflowEngineTest extends TestCase
 
     public function test_redelivering_an_event_cannot_run_the_same_version_twice(): void
     {
-        $this->workflow('job.created', null,
+        $this->automation('job.created', null,
             [['type' => 'update_field', 'field' => 'title', 'value' => 'Touched']]);
 
         $this->makeJob();
 
-        $engine = app(WorkflowEngine::class);
+        $engine = app(AutomationEngine::class);
 
-        $event = $this->inTenant(fn () => WorkflowEvent::where('event_key', 'job.created')->first());
+        $event = $this->inTenant(fn () => AutomationEvent::where('event_key', 'job.created')->first());
 
         $first  = $this->inTenant(fn () => $engine->deliver($event));
 
@@ -236,7 +237,7 @@ class WorkflowEngineTest extends TestCase
         // (event, version) is what stops at-least-once becoming at-least-twice.
         $this->assertSame(1, $first);
         $this->assertSame(0, $second);
-        $this->assertSame(1, $this->inTenant(fn () => WorkflowRun::count()));
+        $this->assertSame(1, $this->inTenant(fn () => AutomationRun::count()));
     }
 
     // ── loop protection (§5.5) ───────────────────────────────────
@@ -248,9 +249,9 @@ class WorkflowEngineTest extends TestCase
         // already what it is being set to and emits nothing, which is a guard
         // worth having but no test of the depth cap. A pair that disagree is a
         // real cascade.
-        $this->workflow('job.updated', null,
+        $this->automation('job.updated', null,
             [['type' => 'update_field', 'field' => 'description', 'value' => 'ping']]);
-        $this->workflow('job.updated', null,
+        $this->automation('job.updated', null,
             [['type' => 'update_field', 'field' => 'description', 'value' => 'pong']]);
 
         [, $job] = $this->makeJob();
@@ -261,10 +262,10 @@ class WorkflowEngineTest extends TestCase
             $this->drain();
         }
 
-        $depth = $this->inTenant(fn () => WorkflowEvent::max('depth'));
+        $depth = $this->inTenant(fn () => AutomationEvent::max('depth'));
 
-        $this->assertLessThanOrEqual(WorkflowEvent::MAX_DEPTH, $depth);
-        $this->assertDatabaseHas('audit_events', ['action' => 'workflow.cascade_stopped']);
+        $this->assertLessThanOrEqual(AutomationEvent::MAX_DEPTH, $depth);
+        $this->assertDatabaseHas('audit_events', ['action' => 'automation.cascade_stopped']);
     }
 
     // ── the SSRF guard (§5.5 — "the sharp edge") ─────────────────
@@ -304,17 +305,17 @@ class WorkflowEngineTest extends TestCase
 
     public function test_a_webhook_action_reports_the_refusal_rather_than_throwing(): void
     {
-        $this->workflow('job.created', null,
+        $this->automation('job.created', null,
             [['type' => 'webhook', 'url' => 'https://169.254.169.254/steal']]);
 
         $this->makeJob();
         $this->drain();
 
-        $run = $this->inTenant(fn () => WorkflowRun::first());
+        $run = $this->inTenant(fn () => AutomationRun::first());
 
         // Recorded as a failed action, not an exception that loses the run —
         // whoever configured it has to be able to see why it never worked.
-        $this->assertSame(WorkflowRun::FAILED, $run->status);
+        $this->assertSame(AutomationRun::FAILED, $run->status);
         $this->assertFalse($run->action_results[0]['ok']);
         $this->assertStringContainsString('internal address', $run->action_results[0]['detail']);
     }
@@ -325,13 +326,13 @@ class WorkflowEngineTest extends TestCase
         // set a field to a constant, so the second run no-opped INSIDE the runner
         // rather than being stopped before it. A webhook cannot no-op — the POST
         // either happened twice or it did not.
-        $this->workflow('job.created', null,
+        $this->automation('job.created', null,
             [['type' => 'webhook', 'url' => 'https://169.254.169.254/never']]);
 
         $this->makeJob();
 
-        $engine = app(WorkflowEngine::class);
-        $event  = $this->inTenant(fn () => WorkflowEvent::where('event_key', 'job.created')->first());
+        $engine = app(AutomationEngine::class);
+        $event  = $this->inTenant(fn () => AutomationEvent::where('event_key', 'job.created')->first());
 
         $this->inTenant(fn () => $engine->deliver($event));
 
@@ -343,7 +344,7 @@ class WorkflowEngineTest extends TestCase
         // One run, one attempt. The run row is claimed BEFORE the action loop, so
         // the unique index refuses the redelivery while it can still prevent the
         // call rather than merely decline to record it.
-        $runs = $this->inTenant(fn () => WorkflowRun::all());
+        $runs = $this->inTenant(fn () => AutomationRun::all());
 
         $this->assertCount(1, $runs);
         $this->assertCount(1, $runs->first()->action_results);
@@ -353,15 +354,15 @@ class WorkflowEngineTest extends TestCase
     {
         [, $job] = $this->makeJob();
 
-        $event = $this->inTenant(fn () => WorkflowEvent::where('event_key', 'job.created')->first());
+        $event = $this->inTenant(fn () => AutomationEvent::where('event_key', 'job.created')->first());
 
-        $this->inTenant(fn () => WorkflowRun::create([
+        $this->inTenant(fn () => AutomationRun::create([
             'organization_id'     => $this->org['organization']->id,
-            'workflow_id'         => $this->workflow('job.created', null,
+            'automation_id'         => $this->automation('job.created', null,
                 [['type' => 'notify', 'message' => 'x']])->id,
-            'workflow_version_id' => WorkflowVersion::first()->id,
+            'automation_version_id' => AutomationVersion::first()->id,
             'event_id'            => $event->id,
-            'status'              => WorkflowRun::SUCCEEDED,
+            'status'              => AutomationRun::SUCCEEDED,
             'action_results'      => array_fill(0, 40, ['type' => 'notify', 'ok' => true, 'detail' => 'x']),
             'action_count'        => 40,
             'started_at'          => now(),
@@ -373,7 +374,7 @@ class WorkflowEngineTest extends TestCase
         $this->assertSame(40, $this->inTenant(fn () => $event->fresh()->actionsSpent()));
     }
 
-    public function test_a_workflow_cannot_move_a_customer_between_franchises(): void
+    public function test_an_automation_cannot_move_a_customer_between_franchises(): void
     {
         $other = $this->inTenant(fn () => \App\Models\Franchise::create([
             'organization_id' => $this->org['organization']->id,
@@ -381,7 +382,7 @@ class WorkflowEngineTest extends TestCase
             'name' => 'Second Franchise', 'is_active' => true,
         ]));
 
-        $this->workflow('customer.created', null,
+        $this->automation('customer.created', null,
             [['type' => 'update_field', 'field' => 'owning_franchise_id', 'value' => $other->id]]);
 
         [$customer] = $this->makeJob();
@@ -395,13 +396,13 @@ class WorkflowEngineTest extends TestCase
             $this->inTenant(fn () => Customer::find($customer)->owning_franchise_id),
         );
 
-        $run = $this->inTenant(fn () => WorkflowRun::where('status', WorkflowRun::FAILED)->first());
-        $this->assertStringContainsString('not a field a workflow may set', $run->action_results[0]['detail']);
+        $run = $this->inTenant(fn () => AutomationRun::where('status', AutomationRun::FAILED)->first());
+        $this->assertStringContainsString('not a field an automation may set', $run->action_results[0]['detail']);
     }
 
     public function test_an_automated_status_change_still_fires_the_status_trigger(): void
     {
-        $this->workflow('job.created', null,
+        $this->automation('job.created', null,
             [['type' => 'update_field', 'field' => 'status', 'value' => 'completed']]);
 
         $this->makeJob();
@@ -409,7 +410,7 @@ class WorkflowEngineTest extends TestCase
 
         // "When a job is completed" is the canonical rule the plan names. It must
         // not silently fail to fire because another rule is what completed it.
-        $this->assertTrue($this->inTenant(fn () => WorkflowEvent::where('event_key', 'job.status_changed')->exists()));
+        $this->assertTrue($this->inTenant(fn () => AutomationEvent::where('event_key', 'job.status_changed')->exists()));
     }
 
     public function test_a_mapped_ipv6_address_cannot_smuggle_an_internal_target(): void
@@ -426,9 +427,9 @@ class WorkflowEngineTest extends TestCase
 
     // ── operability (§5.5) ───────────────────────────────────────
 
-    public function test_a_workflow_that_keeps_failing_disables_itself(): void
+    public function test_an_automation_that_keeps_failing_disables_itself(): void
     {
-        $workflow = $this->workflow('job.status_changed', null,
+        $automation = $this->automation('job.status_changed', null,
             [['type' => 'webhook', 'url' => 'https://127.0.0.1/nope']]);
 
         [, $job] = $this->makeJob();
@@ -438,36 +439,36 @@ class WorkflowEngineTest extends TestCase
             $this->drain();
         }
 
-        $workflow = $workflow->fresh();
+        $automation = $automation->fresh();
 
         // Otherwise it retries on every event forever and the noise buries
         // whatever actually broke.
-        $this->assertNotNull($workflow->disabled_at);
-        $this->assertStringContainsString('consecutive failures', $workflow->disabled_reason);
+        $this->assertNotNull($automation->disabled_at);
+        $this->assertStringContainsString('consecutive failures', $automation->disabled_reason);
     }
 
     public function test_a_version_cannot_be_edited(): void
     {
-        $workflow = $this->workflow('job.created', null, [['type' => 'notify', 'message' => 'hi']]);
+        $automation = $this->automation('job.created', null, [['type' => 'notify', 'message' => 'hi']]);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('immutable');
 
         // Every run records the version it executed. A version that can change
         // turns the run log into a description of a rule that no longer exists.
-        $this->inTenant(fn () => $workflow->activeVersion->update(['actions' => []]));
+        $this->inTenant(fn () => $automation->activeVersion->update(['actions' => []]));
     }
 
     public function test_a_test_run_changes_nothing(): void
     {
-        $workflow = $this->workflow('job.created', null,
+        $automation = $this->automation('job.created', null,
             [['type' => 'update_field', 'field' => 'title', 'value' => 'Changed by test']]);
 
         [, $job] = $this->makeJob();
 
-        $event = $this->inTenant(fn () => WorkflowEvent::where('event_key', 'job.created')->first());
+        $event = $this->inTenant(fn () => AutomationEvent::where('event_key', 'job.created')->first());
 
-        $result = app(WorkflowEngine::class)->rehearse($workflow, $event);
+        $result = app(AutomationEngine::class)->rehearse($automation, $event);
 
         $this->assertTrue($result['matched']);
         $this->assertTrue($result['would_do'][0]['skipped']);
@@ -478,21 +479,21 @@ class WorkflowEngineTest extends TestCase
 
     public function test_an_action_cannot_write_a_field_the_model_does_not_expose(): void
     {
-        $this->workflow('job.created', null,
+        $this->automation('job.created', null,
             [['type' => 'update_field', 'field' => 'organization_id', 'value' => 'anything']]);
 
         $this->makeJob();
         $this->drain();
 
-        $run = $this->inTenant(fn () => WorkflowRun::first());
+        $run = $this->inTenant(fn () => AutomationRun::first());
 
         // "The model decides what is writable" is the rule that covers the next
         // field nobody thought of, not just this one.
         $this->assertFalse($run->action_results[0]['ok']);
-        $this->assertStringContainsString('not a field a workflow may set', $run->action_results[0]['detail']);
+        $this->assertStringContainsString('not a field an automation may set', $run->action_results[0]['detail']);
     }
 
-    public function test_a_franchise_scoped_workflow_ignores_another_franchises_work(): void
+    public function test_a_franchise_scoped_automation_ignores_another_franchises_work(): void
     {
         $other = $this->inTenant(fn () => \App\Models\Franchise::create([
             'organization_id' => $this->org['organization']->id,
@@ -500,10 +501,10 @@ class WorkflowEngineTest extends TestCase
             'name' => 'Second Franchise', 'is_active' => true,
         ]));
 
-        $workflow = $this->workflow('job.created', null,
+        $automation = $this->automation('job.created', null,
             [['type' => 'update_field', 'field' => 'title', 'value' => 'Touched']]);
 
-        $this->inTenant(fn () => $workflow->forceFill([
+        $this->inTenant(fn () => $automation->forceFill([
             'scope_type' => 'franchise', 'scope_id' => $other->id,
         ])->save());
 
@@ -513,12 +514,12 @@ class WorkflowEngineTest extends TestCase
         // Scope is not the settings cascade in reverse: a franchise's own rule
         // must not fire on a sibling's work just because they share a parent.
         $this->assertSame('A job', $this->inTenant(fn () => Job::find($job)->title));
-        $this->assertSame(0, $this->inTenant(fn () => WorkflowRun::count()));
+        $this->assertSame(0, $this->inTenant(fn () => AutomationRun::count()));
     }
 
     public function test_customer_owner_reassignment_reaches_the_engine(): void
     {
-        $this->workflow('customer.owner_reassigned', null,
+        $this->automation('customer.owner_reassigned', null,
             [['type' => 'notify', 'message' => '{{ name }} moved franchise']]);
 
         $other = $this->inTenant(fn () => \App\Models\Franchise::create([
@@ -535,7 +536,7 @@ class WorkflowEngineTest extends TestCase
 
         $this->drain();
 
-        $run = $this->inTenant(fn () => WorkflowRun::where('status', WorkflowRun::SUCCEEDED)
+        $run = $this->inTenant(fn () => AutomationRun::where('status', AutomationRun::SUCCEEDED)
             ->latest('started_at')->first());
 
         $this->assertNotNull($run);

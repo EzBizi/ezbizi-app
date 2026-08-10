@@ -3,9 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\Permission;
+use App\Support\Modules\ActionDefinition;
 use App\Support\Modules\ModuleDefinition;
 use App\Support\Modules\ModuleRegistry;
+use App\Support\Modules\TriggerDefinition;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -13,10 +16,15 @@ use Tests\TestCase;
  * Enforcement of the §5.5 standing rule.
  *
  * The rule — "every new module must expose its triggers and actions to the
- * workflow engine; a module that can't participate in automation is not
+ * automation engine; a module that can't participate in automation is not
  * finished" — is the kind that quietly dies around module fifteen, when someone
  * is in a hurry. This test is what stops that: adding a module without
  * automation support fails the build, not a code review someone might skip.
+ *
+ * Declaring a trigger is now half the rule. A module that declares one without
+ * saying what it MEANS puts a wire key in front of the person writing the rule,
+ * which is the state this replaced — so the wording is checked here too, and by
+ * the same means: the build fails.
  */
 class ModuleRegistryTest extends TestCase
 {
@@ -29,7 +37,7 @@ class ModuleRegistryTest extends TestCase
         $this->assertSame(
             [],
             array_keys($violations),
-            "Plan §5.5: every module must declare workflow triggers/actions, or state "
+            "Plan §5.5: every module must declare automation triggers/actions, or state "
             ."automationExemptBecause. Offending module(s): ".implode(', ', array_keys($violations))
         );
     }
@@ -37,7 +45,7 @@ class ModuleRegistryTest extends TestCase
     public function test_exempt_modules_state_a_reason(): void
     {
         foreach (app(ModuleRegistry::class)->all() as $key => $module) {
-            if ($module->triggers === [] && $module->workflowActions === []) {
+            if ($module->triggers === [] && $module->automationActions === []) {
                 $this->assertNotEmpty(
                     $module->automationExemptBecause,
                     "Module '{$key}' is outside automation but gives no reason. "
@@ -48,6 +56,177 @@ class ModuleRegistryTest extends TestCase
 
         // Keeps the loop honest if every module later gains triggers.
         $this->assertTrue(true);
+    }
+
+    // ── the wording (§5.5) ───────────────────────────────────────
+
+    /**
+     * Checked against the registry as it SHIPS, not against the constructor.
+     *
+     * AutomationDeclaration refuses most of this at the point of writing, which
+     * makes this test look redundant — it is not. It is what still fails if
+     * somebody loosens a rule in the value object to get one awkward label
+     * through, because it asserts the property everyone actually depends on:
+     * nothing in the catalogue is a bare key.
+     */
+    public function test_every_declared_trigger_and_action_has_words_a_person_can_read(): void
+    {
+        $checked = 0;
+
+        foreach (app(ModuleRegistry::class)->all() as $key => $module) {
+            foreach ([...$module->triggers, ...$module->automationActions] as $declaration) {
+                $where = "{$key}: {$declaration->key}";
+
+                $this->assertNotSame('', trim($declaration->label), "No label — {$where}");
+                $this->assertNotSame('', trim($declaration->description), "No description — {$where}");
+
+                // The failure this exists for: the key rendered as its own name.
+                $this->assertNotSame($declaration->key, $declaration->label, "Label is the key — {$where}");
+                $this->assertDoesNotMatchRegularExpression(
+                    '/[._]/',
+                    $declaration->label,
+                    "Label '{$declaration->label}' still looks like a key — {$where}. Write what "
+                    .'somebody would call it: "Owner reassigned", not "customer.owner_reassigned".'
+                );
+
+                $this->assertStringNotContainsString(
+                    $declaration->key,
+                    $declaration->description,
+                    "The description quotes the wire key — {$where}."
+                );
+
+                // A description is a sentence about when it fires. A restated
+                // label is a field filled in to satisfy a rule.
+                $this->assertNotSame($declaration->label, $declaration->description, $where);
+                $this->assertStringEndsWith('.', trim($declaration->description), $where);
+
+                $checked++;
+            }
+        }
+
+        // A loop over an empty registry passes everything.
+        $this->assertGreaterThan(20, $checked, 'The registry has lost its declarations.');
+    }
+
+    /**
+     * The claim in the wording, checked against the code that would make it true.
+     *
+     * `isRaised: false` appends "Nothing raises this yet" to what the tenant
+     * reads. That sentence is a promise about the source, and promises about the
+     * source rot — somebody wires the emission six months from now and the
+     * screen goes on saying the rule will never run.
+     *
+     * So it is checked: a trigger key that appears NOWHERE in application code
+     * outside the declaration is certainly never emitted, and one that does
+     * appear must not still be claiming otherwise. A mention is not proof of an
+     * `emit()` call — the audit log uses some of the same strings — so the
+     * second direction is the approximate one. If it ever fails on a key that is
+     * only mentioned and not emitted, the fix is to sharpen this, not to flip
+     * the flag.
+     */
+    public function test_a_trigger_that_nothing_raises_says_so_and_one_that_fires_does_not(): void
+    {
+        $source = $this->applicationSourceOutsideTheDeclarations();
+
+        foreach (app(ModuleRegistry::class)->all() as $key => $module) {
+            foreach ($module->triggers as $trigger) {
+                $mentioned = str_contains($source, "'{$trigger->key}'");
+
+                $this->assertSame(
+                    $mentioned,
+                    $trigger->isRaised,
+                    $mentioned
+                        ? "'{$trigger->key}' ({$key}) is declared as never raised, but the code "
+                          .'mentions it. If it is emitted now, drop isRaised: false — the tenant '
+                          .'is still being told the rule will not run.'
+                        : "'{$trigger->key}' ({$key}) is declared as raised, but nothing in app/ "
+                          .'mentions it. A rule on it would validate, save, switch on and wait '
+                          .'forever. Declare isRaised: false until something emits it.'
+                );
+            }
+        }
+    }
+
+    /** Every PHP file under app/ except the ones where the keys are declared. */
+    private function applicationSourceOutsideTheDeclarations(): string
+    {
+        $declarations = [
+            app_path('Support'.DIRECTORY_SEPARATOR.'Modules'),
+            app_path('Providers'.DIRECTORY_SEPARATOR.'ModuleServiceProvider.php'),
+        ];
+
+        $source = '';
+
+        foreach (File::allFiles(app_path()) as $file) {
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+
+            foreach ($declarations as $excluded) {
+                if (str_starts_with($file->getPathname(), $excluded)) {
+                    continue 2;
+                }
+            }
+
+            $source .= $file->getContents();
+        }
+
+        return $source;
+    }
+
+    public function test_a_trigger_declared_without_wording_is_refused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/no label/');
+
+        new TriggerDefinition(key: 'job.created', label: '', description: 'A job was booked.');
+    }
+
+    public function test_a_declaration_without_a_description_is_refused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/no description/');
+
+        // The label says what it is called. Only the description says when it
+        // fires, and that is the part people get wrong.
+        new TriggerDefinition(key: 'job.created', label: 'Created', description: '');
+    }
+
+    public function test_a_label_that_is_really_the_key_is_refused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/looks like a key/');
+
+        new ActionDefinition(
+            key: 'customer.update_field',
+            label: 'customer.update_field',
+            description: 'Sets one field on the customer that triggered the rule.',
+        );
+    }
+
+    public function test_a_module_may_not_declare_a_trigger_as_a_bare_string(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/TriggerDefinition/');
+
+        // This is what the registry held before, and it is what would reach the
+        // catalogue as a trigger with no label at all.
+        new ModuleDefinition(key: 'jobs', label: 'Jobs', triggers: ['job.created']);
+    }
+
+    public function test_a_trigger_nothing_raises_tells_the_tenant_so(): void
+    {
+        $trigger = new TriggerDefinition(
+            key: 'user.invited',
+            label: 'Invited',
+            description: 'Somebody was invited to join, before they have accepted.',
+            isRaised: false,
+        );
+
+        // Shown and marked, not hidden: a hidden trigger is one a tenant cannot
+        // build a rule on; a listed one with no warning is one they build a rule
+        // on and never hear from again.
+        $this->assertStringContainsString(TriggerDefinition::NOT_RAISED_YET, $trigger->description);
     }
 
     public function test_permission_keys_are_module_prefixed(): void
@@ -67,7 +246,7 @@ class ModuleRegistryTest extends TestCase
     {
         $registry = new ModuleRegistry;
         $registry->register(new ModuleDefinition(
-            key: 'jobs', label: 'Jobs', triggers: ['job.created']
+            key: 'jobs', label: 'Jobs', triggers: [$this->someTrigger('job.created')]
         ));
 
         $this->expectException(InvalidArgumentException::class);
@@ -75,7 +254,7 @@ class ModuleRegistryTest extends TestCase
 
         // A duplicate would silently merge two modules' permissions.
         $registry->register(new ModuleDefinition(
-            key: 'jobs', label: 'Jobs Again', triggers: ['job.updated']
+            key: 'jobs', label: 'Jobs Again', triggers: [$this->someTrigger('job.updated')]
         ));
     }
 
@@ -86,7 +265,19 @@ class ModuleRegistryTest extends TestCase
 
         // The key becomes the permission prefix, so 'Customer Jobs' would produce
         // 'Customer Jobs.view' — unmatchable and unsearchable.
-        new ModuleDefinition(key: 'Customer Jobs', label: 'x', triggers: ['a']);
+        new ModuleDefinition(
+            key: 'Customer Jobs', label: 'x', triggers: [$this->someTrigger('job.created')]
+        );
+    }
+
+    /** A well-formed trigger, for tests about something other than the wording. */
+    private function someTrigger(string $key): TriggerDefinition
+    {
+        return new TriggerDefinition(
+            key: $key,
+            label: 'Something happened',
+            description: 'Stands in for a real trigger in this test.',
+        );
     }
 
     // ── the sync command ─────────────────────────────────────────

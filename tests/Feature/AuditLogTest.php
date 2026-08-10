@@ -174,7 +174,7 @@ class AuditLogTest extends TestCase
     {
         ['organization' => $org] = $this->provision();
 
-        $event = app(TenantContext::class)->run($org, fn () => $this->audit->log('workflow.ran'));
+        $event = app(TenantContext::class)->run($org, fn () => $this->audit->log('automation.ran'));
 
         $this->assertSame(AuditEvent::ACTOR_SYSTEM, $event->actor_type);
         $this->assertSame('system', $event->actor_label);
@@ -189,7 +189,7 @@ class AuditLogTest extends TestCase
             $this->audit->log('b.happened'),
         ]);
 
-        // A workflow firing five actions must be reconstructable as one chain.
+        // An automation firing five actions must be reconstructable as one chain.
         $this->assertSame($a->correlation_id, $b->correlation_id);
     }
 

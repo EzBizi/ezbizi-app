@@ -15,7 +15,7 @@ use Illuminate\Support\Collection;
  *
  * ── Why the audience is resolved from REACH ──────────────────────
  *
- * A workflow says "notify somebody about this job". The only defensible answer
+ * An automation says "notify somebody about this job". The only defensible answer
  * to "who" is the people who could have seen the job anyway: sending a
  * notification about a record whose contents the recipient is not allowed to
  * read would be a leak dressed up as a feature, and the title alone often gives
@@ -51,7 +51,7 @@ class NotificationDispatcher
         ?Model $subject = null,
         ?User $onlyTo = null,
         string $source = 'system',
-        ?string $workflowId = null,
+        ?string $automationId = null,
         ?string $eventId = null,
     ): int {
         $recipients = $onlyTo !== null
@@ -71,7 +71,7 @@ class NotificationDispatcher
             'body'            => $body,
             'subject_type'    => $subject ? $subject::class : null,
             'subject_id'      => $subject?->getKey(),
-            'workflow_id'     => $workflowId,
+            'automation_id'     => $automationId,
             'event_id'        => $eventId,
             'created_at'      => now(),
         ])->all();

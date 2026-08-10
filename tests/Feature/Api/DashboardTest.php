@@ -260,7 +260,7 @@ class DashboardTest extends TestCase
 
         $this->assertContains('jobs.by_status', $keys);
         $this->assertNotContains('customers.added', $keys);
-        $this->assertNotContains('workflows.health', $keys);
+        $this->assertNotContains('automations.health', $keys);
     }
 
     public function test_a_layout_cannot_name_a_widget_you_cannot_see(): void

@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Support\Workflows;
+namespace App\Support\Automations;
 
-use App\Models\WorkflowEvent;
+use App\Models\AutomationEvent;
 use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
 
@@ -39,7 +39,7 @@ class ConditionEvaluator
     /**
      * @return array{matched: bool, trace: array}
      */
-    public function evaluate(?array $conditions, WorkflowEvent $event, ?Model $subject): array
+    public function evaluate(?array $conditions, AutomationEvent $event, ?Model $subject): array
     {
         // No conditions is not an error — "whenever a job is created" is a
         // perfectly good rule, and forcing a placeholder clause would just get
@@ -53,7 +53,7 @@ class ConditionEvaluator
         return ['matched' => $trace['matched'], 'trace' => $trace];
     }
 
-    private function node(array $node, WorkflowEvent $event, ?Model $subject): array
+    private function node(array $node, AutomationEvent $event, ?Model $subject): array
     {
         if (isset($node['all'])) {
             $children = array_map(fn ($c) => $this->node($c, $event, $subject), $node['all']);
@@ -84,7 +84,7 @@ class ConditionEvaluator
         return $this->leaf($node, $event, $subject);
     }
 
-    private function leaf(array $leaf, WorkflowEvent $event, ?Model $subject): array
+    private function leaf(array $leaf, AutomationEvent $event, ?Model $subject): array
     {
         $field = $leaf['field'] ?? null;
         $op    = $leaf['op'] ?? null;

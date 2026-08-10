@@ -5,7 +5,13 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * What the adversarial review of the workflow engine found (plan §5.5, §5.1).
+ * What the adversarial review of the automation engine found (plan §5.5, §5.1).
+ *
+ * The `workflow_*` names below are historical: the feature was renamed to
+ * "automations" on 2026-08-10, and the constraints created here were renamed
+ * with their tables — see
+ * `2026_08_10_000000_rename_workflows_to_automations`. This migration is left
+ * describing what it actually did.
  *
  * Three things, all of which the first migration should have had:
  *

@@ -56,7 +56,7 @@ class AppServiceProvider extends ServiceProvider
          * singleton in a queue worker lives for days. The first organization the
          * worker ever touched would stay cached, so a subscription that lapsed at
          * noon kept writing until somebody restarted the process — the exact
-         * failure §13 says must not be possible via "scheduled tasks, workflow
+         * failure §13 says must not be possible via "scheduled tasks, automation
          * actions, queued jobs".
          *
          * `scoped` is reset by Laravel between requests AND between queue jobs,

@@ -143,7 +143,7 @@ class _NotificationBellState extends State<NotificationBell> {
                       subtitle: n['body'] != null
                           ? Text(n['body'] as String)
                           : null,
-                      trailing: (n['source'] == 'workflow')
+                      trailing: (n['source'] == 'automation')
                           ? const Tag('Rule')
                           : null,
                       onTap: unread
