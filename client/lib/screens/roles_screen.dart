@@ -1,0 +1,806 @@
+import 'package:flutter/material.dart';
+
+import '../core/api_client.dart';
+import '../core/permissions.dart';
+import '../core/session.dart';
+import '../widgets/async_body.dart';
+import '../widgets/error_note.dart';
+import '../widgets/side_panel.dart';
+import '../widgets/tag.dart';
+
+/// The organization's roles, and what each of them may do (plan §4).
+///
+/// ── The one switch, and why it is one switch ─────────────────────
+///
+/// A module is presented as a tab with an expandable detail:
+///
+///     Customers   [x]
+///       expand
+///           View     [x]
+///           Create   [x]
+///           Edit     [ ]
+///           Delete   [ ]
+///
+/// The tab IS the module's view permission. That is not a shorthand — it is the
+/// invariant. A role must never be able to reach "sees the tab but may view
+/// nothing", nor "may edit but the tab is hidden", and the way to make a state
+/// impossible is to give it no representation. So ticking the tab grants view,
+/// unticking it clears everything in that module, and ticking any action inside
+/// grants view along with it.
+///
+/// Nothing about which modules exist, what they are called, or what actions they
+/// have is written down here. It arrives from `/roles/catalogue`, which is built
+/// from the server's module registry — the same registry that decides what the
+/// permissions ARE. One declaration, one source, no Dart copy of it to fall out
+/// of step.
+class RolesScreen extends StatefulWidget {
+  const RolesScreen({super.key, required this.api, required this.session});
+
+  final ApiClient api;
+  final Session session;
+
+  @override
+  State<RolesScreen> createState() => _RolesScreenState();
+}
+
+class _RolesScreenState extends State<RolesScreen> {
+  bool _loading = true;
+  String? _error;
+
+  /// Which load owns the screen. Every write here ends in a refresh and the
+  /// control that triggered it is not hidden behind a spinner, so two can be in
+  /// flight at once — see organization_screen.dart for the failure that taught
+  /// this: whichever answer landed last won, whatever was asked for last.
+  int _request = 0;
+
+  List<RoleSummary> _roles = const [];
+  PermissionCatalogue _catalogue = const PermissionCatalogue([]);
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  /// Both halves, together.
+  ///
+  /// The list says what the roles hold; the catalogue says what there is to
+  /// hold and what to call it. An editor opened with one and not the other
+  /// either shows keys where labels belong or ticks nothing it should — so
+  /// neither is rendered until both have arrived.
+  Future<void> _load() async {
+    final request = ++_request;
+
+    setState(() {
+      // A spinner only when there is nothing to keep (see AsyncBody). A refresh
+      // after a save keeps the list up and swaps it when the answer lands.
+      _loading = _roles.isEmpty;
+      _error = null;
+    });
+
+    final answers = await Future.wait([
+      widget.api.get('/roles'),
+      widget.api.get('/roles/catalogue'),
+    ]);
+
+    if (!mounted || request != _request) return;
+
+    final roles = answers[0];
+    final catalogue = answers[1];
+
+    setState(() {
+      _loading = false;
+
+      if (!roles.ok) {
+        _error = roles.message;
+        return;
+      }
+
+      if (!catalogue.ok) {
+        _error = catalogue.message;
+        return;
+      }
+
+      _error = null;
+      _roles = RoleSummary.listFrom(roles.data);
+      // The whole body, not `data`: this endpoint answers with `modules` at the
+      // top level. PermissionCatalogue.fromResponse reads either.
+      _catalogue = PermissionCatalogue.fromResponse(catalogue.body);
+    });
+  }
+
+  void _snack(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
+        behavior: SnackBarBehavior.floating,
+        width: 420,
+      ),
+    );
+  }
+
+  /// The server's own sentence about a refusal, in preference to the generic
+  /// one. Every rule this endpoint enforces — the last administrator, a
+  /// permission the editor does not hold themselves — explains itself, and
+  /// "could not save" throws away the only part worth reading.
+  String _refusal(ApiResponse response) {
+    final errors = response.body['errors'] as Map<String, dynamic>?;
+
+    if (errors == null || errors.isEmpty) return response.message;
+
+    final first = errors.values.first;
+
+    return first is List && first.isNotEmpty
+        ? first.first as String
+        : response.message;
+  }
+
+  Future<void> _create() async {
+    final name = await _askForName(
+      title: 'New role',
+      hint:
+          'A role starts with nothing granted. Open it to say what it may do.',
+    );
+
+    if (name == null) return;
+
+    final response = await widget.api.post('/roles', {'name': name});
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      _snack(_refusal(response), isError: true);
+      return;
+    }
+
+    _snack('Created $name');
+    await _load();
+  }
+
+  Future<String?> _askForName({
+    required String title,
+    required String hint,
+    String initial = '',
+  }) async {
+    final controller = TextEditingController(text: initial);
+
+    final value = await showSidePanel<String>(
+      context,
+      builder: (context) => SidePanel(
+        title: title,
+        subtitle: hint,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+        child: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Name',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
+        ),
+      ),
+    );
+
+    controller.dispose();
+
+    return (value == null || value.isEmpty) ? null : value;
+  }
+
+  /// Open a role. Read-only roles open too — see [_RoleEditor].
+  Future<void> _open(RoleSummary role) async {
+    final saved = await showSidePanel<bool>(
+      context,
+      builder: (context) => _RoleEditor(
+        role: role,
+        catalogue: _catalogue,
+        onSave: (name, permissions) => _save(role, name, permissions),
+      ),
+    );
+
+    if (saved == true) await _load();
+  }
+
+  /// Returns null when the server accepted it, or the sentence to show when it
+  /// did not — the panel stays open on a refusal, because a permission tree
+  /// somebody has just spent a minute on is not something to throw away.
+  Future<String?> _save(
+    RoleSummary role,
+    String name,
+    Set<String> permissions,
+  ) async {
+    final response = await widget.api.patch('/roles/${role.id}', {
+      'name': name,
+      // Sorted so two saves of the same set produce the same request, which is
+      // what makes an audit diff readable.
+      'permissions': permissions.toList()..sort(),
+    });
+
+    // Nothing is spliced from the answer here, unlike the settings screen. The
+    // save is not the whole truth about the role: the server merges in whatever
+    // this person was not entitled to change, so the row that comes back is the
+    // one worth going and reading rather than the one we can assemble.
+
+    if (!response.ok) return _refusal(response);
+
+    if (mounted) _snack('Saved ${role.name}');
+
+    return null;
+  }
+
+  Future<void> _delete(RoleSummary role) async {
+    final confirmed = await showSidePanel<bool>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Delete ${role.name}?',
+        subtitle: role.userCount == 0
+            ? 'Nobody holds this role, so nothing changes for anyone.'
+            : 'Held by ${_people(role.userCount)}. The server will refuse this '
+                  'while anybody still holds it.',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+        child: const Text(
+          'A deleted role cannot be brought back. Its permissions are not held '
+          'anywhere else, so anybody who had it would need a new one.',
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final response = await widget.api.delete('/roles/${role.id}');
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      _snack(_refusal(response), isError: true);
+      return;
+    }
+
+    _snack('Deleted ${role.name}');
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final me = widget.session.me;
+
+    return AsyncBody(
+      loading: _loading,
+      error: _error,
+      onRetry: _load,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PanelHeader(
+            title: 'Roles',
+            note:
+                'Every role is this organization’s own. A role decides which '
+                'tabs the people holding it see, and what they may do inside '
+                'them.',
+            action: (me?.can('roles.create') ?? false)
+                ? FilledButton.icon(
+                    onPressed: _create,
+                    icon: const Icon(Icons.add),
+                    label: const Text('New role'),
+                  )
+                : null,
+          ),
+          Expanded(
+            child: _roles.isEmpty
+                ? const Center(child: Text('There are no roles to show.'))
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+                    children: [
+                      for (final role in _roles)
+                        _RoleCard(
+                          role: role,
+                          moduleCount: _reachableTabs(role),
+                          onOpen: () => _open(role),
+                          // The server's own answer for this role and this
+                          // person, from the policy that will be asked again
+                          // when the delete lands. The built-in administrator
+                          // fails it however senior the person looking at it.
+                          onDelete: role.mayDelete ? () => _delete(role) : null,
+                        ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// How many tabs this role can actually open — the number somebody reading
+  /// the list wants, rather than a count of permission keys that means nothing
+  /// on its own.
+  int _reachableTabs(RoleSummary role) => _catalogue.modules
+      .where((m) => m.viewKey != null && role.permissions.contains(m.viewKey))
+      .length;
+}
+
+String _people(int count) => count == 1 ? '1 person' : '$count people';
+
+class _RoleCard extends StatelessWidget {
+  const _RoleCard({
+    required this.role,
+    required this.moduleCount,
+    required this.onOpen,
+    required this.onDelete,
+  });
+
+  final RoleSummary role;
+  final int moduleCount;
+  final VoidCallback onOpen;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        onTap: onOpen,
+        title: Row(
+          children: [
+            Flexible(
+              child: Text(
+                role.name,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            // Said on the row, not only inside. Somebody scanning the list for
+            // the role they cannot change should not have to open it to find
+            // out which one it is.
+            if (!role.editable) const Tag('Built in'),
+          ],
+        ),
+        subtitle: Text(
+          '${_people(role.userCount)} · '
+          '${moduleCount == 1 ? '1 tab' : '$moduleCount tabs'}',
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (onDelete != null)
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: 'Delete this role',
+                onPressed: onDelete,
+              ),
+            // The word changes with what opening it will let you do, so the
+            // affordance is honest before it is pressed.
+            TextButton(
+              onPressed: onOpen,
+              child: Text(role.mayEdit ? 'Edit' : 'View'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One role's permissions, as tabs with an expandable detail.
+class _RoleEditor extends StatefulWidget {
+  const _RoleEditor({
+    required this.role,
+    required this.catalogue,
+    required this.onSave,
+  });
+
+  final RoleSummary role;
+  final PermissionCatalogue catalogue;
+
+  /// Answers null on success, or the sentence to show on a refusal.
+  final Future<String?> Function(String name, Set<String> permissions) onSave;
+
+  @override
+  State<_RoleEditor> createState() => _RoleEditorState();
+}
+
+class _RoleEditorState extends State<_RoleEditor> {
+  late final TextEditingController _name = TextEditingController(
+    text: widget.role.name,
+  );
+
+  /// What the role holds, as edited — ALL of it, including keys this person
+  /// cannot change.
+  ///
+  /// Those are still drawn, ticked and dead, because the honest picture of what
+  /// a role can do is not the same as the part of it you happen to be allowed
+  /// to touch. They are excluded from [_payload] rather than from the screen:
+  /// the server preserves them and would refuse a request that named them.
+  late final Set<String> _held = {...widget.role.permissions};
+
+  bool _saving = false;
+  String? _error;
+
+  /// Two conditions, and they fail for different reasons: the role may be one
+  /// nobody can change, or this may be somebody who cannot change roles.
+  bool get _writable => widget.role.editable && widget.role.mayEdit;
+
+  /// Why a tick was refused, when it was.
+  ///
+  /// Shown in the editor rather than as a snack, because the control the person
+  /// pressed is still on screen and the sentence is about that control.
+  String? _blocked;
+
+  /// What actually goes over the wire.
+  ///
+  /// Only what this person may grant, on a module the platform has switched on.
+  /// Anything else is preserved by the server untouched — and naming it in the
+  /// request is a 422 for the whole save, not a key quietly ignored.
+  Set<String> get _payload => _held.where(widget.catalogue.mayGrant).toSet();
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  /// What the role holds under this module.
+  ///
+  /// Matched on the key's prefix, which is how the server derives a module from
+  /// a permission too (`ModuleAvailability::isPermissionAvailable`), so an
+  /// action this build has never heard of still counts as being inside its own
+  /// module rather than being invisible to the tab above it.
+  Iterable<String> _keysUnder(String moduleKey) =>
+      _held.where((key) => key.startsWith('$moduleKey.'));
+
+  /// The tab: on when the role holds the module's view permission.
+  ///
+  /// Three states, and the middle one is the point:
+  ///
+  ///   false — the tab is hidden, and nothing inside it is granted
+  ///   null  — the tab is visible, and some of its actions are withheld
+  ///   true  — the tab is visible and every action inside it is granted
+  bool? _tabState(PermissionModule module) {
+    final viewKey = module.viewKey;
+
+    if (viewKey == null || !_held.contains(viewKey)) return false;
+
+    return module.actions.every((a) => _held.contains(a.key)) ? true : null;
+  }
+
+  /// One tap, one meaning: the tab goes on or it goes off.
+  ///
+  /// Switching it on grants VIEW and nothing else. The alternative — granting
+  /// every action the module declares — hands out Delete to anybody who ticked
+  /// a box to make a tab appear, which is not a thing to do by accident. The
+  /// detail below is one click away for the rest.
+  /// The refused actions, in the catalogue's words rather than as keys.
+  String _actionNames(PermissionModule module, List<String> keys) {
+    final labels = <String>[];
+
+    for (final action in module.actions) {
+      if (keys.contains(action.key)) labels.add(action.label.toLowerCase());
+    }
+
+    if (labels.isEmpty) return 'permissions';
+    if (labels.length == 1) return labels.first;
+
+    return '${labels.sublist(0, labels.length - 1).join(', ')} and ${labels.last}';
+  }
+
+  void _toggleModule(PermissionModule module) {
+    final viewKey = module.viewKey;
+    if (viewKey == null) return;
+
+    setState(() {
+      if (_keysUnder(module.key).isNotEmpty) {
+        /*
+         * Refused rather than half-done, when some of it is not this person's
+         * to remove.
+         *
+         * This cleared only the keys the caller may grant, which produced the
+         * one state this whole design exists to make unrepresentable. A role
+         * holding customers.view and customers.delete, edited by somebody
+         * holding view but not delete: the tick cleared view, delete stayed, and
+         * the tab read "off" with an action still under it — "1 of 4", untick
+         * ticked. On save the server then preserved delete and re-implied view,
+         * so the tab came back and the click had done nothing, silently.
+         *
+         * Neither half of that is acceptable, and there is no third option that
+         * is: this person genuinely cannot take delete away. So the control says
+         * so instead of pretending. The keys they DO own are left alone as well,
+         * because clearing half a module is not what anybody meant by unticking
+         * the tab.
+         */
+        final locked = _keysUnder(
+          module.key,
+        ).where((key) => !widget.catalogue.mayGrant(key)).toList();
+
+        if (locked.isNotEmpty) {
+          _blocked =
+              'This role holds ${_actionNames(module, locked)} under '
+              '${module.label}, which you do not hold yourself — so you cannot '
+              'remove it. Ask somebody who does.';
+          return;
+        }
+
+        _blocked = null;
+        _held.removeWhere((key) => key.startsWith('${module.key}.'));
+        return;
+      }
+
+      _blocked = null;
+      _held.add(viewKey);
+    });
+  }
+
+  void _toggleAction(PermissionModule module, PermissionAction action) {
+    final viewKey = module.viewKey;
+
+    setState(() {
+      if (_held.contains(action.key)) {
+        // Taking away the view permission takes the tab away, and a tab that is
+        // not there cannot have live actions behind it.
+        if (action.key == viewKey) {
+          _held.removeWhere(
+            (key) =>
+                key.startsWith('${module.key}.') &&
+                widget.catalogue.mayGrant(key),
+          );
+        } else {
+          _held.remove(action.key);
+        }
+
+        return;
+      }
+
+      _held.add(action.key);
+
+      // Granting anything grants the tab it lives on. "May edit a customer but
+      // cannot open Customers" is the other impossible state.
+      if (viewKey != null) _held.add(viewKey);
+    });
+  }
+
+  Future<void> _save() async {
+    final name = _name.text.trim();
+
+    if (name.isEmpty) {
+      setState(() => _error = 'A role needs a name.');
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+
+    final failure = await widget.onSave(name, _payload);
+
+    if (!mounted) return;
+
+    if (failure != null) {
+      setState(() {
+        _saving = false;
+        _error = failure;
+      });
+      return;
+    }
+
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SidePanel(
+      title: widget.role.name,
+      subtitle: '${_people(widget.role.userCount)} hold this role.',
+      width: 560,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(_writable ? 'Cancel' : 'Close'),
+        ),
+        if (_writable)
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            child: Text(_saving ? 'Saving…' : 'Save'),
+          ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!widget.role.editable) _lockedNote(theme),
+          if (widget.role.editable && !widget.role.mayEdit)
+            _note(
+              theme,
+              Icons.visibility_outlined,
+              'You can see what this role holds, but you may not change it.',
+            ),
+
+          // A refused tick. Cleared by the next successful one, so it describes
+          // the last thing that happened rather than lingering as a warning
+          // about something already dealt with.
+          if (_blocked != null) ...[
+            _note(theme, Icons.lock_outline, _blocked!),
+            const SizedBox(height: 4),
+          ],
+
+          TextField(
+            controller: _name,
+            enabled: _writable,
+            decoration: const InputDecoration(
+              labelText: 'Name',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Which state means what, said once, above the thing it describes. A
+          // dash in a checkbox is not self-explanatory and this screen has a lot
+          // of them.
+          Text(
+            'Ticking a tab lets this role open it. The tick fills in when every '
+            'action inside is granted and shows a dash when only some are.',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+
+          if (widget.catalogue.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                'The server declared no modules, so there is nothing to grant.',
+                style: theme.textTheme.bodyMedium,
+              ),
+            )
+          else
+            for (final module in widget.catalogue.modules) _moduleTile(module),
+
+          if (_error != null) ...[
+            const SizedBox(height: 16),
+            ErrorNote(_error!),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _lockedNote(ThemeData theme) => _note(
+    theme,
+    Icons.lock_outline,
+    // The server's sentence when it sends one. The fallback is copy about a
+    // decision the owner made, not a rule this end is deciding: which role is
+    // locked was answered by `editable`, above, and never by its name.
+    widget.role.lockedReason ??
+        'This is the organization’s built-in administrator role. It cannot be '
+            'renamed or have permissions taken away — a role able to remove its '
+            'own powers can lock an organization out of its own account.',
+  );
+
+  Widget _note(ThemeData theme, IconData icon, String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 20),
+    child: Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: theme.textTheme.bodySmall)),
+        ],
+      ),
+    ),
+  );
+
+  Widget _moduleTile(PermissionModule module) {
+    final theme = Theme.of(context);
+    final held = module.actions.where((a) => _held.contains(a.key)).length;
+
+    // Two separate reasons a row can be dead, and they are not the same
+    // sentence. One is about this person and this role; the other is about the
+    // whole organization and is nothing an administrator here can undo.
+    final live = _writable && module.available;
+
+    // A module the platform has switched off is SHOWN, greyed, with the reason
+    // (§13). Removing it from the list would leave somebody hunting for a tab
+    // that used to be there and concluding the editor is broken — and the kill
+    // switch exists to be used mid-incident, when that guess costs the most.
+    final muted = module.available
+        ? null
+        : theme.colorScheme.onSurface.withValues(alpha: 0.45);
+
+    return ExpansionTile(
+      // Keyed by the module, so the tile keeps its own open/closed state across
+      // the rebuild every tick causes. Without a stable key, ticking a box in an
+      // expanded module would collapse it under the finger.
+      key: ValueKey('module:${module.key}'),
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(left: 40, bottom: 8),
+      leading: Checkbox(
+        tristate: true,
+        value: _tabState(module),
+        // The offered value is ignored on purpose. Flutter's tristate cycle runs
+        // false → true → null, and "half granted" is not something a tap should
+        // ever produce: the tab goes on, or it goes off.
+        onChanged:
+            live &&
+                module.viewKey != null &&
+                widget.catalogue.mayGrant(module.viewKey!)
+            ? (_) => _toggleModule(module)
+            : null,
+      ),
+      title: Text(module.label, style: TextStyle(color: muted)),
+      subtitle: module.available
+          ? null
+          : Text(
+              module.unavailableReason ??
+                  'Switched off for your organization by EzBizi.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$held of ${module.actions.length}',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+          const SizedBox(width: 4),
+          const Icon(Icons.expand_more),
+        ],
+      ),
+      children: [
+        for (final action in module.actions)
+          CheckboxListTile(
+            key: ValueKey('action:${action.key}'),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: _held.contains(action.key),
+            onChanged: live && action.grantable
+                ? (_) => _toggleAction(module, action)
+                : null,
+            title: Text(action.label, style: TextStyle(color: muted)),
+            // Shown rather than hidden, and shown as held when it is held. §4:
+            // nobody grants what they do not have — but a role can hold what
+            // the person editing it does not, and pretending otherwise draws an
+            // editor that misrepresents the role it is describing.
+            secondary: action.grantable
+                ? null
+                : Tooltip(
+                    message:
+                        'Your own role does not hold ${action.key}, so you '
+                        'cannot hand it out or take it back.',
+                    child: Icon(
+                      Icons.lock_outline,
+                      size: 16,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+          ),
+      ],
+    );
+  }
+}

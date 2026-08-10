@@ -59,6 +59,28 @@ final class ModuleDefinition
             throw new InvalidArgumentException("Module '{$key}' declares no actions.");
         }
 
+        /*
+         * Every module has a `view`, because the TAB IS THE VIEW PERMISSION (§4).
+         *
+         * The roles editor shows one switch per module with the actions folded
+         * underneath, and the owner's reason for one switch rather than two is
+         * that a role must never be able to reach "may edit, tab hidden" or
+         * "sees the tab, may view nothing". That collapses to: holding any
+         * action of a module implies holding its view (Role::syncPermissionKeys),
+         * and reaching a module means holding its view (PermissionCatalogue).
+         *
+         * A module with no `view` action would have no tab permission at all, so
+         * neither half of that rule could be stated about it — it would appear
+         * in the editor as a set of actions with no switch to turn on. Refused
+         * at boot, where whoever is writing the module is still looking.
+         */
+        if (! in_array('view', $actions, true)) {
+            throw new InvalidArgumentException(
+                "Module '{$key}' declares no 'view' action. The tab permission IS the view "
+                .'permission (§4), so a module without one cannot be reached or granted.'
+            );
+        }
+
         // `array` cannot say "array of what", so it is said here. A bare string
         // used to be legal and is exactly the regression to catch: it would
         // reach the catalogue as a trigger with no label, which is the screen

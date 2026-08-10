@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\RolesController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
@@ -128,6 +129,21 @@ Route::prefix('v1')
         Route::post('franchises', [FranchisesController::class, 'store']);
         Route::patch('franchises/{franchise}', [FranchisesController::class, 'update']);
 
+        // ── Roles & permissions (§4) ─────────────────────────────
+        //
+        // The half of the access model that did not exist: nothing could create
+        // a second role, so every tenant was permanently one Administrator and
+        // every permission the software defines was ungrantable.
+        //
+        // `catalogue` is declared first out of habit rather than necessity —
+        // there is no GET roles/{role} for it to collide with today, and the day
+        // somebody adds one it must already be above it.
+        Route::get('roles/catalogue', [RolesController::class, 'catalogue']);
+        Route::get('roles', [RolesController::class, 'index']);
+        Route::post('roles', [RolesController::class, 'store']);
+        Route::patch('roles/{role}', [RolesController::class, 'update']);
+        Route::delete('roles/{role}', [RolesController::class, 'destroy']);
+
         // ── Dashboard (§18 Phase 4) ──────────────────────────────
         //
         // `catalogue` before nothing in particular — there is no {id} route to
@@ -224,12 +240,43 @@ Route::prefix('v1')
             // the top bar is not naming.
             $view = \App\Support\Scoping\ViewScope::forUser($user);
 
+            // Asked twice below — for the keys and for the modules — and both
+            // answers have to come from the same reading of the platform flags.
+            $catalogue = app(\App\Support\Modules\PermissionCatalogue::class);
+
             return response()->json([
                 'data' => [
                     'id'    => $user->id,
                     'name'  => $user->name,
                     'email' => $user->email,
                     'role'  => ['id' => $user->role?->id, 'name' => $user->role?->name],
+
+                    /*
+                     * WHAT this person may do, and WHICH modules exist for them
+                     * (§4). Both come from PermissionCatalogue, which derives
+                     * them from the module registry — so a module added next
+                     * year appears here without this file being touched.
+                     *
+                     * `permissions` is the exact set `User::hasPermission()`
+                     * would answer true for, key by key. Anything looser and the
+                     * client draws a control the server then refuses.
+                     *
+                     * For an Administrator it is the full catalogue, NOT a
+                     * wildcard: a client that special-cases a role name is the
+                     * same bug this endpoint's own server side had, where
+                     * identity was the English word "Administrator" and a rename
+                     * silently revoked everything.
+                     *
+                     * `modules` carries the two gates separately —
+                     * `available` is EzBizi's (§13 entitlement), `reachable` is
+                     * this organization's own decision about this role. A screen
+                     * can then say "your plan does not include this" rather than
+                     * quietly omitting a destination and leaving somebody
+                     * looking for a menu item that was described to them on the
+                     * phone.
+                     */
+                    'permissions' => $catalogue->heldBy($user),
+                    'modules'     => $catalogue->modulesFor($user),
 
                     // Whether there is a photo to fetch, so the top bar can ask
                     // for one only when there is one. `/me/profile` already

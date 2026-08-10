@@ -316,7 +316,15 @@ class DashboardTest extends TestCase
 
         $this->inTenant(function () {
             $role = Role::find($this->alpha['admin']->role_id);
-            $role->forceFill(['is_system' => false, 'name' => 'Jobs only'])->save();
+
+            // `is_administrator` is what demotes it. Renaming the role used to
+            // do that on its own, which was the bug the 2026_08_10_010000
+            // migration closed — a tenant who renamed Administrator lost every
+            // permission it held. This test wants a genuinely narrowed role, so
+            // it says so explicitly instead of relying on that accident.
+            $role->forceFill([
+                'is_system' => false, 'is_administrator' => false, 'name' => 'Jobs only',
+            ])->save();
             $role->permissions()->sync(Permission::whereIn('key', ['jobs.view'])->pluck('id'));
         });
 

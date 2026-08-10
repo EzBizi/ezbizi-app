@@ -63,6 +63,26 @@ class AppServiceProvider extends ServiceProvider
          * which is precisely the lifetime the cache is allowed to have.
          */
         $this->app->scoped(\App\Support\Subscriptions\SubscriptionGuard::class);
+
+        /*
+         * Scoped for the same reason, and it was UNBOUND — which meant its cache
+         * had never worked once.
+         *
+         * `User::hasPermission()` resolves ModuleAvailability out of the
+         * container on every call, and an unbound concrete class is built fresh
+         * each time. So the `$cache` field on it was populated, used once, and
+         * thrown away: every single permission check in the application ran
+         * `PlatformModuleFlag::all()`. A request that authorises a list of
+         * twenty rows did twenty full table reads of a table that changes about
+         * once a quarter.
+         *
+         * Not a singleton: platform flags are read from the database, and a
+         * queue worker lives for days. A module disabled during an incident has
+         * to take effect in the workers too, and `scoped` is reset between
+         * requests AND between queue jobs — exactly the lifetime this cache is
+         * allowed to have. setState() and flushCache() clear it within one.
+         */
+        $this->app->scoped(\App\Support\Modules\ModuleAvailability::class);
     }
 
     /**

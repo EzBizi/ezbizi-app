@@ -137,21 +137,32 @@ class ProvisionOrganization
     }
 
     /**
-     * The organization's own top role.
+     * The organization's own top role — the only built-in one (§4).
      *
      * No permission rows are attached: Role::hasPermission() returns true for
      * Administrator unconditionally. That's what keeps a module added next year
      * automatically visible to the person who owns the organization, instead of
      * invisible until someone remembers to backfill every Administrator role in
      * every tenant.
+     *
+     * `is_administrator` is set with forceFill because it is deliberately absent
+     * from Role::$fillable — this is the ONE place in the application that may
+     * write it, and keeping it unfillable is what stops a role-editor payload
+     * from making a second one. The name is a default the tenant sees, not an
+     * identity: identity is the column, for the reason the 2026_08_10_010000
+     * migration sets out at length.
      */
     private function createAdministratorRole(Organization $organization): Role
     {
-        return Role::create([
+        $role = new Role([
             'organization_id' => $organization->id,
             'name'            => Role::ADMINISTRATOR,
             'is_system'       => true,
         ]);
+
+        $role->forceFill(['is_administrator' => true])->save();
+
+        return $role;
     }
 
     private function uniqueSlug(string $name): string

@@ -4,21 +4,17 @@ import 'package:flutter/material.dart';
 import 'core/api_client.dart';
 import 'core/deployment.dart';
 import 'core/files.dart';
+import 'core/module_screens.dart';
 import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
-import 'screens/automations_screen.dart';
-import 'screens/customers_screen.dart';
-import 'screens/dashboard_screen.dart';
-import 'screens/data_screen.dart';
 import 'screens/development_screen.dart';
-import 'screens/jobs_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/organization_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'screens/signup_screen.dart';
-import 'screens/settings_screen.dart';
+import 'screens/settings_shell.dart';
 import 'screens/staff/staff_login_screen.dart';
 import 'screens/staff/staff_shell.dart';
 import 'widgets/build_stamp.dart';
@@ -174,9 +170,23 @@ class _EzBiziAppState extends State<EzBiziApp> {
 
 /// The signed-in shell.
 ///
-/// Deliberately thin: one destination per module, added as modules are built
-/// (§14). Settings is the only real one so far — anything else would be a
-/// placeholder pretending to be a feature.
+/// Its business destinations are not written down here. They are built from the
+/// `modules` block on `/me`, which answers both gates in one list: whether the
+/// PLATFORM permits a module for this organization (§13) and whether this
+/// person's role holds its view permission (§4). The sidebar renders exactly
+/// those marked reachable, in the order the server sent them.
+///
+/// Three things that were wrong while the list was compiled in:
+///
+///   - a technician with `customers.view` and nothing else saw five tabs, four
+///     of which answered 403 the moment they were tapped;
+///   - the platform kill switch was built to be used mid-incident, and left
+///     every tab drawn with every action inside it failing;
+///   - "which tabs do I see" had two answers, the server's and Dart's, and only
+///     one of them was enforced.
+///
+/// See core/module_screens.dart for the only part that stays in code — which
+/// widget draws which module — and why that is not the same list.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key, required this.api, required this.session});
 
@@ -187,8 +197,44 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
+/// Which group holds the current selection. The profile is one of them: it is
+/// not a rail destination, but it is somewhere the shell can be pointed.
+enum _Rail { modules, pinned, staff, profile }
+
 class _HomeShellState extends State<HomeShell> {
-  int _index = 0;
+  _Rail _rail = _Rail.modules;
+
+  /// WHICH destination within that group, by id — a module key, or a pinned
+  /// destination's own name. Null means "whatever comes first".
+  ///
+  /// This used to be one `int` across all three groups, with a comment warning
+  /// that the arithmetic was delicate. That warning was written about lists
+  /// whose lengths were fixed when the app was compiled. The business
+  /// destinations are now assembled per person, and the list can change length
+  /// WHILE somebody is looking at it: EzBizi switches a module off mid-incident
+  /// (§13), or an administrator edits the role they hold.
+  ///
+  /// Under an index, that is silent and wrong. Every destination after the one
+  /// that vanished shifts up a slot, so the person is quietly moved to a
+  /// different screen; if it was the last one, the index points past the end
+  /// and the next frame throws — a blank page with no way back.
+  ///
+  /// A name cannot shift, and "the thing you were looking at is gone" is a
+  /// question with an obvious answer rather than an off-by-one. See `_resolve`
+  /// in build().
+  String? _selected;
+
+  void _show(_Rail rail, String id) => setState(() {
+    _rail = rail;
+    _selected = id;
+  });
+
+  /// "Your account" is reached from the avatar, not from a rail, so it has no
+  /// id of its own.
+  void _showProfile() => setState(() {
+    _rail = _Rail.profile;
+    _selected = null;
+  });
 
   Future<void> _signOut() async {
     await widget.api.post('/auth/logout', {});
@@ -205,37 +251,32 @@ class _HomeShellState extends State<HomeShell> {
     // springs back open every time is a toggle nobody uses twice.
     final expanded = me.navigationStyle == 'list' && !me.navigationCollapsed;
 
-    // Dashboard first, deliberately.
+    // The business destinations, as the server describes them.
     //
-    // It is the screen somebody opens the app to look at — what is happening
-    // today — and the one they return to between tasks. Everything below it is
-    // a place you go to do a specific thing.
+    // Order is the server's, and so is every label — the module registry that
+    // decides what a module IS decides where it sits and what it is called,
+    // rather than a second opinion in Dart drifting away from it. Dashboard
+    // still leads the list, but because the server puts it there rather than
+    // because this file does.
+    //
+    // Two consequences, both deliberate:
+    //
+    //   - a module the server does not declare gets no destination, however
+    //     well this build knows how to draw it. Silence is not permission, and
+    //     there is no label to print for something we were never told about;
+    //   - a module the server DOES declare that this build has no screen for is
+    //     skipped rather than drawn as a tab that opens nothing.
+    //
+    // See core/module_screens.dart.
     final destinations = <Destination>[
-      Destination(
-        'Dashboard',
-        Icons.dashboard_outlined,
-        DashboardScreen(api: widget.api, session: widget.session),
-      ),
-      Destination(
-        'Customers',
-        Icons.people_outline,
-        CustomersScreen(api: widget.api, session: widget.session),
-      ),
-      Destination(
-        'Jobs',
-        Icons.construction_outlined,
-        JobsScreen(api: widget.api, session: widget.session),
-      ),
-      Destination(
-        'Automations',
-        Icons.bolt_outlined,
-        AutomationsScreen(api: widget.api, session: widget.session),
-      ),
-      Destination(
-        'Import & export',
-        Icons.import_export_outlined,
-        DataScreen(api: widget.api, session: widget.session),
-      ),
+      for (final module in me.reachableModules)
+        if (moduleScreens[module.key] case final screen?)
+          Destination(
+            module.label,
+            screen.icon,
+            screen.build(widget.api, widget.session),
+            id: module.key,
+          ),
     ];
 
     // Pinned to the bottom, under a rule and the empty space.
@@ -252,10 +293,13 @@ class _HomeShellState extends State<HomeShell> {
         Icons.hub_outlined,
         OrganizationScreen(api: widget.api, session: widget.session),
       ),
+      // Settings, and the organization's roles behind a second tab of it —
+      // see settings_shell.dart for why roles belong here rather than in the
+      // list above.
       Destination(
         'Settings',
         Icons.settings_outlined,
-        SettingsScreen(api: widget.api, session: widget.session),
+        SettingsShell(api: widget.api, session: widget.session),
       ),
     ];
 
@@ -285,30 +329,31 @@ class _HomeShellState extends State<HomeShell> {
     // person, not about the business, and a tab beside Customers and Jobs
     // implies it is one more thing to work on.
     //
-    // Everything off the main list lives past its end, in order: the profile,
-    // then the pinned group, then the staff-only group. Keeping them out of the
-    // list is what allows one to be hidden and the others pinned; this index
-    // arithmetic is the price, and it is confined to the few lines below.
-    final profileIndex = destinations.length;
-    final pinnedBase = destinations.length + 1;
-    final staffBase = pinnedBase + pinned.length;
+    // Resolved from the NAME held in `_selected`, every build. Each rail is
+    // asked only when it is the one holding the selection, so exactly one of
+    // these can be non-null — which is what NavigationRail's own assert wants.
+    int? resolve(List<Destination> group, _Rail rail) {
+      if (_rail != rail) return null;
 
-    final showingProfile = _index == profileIndex;
-    final pinnedIndex = (_index >= pinnedBase && _index < staffBase)
-        ? _index - pinnedBase
-        : null;
-    final staffIndex =
-        (_index >= staffBase && _index < staffBase + staffOnly.length)
-        ? _index - staffBase
-        : null;
+      final at = group.indexWhere((d) => d.id == _selected);
 
-    // Clamped every build. The list shrinks when a staff link is removed or a
-    // module is switched off platform-wide, and an index left pointing past the
-    // end throws on the next frame — a blank screen with no way back.
+      return at < 0 ? null : at;
+    }
+
+    final showingProfile = _rail == _Rail.profile;
+    final pinnedIndex = resolve(pinned, _Rail.pinned);
+    final staffIndex = resolve(staffOnly, _Rail.staff);
+
+    // Falls back to the first business destination whenever the selection no
+    // longer names anything: the module was switched off under them, their role
+    // stopped reaching it, or a staff link was removed and the group it was in
+    // has gone. Null when there is nothing to fall back to, which is a real
+    // state — somebody whose role reaches no module at all.
     final railIndex =
         (showingProfile || pinnedIndex != null || staffIndex != null)
         ? null
-        : _index.clamp(0, destinations.length - 1);
+        : resolve(destinations, _Rail.modules) ??
+              (destinations.isEmpty ? null : 0);
 
     return Scaffold(
       // The top bar belongs to the CHROME, not to the page.
@@ -443,7 +488,7 @@ class _HomeShellState extends State<HomeShell> {
                     backgroundColor: Theme.of(
                       context,
                     ).colorScheme.errorContainer.withValues(alpha: 0.4),
-                    onPressed: () => setState(() => _index = profileIndex),
+                    onPressed: _showProfile,
                   ),
                 ),
               if (me.organization.isReadOnly)
@@ -500,7 +545,7 @@ class _HomeShellState extends State<HomeShell> {
                     return;
                   }
 
-                  setState(() => _index = profileIndex);
+                  _showProfile();
                 },
               ),
               const SizedBox(width: 8),
@@ -538,10 +583,9 @@ class _HomeShellState extends State<HomeShell> {
                 selectedIndex: railIndex,
                 pinnedIndex: pinnedIndex,
                 staffIndex: staffIndex,
-                onSelected: (i) => setState(() => _index = i),
-                onPinnedSelected: (i) =>
-                    setState(() => _index = pinnedBase + i),
-                onStaffSelected: (i) => setState(() => _index = staffBase + i),
+                onSelected: (i) => _show(_Rail.modules, destinations[i].id),
+                onPinnedSelected: (i) => _show(_Rail.pinned, pinned[i].id),
+                onStaffSelected: (i) => _show(_Rail.staff, staffOnly[i].id),
                 // Written through the same path as every other preference, once
                 // the drag settles.
                 onResized: (w) =>
@@ -559,13 +603,17 @@ class _HomeShellState extends State<HomeShell> {
             // needs no screen to know the switcher exists.
             child: KeyedSubtree(
               key: ValueKey('${me.scope.type}:${me.scope.id}'),
+              // Their own account is the last fallback, and the only honest
+              // one: it is the single screen that is theirs by definition and
+              // cannot answer 403. It is what somebody whose role reaches no
+              // module at all lands on, rather than an empty frame.
               child: pinnedIndex != null
                   ? pinned[pinnedIndex].screen
                   : staffIndex != null
                   ? staffOnly[staffIndex].screen
-                  : showingProfile
+                  : (showingProfile || railIndex == null)
                   ? ProfileScreen(api: widget.api, session: widget.session)
-                  : destinations[railIndex ?? 0].screen,
+                  : destinations[railIndex].screen,
             ),
           ),
         ],
@@ -578,27 +626,42 @@ class _HomeShellState extends State<HomeShell> {
        * Settings, and Development for staff, unreachable on a phone. Order is
        * the only signal available, so order is what carries it.
        *
-       * `_index` counts profile at `destinations.length`, so the tab index and
-       * `_index` diverge past the main list; the two expressions below are that
-       * one-slot gap, in both directions.
+       * One flat list here, so the tab index is a position in it and nothing
+       * else. NavigationBar demands a selected index in range and at least two
+       * destinations; the pinned pair guarantees both, whatever the modules
+       * above them come to.
+       *
+       * The profile has no tab — it is reached from the avatar, on this layout
+       * as on the wide one — so while it is showing, the first tab carries the
+       * highlight. A bar cannot say "none of these".
        */
       bottomNavigationBar: wide
           ? null
-          : NavigationBar(
-              selectedIndex: showingProfile
-                  ? 0
-                  : (railIndex ??
-                        destinations.length +
-                            (pinnedIndex ?? (pinned.length + staffIndex!))),
-              onDestinationSelected: (i) => setState(
-                () => _index = i < destinations.length
-                    ? i
-                    : pinnedBase + (i - destinations.length),
-              ),
-              destinations: [
-                for (final d in [...destinations, ...pinned, ...staffOnly])
-                  NavigationDestination(icon: Icon(d.icon), label: d.label),
-              ],
+          : Builder(
+              builder: (context) {
+                final tabs = [...destinations, ...pinned, ...staffOnly];
+
+                return NavigationBar(
+                  selectedIndex: pinnedIndex != null
+                      ? destinations.length + pinnedIndex
+                      : staffIndex != null
+                      ? destinations.length + pinned.length + staffIndex
+                      : railIndex ?? 0,
+                  onDestinationSelected: (i) {
+                    if (i < destinations.length) {
+                      _show(_Rail.modules, tabs[i].id);
+                    } else if (i < destinations.length + pinned.length) {
+                      _show(_Rail.pinned, tabs[i].id);
+                    } else {
+                      _show(_Rail.staff, tabs[i].id);
+                    }
+                  },
+                  destinations: [
+                    for (final d in tabs)
+                      NavigationDestination(icon: Icon(d.icon), label: d.label),
+                  ],
+                );
+              },
             ),
     );
   }
@@ -908,7 +971,17 @@ Widget _rail(
 }
 
 class Destination {
-  const Destination(this.label, this.icon, this.screen);
+  const Destination(this.label, this.icon, this.screen, {String? id})
+    : id = id ?? label;
+
+  /// What the shell remembers when this one is selected.
+  ///
+  /// For a module it is the module KEY, which is stable in a way the label is
+  /// not: the label is the server's wording and an organization renaming things
+  /// (§8) must not move somebody to a different screen. The fixed destinations
+  /// have no key of their own and use their label, which is fixed with them.
+  final String id;
+
   final String label;
   final IconData icon;
   final Widget screen;

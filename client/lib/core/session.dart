@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'api_client.dart';
 import 'password_policy.dart';
+import 'permissions.dart';
 import 'timestamps.dart';
 import 'token_store.dart';
 
@@ -205,6 +206,8 @@ class Me {
     required this.email,
     required this.roleName,
     required this.hasAvatar,
+    required this.permissions,
+    required this.modules,
     required this.preferences,
     required this.development,
     required this.twoFactorEnrolmentRequired,
@@ -225,6 +228,26 @@ class Me {
   /// there is one; without this it either requested an avatar for every user
   /// who has none, or never requested one at all.
   final bool hasAvatar;
+
+  /// Every permission key this person's role holds (§4).
+  ///
+  /// The full list, even for an Administrator — never a wildcard. The client
+  /// must have no reason to know which role is the administrator one, because
+  /// the moment it does, `if (role == 'Administrator')` appears somewhere and
+  /// the whole permission system has a second, wrong implementation in Dart.
+  /// That is the same short-circuit being removed from the server.
+  final Set<String> permissions;
+
+  /// Which modules exist for this organization and which of them this person
+  /// can reach (§4 permissions, §13 entitlement).
+  ///
+  /// Null means the server did not answer the question — a build older than
+  /// this one. Empty means it answered "none". [reaches] treats them the same
+  /// and refuses either way: the alternative is inventing a list of modules and
+  /// the words for them in Dart, which is precisely the hardcoded sidebar this
+  /// field replaces. Both halves ship in one deploy, so a server that cannot
+  /// answer is not a state that outlives it.
+  final List<ModuleAccess>? modules;
 
   /// Theirs, nobody else's (§2.1 category 6). Always complete — the server
   /// merges stored values over the registry's defaults, so the client never has
@@ -287,6 +310,38 @@ class Me {
 
   final List<FranchiseSummary> franchises;
 
+  /// Does this person's role hold this exact permission?
+  ///
+  /// Fails closed, including when the server sent no list at all. Hiding one
+  /// button from somebody who should have it is a smaller wrong than drawing a
+  /// control that answers 403 when pressed.
+  bool can(String permission) => permissions.contains(permission);
+
+  /// May this person reach this module — both gates, as [ModuleAccess] carries
+  /// them: the platform permits it AND their role holds its view permission.
+  bool reaches(String moduleKey) =>
+      modules?.any((m) => m.key == moduleKey && m.reachable) ?? false;
+
+  /// The module the server declared under this key, whether or not it is
+  /// reachable. Null when it declared none — which is how the client tells "off
+  /// for you" from "this build has never heard of it".
+  ModuleAccess? module(String moduleKey) {
+    for (final candidate in modules ?? const <ModuleAccess>[]) {
+      if (candidate.key == moduleKey) return candidate;
+    }
+
+    return null;
+  }
+
+  /// The reachable modules, in the order the server listed them.
+  ///
+  /// The order is the server's on purpose. It is the same registry order that
+  /// decides everything else about a module, so a module inserted in the middle
+  /// of it lands in the same place in the sidebar as it does everywhere else,
+  /// rather than wherever an alphabetical sort in Dart happens to put it.
+  List<ModuleAccess> get reachableModules =>
+      (modules ?? const <ModuleAccess>[]).where((m) => m.reachable).toList();
+
   /// A copy with one preference changed. Me is immutable, which is what makes
   /// "did the theme actually change" a question with one answer.
   Me withPreference(String key, Object value) => Me(
@@ -295,6 +350,8 @@ class Me {
         email: email,
         roleName: roleName,
         hasAvatar: hasAvatar,
+        permissions: permissions,
+        modules: modules,
         preferences: {...preferences, key: value},
         development: development,
         twoFactorEnrolmentRequired: twoFactorEnrolmentRequired,
@@ -337,6 +394,10 @@ class Me {
         email: json['email'] as String,
         roleName: (json['role'] as Map<String, dynamic>?)?['name'] as String?,
         hasAvatar: json['has_avatar'] == true,
+        permissions: ((json['permissions'] as List<dynamic>?) ?? const [])
+            .whereType<String>()
+            .toSet(),
+        modules: ModuleAccess.listFrom(json['modules']),
         preferences: Map<String, dynamic>.from(
             json['preferences'] as Map<String, dynamic>? ?? const {}),
         development: json['development'] == null

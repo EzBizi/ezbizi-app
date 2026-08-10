@@ -3,8 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Models\Permission;
-use App\Support\Modules\ModuleDefinition;
 use App\Support\Modules\ModuleRegistry;
+use App\Support\Modules\PermissionCatalogue;
 use Illuminate\Console\Command;
 
 /**
@@ -24,7 +24,7 @@ class SyncPermissions extends Command
 
     protected $description = 'Sync the permission catalogue from the module registry';
 
-    public function handle(ModuleRegistry $registry): int
+    public function handle(ModuleRegistry $registry, PermissionCatalogue $catalogue): int
     {
         // Guard the §5.5 standing rule at the point of use, not just in tests —
         // a module reaching production without automation support is the exact
@@ -45,14 +45,12 @@ class SyncPermissions extends Command
             foreach ($module->actions as $action) {
                 $key = Permission::key($module->key, $action);
 
-                $permission = Permission::firstOrCreate(
-                    ['key' => $key],
-                    [
-                        'module' => $module->key,
-                        'action' => $action,
-                        'label'  => $this->label($module, $action),
-                    ]
-                );
+                // The row is materialised by PermissionCatalogue rather than
+                // here, because the role editor has to be able to do the same
+                // thing when a deploy step was skipped — and two places
+                // firstOrCreate-ing the same permission is two places that can
+                // word its label differently. One writer, one wording.
+                $permission = $catalogue->materialise($key);
 
                 if ($permission->wasRecentlyCreated) {
                     $created++;
@@ -75,10 +73,5 @@ class SyncPermissions extends Command
         }
 
         return self::SUCCESS;
-    }
-
-    private function label(ModuleDefinition $module, string $action): string
-    {
-        return ucfirst($action).' '.lcfirst($module->label);
     }
 }

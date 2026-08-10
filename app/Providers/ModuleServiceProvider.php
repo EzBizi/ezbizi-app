@@ -53,6 +53,38 @@ class ModuleServiceProvider extends ServiceProvider
     private function foundationModules(): array
     {
         return [
+            /*
+             * Two modules that are screens and nothing else.
+             *
+             * They were the last destinations compiled into the client. The
+             * sidebar is now built from what this registry declares, so a screen
+             * that is not a module simply does not exist to it — and Dashboard
+             * and Import & export both disappeared, for everybody including the
+             * Administrator, the first time that list was drawn from the server.
+             *
+             * Declaring them is the right answer rather than a workaround. The
+             * owner's rule is that EVERY module is reached through a tab
+             * permission the organization grants; a screen exempt from that
+             * would be a second way in. It also makes them grantable, which is
+             * the point: a technician has no business in Import & export, and
+             * until now there was no way to say so.
+             *
+             * `view` only. Neither has an action beyond looking — the dashboard
+             * composes what other modules already permit, and an import writes
+             * through the permissions of the records it creates, not its own.
+             * Dashboard is declared FIRST because the registry's order is the
+             * sidebar's order, and it is the screen somebody opens the app to
+             * look at.
+             */
+            new ModuleDefinition(
+                key:     'dashboard',
+                label:   'Dashboard',
+                actions: ['view'],
+                automationExemptBecause:
+                    'The dashboard only reads what other modules already record; '
+                    .'there is no event here that another module does not raise first.',
+            ),
+
             new ModuleDefinition(
                 key:   'organizations',
                 label: 'Organization settings',
@@ -213,20 +245,6 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             new ModuleDefinition(
-                // Renamed from 'workflows' on 2026-08-10, permission keys and
-                // all — see the rename migration of that date. The product says
-                // "automation", so the module key does too.
-                key:   'automations',
-                label: 'Automations',
-                // Deliberately outside automation itself. An automation that
-                // could create or edit automations is a self-modifying system:
-                // the loop guards count actions, not rules, so a rule that
-                // writes rules escapes them entirely. It stays a human act.
-                automationExemptBecause:
-                    'An automation that could write automations would escape the loop guards.',
-            ),
-
-            new ModuleDefinition(
                 key:     'audit',
                 label:   'Audit log',
                 actions: ['view'],
@@ -381,6 +399,29 @@ class ModuleServiceProvider extends ServiceProvider
                             .'the rule.',
                     ),
                 ],
+            ),
+            new ModuleDefinition(
+                // Renamed from 'workflows' on 2026-08-10, permission keys and
+                // all — see the rename migration of that date. The product says
+                // "automation", so the module key does too.
+                key:   'automations',
+                label: 'Automations',
+                // Deliberately outside automation itself. An automation that
+                // could create or edit automations is a self-modifying system:
+                // the loop guards count actions, not rules, so a rule that
+                // writes rules escapes them entirely. It stays a human act.
+                automationExemptBecause:
+                    'An automation that could write automations would escape the loop guards.',
+            ),
+
+
+            new ModuleDefinition(
+                key:     'data',
+                label:   'Import & export',
+                actions: ['view'],
+                automationExemptBecause:
+                    'Import and export act THROUGH other modules, and those raise '
+                    .'their own events — an imported customer fires customer.created.',
             ),
         ];
     }
