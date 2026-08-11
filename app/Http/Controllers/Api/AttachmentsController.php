@@ -191,7 +191,32 @@ class AttachmentsController extends Controller
     /** DELETE /api/v1/attachments/{attachment} */
     public function destroy(Attachment $attachment): JsonResponse
     {
-        $this->authorize('update', $this->subjectOf($attachment));
+        $subject = $this->subjectOf($attachment);
+
+        $this->authorize('update', $subject);
+
+        /*
+         * Some files are not uploads — they are the record.
+         *
+         * A rendered contract is fingerprinted by a signature, so removing it
+         * leaves the signature pointing at bytes nobody can produce. The SUBJECT
+         * is asked rather than this controller deciding, because only it knows
+         * which of its files are evidence: see
+         * App\Models\Concerns\HasAttachments::attachmentRemovalRefusal, whose
+         * default is null so that nothing else has to think about it.
+         *
+         * A 422 with the reason, and not a 403: the person is entitled to manage
+         * this record's files, and this particular one simply is not removable.
+         * Attachment::deleting refuses it again for every writer that never
+         * comes through here.
+         */
+        $refusal = method_exists($subject, 'attachmentRemovalRefusal')
+            ? $subject->attachmentRemovalRefusal($attachment)
+            : null;
+
+        if ($refusal !== null) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['attachment' => $refusal]);
+        }
 
         $disk = $attachment->disk;
         $path = $attachment->path;

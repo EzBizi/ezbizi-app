@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use InvalidArgumentException;
 
 /**
@@ -27,11 +28,29 @@ use InvalidArgumentException;
  * a person who cannot get in. Derivation cannot drift, so there is no sweep in
  * routes/console.php for this and none is needed.
  *
- * `in progress` is the exception, and it is stated here rather than quietly
- * omitted: it belongs to the onboarding form the two sides fill, which does not
- * exist yet, so nothing can produce it today. The constant is declared because
- * the client and the server have to agree on the whole vocabulary from the
- * start — learning a new word later is a release where the two disagree.
+ * `in progress` used to be the exception, declared with nothing able to produce
+ * it because the onboarding form did not exist. It does now, and this is its
+ * producer: an invitation reports `in_progress` once an onboarding has been
+ * started against it — the employer has picked a contract and the form is open
+ * — and goes on to `completed` when the invitation is accepted.
+ *
+ * ── Where it sits in the order, which is a real decision ─────────
+ *
+ * BELOW expiry, not above it. An invitation whose week ran out while a form sat
+ * half-filled is `abandoned`, because the link is dead and a resend is what
+ * fixes it; reporting it as `in_progress` would show a live-looking row in a
+ * list whose entire purpose is telling somebody what still needs chasing. The
+ * form is not lost — it is pinned to its contract version and waiting — and the
+ * invitation returns to `in_progress` the moment it is resent.
+ *
+ * ── The cost of reading a relation from a derived status ─────────
+ *
+ * `status()` now touches the database when `onboarding` is not already loaded.
+ * That is a lazy load per row in any list that forgets to eager-load it. The
+ * alternative is a stored column, and the argument against one has not changed:
+ * this status would then need to be written by whatever creates an onboarding,
+ * and the day something creates one without writing it, the list is wrong with
+ * nothing saying so. A query is cheaper to pay than a lie.
  *
  * ── Revoked is its own status, decided 2026-08-11 ────────────────
  *
@@ -173,6 +192,21 @@ class Invitation extends Model implements HoldsPersonalData
         return $this->belongsTo(User::class, 'accepted_user_id');
     }
 
+    /**
+     * The onboarding started against this invitation, if one has been.
+     *
+     * `hasOne` and unique in the schema: an invitation is one person joining
+     * once. This is what finally gives `in_progress` a producer — see status().
+     *
+     * Eager-load it wherever invitations are listed. `status()` reads it, so a
+     * list that does not will lazy-load one query per row; correct either way,
+     * and HrInvitationsController::index loads it for that reason.
+     */
+    public function onboarding(): HasOne
+    {
+        return $this->hasOne(Onboarding::class);
+    }
+
     public function assignedOrganization(): BelongsTo
     {
         return $this->belongsTo(Organization::class, 'assigned_organization_id');
@@ -298,6 +332,7 @@ class Invitation extends Model implements HoldsPersonalData
             $this->accepted_at !== null => self::COMPLETED,
             $this->revoked_at !== null  => self::REVOKED,
             $this->hasExpired()         => self::ABANDONED,
+            $this->onboarding !== null  => self::IN_PROGRESS,
             $this->opened_at !== null   => self::RECEIVED,
             default                     => self::SENT,
         };

@@ -67,4 +67,23 @@ trait HasAttachments
     {
         return $this->morphMany(Attachment::class, 'attachable')->latest();
     }
+
+    /**
+     * Is there a reason THIS record will not give up THAT file?
+     *
+     * Null for almost everything, which is why the default lives here: a photo
+     * on a job is a file somebody attached and can unattach, and no subject
+     * should have to say so.
+     *
+     * The exception is a file that is not an upload but a RECORD — a rendered
+     * contract, fingerprinted by a signature. Removing one leaves the signature
+     * pointing at a document nobody can produce, which quietly turns the
+     * evidence into an assertion. The subject is the only thing that knows which
+     * of its files those are, and asking it is what keeps AttachmentsController
+     * from having to learn about contracts.
+     */
+    public function attachmentRemovalRefusal(Attachment $attachment): ?string
+    {
+        return null;
+    }
 }

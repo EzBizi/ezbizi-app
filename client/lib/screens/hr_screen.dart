@@ -6,9 +6,10 @@ import '../widgets/tab_bar_like.dart';
 import '../widgets/tag.dart';
 import 'hr/contracts_tab.dart';
 import 'hr/invitations_tab.dart';
+import 'hr/onboarding_tab.dart';
 import 'hr/records_tab.dart';
 
-/// Human Resources — five tabs, three of which are built (HR plan).
+/// Human Resources — five tabs, four of which are built (HR plan).
 ///
 /// The owner's words: *"this is the most integral part of the app as it allows
 /// its basic function."* It is what lets an organization have employees at all —
@@ -16,7 +17,7 @@ import 'hr/records_tab.dart';
 /// so an organization has been exactly one person no matter how many roles it
 /// defined.
 ///
-/// ── Why two of the tabs are drawn and do nothing ─────────────────
+/// ── Why the last unbuilt tab is drawn and does nothing ───────────
 ///
 /// Because that is this codebase's answer, and it is the honest one. An
 /// automation action the engine cannot run is listed, badged "Not built yet",
@@ -26,9 +27,9 @@ import 'hr/records_tab.dart';
 /// to conclude the app is broken or that they have lost a permission, and both
 /// guesses are worse than the truth.
 ///
-/// So Dashboard and Onboarding appear in the owner's order and each says what
-/// it is waiting for. A tab that vanishes reads as broken; a tab that explains
-/// itself reads as unfinished, which is what it is.
+/// So Dashboard appears in the owner's order and says what it is waiting for. A
+/// tab that vanishes reads as broken; a tab that explains itself reads as
+/// unfinished, which is what it is.
 ///
 /// ── The tab strip, not a second sidebar ──────────────────────────
 ///
@@ -48,16 +49,20 @@ class HrScreen extends StatefulWidget {
 }
 
 class _HrScreenState extends State<HrScreen> {
-  /// Records' place in [_tabs] below, and where this screen opens.
+  /// Onboarding's place in [_tabs] below, and where this screen opens.
   ///
   /// Not tab zero. Landing on Dashboard would make everybody's first sight of
   /// Human Resources a placeholder, which says the module does not work rather
   /// than that one tab does not yet. So it opens on the first tab in the
-  /// owner's order that actually does something, and the unbuilt ones are found
+  /// owner's order that actually does something, and the unbuilt one is found
   /// by looking rather than by arriving.
-  static const _records = 2;
+  ///
+  /// That was Records while Onboarding was a placeholder. It moved when
+  /// Onboarding stopped being one — the rule is "the first that works", not
+  /// "Records", and leaving it would have made the sentence above false.
+  static const _onboarding = 1;
 
-  int _tab = _records;
+  int _tab = _onboarding;
 
   /// Which tabs have been shown at least once.
   ///
@@ -71,7 +76,7 @@ class _HrScreenState extends State<HrScreen> {
   /// The stack below always has five children, so a tab's position never moves
   /// and its State survives every switch after the first; only the CONTENT of a
   /// slot arrives late.
-  final Set<int> _shown = {_records};
+  final Set<int> _shown = {_onboarding};
 
   /// The five, in the owner's order: Dashboard · Onboarding · Records ·
   /// Invitations · Contracts.
@@ -98,23 +103,12 @@ class _HrScreenState extends State<HrScreen> {
     (
       'Onboarding',
       Icons.how_to_reg_outlined,
-      () => const NotBuiltYet(
-        title: 'Onboarding',
-        icon: Icons.how_to_reg_outlined,
-        waitingFor:
-            'Inviting somebody works today — that is the Invitations tab, and '
-            'it is enough for office staff, a co-owner, or anybody who just '
-            'needs a login. Onboarding is the richer path: the form both sides '
-            'fill in, the employer starting it and the employee completing and '
-            'correcting it. The Contracts tab now decides which questions that '
-            'form asks; what is missing is the form itself, and somewhere to '
-            'keep the answers it collects.',
-      ),
+      () => OnboardingTab(api: widget.api, session: widget.session),
     ),
     (
       'Records',
       Icons.folder_shared_outlined,
-      () => RecordsTab(api: widget.api),
+      () => RecordsTab(api: widget.api, session: widget.session),
     ),
     (
       'Invitations',

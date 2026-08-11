@@ -291,6 +291,98 @@ class SensitiveValuesTest extends TestCase
         $this->assertSame(SensitiveValues::MASK, $out['customer']['notes']);
     }
 
+    /**
+     * An export that reveals is a reveal, and gets written down as one.
+     *
+     * This class's own docblock says "there is no method that returns the clear
+     * value without auditing, which is deliberate". It was not true of the
+     * exporter: it asked `mayReveal()` and then read the attribute itself, so
+     * `?include_sensitive=1` handed over every sensitive value in the file with
+     * nothing in the reveal log — the bulk reveal `read()` argues was made
+     * impossible, reached by going around this class rather than through it.
+     *
+     * The `data.exported` entry DataController writes is not the same answer. It
+     * names a resource and a request; the question the reveal log is kept for is
+     * "who looked at MY bank details", which needs a record and a field.
+     */
+    public function test_an_export_that_reveals_a_value_records_which_field_it_revealed(): void
+    {
+        $alpha  = $this->provisionTenant('Alpha');
+        $probe  = $this->probe($alpha);
+        $editor = $this->userWithRole($alpha, 'Editor', ['customers.view', 'customers.edit']);
+
+        $out = $this->inTenant(
+            $alpha['org'],
+            fn () => app(Exporter::class)->person($probe, $editor, includeSensitive: true),
+        );
+
+        $this->assertSame(self::SECRET, $out['customer']['notes']);
+
+        $event = $this->revealEvents($alpha)->sole();
+
+        $this->assertSame($editor->getKey(), $event->actor_id);
+        $this->assertSame($probe->getKey(), $event->target_id, 'Which record, not which resource.');
+        $this->assertSame('notes', $event->metadata['field'], 'Which field, not "some of them".');
+
+        // The value itself never goes in, here or anywhere else — audit_events is
+        // append-only and erasure cannot reach it.
+        $this->assertStringNotContainsString(self::SECRET, (string) json_encode($event->toArray()));
+    }
+
+    /**
+     * One entry per record, so a bulk export is legible as the bulk disclosure
+     * it is rather than as one line.
+     */
+    public function test_a_bulk_export_writes_one_reveal_per_record(): void
+    {
+        $alpha  = $this->provisionTenant('Alpha');
+        $editor = $this->userWithRole($alpha, 'Editor', ['customers.view', 'customers.edit']);
+
+        $probes = collect(['First', 'Second', 'Third'])
+            ->map(fn (string $name) => $this->probe($alpha, self::SECRET, $name));
+
+        $this->inTenant($alpha['org'], function () use ($probes, $editor) {
+            foreach ($probes as $probe) {
+                app(Exporter::class)->person($probe, $editor, includeSensitive: true);
+            }
+        });
+
+        $events = $this->revealEvents($alpha);
+
+        $this->assertCount(3, $events);
+        $this->assertEqualsCanonicalizing(
+            $probes->map->getKey()->all(),
+            $events->pluck('target_id')->all(),
+            'The log has to name each record, or it cannot answer whose details were read.',
+        );
+    }
+
+    /**
+     * And an export that does NOT reveal writes nothing.
+     *
+     * A masked column is not a disclosure, and an entry for one would make the
+     * log unable to tell an ordinary download from somebody reading bank
+     * details — which is the distinction the whole table is kept for.
+     */
+    public function test_a_masked_export_is_not_recorded_as_a_reveal(): void
+    {
+        $alpha  = $this->provisionTenant('Alpha');
+        $probe  = $this->probe($alpha);
+        $editor = $this->userWithRole($alpha, 'Editor', ['customers.view', 'customers.edit']);
+        $reader = $this->userWithRole($alpha, 'Reader', ['customers.view']);
+
+        $this->inTenant($alpha['org'], function () use ($probe, $editor, $reader) {
+            // Could have revealed, did not ask.
+            app(Exporter::class)->person($probe, $editor);
+            // Asked, and the record refuses — a refusal is not a disclosure, and
+            // it must not be a 403 either: they still get their customer list
+            // with the column masked.
+            app(Exporter::class)->person($probe, $reader, includeSensitive: true);
+        });
+
+        $this->assertSame(0, $this->revealEvents($alpha)->count());
+    }
+
     /** A model that declares nothing sensitive is exported exactly as before. */
     public function test_an_ordinary_record_is_unaffected(): void
     {

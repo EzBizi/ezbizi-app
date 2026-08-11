@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 class EzBiziTheme {
   static const _cyan = Color(0xFF00AEEF);
   static const _cyanDark = Color(0xFF0093CA);
+  // A deeper cyan for `secondary`, so nothing has to reach outside the brand.
+  static const _cyanDeep = Color(0xFF00708F);
   static const _ink = Color(0xFF060808);
   static const _muted = Color(0xFF5B6672);
   static const _line = Color(0x1A060808);
@@ -57,12 +59,34 @@ class EzBiziTheme {
   static ThemeData _build(Brightness brightness) {
     final isDark = brightness == Brightness.dark;
 
-    final scheme = ColorScheme.fromSeed(
+    /*
+     * NO PURPLE. Ever. It is not a taste preference.
+     *
+     * `ColorScheme.fromSeed` derives `secondary` and `tertiary` by rotating the
+     * seed's hue, and from a cyan seed that lands on violet. Nobody chose it and
+     * nobody noticed, and it turned up as a violet stripe down the side of every
+     * card in the contract designer — which the owner recognised instantly as
+     * the mark of a generated interface. Their words: "they are the mark of AI
+     * did this and it's a mockery all over internet".
+     *
+     * The palette is pinned so the app cannot reach for a colour it never chose.
+     * `secondary` and `tertiary` stay inside the brand's own range — a deeper
+     * and a lighter cyan — so a widget that grabs one gets something that
+     * belongs here rather than something Material invented.
+     */
+    final generated = ColorScheme.fromSeed(
       seedColor: _cyan,
       brightness: brightness,
       primary: _cyan,
       onPrimary: Colors.white,
       surface: isDark ? const Color(0xFF10161B) : Colors.white,
+    );
+
+    final scheme = generated.copyWith(
+      secondary: isDark ? _cyanDark : _cyanDeep,
+      onSecondary: Colors.white,
+      tertiary: isDark ? const Color(0xFF6E8CA0) : const Color(0xFF41627A),
+      onTertiary: Colors.white,
     );
 
     return ThemeData(

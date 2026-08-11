@@ -1,0 +1,1483 @@
+import 'package:flutter/material.dart';
+
+import '../../core/api_client.dart';
+import '../../core/contracts.dart';
+import '../../core/onboarding.dart';
+import '../../core/timestamps.dart';
+import '../../widgets/async_body.dart';
+import '../../widgets/error_note.dart';
+import '../../widgets/tag.dart';
+
+/// The key on the control that answers one question.
+///
+/// Public because a test has no other reliable handle on a particular box: a
+/// question's LABEL is the tenant's, two of them may legitimately read the same,
+/// and none of them is attached to the control as a `labelText` — the wording
+/// sits above the box with the tags beside it. The field key is the one thing on
+/// a question that is unique by construction, so it is what the widget carries.
+Key answerKey(String fieldKey) => Key('answer:$fieldKey');
+
+/// The form both sides fill in (EZBIZI-HR-PLAN.md, "Onboarding").
+///
+/// ── One widget, two sides, on purpose ────────────────────────────
+///
+/// The employer opens this from the Onboarding tab; the new starter meets it as
+/// the first thing in the app after accepting their invitation; the Records tab
+/// opens it to read what was collected. It is the same form and the same code,
+/// because the difference between the three is entirely a question of which
+/// boxes are live — and that question is answered by the server, per field, in
+/// `writable`.
+///
+/// Two copies of this screen would be two answers to "who may write the wage",
+/// and only one of them would be the one the PATCH enforces. Worse on the
+/// Records side: a second renderer for the same answers is a second place for a
+/// sensitive value to be drawn in the clear by accident.
+///
+/// ── What the server decides, and this does not ───────────────────
+///
+///   - who may write a field: `writable`, carried, never derived from
+///     `filled_by` and a guess at which side is reading;
+///   - which questions exist and what they are called: the pinned contract
+///     version, whose fields arrive with the onboarding, the common core among
+///     them;
+///   - what a sensitive answer looks like when it is withheld: the server sends
+///     the mask, and this end never spells one;
+///   - every word of the signing ceremony — see [Onboarding.consentStatement]
+///     — and the fingerprint a signature is taken against, which arrives with
+///     the document and is sent back untouched; see [OnboardingDocument].
+///
+/// What this file decides is which CONTROL draws a kind of question, which is
+/// the carve-out contract_form_preview.dart already takes and for the same
+/// reason: a server cannot send a widget. A kind this build has never met gets
+/// a plain box and says so, rather than being dropped from a form whose whole
+/// job is to be complete.
+///
+/// ── Why it fetches its own data ──────────────────────────────────
+///
+/// Saving answers returns the whole onboarding — new provenance, new masks, a
+/// signature that may have become ready — so the thing on screen has to be
+/// replaced by the answer to the save. Owning the fetch is what makes that one
+/// path instead of a callback that hands a new object to a widget already
+/// holding half-typed text.
+class OnboardingForm extends StatefulWidget {
+  const OnboardingForm({
+    super.key,
+    required this.api,
+    required this.onboardingId,
+    required this.vocabulary,
+    required this.formats,
+    this.onChanged,
+    this.onBack,
+    this.backLabel = 'Back',
+  });
+
+  final ApiClient api;
+  final String onboardingId;
+
+  /// The words for a kind of question and for who fills one in, from
+  /// `GET /hr/contracts/catalogue`.
+  ///
+  /// A FALLBACK, not the source. The onboarding brings its own — see
+  /// [Onboarding.vocabulary] for why it has to, and [_OnboardingFormState] for
+  /// which wins. The employer's tab has already fetched the catalogue for its
+  /// list and passes it; the employee's destination has no permission to fetch
+  /// it and passes [ContractVocabulary.none].
+  final ContractVocabulary vocabulary;
+
+  final DisplayFormats formats;
+
+  /// Something behind this changed: a list of onboardings in flight, or the
+  /// shell's own destination, is now out of date. Called after a save and after
+  /// a signature — not on every keystroke.
+  final VoidCallback? onChanged;
+
+  /// Shown as a link above the form where there is somewhere to go back to. The
+  /// employee's own destination has nowhere, and passes null.
+  final VoidCallback? onBack;
+  final String backLabel;
+
+  @override
+  State<OnboardingForm> createState() => _OnboardingFormState();
+}
+
+class _OnboardingFormState extends State<OnboardingForm> {
+  bool _loading = true;
+  String? _error;
+
+  Onboarding? _form;
+
+  /// One controller per text-ish question, kept for the life of the screen.
+  ///
+  /// Not rebuilt from the payload on every frame: a `TextFormField(initialValue:)`
+  /// inside a list keeps the FIELD's state where it sits, which is the bug the
+  /// contract designer's `_Question` documents. These are keyed by the field
+  /// key, so a question cannot end up wearing another question's text.
+  final Map<String, TextEditingController> _boxes = {};
+
+  /// What has been changed and not yet saved, by field key.
+  ///
+  /// Only these are sent. A form that PATCHed everything it was holding would
+  /// re-send the other side's answers under this person's name and destroy the
+  /// provenance that makes `either` usable at all — and for a masked answer it
+  /// would send the mask, which is how the automations screen once saved
+  /// `••••••••` over a working secret.
+  final Map<String, String> _pending = {};
+
+  /// Sensitive values this person has asked to see, by field key. Held only for
+  /// as long as the screen is open; a reload masks them again, because the next
+  /// look is another disclosure and gets its own audit entry.
+  final Map<String, String> _revealed = {};
+
+  /// Which field's reveal is in flight, so its own button spins rather than the
+  /// page.
+  String? _revealing;
+
+  bool _saving = false;
+
+  /// Whatever the last save or reveal was refused with.
+  ///
+  /// One field for both because they end up in the same place on screen, and
+  /// because the alternative — an error per action — produced the bug it was
+  /// meant to avoid: a reveal refused on a read-only record had nowhere to
+  /// report, since the only note on the page was inside a Save bar that a
+  /// read-only record does not draw.
+  String? _actionError;
+
+  /// When this session last saved. Distinct from the onboarding's own
+  /// `lastAnsweredAt`, which may be the other side's work: "you saved at 10:32"
+  /// is the sentence that makes somebody believe they can close the tab.
+  DateTime? _savedAt;
+
+  /// Which signature is being submitted, and which one was refused with what.
+  ///
+  /// Both keyed, because a document can be waiting on more than one signature
+  /// and an unkeyed error would print itself under every unsigned block on the
+  /// page — including the one that was never attempted.
+  String? _signingKey;
+  String? _signErrorKey;
+  String? _signError;
+
+  /// The rendered document and its fingerprint, from its own endpoint.
+  ///
+  /// Fetched beside the form rather than with it, because that is how the
+  /// server serves it — a preview rendered on demand until something is signed,
+  /// the stored bytes afterwards — and refetched after every write, because
+  /// answering a question changes the document a preview would produce. Signing
+  /// against a stale hash is the one thing that must not happen: the server
+  /// compares it, and a mismatch is a refusal rather than a silent signature
+  /// over the wrong text.
+  OnboardingDocument? _paper;
+  String? _paperError;
+
+  /// The onboarding's own vocabulary where it sent one, and otherwise whatever
+  /// the screen around this was able to fetch.
+  ///
+  /// This way round because the payload's copy is the one that describes THESE
+  /// questions: a pinned version can be older than the catalogue, and the
+  /// employee has no catalogue at all. The fallback exists so an employer's
+  /// form still reads properly against a server that has not started sending
+  /// the block yet.
+  ContractVocabulary get _vocabulary =>
+      _form?.vocabulary.isUsable == true ? _form!.vocabulary : widget.vocabulary;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    for (final box in _boxes.values) {
+      box.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final response = await widget.api.get(
+      '/hr/onboardings/${widget.onboardingId}',
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _loading = false;
+
+      if (!response.ok) {
+        _error = response.reason;
+        return;
+      }
+
+      _adopt(response);
+    });
+
+    await _loadDocument();
+  }
+
+  /// The document, whenever the answers behind it may have moved.
+  ///
+  /// Skipped entirely when this contract asks for no signature: rendering a
+  /// document nobody is going to sign is a request for nothing, and the section
+  /// that would show it is not drawn either.
+  Future<void> _loadDocument() async {
+    if (_form?.signatures.isEmpty ?? true) return;
+
+    final response = await widget.api.get(
+      '/hr/onboardings/${widget.onboardingId}/document',
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      if (!response.ok) {
+        // Beside the signing step rather than over the whole page: the form is
+        // still perfectly readable and answerable without a document, and
+        // blanking it would take away the very answers that produce one.
+        _paper = null;
+        _paperError =
+            'The document could not be rendered, so there is nothing to sign '
+            'against: ${response.reason}';
+        return;
+      }
+
+      _paperError = null;
+      _paper = response.data is Map
+          ? OnboardingDocument.fromJson(
+              Map<String, dynamic>.from(response.data as Map),
+            )
+          : null;
+    });
+  }
+
+  /// Take a fresh copy of the form and bring the boxes into line with it.
+  ///
+  /// Called inside a setState by every path that receives one. A box whose key
+  /// is still pending is left alone: that is somebody's unsaved typing, and the
+  /// server's older value landing on top of it is the "it reloads for every
+  /// change" complaint in its most destructive form.
+  void _adopt(ApiResponse response) {
+    if (response.data is! Map) return;
+
+    final form = Onboarding.fromJson(
+      Map<String, dynamic>.from(response.data as Map),
+    );
+
+    _form = form;
+
+    for (final question in form.questions) {
+      if (_pending.containsKey(question.key)) continue;
+
+      _boxes[question.key]?.text = _startingText(question);
+    }
+  }
+
+  /// What a box holds before anybody touches it.
+  ///
+  /// Empty for a masked answer, and that is the whole trick: there is then no
+  /// state in which the mask could be sent back as though it were the value.
+  /// The row says the stored answer is kept unless something new is typed.
+  String _startingText(OnboardingQuestion question) {
+    if (_revealed.containsKey(question.key)) return _revealed[question.key]!;
+
+    return question.masked ? '' : question.value;
+  }
+
+  TextEditingController _box(OnboardingQuestion question) => _boxes.putIfAbsent(
+    question.key,
+    () => TextEditingController(text: _startingText(question)),
+  );
+
+  // ── saving ───────────────────────────────────────────────────────
+
+  Future<void> _save() async {
+    if (_pending.isEmpty) return;
+
+    setState(() {
+      _saving = true;
+      _actionError = null;
+    });
+
+    final response = await widget.api.patch(
+      '/hr/onboardings/${widget.onboardingId}',
+      {'answers': Map<String, dynamic>.from(_pending)},
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _saving = false;
+
+      // Kept, not cleared. A refusal that emptied the pending map would throw
+      // away what somebody typed while leaving the boxes showing it, so the
+      // next Save would send nothing and report success over a form that was
+      // never written.
+      if (!response.ok) {
+        _actionError = response.reason;
+        return;
+      }
+
+      _pending.clear();
+      _savedAt = DateTime.now();
+
+      // The answer to the save IS the new form: provenance, masks, and what is
+      // still missing.
+      _adopt(response);
+    });
+
+    // The answers moved, so a preview rendered from them is out of date — and a
+    // signature carries the fingerprint of what was on screen. Refetched rather
+    // than left, because the stale one would be refused at the moment somebody
+    // pressed Sign, which is the worst possible time to find out.
+    await _loadDocument();
+
+    widget.onChanged?.call();
+  }
+
+  // ── revealing one sensitive answer ───────────────────────────────
+
+  /// One field, one request, one audit entry.
+  ///
+  /// There is deliberately no "show everything" here, mirroring the server:
+  /// `SensitiveValues` refuses to offer a bulk reveal because one audit entry
+  /// covering an unknown number of disclosures cannot answer which field
+  /// somebody actually looked at, and that is the only question the log is
+  /// being kept for.
+  Future<void> _reveal(OnboardingQuestion question) async {
+    setState(() {
+      _revealing = question.key;
+      _actionError = null;
+    });
+
+    // A GET, because that is the endpoint — and it is a read with a side
+    // effect on purpose, the same shape as `/invitations/lookup`: ASKING is the
+    // reveal. Every other read of this record answers the mask, so each entry
+    // in the log means somebody deliberately looked rather than that a screen
+    // was opened.
+    final response = await widget.api.get(
+      '/hr/onboardings/${widget.onboardingId}/answers/${question.key}',
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _revealing = null;
+
+      if (!response.ok) {
+        _actionError = response.reason;
+        return;
+      }
+
+      final value = response.data is Map
+          ? (response.data as Map)['value']?.toString() ?? ''
+          : '';
+
+      _revealed[question.key] = value;
+
+      // Put it in the box so it can be corrected, and leave it OUT of
+      // [_pending]: reading a value is not changing it, and a reveal that
+      // queued a write would rewrite the provenance of an answer somebody only
+      // looked at.
+      if (question.writable) _box(question).text = value;
+    });
+  }
+
+  // ── signing ──────────────────────────────────────────────────────
+
+  Future<void> _sign(
+    String fieldKey,
+    String affirmation,
+    String documentHash,
+  ) async {
+    setState(() {
+      _signingKey = fieldKey;
+      _signErrorKey = null;
+      _signError = null;
+    });
+
+    final response = await widget.api
+        .post('/hr/onboardings/${widget.onboardingId}/sign', {
+          'field_key': fieldKey,
+          // Both halves ESIGN asks for, sent as two facts rather than one.
+          // Consent to transact electronically is a separate agreement from the
+          // contract, which is why the signature record timestamps it
+          // separately — so a server that received an affirmation with no
+          // consent must be able to tell, and refuse.
+          'consent': true,
+          'affirmation': affirmation,
+          // The fingerprint of the document this screen actually displayed,
+          // sent back rather than recomputed anywhere. The server refuses
+          // without it: it is what makes the signature evidence of what the
+          // person read rather than of what the server assumed they read, and
+          // a document that has moved since it was fetched is a refusal instead
+          // of a signature over text nobody saw.
+          'document_hash': documentHash,
+        });
+
+    if (!mounted) return;
+
+    setState(() {
+      _signingKey = null;
+
+      if (!response.ok) {
+        _signErrorKey = fieldKey;
+        _signError = response.reason;
+        return;
+      }
+
+      _adopt(response);
+    });
+
+    // Signing freezes the document, so the preview this screen was holding is
+    // now the stored artefact and says so.
+    await _loadDocument();
+
+    widget.onChanged?.call();
+  }
+
+  // ── drawing it ───────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    return AsyncBody(
+      loading: _loading,
+      error: _error,
+      onRetry: () {
+        setState(() {
+          _loading = true;
+          _error = null;
+        });
+        _load();
+      },
+      child: _form == null ? const SizedBox.shrink() : _page(context, _form!),
+    );
+  }
+
+  Widget _page(BuildContext context, Onboarding form) {
+    final theme = Theme.of(context);
+
+    // Drawn by the ceremony below rather than as ordinary boxes. Which fields
+    // those are comes from the server naming them, not from this end deciding
+    // that a kind called "signature" is special.
+    final signatureKeys = {
+      for (final signature in form.signatures) signature.fieldKey,
+    };
+
+    final questions = [
+      for (final question in form.questions)
+        if (!signatureKeys.contains(question.key)) question,
+    ];
+
+    final mine = [
+      for (final question in questions)
+        if (question.writable) question,
+    ];
+
+    final theirs = [
+      for (final question in questions)
+        if (!question.writable) question,
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+      children: [
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (widget.onBack != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: widget.onBack,
+                      icon: const Icon(Icons.arrow_back, size: 18),
+                      label: Text(widget.backLabel),
+                    ),
+                  ),
+                _heading(context, form),
+                const SizedBox(height: 18),
+                _resumeNote(context, form, questions),
+                // Only when there is no Save bar to carry it. A refused save
+                // belongs beside the button that was pressed; a refused reveal
+                // on a record nobody may write has no button to sit beside, and
+                // used to have nowhere at all.
+                if (_actionError != null && mine.isEmpty) ...[
+                  const SizedBox(height: 16),
+                  ErrorNote(_actionError!),
+                ],
+                if (mine.isNotEmpty) ...[
+                  const SizedBox(height: 28),
+                  _sectionTitle(context, 'Yours to fill in'),
+                  for (final question in mine) _row(context, question),
+                  const SizedBox(height: 8),
+                  _saveBar(context),
+                ],
+                if (theirs.isNotEmpty) ...[
+                  const SizedBox(height: 28),
+                  _sectionTitle(
+                    context,
+                    mine.isEmpty ? 'The answers' : 'Not yours to answer',
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      mine.isEmpty
+                          ? 'Nothing here can be changed from this screen.'
+                          : 'Here so you can see what is still outstanding on '
+                                'the other side. You cannot change these.',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  for (final question in theirs) _row(context, question),
+                ],
+                // A contract can genuinely ask nothing of its own — a one-page
+                // agreement with a signature and no fields is a real thing — so
+                // this is stated rather than left as a page that stops after
+                // the heading and reads as a screen that failed to load.
+                if (questions.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 28),
+                    child: Text(
+                      form.signatures.isEmpty
+                          ? 'This contract asks no questions and has nothing to '
+                                'sign. There is nothing to fill in here.'
+                          : 'This contract asks no questions. There is only the '
+                                'document below to agree to.',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                if (form.signatures.isNotEmpty) ...[
+                  const SizedBox(height: 28),
+                  _signingSection(context, form),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _heading(BuildContext context, Onboarding form) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                form.contractName.isEmpty ? 'Your paperwork' : form.contractName,
+                style: theme.textTheme.headlineMedium,
+              ),
+            ),
+            // The version is PINNED. Saying which one is not trivia: publishing
+            // a new version of the template does not move this form, so the
+            // number here is the answer to "why am I not being asked the
+            // question my colleague was asked".
+            if (form.version != null) Tag('Version ${form.version}'),
+            if (form.status.isNotEmpty) Tag(onboardingStatusLabel(form.status)),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          [
+            if (form.personName.isNotEmpty) form.personName,
+            if (form.personEmail.isNotEmpty) form.personEmail,
+            _when(form),
+          ].where((part) => part.isNotEmpty).join(' · '),
+          style: theme.textTheme.bodyMedium,
+        ),
+      ],
+    );
+  }
+
+  /// The furthest thing that has happened to it, with its date.
+  ///
+  /// The status tag says which state it is in; this says when it got there,
+  /// which is the part a record read months later needs and a tag cannot carry.
+  String _when(Onboarding form) {
+    String at(String? iso) => formatStamp(iso, '', formats: widget.formats);
+
+    if (form.completedAt != null) return 'Completed ${at(form.completedAt)}';
+    if (form.submittedAt != null) return 'Submitted ${at(form.submittedAt)}';
+    if (form.startedAt != null) return 'Started ${at(form.startedAt)}';
+
+    return '';
+  }
+
+  /// The promise that makes a half-finished form worth starting.
+  ///
+  /// Somebody filling in a bank account and a licence number will stop halfway,
+  /// and the thing that decides whether they come back is whether they believe
+  /// the first half survived. So it says so, says how far they got, and says
+  /// when the form was last written to — all three, because "your progress is
+  /// saved" with no number behind it is what every form says and nobody trusts.
+  /// [questions] is the list WITHOUT the signatures, which is what the count
+  /// has to be over: a signature is not answered, it is signed, and counting it
+  /// as an outstanding question would leave a completed form reading "6 of 7".
+  Widget _resumeNote(
+    BuildContext context,
+    Onboarding form,
+    List<OnboardingQuestion> questions,
+  ) {
+    final theme = Theme.of(context);
+    final total = questions.length;
+    final answered = questions.where((q) => q.answered).length;
+
+    final last = _savedAt != null
+        ? 'You saved at '
+              '${widget.formats.formatTime(_savedAt!.hour, _savedAt!.minute)}.'
+        : form.lastAnsweredAt != null
+        ? 'Last answered '
+              '${formatStamp(form.lastAnsweredAt, '', formats: widget.formats)}.'
+        : 'Nothing answered yet.';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.bookmark_outline,
+            size: 20,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$answered of $total answered. $last',
+                  style: theme.textTheme.titleSmall,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  form.anyWritable
+                      ? 'You do not have to finish this in one go. Press Save '
+                            'whenever you like and close the page — what you '
+                            'have already answered stays, and this screen picks '
+                            'up where you left off.'
+                      : 'Nothing here is waiting on you. This is the record as '
+                            'it stands.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionTitle(BuildContext context, String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Text(
+      text.toUpperCase(),
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        letterSpacing: 1.1,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
+
+  Widget _saveBar(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_actionError != null) ...[
+          ErrorNote(_actionError!),
+          const SizedBox(height: 12),
+        ],
+        Row(
+          children: [
+            FilledButton(
+              onPressed: (_saving || _pending.isEmpty) ? null : _save,
+              child: Text(_saving ? 'Saving…' : 'Save'),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                _pending.isEmpty
+                    ? 'Everything on this page is saved.'
+                    : '${_pending.length} '
+                          '${_pending.length == 1 ? 'answer' : 'answers'} not '
+                          'saved yet.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ── one question ─────────────────────────────────────────────────
+
+  Widget _row(BuildContext context, OnboardingQuestion question) {
+    final theme = Theme.of(context);
+    final field = question.field;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Flexible(
+                child: Text(
+                  field.required ? '${field.label} *' : field.label,
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+              // The one thing position cannot show: that the other side may
+              // have got there first, and that correcting them is expected.
+              if (field.filledBy == filledByEither) const Tag('Either of you'),
+              if (field.sensitive) const Tag('Sensitive'),
+              // Whose question this is, in the server's word for it. Only where
+              // it is not this person's to answer — on their own half the
+              // heading has already said so.
+              if (!question.writable && field.filledBy.isNotEmpty)
+                Tag(_vocabulary.filledByLabel(field.filledBy)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _control(context, question),
+          // Why the box is dead, where the server said. A greyed control with
+          // no reason beside it reads as a fault; this is the plan's one-home
+          // rule showing itself — core identity belongs to the person, and an
+          // employer does not get to edit somebody's date of birth here.
+          if (!question.writable && question.lockedBecause != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                question.lockedBecause!,
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          if (question.writable && question.source == 'core')
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Part of your account rather than of this contract, so '
+                'changing it here changes it everywhere.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          if (field.sensitive) _sensitiveNote(context, question),
+          _provenance(context, question),
+        ],
+      ),
+    );
+  }
+
+  /// Who answered it and when.
+  ///
+  /// Drawn for every answered contract question rather than only for `either`
+  /// ones. On an `either` field it is the point — the owner's case is a date of
+  /// birth the employer typed wrong, and the case that matters is a bank
+  /// account, where "they typed it" and "I corrected it" are different facts.
+  /// On the rest it costs one line and answers "has anybody dealt with this".
+  ///
+  /// The core questions carry none, and that is correct rather than missing:
+  /// they live on the person's profile, and the profile's own history is where
+  /// changes to them are recorded.
+  Widget _provenance(BuildContext context, OnboardingQuestion question) {
+    if (!question.answered) return const SizedBox.shrink();
+
+    final when = formatStamp(question.setAt, '', formats: widget.formats);
+
+    // The name, or the side they acted as when the account behind it is gone.
+    // Never nothing: an answer that appeared from nowhere is the state this
+    // whole mechanism exists to make impossible.
+    final who =
+        question.setByName ??
+        (question.setByParty == null
+            ? null
+            : _vocabulary.filledByLabel(question.setByParty!));
+
+    if (who == null && when.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Text(
+        [
+          if (who != null) 'Filled in by $who' else 'Filled in',
+          if (when.isNotEmpty) when,
+        ].join(' · '),
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+    );
+  }
+
+  /// What "sensitive" means, said where somebody is deciding whether to type.
+  ///
+  /// This paragraph is the feature. A bank account gets typed into a form
+  /// because the form said what would happen to it, and the four behaviours
+  /// here are the same four the contract designer promises when the box is
+  /// ticked — deliberately the same words, because a promise made on one screen
+  /// and contradicted on the other is worse than neither.
+  Widget _sensitiveNote(BuildContext context, OnboardingQuestion question) {
+    final theme = Theme.of(context);
+    final revealed = _revealed.containsKey(question.key);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.5,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.lock_outline,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'This answer is encrypted where it is stored. Everybody who '
+                    'opens this record sees it hidden — including the person '
+                    'who set up the contract — until they ask to see it, and '
+                    'every time somebody asks, it is recorded against their '
+                    'name. It is left out of exports unless somebody asks for '
+                    'it on purpose.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+            // Only where there is something stored to look at. A field nobody
+            // has answered has nothing to reveal, and a Reveal button over an
+            // empty answer is a control that can only produce an error.
+            if (question.masked) ...[
+              const SizedBox(height: 10),
+              if (revealed)
+                // Only where the box above cannot hold it. A writable field
+                // gets the revealed value put straight into its control so it
+                // can be corrected, and printing it a second time here would be
+                // the same secret on screen twice for no reason.
+                question.writable
+                    ? Text(
+                        'Shown in the box above. That you looked has been '
+                        'recorded against your name.',
+                        style: theme.textTheme.bodySmall,
+                      )
+                    : SelectableText(
+                        _revealed[question.key]!,
+                        style: theme.textTheme.bodyMedium,
+                      )
+              else ...[
+                Row(
+                  children: [
+                    Text(question.value, style: theme.textTheme.bodyMedium),
+                    const SizedBox(width: 12),
+                    // An action, drawn as one, with what it costs beside it.
+                    // Not an eye icon on the end of a text box: that reads as a
+                    // display toggle, and this writes a row to the audit log
+                    // with somebody's name on it.
+                    OutlinedButton.icon(
+                      onPressed: _revealing == null
+                          ? () => _reveal(question)
+                          : null,
+                      icon: const Icon(Icons.visibility_outlined, size: 16),
+                      label: Text(
+                        _revealing == question.key ? 'Revealing…' : 'Reveal',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Revealing it is recorded against your name.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The live control for a kind of question.
+  ///
+  /// The kind, its label and its options are all the server's; which widget
+  /// draws it is code, for the reason contract_form_preview.dart states — a
+  /// server cannot send a widget. A kind this build has never met gets a plain
+  /// box and says so, which keeps a newer server's question answerable instead
+  /// of silently missing from a form somebody is being asked to complete.
+  Widget _control(BuildContext context, OnboardingQuestion question) {
+    final theme = Theme.of(context);
+    final field = question.field;
+    final enabled = question.writable && !_saving;
+
+    // Only claimed when there IS a vocabulary to check against. Without one
+    // this end cannot tell an unrecognised kind of question from an ordinary
+    // one, and captioning every text box with a warning would be asserting an
+    // ignorance it has not established.
+    if (_vocabulary.isUsable && !_vocabulary.knowsType(field.type)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _text(question, enabled: enabled),
+          const SizedBox(height: 6),
+          Text(
+            'This build does not know how “${field.type}” is meant to be '
+            'answered, so it is asked as plain text. Whatever the server '
+            'expects, that is what it will check.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
+      );
+    }
+
+    return switch (field.type) {
+      'choice' => DropdownButtonFormField<String>(
+        key: answerKey(field.key),
+        initialValue: _chosen(question),
+        isExpanded: true,
+        decoration: const InputDecoration(border: OutlineInputBorder()),
+        items: [
+          for (final option in field.options)
+            DropdownMenuItem(value: option, child: Text(option)),
+          // An answer that is no longer one of the choices is kept and shown
+          // rather than silently dropped: the options can change between
+          // versions, and a form that erased somebody's answer on load would be
+          // doing it without saying so.
+          if (_chosen(question) case final current?)
+            if (!field.options.contains(current))
+              DropdownMenuItem(
+                value: current,
+                child: Text('$current — no longer offered'),
+              ),
+        ],
+        onChanged: enabled
+            ? (value) => setState(() => _pending[question.key] = value ?? '')
+            : null,
+      ),
+      'file' => _fileControl(context, question),
+      // A signature reaching this point is one the ceremony below does not
+      // cover: [_page] lifts out every question the server named in `signing`,
+      // so anything of this kind still here has no document behind it. Drawing
+      // a text box would invite somebody to type their name into a field that
+      // signs nothing.
+      'signature' => Text(
+        'This question is a signature, and there is nothing on this page to '
+        'sign — the document, and the wording it would be signed under, did '
+        'not arrive with the form.',
+        style: theme.textTheme.bodyMedium,
+      ),
+      _ => _text(
+        question,
+        enabled: enabled,
+        // Typed rather than picked, the same as the invitation screen: a date
+        // picker is a modal dialog and this app does not use those. ISO because
+        // it is the one spelling that cannot be misread.
+        helper: field.type == 'date' ? 'YYYY-MM-DD' : null,
+        numeric: field.type == 'number',
+      ),
+    };
+  }
+
+  String? _chosen(OnboardingQuestion question) {
+    if (_pending[question.key] case final pending?) {
+      return pending.isEmpty ? null : pending;
+    }
+
+    return question.value.isEmpty ? null : question.value;
+  }
+
+  Widget _text(
+    OnboardingQuestion question, {
+    required bool enabled,
+    String? helper,
+    bool numeric = false,
+  }) {
+    return TextField(
+      key: answerKey(question.key),
+      controller: _box(question),
+      enabled: enabled,
+      keyboardType: numeric ? TextInputType.number : null,
+      decoration: InputDecoration(
+        border: const OutlineInputBorder(),
+        // What an empty box MEANS when there is a stored answer behind it.
+        // Without this sentence a masked field reads as unanswered, and the
+        // obvious response to that is to type it again.
+        //
+        // The mask itself is NOT put in here as a hint. It is already printed
+        // once, in the panel below, next to the button that reveals it — and
+        // the same eight dots twice on one question invites the reader to work
+        // out which of the two is the real box.
+        helperMaxLines: 3,
+        helperText: question.masked
+            ? 'Already answered — it is below. Leave this blank to keep it as '
+                  'it is, or type a new answer to replace it.'
+            : helper,
+      ),
+      onChanged: (value) => setState(() => _pending[question.key] = value),
+    );
+  }
+
+  /// A file answer, which this build cannot yet collect.
+  ///
+  /// Drawn, named and refused, the same as an automation action the engine
+  /// cannot run: something absent invites the reader to conclude the app is
+  /// broken or that they have lost a permission, and both guesses are worse
+  /// than the truth. What is missing is not the picker — `Files.pickAnyFile`
+  /// exists — but the endpoint that ties an uploaded file to one answer.
+  /// Attachments hang off a RECORD, and nothing yet says which question of it
+  /// a file belongs to.
+  ///
+  /// An answer that has already been collected is still SHOWN, because a record
+  /// read months later must not lose a licence number just because this build
+  /// cannot take a new one.
+  Widget _fileControl(BuildContext context, OnboardingQuestion question) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: null,
+              icon: const Icon(Icons.upload_file_outlined, size: 18),
+              label: const Text('Choose a file'),
+            ),
+            const Tag('Not built yet', warn: true),
+
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                question.answered ? question.value : 'Nothing uploaded yet.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'This question asks for a file, and this build cannot attach one to '
+          'an answer yet. Everything else on the form saves normally; send the '
+          'file to whoever is running the onboarding in the meantime.',
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+
+  // ── the signing step ─────────────────────────────────────────────
+
+  Widget _signingSection(BuildContext context, Onboarding form) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionTitle(context, 'The document'),
+        Text(
+          'This is the document itself. The record of a signature holds a '
+          'fingerprint of exactly these bytes, so a copy that has been changed '
+          'afterwards will not match it.',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 12),
+        _documentBox(context),
+        if (form.missing.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Text(
+            // The server's own list, in its own words for each question.
+            // Stated rather than acted on: whether an unanswered question stops
+            // a signature is the server's rule and its refusal says so. What
+            // this owes somebody about to press Sign is the list of what they
+            // have not done.
+            'Still to answer: ${form.missing.values.join(', ')}.',
+            style: theme.textTheme.bodyMedium,
+          ),
+        ],
+        for (final signature in form.signatures) ...[
+          const SizedBox(height: 18),
+          _signature(context, form, signature),
+        ],
+      ],
+    );
+  }
+
+  Widget _signature(
+    BuildContext context,
+    Onboarding form,
+    OnboardingSignature signature,
+  ) {
+    final theme = Theme.of(context);
+
+    final title = signature.label.isEmpty
+        ? _vocabulary.filledByLabel(signature.party)
+        : signature.label;
+
+    if (signature.signed) {
+      return Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.4,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Flexible(
+                  child: Text(title, style: theme.textTheme.titleMedium),
+                ),
+                const Tag('Signed'),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              [
+                // The label captured AT the moment of signing, not a name
+                // looked up now: it is what the record says, and it still
+                // answers the question after the account is gone.
+                if (signature.signerLabel != null) signature.signerLabel!,
+                formatStamp(signature.signedAt, '', formats: widget.formats),
+              ].where((part) => part.isNotEmpty).join(' · '),
+              style: theme.textTheme.bodyMedium,
+            ),
+            if (signature.affirmation != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Signed by typing: ${signature.affirmation}',
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    // Somebody else's to perform. Shown rather than hidden, because "what is
+    // this document still waiting for" is the question an unsigned contract
+    // raises, and an employee who cannot see that the employer has not
+    // countersigned assumes the whole thing failed.
+    //
+    // Which side it belongs to is named only where there are words for the
+    // sides. Without the vocabulary the honest thing is to say it is not theirs
+    // and stop, rather than print a wire value at somebody.
+    if (!signature.mine) {
+      return _waiting(
+        context,
+        title,
+        _vocabulary.isUsable
+            ? 'Not signed yet, and not yours to sign — this one is '
+                  '${_vocabulary.filledByLabel(signature.party)}.'
+            : 'Not signed yet, and not yours to sign.',
+      );
+    }
+
+    // Every word of the ceremony is the server's, and it is stored verbatim as
+    // the evidence of what somebody was shown. With no document to fingerprint,
+    // or no wording to agree to, this end has nothing it may substitute:
+    // improvising a consent sentence would put words in a legal record that
+    // nobody wrote.
+    final document = _signable(form);
+
+    if (document == null) {
+      return _waiting(
+        context,
+        title,
+        'The document to sign, and the wording you would be agreeing to, did '
+        'not arrive. Signing is not possible until they do — this app will not '
+        'compose them itself, because what you are shown is what the signature '
+        'record says you were shown.',
+      );
+    }
+
+    return _SigningStep(
+      // Rebuilt from scratch when the field changes, so a half-given consent
+      // can never be carried from one signature to another.
+      key: ValueKey(signature.fieldKey),
+      title: title,
+      consentStatement: form.consentStatement,
+      intentStatement: form.intentStatement,
+      busy: _signingKey == signature.fieldKey,
+      error: _signErrorKey == signature.fieldKey ? _signError : null,
+      onSign: (affirmation) =>
+          _sign(signature.fieldKey, affirmation, document.contentHash),
+    );
+  }
+
+  /// The document, but only when there is enough of it to sign against.
+  ///
+  /// Null when the bytes or their fingerprint did not arrive, or when the
+  /// server sent no wording. All three are required: the signature the server
+  /// accepts carries the hash of what this screen displayed, and it refuses
+  /// without one — "send the fingerprint of the document you were shown."
+  OnboardingDocument? _signable(Onboarding form) {
+    final document = _paper;
+
+    if (document == null || !document.isUsable) return null;
+    if (form.consentStatement.isEmpty || form.intentStatement.isEmpty) {
+      return null;
+    }
+
+    return document;
+  }
+
+  Widget _waiting(BuildContext context, String title, String why) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: theme.textTheme.titleMedium),
+          const SizedBox(height: 6),
+          Text(why, style: theme.textTheme.bodyMedium),
+        ],
+      ),
+    );
+  }
+
+  /// Whether the document is something other than plain text.
+  ///
+  /// A judgement about what this build can LAY OUT, which is a client fact and
+  /// not a rule about the document. An empty mime says nothing either way and
+  /// gets no note: guessing from the bytes would be the sort of sniffing that
+  /// is wrong exactly when a contract happens to mention a tag.
+  bool _notProse(String mime) =>
+      mime.isNotEmpty && !mime.startsWith('text/plain');
+
+  Widget _documentBox(BuildContext context) {
+    final theme = Theme.of(context);
+    final document = _paper;
+
+    if (_paperError != null) return ErrorNote(_paperError!);
+
+    if (document == null) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          constraints: const BoxConstraints(maxHeight: 320),
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SingleChildScrollView(
+            // Selectable, because somebody is entitled to keep a copy of what
+            // they signed — retrievability is one of the five things ESIGN asks
+            // for, and a document you can only look at is not retrievable.
+            //
+            // Shown exactly as it arrived, whatever [OnboardingDocument.mime]
+            // says it is. That is not a nicety: the hash sent back with the
+            // signature is over these bytes, so a prettified version would be
+            // evidence of a document nobody was shown.
+            child: SelectableText(
+              document.content,
+              style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+            ),
+          ),
+        ),
+        // Said out loud when the document is not plain prose.
+        //
+        // The renderer produces markup, and this box shows it exactly as it
+        // arrived — because the fingerprint that goes back with the signature
+        // is over these bytes, and a tidied-up version would be a picture of a
+        // document nobody signed. Somebody reading tags deserves to be told why
+        // rather than left thinking the page is broken.
+        if (_notProse(document.mime)) ...[
+          const SizedBox(height: 8),
+          Text(
+            'This is the document exactly as it is stored — kept as '
+            '${document.mime.split(';').first}, markup and all. It is shown '
+            'unaltered because what is signed is these bytes: a neatened '
+            'version would not be the thing the fingerprint is over.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
+        if (document.isPreview) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Nothing has been signed yet, so this is rendered from the answers '
+            'as they stand — answering another question changes it. The moment '
+            'somebody signs, it is frozen and kept.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+
+/// The ceremony: agree to sign electronically, then sign.
+///
+/// ── Consent is a thing they DO ───────────────────────────────────
+///
+/// ESIGN requires consent to transact electronically to be GIVEN, not assumed.
+/// It is a separate agreement from the contract — which is why the signature
+/// record timestamps it separately — so it is a box somebody ticks, above a
+/// sentence the server wrote, and not a line of small print under the button.
+///
+/// ── And the signature is an affirmative ACT ──────────────────────
+///
+/// Typing their own name, in their own keystrokes. A button on its own is a
+/// click, and a click is what every cookie banner collects; `affirmation` on
+/// the signature record exists to hold something a person did deliberately.
+/// So the button is dead until both have happened, and this widget owns that
+/// state rather than the form around it: nothing about a half-given consent
+/// should survive the page being rebuilt for some other reason.
+class _SigningStep extends StatefulWidget {
+  const _SigningStep({
+    super.key,
+    required this.title,
+    required this.consentStatement,
+    required this.intentStatement,
+    required this.busy,
+    required this.error,
+    required this.onSign,
+  });
+
+  final String title;
+
+  /// Both the server's words, verbatim. They are stored on the signature record
+  /// as `consent_statement` and `intent_statement`, so a word changed here
+  /// would be a record of somebody agreeing to something they were not shown.
+  final String consentStatement;
+  final String intentStatement;
+  final bool busy;
+  final String? error;
+  final void Function(String affirmation) onSign;
+
+  @override
+  State<_SigningStep> createState() => _SigningStepState();
+}
+
+class _SigningStepState extends State<_SigningStep> {
+  final _affirmation = TextEditingController();
+
+  bool _consented = false;
+
+  @override
+  void dispose() {
+    _affirmation.dispose();
+    super.dispose();
+  }
+
+  bool get _canSign =>
+      !widget.busy && _consented && _affirmation.text.trim().isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(widget.title, style: theme.textTheme.titleMedium),
+          const SizedBox(height: 14),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: _consented,
+            // The server's sentence, verbatim. It is stored on the signature
+            // record as `consent_statement`, so a word changed here would be a
+            // record of somebody agreeing to something they were not shown.
+            title: Text(widget.consentStatement),
+            onChanged: widget.busy
+                ? null
+                : (value) => setState(() => _consented = value ?? false),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            widget.intentStatement,
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _affirmation,
+            enabled: !widget.busy,
+            decoration: const InputDecoration(
+              labelText: 'Type your full name to sign',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          if (widget.error != null) ...[
+            const SizedBox(height: 14),
+            ErrorNote(widget.error!),
+          ],
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton(
+              onPressed: _canSign
+                  ? () => widget.onSign(_affirmation.text.trim())
+                  : null,
+              child: Text(widget.busy ? 'Signing…' : 'Sign'),
+            ),
+          ),
+          if (!_canSign && !widget.busy) ...[
+            const SizedBox(height: 8),
+            Text(
+              _consented
+                  ? 'Type your name above to sign.'
+                  : 'Agree to sign electronically, and type your name, before '
+                        'this can be signed.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}

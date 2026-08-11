@@ -55,8 +55,8 @@ class Contract extends Model
     }
 
     /**
-     * Every key this contract has EVER published, mapped to the type it was
-     * published with.
+     * Every key this contract has EVER published, with the properties a later
+     * version may not change.
      *
      * This is the memory that makes key stability enforceable — see
      * FieldSet::checkAgainstHistory. It reads every version rather than only the
@@ -66,22 +66,37 @@ class Contract extends Model
      * A version list is short, and a template that survived a hole in an earlier
      * release is still held to the whole of its history.
      *
-     * Later versions win where a key appears in several, so the type compared
-     * against is the one most recently published rather than an arbitrary one.
+     * ── The two properties are combined differently, deliberately ────
      *
-     * @return array<string, string>
+     * TYPE: later versions win, so the type compared against is the one most
+     * recently published rather than an arbitrary one.
+     *
+     * SENSITIVE: ORed across every version, so a key that was ever published
+     * sensitive stays sensitive. Taking the latest would make the rule
+     * self-defeating — a template that slipped through before the ratchet
+     * existed, or through any future hole, would have its last version's `false`
+     * treated as the truth and the answers stored under the sensitive versions
+     * would quietly lose their protection. "Was it ever" is the question the
+     * answers actually pose.
+     *
+     * @return array<string, array{type: string, sensitive: bool}>
      */
-    public function publishedKeyTypes(): array
+    public function pinnedKeyProperties(): array
     {
-        $types = [];
+        $pinned = [];
 
         // Oldest first, so the most recent publication of a key is the one left
         // standing. `versions()` is newest-first for the screen's benefit, and
         // reusing it here would silently invert that.
         foreach ($this->versions()->reorder('version')->get() as $version) {
-            $types = [...$types, ...$version->fieldSet()->keyTypes()];
+            foreach ($version->fieldSet()->pinnedProperties() as $key => $properties) {
+                $pinned[$key] = [
+                    'type'      => $properties['type'],
+                    'sensitive' => $properties['sensitive'] || ($pinned[$key]['sensitive'] ?? false),
+                ];
+            }
         }
 
-        return $types;
+        return $pinned;
     }
 }

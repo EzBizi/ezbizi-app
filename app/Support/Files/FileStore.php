@@ -5,6 +5,7 @@ namespace App\Support\Files;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -122,6 +123,58 @@ class FileStore
         }
 
         return $path;
+    }
+
+    /**
+     * Store bytes the SERVER produced, and answer the path they landed at.
+     *
+     * `put()` above takes an UploadedFile, which is the only kind of file this
+     * app had until a contract document had to be rendered. A generated artefact
+     * has no temporary upload behind it, and the alternatives were both worse
+     * than one more method: writing it to a temp file and wrapping it in an
+     * UploadedFile is a round trip through the filesystem to satisfy a type, and
+     * reaching for `Storage::disk()` at the call site is precisely the habit this
+     * class exists to remove — see the note above about FILESYSTEM_DISK deciding
+     * nothing while four call sites named their own disk.
+     *
+     * The extension is the caller's, because only the caller knows what it made.
+     * The NAME is not: it is random, like the framework's own, so nothing about
+     * a stored file's path can be predicted or influenced.
+     */
+    public function putContents(
+        string $contents,
+        string $directory,
+        string $extension,
+        ?string $disk = null,
+    ): string {
+        $path = trim($directory, '/').'/'.Str::random(40).'.'.ltrim($extension, '.');
+
+        if ($this->on($disk)->put($path, $contents) === false) {
+            throw new RuntimeException(
+                "Writing a generated file to '{$path}' failed. The disks are configured "
+                .'with `throw => false`, so a driver problem answers false rather than '
+                .'raising — and a caller that took that for success would write a row '
+                .'pointing at nothing.'
+            );
+        }
+
+        return $path;
+    }
+
+    /**
+     * Read a stored file back into memory.
+     *
+     * For files the application itself has to look at rather than hand to a
+     * browser — a signed document being fingerprinted, which has to be hashed as
+     * the bytes that are actually on the disk rather than as the bytes somebody
+     * believes were written there. Null when it is not there, so a caller can
+     * tell "gone" from "empty" without an exception.
+     */
+    public function contents(string $path, ?string $disk = null): ?string
+    {
+        $contents = $this->on($disk)->get($path);
+
+        return is_string($contents) ? $contents : null;
     }
 
     public function exists(string $path, ?string $disk = null): bool

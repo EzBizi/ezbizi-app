@@ -176,8 +176,8 @@ class DataInventory
          * response, because "we hold this and cannot tell you how much" is a
          * true answer and silence is not.
          */
-        if (method_exists($class, 'scopeToOrganization')) {
-            return $class::scopeToOrganization($query, $this->tenant->idOrFail())->count();
+        if (method_exists($class, 'narrowToOrganization')) {
+            return $class::narrowToOrganization($query, $this->tenant->idOrFail())->count();
         }
 
         if (! Schema::hasColumn((new $class)->getTable(), 'organization_id')) {

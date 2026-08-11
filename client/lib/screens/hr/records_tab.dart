@@ -1,23 +1,34 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/contracts.dart';
 import '../../core/hr.dart';
+import '../../core/onboarding.dart';
+import '../../core/session.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/load_more.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
+import 'onboarding_form.dart';
 
 /// The people (HR plan, "Records").
 ///
-/// ── The honest version of itself ─────────────────────────────────
+/// ── Two things live here ─────────────────────────────────────────
 ///
 /// The plan's Records tab is employees "and everything onboarding collected
-/// about them". Onboarding does not exist yet, and neither does the contract
-/// template that decides what it collects, so there is nothing collected to
-/// show. What there is, is the thing that was missing entirely: somebody's role
-/// and whether their account works. Those are what §4 has always described and
-/// what no endpoint has ever written.
+/// about them". The first half is the list: somebody's role and whether their
+/// account works, which is what §4 has always described.
+///
+/// The second half is what onboarding collected, and it is not re-drawn here.
+/// Opening somebody's record opens their onboarding — the pinned version's
+/// questions, the answers, who filled each one in and when, the sensitive ones
+/// masked with a reveal that is audited, and the document they signed. That is
+/// the same widget the form uses, on purpose: a second renderer for the same
+/// answers would be a second place for a sensitive value to be drawn in the
+/// clear by accident, and this is the screen where that mistake costs the most.
+/// What is editable, and what is masked, stays entirely the server's answer.
 ///
 /// Deactivated people are on the list on purpose. §5's rule is that deactivate
 /// is not delete and the record survives, so a list that hid them would be a
@@ -35,14 +46,15 @@ import '../../widgets/tag.dart';
 /// (§10) and every job somebody ever ran point at this row; a record that
 /// vanishes takes the readability of all three with it.
 ///
-/// It takes no [Session]: everything on this page is the server's answer to
-/// "who is here", and none of it is written differently depending on who is
-/// looking. The day it needs the organization's own word for a franchise, or a
-/// date in the organization's format, is the day to pass one.
+/// It took no [Session] while the list was all there was, on the stated
+/// understanding that the day it needed a date in the organization's format was
+/// the day to pass one. That day is this one: an answer carries when it was
+/// given, and §6 says who decides how a date is written.
 class RecordsTab extends StatefulWidget {
-  const RecordsTab({super.key, required this.api});
+  const RecordsTab({super.key, required this.api, required this.session});
 
   final ApiClient api;
+  final Session session;
 
   @override
   State<RecordsTab> createState() => _RecordsTabState();
@@ -71,6 +83,18 @@ class _RecordsTabState extends State<RecordsTab> {
 
   /// Why nobody's role can be changed, when it cannot.
   String? _cannotChangeRole;
+
+  /// Whose record is being read, and which onboarding of theirs. Null for the
+  /// list. Replaces the list rather than opening beside it, the same as the
+  /// contract designer: a page of collected answers is not a side panel.
+  String? _reading;
+
+  /// Opening a record takes a request, so the row that was tapped says so
+  /// rather than the whole page going blank.
+  String? _opening;
+
+  DisplayFormats get _formats =>
+      widget.session.me?.display ?? DisplayFormats.fallback;
 
   @override
   void initState() {
@@ -162,6 +186,20 @@ class _RecordsTabState extends State<RecordsTab> {
 
   @override
   Widget build(BuildContext context) {
+    if (_reading case final id?) {
+      return OnboardingForm(
+        api: widget.api,
+        onboardingId: id,
+        // The onboarding carries the vocabulary its own questions are written
+        // in — see Onboarding.vocabulary — so this tab has no catalogue to
+        // fetch and no reason to hold one.
+        vocabulary: ContractVocabulary.none,
+        formats: _formats,
+        backLabel: 'All records',
+        onBack: () => setState(() => _reading = null),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -172,7 +210,9 @@ class _RecordsTabState extends State<RecordsTab> {
                     'off.'
               : '$_total ${_total == 1 ? 'person' : 'people'}, including the '
                     'ones switched off. Their role decides what they reach; '
-                    'where they are assigned decides what they reach it in.',
+                    'where they are assigned decides what they reach it in. '
+                    'Open a record to read what onboarding collected about '
+                    'them.',
         ),
         if (_cannotChangeRole != null)
           Padding(
@@ -251,23 +291,151 @@ class _RecordsTabState extends State<RecordsTab> {
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ),
-        trailing: PopupMenuButton<String>(
-          itemBuilder: (_) => [
-            PopupMenuItem(
-              value: 'role',
-              enabled: _options.roles.any((role) => role.assignable),
-              child: const Text('Change their role'),
-            ),
-            const PopupMenuDivider(),
-            PopupMenuItem(
-              value: 'active',
-              child: Text(active ? 'Deactivate' : 'Reactivate'),
-            ),
+        trailing: _opening == person['id']
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : PopupMenuButton<String>(
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
+                    value: 'record',
+                    child: Text('What onboarding collected'),
+                  ),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'role',
+                    enabled: _options.roles.any((role) => role.assignable),
+                    child: const Text('Change their role'),
+                  ),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'active',
+                    child: Text(active ? 'Deactivate' : 'Reactivate'),
+                  ),
+                ],
+                onSelected: (action) => switch (action) {
+                  'record' => _openRecord(person),
+                  'role' => _changeRole(person),
+                  _ => _setActive(person, !active),
+                },
+              ),
+      ),
+    );
+  }
+
+  // ── what onboarding collected ────────────────────────────────────
+
+  /// Their onboardings, and then the one they asked for.
+  ///
+  /// Asked of the onboardings endpoint filtered to this person rather than of a
+  /// record endpoint of its own. The answers belong to an onboarding — they are
+  /// answers to the questions of one pinned contract version — so "their
+  /// record" IS their onboarding, and a second endpoint returning the same rows
+  /// under another name would be a second thing to keep in step with what the
+  /// form draws.
+  ///
+  /// More than one is ordinary rather than exceptional: somebody rehired, or
+  /// moved onto a different contract, has two, and both are true. So the list
+  /// is offered rather than the newest silently chosen.
+  Future<void> _openRecord(Map<String, dynamic> person) async {
+    final id = person['id']?.toString();
+
+    if (id == null) return;
+
+    setState(() => _opening = id);
+
+    final response = await widget.api.get('/hr/onboardings');
+
+    if (!mounted) return;
+
+    setState(() => _opening = null);
+
+    if (!response.ok) {
+      _snack(
+        'Their record could not be opened: ${response.reason}',
+        isError: true,
+      );
+      return;
+    }
+
+    // Picked out here rather than asked for, because the endpoint takes no
+    // `user_id` — it answers with everything the reader may see, one page at a
+    // time. The honest consequence: on an organization with more onboardings
+    // than fit on a page, somebody's older record can be off the end of it, and
+    // this reports "nothing collected" rather than finding it. A filter on the
+    // endpoint is what fixes that; a second page fetched from here would only
+    // move the boundary.
+    final theirs = OnboardingSummary.listFrom(
+      response.data,
+    ).where((row) => row.userId == id).toList();
+
+    if (theirs.isEmpty) {
+      _snack(
+        'Nothing has been collected about ${person['name']} yet. Onboarding is '
+        'what asks the questions, and nobody has started one for them.',
+      );
+      return;
+    }
+
+    if (theirs.length == 1) {
+      setState(() => _reading = theirs.first.id);
+      return;
+    }
+
+    final chosen = await showSidePanel<String>(
+      context,
+      builder: (context) => SidePanel(
+        title: person['name'] as String? ?? '',
+        subtitle:
+            'More than one contract has been run for them. Each one kept the '
+            'version of the template it started with, so they do not ask the '
+            'same questions.',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final row in theirs)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(row.contractName),
+                subtitle: Text(
+                  [
+                    if (row.version != null) 'version ${row.version}',
+                    onboardingStatusLabel(row.status),
+                    formatStamp(
+                      row.completedAt ?? row.startedAt,
+                      '',
+                      formats: _formats,
+                    ),
+                  ].where((part) => part.isNotEmpty).join(' · '),
+                ),
+                onTap: () => Navigator.of(context).pop(row.id),
+              ),
           ],
-          onSelected: (action) => action == 'role'
-              ? _changeRole(person)
-              : _setActive(person, !active),
         ),
+      ),
+    );
+
+    if (chosen == null || !mounted) return;
+
+    setState(() => _reading = chosen);
+  }
+
+  void _snack(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
+        behavior: SnackBarBehavior.floating,
+        width: 420,
       ),
     );
   }
@@ -367,14 +535,7 @@ class _RecordsTabState extends State<RecordsTab> {
     // organization with no administrator — and reloading the list over a
     // refusal would put the old value back with nothing said.
     if (!response.ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(response.reason),
-          backgroundColor: Theme.of(context).colorScheme.error,
-          behavior: SnackBarBehavior.floating,
-          width: 420,
-        ),
-      );
+      _snack(response.reason, isError: true);
       return;
     }
 

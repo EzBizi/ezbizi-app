@@ -6,7 +6,9 @@ use App\Models\Contract;
 use App\Models\ContractSignature;
 use App\Models\ContractVersion;
 use App\Support\Contracts\DocumentFingerprint;
+use App\Support\Contracts\FieldSet;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -177,6 +179,75 @@ class HrContractsTest extends TestCase
         $this->assertStringContainsString('profile', $reason);
     }
 
+    /**
+     * A reserved key has a NAME as well as a description of itself.
+     *
+     * `is` completes "it is …" inside the refusal — "it is their middle name" —
+     * and it was the only string published, so the client used it as a label and
+     * the designer drew a locked chip reading "their middle name" with the form
+     * preview captioning a box "the email address on their account". A fallback
+     * chain cannot repair that; the answer had to be sent.
+     */
+    public function test_a_reserved_key_publishes_a_label_and_not_only_the_phrase(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $keys = collect($this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/hr/contracts/catalogue')->assertOk()
+            ->json('data.reserved_keys'));
+
+        $middle = $keys->firstWhere('key', 'middle_name');
+
+        $this->assertSame('Middle name', $middle['label']);
+        $this->assertSame('their middle name', $middle['is']);
+
+        // Every one of them, or the one without a label is the one that ends up
+        // on screen as a fragment.
+        foreach ($keys as $entry) {
+            $this->assertNotSame('', $entry['label'], "{$entry['key']} has no label.");
+            $this->assertStringContainsString($entry['is'], $entry['reason'],
+                "{$entry['key']}'s phrase is supposed to be the one inside its refusal.");
+            // A label is a name, not the start of a sentence about the thing.
+            $this->assertDoesNotMatchRegularExpression(
+                '/^(the|their|a|an) /i',
+                $entry['label'],
+                "{$entry['key']}'s label reads as a sentence fragment, which is what "
+                .'the client would draw above the box.',
+            );
+        }
+    }
+
+    /**
+     * Which kinds of question take a list of answers is the SERVER's to say.
+     *
+     * The designer gated its options editor on `type == 'choice'` written out in
+     * Dart, so a seventh type that took options would have appeared in the
+     * picker with nowhere to type them and nothing saying why.
+     */
+    public function test_the_catalogue_says_which_field_types_take_options(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $types = collect($this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/hr/contracts/catalogue')->assertOk()
+            ->json('data.field_types'))->keyBy('key');
+
+        $this->assertTrue($types['choice']['takes_options']);
+
+        foreach (['text', 'number', 'date', 'file', 'signature'] as $key) {
+            $this->assertFalse($types[$key]['takes_options'], "{$key} does not take options.");
+        }
+
+        // And the limit the client needs in order to stop somebody before the
+        // server does, published beside the other two.
+        $this->assertSame(
+            \App\Support\Contracts\FieldSet::MAX_OPTION_LENGTH,
+            $this->signedInAs($alpha['admin'])
+                ->getJson('/api/v1/hr/contracts/catalogue')
+                ->json('data.limits.max_option_length'),
+        );
+    }
+
     // ── keys are stable across versions ──────────────────────────
 
     public function test_a_key_cannot_be_renamed(): void
@@ -217,6 +288,164 @@ class HrContractsTest extends TestCase
             ])
             ->assertStatus(422)
             ->assertJsonValidationErrors('fields.0.type');
+    }
+
+    /**
+     * The rename that goes round the back, and the half of it that matters.
+     *
+     * Retire `acct`, un-retire it in the next version wearing a different label
+     * and no sensitive tick. Every step is legal alone and the key is never
+     * dropped, so nothing refused the sequence — and answers stored as bank
+     * account numbers ended up under a definition that says "Favourite colour"
+     * and promises none of the four protections they were given under.
+     *
+     * The LABEL is not what this pins, and deliberately: a record reads its
+     * answers back through the version that produced it, so re-wording a
+     * question does not re-word anything already answered. Sensitivity is not a
+     * description of the question, it is a decision about the answer, and it is
+     * asked per key rather than per record.
+     */
+    public function test_a_published_key_cannot_stop_being_sensitive(): void
+    {
+        $account = fn (array $overrides = []) => $this->field($overrides + [
+            'key'       => 'acct',
+            'label'     => 'Bank account number',
+            'type'      => 'text',
+            'filled_by' => 'employee',
+            'sensitive' => true,
+        ]);
+
+        [$alpha, $id] = $this->aContract([$account()]);
+
+        // Step one, entirely legitimate.
+        $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/hr/contracts/{$id}/versions", [
+                'fields' => [$account(['retired' => true])],
+            ])->assertCreated();
+
+        // Step two, which used to answer 201.
+        $response = $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/hr/contracts/{$id}/versions", [
+                'fields' => [$account([
+                    'label' => 'Favourite colour', 'sensitive' => false, 'retired' => false,
+                ])],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('fields.0.sensitive');
+
+        // The bag's key is the literal string "fields.0.sensitive", so it is
+        // read out of the array rather than walked with a dotted path.
+        $this->assertStringContainsString(
+            'acct',
+            $response->json('errors')['fields.0.sensitive'][0],
+        );
+
+        // Un-retiring and relabelling are both still allowed. What is refused is
+        // exactly one thing, and the refusal should not read as though the whole
+        // edit were forbidden.
+        $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/hr/contracts/{$id}/versions", [
+                'fields' => [$account(['label' => 'Account for wages', 'retired' => false])],
+            ])->assertCreated();
+    }
+
+    public function test_sensitivity_is_a_ratchet_and_not_a_pin(): void
+    {
+        [$alpha, $id] = $this->aContract([$this->field(['key' => 'nino', 'type' => 'text'])]);
+
+        // Turning it ON is always safe: every answer is encrypted whether it is
+        // marked or not (HoldsSensitiveValues), so nobody discovers the old ones
+        // sitting in the clear.
+        $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/hr/contracts/{$id}/versions", [
+                'fields' => [$this->field(['key' => 'nino', 'type' => 'text', 'sensitive' => true])],
+            ])->assertCreated();
+
+        // And having been turned on, it does not come off again.
+        $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/hr/contracts/{$id}/versions", [
+                'fields' => [$this->field(['key' => 'nino', 'type' => 'text', 'sensitive' => false])],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('fields.0.sensitive');
+    }
+
+    /**
+     * "Was it EVER sensitive", not "was it sensitive last time".
+     *
+     * A template that slipped past this rule before it existed carries a version
+     * saying false after one saying true. Comparing against the latest would
+     * take that false as the truth and leave the answers stored under the
+     * sensitive versions unprotected — the rule would have talked itself out of
+     * applying to the one template that needs it.
+     */
+    public function test_a_key_that_was_ever_sensitive_stays_sensitive(): void
+    {
+        [$alpha, $id] = $this->aContract([$this->field([
+            'key' => 'acct', 'type' => 'text', 'sensitive' => true,
+        ])]);
+
+        // The hole, reproduced by writing the version directly — which is how a
+        // row like this would have got there in the first place.
+        $this->inTenant($alpha['org'], function () use ($id) {
+            $contract = Contract::find($id);
+
+            $version = ContractVersion::create([
+                'contract_id' => $id,
+                'version'     => 2,
+                'fields'      => [[
+                    'key' => 'acct', 'label' => 'Hourly wage', 'type' => 'text',
+                    'options' => [], 'filled_by' => 'employer',
+                    'required' => true, 'sensitive' => false, 'retired' => false,
+                ]],
+            ]);
+
+            $contract->forceFill(['current_version_id' => $version->getKey()])->save();
+        });
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/hr/contracts/{$id}/versions", [
+                'fields' => [$this->field(['key' => 'acct', 'type' => 'text', 'sensitive' => false])],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('fields.0.sensitive');
+    }
+
+    /**
+     * One option, capped like every other string here.
+     *
+     * The count was capped and the individual option was not, so twenty options
+     * of a million characters wrote a twenty-megabyte row into an immutable
+     * table — and Contract::pinnedKeyProperties reads every version on every
+     * publish, so the template paid for it again each time.
+     */
+    public function test_a_single_option_cannot_be_arbitrarily_long(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/hr/contracts', [
+                'name'   => 'Fat',
+                'fields' => [$this->field([
+                    'key' => 'shift', 'type' => 'choice',
+                    'options' => ['Mornings', str_repeat('a', 100_000)],
+                ])],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('fields.0.options');
+
+        $this->assertSame(0, $this->inTenant($alpha['org'], fn () => Contract::count()));
+
+        // Right up to the limit is fine — the refusal is about a payload, not
+        // about a wordy answer.
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/hr/contracts', [
+                'name'   => 'Fine',
+                'fields' => [$this->field([
+                    'key' => 'shift', 'type' => 'choice',
+                    'options' => [str_repeat('a', FieldSet::MAX_OPTION_LENGTH)],
+                ])],
+            ])->assertCreated();
     }
 
     public function test_a_key_retired_in_an_earlier_version_still_cannot_be_dropped(): void
@@ -306,6 +535,157 @@ class HrContractsTest extends TestCase
             $this->expectException(RuntimeException::class);
             $version->forceFill(['fields' => []])->save();
         });
+    }
+
+    /**
+     * The three ways round a `static::updating()` guard.
+     *
+     * A model event fires for a MODEL INSTANCE being saved. None of these is
+     * one, and all three rewrote a published field list without a word — so the
+     * immutability the model's docblock promised held only for the path that
+     * happened to be tested.
+     */
+    public function test_a_published_version_cannot_be_rewritten_around_the_model(): void
+    {
+        [$alpha, $id] = $this->aContract();
+
+        $this->inTenant($alpha['org'], function () use ($id) {
+            $version = Contract::find($id)->currentVersion;
+            $rubbish = [['key' => 'x', 'label' => 'x', 'type' => 'text', 'options' => [],
+                'filled_by' => 'employer', 'required' => false, 'sensitive' => false,
+                'retired' => false]];
+
+            foreach ([
+                'the query builder' => fn () => ContractVersion::query()
+                    ->whereKey($version->getKey())->update(['fields' => json_encode($rubbish)]),
+                'the relation' => fn () => Contract::find($id)->versions()
+                    ->update(['notes' => 'rewritten']),
+                // Events suppressed on purpose, which is exactly what the guard
+                // was relying on nobody doing.
+                'a quiet save' => fn () => $version->forceFill(['fields' => $rubbish])->saveQuietly(),
+                'a quiet delete' => fn () => $version->deleteQuietly(),
+            ] as $how => $attempt) {
+                try {
+                    $attempt();
+                    $this->fail("A published version was rewritten through {$how}.");
+                } catch (RuntimeException $e) {
+                    // The phrase belongs to WriteOnceBuilder alone. Asserting
+                    // only on the class name would pass on BelongsToTenant's
+                    // refusal too, and this test would then prove nothing about
+                    // the guard it exists for.
+                    $this->assertStringContainsString('written once', $e->getMessage(),
+                        "{$how} was refused by something other than the write-once guard.");
+                    $this->assertStringContainsString('ContractVersion', $e->getMessage());
+                }
+            }
+
+            // Untouched, which is the point of the whole exercise.
+            $this->assertSame('wage', ContractVersion::find($version->getKey())->fields[0]['key']);
+        });
+    }
+
+    /**
+     * The same three ways, against the column a forgery would actually need.
+     *
+     * Change the document, then change `content_hash` to match it, and
+     * `stillMatches()` says yes to bytes nobody signed. That is the single claim
+     * the whole evidentiary record exists to support.
+     */
+    public function test_a_signatures_hash_cannot_be_rewritten_around_the_model(): void
+    {
+        $signature = $this->aSignature($alpha = $this->provisionTenant('Alpha'), 'the real document');
+
+        $this->inTenant($alpha['org'], function () use ($signature) {
+            $forged = DocumentFingerprint::of('the forged document');
+
+            foreach ([
+                'the query builder' => fn () => ContractSignature::query()
+                    ->whereKey($signature->getKey())->update(['content_hash' => $forged]),
+                'a quiet save' => fn () => $signature->forceFill(['content_hash' => $forged])
+                    ->saveQuietly(),
+                'a quiet delete' => fn () => $signature->deleteQuietly(),
+            ] as $how => $attempt) {
+                try {
+                    $attempt();
+                    $this->fail("A signature was rewritten through {$how}.");
+                } catch (RuntimeException $e) {
+                    $this->assertStringContainsString('written once', $e->getMessage(),
+                        "{$how} was refused by something other than the write-once guard.");
+                    $this->assertStringContainsString('ContractSignature', $e->getMessage());
+                }
+            }
+
+            $fresh = ContractSignature::findOrFail($signature->getKey());
+
+            $this->assertTrue($fresh->stillMatches('the real document'));
+            $this->assertFalse($fresh->stillMatches('the forged document'));
+        });
+    }
+
+    /**
+     * Where the guard STOPS, pinned so the docblock cannot quietly overstate it.
+     *
+     * `DB::table()` reaches the query builder underneath Eloquent, and nothing in
+     * PHP can intercept that. The proper answer is a BEFORE UPDATE trigger; it
+     * was tried and this deployment refuses it — MySQL 8.0 with binary logging
+     * on, `log_bin_trust_function_creators` off, and no SUPER privilege on the
+     * application's database account, which fails CREATE TRIGGER with error 1419.
+     * Granting SUPER to the account the web process authenticates as is a worse
+     * trade than the hole.
+     *
+     * So this asserts the hole, on purpose. If it ever fails, somebody has closed
+     * it — good — and WriteOnceBuilder's docblock needs to stop saying raw SQL
+     * gets through.
+     */
+    public function test_raw_sql_beneath_eloquent_is_not_covered_and_the_docblock_says_so(): void
+    {
+        $signature = $this->aSignature($alpha = $this->provisionTenant('Alpha'), 'the real document');
+
+        DB::table('contract_signatures')->where('id', $signature->getKey())
+            ->update(['content_hash' => DocumentFingerprint::of('the forged document')]);
+
+        $this->assertTrue(
+            $this->inTenant($alpha['org'], fn () => ContractSignature::findOrFail($signature->getKey())
+                ->stillMatches('the forged document')),
+            'Raw SQL rewrote the hash, which is the documented boundary. If this now '
+            .'fails the boundary has moved and WriteOnceBuilder should say so.',
+        );
+    }
+
+    /**
+     * A signature over a given document, for the tamper tests.
+     *
+     * The contract carries a real `sign` field belonging to the employee,
+     * because ContractSignature refuses a row whose `field_key` is not a
+     * signature field on the version it names.
+     */
+    private function aSignature(array $tenant, string $document): ContractSignature
+    {
+        $id = $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/hr/contracts', [
+                'name'   => 'Signed thing',
+                'fields' => [$this->field([
+                    'key' => 'sign', 'label' => 'Your signature',
+                    'type' => 'signature', 'filled_by' => 'employee',
+                ])],
+            ])->assertCreated()->json('data.id');
+
+        return $this->inTenant($tenant['org'], fn () => ContractSignature::create([
+            'contract_version_id' => Contract::find($id)->current_version_id,
+            'field_key'           => 'sign',
+            'subject_user_id'     => $tenant['admin']->getKey(),
+            'signer_user_id'      => $tenant['admin']->getKey(),
+            'signer_label'        => 'Sam Reed <sam@alpha.test>',
+            'signer_party'        => 'employee',
+            'content_hash'        => DocumentFingerprint::of($document),
+            'hash_algorithm'      => DocumentFingerprint::ALGORITHM,
+            'content_length'      => strlen($document),
+            'consent_statement'   => 'I agree to sign this document electronically.',
+            'consented_at'        => now(),
+            'intent_statement'    => 'By typing my name I am signing this contract.',
+            'affirmation'         => 'Sam Reed',
+            'signed_at'           => now(),
+        ]));
     }
 
     // ── publishing ───────────────────────────────────────────────

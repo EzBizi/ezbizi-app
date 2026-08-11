@@ -84,10 +84,26 @@ class HrContractsController extends Controller
         $this->authorize('viewAny', Contract::class);
 
         return response()->json(['data' => [
-            // Keys AND words, because the person configuring this runs a chimney
-            // business — the same reason the automation catalogue carries labels.
-            'field_types' => self::pairs(FieldType::ALL),
-            'filled_by'   => self::pairs(FilledBy::ALL),
+            /*
+             * Keys AND words, because the person configuring this runs a chimney
+             * business — the same reason the automation catalogue carries labels.
+             *
+             * `takes_options` is the third thing each type has to say. The
+             * designer decides whether to draw the list-of-answers box, and it
+             * decided by comparing the type to the literal `'choice'` in Dart —
+             * in the one screen whose docblock says it does not re-state server
+             * rules. A seventh type that took options would have been offered
+             * with no way to give it any. See FieldType::takesOptions.
+             */
+            'field_types' => array_map(
+                fn (string $key) => [
+                    'key'           => $key,
+                    'label'         => FieldType::ALL[$key],
+                    'takes_options' => FieldType::takesOptions($key),
+                ],
+                FieldType::keys(),
+            ),
+            'filled_by' => self::pairs(FilledBy::ALL),
             /*
              * The common core, published rather than merely enforced.
              *
@@ -95,18 +111,25 @@ class HrContractsController extends Controller
              * refusal has taught them a rule the hard way. The client can grey
              * these out with the sentence explaining why — and the sentence is
              * the server's, so the two cannot drift.
+             *
+             * `label` and `is` are both sent and they are not interchangeable.
+             * `is` completes "it is …" inside `reason`; `label` is what goes on
+             * the chip and above the box. Sending only `is` is what had the
+             * designer captioning a locked field "their middle name".
              */
             'reserved_keys' => array_map(
                 fn (string $key) => [
                     'key'    => $key,
-                    'is'     => CommonCore::RESERVED[$key],
+                    'label'  => CommonCore::labelFor($key),
+                    'is'     => CommonCore::describe($key),
                     'reason' => CommonCore::refusalFor($key),
                 ],
                 CommonCore::keys(),
             ),
             'limits' => [
-                'max_fields'  => FieldSet::MAX_FIELDS,
-                'max_options' => FieldSet::MAX_OPTIONS,
+                'max_fields'        => FieldSet::MAX_FIELDS,
+                'max_options'       => FieldSet::MAX_OPTIONS,
+                'max_option_length' => FieldSet::MAX_OPTION_LENGTH,
             ],
         ]]);
     }
@@ -289,8 +312,8 @@ class HrContractsController extends Controller
         $fields = FieldSet::fromInput(
             $request->input('fields'),
             // The whole history, not just the current version — see
-            // Contract::publishedKeyTypes for why the distinction matters.
-            $contract->publishedKeyTypes(),
+            // Contract::pinnedKeyProperties for why the distinction matters.
+            $contract->pinnedKeyProperties(),
         );
 
         $current = $contract->currentVersion;

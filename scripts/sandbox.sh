@@ -126,7 +126,7 @@ SEES=\$(cd "\$DIR" && sudo -u ubuntu php artisan tinker --execute='echo DB::conn
 if [ "\$SEES" != "\$DB" ]; then
   echo "   REFUSING: a bare artisan here resolves to '\$SEES', not '\$DB'." >&2
   rm -rf "\$DIR"
-  mysql -e "DROP DATABASE IF EXISTS \\`\$DB\\`;"
+  mysql -e "DROP DATABASE IF EXISTS \\\`\$DB\\\`;"
   exit 1
 fi
 

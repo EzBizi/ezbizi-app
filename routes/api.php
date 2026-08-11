@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\HrContractsController;
 use App\Http\Controllers\Api\HrInvitationsController;
+use App\Http\Controllers\Api\HrOnboardingsController;
 use App\Http\Controllers\Api\HrPeopleController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
@@ -235,6 +236,43 @@ Route::prefix('v1')
         Route::post('hr/contracts/{contract}/versions', [HrContractsController::class, 'publishVersion']);
         Route::get('hr/contracts/{contract}', [HrContractsController::class, 'show']);
         Route::patch('hr/contracts/{contract}', [HrContractsController::class, 'update']);
+
+        // ── Onboarding, the tab the rest of HR was built for ─────
+        //
+        // The invitation produces the person, the contract produces the
+        // questions, and this renders one against the other: the two-sided
+        // form, the answers with their provenance, the signature and the
+        // document.
+        //
+        // The list is NOT gated on `hr.view` — see the controller. A new starter
+        // holds no HR permission at all and their own form is the one screen in
+        // this module they must reach, so the list is filtered rather than
+        // refused.
+        //
+        // Two acts here are deliberately not PATCH, for the reason
+        // hr/contracts/{contract}/versions is not either: signing an agreement
+        // and amending a signed one are separate, consequential acts, and an
+        // endpoint that also saves answers would let somebody do either by
+        // pressing save.
+        Route::get('hr/onboardings', [HrOnboardingsController::class, 'index']);
+        Route::post('hr/onboardings', [HrOnboardingsController::class, 'store']);
+        Route::get('hr/onboardings/{onboarding}', [HrOnboardingsController::class, 'show']);
+        Route::patch('hr/onboardings/{onboarding}', [HrOnboardingsController::class, 'update']);
+        Route::post('hr/onboardings/{onboarding}/sign', [HrOnboardingsController::class, 'sign']);
+        Route::post('hr/onboardings/{onboarding}/amendments', [HrOnboardingsController::class, 'amend']);
+        // The rendered document and its fingerprint — a preview before anything
+        // is signed, the stored bytes afterwards. The FILE is downloaded through
+        // `GET attachments/{id}` like every other file on the platform; this
+        // answers with the content and the hash beside it, because the caller's
+        // next act is to sign and it has to send back the fingerprint of exactly
+        // what it received.
+        Route::get('hr/onboardings/{onboarding}/document', [HrOnboardingsController::class, 'document']);
+        // Revealing one sensitive answer. Its own endpoint because ASKING is the
+        // reveal: every other read of this record answers the mask, so each entry
+        // in the log means somebody deliberately looked rather than that a screen
+        // was opened.
+        Route::get('hr/onboardings/{onboarding}/answers/{field}',
+            [HrOnboardingsController::class, 'revealAnswer']);
 
         // ── Attachments (§9, §11) ────────────────────────────────
         //

@@ -21,10 +21,20 @@ use Illuminate\Validation\ValidationException;
  * ── The one rule everything else serves ──────────────────────────
  *
  * A key is what an ANSWER is stored against. Everything here exists to keep that
- * true across time: a key may never be renamed, may never be removed, and may
- * never change type. Labels, order, requiredness, sensitivity and who fills a
- * field may all change freely, because none of them decides where an answer
- * lives or how it is read back.
+ * true across time: a key may never be renamed, may never be removed, may never
+ * change type, and may never stop being sensitive.
+ *
+ * Labels, order, requiredness and who fills a field may all change freely, and
+ * the reason is worth stating because it is not "they matter less". Every record
+ * remembers the version that produced it and reads its answers back through that
+ * version (ContractVersion::field), so re-wording a question does not re-word it
+ * on anything already answered — the old version still says what was asked. That
+ * is the whole point of an immutable version, and it is what makes a relabel
+ * safe.
+ *
+ * Sensitivity is the exception, and see checkAgainstHistory for why: it is not a
+ * description of a question, it is a protection on the answer, and the four
+ * behaviours it drives are decided per key rather than per record.
  */
 final class FieldSet
 {
@@ -41,6 +51,22 @@ final class FieldSet
     /** The same judgement about a single picker: past this it is a lookup table. */
     public const MAX_OPTIONS = 100;
 
+    /**
+     * And one option is capped like the label it sits under.
+     *
+     * Every other string here has a limit — the key 64, the label 200, the notes
+     * 500 — and a single option had none. That is not a tidiness point: the field
+     * list is one immutable JSON column, so an authorised POST of twenty options
+     * a million characters long wrote a twenty-megabyte row that can never be
+     * edited or deleted, and Contract::pinnedKeyProperties reads every version of
+     * a contract on every publish, so the cost is paid again on each one.
+     *
+     * 200 rather than a number of its own: an option is a piece of wording a
+     * person reads off a picker, which is the same kind of thing as a label, and
+     * two limits for one kind of thing is two numbers to explain.
+     */
+    public const MAX_OPTION_LENGTH = 200;
+
     /** @param FieldDefinition[] $fields */
     private function __construct(
         public readonly array $fields,
@@ -49,14 +75,14 @@ final class FieldSet
     /**
      * Build a set from request input, refusing anything malformed.
      *
-     * @param  array<string, string>  $historicKeyTypes  every key any earlier
-     *         version of this contract declared, mapped to the type it was
-     *         published with. Empty for a brand-new contract, where there is no
-     *         history to keep faith with.
+     * @param  array<string, array{type: string, sensitive: bool}>  $pinned  the
+     *         properties every key any earlier version of this contract declared
+     *         is held to. Empty for a brand-new contract, where there is no
+     *         history to keep faith with. See Contract::pinnedKeyProperties.
      *
      * @throws ValidationException
      */
-    public static function fromInput(mixed $raw, array $historicKeyTypes = []): self
+    public static function fromInput(mixed $raw, array $pinned = []): self
     {
         $rows = is_array($raw) ? array_values($raw) : [];
 
@@ -96,7 +122,7 @@ final class FieldSet
             }
         }
 
-        self::checkAgainstHistory($fields, $historicKeyTypes, $errors);
+        self::checkAgainstHistory($fields, $pinned, $errors);
 
         if ($errors !== []) {
             throw ValidationException::withMessages($errors);
@@ -166,13 +192,22 @@ final class FieldSet
         self::checkSignature($field, $at, $errors);
     }
 
+    /**
+     * Which types take a list is FieldType's to say, not this method's.
+     *
+     * It read `=== FieldType::CHOICE`, which made this the second place a fact
+     * about the type vocabulary was written down — and the client's options
+     * editor was the third. See FieldType::takesOptions.
+     */
     private static function checkOptions(FieldDefinition $field, string $at, array &$errors): void
     {
-        if ($field->type === FieldType::CHOICE) {
+        if (FieldType::takesOptions($field->type)) {
             if ($field->options === []) {
-                $errors["{$at}.options"] = 'A "one of a list" field needs a list. With no '
-                    .'options it renders as a picker with nothing in it, and the field can '
-                    .'never be answered at all.';
+                $errors["{$at}.options"] = sprintf(
+                    'A "%s" field needs a list. With no options it renders as a picker with '
+                    .'nothing in it, and the field can never be answered at all.',
+                    FieldType::ALL[$field->type],
+                );
             } elseif (count($field->options) > self::MAX_OPTIONS) {
                 $errors["{$at}.options"] = sprintf(
                     'That is %d options; the limit is %d. A list that long is a lookup table, '
@@ -182,6 +217,8 @@ final class FieldSet
             } elseif (count(array_unique($field->options)) !== count($field->options)) {
                 $errors["{$at}.options"] = 'Two of those options are identical. Whichever the '
                     .'person picked, the stored answer would not say which one they meant.';
+            } else {
+                self::checkOptionLengths($field, $at, $errors);
             }
 
             return;
@@ -193,11 +230,40 @@ final class FieldSet
         // nobody reads.
         if ($field->options !== []) {
             $errors["{$at}.options"] = sprintf(
-                'Only a "one of a list" field has options, and this one is %s. Change the type '
+                'Only these kinds of question have options: %s. This one is %s. Change the kind '
                 .'if you meant to offer a choice; otherwise remove the options, because left '
                 .'there they would have no effect and nothing on screen would say so.',
+                FieldType::optionTakingLabels(),
                 FieldType::ALL[$field->type] ?? "'{$field->type}'",
             );
+        }
+    }
+
+    /**
+     * One option, capped like a label — see MAX_OPTION_LENGTH for what it cost
+     * not to be.
+     *
+     * The FIRST one over the limit is named rather than all of them, and by
+     * position rather than by quoting it back: a message that echoed a
+     * million-character option would be the same payload travelling in the other
+     * direction.
+     */
+    private static function checkOptionLengths(FieldDefinition $field, string $at, array &$errors): void
+    {
+        foreach ($field->options as $i => $option) {
+            if (mb_strlen($option) > self::MAX_OPTION_LENGTH) {
+                $errors["{$at}.options"] = sprintf(
+                    'Answer %d is %s characters; the limit is %d. An option is something '
+                    .'somebody reads off a list and picks — if it needs more room than that, '
+                    .'it is an explanation, and the wording belongs in the question or in the '
+                    .'contract body.',
+                    $i + 1,
+                    number_format(mb_strlen($option)),
+                    self::MAX_OPTION_LENGTH,
+                );
+
+                return;
+            }
         }
     }
 
@@ -267,12 +333,35 @@ final class FieldSet
      * key survives, so the data is not orphaned — it is worse, it is
      * misinterpreted. Retire the field and add a new one.
      *
+     * ── And SENSITIVITY, which is the same argument again ────────────
+     *
+     * It was not pinned, and the hole had a shape: publish `acct` as "Bank
+     * account number", sensitive; retire it; un-retire it in the next version as
+     * "Favourite colour", not sensitive. Every step is legal on its own and the
+     * key is never dropped, so nothing refused it.
+     *
+     * The LABEL half of that is survivable — a record reads its answers through
+     * the version that produced it, so what was asked stays what was asked. The
+     * sensitivity half is not, and it is worse than a misreading. `sensitive` is
+     * not a description of the question; it is a decision about the ANSWER, and
+     * it drives four behaviours the plan lists: encrypted at rest, masked by
+     * default, kept out of exports, and named in the data inventory an erasure
+     * request is answered from. Those are asked per key, across every version —
+     * an export or an inventory reads "is acct sensitive", not "was acct
+     * sensitive in the version that produced this particular record". Dropping
+     * the mark therefore takes all four protections off values that were handed
+     * over on the strength of them.
+     *
+     * So it is a ratchet rather than a pin: it may be turned ON at any time,
+     * which is safe because every answer is encrypted whether it is marked or
+     * not (see HoldsSensitiveValues), and it may never be turned off.
+     *
      * @param  FieldDefinition[]  $fields
-     * @param  array<string, string>  $historicKeyTypes  key => type, from every earlier version
+     * @param  array<string, array{type: string, sensitive: bool}>  $pinned  from every earlier version
      */
-    private static function checkAgainstHistory(array $fields, array $historicKeyTypes, array &$errors): void
+    private static function checkAgainstHistory(array $fields, array $pinned, array &$errors): void
     {
-        if ($historicKeyTypes === []) {
+        if ($pinned === []) {
             return;
         }
 
@@ -285,22 +374,41 @@ final class FieldSet
 
             $present[$field->key] = true;
 
-            $was = $historicKeyTypes[$field->key] ?? null;
+            $was = $pinned[$field->key] ?? null;
 
-            if ($was !== null && $was !== $field->type && $field->type !== '') {
+            if ($was === null) {
+                continue;
+            }
+
+            if ($was['type'] !== $field->type && $field->type !== '') {
                 $errors["fields.{$i}.type"] = sprintf(
                     "'%s' was published as %s and cannot become %s. Answers are already stored "
                     .'against that key in the format it had; changing it would not lose them, it '
                     .'would make every one of them mean something different. Retire this field '
                     .'and add a new one with its own key.',
                     $field->key,
-                    FieldType::ALL[$was] ?? $was,
+                    FieldType::ALL[$was['type']] ?? $was['type'],
                     FieldType::ALL[$field->type] ?? $field->type,
+                );
+            }
+
+            if ($was['sensitive'] && ! $field->sensitive) {
+                $errors["fields.{$i}.sensitive"] = sprintf(
+                    "'%s' was published as sensitive and cannot stop being. Answers were given "
+                    .'against that key on the strength of four promises — the value is '
+                    .'encrypted, hidden until somebody with permission reveals it, kept out of '
+                    .'exports unless they are asked for on purpose, and listed in the data '
+                    .'inventory. Un-ticking it here would take all four off answers that are '
+                    .'already stored, which is not a change to a question but a change to what '
+                    .'was done with somebody’s bank details. It can be turned on at any time. '
+                    .'If this is now a different question, retire this field and add a new one '
+                    .'with its own key.',
+                    $field->key,
                 );
             }
         }
 
-        $missing = array_values(array_diff(array_keys($historicKeyTypes), array_keys($present)));
+        $missing = array_values(array_diff(array_keys($pinned), array_keys($present)));
 
         if ($missing !== []) {
             $errors['fields'] = sprintf(
@@ -337,9 +445,21 @@ final class FieldSet
         return $out;
     }
 
-    /** @return array<string, string> key => type, which is what history checks */
-    public function keyTypes(): array
+    /**
+     * The properties later versions are held to, per key.
+     *
+     * Only the two that are pinned. It would be no harder to return the whole
+     * definition, and it would invite the next reader to check something else
+     * against it — which is how a rule that was decided once turns into a rule
+     * each caller has its own version of.
+     *
+     * @return array<string, array{type: string, sensitive: bool}>
+     */
+    public function pinnedProperties(): array
     {
-        return array_map(fn (FieldDefinition $f) => $f->type, $this->keyed());
+        return array_map(
+            fn (FieldDefinition $f) => ['type' => $f->type, 'sensitive' => $f->sensitive],
+            $this->keyed(),
+        );
     }
 }

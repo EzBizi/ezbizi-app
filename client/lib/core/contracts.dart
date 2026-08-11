@@ -48,6 +48,7 @@ class ContractChoice {
     required this.key,
     required this.label,
     this.description,
+    this.takesOptions = false,
   });
 
   /// What travels on the wire — `text`, `employer`.
@@ -61,6 +62,20 @@ class ContractChoice {
 
   /// A sentence about what it is for, where the server offers one.
   final String? description;
+
+  /// Whether a field of this kind carries a list of answers to pick from.
+  ///
+  /// A field type's property, declared by the server, and the designer draws its
+  /// options editor from this. It was `type == 'choice'` in Dart — a server rule
+  /// re-stated on the client, in the screen whose own docblock says it does not
+  /// do that — so a seventh kind that took options would have been offered with
+  /// no editor and no explanation.
+  ///
+  /// Defaults false, which is the safe direction for a `filled_by` entry that
+  /// has no such property and for a malformed catalogue: a type nobody said
+  /// takes options gets no options box, and the server refuses options on it
+  /// anyway.
+  final bool takesOptions;
 }
 
 /// One of the facts a template may not declare, because the person's own
@@ -159,6 +174,22 @@ class ContractVocabulary {
 
   bool knowsType(String key) => types.any((t) => t.key == key);
 
+  /// Whether a kind of question carries a list of answers.
+  ///
+  /// Asked of the server's declaration, never of the string `choice`. A type
+  /// this build has not heard of answers false — the same fallback [knowsType]
+  /// takes, and for the same reason: this end does not invent properties for a
+  /// vocabulary it was not sent.
+  bool typeTakesOptions(String? key) {
+    if (key == null) return false;
+
+    for (final choice in types) {
+      if (choice.key == key) return choice.takesOptions;
+    }
+
+    return false;
+  }
+
   /// Whether a key is one the common core already owns.
   ///
   /// Asked of the server's list, never of a list of six strings in Dart. The
@@ -194,7 +225,8 @@ class ContractVocabulary {
     );
   }
 
-  /// A list of `{key, label, description}`, or a map of key to label.
+  /// A list of `{key, label, description, takes_options}`, or a map of key to
+  /// label.
   static List<ContractChoice> _choices(Object? node) {
     if (node is List) {
       return [
@@ -204,6 +236,11 @@ class ContractVocabulary {
               key: entry['key'] as String,
               label: entry['label'] as String? ?? entry['key'] as String,
               description: entry['description'] as String?,
+              // `== true` rather than `!= false`: absent must mean no. This is
+              // the one property that puts an extra control on screen, and the
+              // wrong default would draw an options box for every type sent by a
+              // server too old to have the field.
+              takesOptions: entry['takes_options'] == true,
             ),
       ];
     }
@@ -221,6 +258,9 @@ class ContractVocabulary {
             description: entry.value is Map
                 ? (entry.value as Map)['description'] as String?
                 : null,
+            takesOptions: entry.value is Map
+                ? (entry.value as Map)['takes_options'] == true
+                : false,
           ),
       ];
     }
@@ -235,20 +275,30 @@ class ContractVocabulary {
           if (entry['key'] is String)
             CoreField(
               key: entry['key'] as String,
-              // `is` is the endpoint's field and it holds a phrase written to
-              // complete "it is …" — "their date of birth". Used as the label
-              // verbatim, because those are words the server chose; the key is
-              // the last resort, and it is shown as an identifier rather than
-              // title-cased into words nobody wrote.
-              label:
-                  entry['label'] as String? ??
-                  entry['is'] as String? ??
-                  entry['key'] as String,
+              // `label` or the key, and deliberately nothing in between.
+              //
+              // `is` used to sit in this chain, on the reasoning that the
+              // server's own words beat a bare identifier. They are the server's
+              // words and they are not a label: `is` holds a phrase written to
+              // complete "it is …", so the designer drew a locked chip reading
+              // "their middle name" and the form preview captioned a box "the
+              // email address on their account". The endpoint now sends a proper
+              // `label` beside it (CommonCore::RESERVED), and a fragment is never
+              // promoted into a caption again.
+              //
+              // The key remains the last resort for the reason on [CoreField]:
+              // `date_of_birth` reads as an identifier the server put no label
+              // on, which is true, and "Date Of Birth" reads as wording somebody
+              // chose, which is not.
+              label: entry['label'] as String? ?? entry['key'] as String,
               note:
                   entry['note'] as String? ??
                   entry['why'] as String? ??
                   entry['reason'] as String? ??
-                  entry['description'] as String?,
+                  entry['description'] as String? ??
+                  // Last, and only as a note — which is the one job the phrase
+                  // is written for.
+                  entry['is'] as String?,
               type: entry['type'] as String?,
               filledBy: entry['filled_by'] as String?,
               required: entry['required'] != false,

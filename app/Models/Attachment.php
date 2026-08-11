@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use RuntimeException;
 
 /**
  * A file, and the record it belongs to.
@@ -89,6 +90,34 @@ class Attachment extends Model implements HoldsPersonalData
     protected function casts(): array
     {
         return ['size_bytes' => 'integer'];
+    }
+
+    /**
+     * The subject gets a veto on removal, and it is enforced here as well.
+     *
+     * AttachmentsController asks the same question and answers a readable 422,
+     * which is the right response to a person. This is the guarantee for every
+     * other writer — a queued job, a cleanup command, a tinker session — because
+     * the file being protected is one a signature fingerprints, and evidence
+     * that can be removed by a path nobody thought about is not evidence.
+     *
+     * Deliberately NOT a check the subject can be given without asking for it:
+     * `attachmentRemovalRefusal` is declared on HasAttachments and returns null,
+     * so a record type that has no evidentiary files behaves exactly as before.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (self $attachment) {
+            $subject = $attachment->attachable;
+
+            $refusal = $subject !== null && method_exists($subject, 'attachmentRemovalRefusal')
+                ? $subject->attachmentRemovalRefusal($attachment)
+                : null;
+
+            if ($refusal !== null) {
+                throw new RuntimeException('Refusing to delete this attachment. '.$refusal);
+            }
+        });
     }
 
     public function attachable(): MorphTo

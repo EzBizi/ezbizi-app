@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'core/api_client.dart';
+import 'core/contracts.dart';
 import 'core/deployment.dart';
 import 'core/files.dart';
 import 'core/module_screens.dart';
@@ -9,6 +10,7 @@ import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
 import 'screens/development_screen.dart';
+import 'screens/hr/onboarding_form.dart';
 import 'screens/invitation_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/organization_screen.dart';
@@ -307,6 +309,44 @@ class _HomeShellState extends State<HomeShell> {
     //
     // See core/module_screens.dart.
     final destinations = <Destination>[
+      // Their own paperwork, first, while it is unfinished.
+      //
+      // The one destination here that is not a module, and it earns the
+      // exception. A new starter accepts an invitation, which signs them in,
+      // and the form their employer began for them is the only thing they are
+      // in this app to do — but Human Resources is the EMPLOYER's module and
+      // their role does not reach it, so without this they land in a shell with
+      // nothing in it and no way to find their own contract.
+      //
+      // It is not compiled in: it exists exactly when `/me` says there is an
+      // onboarding about this person, and it disappears when the server stops
+      // saying so. Being first is what makes it the landing page — `railIndex`
+      // falls back to the first destination — so accepting an invitation puts
+      // the form on screen without a link to keep or a step to remember, and
+      // everything else is still one click away.
+      if (me.onboardingId case final mine?)
+        Destination(
+          'Your paperwork',
+          Icons.assignment_outlined,
+          OnboardingForm(
+            api: widget.api,
+            onboardingId: mine,
+            // The employee cannot read the Contracts catalogue — it belongs to
+            // the module they have no permission for — so the words for a kind
+            // of question travel with the onboarding itself. See
+            // OnboardingForm._vocabulary.
+            vocabulary: ContractVocabulary.none,
+            formats: me.display,
+            // Signing it finishes it, and the destination should go when it
+            // does. /me is where its existence is declared, so /me is what has
+            // to be asked again.
+            onChanged: widget.session.refresh,
+          ),
+          // Not a module key, and spelled so it cannot collide with one: module
+          // keys are bare words (`hr`, `jobs`) and this is the shell's own name
+          // for a destination the module registry knows nothing about.
+          id: 'my-onboarding',
+        ),
       for (final module in me.reachableModules)
         if (moduleScreens[module.key] case final screen?)
           Destination(

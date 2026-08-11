@@ -159,14 +159,22 @@ return new class extends Migration
          *
          * ── Why it does not point at a signed DOCUMENT row ───────
          *
-         * There is no such table yet: the rendered artefact needs the attachment
-         * primitive and the storage driver the plan defers, and onboarding is
-         * what will produce it. Rather than invent a polymorphic column now and
-         * leave it null on every row, this identifies a signature the way the
-         * evidence itself does — which version was signed, by whom, about whom,
-         * and the fingerprint of what they were shown. When the record table
-         * arrives it references this one, which is the direction that needs no
-         * migration here.
+         * Not for want of somewhere to keep one. The attachment primitive and
+         * the storage driver both exist — `attachments`, App\Models\Attachment
+         * and App\Support\Files\FileStore, created two migrations before this one
+         * and built first BECAUSE contracts need them. An earlier draft of this
+         * comment gave their absence as the reason, which was false on the day it
+         * was written and would have sent whoever renders the first PDF looking
+         * for a primitive that was already sitting beside them.
+         *
+         * The real reason is direction. An attachment points AT the record it
+         * belongs to (App\Support\Files\Attachables), so the rendered document
+         * belongs to the onboarding — the thing somebody opens and asks for a
+         * copy of — and this table identifies a signature the way the evidence
+         * itself does: which version was signed, by whom, about whom, and the
+         * fingerprint of exactly what they were shown. A column here pointing the
+         * other way would be a second answer to a question the attachment already
+         * answers.
          */
         Schema::create('contract_signatures', function (Blueprint $table) {
             $table->uuid('id')->primary();
@@ -230,10 +238,14 @@ return new class extends Migration
             $table->text('intent_statement');
 
             // THE AFFIRMATIVE ACT: what they actually did — the name they typed,
-            // or a reference to the mark they drew. Free text because a drawn
-            // signature is a file this platform cannot yet store (§ attachments,
-            // deferred), and a column shaped only for typed names would have to
-            // change when it can.
+            // or a reference to the mark they drew.
+            //
+            // Free text, and not because a drawn signature cannot be stored: it
+            // can, the attachments table two migrations back is exactly where one
+            // goes. It is free text because the two acts leave different traces —
+            // a typed name IS the evidence and belongs in the column, while a
+            // drawn mark is a file and what belongs here is the reference to it.
+            // A column shaped for one of those could not hold the other.
             $table->text('affirmation');
 
             $table->timestamp('signed_at');

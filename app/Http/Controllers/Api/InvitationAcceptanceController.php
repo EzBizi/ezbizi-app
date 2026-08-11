@@ -370,6 +370,27 @@ class InvitationAcceptanceController extends Controller
             'accepted_user_id' => $user->getKey(),
         ])->save();
 
+        /*
+         * And any onboarding already waiting on this invitation now has its
+         * person. Without this it never gets one, and can never be finished.
+         *
+         * HrOnboardingsController::create sets `user_id` from
+         * `$invitation->accepted_user_id`, which is null in the flow its own
+         * comment calls the ordinary case — the employer starts the paperwork
+         * and pre-fills it before the new starter has an account. Nothing then
+         * back-filled it. Proven end to end: after acceptance,
+         * `onboardings.user_id` was still null, so the employee could not be
+         * identified as the subject, could not reach their own form, and could
+         * not sign — a dead end reached by following the documented path.
+         *
+         * Here rather than in the HR controller because this is the moment the
+         * account comes into existence, and a fact is written where it becomes
+         * true.
+         */
+        $invitation->onboarding()
+            ->whereNull('user_id')
+            ->update(['user_id' => $user->getKey()]);
+
         // The actor is the new person themselves — nobody is signed in, and
         // attributing their own acceptance to `system` would lose the one fact
         // this entry exists to record.

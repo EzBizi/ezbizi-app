@@ -65,12 +65,85 @@ void main() {
       'A line of words',
       'Pick from a list',
       'A day',
+      'One of the shifts',
     ]);
 
     // The real server declares six. A client with the list compiled in would
     // offer the other three against a catalogue that never mentioned them.
     expect(find.text('Number'), findsNothing);
     expect(find.text('A signature'), findsNothing);
+  });
+
+  /// §2.1 again, one property along. Which kinds of question carry a list is
+  /// the server's answer, and the designer used to decide it by comparing the
+  /// type to the literal `'choice'` in Dart.
+  testWidgets('the options editor follows what the server says takes a list, '
+      'not the word “choice”', (tester) async {
+    await _pump(tester, _handler());
+
+    await _tap(tester, find.text('New contract'));
+    await _tap(tester, find.text('Add a question'));
+
+    const box = 'The answers to choose from';
+
+    // Nothing chosen yet, so nothing to type into.
+    expect(find.widgetWithText(TextField, box), findsNothing);
+
+    // `rota` is not `choice`, and the catalogue says it carries a list. This is
+    // the seventh type: a client reading its own literal offers it no editor.
+    await _choose(tester, 'Kind of answer', 'One of the shifts');
+    expect(
+      find.widgetWithText(TextField, box),
+      findsOneWidget,
+      reason:
+          'The catalogue declared takes_options on this kind and the box is '
+          'not there, so the screen is reading a list of its own.',
+    );
+
+    // And a kind that does not carry one gets no box, whatever it is called.
+    await _choose(tester, 'Kind of answer', 'A day');
+    expect(find.widgetWithText(TextField, box), findsNothing);
+  });
+
+  /// The 422 nobody could act on: the options box goes off screen when the kind
+  /// changes, the text stays in its controller, and it used to be sent anyway —
+  /// so the server refused the save over options the person could not see.
+  testWidgets('options typed for one kind of question are not sent for '
+      'another', (tester) async {
+    Map<String, dynamic>? created;
+
+    await _pump(tester, _handler(onCreate: (body) => created = body));
+
+    await _tap(tester, find.text('New contract'));
+    await _type(tester, 'Name', 'Contractor');
+    await _tap(tester, find.text('Add a question'));
+    await _type(tester, 'The question', 'Uniform');
+
+    await _choose(tester, 'Kind of answer', 'Pick from a list');
+    await _type(tester, 'The answers to choose from', 'Small\nMedium\nLarge');
+
+    // Changed their mind. The box disappears; the typing does not.
+    await _choose(tester, 'Kind of answer', 'A line of words');
+    expect(find.widgetWithText(TextField, 'The answers to choose from'),
+        findsNothing);
+
+    // Changing back restores what was typed rather than having thrown it away —
+    // which is why the answer is to stop SENDING the options rather than to
+    // clear them when the kind changes.
+    await _choose(tester, 'Kind of answer', 'Pick from a list');
+    expect(find.text('Small\nMedium\nLarge'), findsOneWidget);
+
+    await _choose(tester, 'Kind of answer', 'A line of words');
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'The new starter'));
+    await _tap(tester, find.text('Create the contract'));
+
+    expect(
+      (created!['fields'] as List).single['options'],
+      isEmpty,
+      reason:
+          'A text field carrying three options is refused by the server, and '
+          'the person cannot see the options it is complaining about.',
+    );
   });
 
   testWidgets('who fills a question in is three visible answers, in the '
@@ -125,6 +198,40 @@ void main() {
     // Not editable: there is no box to type into for either of them, and the
     // only text boxes on the page belong to the template's own questions.
     expect(find.widgetWithText(TextField, 'Work email address'), findsNothing);
+  });
+
+  /// The endpoint's `is` is a phrase completing "it is …", and it was the only
+  /// string it published — so the client, having nothing better, used it as a
+  /// caption. The designer drew a locked chip reading "their middle name" and
+  /// the preview titled a box "the email address on their account".
+  ///
+  /// Sixteen tests passed over that, because the fixture put title-case nouns
+  /// in `is` and the real server never does.
+  testWidgets('a reserved key is captioned with its label, never with the '
+      'phrase that describes it', (tester) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('Design'));
+
+    expect(find.text('Work email address'), findsWidgets);
+
+    // The phrase is a sentence fragment. It belongs inside a sentence, and
+    // there is no caption on this screen it could correctly be.
+    for (final phrase in [
+      'the work email address on their account',
+      'the shoe size they gave us',
+      'their national insurance number',
+    ]) {
+      expect(
+        find.textContaining(phrase),
+        findsNothing,
+        reason: '“$phrase” completes “it is …”; it is not a name for a field.',
+      );
+    }
+
+    // With no label sent, the key itself — an identifier, visibly one. A reader
+    // seeing `nino` knows the server put no wording on it; a reader seeing
+    // "their national insurance number" believes somebody chose that caption.
+    expect(find.text('nino'), findsWidgets);
   });
 
   testWidgets('a question added takes its key from the wording, and cannot '
@@ -604,13 +711,30 @@ const _catalogue = {
       'key': 'text',
       'label': 'A line of words',
       'description': 'Anything typed.',
+      'takes_options': false,
     },
     {
       'key': 'choice',
       'label': 'Pick from a list',
       'description': 'One of yours.',
+      'takes_options': true,
     },
-    {'key': 'date', 'label': 'A day', 'description': 'A day on a calendar.'},
+    {
+      'key': 'date',
+      'label': 'A day',
+      'description': 'A day on a calendar.',
+      'takes_options': false,
+    },
+    // A SECOND kind that carries a list, which the real server does not have.
+    // It is here to be the seventh type: a client gating its options editor on
+    // `type == 'choice'` offers this one nowhere to type any answers, and says
+    // nothing about why.
+    {
+      'key': 'rota',
+      'label': 'One of the shifts',
+      'description': 'Invented for this fixture, and that is the point.',
+      'takes_options': true,
+    },
   ],
   'filled_by': [
     {
@@ -629,21 +753,36 @@ const _catalogue = {
       'description': 'One of you answers it and the other can correct it.',
     },
   ],
-  // The endpoint sends `is` — a phrase completing "it is …" — and `reason`, the
-  // whole refusal. There is no `label`, so what the screen shows for one of
-  // these is the server's phrase and never a title-cased key. `filled_by` is
-  // absent too, which is why both of these turn up on both sides of the
+  // The endpoint sends three strings per key and they are not interchangeable:
+  // `label` is the name that goes on a control, `is` is a phrase completing
+  // "it is …" for use inside a sentence, and `reason` is the whole refusal.
+  //
+  // This fixture used to give `is` a title-case noun — "Work email address" —
+  // which is not what the server sends, and it is the reason sixteen tests
+  // passed over a screen captioning a locked field "the email address on their
+  // account". The phrases below read the way the real ones do.
+  //
+  // `filled_by` is absent, which is why these turn up on both sides of the
   // preview: the employer may fill them in and does not have to.
   'reserved_keys': [
     {
       'key': 'email',
-      'is': 'Work email address',
+      'label': 'Work email address',
+      'is': 'the work email address on their account',
       'reason': 'The invitation is addressed to it.',
     },
     {
       'key': 'shoe_size',
-      'is': 'Shoe size',
+      'label': 'Shoe size',
+      'is': 'the shoe size they gave us',
       'reason': 'Invented for this fixture, and that is the point.',
+    },
+    // Deliberately unlabelled, to pin what happens when the server offers no
+    // name: the key, shown as the identifier it is. Never the phrase.
+    {
+      'key': 'nino',
+      'is': 'their national insurance number',
+      'reason': 'Also invented.',
     },
   ],
 };

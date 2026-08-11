@@ -47,6 +47,34 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * row is still asked `mayReveal()` for this caller, so a flag on a query string
  * cannot widen what somebody may see — it can only stop hiding what they were
  * already entitled to.
+ *
+ * ── And every value it does reveal is written down ───────────────
+ *
+ * This class used to read the attribute straight off the model once `mayReveal()`
+ * said yes, which meant `?include_sensitive=1` was the one path in the
+ * application that returned clear sensitive values with no `sensitive_value.
+ * revealed` entry behind them — while SensitiveValues' docblock said "there is no
+ * method that returns the clear value without auditing, which is deliberate".
+ *
+ * The one `data.exported` row DataController writes is not a substitute. It
+ * records that a file was downloaded and that sensitive values were asked for; it
+ * cannot answer "who looked at MY bank details", because it names a resource
+ * rather than a record and a request rather than a field. That question is the
+ * only reason the reveal log is kept.
+ *
+ * So the reveal goes through `SensitiveValues::read()` like every other reveal,
+ * and the cost is stated rather than hidden: an export of a thousand records with
+ * two sensitive columns writes two thousand audit entries. That is not a defect
+ * of the logging — it is a thousand records' worth of bank details leaving the
+ * building, and a log that recorded it as one line would be describing something
+ * that did not happen.
+ *
+ * One consequence of that inside `csv()`, which streams: `read()` writes the
+ * audit entry BEFORE returning the value, so a failed audit write throws
+ * mid-response and the download truncates. The headers have gone by then, so
+ * there is no way to turn it into a clean error. A half-written CSV is still the
+ * right outcome — the alternative is the rest of the file leaving with no record
+ * that it did, which is the failure this whole arrangement exists to prevent.
  */
 class Exporter
 {
@@ -141,24 +169,45 @@ class Exporter
      * what keeps a query parameter from being an authorisation — see the note on
      * this class.
      *
-     * A model that does not implement HoldsSensitiveValues answers no sensitive
-     * attributes and this costs one instanceof per row.
+     * ── Why mayReveal() is asked here and again inside read() ────
+     *
+     * It looks like the check is done twice, and it is, for different answers.
+     * `read()` THROWS when a reveal is refused, which is right for a screen —
+     * somebody pressed a button and is owed a reason. It is wrong for an export:
+     * a reader who ticks "include sensitive values" should get a file with the
+     * masked columns still in it, not a 403 instead of their customer list. So
+     * the row is asked first to decide whether to ASK for a reveal at all, and
+     * `read()` is then given an answer it will not refuse.
+     *
+     * What is NOT duplicated is the masking or the audit. Both are read()'s, and
+     * this method no longer touches `getAttribute` on a holder — which is what
+     * let a bulk reveal through here unrecorded.
+     *
+     * A model that does not implement HoldsSensitiveValues has no sensitive
+     * attributes to ask about and is read directly, which costs one instanceof
+     * per row.
      *
      * @param  string[]  $columns
      * @return array<string, mixed>
      */
     private function readable(Model $row, array $columns, User $user, bool $includeSensitive): array
     {
-        $reveal = $includeSensitive
-            && $row instanceof HoldsSensitiveValues
-            && $row->mayReveal($user);
+        if (! $row instanceof HoldsSensitiveValues) {
+            return array_combine(
+                $columns,
+                array_map(fn (string $c) => $row->getAttribute($c), $columns),
+            );
+        }
+
+        $reveal = $includeSensitive && $row->mayReveal($user);
 
         $out = [];
 
         foreach ($columns as $column) {
-            $out[$column] = (! $reveal && $this->sensitive->isSensitive($row, $column))
-                ? SensitiveValues::MASK
-                : $row->getAttribute($column);
+            // One column at a time, deliberately — there is no bulk reveal, and
+            // an audit entry per field is what makes the log able to say which
+            // field somebody looked at rather than only that they exported.
+            $out[$column] = $this->sensitive->read($row, $column, $user, reveal: $reveal)['value'];
         }
 
         return $out;

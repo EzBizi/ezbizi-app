@@ -1,0 +1,358 @@
+<?php
+
+namespace App\Models;
+
+use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\HasAttachments;
+use App\Support\Contracts\FieldDefinition;
+use App\Support\Contracts\FieldType;
+use App\Support\Contracts\FilledBy;
+use App\Support\Privacy\HoldsPersonalData;
+use App\Support\Privacy\PersonalDataEntry;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
+
+/**
+ * One person joining, under one pinned contract version
+ * (EZBIZI-HR-PLAN.md, "Onboarding").
+ *
+ * The form the two sides fill, the answers they give, the signature that closes
+ * it and the document that comes out. Everything about WHAT is asked comes from
+ * `contractVersion` — this model knows there are fields, that each has a key and
+ * somebody who fills it, and never what any of them mean.
+ *
+ * ── The two sides, in one column ─────────────────────────────────
+ *
+ * `user_id` is the employee. Everybody else acting on this form is the employer.
+ * That single fact is what `filled_by` is enforced against, and it is why the
+ * party of an answer never needed a column of its own: the setter is stored, and
+ * comparing it to this column answers which side wrote it.
+ *
+ * Before the invitation is accepted there is no account, so `user_id` is null
+ * and only the employer can be filling anything in. That is the ordinary shape
+ * of an onboarding that has been started and pre-filled, not an incomplete one.
+ */
+class Onboarding extends Model implements HoldsPersonalData
+{
+    use BelongsToTenant;
+    use HasAttachments;
+    use HasFactory;
+    use HasUuids;
+
+    /**
+     * Somebody is filling it in. Both sides may write, in any order, as often as
+     * they like — partial answers are the normal state of a form, not an error.
+     */
+    public const IN_PROGRESS = 'in_progress';
+
+    /**
+     * Complete, and the first party has signed. The answers are frozen from
+     * here: see App\Services\Hr\OnboardingForm for why a document somebody has
+     * already signed cannot go on changing underneath them.
+     */
+    public const SUBMITTED = 'submitted';
+
+    /** Every signature the version asks for has been given. */
+    public const COMPLETED = 'completed';
+
+    public const STATUSES = [self::IN_PROGRESS, self::SUBMITTED, self::COMPLETED];
+
+    protected $fillable = [
+        'organization_id', 'invitation_id', 'user_id', 'contract_version_id',
+        'status', 'started_at', 'submitted_at', 'completed_at', 'started_by_user_id',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'started_at'   => 'datetime',
+            'submitted_at' => 'datetime',
+            'completed_at' => 'datetime',
+        ];
+    }
+
+    // ── §9 data inventory ────────────────────────────────────────
+
+    public static function personalDataPurpose(): string
+    {
+        return 'The paperwork of somebody joining: which contract they are being taken on '
+            .'under, when the form was started, when they submitted it and when it was '
+            .'finished. The answers themselves are in a table of their own.';
+    }
+
+    public static function personalDataRetention(): string
+    {
+        return 'Kept for as long as the agreement it produced matters, which outlives the '
+            .'employment. It is the index to a signed contract, and a signed contract whose '
+            .'paperwork can be deleted is one nobody can produce when it is disputed.';
+    }
+
+    public static function personalDataHeld(): array
+    {
+        return [
+            new PersonalDataEntry('user_id', PersonalDataEntry::IDENTITY,
+                'Who this onboarding is about — the employee whose contract it is.'),
+            new PersonalDataEntry('started_by_user_id', PersonalDataEntry::ACTIVITY,
+                'Who at the employer started it, so the paperwork can be traced to the '
+                .'person who set it going.'),
+            new PersonalDataEntry('started_at, submitted_at, completed_at',
+                PersonalDataEntry::ACTIVITY,
+                'When each stage happened. Part of the evidentiary record: "when did I '
+                .'agree to this" is answered from here and from the signature.'),
+        ];
+    }
+
+    // ── relations ────────────────────────────────────────────────
+
+    public function invitation(): BelongsTo
+    {
+        return $this->belongsTo(Invitation::class);
+    }
+
+    /** The employee. Null until the invitation is accepted. */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function startedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'started_by_user_id');
+    }
+
+    /** The PINNED version — the questions as they were when this form began. */
+    public function contractVersion(): BelongsTo
+    {
+        return $this->belongsTo(ContractVersion::class);
+    }
+
+    public function answers(): HasMany
+    {
+        return $this->hasMany(OnboardingAnswer::class);
+    }
+
+    /** Newest first: "what is true now" is what a screen opens on. */
+    public function documents(): HasMany
+    {
+        return $this->hasMany(OnboardingDocument::class)->orderByDesc('revision');
+    }
+
+    /**
+     * Every signature taken against this onboarding's pinned version.
+     *
+     * A method rather than a relation, deliberately. `contract_signatures` does
+     * not point at an onboarding — its migration explains why it identifies a
+     * signature the way the evidence itself does, by version and subject — so
+     * the only way to express this as a `hasMany` would be a relation carrying a
+     * `where` on `$this->user_id`. That kind of relation is a trap: it reads
+     * correctly on one loaded model and silently applies the FIRST parent's
+     * subject to every row when eager-loaded across a list.
+     *
+     * @return Collection<int, ContractSignature>
+     */
+    public function takenSignatures(): Collection
+    {
+        if ($this->user_id === null) {
+            return collect();
+        }
+
+        return ContractSignature::query()
+            ->where('contract_version_id', $this->contract_version_id)
+            ->where('subject_user_id', $this->user_id)
+            ->orderBy('signed_at')
+            ->get();
+    }
+
+    /**
+     * A rendered document is not an upload, and cannot be detached.
+     *
+     * `attachments` carries two very different kinds of file for this record. A
+     * FILE ANSWER is somebody's licence: they attached it, they can replace it,
+     * and removing it is an ordinary act. A CONTRACT DOCUMENT is the artefact a
+     * signature fingerprints — remove it and `stillMatches()` has nothing to
+     * compare against, so the tamper-evidence quietly becomes an assertion about
+     * a file nobody can produce.
+     *
+     * `OnboardingDocument` refuses its own deletion, and that was not enough on
+     * its own: `onboarding_documents.attachment_id` cascades, so deleting the
+     * ATTACHMENT through the ordinary file endpoint took the row with it without
+     * the model ever hearing about it. This is the half that was missing.
+     */
+    public function attachmentRemovalRefusal(Attachment $attachment): ?string
+    {
+        $document = $this->documents()->where('attachment_id', $attachment->getKey())->first();
+
+        if ($document === null) {
+            return null;
+        }
+
+        return sprintf(
+            'That file is revision %d of this contract, not something attached to it. It is '
+            .'the document a signature was taken over, so removing it would leave the '
+            .'signature pointing at bytes nobody can produce. Corrections are made by '
+            .'amending, which keeps both.',
+            $document->revision,
+        );
+    }
+
+    /** The document as it stands — revision 1, or the latest amendment. */
+    public function currentDocument(): ?OnboardingDocument
+    {
+        return $this->documents()->first();
+    }
+
+    /** What was SIGNED, which an amendment never replaces. */
+    public function signedDocument(): ?OnboardingDocument
+    {
+        return $this->documents()->where('revision', 1)->first();
+    }
+
+    // ── shape ────────────────────────────────────────────────────
+
+    /**
+     * The fields this form asks, in order — the template's, live only.
+     *
+     * Retired fields are excluded here and nowhere else, which is the whole
+     * difference between retiring and deleting: a version pinned before a field
+     * was retired still carries it, and a record that has an answer to it can
+     * still read its label through `ContractVersion::field()`.
+     *
+     * @return FieldDefinition[]
+     */
+    public function fields(): array
+    {
+        return $this->contractVersion->liveFields();
+    }
+
+    /**
+     * The keys whose answers the tenant marked sensitive.
+     *
+     * Asked of the PINNED version, so a field's sensitivity is whatever it was
+     * when this onboarding started — the same rule the answer rows use, and the
+     * reason HoldsSensitiveValues is an instance question rather than a class
+     * one.
+     *
+     * @return string[]
+     */
+    public function sensitiveAnswerKeys(): array
+    {
+        return array_values(array_map(
+            fn (FieldDefinition $f) => $f->key,
+            array_filter($this->fields(), fn (FieldDefinition $f) => $f->sensitive),
+        ));
+    }
+
+    /**
+     * Does anything here need protecting?
+     *
+     * Read before the document is served: a contract with no sensitive field is
+     * an ordinary document, and requiring the reveal permission for it would
+     * lock people out of paperwork that holds nothing worth locking.
+     */
+    public function hasSensitiveAnswers(): bool
+    {
+        return $this->sensitiveAnswerKeys() !== [];
+    }
+
+    /** @return FieldDefinition[] the signature fields, which are what close it */
+    public function signatureFields(): array
+    {
+        return array_values(array_filter(
+            $this->fields(),
+            fn (FieldDefinition $f) => $f->type === FieldType::SIGNATURE,
+        ));
+    }
+
+    /**
+     * Which side is this person on?
+     *
+     * The employee is the subject. Anybody else who has got this far has been
+     * through the policy, so they are acting for the employer.
+     *
+     * Returns BOTH when somebody is onboarding themselves — an owner taking on a
+     * contract in their own business, which is a real case and not a loophole.
+     * They are genuinely the employee (it is their contract) and genuinely the
+     * employer (they hold the authority), so refusing one of the two would make
+     * a legitimate onboarding impossible to complete. A signature is unaffected:
+     * its party comes from the field's own `filled_by`, never from this.
+     *
+     * @return string[] subset of FilledBy::EMPLOYER / FilledBy::EMPLOYEE
+     */
+    public function partiesFor(User $actor, bool $mayActForEmployer): array
+    {
+        $parties = [];
+
+        if ($this->user_id !== null && $actor->getKey() === $this->user_id) {
+            $parties[] = FilledBy::EMPLOYEE;
+        }
+
+        if ($mayActForEmployer) {
+            $parties[] = FilledBy::EMPLOYER;
+        }
+
+        return $parties;
+    }
+
+    /** Frozen: the form has been signed and only an amendment may change it. */
+    public function isFrozen(): bool
+    {
+        return $this->submitted_at !== null;
+    }
+
+    /**
+     * Has EVERY party who must sign, signed?
+     *
+     * Distinct from isFrozen(), and the distinction matters: frozen begins at
+     * the FIRST signature and means the answers stop moving, while this means
+     * the ceremony is over. Between them is the window where one party has
+     * committed and another has not, and in that window the document must hold
+     * absolutely still — a signature is worth something only if every party
+     * fingerprinted the same bytes.
+     *
+     * Amendment was gated on isFrozen(), which let the terms be rewritten
+     * between two signatures. See HrOnboardingsController::amend.
+     */
+    public function isFullySigned(): bool
+    {
+        $signed = $this->takenSignatures()->pluck('field_key')->all();
+
+        foreach ($this->signatureFields() as $field) {
+            if (! in_array($field->key, $signed, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Where this onboarding sits in the business, for §4 reach.
+     *
+     * From the invitation while there is one, because that is where the employer
+     * decided the person's place; from their assignment once they have an
+     * account, because by then the assignment is the truth and the invitation is
+     * history. Falls back to the organization, which only somebody standing at
+     * the organization can reach — the safe direction when there is nothing
+     * narrower to ask about.
+     *
+     * @return array{type: string, id: string}
+     */
+    public function scope(): array
+    {
+        if ($this->invitation !== null) {
+            return ['type' => $this->invitation->scopeType(), 'id' => $this->invitation->scopeId()];
+        }
+
+        $assignment = $this->user?->assignments()->first();
+
+        if ($assignment !== null) {
+            return ['type' => $assignment->scopeType(), 'id' => $assignment->scopeId()];
+        }
+
+        return ['type' => Assignment::SCOPE_ORGANIZATION, 'id' => $this->organization_id];
+    }
+}

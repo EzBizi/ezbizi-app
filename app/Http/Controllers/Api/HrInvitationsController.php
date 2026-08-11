@@ -69,8 +69,11 @@ class HrInvitationsController extends Controller
         $this->authorize('viewAny', Invitation::class);
 
         $query = Invitation::query()
+            // `onboarding` is loaded because Invitation::status() reads it —
+            // `in_progress` is a fact about whether a form was started, and
+            // without this the derivation would be one query per row.
             ->with(['role:id,name', 'invitedBy:id,name', 'assignedOrganization:id,name',
-                'assignedCompany:id,name', 'assignedFranchise:id,name']);
+                'assignedCompany:id,name', 'assignedFranchise:id,name', 'onboarding']);
 
         $this->reach->constrain($query, $request->user());
 

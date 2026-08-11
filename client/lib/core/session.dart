@@ -217,6 +217,7 @@ class Me {
     required this.display,
     required this.companies,
     required this.franchises,
+    required this.onboardingId,
   });
 
   final String id;
@@ -310,6 +311,43 @@ class Me {
 
   final List<FranchiseSummary> franchises;
 
+  /// The onboarding that is about THIS person, while it is unfinished.
+  ///
+  /// The id and nothing else. Everything about the form — the questions, the
+  /// answers, who filled what in — comes from `GET /hr/onboardings/{id}` when
+  /// the screen opens; putting any of it here would mean fetching a contract's
+  /// worth of fields on every session restore, for a screen most people open
+  /// once.
+  ///
+  /// ── Why it rides on /me ──────────────────────────────────────────
+  ///
+  /// A new starter accepts their invitation, which signs them in, and the very
+  /// next thing they need is the form the employer started for them. They
+  /// cannot be sent to the Human Resources module to find it — that module is
+  /// the employer's, and a technician's role does not reach it — and they must
+  /// not be sent to a link they have to keep, because the whole point of save
+  /// and resume is that closing the tab costs nothing.
+  ///
+  /// So it arrives the same way `two_factor_enrolment_required` does, and for
+  /// the same reason: it is a thing the SHELL has to know about before it draws
+  /// destinations, because the answer changes what the person sees first.
+  ///
+  /// Nothing polls it. The destination appears the next time /me is asked —
+  /// signing in, restoring a session, changing scope, or the form itself
+  /// reporting that something happened to it, which is what takes the
+  /// destination away once the last signature is given. An employer starting an
+  /// onboarding for somebody already signed in is therefore not visible to them
+  /// until one of those; the alternative is a poll on every screen for a state
+  /// most people are in once.
+  ///
+  /// It is never the onboardings this person RUNS for other people. Those are
+  /// the Human Resources tab, gated by permission; this is the one they are the
+  /// subject of, which needs no permission at all.
+  ///
+  /// Null when there is nothing waiting — including for a server that does not
+  /// send the block, which is the same state as far as anybody can tell.
+  final String? onboardingId;
+
   /// Does this person's role hold this exact permission?
   ///
   /// Fails closed, including when the server sent no list at all. Hiding one
@@ -361,6 +399,7 @@ class Me {
         display: display,
         companies: companies,
         franchises: franchises,
+        onboardingId: onboardingId,
       );
 
   /// Never null and never unknown — an unrecognised stored value falls back to
@@ -420,6 +459,8 @@ class Me {
         franchises: (json['franchises'] as List<dynamic>? ?? [])
             .map((f) => FranchiseSummary.fromJson(f as Map<String, dynamic>))
             .toList(),
+        onboardingId:
+            (json['onboarding'] as Map<String, dynamic>?)?['id']?.toString(),
       );
 }
 

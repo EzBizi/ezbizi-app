@@ -5,7 +5,6 @@ namespace App\Support\Privacy;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Database\Eloquent\Model;
 
 /**
  * Masked by default, revealed on request, and every reveal recorded
@@ -24,6 +23,16 @@ use Illuminate\Database\Eloquent\Model;
  * inconvenient, and the audit is the whole point. "Who looked at my bank
  * details" is a question that gets asked, and it can only be answered by the
  * system that was asked to show them.
+ *
+ * That claim was false for one caller and worth recording. The exporter checked
+ * `mayReveal()` and then read the attribute itself, so `?include_sensitive=1`
+ * returned every sensitive value in a file with nothing in the reveal log — the
+ * exact bulk reveal the note on `read()` argues was made impossible, reached by
+ * going around this class rather than through it. Nothing here could have
+ * stopped it; a private accessor is only unavoidable while every caller agrees
+ * to want it. What closed it was the exporter calling `read()` per column
+ * (App\Support\Data\Exporter::readable), and what will keep it closed is that
+ * there is no cheaper alternative on offer.
  *
  * ── Why the mask is a fixed length ───────────────────────────────
  *
@@ -126,12 +135,15 @@ class SensitiveValues
     /**
      * Is this attribute sensitive on this row?
      *
-     * Takes a plain Model so callers that iterate mixed rows — the exporter, for
-     * one — do not each have to write the instanceof.
+     * Private, and it took a plain Model until the exporter stopped needing it.
+     * That signature existed so a caller iterating mixed rows could ask without
+     * writing the instanceof — which is to say, so a caller could find out
+     * whether to mask WITHOUT going through `read()`. Answering that question
+     * outside this class is how the export came to mask correctly and audit
+     * nothing, so the question is no longer answered outside this class.
      */
-    public function isSensitive(Model $record, string $attribute): bool
+    private function isSensitive(HoldsSensitiveValues $record, string $attribute): bool
     {
-        return $record instanceof HoldsSensitiveValues
-            && in_array($attribute, $record->sensitiveAttributes(), true);
+        return in_array($attribute, $record->sensitiveAttributes(), true);
     }
 }

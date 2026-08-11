@@ -36,9 +36,48 @@ final class FieldType
         self::SIGNATURE => 'A signature',
     ];
 
+    /**
+     * The types whose definition includes a list of answers to pick from.
+     *
+     * ── Why this is a declaration and not `=== CHOICE` at each site ──
+     *
+     * Three places need the answer — the validator here, the catalogue the client
+     * builds its form out of, and the client's own options editor — and all three
+     * had it written out as a comparison against `choice`. The designer's was the
+     * one that mattered: it gated the options box on a literal `'choice'` in Dart,
+     * in a screen whose own header says it does not re-state server rules. A
+     * seventh type taking options would have been offered with no way to give it
+     * any, and nothing would have said why.
+     *
+     * So the fact lives here once, the catalogue publishes it as `takes_options`,
+     * and the client reads it. Adding a type that takes options is then one line.
+     */
+    private const TAKES_OPTIONS = [
+        self::CHOICE => true,
+    ];
+
     /** @return string[] */
     public static function keys(): array
     {
         return array_keys(self::ALL);
+    }
+
+    /**
+     * Unknown types answer false, which is the honest reading: a type this build
+     * has never heard of is refused by FieldSet anyway, and pretending it takes
+     * options would put an editor on screen for a field that cannot be saved.
+     */
+    public static function takesOptions(string $type): bool
+    {
+        return self::TAKES_OPTIONS[$type] ?? false;
+    }
+
+    /** The types that take options, in the order ALL declares them. */
+    public static function optionTakingLabels(): string
+    {
+        return implode(', ', array_map(
+            fn (string $key) => self::ALL[$key],
+            array_keys(self::TAKES_OPTIONS),
+        ));
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Support\Files;
 
 use App\Models\Job;
+use App\Models\Onboarding;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\In;
@@ -68,6 +69,22 @@ final class Attachables
     {
         return [
             'jobs' => Job::class,
+            /*
+             * Onboarding — the reason this primitive was built now rather than
+             * later, arriving as promised above.
+             *
+             * Two different kinds of file hang off one record here, and one
+             * table carries both. A FILE ANSWER is whatever the tenant's template
+             * asked for: a licence, a right-to-work document, a bank letter. The
+             * CONTRACT DOCUMENT is what the ceremony produces and what the
+             * signature fingerprints. Both are exactly as private as the
+             * onboarding they belong to, which is the argument this class makes
+             * for not giving attachments a permission of their own — and the
+             * onboarding's policy already knows the thing no `attachments.view`
+             * ever could, that the person the contract is ABOUT may read it
+             * without holding an HR permission at all.
+             */
+            'onboardings' => Onboarding::class,
         ];
     }
 

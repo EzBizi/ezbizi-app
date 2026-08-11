@@ -83,7 +83,7 @@ class ApiToken extends PersonalAccessToken implements \App\Support\Privacy\Holds
      * only answer "we hold this and cannot tell you how much", which is honest
      * and much less useful than the number.
      */
-    public static function scopeToOrganization($query, string $organizationId)
+    public static function narrowToOrganization($query, string $organizationId)
     {
         return $query->whereHasMorph(
             'tokenable',

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\WrittenOnce;
 use App\Support\Contracts\FieldDefinition;
 use App\Support\Contracts\FieldSet;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -23,12 +24,22 @@ use RuntimeException;
  * `AutomationVersion` says the same thing about run logs. The consequence is
  * heavier here: a run log that misdescribes itself is a debugging nuisance, and
  * a contract that misdescribes itself is a document somebody signed.
+ *
+ * ── How far "nothing ever edits one" actually reaches ────────────
+ *
+ * Two layers, and neither reaches all the way. The `updating` event below covers
+ * a model being saved; `WrittenOnce` covers the query builder and the quiet
+ * saves that skip events entirely, which is where `ContractVersion::query()
+ * ->update(['fields' => …])` used to go straight through. Raw SQL beneath
+ * Eloquent is not covered, and WriteOnceBuilder's docblock says why that is
+ * where the line falls rather than leaving it to be assumed.
  */
 class ContractVersion extends Model
 {
     use BelongsToTenant;
     use HasFactory;
     use HasUuids;
+    use WrittenOnce;
 
     public const UPDATED_AT = null;   // versions are written once
 

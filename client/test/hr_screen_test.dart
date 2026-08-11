@@ -27,11 +27,12 @@ import 'package:http/testing.dart';
 /// substitute. The fixture below makes the two lists deliberately disagree, so
 /// a Dart implementation of an access-control rule cannot pass this file.
 ///
-/// The third is that the tabs still waiting on something say what they are
+/// The third is that the tab still waiting on something says what it is
 /// waiting for. A tab that vanishes reads as broken and a blank one reads as
 /// broken; this codebase's answer is to draw it and mark it, the same as an
-/// automation action the engine cannot run. Two are left — the Contracts tab is
-/// built now, and client/test/hr_contracts_test.dart is what defends it.
+/// automation action the engine cannot run. One is left — Contracts and
+/// Onboarding are built now, and client/test/hr_contracts_test.dart and
+/// client/test/hr_onboarding_test.dart are what defend them.
 void main() {
   testWidgets('the five tabs are drawn, in the owner’s order, and switch', (
     tester,
@@ -46,9 +47,15 @@ void main() {
       'Contracts',
     ]);
 
-    // It opens on Records, not on tab zero: the first tab in that order that
-    // does something. Landing on a placeholder says the module is broken.
+    // It opens on Onboarding, not on tab zero: the first tab in that order that
+    // does something. Landing on a placeholder says the module is broken. It
+    // was Records until Onboarding stopped being a placeholder — the rule is
+    // "the first that works", not "Records".
     expect(find.text('Not built yet'), findsNothing);
+    expect(find.text('Start an onboarding'), findsOneWidget);
+
+    await _tap(tester, _tab('Records'));
+
     expect(find.text('Jose Silva'), findsOneWidget);
 
     await _tap(tester, _tab('Invitations'));
@@ -66,23 +73,32 @@ void main() {
   ) async {
     await _pump(tester, _handler());
 
-    for (final tab in ['Dashboard', 'Onboarding']) {
-      await _tap(tester, _tab(tab));
-
-      expect(
-        find.text('Not built yet'),
-        findsOneWidget,
-        reason: '$tab was drawn with nothing to say it is unfinished.',
-      );
-    }
-
-    // And each one says something specific. "Coming soon" tells a reader
-    // nothing they had not already worked out from the empty page.
     await _tap(tester, _tab('Dashboard'));
+
+    expect(
+      find.text('Not built yet'),
+      findsOneWidget,
+      reason: 'Dashboard was drawn with nothing to say it is unfinished.',
+    );
+
+    // And it says something specific. "Coming soon" tells a reader nothing they
+    // had not already worked out from the empty page.
     expect(find.textContaining('headcount by place'), findsOneWidget);
+  });
+
+  /// Onboarding stopped being a placeholder. Only that it opens and reaches the
+  /// server; everything the tab and the form DO is defended in
+  /// client/test/hr_onboarding_test.dart.
+  testWidgets('the Onboarding tab is the real thing, not a placeholder', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
 
     await _tap(tester, _tab('Onboarding'));
-    expect(find.textContaining('the form itself'), findsOneWidget);
+
+    expect(find.text('Not built yet'), findsNothing);
+    expect(find.text('Start an onboarding'), findsOneWidget);
+    expect(find.textContaining('pins the contract version'), findsOneWidget);
   });
 
   /// Contracts stopped being a placeholder. The tab is what it always said it
@@ -314,6 +330,7 @@ void main() {
     tester,
   ) async {
     await _pump(tester, _handler());
+    await _tap(tester, _tab('Records'));
 
     // The state this whole module exists to close: roles were definable and no
     // endpoint wrote users.role_id, so an organization stayed one person.
@@ -344,6 +361,7 @@ void main() {
       ),
     );
 
+    await _tap(tester, _tab('Records'));
     await _tap(tester, find.byType(PopupMenuButton<String>).last);
     await _tap(tester, find.text('Change their role'));
     await _tap(tester, find.text('Technician'));
@@ -359,6 +377,7 @@ void main() {
 
     await _pump(tester, _handler(onPatchPerson: (_, body) => patched = body));
 
+    await _tap(tester, _tab('Records'));
     await _tap(tester, find.byType(PopupMenuButton<String>).last);
     await _tap(tester, find.text('Deactivate'));
 
@@ -416,6 +435,7 @@ void main() {
     tester,
   ) async {
     await _pump(tester, _handler(scopeOptionsStatus: 403));
+    await _tap(tester, _tab('Records'));
 
     expect(find.textContaining('roles are read-only here'), findsOneWidget);
 
@@ -614,6 +634,18 @@ MockClientHandler _handler({
 
     if (path.endsWith('/hr/contracts')) {
       return _json({'data': <Map<String, Object?>>[]});
+    }
+
+    // Enough for the Onboarding tab to open and say it has nobody in flight.
+    // What that tab actually does is defended in hr_onboarding_test.dart,
+    // against a form written to catch a client deciding for itself who may
+    // fill in what — a second copy of that fixture here would be a second
+    // thing to keep in step.
+    if (path.endsWith('/hr/onboardings')) {
+      return _json({
+        'data': <Map<String, Object?>>[],
+        'meta': {'total': 0, 'per_page': 50, 'current_page': 1, 'last_page': 1},
+      });
     }
 
     if (path.endsWith('/hr/people/scope-options')) {

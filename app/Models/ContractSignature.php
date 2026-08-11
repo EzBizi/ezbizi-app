@@ -3,7 +3,10 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\WrittenOnce;
 use App\Support\Contracts\DocumentFingerprint;
+use App\Support\Contracts\FieldType;
+use App\Support\Contracts\FilledBy;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Support\Privacy\HoldsPersonalData;
@@ -28,16 +31,32 @@ use RuntimeException;
  *                   whose docblock is the careful statement of what a match
  *                   does and does not prove
  *   retrievability  the contract version is immutable and reachable from here,
- *                   so the questions can always be reproduced. The rendered
- *                   artefact itself needs the attachment primitive the plan
- *                   defers; until it exists, this record fingerprints a document
- *                   it does not store.
+ *                   so the questions can always be reproduced. This record
+ *                   fingerprints the rendered document rather than storing it —
+ *                   see below, because the reason is not the one this docblock
+ *                   used to give.
  *
- * ── The ceremony is elsewhere ────────────────────────────────────
+ * ── The ceremony is elsewhere, and so is the document ────────────
  *
  * Nothing here shows a document, collects a click or renders a PDF. Onboarding
  * does that. This is only the record, built first because evidence is the part
  * that cannot be added afterwards to signatures already collected.
+ *
+ * This used to say the rendered artefact "needs the attachment primitive the
+ * plan defers; until it exists…". It exists — `attachments`, App\Models\
+ * Attachment and App\Support\Files\FileStore shipped in the same changeset as
+ * this table, and the plan lists contracts as the reason they were built first.
+ * A comment that denies its own dependency is worse than no comment: the next
+ * person to render a PDF reads it and concludes there is nowhere to put one.
+ *
+ * The true reason there is no pointer to a document here is that the attachment
+ * points the other way. A file hangs off the RECORD it belongs to (see
+ * App\Support\Files\Attachables), so the rendered document belongs to the
+ * onboarding — the thing a person opens and asks for a copy of — and this row
+ * identifies what was signed the way the evidence does: which version, by whom,
+ * about whom, and the fingerprint of the exact bytes. A `document_attachment_id`
+ * column here would be a second, weaker answer to "where is the paperwork", and
+ * it would duplicate a relation that already has a direction.
  *
  * ── Immutable, and more strictly than a version ──────────────────
  *
@@ -47,12 +66,21 @@ use RuntimeException;
  * should not be — a signature captured wrongly is superseded by a new one, and
  * both stay, which is the plan's amendment rule ("the original stays because it
  * is what was signed; the amendment is what is true").
+ *
+ * How far that reaches is worth being exact about, because `content_hash` is the
+ * one column a forgery would need to rewrite: change the document, change the
+ * hash, and `stillMatches()` says yes to the wrong bytes. The `updating` event
+ * below stops a model being saved. `WrittenOnce` stops the query builder and the
+ * quiet saves that skip events — `ContractSignature::query()->update([...])` went
+ * through unopposed before it. Raw SQL beneath Eloquent is not stopped by either,
+ * and WriteOnceBuilder's docblock says why the line falls there.
  */
 class ContractSignature extends Model implements HoldsPersonalData
 {
     use BelongsToTenant;
     use HasFactory;
     use HasUuids;
+    use WrittenOnce;
 
     public const UPDATED_AT = null;
 
@@ -131,6 +159,32 @@ class ContractSignature extends Model implements HoldsPersonalData
 
     protected static function booted(): void
     {
+        /*
+         * ── The row has to make sense before it is written ───────
+         *
+         * This class shipped validating NOTHING, and the docblock above talked
+         * about evidence the whole time. A sceptic wrote a row with
+         * `field_key: 'not_a_field_at_all'`, `signer_party: 'martian'`,
+         * `content_hash: 'not-a-hash'` and empty consent and intent statements.
+         * It was accepted, and — because `updating` throws — it is permanently
+         * uncorrectable. Immutability without validation does not protect
+         * evidence; it preserves nonsense.
+         *
+         * The checks below are not the controller's job duplicated. The
+         * controller answers 422 with a sentence somebody can act on, which is
+         * the right response to a person. This is the guarantee that holds for
+         * every OTHER writer — a queued job, an import, a vendor adapter, a
+         * tinker session — and it is what makes "a nonsense row is impossible"
+         * true rather than merely likely.
+         *
+         * RuntimeException rather than a validation exception, matching the two
+         * refusals below it: reaching here is a programming error. A person
+         * never sees this text, because the request path checks first.
+         */
+        static::creating(function (self $signature) {
+            $signature->assertIsCoherentEvidence();
+        });
+
         static::updating(function () {
             throw new RuntimeException(
                 'A signature record is evidence and cannot be edited. If a signature was '
@@ -155,6 +209,165 @@ class ContractSignature extends Model implements HoldsPersonalData
                 .'nothing else does.'
             );
         });
+    }
+
+    /**
+     * Everything that would make this row not evidence.
+     *
+     * Each check below corresponds to one of the five questions the law asks,
+     * and refuses the way of answering it that looks like an answer and is not.
+     *
+     * @throws RuntimeException
+     */
+    public function assertIsCoherentEvidence(): void
+    {
+        $version = $this->contractVersion
+            ?? ContractVersion::query()->find($this->contract_version_id);
+
+        if ($version === null) {
+            $this->refuse('it names no contract version, so there is no field list to say '
+                .'what was signed or what the document was built from');
+        }
+
+        if ($this->organization_id !== null && $this->organization_id !== $version->organization_id) {
+            $this->refuse('the version it names belongs to another organization');
+        }
+
+        /*
+         * ATTRIBUTION, first half: the field has to be a real signature field.
+         *
+         * `field_key` is what says WHICH signature this is. A key the version
+         * never declared describes a signature on a line that does not exist,
+         * and a key that exists but is a text field describes somebody typing
+         * into a box as if it were an act of signing.
+         */
+        $field = $version->field((string) $this->field_key);
+
+        if ($field === null) {
+            $this->refuse(sprintf(
+                "'%s' is not a field on version %d of that contract",
+                (string) $this->field_key, $version->version,
+            ));
+        }
+
+        if ($field->type !== FieldType::SIGNATURE) {
+            $this->refuse(sprintf(
+                "'%s' is a %s field, not a signature field",
+                $field->key, FieldType::ALL[$field->type] ?? $field->type,
+            ));
+        }
+
+        /*
+         * ATTRIBUTION, second half: the party is the FIELD's, not the writer's
+         * opinion.
+         *
+         * FieldSet already refuses `either` on a signature, precisely so that a
+         * signature field belongs to exactly one side. That makes the correct
+         * value of this column derivable — so anything else is either a mistake
+         * or an employer's signature filed as the employee's, which is the
+         * misattribution that voids it.
+         */
+        if ($this->signer_party !== $field->filledBy) {
+            $this->refuse(sprintf(
+                "it is filed as a '%s' signature, but '%s' is the %s's to sign",
+                (string) $this->signer_party, $field->key,
+                $field->filledBy === FilledBy::EMPLOYER ? 'employer' : 'employee',
+            ));
+        }
+
+        if (! is_string($this->signer_label) || trim($this->signer_label) === '') {
+            $this->refuse('it does not say who signed. The label is captured at the moment '
+                .'so the question survives the account being deleted, and a blank one '
+                .'defeats the only reason it is stored');
+        }
+
+        if ($this->subject_user_id === null) {
+            $this->refuse('it is not about anybody. A signature has a subject — the person '
+                .'the contract is for — and one without is a record nobody can be shown');
+        }
+
+        if ($this->provider === self::PROVIDER_SELF && $this->signer_user_id === null) {
+            $this->refuse('this system witnessed it and cannot say who performed the act. '
+                .'A vendor record may carry attribution in provider_evidence instead; a '
+                .'self-witnessed one has nothing else to fall back on');
+        }
+
+        /*
+         * TAMPER EVIDENCE. `content_hash` and `hash_algorithm` are the whole of
+         * it, and both were free-text columns.
+         *
+         * The algorithm has to be one DocumentFingerprint will VERIFY against —
+         * anything else produces a record that can never answer "is this still
+         * the document", because `matches()` refuses unknown algorithms. And the
+         * hash has to be the right shape for it: 'not-a-hash' is not a sha256,
+         * and a record carrying it looks verifiable and is not.
+         *
+         * The expected length is computed rather than tabulated, so adding an
+         * algorithm to VERIFIABLE needs no second edit here.
+         */
+        if (! in_array((string) $this->hash_algorithm, DocumentFingerprint::VERIFIABLE, true)) {
+            $this->refuse(sprintf(
+                "'%s' is not an algorithm this software can verify against (%s). A record "
+                .'written with one it cannot check is a record that answers "no" forever',
+                (string) $this->hash_algorithm,
+                implode(', ', DocumentFingerprint::VERIFIABLE),
+            ));
+        }
+
+        $expected = strlen(hash((string) $this->hash_algorithm, ''));
+
+        if (! is_string($this->content_hash)
+            || ! preg_match('/^[0-9a-f]{'.$expected.'}$/', $this->content_hash)) {
+            $this->refuse(sprintf(
+                'its content_hash is not a %s digest — that is %d hexadecimal characters, '
+                .'and what is there is %d. A fingerprint that cannot have come from the '
+                .'algorithm beside it proves nothing about any document',
+                (string) $this->hash_algorithm, $expected, strlen((string) $this->content_hash),
+            ));
+        }
+
+        if ((int) $this->content_length <= 0) {
+            $this->refuse('it records an empty document. Nobody signs nothing, and a length '
+                .'of zero removes the cheap second signal that a file in somebody\'s hand is '
+                .'a different document rather than the same one encoded differently');
+        }
+
+        /*
+         * CONSENT and INTENT, stored as the words that were on screen. Blank
+         * ones are the failure the columns were chosen to prevent: a boolean
+         * records that somebody ticked something and cannot say what, and an
+         * empty statement is a boolean with extra steps.
+         */
+        foreach ([
+            'consent_statement' => 'the words they were shown about transacting electronically',
+            'intent_statement'  => 'the words they were shown above the signing control',
+            'affirmation'       => 'what they actually did — the name they typed, or the mark they drew',
+        ] as $column => $what) {
+            if (! is_string($this->{$column}) || trim($this->{$column}) === '') {
+                $this->refuse("it has no {$column}: {$what}. Storing the sentence is what "
+                    .'makes each record self-describing when the wording is revised');
+            }
+        }
+
+        if ($this->consented_at === null || $this->signed_at === null) {
+            $this->refuse('consent and signature both have to be timed. They are separate '
+                .'agreements — one to transact electronically at all, one to this document '
+                .'— which is why they have separate timestamps');
+        }
+
+        if (! is_string($this->provider) || trim($this->provider) === '') {
+            $this->refuse('it does not say who witnessed it. "'.self::PROVIDER_SELF.'" is '
+                .'what this system records of its own');
+        }
+    }
+
+    private function refuse(string $because): never
+    {
+        throw new RuntimeException(
+            'Refusing to write a signature record, because '.$because.'. A signature cannot '
+            .'be corrected once written — updates and deletes both throw — so a row that is '
+            .'wrong is wrong permanently, and refusing it now is the only chance there is.'
+        );
     }
 
     public function contractVersion(): BelongsTo

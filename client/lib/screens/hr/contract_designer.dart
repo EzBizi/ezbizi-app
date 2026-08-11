@@ -100,6 +100,7 @@ class ContractDesigner extends StatefulWidget {
 /// first one's text while the payload carries the second one's.
 class _Question {
   _Question({
+    required this.vocabulary,
     required this.published,
     String key = '',
     String label = '',
@@ -120,6 +121,12 @@ class _Question {
   final TextEditingController key;
   final TextEditingController label;
   final TextEditingController options;
+
+  /// The server's field vocabulary, held so this row can answer whether its own
+  /// kind of question takes a list of answers. Asking the catalogue rather than
+  /// comparing [type] to a string is the whole point — see
+  /// [ContractVocabulary.typeTakesOptions].
+  final ContractVocabulary vocabulary;
 
   final Key rowKey = UniqueKey();
 
@@ -153,11 +160,27 @@ class _Question {
       if (line.trim().isNotEmpty) line.trim(),
   ];
 
+  /// Whether this question's kind of answer carries a list, per the catalogue.
+  bool get takesOptions => vocabulary.typeTakesOptions(type);
+
+  /// What actually goes on the wire, which is not always what was typed.
+  ///
+  /// Type a few answers, then change the kind of question: the options box goes
+  /// off screen and the text stays in its controller. It was still sent, so the
+  /// server refused the save with "remove the options" — about options the
+  /// person could no longer see, on a field they had already stopped treating as
+  /// a list.
+  ///
+  /// The text is deliberately KEPT rather than cleared, because changing the
+  /// kind back should not have quietly thrown away what was typed. It is simply
+  /// not sent while nothing would read it.
+  List<String> get sentOptions => takesOptions ? parsedOptions : const [];
+
   Map<String, dynamic> toJson() => {
     'key': key.text.trim(),
     'label': label.text.trim(),
     'type': type,
-    'options': parsedOptions,
+    'options': sentOptions,
     'filled_by': filledBy,
     'required': isRequired,
     'sensitive': sensitive,
@@ -168,7 +191,9 @@ class _Question {
     key: key.text.trim(),
     label: label.text.trim(),
     type: type ?? '',
-    options: parsedOptions,
+    // The preview draws what the server would be given, or it would show a
+    // picker on a field that is about to be saved as a line of text.
+    options: sentOptions,
     filledBy: filledBy ?? '',
     required: isRequired,
     sensitive: sensitive,
@@ -249,6 +274,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
 
   void _adopt(ContractField field) {
     final question = _Question(
+      vocabulary: widget.vocabulary,
       published: true,
       key: field.key,
       label: field.label,
@@ -282,7 +308,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
   // ── editing the list ─────────────────────────────────────────────
 
   void _add() {
-    final question = _Question(published: false);
+    final question = _Question(vocabulary: widget.vocabulary, published: false);
 
     question.label.addListener(() {
       _followLabel(question);
@@ -464,7 +490,8 @@ class _ContractDesignerState extends State<ContractDesigner> {
         return '$at does not say who fills it in.';
       }
 
-      if (question.type == 'choice' && question.parsedOptions.isEmpty) {
+      // Which kinds take a list is the catalogue's answer, not a literal here.
+      if (question.takesOptions && question.parsedOptions.isEmpty) {
         return '$at is a list to choose from and has no answers in it, so it '
             'could never be answered.';
       }
@@ -900,7 +927,13 @@ class _ContractDesignerState extends State<ContractDesigner> {
 
   Widget _questionBody(BuildContext context, _Question question, bool enabled) {
     final theme = Theme.of(context);
-    final takesOptions = question.type == 'choice';
+
+    // The server declares which kinds of question carry a list; this draws the
+    // box for them. It compared the type to the literal `'choice'`, which is the
+    // client re-stating a server rule in the one screen whose docblock says it
+    // does not — and a seventh kind that took options would have arrived in the
+    // dropdown with nowhere to type them.
+    final takesOptions = question.takesOptions;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1254,9 +1287,13 @@ class _ContractDesignerState extends State<ContractDesigner> {
   Color _sideColour(BuildContext context, String? filledBy) {
     final scheme = Theme.of(context).colorScheme;
 
+    // Two colours and a neutral, not three colours. Three shades of the same
+    // family are not tellable apart at five pixels wide, which would make the
+    // stripe decoration rather than information — and decoration is what this
+    // was when it came out violet.
     if (filledBy == filledByEmployer) return scheme.primary;
     if (filledBy == filledByEmployee) return scheme.tertiary;
-    if (filledBy == filledByEither) return scheme.secondary;
+    if (filledBy == filledByEither) return scheme.outline;
 
     return scheme.outlineVariant;
   }
