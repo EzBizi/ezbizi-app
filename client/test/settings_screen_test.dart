@@ -31,6 +31,19 @@ import 'package:http/testing.dart';
 ///   - what a group of settings is called, which it invented by upper-casing
 ///     the front of the key;
 ///   - whether changing something will do anything at all.
+
+/// What SettingsController::refusalFor answers for a read-only row.
+///
+/// Written out rather than referenced, because what is worth catching is this
+/// screen drifting away from the 403 it stands in for. The row used to carry
+/// the bare permission key and the screen printed "Read-only — needs
+/// organizations.edit": a wire name on a customer's screen, naming something
+/// that appears nowhere in the product and nobody they could ask (R8).
+String _refusedToChange(String label) =>
+    'You do not have permission to change the ‘$label’ setting. That '
+    'is part of a role rather than of an account, so somebody who can edit '
+    'roles can add it to yours.';
+
 void main() {
   testWidgets('changing a setting moves its row and nothing else', (
     tester,
@@ -192,17 +205,14 @@ void main() {
         });
       }
 
-      return _json({'message': 'Missing permission: organizations.edit.'}, 403);
+      return _json({'message': _refusedToChange('Default tax rate (%)')}, 403);
     });
 
     await tester.enterText(_valueField, '99');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('Missing permission: organizations.edit.'),
-      findsOneWidget,
-    );
+    expect(find.text(_refusedToChange('Default tax rate (%)')), findsOneWidget);
     expect(
       tester.widget<TextField>(_valueField).controller?.text,
       '6.625',
@@ -389,7 +399,8 @@ void main() {
   ///
   /// Two rows nobody can act on today, for entirely different reasons, and they
   /// must not look the same. One is read-only because of who you are; its
-  /// control is dead and the row names the permission. The other is live — the
+  /// control is dead and the row carries the server's own refusal. The other is
+  /// live — the
   /// value saves, audits and inherits exactly as any other — and does nothing,
   /// because no code reads it yet. Greying the second would say "not for you",
   /// which is a different lie from the one being fixed.
@@ -445,7 +456,10 @@ void main() {
 
       // The row beside it, which IS read-only, still looks read-only.
       expect(tester.widget<Switch>(switches.at(1)).onChanged, isNull);
-      expect(find.text('Read-only — needs organizations.edit'), findsOneWidget);
+      expect(
+        find.text(_refusedToChange('Send email notifications')),
+        findsOneWidget,
+      );
     },
   );
 
@@ -477,7 +491,11 @@ void main() {
     });
 
     expect(find.text('Inherited from Northeast'), findsOneWidget);
-    expect(find.text('Read-only — needs organizations.edit'), findsOneWidget);
+
+    // R8: what is missing and who can hand it over, and not one word of the
+    // wire. A dotted key on a customer's screen is the defect this replaced.
+    expect(find.text(_refusedToChange('Default tax rate (%)')), findsOneWidget);
+    expect(find.textContaining('organizations.edit'), findsNothing);
   });
 
   /// A setting this scope cannot hold names the levels that can — from
@@ -646,6 +664,10 @@ Map<String, dynamic> _row(
   String? groupLabel = 'General',
   bool editableHere = true,
   bool mayEdit = true,
+
+  /// Why not, in the server's words. The row used to carry the bare permission
+  /// key instead and the screen printed it; see the read-only tests.
+  String? mayEditReason,
   List<String> allowedScopes = const ['organization', 'company', 'franchise'],
   bool isSensitive = false,
 
@@ -665,7 +687,9 @@ Map<String, dynamic> _row(
   'not_yet_in_effect': notYetInEffect,
   'editable_here': editableHere,
   'may_edit': mayEdit,
-  'permission': 'organizations.edit',
+  'may_edit_reason': mayEdit
+      ? null
+      : (mayEditReason ?? _refusedToChange(label)),
   'allowed_scopes': allowedScopes,
   'source': source,
 };

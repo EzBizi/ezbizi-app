@@ -130,6 +130,11 @@ class PlatformStaff extends Authenticatable
      * impersonation the client approved — taking that account out of the trail
      * would remove the record of approved access, which is the opposite of what
      * §4.2 asks for.
+     *
+     * Asked of the state an account would be LEFT in, not the state it is in:
+     * StaffAccountsController::update builds the prospective account and puts
+     * the question to that, so a demotion and an exemption — the same mistake
+     * from two directions — are both answered by this one line.
      */
     public function mayBeAuditExempt(): bool
     {

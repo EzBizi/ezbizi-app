@@ -427,10 +427,27 @@ final class DocumentRenderer
         }
 
         foreach ($fields->fields as $field) {
-            if ($field->key === '' || $field->type === FieldType::SIGNATURE) {
-                // A signature is an act, not an answer. MergeTags refuses a tag
-                // naming one at publish; leaving it out of the map is what makes
-                // that refusal the only way it can be written.
+            if ($field->key === '' || ! FieldType::merges($field->type)) {
+                /*
+                 * Asked of FieldType rather than compared against SIGNATURE here,
+                 * and that is not tidying. This map is the other half of what
+                 * MergeTags::resolvable() promises: every tag it offers has a
+                 * value waiting in here. Two spellings of one question keep that
+                 * promise only for as long as they happen to agree.
+                 *
+                 * They agree today, because signature is the only type in the
+                 * list — a signature is an act, not an answer, and MergeTags
+                 * refuses a tag naming one at publish. The day a type leaves the
+                 * list, `=== SIGNATURE` would go on excluding a field that
+                 * resolvable() has started offering and refusalFor() has stopped
+                 * refusing. What that prints is not a blank: the key is absent
+                 * from the map entirely, so MergeTags::resolveOne writes the tag
+                 * back inside an `unresolved` span — while the editor's preview,
+                 * which builds its values from resolvable(), shows a tidy
+                 * "[Label]" in the same spot. The preview and the signed document
+                 * would disagree, which is the one property the preview exists
+                 * to have.
+                 */
                 continue;
             }
 

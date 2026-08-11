@@ -210,6 +210,30 @@ class ContractSignature extends Model implements HoldsPersonalData, RecordsConse
                     .'anonymised at their one home. Nulling them here would remove the link '
                     .'between a person\'s record and their own contract without removing any '
                     .'fact about them — the name behind the key is already gone.')),
+            /*
+             * The entry that was missing, and the reason it was missable.
+             *
+             * Every other column here has a name that says a person is in it.
+             * This one is called `provider_evidence` and holds whatever a
+             * signing vendor's certificate happens to contain — a name, an
+             * address, a photograph of an identity document, keystroke timings.
+             * A column whose contents are decided by somebody else is exactly
+             * the kind the derived checks cannot find, so it is declared by
+             * hand: `assertIsCoherentEvidence` already says out loud that a
+             * vendor record "may carry attribution in provider_evidence", which
+             * is a sentence about personal data in a column the inventory did
+             * not mention.
+             */
+            new PersonalDataEntry('provider_evidence', PersonalDataEntry::IDENTITY,
+                'A signing vendor\'s own certificate or audit trail, stored verbatim. '
+                .'Empty for a signature this system witnessed itself; where a vendor is '
+                .'used it is their record of who they checked and how, so its contents are '
+                .'theirs to define and may include anything they verified identity with.',
+                Erasure::keep('It is the vendor\'s half of the same attribution the rest '
+                    .'of this row carries, and a signature witnessed by somebody else is '
+                    .'evidenced by their certificate or by nothing. Editing a third party\'s '
+                    .'record of what they saw does not anonymise the signature; it forges '
+                    .'their statement. It expires with the signature it belongs to.')),
         ];
     }
 
@@ -229,19 +253,34 @@ class ContractSignature extends Model implements HoldsPersonalData, RecordsConse
         }
 
         /*
-         * The `orWhere` pair is NESTED, and it has to be.
+         * The `orWhere` pair is NESTED, and this is the reason — which is not
+         * the tenant scope.
          *
-         * BelongsToTenant adds `organization_id = ?` as a global scope, and SQL
-         * binds AND tighter than OR — so a flat `->where(signer)->orWhere(subject)`
-         * compiles to
+         * It was written as one, and the argument was wrong: "the global scope
+         * ANDs organization_id on and AND binds tighter than OR, so a flat pair
+         * would reach another tenant". Eloquent already prevents that.
+         * `Builder::callScope()` records how many wheres existed before a scope
+         * runs and, if the new ones changed the count, calls
+         * `addNewWheresWithinGroup()` — which nests any slice containing an `or`.
+         * A flat pair and a nested one compile identically:
          *
-         *     organization_id = X AND signer_user_id = A OR subject_user_id = A
+         *     where (`signer_user_id` = ? or `subject_user_id` = ?)
+         *       and `organization_id` = ?
          *
-         * which matches every organization's signatures where the subject happens
-         * to be A. On a purge that means erasing, or reporting, another tenant's
-         * rows: §5.1's highest-severity bug class, produced by a missing pair of
-         * brackets. Every `orWhere` in a personalDataAbout is grouped for this
-         * reason.
+         * What that rescue does NOT survive is a second predicate, because the
+         * grouping happens once, over everything the caller left behind. This
+         * method hands a Builder to whoever asked, and the day one of them
+         * narrows it — `->whereNotNull('signed_at')`, say — a flat pair becomes
+         *
+         *     where (`signer_user_id` = ? or `subject_user_id` = ? and `signed_at` is not null)
+         *
+         * silently answering a different question. AuditEvent::personalDataAbout
+         * is the case already in the tree: it writes its own
+         * `->where('organization_id', ...)` because that table has no global
+         * scope, so there the brackets are the only thing standing between the
+         * purge and every organization's entries — §5.1's highest-severity bug
+         * class. Every `orWhere` in a personalDataAbout is grouped for that
+         * reason, rather than each one relying on a framework internal to notice.
          */
         return static::query()->where(fn (Builder $q) => $q
             ->where('signer_user_id', $subject->getKey())

@@ -94,7 +94,10 @@ class Onboarding extends Model implements HoldsPersonalData
             .'employment. It is the index to a signed contract, and a signed contract whose '
             .'paperwork can be deleted is one nobody can produce when it is disputed. An '
             .'age-based window here would delete the paperwork of the longest-standing '
-            .'employees first, which is precisely backwards.'
+            .'employees first, which is precisely backwards. The one thing that does change '
+            .'with time is the link back to the invitation that started it: invitations are '
+            .'removed after two years, and this record then stops naming one. Everything '
+            .'about the agreement itself stays.'
         );
     }
 
@@ -138,8 +141,9 @@ class Onboarding extends Model implements HoldsPersonalData
             return null;
         }
 
-        // Grouped: the tenant global scope is ANDed on and AND binds tighter than
-        // OR. See ContractSignature::personalDataAbout for the full argument.
+        // Grouped, so a caller narrowing this Builder narrows the whole
+        // disjunction. See ContractSignature::personalDataAbout for the full
+        // argument, and for why the tenant scope is not what it defends against.
         return static::query()->where(fn (Builder $q) => $q
             ->where('user_id', $subject->getKey())
             ->orWhere('started_by_user_id', $subject->getKey()));

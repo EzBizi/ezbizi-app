@@ -623,12 +623,17 @@ class _SettingRow extends StatelessWidget {
     // organization-only setting viewed from a franchise with nothing set
     // anywhere printed the platform default and gave no hint that this was the
     // wrong level to be looking at.
+    // The server's own sentence, which is the same one the 403 would carry —
+    // so a dead control and a refused save cannot explain themselves
+    // differently. This used to print the permission key instead: "Read-only —
+    // needs organizations.edit", a wire name naming something that appears
+    // nowhere in the product, with nothing about who could grant it (R8).
     final locked = !scopeAllows
         ? _scopeSentence()
         : !editable
-        // Names the permission. "You cannot do that" sends somebody to ask an
-        // administrator for something neither of them can name.
-        ? 'Read-only — needs ${setting['permission'] ?? 'permission'}'
+        ? setting['may_edit_reason'] as String? ??
+              'Read-only — this one is not yours to change. Somebody who can '
+                  'edit roles, or an administrator, can say why.'
         : null;
 
     return Padding(

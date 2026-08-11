@@ -146,9 +146,15 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final refused =
         me.refusal('customers.create', 'add a customer') ??
         (me.franchises.isEmpty
-            ? 'You have permission to add a customer, but you are not assigned '
-                  'to any ${label.toLowerCase()}, and one has to be accountable '
-                  'for the relationship. An administrator can assign you to one.'
+            ? me.nowhereToAct(
+                'add a customer',
+                // Why a customer needs one at all, which is the part somebody
+                // reasonably expects not to be true: customers are shared
+                // organization-wide (§5.2) and a reader can be forgiven for
+                // assuming a shared record needs no place.
+                note: 'A ${label.toLowerCase()} has to be accountable for the '
+                    'relationship.',
+              )
             : null);
 
     return Column(

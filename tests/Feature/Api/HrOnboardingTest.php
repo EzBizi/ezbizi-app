@@ -803,6 +803,40 @@ class HrOnboardingTest extends TestCase
             ->assertOk()->assertJsonPath('meta.total', 0);
     }
 
+    /**
+     * And the refusal uses the organization's word for the level (§8).
+     *
+     * The sentence spliced Assignment's own scope type into itself —
+     * "Somebody with authority over that franchise can" — which is the platform's
+     * vocabulary rather than the tenant's. An organization that calls them
+     * Territories was told about a franchise, a word nothing else on its screens
+     * uses. Refusal::labelFor is what stops that happening once per policy.
+     */
+    public function test_the_reach_refusal_uses_the_organizations_own_word(): void
+    {
+        [$alpha, , $id] = $this->scenario();
+
+        $alpha['org']->forceFill(['franchise_label' => 'Territory'])->save();
+
+        $second = $this->inTenant($alpha['org'], fn () => \App\Models\Franchise::create([
+            'organization_id' => $alpha['org']->id,
+            'company_id'      => $alpha['company']->id,
+            'name'            => 'Alpha F2',
+        ]));
+
+        $elsewhere = $this->userWithRole(
+            $alpha, 'Branch Manager', ['hr.view', 'hr.edit'], onlyAt: $second,
+        );
+
+        $message = $this->as($elsewhere)
+            ->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['wage' => '19.00']])
+            ->assertForbidden()
+            ->json('message');
+
+        $this->assertStringContainsString('authority over that territory', $message);
+        $this->assertStringNotContainsString('franchise', $message);
+    }
+
     /** A template nobody can sign would be a form nobody can finish. */
     public function test_an_onboarding_cannot_start_against_a_template_with_no_signature(): void
     {

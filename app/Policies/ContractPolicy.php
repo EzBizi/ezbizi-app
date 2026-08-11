@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Models\Assignment;
 use App\Models\Contract;
 use App\Models\User;
+use App\Support\Access\Refusal;
 use App\Support\Access\ScopeReach;
 use Illuminate\Auth\Access\Response;
 
@@ -71,7 +72,12 @@ class ContractPolicy
     private function mayAuthor(User $user, string $permission, string $verb): Response
     {
         if (! $user->hasPermission($permission)) {
-            return Response::deny("You do not have permission to {$verb}.");
+            // Refusal's sentence rather than this file's, because the missing
+            // half is the same fact here as anywhere: a permission lives on a
+            // role. The version written here said only "you do not have
+            // permission to create a contract template", which is true and
+            // leaves the reader with nobody to ask.
+            return Refusal::permission($verb);
         }
 
         if (! $this->reach->covers($user, Assignment::SCOPE_ORGANIZATION, $user->organization_id)) {

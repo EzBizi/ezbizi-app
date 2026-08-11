@@ -1,13 +1,13 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
-import 'package:ezbizi_client/core/contracts.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/hr/contract_body_editor.dart';
 import 'package:ezbizi_client/screens/hr/contract_document_page.dart';
 import 'package:ezbizi_client/screens/hr/contract_form_preview.dart';
 import 'package:ezbizi_client/screens/hr/contracts_tab.dart';
+import 'package:ezbizi_client/widgets/numbered_step.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -54,6 +54,22 @@ void main() {
     expect(find.textContaining('3 questions asked today'), findsOneWidget);
   });
 
+  /// *"We are missing something critical which is the contract writing itself"*
+  /// — a template with no wording produces a dump of the answers, which is a
+  /// record and not an agreement. `has_body` is on every row for this, and the
+  /// list read past it, so four templates looked identical whether or not
+  /// anybody had written them.
+  testWidgets('the list says which templates have been written and which are '
+      'still only questions', (tester) async {
+    await _pump(tester, _handler(templates: _twoTemplates));
+
+    expect(find.textContaining('wording written'), findsOneWidget);
+    expect(
+      find.textContaining('questions only, no wording yet'),
+      findsOneWidget,
+    );
+  });
+
   /// §2.1, and the whole point of this screen. The catalogue's types are
   /// deliberately three, in wording nobody would invent.
   testWidgets('the kinds of question come from the server, all of them', (
@@ -68,6 +84,7 @@ void main() {
       'A line of words',
       'Pick from a list',
       'A day',
+      'A scrawl',
       'One of the shifts',
     ]);
 
@@ -558,7 +575,7 @@ void main() {
     // The wording the version already carries, in a box somebody can type in.
     expect(
       tester.widget<TextField>(_writingBox).controller!.text,
-      contains('is made on {{date_started}}'),
+      contains('is made on <<date_started>>'),
       reason: 'The version’s body has to arrive in the editor, or every save '
           'would wipe the contract that was already written.',
     );
@@ -567,16 +584,20 @@ void main() {
     expect(find.byType(ContractDocumentPage), findsOneWidget);
 
     final writing = tester.getRect(_writingBox);
-    final page = tester.getRect(find.byType(ContractDocumentPage));
+    final pane = tester.getRect(find.byType(ContractPagePane));
 
     expect(
       writing.right,
-      lessThanOrEqualTo(page.left + 1),
+      lessThanOrEqualTo(pane.left + 1),
       reason: 'The two are meant to be side by side, not stacked.',
     );
+
+    // “50% on one side and 50% showing the actual contract” — of the TAB. The
+    // writing box is a control inside the left half with the form's padding
+    // around it, so it is deliberately not measured here; the halves are.
     expect(
-      (writing.width - page.width).abs(),
-      lessThan(2),
+      pane.width,
+      closeTo(1500 / 2, 4),
       reason: '“50% on one side and 50% showing the actual contract”.',
     );
   });
@@ -602,20 +623,93 @@ void main() {
   });
 
   /// A mistyped tag is a problem while somebody is typing, not a refusal at
-  /// the end.
-  testWidgets('a tag nothing can fill in is marked in the page and named '
-      'underneath it', (tester) async {
-    await _pump(tester, _handler());
+  /// the end — and the server is the one that says so.
+  ///
+  /// `preview()` validates the body before it renders anything, so a tag naming
+  /// nothing comes back as a 422 quoting the tag. There is no document in that
+  /// answer and never an `unresolved` list. What this screen used to do was
+  /// read an invented `unresolved` key, compose its own sentence about it, and
+  /// — when the refusal did arrive — leave the previous page on screen with
+  /// nothing saying it had stopped keeping up.
+  testWidgets('a refused preview shows the server’s own refusal, and admits '
+      'the page underneath is stale', (tester) async {
+    await _pump(tester, _handler(previewRefusal: '<<overtime_rate>>'));
     await _tap(tester, find.text('Design'));
+    await _settle(tester);
 
-    // In the page, where it is, so somebody can see WHERE it is.
-    expect(_inPage('{{overtime_rate}}'), findsOneWidget);
+    // The good page, from the wording the version already carries.
+    expect(_inPage('The hourly wage is 14.50'), findsOneWidget);
 
-    // And said out loud, with what to do about it.
+    final body = tester.widget<TextField>(_writingBox).controller!;
+    body.text = 'Overtime is paid at <<overtime_rate>> of the above.';
+    await _settle(tester);
+
+    // The server's sentence, naming the tag. Not one composed here.
     expect(
-      find.textContaining('Nothing answers {{overtime_rate}}'),
+      find.textContaining('<<overtime_rate>> names nothing this contract can '
+          'fill in'),
       findsOneWidget,
     );
+
+    // And the admission. The page below is the one from before the typo, and
+    // saying nothing about that is showing somebody a contract that is not
+    // the one beside it.
+    expect(_inPage('The hourly wage is 14.50'), findsOneWidget);
+    expect(
+      find.textContaining('the last one that rendered, from before that '
+          'change'),
+      findsOneWidget,
+    );
+  });
+
+  /// §2.1. Which questions can be merged is the server's answer, published on
+  /// the type as `merges` — not `type == 'signature'` written in Dart.
+  testWidgets('a kind of question the server does not merge is never offered '
+      'as a tag', (tester) async {
+    await _pump(tester, _handler());
+
+    await _tap(tester, find.text('New contract'));
+    await _tap(tester, find.text('Add a question'));
+    await _type(tester, 'The question', 'Their mark');
+    await _choose(tester, 'Kind of answer', 'A scrawl');
+    await _settle(tester);
+
+    expect(
+      find.widgetWithText(ActionChip, 'Their mark'),
+      findsNothing,
+      reason: 'The catalogue says this kind does not merge. Offering it puts a '
+          'tag in the wording that is refused, by name, at publish.',
+    );
+
+    // The control: the same question under a kind that DOES merge is offered,
+    // so this is the property being read and not the chips being broken.
+    await _choose(tester, 'Kind of answer', 'A line of words');
+    await _settle(tester);
+
+    expect(find.widgetWithText(ActionChip, 'Their mark'), findsOneWidget);
+  });
+
+  /// The insertable core is `merge_tags.core`, which is NOT `reserved_keys`.
+  ///
+  /// The reserved list is what a template may not DECLARE — eight keys on the
+  /// real server, two of which onboarding never asks. The editor offered that
+  /// list, so clicking two of its chips inserted a tag the server refuses with
+  /// a paragraph saying there is nothing to merge.
+  testWidgets('the always-asked chips are the ones that merge, not the ones '
+      'that are reserved', (tester) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('Design'));
+    await _settle(tester);
+
+    expect(
+      find.widgetWithText(ActionChip, 'The name they go by'),
+      findsOneWidget,
+    );
+
+    // Reserved, and not asked. A template cannot declare it and nothing fills
+    // it in, so it is not a tag.
+    expect(find.widgetWithText(ActionChip, 'Shoe size'), findsNothing);
+    expect(find.widgetWithText(ActionChip, 'Work email address'), findsNothing);
   });
 
   /// The whole of the owner's complaint: the shortcodes existed and there was
@@ -638,7 +732,7 @@ void main() {
 
     expect(
       body.text,
-      'Made on {{date_started}} between the parties.',
+      'Made on <<date_started>> between the parties.',
       reason: 'At the cursor, not appended to the end.',
     );
 
@@ -702,9 +796,289 @@ void main() {
       find.widgetWithText(ActionChip, 'What the business trades as'),
     );
 
-    expect(body.text, '{{trading_name}}');
+    expect(body.text, '<<trading_name>>');
+
+    // And they are the REGISTRY's words, not the catalogue's. On the real
+    // server those are the same rows; in this fixture the catalogue's half is
+    // worded differently on purpose, so that a chip drawn from the wrong source
+    // is visible instead of indistinguishable.
+    expect(
+      find.widgetWithText(ActionChip, 'The name over the door'),
+      findsNothing,
+    );
 
     await _settle(tester);
+  });
+
+  /// The catalogue's half of the registry — `merge_tags.core` and
+  /// `merge_tags.facts` — is read on exactly ONE path: creating a contract,
+  /// where there is no `{contract}` to preview against and no detail response
+  /// to have loaded either.
+  ///
+  /// Every other test of these chips taps Design, which is the EDIT path, and
+  /// there they come from the whole registry the server sends. So the two tests
+  /// written to defend this node were defending a different one: replacing
+  /// `core` and `facts` with empty lists in `MergeTagSyntax.fromJson` left all
+  /// of them green.
+  testWidgets('while the contract does not exist yet, the always-asked and '
+      'always-available chips are the catalogue’s own lists', (tester) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('New contract'));
+
+    for (final label in [
+      'The first name on their record',
+      'The name over the door',
+      'The date at the top of the page',
+    ]) {
+      expect(
+        find.widgetWithText(ActionChip, label),
+        findsOneWidget,
+        reason: '“$label” is the catalogue’s wording, and the catalogue is the '
+            'only thing that has answered on this path.',
+      );
+    }
+
+    // The wording the other two responses give the same keys. Neither has been
+    // asked here — there is no contract — so a chip carrying their words would
+    // mean these came from somewhere they cannot have come from.
+    expect(
+      find.widgetWithText(ActionChip, 'The name they go by'),
+      findsNothing,
+    );
+    expect(
+      find.widgetWithText(ActionChip, 'What the business trades as'),
+      findsNothing,
+    );
+
+    // And it inserts, which is the only reason it is on screen.
+    final body = tester.widget<TextField>(_writingBox).controller!;
+
+    await _tap(
+      tester,
+      find.widgetWithText(ActionChip, 'The date at the top of the page'),
+    );
+
+    expect(body.text, '<<agreement.day>>');
+
+    await _settle(tester);
+  });
+
+  /// An entry the server sent no `tag` for is an entry it has said nothing
+  /// about how to write. This end used to wrap the key itself in the published
+  /// delimiters — a second place in the client that assembles a tag, twelve
+  /// lines below a docblock promising there is exactly one.
+  testWidgets('a tag the server did not write is not offered, rather than '
+      'assembled here', (tester) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('New contract'));
+
+    expect(
+      find.widgetWithText(ActionChip, 'What everybody calls them'),
+      findsNothing,
+      reason: 'The catalogue sent that entry with a key and no tag. Writing one '
+          'here puts characters into somebody’s employment contract that no '
+          'server chose.',
+    );
+
+    // The control: the entry beside it in the same list does carry a tag and is
+    // offered, so this is the missing tag being refused rather than the core
+    // list being dropped.
+    expect(
+      find.widgetWithText(ActionChip, 'The first name on their record'),
+      findsOneWidget,
+    );
+  });
+
+  /// The phrase under a chip is the server's `is`. `note` is a spelling no
+  /// endpoint sends, and it sat in the parser as a fallback beside it — in the
+  /// file whose own comments argue at length that a fallback to a name nothing
+  /// uses is the same silence with more code in front of it.
+  testWidgets('the sentence under a chip is the server’s `is`, and no other '
+      'spelling of it', (tester) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('New contract'));
+
+    // This entry carries `note` and no `is`, so the tooltip is the tag alone.
+    expect(find.byTooltip('<<ledger.year>>'), findsOneWidget);
+    expect(
+      find.byTooltip(
+        '<<ledger.year>>\ninvented for this fixture, and read by nothing',
+      ),
+      findsNothing,
+    );
+
+    // The control: an entry that does carry `is` shows it under the tag.
+    expect(
+      find.byTooltip('<<given_name>>\nthe first name they gave us'),
+      findsOneWidget,
+    );
+  });
+
+  /// `MergeTags::resolvable()` is published on THREE responses, and the third
+  /// was unread: `GET /hr/contracts/{contract}` carries it for the version in
+  /// force, in the same payload the fields and the body arrive in.
+  ///
+  /// Until it was read, the own-question chips were assembled in Dart out of
+  /// the questions on screen — from the moment the designer opened until the
+  /// first preview answered, and PERMANENTLY for a contract whose preview is
+  /// refused. Which is this test, and it is not a corner: a refused preview is
+  /// exactly when somebody reaches for a chip to fix the tag that was refused.
+  testWidgets('the chips are the server’s registry from the moment the '
+      'contract opens, not only once a preview answers', (tester) async {
+    // The wording this version already carries names `date_started`, so the
+    // first preview is refused and no second source ever arrives.
+    await _pump(tester, _handler(previewRefusal: '<<date_started>>'));
+    await _tap(tester, find.text('Design'));
+    await _settle(tester);
+
+    expect(
+      find.textContaining('names nothing this contract can fill in'),
+      findsOneWidget,
+      reason: 'The preview has to have been refused, or this proves nothing.',
+    );
+
+    for (final label in [
+      'The wage, per hour',
+      'The account wages are paid into',
+      'The day the job starts',
+    ]) {
+      expect(
+        find.widgetWithText(ActionChip, label),
+        findsOneWidget,
+        reason: '“$label” is the registry’s wording, out of the response this '
+            'screen opened with.',
+      );
+    }
+
+    // What a list built in Dart would say instead, because a field's `label` is
+    // the only thing it could put on a chip. Scoped to the chips, since those
+    // words are legitimately on screen in the cards that edit the questions.
+    expect(find.widgetWithText(ActionChip, 'Hourly wage'), findsNothing);
+    expect(find.widgetWithText(ActionChip, 'First day'), findsNothing);
+
+    // The other two groups come from the same response as well, and not from
+    // the catalogue's half.
+    expect(
+      find.widgetWithText(ActionChip, 'The name they go by'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(ActionChip, 'The first name on their record'),
+      findsNothing,
+    );
+  });
+
+  /// The counter went in with no test at all. Silent over a half-written
+  /// clause, and a plain count once the wording is inside the last tenth of
+  /// what the server will accept.
+  testWidgets('the length counter is silent until the cap is close, then says '
+      'where you are', (tester) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('New contract'));
+
+    final body = tester.widget<TextField>(_writingBox).controller!;
+
+    body.text = 'a' * 300;
+    await tester.pump();
+
+    expect(find.textContaining('of 400 characters'), findsNothing);
+
+    body.text = 'a' * 365;
+    await tester.pump();
+
+    expect(find.text('365 of 400 characters.'), findsOneWidget);
+    expect(
+      find.textContaining('Publishing will be refused'),
+      findsNothing,
+      reason: 'Inside the cap is not a warning.',
+    );
+
+    await _settle(tester);
+  });
+
+  /// The cap is the server's number and so is the MEASURE.
+  ///
+  /// `MergeTags::validate` refuses on `mb_strlen`, which counts code points.
+  /// This counted grapheme clusters — the defensible answer to a different
+  /// question — so a body of combining marks or joined emoji could read as
+  /// comfortably inside the cap and be refused anyway, quoting a number the
+  /// person had just watched a counter contradict.
+  testWidgets('the length counter counts what the server counts', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('New contract'));
+
+    final body = tester.widget<TextField>(_writingBox).controller!;
+
+    // Sixty of these: four emoji joined by three zero-width joiners, which is
+    // ONE grapheme cluster and SEVEN code points. So 60 by the measure this
+    // used and 420 by the server's, against a cap of 400.
+    // Written as escapes, deliberately: the joiners are invisible, and a
+    // fixture whose whole point is a character count must not depend on
+    // somebody's editor preserving three characters they cannot see.
+    const family =
+        '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F466}';
+
+    expect(family.characters.length, 1);
+    expect(family.runes.length, 7);
+
+    body.text = family * 60;
+    await tester.pump();
+
+    expect(
+      find.textContaining(
+        'This wording is 420 characters and the limit is 400',
+      ),
+      findsOneWidget,
+      reason: 'mb_strlen refuses this body. A counter saying there are 340 '
+          'characters to spare is one the server contradicts at publish.',
+    );
+
+    await _settle(tester);
+  });
+
+  /// The other thing that went in untested. A preview is of the NEXT version by
+  /// definition, the answer carries its number, and the pane says it — because
+  /// "the page" over a document four edits ahead of the one in force is a
+  /// picture with no date on it.
+  testWidgets('the pane says which version the draft would be', (tester) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('Design'));
+    await _settle(tester);
+
+    expect(find.textContaining('A draft of version 4'), findsOneWidget);
+    expect(
+      find.textContaining('The page, with sample answers merged in by the '
+          'server.'),
+      findsNothing,
+      reason: 'That is the sentence for an answer that named no version, and '
+          'this one named 4.',
+    );
+  });
+
+  /// A shape no endpoint sends, refused rather than half-read — see
+  /// [_mapShapedCatalogue] for what the branch that read it got wrong.
+  testWidgets('a field vocabulary sent as a map is refused, not read with the '
+      'safety property missing', (tester) async {
+    await _pump(tester, _handler(catalogue: _mapShapedCatalogue));
+
+    // The templates still list. A vocabulary that cannot be read does not take
+    // away the ability to see what already exists.
+    expect(find.text('Technician, full time'), findsOneWidget);
+
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'New contract'),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(
+      find.textContaining('did not say what kinds of question'),
+      findsOneWidget,
+    );
   });
 
   /// The wording is part of the version, so publishing has to carry it and say
@@ -732,19 +1106,75 @@ void main() {
     );
   });
 
+  /// The split is the TAB's, not step 4's: the page gets half the screen and
+  /// keeps it while the form beside it is scrolled.
+  testWidgets('the contract takes half the tab, beside the form rather than '
+      'inside it', (tester) async {
+    await _pumpDesign(tester);
+
+    final form = tester.getRect(find.byType(NumberedStep).first);
+    final pane = tester.getRect(find.byType(ContractPagePane));
+
+    expect(
+      pane.left,
+      greaterThanOrEqualTo(form.right),
+      reason: 'The page is beside the form, not inside a step of it.',
+    );
+
+    // Half each, give or take the divider between them.
+    expect(pane.width, closeTo(1500 / 2, 4));
+    expect(pane.right, closeTo(1500, 1));
+
+    // And it is the height of the tab rather than a box in the middle of it.
+    // Measured against the form beside it, so this does not have to know what
+    // the footer is: the two halves run the same distance.
+    final scroller = tester.getRect(
+      find.ancestor(
+        of: find.byType(NumberedStep).first,
+        matching: find.byType(SingleChildScrollView),
+      ).first,
+    );
+
+    expect(pane.top, closeTo(scroller.top, 1));
+    expect(pane.bottom, closeTo(scroller.bottom, 1));
+    expect(
+      pane.height,
+      greaterThan(800),
+      reason: 'A 1000px window, less the footer — not a 620px box in a form.',
+    );
+  });
+
+  /// The reason it is worth the half: scrolling to the last step does not
+  /// scroll the contract away, which is exactly what a panel inside the form
+  /// did.
+  testWidgets('scrolling the form leaves the contract where it is', (
+    tester,
+  ) async {
+    await _pumpDesign(tester);
+
+    final before = tester.getRect(find.byType(ContractDocumentPage));
+
+    await tester.drag(
+      find.byType(NumberedStep).first,
+      const Offset(0, -400),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getRect(find.byType(ContractDocumentPage)), before);
+  });
+
   /// R7. Half and half is a desktop layout; 50/50 at 375px is two unusable
   /// columns.
   testWidgets('on a narrow screen it is one pane at a time, never two '
       'columns', (tester) async {
-    await _pumpEditor(tester, size: const Size(375, 900));
+    await _pumpDesign(tester, size: const Size(375, 900));
 
-    // Writing first, and the page is not built at all — not built narrow, not
+    // The form first, and the page is not built at all — not built narrow, not
     // built off screen.
     expect(_writingBox, findsOneWidget);
     expect(find.byType(ContractDocumentPage), findsNothing);
 
-    await tester.tap(find.text('The page'));
-    await tester.pumpAndSettle();
+    await _tap(tester, find.text('The contract'));
 
     expect(find.byType(ContractDocumentPage), findsOneWidget);
     expect(_writingBox, findsNothing);
@@ -762,7 +1192,7 @@ void main() {
   /// white, and a dark-mode preview would be a preview of a document that does
   /// not exist.
   testWidgets('the page is white in dark mode', (tester) async {
-    await _pumpEditor(tester, theme: EzBiziTheme.dark());
+    await _pumpDesign(tester, theme: EzBiziTheme.dark());
 
     final paper = tester.widget<ColoredBox>(
       find
@@ -778,7 +1208,7 @@ void main() {
     // And the chrome around it did follow the theme, so this is a deliberate
     // exception rather than a screen that ignores the theme entirely.
     expect(
-      Theme.of(tester.element(find.byType(ContractBodyEditor))).brightness,
+      Theme.of(tester.element(find.byType(ContractPagePane))).brightness,
       Brightness.dark,
     );
   });
@@ -794,12 +1224,12 @@ void main() {
     await _tap(tester, find.text('New contract'));
 
     final body = tester.widget<TextField>(_writingBox).controller!;
-    body.text = 'Made between {{business_name}} and the person named below.';
+    body.text = 'Made between <<business_name>> and the person named below.';
     await _settle(tester);
 
     expect(_inPage('Made between'), findsOneWidget);
     expect(
-      _inPage('{{business_name}}'),
+      _inPage('<<business_name>>'),
       findsOneWidget,
       reason: 'Nothing may be filled in here. The server does the merging.',
     );
@@ -832,6 +1262,7 @@ Future<void> _pump(
   MockClientHandler handler, {
   List<String> permissions = const ['hr.view', 'hr.create', 'hr.edit'],
   Size size = const Size(1500, 3200),
+  ThemeData? theme,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -850,7 +1281,7 @@ Future<void> _pump(
 
   await tester.pumpWidget(
     MaterialApp(
-      theme: EzBiziTheme.light(),
+      theme: theme ?? EzBiziTheme.light(),
       home: Scaffold(
         body: ContractsTab(api: api, session: session),
       ),
@@ -859,53 +1290,30 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
-/// The body editor on its own, for the two things that are about the editor
-/// rather than about the designer: the narrow layout, and the colour of the
-/// page.
+/// The designer, open on an existing contract, at a stated size.
 ///
-/// Pumped directly because both are questions about a surface of a given SIZE,
-/// and driving them through the whole designer would mean asserting the layout
-/// of five other steps at 375px to get at this one.
-Future<TextEditingController> _pumpEditor(
+/// For the questions that are about the LAYOUT of the tab — where the two
+/// halves are, and what happens when there is only room for one. Driven
+/// through the real screen rather than by mounting the halves side by side in
+/// the test, because the arrangement of those halves is the thing under test
+/// and a helper that arranged them itself would pass whatever the screen did.
+///
+/// An existing contract rather than a new one: only a contract with an id has
+/// an endpoint to render the page from, and the draft path is covered
+/// separately.
+Future<void> _pumpDesign(
   WidgetTester tester, {
-  Size size = const Size(1200, 900),
+  Size size = const Size(1500, 1000),
   ThemeData? theme,
-  String? contractId = 'c-1',
 }) async {
-  tester.view.physicalSize = size;
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(tester.view.reset);
-
-  final controller = TextEditingController();
-  addTearDown(controller.dispose);
-
-  await tester.pumpWidget(
-    MaterialApp(
-      theme: theme ?? EzBiziTheme.light(),
-      home: Scaffold(
-        body: ContractBodyEditor(
-          api: ApiClient(client: MockClient(_handler())),
-          vocabulary: ContractVocabulary.fromJson(
-            Map<String, dynamic>.from(_catalogue),
-          ),
-          body: controller,
-          contractId: contractId,
-          fields: () => const [],
-          payload: () => const [],
-          canEdit: true,
-        ),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-
-  return controller;
+  await _pump(tester, _handler(), size: size, theme: theme);
+  await _tap(tester, find.text('Design'));
 }
 
-/// The writing surface — the one text box inside the body editor. Everything
-/// else in that half is a chip.
+/// The writing surface — the one text box in the writing half. Everything else
+/// there is a chip.
 final Finder _writingBox = find.descendant(
-  of: find.byType(ContractBodyEditor),
+  of: find.byType(ContractWriting),
   matching: find.byType(TextField),
 );
 
@@ -997,6 +1405,9 @@ MockClientHandler _handler({
   void Function()? onPublish,
   Map<String, Object?> diff = _diff,
   int catalogueStatus = 200,
+  Map<String, Object?> catalogue = _catalogue,
+  String? previewRefusal,
+  List<Map<String, Object?>> templates = _templates,
 }) {
   return (request) async {
     final path = request.url.path;
@@ -1005,16 +1416,44 @@ MockClientHandler _handler({
     // and ahead of `/versions`, because it is a different act: `/versions`
     // previews a PUBLISH, this renders a PAGE.
     if (path.endsWith('/preview')) {
-      onRender?.call(jsonDecode(request.body) as Map<String, dynamic>);
+      final sent = jsonDecode(request.body) as Map<String, dynamic>;
 
+      onRender?.call(sent);
+
+      // The refusal the real endpoint gives, and the reason there is a branch
+      // here at all: `preview()` validates the body BEFORE it renders a
+      // character of it, so a tag naming nothing is a 422 quoting the tag —
+      // never a 200 carrying an `unresolved` list, which is what this fixture
+      // used to invent and the client used to read.
+      if (previewRefusal != null &&
+          '${sent['body']}'.contains(previewRefusal)) {
+        return _json({
+          'message': 'The given data was invalid.',
+          'errors': {
+            'body': [
+              '$previewRefusal names nothing this contract can fill in. Check '
+                  'the spelling, or add a field with that key to this version.',
+            ],
+          },
+        }, 422);
+      }
+
+      // `content`, `version`, `is_preview` and `merge_tags` — every key the
+      // endpoint sends, spelt the way it sends them.
       return _json({
-        'data': {'html': _rendered, 'unresolved': ['overtime_rate']},
+        'data': {
+          'version': 4,
+          'content': _rendered,
+          'mime': 'text/html; charset=utf-8',
+          'is_preview': true,
+          'merge_tags': _resolvable,
+        },
       });
     }
 
     if (path.endsWith('/hr/contracts/catalogue')) {
       return catalogueStatus == 200
-          ? _json({'data': _catalogue})
+          ? _json({'data': catalogue})
           : _json({
               'message': 'The catalogue is unavailable.',
             }, catalogueStatus);
@@ -1040,7 +1479,7 @@ MockClientHandler _handler({
         return _json({'data': _template}, 201);
       }
 
-      return _json({'data': _templates});
+      return _json({'data': templates});
     }
 
     if (path.contains('/hr/contracts/')) return _json({'data': _template});
@@ -1095,6 +1534,17 @@ const _catalogue = {
       'label': 'A day',
       'description': 'A day on a calendar.',
       'takes_options': false,
+    },
+    // A kind the server says is NOT merged into the wording. `signature` on the
+    // real server, and named nothing like it here on purpose: an editor that
+    // decided this by comparing the type to `'signature'` in Dart would offer
+    // this one as an insertable tag and the publish would be refused.
+    {
+      'key': 'scrawl',
+      'label': 'A scrawl',
+      'description': 'Invented for this fixture, and that is the point.',
+      'takes_options': false,
+      'merges': false,
     },
     // A SECOND kind that carries a list, which the real server does not have.
     // It is here to be the seventh type: a client gating its options editor on
@@ -1156,19 +1606,110 @@ const _catalogue = {
       'reason': 'Also invented.',
     },
   ],
-  // The facts a contract's WORDING can merge in, beyond its own questions and
-  // the common core. Named nothing like the obvious guesses on purpose: a
-  // client carrying `organization_name` and `today` in Dart would offer two
-  // tags this server has never heard of, and they would render in an
-  // employment contract as themselves.
-  'document_tags': [
-    {
-      'key': 'trading_name',
-      'label': 'What the business trades as',
-      'note': 'The name over the door, which is not always the legal one.',
-    },
-    {'key': 'agreement_date', 'label': 'The day it is drawn up'},
-  ],
+  // ── `merge_tags`, IN THE SHAPE THE ENDPOINT ACTUALLY SENDS ───────
+  //
+  // This fixture used to publish a `document_tags` block, which no server has
+  // ever sent, and a test asserted that the facts appeared in the editor. It
+  // passed, because the client read the same invented key. Both ends were green
+  // against one fiction and the feature did not exist in production — the exact
+  // way a hand-written fixture hides a wire break instead of catching one.
+  //
+  // So: the real names, and the real nesting. `core` and `facts` are separate
+  // lists of `{key, tag, label, is}`, the delimiters are their own strings, and
+  // the tag is assembled by the server so that no client has to know how.
+  //
+  // The delimiters are DELIBERATELY not braces. A client that writes `{{` in
+  // Dart passes against a fixture that says braces and fails against this one,
+  // which is the whole point of a fixture that does not agree with the guess.
+  //
+  // `core` is deliberately NOT the same list as `reserved_keys` above, for the
+  // same reason the server keeps them apart: `shoe_size` is reserved so a
+  // template cannot declare it, and it is not something onboarding asks, so a
+  // tag naming it would be refused. An editor offering the reserved list is
+  // offering tags that cannot be published.
+  //
+  // ── And the wording here differs from the other two responses ────
+  //
+  // On the real server these entries and the ones in `_resolvable` below are
+  // the same `resolvable()` rows, so the labels match. This fixture makes them
+  // DIFFER, because two sources that say the same thing cannot be told apart by
+  // a test — and that was not hypothetical. Both tests written to pin these
+  // lists tap Design, which is the EDIT path, where the chips come from the
+  // registry the server sends whole; replacing `core` and `facts` with empty
+  // lists in `MergeTagSyntax.fromJson` left every test in this file green.
+  // Creating a contract is the one path that reads the catalogue's half, and
+  // these are the words it has to read.
+  'merge_tags': {
+    'open': '<<',
+    'close': '>>',
+    'example': '<<given_name>>',
+    'max_body_length': 400,
+    'core': [
+      {
+        'key': 'given_name',
+        'tag': '<<given_name>>',
+        'label': 'The first name on their record',
+        'is': 'the first name they gave us',
+      },
+      // A key with NO `tag`. `resolvable()` writes one for every entry it
+      // publishes, so an entry arriving without one is a server that has said
+      // nothing about how this tag is written — and this end used to write it
+      // anyway, wrapping the key in the published delimiters. That was a second
+      // place in the client that assembles a tag, twelve lines under a docblock
+      // saying there is exactly one.
+      {'key': 'nickname', 'label': 'What everybody calls them'},
+    ],
+    // Named nothing like the obvious guesses on purpose: a client carrying
+    // `organization_name` and `today` in Dart would offer two tags this server
+    // has never heard of, and they would render in an employment contract as
+    // themselves. The dotted one is here because a real fact key is dotted.
+    'facts': [
+      {
+        'key': 'trading_name',
+        'tag': '<<trading_name>>',
+        'label': 'The name over the door',
+        'is': 'the name over the door, which is not always the legal one',
+      },
+      {
+        'key': 'agreement.day',
+        'tag': '<<agreement.day>>',
+        'label': 'The date at the top of the page',
+      },
+      // `note` is a spelling NO endpoint sends — the phrase is published as
+      // `is`. It sat in the client as a fallback beside it, which is the same
+      // habit that read `document_tags` and `html`: a fallback to a name
+      // nothing uses is not a fallback, it is the same silence with more code
+      // in front of it. Here it would put words under a chip that no server
+      // wrote.
+      {
+        'key': 'ledger.year',
+        'tag': '<<ledger.year>>',
+        'label': 'The trading year',
+        'note': 'invented for this fixture, and read by nothing',
+      },
+    ],
+  },
+  'limits': {'max_body_length': 400},
+};
+
+/// The same catalogue with the field vocabulary sent as a MAP of key to a
+/// nested object, which is a shape no endpoint has ever sent.
+///
+/// `ContractVocabulary._choices` had a branch for it, and the branch parsed
+/// `takes_options` out of the nested object and never parsed `merges` — so this
+/// catalogue, which says a scrawl does not merge, would have been accepted with
+/// that missing and the signature chips would have come back in the body editor
+/// to be refused by name at publish. The branch is gone: a tolerance that is
+/// wrong about the one property that takes a tag AWAY is worse than no
+/// tolerance, and a shape this cannot read is now refused where somebody can
+/// see it.
+final Map<String, Object?> _mapShapedCatalogue = {
+  for (final entry in _catalogue.entries)
+    if (entry.key != 'field_types') entry.key: entry.value,
+  'field_types': {
+    'text': {'label': 'A line of words', 'takes_options': false},
+    'scrawl': {'label': 'A scrawl', 'takes_options': false, 'merges': false},
+  },
 };
 
 const _templates = [
@@ -1181,6 +1722,24 @@ const _templates = [
     // The server counts the LIVE fields — the four below, minus the retired
     // one.
     'field_count': 3,
+    // Whether anybody has WRITTEN this template, as opposed to defining its
+    // questions. Sent on every row for exactly this, and read past until now.
+    'has_body': true,
+  },
+];
+
+/// The same list with a template nobody has written yet beside the one they
+/// have. Its own fixture so that every other test keeps its single row.
+const _twoTemplates = [
+  ..._templates,
+  {
+    'id': 'c-2',
+    'name': 'Weekend cover',
+    'description': 'Questions, and nothing written yet',
+    'version': 1,
+    'versions_count': 1,
+    'field_count': 2,
+    'has_body': false,
   },
 ];
 
@@ -1195,7 +1754,7 @@ const _template = {
   // designer that loaded the questions and not this would wipe the contract on
   // the next publish.
   'body':
-      'This Agreement is made on {{date_started}} between the business and '
+      'This Agreement is made on <<date_started>> between the business and '
       'the person named in it.',
   'fields': [
     {
@@ -1239,6 +1798,77 @@ const _template = {
       'retired': true,
     },
   ],
+  // ── The registry, on the THIRD response that publishes it ────────
+  //
+  // `MergeTags::resolvable($current->fieldSet())`, in the payload the designer
+  // opens with. It was unread, and the consequence was not theoretical: from
+  // the moment an existing contract opened until the first preview came back —
+  // and for good when the preview is refused — the chips for this contract's
+  // own questions were assembled in Dart out of the fields on screen, which is
+  // the four server rules restated on the client that the registry exists to
+  // keep off it.
+  //
+  // The field labels here are deliberately NOT the field labels above. A list
+  // built in Dart has nothing to label a chip with EXCEPT `label` on the field,
+  // so if these said "Hourly wage" no test could tell the registry from the
+  // guess. The core and fact entries do match `_resolvable` below, because
+  // those two halves really are the same rows from the same function and
+  // nothing about a contract changes them.
+  'merge_tags': [
+    {
+      'key': 'wage',
+      'tag': '<<wage>>',
+      'label': 'The wage, per hour',
+      'source': 'field',
+      'is': null,
+    },
+    {
+      'key': 'bank_account',
+      'tag': '<<bank_account>>',
+      'label': 'The account wages are paid into',
+      'source': 'field',
+      'is': null,
+    },
+    {
+      'key': 'date_started',
+      'tag': '<<date_started>>',
+      'label': 'The day the job starts',
+      'source': 'field',
+      'is': null,
+    },
+    {
+      'key': 'given_name',
+      'tag': '<<given_name>>',
+      'label': 'The name they go by',
+      'source': 'core',
+      'is': 'the first name they gave us',
+    },
+    {
+      'key': 'trading_name',
+      'tag': '<<trading_name>>',
+      'label': 'What the business trades as',
+      'source': 'fact',
+      'is': 'the name over the door, which is not always the legal one',
+    },
+    {
+      'key': 'agreement.day',
+      'tag': '<<agreement.day>>',
+      'label': 'The day it is drawn up',
+      'source': 'fact',
+      'is': null,
+    },
+  ],
+  // In the shape `present()` sends it, which is the point of it being here:
+  // `id`, `version`, `notes`, `created_at` — and NO body. The wording is at the
+  // top of this payload, above. The designer read a body out of this node as a
+  // fallback, and out of `version` beside it, which is the integer three lines
+  // from the top; neither branch could ever have run.
+  'current_version': {
+    'id': 'v-3',
+    'version': 3,
+    'notes': 'Wage band corrected.',
+    'created_at': '2026-07-02T09:00:00+00:00',
+  },
 };
 
 const _versions = [
@@ -1317,14 +1947,79 @@ const _rewrittenDiff = {
   },
 };
 
+/// `merge_tags` out of the preview answer — `MergeTags::resolvable()`, whole.
+///
+/// ── The registry, and why the editor has to read THIS ────────────
+///
+/// It is the one list that knows the template's own questions, because the
+/// preview request is the one that carries them. Four server rules decide what
+/// is in it, and the editor restated three of them wrongly before it read this:
+/// a field is offered only while it is LIVE, a signature field is not offered
+/// at all, the core is what onboarding ASKS rather than what it reserves, and a
+/// fact key is dotted.
+///
+/// So `tshirt` — retired, and in the template below — is absent here, and an
+/// editor building its own list from the fields on screen would show it. Every
+/// entry carries a ready-made `tag`, in the delimiters the catalogue declared,
+/// because the client wraps nothing itself.
+const _resolvable = [
+  {
+    'key': 'wage',
+    'tag': '<<wage>>',
+    'label': 'Hourly wage',
+    'source': 'field',
+    'is': null,
+  },
+  {
+    'key': 'bank_account',
+    'tag': '<<bank_account>>',
+    'label': 'Bank account number',
+    'source': 'field',
+    'is': null,
+  },
+  {
+    'key': 'date_started',
+    'tag': '<<date_started>>',
+    'label': 'First day',
+    'source': 'field',
+    'is': null,
+  },
+  {
+    'key': 'given_name',
+    'tag': '<<given_name>>',
+    'label': 'The name they go by',
+    'source': 'core',
+    'is': 'the first name they gave us',
+  },
+  {
+    'key': 'trading_name',
+    'tag': '<<trading_name>>',
+    'label': 'What the business trades as',
+    'source': 'fact',
+    'is': 'the name over the door, which is not always the legal one',
+  },
+  {
+    'key': 'agreement.day',
+    'tag': '<<agreement.day>>',
+    'label': 'The day it is drawn up',
+    'source': 'fact',
+    'is': null,
+  },
+];
+
 /// `POST /hr/contracts/{id}/preview` — the document, rendered, with sample
 /// answers already merged in.
 ///
 /// A whole HTML page, because that is what the server renders and stores
-/// (DocumentRenderer). It carries the three things the editor has to cope with:
-/// a `<head>` full of things that are not prose, an escaped entity in the
-/// middle of a sentence, and a merge tag the server could not resolve and
-/// therefore left exactly where it was.
+/// (DocumentRenderer). It carries the two things the editor has to cope with: a
+/// `<head>` full of things that are not prose, and an escaped entity in the
+/// middle of a sentence.
+///
+/// It carries NO surviving merge tag, and that is a correction. It used to end
+/// on `{{overtime_rate}}`, on the theory that the server renders a tag it could
+/// not resolve — but `preview()` validates before it renders, so an
+/// unresolvable tag is a 422 and this response never happens. A fixture that
+/// showed one was testing a state the endpoint cannot produce.
 const _rendered = '''
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Technician, full time</title>
@@ -1334,7 +2029,7 @@ const _rendered = '''
 <p>This Agreement is made on 4 August 2026 between Bell &amp; Sons Chimneys
 and Alex Fielder.</p>
 <p>The hourly wage is 14.50, paid monthly.</p>
-<p>Overtime is paid at {{overtime_rate}} of the above.</p>
+<p>Overtime is paid at 21.75 of the above.</p>
 </body></html>
 ''';
 

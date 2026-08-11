@@ -67,11 +67,28 @@ final class RetentionPolicy
     /**
      * A window `ezbizi:expire-data` enforces.
      *
-     * The column is named rather than assumed `created_at`, because three of the
-     * tables this governs do not have one: an audit event is timed by
-     * `occurred_at`, an automation event likewise, a run by `started_at`. A sweep
-     * that assumed the conventional name would silently skip exactly the
-     * append-only tables that grow fastest.
+     * The column is named rather than assumed `created_at`, because an
+     * append-only table generally does not have one — it switches `CREATED_AT`
+     * off and times its rows by the thing that actually happened. `automation_events`
+     * is the case in the tree: it is governed by this and measured from
+     * `occurred_at`, and a sweep that assumed the conventional name would have
+     * silently matched nothing in exactly the table that grows fastest, which is
+     * indistinguishable from a table that was already clean.
+     *
+     * The four tables this governs today are `automation_events` (occurred_at),
+     * `invitations` (created_at), `notifications` (created_at) and
+     * `password_resets` (created_at). It said three, and it was written in the
+     * same change that added the fourth: `password_resets` was given a model and
+     * a window precisely because nothing was sweeping it, and the sentence
+     * describing what this constructor governs was not revised to say so.
+     *
+     * Others time their rows by something other than creation — `audit_events`
+     * by `occurred_at`, `automation_runs` by `started_at` — but neither is swept
+     * from here: the first states `elsewhere` and the second `withParent`, so the
+     * constructor never sees them.
+     *
+     * RetentionTest::test_this_constructor_names_every_table_it_governs is what
+     * keeps the list above true, rather than the next reader's diligence.
      */
     public static function window(int $months, string $column, string $because): self
     {

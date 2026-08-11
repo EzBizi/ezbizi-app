@@ -156,53 +156,7 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
                   // One of these per row, all the same icon: the framework
                   // default reads "Show menu" on every one of them.
                   tooltip: 'What to do about ${account['name'] ?? account['email']}',
-                  itemBuilder: (_) => [
-                    if (pending)
-                      const PopupMenuItem(
-                        value: 'confirm',
-                        child: Text('Confirm authenticator'),
-                      ),
-                    // Never on your own row. This endpoint kills the live secret
-                    // AND every token in one request — on yourself that strands
-                    // the account. "Move authenticator" in the account menu is
-                    // the self path, and it keeps the current one working.
-                    if (!isMe)
-                      const PopupMenuItem(
-                        value: 'reset',
-                        child: Text('Re-enrol authenticator'),
-                      ),
-                    if (!isMe) const PopupMenuDivider(),
-                    if (!isMe)
-                      PopupMenuItem(
-                        value: 'active',
-                        child: Text(
-                          active ? 'Disable account' : 'Enable account',
-                        ),
-                      ),
-                    if (!isMe)
-                      PopupMenuItem(
-                        value: 'tier',
-                        child: Text(
-                          account['tier'] == 'lead_developer'
-                              ? 'Make Developer'
-                              : 'Make Lead Developer',
-                        ),
-                      ),
-                    // Offered on your OWN row too, unlike the two above. Those
-                    // are guarded because locking yourself out of the control
-                    // plane leaves the console on the box as the only way back;
-                    // nothing here can lock anybody out, and the owner granting
-                    // it to their own account is the case it exists for.
-                    const PopupMenuDivider(),
-                    PopupMenuItem(
-                      value: 'exempt',
-                      child: Text(
-                        exempt
-                            ? 'Put back in the audit trail'
-                            : 'Exempt from the audit trail',
-                      ),
-                    ),
-                  ],
+                  itemBuilder: (_) => _menuFor(account),
                   onSelected: (action) => _act(action, account),
                 ),
               ],
@@ -229,6 +183,91 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
         ),
       ),
     );
+  }
+
+  /// What this row can actually be told to do.
+  ///
+  /// Built as a list rather than as `if`s inside a literal, for one reason that
+  /// a literal cannot express: a divider only belongs between two things. The
+  /// literal had an unconditional `const PopupMenuDivider()` above the exemption
+  /// item, so on your own row — where the two items above it are hidden — the
+  /// menu opened with a rule across the top and nothing over it.
+  List<PopupMenuEntry<String>> _menuFor(Map<String, dynamic> account) {
+    final active = account['is_active'] as bool? ?? false;
+    final exempt = account['audit_exempt'] as bool? ?? false;
+    final pending = account['totp_pending'] as bool? ?? false;
+    final isLead = account['tier'] == 'lead_developer';
+    final isMe = account['id'] == widget.staff.me!.id;
+
+    final items = <PopupMenuEntry<String>>[];
+
+    void divide() {
+      if (items.isNotEmpty) items.add(const PopupMenuDivider());
+    }
+
+    if (pending) {
+      items.add(
+        const PopupMenuItem(
+          value: 'confirm',
+          child: Text('Confirm authenticator'),
+        ),
+      );
+    }
+
+    // Never on your own row. This endpoint kills the live secret AND every
+    // token in one request — on yourself that strands the account. "Move
+    // authenticator" in the account menu is the self path, and it keeps the
+    // current one working.
+    if (!isMe) {
+      items.add(
+        const PopupMenuItem(
+          value: 'reset',
+          child: Text('Re-enrol authenticator'),
+        ),
+      );
+
+      divide();
+
+      items.add(
+        PopupMenuItem(
+          value: 'active',
+          child: Text(active ? 'Disable account' : 'Enable account'),
+        ),
+      );
+      items.add(
+        PopupMenuItem(
+          value: 'tier',
+          child: Text(isLead ? 'Make Developer' : 'Make Lead Developer'),
+        ),
+      );
+    }
+
+    // Offered on your OWN row too, unlike the two above. Those are guarded
+    // because locking yourself out of the control plane leaves the console on
+    // the box as the only way back; nothing here can lock anybody out, and the
+    // owner granting it to their own account is the case it exists for.
+    //
+    // Not offered on a Developer row, though, which it used to be: only a Lead
+    // Developer may hold the exemption (§4.2), so on a Developer the item was a
+    // control that existed only to be refused. Revoking one stays available
+    // whatever the tier — an account that somehow holds it must always be able
+    // to give it back.
+    if (isLead || exempt) {
+      divide();
+
+      items.add(
+        PopupMenuItem(
+          value: 'exempt',
+          child: Text(
+            exempt
+                ? 'Put back in the audit trail'
+                : 'Exempt from the audit trail',
+          ),
+        ),
+      );
+    }
+
+    return items;
   }
 
   Future<void> _act(String action, Map<String, dynamic> account) async {

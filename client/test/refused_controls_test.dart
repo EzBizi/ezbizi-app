@@ -11,6 +11,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+/// The server's sentence for ONE of the two states it can refuse in, verbatim.
+///
+/// App\Support\Access\Refusal::nowhereToAct is a router rather than a
+/// sentence: this is what it produces for somebody assigned NOWHERE, and it
+/// answers something else entirely for somebody assigned above the level with
+/// nothing beneath them yet — where what is missing is a place rather than an
+/// assignment. The client mirrors only this one, deliberately; Me.nowhereToAct
+/// says why it cannot see the other state and why being stale about it is the
+/// safe way round.
+///
+/// Written out here rather than read back from Me.nowhereToAct, which would
+/// only assert that the method equals itself. What is worth catching is the
+/// CLIENT drifting away from the 403 it stands in for while nobody is looking —
+/// which is what had already happened to both of the screens below.
+const _serverSentenceForAddingAJob =
+    'You have permission to add a job, but you are not assigned to any '
+    'franchise, so there is nowhere to do it. An administrator can assign you '
+    'to a franchise.';
+
 /// Controls somebody cannot use, on the four screens that got it wrong.
 ///
 /// ── The two gates, and why one sentence will not do ──────────────
@@ -56,11 +75,19 @@ void main() {
 
       final tooltip = _onlyTooltip(tester);
 
-      expect(tooltip, contains('not assigned to any franchise'));
+      expect(
+        tooltip,
+        _serverSentenceForAddingAJob,
+        reason:
+            'The tooltip and the 403 behind it have to be the same refusal. '
+            'This screen used to say "there is nowhere to put one" where the '
+            'server says "there is nowhere to do it".',
+      );
       expect(
         tooltip,
         isNot(contains('do not have permission')),
-        reason: 'They hold it. Saying otherwise sends them to ask for it again.',
+        reason:
+            'They hold it. Saying otherwise sends them to ask for it again.',
       );
     });
 
@@ -94,7 +121,8 @@ void main() {
       expect(
         _onlyTooltip(tester),
         contains('permission to add a customer'),
-        reason: 'It was disabled on reach alone, silently, and never asked '
+        reason:
+            'It was disabled on reach alone, silently, and never asked '
             'about the permission it is named after.',
       );
     });
@@ -106,8 +134,14 @@ void main() {
         franchises: const [],
       );
 
-      expect(_onlyTooltip(tester), contains('not assigned to any franchise'));
-      expect(_onlyTooltip(tester), contains('accountable for the relationship'));
+      // The same shared sentence, with the one clause this screen adds — a
+      // customer is shared organization-wide, so needing a place at all is the
+      // surprising part and the note is what explains it.
+      expect(
+        _onlyTooltip(tester),
+        '${_serverSentenceForAddingAJob.replaceAll('add a job', 'add a customer')}'
+        ' A franchise has to be accountable for the relationship.',
+      );
     });
   });
 
@@ -118,7 +152,8 @@ void main() {
       await _pumpOrganization(
         tester,
         mayAddFranchise: false,
-        reason: 'You hold the permission to add a place to Everdoors, but '
+        reason:
+            'You hold the permission to add a place to Everdoors, but '
             'Everdoors is outside where you are assigned.',
       );
 
@@ -196,7 +231,8 @@ Future<void> _pumpOrganization(
       'id': 'org-1',
       'name': 'Everdoors',
       'may_add_company': false,
-      'may_add_company_reason': 'Only somebody assigned at the whole '
+      'may_add_company_reason':
+          'Only somebody assigned at the whole '
           'organization can add a company.',
       'has_logo': false,
       'may_edit': false,
@@ -274,7 +310,10 @@ Future<void> _pump(
         return _json({'message': 'No logo.'}, 404);
       }
 
-      return _json({'data': <Map<String, dynamic>>[], 'meta': {'total': 0, 'last_page': 1}});
+      return _json({
+        'data': <Map<String, dynamic>>[],
+        'meta': {'total': 0, 'last_page': 1},
+      });
     }),
   );
 

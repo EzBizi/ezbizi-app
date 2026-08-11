@@ -151,6 +151,14 @@ class AuditEvent extends Model implements HoldsPersonalData
      * deliberate decision recorded in `booted()` — but the organization IS
      * narrowed, because a bare query on this table crosses tenants and the purge
      * must not.
+     *
+     * Which makes the brackets round the disjunction load-bearing HERE in a way
+     * they are not on the tenant-scoped tables. Elsewhere a flat `orWhere` is
+     * rescued by `Builder::callScope()`, which groups the pre-existing wheres
+     * before a global scope appends its own. This organization predicate is
+     * written by hand, in the same chain, with no scope to trigger that — so
+     * `org = X and actor = A or target = A` would be exactly what it looks like:
+     * every organization's entries naming this person, walked by a purge.
      */
     public static function personalDataAbout(Model $subject): ?Builder
     {

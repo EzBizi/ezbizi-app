@@ -271,7 +271,7 @@ class StaffAuditTest extends TestCase
         [$lead, $auth] = $this->signedIn();
         [$dev]         = $this->signedIn(PlatformStaff::TIER_DEV);
 
-        $this->withHeader('Authorization', $auth)
+        $response = $this->withHeader('Authorization', $auth)
             ->patchJson("/api/v1/staff/accounts/{$dev->id}", ['audit_exempt' => true])
             ->assertStatus(422);
 
@@ -279,6 +279,57 @@ class StaffAuditTest extends TestCase
         // client approved; exempting them would remove the record of approved
         // access, which is the opposite of what §4.2 asks for.
         $this->assertFalse($dev->fresh()->suppressesBusinessAudit());
+
+        /*
+         * And it has to say the right thing, because the screen shows server
+         * refusals verbatim. Both directions used to share one message, so
+         * granting the exemption to a Developer answered "This account is exempt
+         * from the audit trail ... Revoke the exemption first, then change the
+         * tier" — the account is not exempt, they were trying to make it so, and
+         * there is nothing to revoke. Every clause wrong for what was clicked.
+         */
+        $message = $response->json('message');
+
+        $this->assertStringNotContainsString('Revoke the exemption first', $message);
+        $this->assertStringContainsString('Only a Lead Developer may be exempt', $message);
+    }
+
+    public function test_the_demotion_refusal_still_talks_about_the_demotion(): void
+    {
+        [$lead, $auth] = $this->signedIn(PlatformStaff::TIER_LEAD, exempt: true);
+        [$other]       = $this->signedIn(PlatformStaff::TIER_LEAD, exempt: false, email: 'second@ezbizi.test');
+
+        // The other direction into the same guard: the exemption is not moving,
+        // the tier is, and "revoke it first" is the thing to do about that.
+        $message = $this->withHeader('Authorization', $auth)
+            ->patchJson("/api/v1/staff/accounts/{$lead->id}", ['tier' => PlatformStaff::TIER_DEV])
+            ->assertStatus(422)
+            ->json('message');
+
+        $this->assertStringContainsString('Revoke the exemption first', $message);
+    }
+
+    public function test_a_removed_account_cannot_still_be_holding_the_exemption(): void
+    {
+        [$actor, $auth] = $this->signedIn();
+        [$ghost]        = $this->signedIn(PlatformStaff::TIER_LEAD, exempt: true, email: 'ghost@ezbizi.test');
+
+        $ghost->delete();
+
+        /*
+         * PlatformStaff uses SoftDeletes, so a deleted holder disappears from
+         * the holder query and does NOT lose the flag. "Only one account may
+         * hold it at a time" was therefore only true of accounts that happened
+         * not to be in the bin: grant it to a second one and restoring the first
+         * gives you two, silently.
+         */
+        $message = $this->withHeader('Authorization', $auth)
+            ->patchJson("/api/v1/staff/accounts/{$actor->id}", ['audit_exempt' => true])
+            ->assertStatus(422)
+            ->json('message');
+
+        $this->assertStringContainsString($ghost->email, $message);
+        $this->assertFalse($actor->fresh()->suppressesBusinessAudit());
     }
 
     public function test_only_one_account_may_hold_the_exemption(): void

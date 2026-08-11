@@ -125,9 +125,8 @@ class Attachment extends Model implements HoldsPersonalData
          * nothing at all, silently, and the purge would report a clean sweep of a
          * table it never looked in.
          *
-         * The whole disjunction is wrapped in ONE closure. BelongsToTenant ANDs
-         * `organization_id = ?` onto this query and AND binds tighter than OR, so
-         * a flat chain would match another organization's attachments — see
+         * The whole disjunction is wrapped in ONE closure, so that the builder
+         * handed back is safe for a caller to narrow — see
          * ContractSignature::personalDataAbout, where that is argued at length.
          */
         return static::query()->where(function (Builder $query) use ($subject) {
@@ -136,9 +135,21 @@ class Attachment extends Model implements HoldsPersonalData
                 ->where('attachable_id', $subject->getKey()));
 
             if ($subject instanceof Customer) {
+                /*
+                 * `withTrashed()`, and it is the whole point of this branch.
+                 *
+                 * Job soft-deletes, so the sub-builder compiles with
+                 * `deleted_at is null` and the photographs attached to a
+                 * deleted-but-restorable visit are never found — which is the
+                 * exact shape of miss HoldsPersonalData::personalDataAbout
+                 * forbids ("a purge that skipped them would leave the exact rows
+                 * somebody is asking about"). A trashed job is a job the
+                 * organization can still restore, so its files are still held.
+                 */
                 $query->orWhere(fn (Builder $q) => $q
                     ->where('attachable_type', (new Job)->getMorphClass())
                     ->whereIn('attachable_id', Job::query()
+                        ->withTrashed()
                         ->where('customer_id', $subject->getKey())
                         ->select('id')));
             }
@@ -204,26 +215,50 @@ class Attachment extends Model implements HoldsPersonalData
     }
 
     /**
-     * The subject gets a veto on removal, and it is enforced here as well.
+     * Why this file cannot be removed, or null if it can.
+     *
+     * ── Askable before the act, not only during it ───────────────
+     *
+     * This used to live entirely inside the `deleting` hook below, as an
+     * exception. That serves anything DELETING a row and is useless to anything
+     * PLANNING to: the Anonymiser's dry run walked this table, counted the
+     * rendered contract as removable and printed a preview promising to destroy
+     * the one file the real run then refused to touch. A preview that reports
+     * the opposite of the truth on the only interesting case is worse than no
+     * preview, because it is what somebody reads before answering a rights
+     * request.
+     *
+     * So the question is separable from the act, and there is still one home for
+     * the answer: `deleting` throws on it, AttachmentsController turns it into a
+     * 422, and App\Support\Privacy\Anonymiser reads it — which is what makes the
+     * preview and the purge describe one operation rather than two.
+     *
+     * Deliberately NOT a check the subject can be given without asking for it:
+     * `attachmentRemovalRefusal` is declared on HasAttachments and returns null,
+     * so a record type that has no evidentiary files behaves exactly as before.
+     */
+    public function deletionRefusal(): ?string
+    {
+        $subject = $this->attachable;
+
+        return $subject !== null && method_exists($subject, 'attachmentRemovalRefusal')
+            ? $subject->attachmentRemovalRefusal($this)
+            : null;
+    }
+
+    /**
+     * The subject's veto, enforced here as well.
      *
      * AttachmentsController asks the same question and answers a readable 422,
      * which is the right response to a person. This is the guarantee for every
      * other writer — a queued job, a cleanup command, a tinker session — because
      * the file being protected is one a signature fingerprints, and evidence
      * that can be removed by a path nobody thought about is not evidence.
-     *
-     * Deliberately NOT a check the subject can be given without asking for it:
-     * `attachmentRemovalRefusal` is declared on HasAttachments and returns null,
-     * so a record type that has no evidentiary files behaves exactly as before.
      */
     protected static function booted(): void
     {
         static::deleting(function (self $attachment) {
-            $subject = $attachment->attachable;
-
-            $refusal = $subject !== null && method_exists($subject, 'attachmentRemovalRefusal')
-                ? $subject->attachmentRemovalRefusal($attachment)
-                : null;
+            $refusal = $attachment->deletionRefusal();
 
             if ($refusal !== null) {
                 throw new RuntimeException('Refusing to delete this attachment. '.$refusal);

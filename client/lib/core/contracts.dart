@@ -49,6 +49,7 @@ class ContractChoice {
     required this.label,
     this.description,
     this.takesOptions = false,
+    this.merges = true,
   });
 
   /// What travels on the wire — `text`, `employer`.
@@ -76,6 +77,20 @@ class ContractChoice {
   /// takes options gets no options box, and the server refuses options on it
   /// anyway.
   final bool takesOptions;
+
+  /// Whether a field of this kind can be named by a merge tag.
+  ///
+  /// The server's `merges`, and the second server rule this end used to guess
+  /// at. The body editor offered every live field with a key, so a template
+  /// carrying a signature field offered its tag — and the server refuses that
+  /// tag with a paragraph about a signature being an act rather than text. An
+  /// offer that cannot be accepted is worse than no offer.
+  ///
+  /// Defaults TRUE, which is the opposite default to [takesOptions] and right
+  /// for the opposite reason: that one puts a control on screen, so absent must
+  /// mean no; this one takes a tag away, and a catalogue too old to carry the
+  /// property must not silently withdraw tags that publish perfectly well.
+  final bool merges;
 }
 
 /// One of the facts a template may not declare, because the person's own
@@ -110,57 +125,266 @@ class CoreField {
   final bool required;
 }
 
-/// A fact about the business and the moment that any contract can merge in.
+/// Where a merge tag's value comes from, and the only part of the merge-tag
+/// vocabulary this file names.
 ///
-/// ── Why the list is the server's and never this end's ────────────
-///
-/// The body of a contract is written with `{{tags}}` in it, and a tag resolves
-/// against three things: the contract's own fields, the common core, and this —
-/// the organization's name, the contract's name, the version, the date. The
-/// first two already arrive from the server. This one is the tempting one to
-/// compile in, because it is four obvious strings and everybody knows what they
-/// are.
-///
-/// It is not compiled in, for the reason the automation builder learned twice:
-/// a client-side copy of a server vocabulary offers what the engine refuses and
-/// hides what it accepts. Whatever resolves is decided where the merge happens.
-/// If the server declares none of these, the editor offers none of these and
-/// says so — it does not guess `organization_name` and put a tag in somebody's
-/// employment contract that renders as itself.
-@immutable
-class DocumentTag {
-  const DocumentTag({required this.key, required this.label, this.note});
+/// §2.1's carve-out, and the same test [filledByEmployer] applies: could an
+/// organization reasonably want it to say something else? No — these three are
+/// the structure of the merge itself (`MergeTags::SOURCE_*`), and a tenant does
+/// not get to invent a fourth source any more than they get to invent a third
+/// party to the contract. Every WORD on screen is a heading the client wrote or
+/// a label the server sent; nothing readable is derived from these strings.
+const String mergeSourceField = 'field';
+const String mergeSourceCore = 'core';
+const String mergeSourceFact = 'fact';
 
-  /// What goes between the braces — `organization_name`.
+/// One tag the server says resolves, ready to be offered.
+///
+/// ── This is a REGISTRY entry, not a description of one ───────────
+///
+/// `MergeTags::resolvable()` is the registry, and it is published on THREE
+/// responses:
+///
+///  1. `GET /hr/contracts/catalogue` as `merge_tags.core` and
+///     `merge_tags.facts` — the half that does not depend on a template, which
+///     is all that endpoint can know. It is the only half there is while a
+///     contract is being CREATED and there is no id to preview against.
+///  2. `GET /hr/contracts/{contract}` as `merge_tags` — the whole list for the
+///     version in force, in the same payload the fields and the body arrive
+///     in. This is the one that is already in hand the moment the designer
+///     opens an existing contract.
+///  3. `POST /hr/contracts/{contract}/preview` as `merge_tags` — the whole
+///     list again, for the questions as they stand THIS second rather than as
+///     they were published, because that request is the one carrying them.
+///
+/// Two and three overlap, and the overlap is the point: three is the live
+/// answer and two is what stands in until it arrives — or permanently, when a
+/// preview is refused, which is exactly the moment somebody is reaching for a
+/// chip to fix the tag that was refused.
+///
+/// A client that assembled this itself would have to know four server rules:
+/// that a field is offered only while it is live, that a signature field is not
+/// merged at all, that the common core offers the six onboarding ASKS and not
+/// the eight keys it RESERVES, and that a fact key is dotted. This end knew
+/// none of them correctly. It offered `{{name}}` and `{{middle_name}}` — both
+/// reserved, neither asked, both refused by name at publish — and it offered
+/// signature fields, which are refused with a paragraph explaining that a
+/// signature is an act rather than text.
+///
+/// So nothing here is derived. [key], [tag], [label] and [note] are the
+/// server's, [tag] most of all: the exact characters to insert, assembled where
+/// the delimiters are defined.
+@immutable
+class MergeTag {
+  const MergeTag({
+    required this.key,
+    required this.tag,
+    required this.label,
+    required this.source,
+    this.note,
+  });
+
+  /// What goes between the delimiters — `wage`, `first_name`,
+  /// `organization.name`.
+  ///
+  /// A fact key is DOTTED, and the dot is the whole safety argument on the
+  /// server (`ContractFacts`): a field key can never contain one, so a tenant's
+  /// own question can never collide with a fact. A build that guessed the shape
+  /// from what "everybody knows" would guess `organization_name` and put a tag
+  /// in somebody's employment contract that renders as itself.
   final String key;
+
+  /// The exact text to insert.
+  ///
+  /// Assembled by the server, and this end never wraps a key in delimiters of
+  /// its own — see [MergeTagSyntax.wrap] for the one case that has to.
+  final String tag;
 
   /// The server's word for it, or the key when it sent none — the same
   /// fallback, and the same reasoning, as [CoreField.label].
   final String label;
 
-  /// A sentence about what it fills in with.
+  /// [mergeSourceField] · [mergeSourceCore] · [mergeSourceFact].
+  final String source;
+
+  /// The server's `is` — the phrase completing "it is …", shown under the tag
+  /// in the tooltip and never used as a label. [CoreField.label] says what
+  /// happened the last time a phrase was promoted into a caption.
   final String? note;
+
+  /// A list of `{key, tag, label, source, is}` — the shape all three responses
+  /// publish.
+  ///
+  /// [source] is the fallback for a payload that does not carry one, and the
+  /// entry's own answer always wins. All three send it today — the catalogue's
+  /// two named lists are the same `resolvable()` entries the other two send as
+  /// one flat list, grouped rather than rebuilt — so the argument is tolerance
+  /// for an older server and not the normal path. It is still passed rather
+  /// than defaulted, because `merge_tags.core` and `merge_tags.facts` arrive
+  /// under names that already say which they are.
+  ///
+  /// ── An entry with no `tag` is dropped, not written here ──────
+  ///
+  /// This used to wrap the key itself when `tag` was missing, which made it a
+  /// SECOND place that assembles a tag — in the same class as the docblock on
+  /// [tag] promising there is exactly one, with an inline comment beside it
+  /// that admitted as much.
+  /// `resolvable()` writes `tag` for every entry it publishes, so an entry
+  /// arriving without one is a server that has said nothing about how this tag
+  /// is written; the empty string falls out of the filter below, and an entry
+  /// that cannot be inserted is not offered. Guessing would put characters in
+  /// somebody's employment contract that no server chose.
+  ///
+  /// The note is `is`, and only `is`. It read `note` as an alternative — a key
+  /// no endpoint has ever sent, which is the same "fallback to a name nothing
+  /// uses" that hid the always-available facts for as long as nobody looked.
+  /// See [ContractVocabulary.fromJson].
+  static List<MergeTag> listFrom(Object? node, String source) {
+    if (node is! List) return const [];
+
+    return [
+      for (final entry in node.whereType<Map>())
+        if (entry['key'] is String)
+          MergeTag(
+            key: entry['key'] as String,
+            tag: entry['tag'] as String? ?? '',
+            label: entry['label'] as String? ?? entry['key'] as String,
+            source: entry['source'] as String? ?? source,
+            note: entry['is'] as String?,
+          ),
+    ].where((tag) => tag.tag.isNotEmpty).toList(growable: false);
+  }
+}
+
+/// How a merge tag is written, and the tags that do not depend on which
+/// template is open — `merge_tags` on `GET /hr/contracts/catalogue`.
+///
+/// The delimiters are published rather than compiled in, and they are two
+/// strings rather than a format string so that building a tag from a key is
+/// WRAPPING and never parsing an example.
+///
+/// That reason is the server's, and it is deliberately not quoted as the
+/// server's words: `HrContractsController` says why it sends two strings and
+/// then says "Sent, not enforced. What any client then does is not asserted
+/// here." A sentence in this file claiming the server asserts something about
+/// this end would be putting a promise in its mouth that it took care to
+/// remove. What is written above is this end's own undertaking, which is the
+/// only side that can make it: [wrap] is the one place in this app that turns
+/// a key into a tag.
+@immutable
+class MergeTagSyntax {
+  const MergeTagSyntax({
+    required this.open,
+    required this.close,
+    required this.example,
+    required this.maxBodyLength,
+    required this.core,
+    required this.facts,
+  });
+
+  /// Nothing declared — before the catalogue lands, and after it fails.
+  static const MergeTagSyntax none = MergeTagSyntax(
+    open: '',
+    close: '',
+    example: '',
+    maxBodyLength: 0,
+    core: [],
+    facts: [],
+  );
+
+  final String open;
+  final String close;
+
+  /// A written-out tag, for the hint in the writing surface.
+  final String example;
+
+  /// The most a body may be, or 0 when the server declared no cap.
+  ///
+  /// Zero means "not declared" rather than "nothing allowed": the editor shows
+  /// no counter and refuses nothing, which is what it did before this was read
+  /// at all. A wrong cap invented here would refuse a contract the server would
+  /// have accepted, which is worse than the server's own refusal arriving late.
+  final int maxBodyLength;
+
+  /// The details every onboarding collects — `CommonCore::asked()`, the SIX,
+  /// and never the eight keys `reserved_keys` publishes. Two of those eight
+  /// (`name`, `middle_name`) are reserved so a template cannot declare them and
+  /// are not asked by anybody, so a tag naming one is refused at publish with a
+  /// paragraph saying there is nothing to merge.
+  final List<MergeTag> core;
+
+  /// The facts about the business and the document.
+  final List<MergeTag> facts;
+
+  /// Whether a tag can be written at all. False means the catalogue said
+  /// nothing about the syntax, and nothing may be inserted.
+  bool get isUsable => open.isNotEmpty && close.isNotEmpty;
+
+  /// A key, wrapped in the published delimiters.
+  ///
+  /// For the one list the server cannot pre-assemble: a template's own
+  /// questions while the template does not exist yet, which is the create path
+  /// where there is no `{contract}` to preview against. Everywhere else the
+  /// server's own [MergeTag.tag] is used verbatim.
+  String wrap(String key) => '$open$key$close';
+
+  factory MergeTagSyntax.fromJson(Map<String, dynamic> json, Object? limits) {
+    final open = json['open'] as String? ?? '';
+    final close = json['close'] as String? ?? '';
+
+    return MergeTagSyntax(
+      open: open,
+      close: close,
+      example: json['example'] as String? ?? '',
+      // Published in both places by the same endpoint, and they are the same
+      // number. Neither spelling is a guess — see HrContractsController.
+      maxBodyLength:
+          (json['max_body_length'] as num?)?.toInt() ??
+          ((limits is Map ? limits['max_body_length'] : null) as num?)
+              ?.toInt() ??
+          0,
+      core: MergeTag.listFrom(json['core'], mergeSourceCore),
+      facts: MergeTag.listFrom(json['facts'], mergeSourceFact),
+    );
+  }
 }
 
 /// Everything `GET /hr/contracts/catalogue` declares.
 ///
-/// ── Why the parsing is tolerant in exactly three places ──────────
+/// ── Where the parsing is tolerant, and where it stopped being ────
 ///
 /// A vocabulary is naturally expressed two ways — a list of `{key, label}`
 /// objects, or a map of key to label — and both are reasonable answers to the
 /// same question. `PermissionCatalogue.fromResponse` already accepts two
-/// spellings for the same reason it is worth doing here: a wording difference
+/// spellings for the same reason it was worth doing here: a wording difference
 /// between the two halves of one contract should not turn into a screen that
-/// renders nothing and says nothing about why. It is tolerant about SHAPE and
-/// never about CONTENT — no key, label or core field is invented here when the
-/// server sends none.
+/// renders nothing and says nothing about why. Where it is done, it is tolerant
+/// about SHAPE and never about CONTENT — no key, label or core field is
+/// invented here when the server sends none.
+///
+/// The COMMON CORE is still read both ways, and that one is not hypothetical:
+/// `CommonCore::RESERVED` is genuinely a map of key to `{label, is}` on the
+/// server, and the endpoint flattening it into a list is a presentation choice
+/// one refactor away from changing.
+///
+/// The FIELD VOCABULARIES are read one way only, as of this round. [_choices]
+/// had a map branch that parsed `takes_options` out of a nested object and
+/// never parsed `merges` — so a map-shaped catalogue would have been ACCEPTED
+/// with the one property that takes a tag AWAY silently missing, and the
+/// signature chips would have come back in the body editor to be refused by
+/// name at publish. No endpoint has ever sent that shape, so nothing was ever
+/// half-read in production; what was there was an untested branch that was
+/// wrong about the safety property, which is worse than no branch at all. A
+/// shape this cannot read is now refused visibly — `isUsable` goes false and
+/// the tab says the server did not declare the vocabulary — rather than
+/// accepted with a hole in it.
 @immutable
 class ContractVocabulary {
   const ContractVocabulary({
     required this.types,
     required this.filledBy,
     required this.core,
-    required this.documentTags,
+    required this.mergeTags,
     required this.loaded,
   });
 
@@ -171,7 +395,7 @@ class ContractVocabulary {
     types: [],
     filledBy: [],
     core: [],
-    documentTags: [],
+    mergeTags: MergeTagSyntax.none,
     loaded: false,
   );
 
@@ -183,11 +407,17 @@ class ContractVocabulary {
   final List<ContractChoice> filledBy;
 
   /// The questions asked whatever the contract says.
+  ///
+  /// `reserved_keys` — the eight keys a template may NOT declare, which is what
+  /// the designer needs to grey a key out while somebody is typing it. It is
+  /// deliberately NOT the list the body editor offers: two of the eight are
+  /// reserved without being asked, so offering them would insert a tag that is
+  /// refused at publish. The insertable core is [MergeTagSyntax.core].
   final List<CoreField> core;
 
-  /// The facts about the business and the moment a contract's body can merge
-  /// in. Empty when the server declared none — see [DocumentTag].
-  final List<DocumentTag> documentTags;
+  /// How a tag is written, and everything insertable that does not depend on
+  /// which template is open — see [MergeTag].
+  final MergeTagSyntax mergeTags;
 
   final bool loaded;
 
@@ -228,6 +458,21 @@ class ContractVocabulary {
     return false;
   }
 
+  /// Whether a kind of question can be named by a merge tag.
+  ///
+  /// A type this build has not heard of answers TRUE — see
+  /// [ContractChoice.merges] for why this default is the other way round from
+  /// [typeTakesOptions]'s.
+  bool typeMerges(String? key) {
+    if (key == null) return true;
+
+    for (final choice in types) {
+      if (choice.key == key) return choice.merges;
+    }
+
+    return true;
+  }
+
   /// Whether a key is one the common core already owns.
   ///
   /// Asked of the server's list, never of a list of six strings in Dart. The
@@ -259,33 +504,33 @@ class ContractVocabulary {
             json['common_core'] ??
             json['reserved'],
       ),
-      // The always-available facts, read through the same tolerant reader the
-      // common core uses — they are the same shape, `{key, label, note}` or a
-      // map of key to either — so there is one implementation of "a list the
-      // server might have written two ways" rather than two.
-      // `merge_tags.facts` is what the endpoint actually sends. This read three
-      // other names and none of them existed, so the always-available tags —
-      // the organization's name, the contract's name, its version, the date —
-      // were simply never offered in the editor. The tolerant reader hid it:
-      // three fallbacks that all miss produce an empty list, not an error, and
-      // an empty list looks exactly like "this contract declares no facts".
+      // ONE NAME, AND NO ALTERNATIVES. `merge_tags` is what the endpoint sends.
       //
-      // Guessing at names is what let that happen, so the real key is first and
-      // the others stay only as a courtesy to an older server mid-deploy.
-      documentTags: [
-        for (final field in _coreFields(
-          (json['merge_tags'] as Map<String, dynamic>?)?['facts'] ??
-              json['document_tags'] ??
-              json['always_available'],
-        ))
-          DocumentTag(key: field.key, label: field.label, note: field.note),
-      ],
+      // This used to read `document_tags`, then `always_available`, then
+      // `always` — three names, none of which any server has ever sent — so the
+      // always-available tags were simply never offered in the editor. The
+      // tolerant reader is what hid it: three fallbacks that all miss produce
+      // an empty list, not an error, and an empty list looks exactly like "this
+      // contract declares no facts".
+      //
+      // The tolerance on the class is about SHAPE — a list of objects or a map
+      // of key to label, two reasonable ways to write one thing. It was never a
+      // licence to guess at names, and the guesses are gone rather than kept as
+      // a courtesy: a fallback to a key nothing sends is not a fallback, it is
+      // the same silence with more code in front of it.
+      mergeTags: MergeTagSyntax.fromJson(
+        json['merge_tags'] is Map
+            ? Map<String, dynamic>.from(json['merge_tags'] as Map)
+            : const {},
+        json['limits'],
+      ),
       loaded: true,
     );
   }
 
-  /// A list of `{key, label, description, takes_options}`, or a map of key to
-  /// label.
+  /// A list of `{key, label, description, takes_options, merges}`, and nothing
+  /// else — see the class for why a map is refused here and accepted for the
+  /// core.
   static List<ContractChoice> _choices(Object? node) {
     if (node is List) {
       return [
@@ -300,27 +545,10 @@ class ContractVocabulary {
               // wrong default would draw an options box for every type sent by a
               // server too old to have the field.
               takesOptions: entry['takes_options'] == true,
+              // `!= false` rather than `== true`, for the reason on the field:
+              // absent means yes here.
+              merges: entry['merges'] != false,
             ),
-      ];
-    }
-
-    if (node is Map) {
-      return [
-        for (final entry in node.entries)
-          ContractChoice(
-            key: '${entry.key}',
-            // A map's value is the label when it is a string, and a nested
-            // object when the server had more to say than one word.
-            label: entry.value is Map
-                ? (entry.value as Map)['label'] as String? ?? '${entry.key}'
-                : '${entry.value}',
-            description: entry.value is Map
-                ? (entry.value as Map)['description'] as String?
-                : null,
-            takesOptions: entry.value is Map
-                ? (entry.value as Map)['takes_options'] == true
-                : false,
-          ),
       ];
     }
 
@@ -463,7 +691,6 @@ class ContractDiff {
     required this.unretired,
     required this.changed,
     required this.reordered,
-    required this.bodyChanged,
     this.bodyChange,
     required this.isEmpty,
   });
@@ -484,7 +711,13 @@ class ContractDiff {
   /// server decides it — this end holds the old body and the new one and could
   /// compare them, which is exactly the second implementation the rest of this
   /// file refuses to be.
-  final bool bodyChanged;
+  ///
+  /// Derived from [bodyChange] rather than parsed beside it. It WAS parsed
+  /// beside it, out of `body_changed` — a key the server has never sent, so the
+  /// answer was permanently false and the publish panel never once mentioned
+  /// the wording. Two fields read from one wire value is two chances to read it
+  /// wrong; there is now one, and this cannot disagree with it.
+  bool get bodyChanged => bodyChange != null;
 
   /// Which kind of change: 'added', 'edited' or 'removed'.
   ///
@@ -513,7 +746,6 @@ class ContractDiff {
     // boolean called `body_changed`, which exists nowhere. So the publish panel
     // never said the wording had changed, on the one screen whose whole job is
     // telling somebody what they are about to change.
-    bodyChanged: json['body'] != null,
     bodyChange: json['body'] as String?,
     // Computed by the server, never re-derived from the lists above: a server
     // that grows another kind of change would otherwise be told by this client

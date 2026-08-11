@@ -146,7 +146,6 @@ class CompaniesController extends Controller
                 'logo_version'    => \App\Support\Branding\Branding::version(
                     null, $request->user()->organization,
                 ),
-                'logo_aspect'     => $request->user()->organization->logo_aspect,
                 'may_edit'        => $user->hasPermission('organizations.edit'),
             ],
 

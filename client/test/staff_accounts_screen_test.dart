@@ -108,6 +108,36 @@ void main() {
     // can't I?" — rewording it here would lose that.
     expect(find.text(refusal), findsOneWidget);
   });
+
+  testWidgets('a Developer row is not offered an exemption it cannot have', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(secondTier: 'developer'));
+
+    await tester.tap(find.byType(PopupMenuButton<String>).last);
+    await tester.pumpAndSettle();
+
+    // Only a Lead Developer may hold it (§4.2), so on a Developer this item
+    // existed to be refused — a control that answers "no" every time is a dead
+    // end, and the refusal it produced was written for the other direction.
+    expect(find.text('Exempt from the audit trail'), findsNothing);
+    expect(find.text('Make Lead Developer'), findsOneWidget);
+  });
+
+  testWidgets('your own row does not open with a divider above everything', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+
+    // The first row is the signed-in account: the two items that are hidden on
+    // your own row used to leave their divider behind, so the menu opened with
+    // a rule across the top and nothing over it.
+    await tester.tap(find.byType(PopupMenuButton<String>).first);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PopupMenuDivider), findsNothing);
+    expect(find.text('Put back in the audit trail'), findsOneWidget);
+  });
 }
 
 const _me = {
@@ -124,11 +154,12 @@ Map<String, dynamic> _account({
   required String name,
   required String email,
   bool exempt = false,
+  String tier = 'lead_developer',
 }) => {
   'id': id,
   'name': name,
   'email': email,
-  'tier': 'lead_developer',
+  'tier': tier,
   'is_active': true,
   'audit_exempt': exempt,
   'totp_confirmed': true,
@@ -142,6 +173,7 @@ Map<String, dynamic> _account({
 MockClientHandler _handler({
   void Function(Map<String, dynamic>)? onPatch,
   String? refuseWith,
+  String secondTier = 'lead_developer',
 }) {
   return (http.Request request) async {
     final path = request.url.path;
@@ -163,6 +195,7 @@ MockClientHandler _handler({
             id: 'staff-2',
             name: 'Second Lead',
             email: 'second@ezbizi.test',
+            tier: secondTier,
           ),
         ],
       });

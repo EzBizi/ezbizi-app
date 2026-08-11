@@ -209,6 +209,42 @@ class StaffControlPlaneTest extends TestCase
             ])->assertStatus(422);
     }
 
+    /**
+     * Somebody else's session, and the refusal says whose and what happens next.
+     *
+     * The list is deliberately everybody's — a log only its author can read
+     * supervises nobody — so the person reading this 403 is a colleague looking
+     * at a row that is genuinely on their screen. It used to be a bare
+     * `abort_unless(..., 403)` answering "This action is unauthorized.", which
+     * reads as a broken button rather than as a rule (R8).
+     */
+    public function test_closing_somebody_elses_impersonation_says_who_can(): void
+    {
+        [$opener, ]            = $this->staff(PlatformStaff::TIER_LEAD);
+        [$other, $otherSecret] = $this->staff(PlatformStaff::TIER_DEV);
+
+        ['organization' => $org] = $this->organization();
+
+        $session = app(ImpersonationService::class)
+            ->begin($opener, $org, 'Checking a reported bug.', minutes: 30);
+
+        $message = $this->withHeader('Authorization', 'Bearer '.$this->signIn($other, $otherSecret))
+            ->deleteJson("/api/v1/staff/impersonations/{$session->getKey()}")
+            ->assertForbidden()
+            ->json('message');
+
+        $this->assertStringNotContainsString('This action is unauthorized', $message);
+        $this->assertStringContainsString('who opened an impersonation', $message);
+
+        // The remedy half: two of them, because "ask them" fails when they have
+        // gone home and the session still has to end.
+        $this->assertStringContainsString('Ask them', $message);
+        $this->assertStringContainsString('expires on its own', $message);
+
+        // And it really is still open — the refusal changed nothing.
+        $this->assertNull($session->fresh()->ended_at);
+    }
+
     public function test_an_expired_session_stops_granting_access(): void
     {
         [$staff, ] = $this->staff();

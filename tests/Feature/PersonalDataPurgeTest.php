@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ApiToken;
+use App\Models\Attachment;
 use App\Models\AuditEvent;
 use App\Models\ContractSignature;
 use App\Models\Customer;
@@ -11,18 +12,26 @@ use App\Models\Notification;
 use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
 use App\Models\OnboardingDocument;
+use App\Models\PasswordReset;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\Privacy\Anonymiser;
 use App\Support\Privacy\DeclaringModels;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\PersonalDataEntry;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\BuildsTenants;
+use Tests\Fixtures\Privacy\CustomerRowsDroppedOutright;
+use Tests\Fixtures\Privacy\DeclaresTheseModels;
+use Tests\Fixtures\Privacy\SignatureThatRefusesTheErase;
+use Tests\Fixtures\Privacy\UsersErasedToOneAddress;
 use Tests\TestCase;
 
 /**
@@ -143,6 +152,74 @@ class PersonalDataPurgeTest extends TestCase
         });
     }
 
+    /**
+     * A trashed job must not hide a customer's files from their own purge.
+     *
+     * `Attachment::personalDataAbout` reaches a customer's photographs through
+     * their jobs, because that is where photographs get attached. `Job`
+     * soft-deletes, so the sub-builder compiled with `deleted_at is null` and
+     * the files on a deleted-but-restorable visit were never found — the purge
+     * reported a clean sweep of a table it had not fully looked in.
+     *
+     * It is the same miss `test_a_soft_deleted_customer_is_purged_too` covers
+     * one join further out, and HoldsPersonalData::personalDataAbout states the
+     * rule both obey: soft-deleted rows must be INCLUDED, because a restorable
+     * record is retained personal data.
+     */
+    public function test_files_on_a_soft_deleted_job_are_still_the_customers(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        [$customer, $attachmentId] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $customer = Customer::create([
+                'owning_franchise_id' => $alpha['franchise']->id,
+                'number' => 'C-1', 'name' => 'Marta Ruiz', 'email' => 'marta@example.test',
+            ]);
+
+            $job = Job::create([
+                'franchise_id' => $alpha['franchise']->id,
+                'customer_id'  => $customer->id,
+                'number' => 'J-1', 'title' => 'Annual service', 'status' => 'scheduled',
+            ]);
+
+            $attachment = new Attachment;
+
+            $attachment->forceFill([
+                'organization_id' => $alpha['org']->id,
+                'attachable_type' => $job->getMorphClass(),
+                'attachable_id'   => $job->getKey(),
+                'original_name'   => 'marta-front-door.jpg',
+                'mime'            => 'image/jpeg',
+                'disk'            => 'local',
+                'path'            => 'attachments/marta-front-door.jpg',
+                'size_bytes'      => 12,
+                'checksum'        => hash('sha256', 'x'),
+            ])->save();
+
+            Storage::disk('local')->put('attachments/marta-front-door.jpg', 'xxxxxxxxxxxx');
+
+            // The visit is deleted, not purged. It can still be restored, so its
+            // photographs are still held about this person.
+            $job->delete();
+
+            return [$customer, $attachment->getKey()];
+        });
+
+        $report = $this->purge($customer);
+
+        $line = $this->tableLine($report, 'attachments');
+
+        $this->assertSame(1, $line['rows'],
+            'The purge never looked at the photographs on a trashed job, so it reported '
+            .'a completeness it had not achieved.');
+
+        $this->assertSame(1, $line['rows_dropped']);
+
+        $this->inTenant($alpha['org'], fn () => $this->assertNull(Attachment::find($attachmentId)));
+
+        Storage::disk('local')->assertMissing('attachments/marta-front-door.jpg');
+    }
+
     // ── 2. the employee, and everything hanging off them ─────────
 
     public function test_purging_an_employee_blanks_the_account_and_ends_their_sessions(): void
@@ -184,6 +261,36 @@ class PersonalDataPurgeTest extends TestCase
 
         $this->assertSame(0, $this->inTenant($alpha['org'],
             fn () => Notification::where('user_id', $employee->getKey())->count()));
+    }
+
+    /**
+     * A table written by a query builder is still a table the purge must reach.
+     *
+     * `password_resets` had no Eloquent model, and every §9 mechanism in this
+     * system is derived by walking `app/Models` — so the inventory did not list
+     * it, the sweep did not expire it and a purge left the row exactly as it
+     * was: the person's id, and the IP address they asked from. Not exempt from
+     * three mechanisms; invisible to all three, which is why nothing reported
+     * it. The model App\Models\PasswordReset exists for that and nothing else;
+     * the service still writes with `DB::table`.
+     */
+    public function test_a_password_reset_request_is_purged_with_the_person(): void
+    {
+        [$alpha, $employee] = $this->anEmployee();
+
+        app(\App\Services\Auth\PasswordResets::class)->issue($employee, '203.0.113.9');
+
+        $this->assertSame(1, PasswordReset::query()
+            ->where('subject_id', $employee->getKey())->count());
+
+        $report = $this->purge($employee);
+
+        $this->assertSame(1, $this->tableLine($report, 'password_resets')['rows_dropped']);
+
+        $this->assertSame(0, PasswordReset::query()
+            ->where('subject_id', $employee->getKey())->count(),
+            'The reset request survived the purge, and with it the address the person '
+            .'asked from.');
     }
 
     /**
@@ -408,6 +515,85 @@ class PersonalDataPurgeTest extends TestCase
     }
 
     /**
+     * The preview and the purge must describe ONE operation.
+     *
+     * They did not, on the only case anybody would read a preview for. The dry
+     * run never called `delete()`, so it never met the refusal an Attachment
+     * raises over a signed contract — it counted the row as dropped and the file
+     * as removed and printed `refusals: []`. The real run answered
+     * `rows_dropped: 0, refusals: 1`. So the artefact somebody reads before
+     * telling a person what will happen promised to destroy the signed contract
+     * that the purge then, correctly, refused to touch.
+     *
+     * `anEmployee()` could not catch it: that fixture has no signed onboarding,
+     * so there is nothing in it that refuses anything. This one asserts the two
+     * reports agree line for line on every table, which is a stronger statement
+     * than "the preview mentions the refusal" and does not need editing when a
+     * new table joins the walk.
+     */
+    public function test_the_preview_and_the_purge_agree_on_every_line(): void
+    {
+        [$alpha, $employee] = $this->aSignedOnboarding();
+
+        $preview = app(Anonymiser::class)->preview($employee);
+        $real    = $this->purge($employee);
+
+        $comparable = fn (array $report) => collect($report['tables'])
+            ->keyBy('table')
+            ->map(fn (array $line) => [
+                'applies'        => $line['applies'],
+                'rows'           => $line['rows'],
+                'rows_dropped'   => $line['rows_dropped'],
+                'files_removed'  => $line['files_removed'],
+                'columns_erased' => $line['columns_erased'],
+                'refusals'       => array_column($line['refusals'], 'because'),
+                'kept'           => $line['kept'],
+            ])
+            ->all();
+
+        $this->assertSame($comparable($preview), $comparable($real),
+            'The dry run described a different operation from the one that ran. Whatever '
+            .'differs here is something somebody was told would happen and did not, or the '
+            .'other way round.');
+
+        // And it is the interesting case that is being compared, not an empty walk.
+        $this->assertNotEmpty($this->tableLine($preview, 'attachments')['refusals'],
+            'The preview did not mention the refusal at all, so the assertion above is '
+            .'comparing two reports that both say nothing.');
+    }
+
+    /**
+     * A refusal must not take the rest of the purge with it, and must not leave
+     * a person half-erased either.
+     *
+     * The signed onboarding produces both in one walk: `attachments` refuses the
+     * rendered contract, and every other table still has to be erased. Before
+     * the walk was transactional this was the shape that worried — an exception
+     * part-way down an alphabetical list, with nothing recording where it
+     * stopped.
+     */
+    public function test_a_refusal_does_not_stop_the_tables_after_it(): void
+    {
+        [$alpha, $employee, $onboardingId] = $this->aSignedOnboarding();
+
+        $report = $this->purge($employee);
+
+        $this->assertNotEmpty($this->tableLine($report, 'attachments')['refusals']);
+
+        // `users` sorts after `attachments`, `onboarding_answers` after that:
+        // both are past the refusal in the walk.
+        $fresh = User::withoutGlobalScopes()->findOrFail($employee->getKey());
+
+        $this->assertSame('Removed account', $fresh->name);
+
+        $this->inTenant($alpha['org'], function () use ($onboardingId) {
+            foreach (OnboardingAnswer::where('onboarding_id', $onboardingId)->get() as $answer) {
+                $this->assertSame('(removed)', $answer->value);
+            }
+        });
+    }
+
+    /**
      * §9: "and log the purge itself" — without undoing it in the same breath.
      *
      * AuditLogger captures a target's label, which for a user is their name and
@@ -516,11 +702,256 @@ class PersonalDataPurgeTest extends TestCase
         }
     }
 
+    // ── 6. the two ways a write fails, which are not one way ─────
+
+    /**
+     * A model refusing an ERASE, which nothing in app/Models does — so nothing
+     * covered it.
+     *
+     * `eraseColumns` reports a refused write instead of throwing, and that catch
+     * was untested: delete it, and all thirty tests in this file and RetentionTest
+     * stay green. The refusal the suite does provoke — the rendered contract, in
+     * `test_the_signed_document_refuses_to_be_removed_and_the_refusal_is_reported`
+     * — is an Attachment, which is on the DROP path and was already caught before
+     * the erase path was given a catch at all. So the fix for that was reported as
+     * proven by a test that never reached it.
+     *
+     * SignatureThatRefusesTheErase is `contract_signatures` with `signer_label`
+     * flipped from `keep` to `erase`. The refusal is the real one: the table uses
+     * `WrittenOnce`, and `saveQuietly()` goes through the Eloquent builder, so
+     * WriteOnceBuilder answers the write the way it answers every other.
+     *
+     * ── And the preview cannot know, which is stated on purpose ──
+     *
+     * The last assertion is not an aspiration. Anonymiser::purge's docblock says
+     * the dry run can see a `keep` and can see a row refusing to be DROPPED,
+     * because both are ASKED; an erase-time refusal is discovered by the write
+     * failing, and a dry run performs no write. That gap is real and is written
+     * down rather than papered over — this pins it at exactly one table so it
+     * cannot widen without a test going red.
+     */
+    public function test_an_erase_a_model_refuses_is_reported_and_the_preview_cannot_know(): void
+    {
+        [$alpha, $employee] = $this->aSignedOnboarding();
+
+        // `users` second, so what happens to it says whether the walk carried on.
+        $walk = [SignatureThatRefusesTheErase::class, User::class];
+
+        $preview = $this->purgeWalking($walk, $employee, dryRun: true);
+        $report  = $this->purgeWalking($walk, $employee);
+
+        $line = $this->tableLine($report, 'contract_signatures');
+
+        $this->assertGreaterThan(0, $line['rows'],
+            'The fixture found no signature, so everything below is asserting about an '
+            .'empty walk.');
+
+        $this->assertNotEmpty($line['refusals'],
+            'A model refused to have its column blanked and the purge did not say so. Either '
+            .'the refusal escaped and took the walk with it, or it was swallowed and the '
+            .'report claims an erasure that did not happen.');
+
+        $this->assertStringContainsString('cannot be updated', $line['refusals'][0]['because']);
+
+        $this->inTenant($alpha['org'], function () use ($employee) {
+            $signatures = ContractSignature::query()
+                ->where('subject_user_id', $employee->getKey())->get();
+
+            foreach ($signatures as $signature) {
+                $this->assertStringNotContainsString('Removed', (string) $signature->signer_label,
+                    'The refusal was reported and the write went through anyway.');
+            }
+        });
+
+        $this->assertSame('Removed account',
+            User::withoutGlobalScopes()->findOrFail($employee->getKey())->name,
+            'The table after the refused one was never reached, so one guarded row still '
+            .'stops the walk — which is the failure the try/catch was added to prevent.');
+
+        $this->assertSame([], $this->tableLine($preview, 'contract_signatures')['refusals'],
+            'The preview reported an erase-time refusal. It cannot have discovered one — it '
+            .'performs no write, and nothing declares an erase refusal to be asked about — so '
+            .'if this now passes information to the reader, Anonymiser::purge\'s docblock is '
+            .'describing a limit that no longer exists and should be rewritten.');
+    }
+
+    /**
+     * The hazard: a database error is not a decision.
+     *
+     * `Illuminate\Database\QueryException` extends `PDOException` extends
+     * `RuntimeException`, so `catch (RuntimeException)` on both write paths
+     * caught the database as well as the model. A deadlock (1213) or a lock-wait
+     * timeout (1205) would have been filed in the report as a per-row refusal —
+     * and MySQL resolves both by rolling back the WHOLE transaction, so the walk
+     * would have carried on writing outside any transaction and reported success
+     * over tables whose earlier writes had already been discarded.
+     *
+     * Neither of those two is reproducible on demand. A duplicate key is, and it
+     * arrives through exactly the same class: `users_organization_id_email_unique`
+     * is live, and UsersErasedToOneAddress blanks every account in the
+     * organization to one constant address — which is the collision `{ref}` was
+     * invented to prevent, and the one the Anonymiser's own docblock records
+     * happening "AFTER earlier tables had already been written".
+     *
+     * So this asserts both halves at once: the error goes UP rather than into the
+     * report, and the audit rows erased before it are back as they were.
+     */
+    public function test_a_database_error_on_the_erase_path_is_not_a_refusal_and_the_walk_rolls_back(): void
+    {
+        [$alpha, $employee] = $this->anEmployee();
+
+        $labels = fn () => $this->inTenant($alpha['org'], fn () => AuditEvent::query()
+            ->where('actor_id', $employee->getKey())
+            ->orderBy('id')->pluck('actor_label', 'id')->all());
+
+        $before = $labels();
+
+        $this->assertNotEmpty($before,
+            'The scenario wrote no audit entries, so there is nothing for a rollback to '
+            .'restore and the assertion below would pass on an empty array.');
+
+        $raised = null;
+
+        try {
+            $this->purgeWalking([AuditEvent::class, UsersErasedToOneAddress::class], $employee);
+        } catch (\Throwable $e) {
+            $raised = $e;
+        }
+
+        $this->assertInstanceOf(QueryException::class, $raised,
+            'A duplicate-key error was not raised to the caller. It was caught as though the '
+            .'model had refused the row, so the report would have offered a driver message as '
+            .'the reason somebody\'s data was kept — and, for the deadlock this stands in for, '
+            .'would have gone on writing with no transaction left around it.');
+
+        $this->assertSame($before, $labels(),
+            'The audit labels erased before the failure are still erased, so the walk did not '
+            .'roll back and the person is half-anonymised with nothing recording where it '
+            .'stopped.');
+    }
+
+    /**
+     * The same hazard again, one class narrower — and the reason the guard is
+     * TYPED rather than merely "not a database error".
+     *
+     * Re-throwing `PDOException` closed the deadlock case and left this one
+     * open: `EncryptException`, `DecryptException` and `JsonEncodingException`
+     * all extend `RuntimeException` and none of them is a database error, so a
+     * `catch (RuntimeException)` still swallowed them. That is not a shape
+     * somebody had to go looking for. This walk erases `onboarding_answers.
+     * value`, which is written through an `encrypted` cast, and saving a model
+     * compares each cast attribute against its ORIGINAL — so a row whose stored
+     * ciphertext cannot be decrypted raises while the erase is being performed.
+     *
+     * Swallowed, that row would have been reported as a considered refusal: the
+     * person's answer surviving an erasure request, with a sentence about a
+     * cipher published as the reason it was kept — and, because the report says
+     * only that something was kept, no sign that anything had gone wrong at all.
+     *
+     * The ciphertext is corrupted through the query builder so the cast is
+     * bypassed on the way in. That is the state a rotated or truncated
+     * `APP_KEY` leaves behind, which is the realistic way this arrives.
+     */
+    public function test_a_cipher_failure_on_the_erase_path_is_not_a_refusal(): void
+    {
+        [$alpha, $employee, $onboardingId] = $this->aSignedOnboarding();
+
+        $this->inTenant($alpha['org'], fn () => DB::table('onboarding_answers')
+            ->where('onboarding_id', $onboardingId)
+            ->update(['value' => 'base64:this-is-not-a-payload-this-key-cannot-read']));
+
+        $raised = null;
+
+        try {
+            $this->purge($employee);
+        } catch (\Throwable $e) {
+            $raised = $e;
+        }
+
+        $this->assertInstanceOf(DecryptException::class, $raised,
+            'A cipher failure was caught as though the model had refused the row, so the '
+            .'purge report would have offered a decryption error as the considered reason '
+            .'somebody\'s answers were kept. Only a refusal the code DECLARES — '
+            .'WrittenOnceRefusal — may become a line of that report.');
+    }
+
+    /**
+     * The same hazard on the other path, because the two catches were separate.
+     *
+     * `jobs.customer_id` is `restrictOnDelete` — a customer with work against
+     * them cannot be removed, which is the schema making §9's argument for
+     * anonymising in place. CustomerRowsDroppedOutright declares `drop` and does
+     * not soft-delete, so the DELETE reaches the database and comes back 1451.
+     *
+     * The real Customer is why this needs a fixture at all: it soft-deletes, and
+     * a soft delete is an UPDATE that touches no foreign key.
+     */
+    public function test_a_database_error_on_the_drop_path_is_not_a_refusal_either(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $customer = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $customer = Customer::create([
+                'owning_franchise_id' => $alpha['franchise']->id,
+                'number' => 'C-00042', 'name' => 'Marta Ruiz',
+                'email' => 'marta@example.test',
+            ]);
+
+            Job::create([
+                'franchise_id' => $alpha['franchise']->id,
+                'customer_id'  => $customer->id,
+                'number' => 'J-00007', 'title' => 'Annual service',
+                'status' => 'scheduled',
+            ]);
+
+            return $customer;
+        });
+
+        $raised = null;
+
+        try {
+            $this->purgeWalking([Customer::class, CustomerRowsDroppedOutright::class], $customer);
+        } catch (\Throwable $e) {
+            $raised = $e;
+        }
+
+        $this->assertInstanceOf(QueryException::class, $raised,
+            'A foreign-key violation was filed as a refusal. "we could not erase this and '
+            .'here is the reason" is meant to be a sentence somebody can act on; a constraint '
+            .'name from the driver is a bug wearing that sentence\'s clothes.');
+
+        $this->inTenant($alpha['org'], function () use ($customer) {
+            $this->assertSame('Marta Ruiz',
+                Customer::withTrashed()->findOrFail($customer->getKey())->name,
+                'The blanking done before the failed delete survived it, so the walk is not '
+                .'all-or-nothing after all.');
+        });
+    }
+
     // ── helpers ──────────────────────────────────────────────────
 
     private function purge(Model $subject): array
     {
         return app(Anonymiser::class)->purge($subject);
+    }
+
+    /**
+     * The same Anonymiser, walking a list this test chose.
+     *
+     * Nothing is stubbed and no seam was added: the class already takes
+     * DeclaringModels through its constructor, so replacing that one answer in
+     * the container is enough. Everything the purge then does — the transaction,
+     * the declarations, the report — is the production path.
+     *
+     * @param  array<class-string>  $walk  models, in the order they are visited
+     */
+    private function purgeWalking(array $walk, Model $subject, bool $dryRun = false): array
+    {
+        $this->app->instance(DeclaringModels::class, new DeclaresTheseModels($walk));
+
+        $anonymiser = app(Anonymiser::class);
+
+        return $dryRun ? $anonymiser->preview($subject) : $anonymiser->purge($subject);
     }
 
     private function tableLine(array $report, string $table): array

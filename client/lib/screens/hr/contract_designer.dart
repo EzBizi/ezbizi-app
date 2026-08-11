@@ -6,6 +6,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/numbered_step.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
 import 'contract_body_editor.dart';
 import 'contract_diff_panel.dart';
@@ -246,6 +247,16 @@ class _ContractDesignerState extends State<ContractDesigner> {
   bool _busy = false;
   String? _error;
 
+  /// The document down the right, and the state behind it.
+  late final ContractPageController _page;
+
+  /// Below this there is not room for a form and a page side by side — see
+  /// [build].
+  static const double _splitAbove = 1040;
+
+  /// Which half is on screen when there is only room for one.
+  bool _reading = false;
+
   bool get _isEdit => widget.template != null;
   String? get _id => widget.template?['id'] as String?;
 
@@ -271,10 +282,25 @@ class _ContractDesignerState extends State<ContractDesigner> {
 
       _loadHistory();
     }
+
+    // After the body has been filled in from the template, so the first render
+    // draws the contract as it stands rather than an empty page it then has to
+    // correct a frame later.
+    _page = ContractPageController(
+      api: widget.api,
+      vocabulary: widget.vocabulary,
+      body: _body,
+      contractId: _id,
+      payload: () => _payload,
+      resolvable: template == null ? const [] : _resolvableOf(template),
+    );
   }
 
   @override
   void dispose() {
+    // Before the body it listens to.
+    _page.dispose();
+
     _name.dispose();
     _description.dispose();
     _body.dispose();
@@ -288,26 +314,33 @@ class _ContractDesignerState extends State<ContractDesigner> {
 
   /// The wording, out of `GET /hr/contracts/{contract}`.
   ///
-  /// The body belongs to the VERSION — it is versioned and diffed with the
-  /// fields — so it is read either from the top of the detail payload, beside
-  /// the field list that is also the version's, or from the current version
-  /// where the server nests it. Two readings of one fact, for the reason
-  /// `ContractVocabulary.fromJson` gives; and a template that has no body yet
-  /// is the ordinary case for everything published before this existed, which
-  /// is an empty box rather than an error.
-  static String _bodyOf(Map<String, dynamic> template) {
-    final top = template['body'];
+  /// `body`, at the top of the detail payload, beside the field list that is
+  /// also the current version's. One place, because the server has one: nothing
+  /// is nested under `current_version`, which carries `id`, `version`, `notes`
+  /// and `created_at` and no wording at all, and `version` at the top level is
+  /// an INTEGER.
+  ///
+  /// It read both of those as fallbacks, citing the shape-tolerance argument in
+  /// `ContractVocabulary.fromJson` — which is about two reasonable spellings of
+  /// a thing that exists, and was never a licence to guess at names. Neither
+  /// branch could ever run. That is the whole harm of a guessed fallback: it is
+  /// not a bug you can see, it is a claim in the code that the server might
+  /// answer this way, and the next person maintains around it.
+  ///
+  /// A template with no body is the ordinary case for everything published
+  /// before the wording existed, and it is an empty box rather than an error.
+  static String _bodyOf(Map<String, dynamic> template) =>
+      template['body'] as String? ?? '';
 
-    if (top is String) return top;
-
-    final version = template['current_version'] ?? template['version'];
-
-    if (version is Map && version['body'] is String) {
-      return version['body'] as String;
-    }
-
-    return '';
-  }
+  /// The tags this contract's questions resolve to, out of the same response.
+  ///
+  /// The third place `MergeTags::resolvable()` is published, and the one that
+  /// is already in hand when this screen opens — see [MergeTag]. Handing it to
+  /// the page controller is what stops the chips being assembled in Dart from
+  /// the questions on screen in the window before the first preview answers,
+  /// and for good in a contract whose preview is refused.
+  static List<MergeTag> _resolvableOf(Map<String, dynamic> template) =>
+      MergeTag.listFrom(template['merge_tags'], mergeSourceField);
 
   /// Every keystroke re-asks whether the form can be saved.
   ///
@@ -655,49 +688,108 @@ class _ContractDesignerState extends State<ContractDesigner> {
 
   // ── the form ─────────────────────────────────────────────────────
 
+  /// The tab: the form down one side, the contract down the other.
+  ///
+  /// ── Why the split is here and not inside step 4 ──────────────
+  ///
+  /// It was inside step 4, and the owner was blunt about it:
+  ///
+  ///   *"I specifically told you to do 50% each, as in the whole tab, not
+  ///    inside the form"*
+  ///
+  /// A page in a 620px box between two form sections is a preview widget. The
+  /// document is the thing being made, so it gets half the screen and stays
+  /// there — visible while the contract is named and while questions are
+  /// added, not only while somebody happens to be scrolled to the wording.
+  /// Each side scrolls on its own, which is the point: reaching step 6 does
+  /// not scroll the contract away.
   @override
   Widget build(BuildContext context) {
     final blocker = _blocker;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1080),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_isEdit) _banner(context),
-                    _nameStep(context),
-                    const SizedBox(height: 26),
-                    _coreStep(context),
-                    const SizedBox(height: 26),
-                    _questionsStep(context),
-                    const SizedBox(height: 26),
-                    _bodyStep(context),
-                    const SizedBox(height: 26),
-                    _previewStep(context),
-                    if (_isEdit) ...[
-                      const SizedBox(height: 26),
-                      _historyStep(context),
-                    ],
-                    if (_error != null) ...[
-                      const SizedBox(height: 20),
-                      ErrorNote(_error!),
-                    ],
-                  ],
-                ),
+    // A question may have changed in step 3, which the body's own listener
+    // cannot see. Cheap, and it no-ops unless the questions really moved.
+    _page.syncQuestions();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // R7. Side by side is a DESKTOP layout: two columns at 375px are two
+        // unusable columns, so below the threshold they become one pane with a
+        // control saying which you are looking at. Only the chosen side is
+        // built — there is no second column off screen.
+        final wide = constraints.maxWidth >= _splitAbove;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (!wide) ...[
+              TabBarLike(
+                labels: const [
+                  ('Set it up', Icons.edit_outlined),
+                  ('The contract', Icons.description_outlined),
+                ],
+                selected: _reading ? 1 : 0,
+                onSelected: (index) => setState(() => _reading = index == 1),
               ),
+              const Divider(height: 1),
+            ],
+            Expanded(
+              child: wide
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // flex 1 and flex 1. Half and half, as asked for.
+                        Expanded(child: _form(context)),
+                        const VerticalDivider(width: 1, thickness: 1),
+                        Expanded(child: ContractPagePane(page: _page)),
+                      ],
+                    )
+                  : _reading
+                  ? ContractPagePane(page: _page)
+                  : _form(context),
             ),
+            const Divider(height: 1),
+            _footer(context, blocker),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Everything that decides what the contract says, in order, scrolling.
+  Widget _form(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      child: Center(
+        child: ConstrainedBox(
+          // Half of a wide monitor is still wide enough to need a measure —
+          // a 1400px line of body text is not readable.
+          constraints: const BoxConstraints(maxWidth: 860),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_isEdit) _banner(context),
+              _nameStep(context),
+              const SizedBox(height: 26),
+              _coreStep(context),
+              const SizedBox(height: 26),
+              _questionsStep(context),
+              const SizedBox(height: 26),
+              _bodyStep(context),
+              const SizedBox(height: 26),
+              _previewStep(context),
+              if (_isEdit) ...[
+                const SizedBox(height: 26),
+                _historyStep(context),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 20),
+                ErrorNote(_error!),
+              ],
+            ],
           ),
         ),
-        const Divider(height: 1),
-        _footer(context, blocker),
-      ],
+      ),
     );
   }
 
@@ -807,7 +899,15 @@ class _ContractDesignerState extends State<ContractDesigner> {
                   children: [
                     const Icon(Icons.lock_outline, size: 14),
                     const SizedBox(width: 8),
-                    Text(field.label, style: theme.textTheme.bodyMedium),
+                    // Flexible: these are laid out in a Wrap, so a long label
+                    // on a phone gets the width of the screen and no more.
+                    Flexible(
+                      child: Text(
+                        field.label,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
                     if (!field.required) const Tag('Optional'),
                   ],
                 ),
@@ -900,15 +1000,21 @@ class _ContractDesignerState extends State<ContractDesigner> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: question.retired
-                        ? Row(
+                        // A Wrap, because "Ask it again" beside it can leave
+                        // this almost no width on a phone — and then a Row
+                        // shrinks the label to nothing and overflows by the
+                        // width of the tag regardless. The tag drops under
+                        // the label instead.
+                        ? Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            runSpacing: 4,
                             children: [
-                              Flexible(
-                                child: Text(
-                                  question.label.text,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.titleSmall?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
+                              Text(
+                                question.label.text,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
                               const Tag('Retired', warn: true),
@@ -1236,14 +1342,11 @@ class _ContractDesignerState extends State<ContractDesigner> {
           'The agreement itself, in your words. Anything in double braces is '
           'filled in when somebody is onboarded — click a field to drop its '
           'tag in where the cursor is, rather than remembering what it was '
-          'called.',
-      child: ContractBodyEditor(
-        api: widget.api,
+          'called. It appears on the page beside this as you type.',
+      child: ContractWriting(
+        page: _page,
         vocabulary: widget.vocabulary,
-        body: _body,
-        contractId: _id,
         fields: () => [for (final question in _questions) question.toField()],
-        payload: () => _payload,
         canEdit: widget.canEdit,
       ),
     );
@@ -1326,35 +1429,67 @@ class _ContractDesignerState extends State<ContractDesigner> {
   Widget _footer(BuildContext context, String? blocker) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              // The button says no; this says why. A disabled control with no
-              // explanation is the thing people file bugs about.
-              blocker ??
-                  (_isEdit
-                      ? 'Publishing shows you exactly what changes before it '
-                            'commits, and applies to everybody onboarded '
-                            'afterwards.'
-                      : 'It is saved as version 1, and every onboarding from '
-                            'then on uses it.'),
-              style: Theme.of(context).textTheme.bodySmall,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final note = Text(
+            // The button says no; this says why. A disabled control with no
+            // explanation is the thing people file bugs about.
+            blocker ??
+                (_isEdit
+                    ? 'Publishing shows you exactly what changes before it '
+                          'commits, and applies to everybody onboarded '
+                          'afterwards.'
+                    : 'It is saved as version 1, and every onboarding from '
+                          'then on uses it.'),
+            style: Theme.of(context).textTheme.bodySmall,
+          );
+
+          final buttons = [
+            TextButton(
+              onPressed: _busy ? null : widget.onCancel,
+              child: Text(widget.canEdit ? 'Cancel' : 'Back'),
             ),
-          ),
-          const SizedBox(width: 16),
-          TextButton(
-            onPressed: _busy ? null : widget.onCancel,
-            child: Text(widget.canEdit ? 'Cancel' : 'Back'),
-          ),
-          const SizedBox(width: 10),
-          FilledButton(
-            onPressed: _busy || blocker != null
-                ? null
-                : (_isEdit ? _publish : _create),
-            child: Text(_isEdit ? 'Review and publish' : 'Create the contract'),
-          ),
-        ],
+            FilledButton(
+              onPressed: _busy || blocker != null
+                  ? null
+                  : (_isEdit ? _publish : _create),
+              child: Text(
+                _isEdit ? 'Review and publish' : 'Create the contract',
+              ),
+            ),
+          ];
+
+          // R7. "Review and publish" beside "Cancel" beside a sentence is
+          // about 370px of intrinsic width before the sentence gets any, so
+          // on a phone the two stack. The buttons keep the bottom, where the
+          // primary action belongs, and the reason it is disabled sits above
+          // it rather than being squeezed to one word a line.
+          // Wrapping rather than a Row even here: "Create the contract" beside
+          // "Cancel" is wider than a phone, so the two go one above the other
+          // at the bottom of the range.
+          final actions = Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 10,
+            runSpacing: 8,
+            children: buttons,
+          );
+
+          if (constraints.maxWidth < 560) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [note, const SizedBox(height: 12), actions],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(child: note),
+              const SizedBox(width: 16),
+              actions,
+            ],
+          );
+        },
       ),
     );
   }

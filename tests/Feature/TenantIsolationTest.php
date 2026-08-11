@@ -247,6 +247,51 @@ class TenantIsolationTest extends TestCase
         $this->assertFalse($this->tenant->has());
     }
 
+    /**
+     * Characterization, not a fix: this pins the case the two comments on
+     * `run()` and `organizationWhenThrown()` did not cover, and it passes
+     * exactly the same before and after those comments were corrected.
+     *
+     * "The innermost tenant is the one it happened to" and "wrapping the fault
+     * on the way out does not lose the attribution" are both true only while the
+     * original throwable is what keeps travelling. Catch an inner failure INSIDE
+     * an outer run and rethrow it wrapped, and the wrapper is a throwable no
+     * inner run has ever seen: the outer run claims it on the way past, and the
+     * getPrevious() walk finds that claim first and stops.
+     *
+     * Nothing in the codebase catches and wraps inside a run(), so this is
+     * documentation of where the edge is, not a defect being repaired.
+     */
+    public function test_a_fault_wrapped_inside_an_outer_run_is_blamed_on_the_outer_tenant(): void
+    {
+        $a = $this->makeOrg('Alpha');
+        $b = $this->makeOrg('Bravo');
+
+        $inner = new RuntimeException('the actual fault');
+        $wrapper = null;
+
+        try {
+            $this->tenant->run($a, function () use ($b, $inner) {
+                try {
+                    $this->tenant->run($b, fn () => throw $inner);
+                } catch (RuntimeException $e) {
+                    throw new RuntimeException('while doing the thing', 0, $e);
+                }
+            });
+        } catch (RuntimeException $e) {
+            $wrapper = $e;
+        }
+
+        $this->assertNotNull($wrapper, 'The wrapper never escaped the outer run.');
+
+        // Where the WRAPPING happened, not where the fault did.
+        $this->assertSame($a->id, $this->tenant->organizationWhenThrown($wrapper)?->id);
+
+        // The inner throwable still remembers the truth; nothing consults it,
+        // because the walk stops at the first claim it finds.
+        $this->assertSame($b->id, $this->tenant->organizationWhenThrown($inner)?->id);
+    }
+
     // ── authority: assignment vs reach (§4) ──────────────────────
 
     public function test_franchise_level_user_reaches_only_that_franchise(): void

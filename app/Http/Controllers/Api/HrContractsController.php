@@ -6,7 +6,6 @@ use App\Models\Contract;
 use App\Models\ContractVersion;
 use App\Support\Audit\AuditLogger;
 use App\Support\Contracts\CommonCore;
-use App\Support\Contracts\ContractFacts;
 use App\Support\Contracts\DocumentRenderer;
 use App\Support\Contracts\FieldSet;
 use App\Support\Contracts\FieldType;
@@ -113,12 +112,23 @@ class HrContractsController extends Controller
              * in the one screen whose docblock says it does not re-state server
              * rules. A seventh type that took options would have been offered
              * with no way to give it any. See FieldType::takesOptions.
+             *
+             * `merges` is the fourth, and it is here for the same failure with
+             * the sign reversed. The body editor offered every live field as an
+             * insertable tag, so a template carrying a signature field offered
+             * one — and `MergeTags::refusalFor` refuses it with a paragraph
+             * about a signature being an act rather than text. The editor
+             * cannot ask `merge_tags` for that answer while the contract is
+             * being created, because that list comes back from
+             * `POST {contract}/preview` and there is no contract yet. So it is
+             * on the type, beside the other property the designer reads off it.
              */
             'field_types' => array_map(
                 fn (string $key) => [
                     'key'           => $key,
                     'label'         => FieldType::ALL[$key],
                     'takes_options' => FieldType::takesOptions($key),
+                    'merges'        => FieldType::merges($key),
                 ],
                 FieldType::keys(),
             ),
@@ -156,33 +166,24 @@ class HrContractsController extends Controller
              * client would otherwise hardcode: the delimiters, the details every
              * onboarding collects, and the facts.
              *
-             * `open` and `close` rather than a format string, because the client
-             * inserts a tag by wrapping a key and never by parsing an example.
+             * `open` and `close` are the grammar itself, two strings rather than
+             * a format string, so that building a tag from a key is wrapping and
+             * never parsing an example. They are what a client needs for the one
+             * list this server cannot pre-assemble — a template's own questions
+             * while the template does not exist yet and there is no `{contract}`
+             * to preview against. Everything else arrives with `tag` already
+             * written.
+             *
+             * Sent, not enforced. What any client then does is not asserted here
+             * — see MergeTags::resolvable for why a comment on this side of the
+             * wire does not get to describe the other.
              */
             'merge_tags' => [
                 'open'            => MergeTags::OPEN,
                 'close'           => MergeTags::CLOSE,
                 'example'         => MergeTags::OPEN.'first_name'.MergeTags::CLOSE,
                 'max_body_length' => MergeTags::MAX_BODY_LENGTH,
-                'core' => array_map(
-                    fn (string $key) => [
-                        'key'   => $key,
-                        'tag'   => MergeTags::OPEN.$key.MergeTags::CLOSE,
-                        'label' => CommonCore::labelFor($key),
-                        'is'    => CommonCore::describe($key),
-                    ],
-                    CommonCore::asked(),
-                ),
-                'facts' => array_map(
-                    fn (string $key) => [
-                        'key'   => $key,
-                        'tag'   => MergeTags::OPEN.$key.MergeTags::CLOSE,
-                        'label' => ContractFacts::labelFor($key),
-                        'is'    => ContractFacts::describe($key),
-                    ],
-                    ContractFacts::keys(),
-                ),
-            ],
+            ] + self::contractFreeTags(),
             'limits' => [
                 'max_fields'        => FieldSet::MAX_FIELDS,
                 'max_options'       => FieldSet::MAX_OPTIONS,
@@ -190,6 +191,44 @@ class HrContractsController extends Controller
                 'max_body_length'   => MergeTags::MAX_BODY_LENGTH,
             ],
         ]]);
+    }
+
+    /**
+     * The tags that resolve whatever contract is open, in the two groups the
+     * picker draws them as.
+     *
+     * Taken from `MergeTags::resolvable(null)` rather than assembled here. It
+     * used to be two `array_map`s over `CommonCore::asked()` and
+     * `ContractFacts::keys()` producing the same `{key, tag, label, is}` shapes
+     * that `resolvable()` produces one file away — and R6's trap had already
+     * sprung: `resolvable()` grew a `source` and these two did not, so the chip
+     * for `{{first_name}}` said where it came from when the preview endpoint sent
+     * it and said nothing when the catalogue did.
+     *
+     * A null field list is what makes one home possible: `resolvable()` skips the
+     * field loop entirely, so what comes back IS the contract-free half. Grouped
+     * here, because the grouping is a property of this response and not of the
+     * vocabulary — `preview` sends the same entries as one flat list with
+     * `source` on each.
+     *
+     * @return array{core: list<array<string, mixed>>, facts: list<array<string, mixed>>}
+     */
+    private static function contractFreeTags(): array
+    {
+        $groups = [MergeTags::SOURCE_CORE => [], MergeTags::SOURCE_FACT => []];
+
+        foreach (MergeTags::resolvable(null) as $entry) {
+            // Anything else would be a field, and there are no fields in a null
+            // field list. Skipped rather than dropped into a group it is not.
+            if (isset($groups[$entry['source']])) {
+                $groups[$entry['source']][] = $entry;
+            }
+        }
+
+        return [
+            'core'  => $groups[MergeTags::SOURCE_CORE],
+            'facts' => $groups[MergeTags::SOURCE_FACT],
+        ];
     }
 
     /** @param array<string, string> $map */

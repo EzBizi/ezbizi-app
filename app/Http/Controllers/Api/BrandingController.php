@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Company;
 use App\Models\Organization;
+use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Branding\Branding;
 use App\Support\Files\FileStore;
@@ -58,10 +59,14 @@ class BrandingController extends Controller
     {
         $organization = $request->user()->organization;
 
+        // Refusal's sentence, not a permission key. "Missing permission:
+        // organizations.edit." is a wire name on a screen (R8) — it names a
+        // thing that appears nowhere in the product, and the remedy it implies
+        // is for the reader to go and find it.
         abort_unless(
             $request->user()->hasPermission('organizations.edit'),
             403,
-            'Missing permission: organizations.edit.',
+            Refusal::permission('change the organization’s logo')->message(),
         );
 
         return $this->store($request, $organization, 'organization.logo_changed');
@@ -76,7 +81,11 @@ class BrandingController extends Controller
 
     public function destroyOrganization(Request $request): array
     {
-        abort_unless($request->user()->hasPermission('organizations.edit'), 403);
+        abort_unless(
+            $request->user()->hasPermission('organizations.edit'),
+            403,
+            Refusal::permission('remove the organization’s logo')->message(),
+        );
 
         return $this->clear($request->user()->organization, 'organization.logo_removed');
     }

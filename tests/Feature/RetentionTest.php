@@ -7,14 +7,18 @@ use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
 use App\Models\AuditEvent;
+use App\Models\Contract;
+use App\Models\ContractVersion;
 use App\Models\Invitation;
 use App\Models\Notification;
+use App\Models\Onboarding;
 use App\Support\Privacy\DeclaringModels;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
+use ReflectionMethod;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -65,6 +69,63 @@ class RetentionTest extends TestCase
                 $this->assertStringContainsString((string) $policy->months, $sentence);
             }
         }
+    }
+
+    /**
+     * `RetentionPolicy::window()` names the tables it governs. It named three of
+     * four.
+     *
+     * R15, in the one place it had already gone wrong. That docblock is where a
+     * reader goes to find out what the nightly sweep deletes from, and the change
+     * that added `App\Models\PasswordReset` — the entire point of which was that
+     * nothing had been sweeping that table — left the sentence beneath saying
+     * there were three. A list of examples inside a comment is a second copy of a
+     * fact the code already holds, and it drifts in the way nothing notices.
+     *
+     * Reading a docblock in a test is not a habit worth spreading, and this is
+     * the only one that does it. What earns it here is that the comment
+     * enumerates a set the code can produce EXACTLY, and enumerates it in order
+     * to be relied on. Prose that merely explains is not testable and should not
+     * be made to look as though it is.
+     */
+    public function test_this_constructor_names_every_table_it_governs(): void
+    {
+        $swept = [];
+
+        foreach (app(DeclaringModels::class)->statingRetention() as $class) {
+            if ($class::retention()->isSwept()) {
+                $swept[] = (new $class)->getTable();
+            }
+        }
+
+        sort($swept);
+
+        $this->assertNotEmpty($swept, 'Nothing is swept at all, so this test is comparing '
+            .'an empty list against a docblock and would pass whatever it said.');
+
+        $doc = (string) (new ReflectionMethod(RetentionPolicy::class, 'window'))->getDocComment();
+
+        foreach ($swept as $table) {
+            $this->assertStringContainsString($table, $doc, sprintf(
+                'RetentionPolicy::window() is what deletes from `%s` every night, and its own '
+                .'docblock does not mention it. Somebody reading that class to find out what '
+                .'the sweep touches would not learn that this table is one of them.',
+                $table,
+            ));
+        }
+
+        $counted = [1 => 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+
+        $this->assertStringContainsString(
+            sprintf('The %s tables this governs today are', $counted[count($swept)] ?? count($swept)),
+            $doc,
+            sprintf(
+                'There are %d swept tables (%s) and the docblock on RetentionPolicy::window() '
+                .'counts a different number. Update the sentence — or, if the list has grown '
+                .'past what a sentence should carry, replace it with a pointer to this test.',
+                count($swept), implode(', ', $swept),
+            ),
+        );
     }
 
     /**
@@ -163,6 +224,85 @@ class RetentionTest extends TestCase
         $left = $this->inTenant($alpha['org'], fn () => Invitation::pluck('email')->all());
 
         $this->assertSame(['new@example.test'], $left);
+    }
+
+    /**
+     * The window on `invitations` reaches a table that is declared `forever`.
+     *
+     * `onboardings.invitation_id` is `nullOnDelete`, so at twenty-four months the
+     * sweep does not only remove the invitation — it edits an onboarding whose
+     * own retention says it is kept for as long as the agreement it produced
+     * matters. That is deliberate (the alternatives are a cascade that lets
+     * expiry delete a signed agreement, or a restrict that makes the window
+     * unenforceable the moment anybody is hired), and both retention sentences
+     * now say so.
+     *
+     * What this pins is the part that would be a disaster rather than a
+     * surprise: the onboarding SURVIVES. A cascade added here by somebody
+     * tidying up foreign keys would silently start deleting signed contracts on
+     * a nightly schedule, and nothing else in the suite would notice.
+     */
+    public function test_expiring_an_invitation_keeps_the_onboarding_it_produced(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $onboardingId = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $invitation = (new Invitation)->forceFill([
+                'organization_id' => $alpha['org']->id,
+                'email' => 'hired@example.test',
+                'token_hash' => hash('sha256', 'hired'),
+                'role_id' => $alpha['admin']->role_id,
+                'invited_by_user_id' => $alpha['admin']->getKey(),
+                'assigned_franchise_id' => $alpha['franchise']->id,
+                'sent_at' => now()->subMonths(30),
+                'expires_at' => now()->subMonths(30)->addWeek(),
+                'accepted_at' => now()->subMonths(30)->addDay(),
+                'created_at' => now()->subMonths(30),
+                'updated_at' => now()->subMonths(30),
+            ]);
+
+            $invitation->save();
+
+            $contract = Contract::create([
+                'organization_id' => $alpha['org']->id,
+                'name' => 'Driver',
+                'created_by' => $alpha['admin']->getKey(),
+            ]);
+
+            $version = ContractVersion::create([
+                'organization_id' => $alpha['org']->id,
+                'contract_id'     => $contract->getKey(),
+                'version'         => 1,
+                'fields'          => [],
+                'created_by'      => $alpha['admin']->getKey(),
+            ]);
+
+            return Onboarding::create([
+                'organization_id'     => $alpha['org']->id,
+                'invitation_id'       => $invitation->getKey(),
+                'contract_version_id' => $version->getKey(),
+                'status'              => Onboarding::COMPLETED,
+                'started_at'          => now()->subMonths(30),
+                'started_by_user_id'  => $alpha['admin']->getKey(),
+            ])->getKey();
+        });
+
+        $this->artisan('ezbizi:expire-data')->assertSuccessful();
+
+        $this->inTenant($alpha['org'], function () use ($onboardingId) {
+            $onboarding = Onboarding::find($onboardingId);
+
+            $this->assertNotNull($onboarding,
+                'The invitation sweep deleted a signed agreement. `onboardings.invitation_id` '
+                .'must stay nullOnDelete — a cascade turns a retention window on an '
+                .'administrative row into nightly deletion of contracts.');
+
+            $this->assertNull($onboarding->invitation_id,
+                'The invitation was expected to be gone and its link nulled. If the '
+                .'invitation survived, the window on that table is no longer being applied.');
+
+            $this->assertSame(0, Invitation::where('email', 'hired@example.test')->count());
+        });
     }
 
     // ── 3. what the sweep must NOT do ────────────────────────────
@@ -336,6 +476,280 @@ class RetentionTest extends TestCase
             .'answer and requires a reason — what is not valid is a table nobody has decided '
             .'about, because it does not fail, it just grows.',
             implode("\n  ", $undeclared),
+        ));
+    }
+
+    /**
+     * The test above cannot see a table that has no model, and that is where the
+     * hole was.
+     *
+     * Everything §9 and §10 build is DERIVED by walking `app/Models`: the
+     * inventory, the purge, the sweep, and the test above. All four share one
+     * blind spot — a table written by a bare `DB::table()` with no Eloquent class
+     * is not exempt from any of them, it is invisible to all of them at once, and
+     * invisibility does not fail. `password_resets` was exactly that: a row per
+     * reset request, naming the person and the address they asked from, marked
+     * used rather than deleted, absent from the inventory, untouched by a purge
+     * of that person and swept by nothing.
+     *
+     * So this walks the SCHEMA instead, which is the only list that cannot be
+     * short. Every table either belongs to a model that has stated a policy, or
+     * is named below with the reason it needs none. The polarity is the point: a
+     * table added tomorrow fails this test until somebody decides about it,
+     * rather than passing silently because nobody wrote it down.
+     *
+     * ── That polarity was not real, and this is what it was ──────
+     *
+     * `$declared` was seeded from `statingRetention()` and then TOPPED UP with
+     * every class in app/Models, on the reasoning — written in a comment here —
+     * that "a table whose model exists and does not state retention is caught by
+     * the test above". It is not. The sibling test only fires on a table with an
+     * `organization_id` whose model sets `UPDATED_AT = null`, and fifteen tables
+     * had a model, no policy, and failed one or both of those conditions: they
+     * were caught by nothing at all. What this test actually asserted was "every
+     * table has a MODEL", which is a much weaker sentence than the one above it
+     * and reads identically when it passes.
+     *
+     * `$declared` is now the declaring models and nothing else, so a table with
+     * a model and no policy lands in the exception list or fails — and the
+     * exception list is checked for staleness, which means the day somebody
+     * declares a policy on one of these the entry excusing it starts failing.
+     */
+    public function test_every_table_in_the_schema_has_been_decided_about(): void
+    {
+        /*
+         * Tables that need no retention policy, listed with why.
+         *
+         * A short list of EXCEPTIONS is a different artefact from a list of
+         * what is covered: this one defaults to failing, so forgetting to edit
+         * it is the safe direction.
+         */
+        $needsNoPolicy = [
+            // Laravel's own plumbing. Each row is transient by construction —
+            // written, consumed and removed by the framework — and none of them
+            // is a record of anybody's dealings with an organization.
+            'migrations'  => 'the ledger of which migrations have run',
+            'cache'       => 'framework cache, evicted by its own TTL',
+            'cache_locks' => 'framework cache locks, released on use',
+            'queue_jobs'  => 'pending queue payloads, deleted as they are processed. Named '
+                .'`queue_jobs` rather than `jobs` because `jobs` is the business table — see '
+                .'the rename migration, which exists so the two can never be confused.',
+            'job_batches' => 'queue batch bookkeeping, pruned by queue:prune-batches',
+            'failed_jobs' => 'failed queue payloads, pruned by queue:prune-failed',
+
+            'password_reset_tokens' => 'Laravel\'s email-keyed reset table, which this '
+                .'application does not use: an address is not an account here (§4.3), so '
+                .'App\Services\Auth\PasswordResets writes `password_resets` instead — a '
+                .'table that names a subject. Nothing reaches the framework password broker, '
+                .'so no row is ever written to this one.',
+
+            'sessions' => 'Laravel\'s database session table. Sign-in is by bearer token '
+                .'(`personal_access_tokens`, declared by ApiToken); the `web` guard is '
+                .'configured because Laravel ships it, and nothing ever authenticates '
+                .'through it — there is no Auth::login and no route behind it. So '
+                .'`sessions.user_id` is null on every row and what is here is anonymous '
+                .'visitors to the public page: nobody to list it under and nobody to erase '
+                .'it for, which is why it is named in DataInventory::caveats rather than in '
+                .'the inventory.',
+
+            // A join table: no row about a person, and each goes with the role
+            // whose grant it records.
+            'permission_role' => 'a join table; rows go with the role',
+
+            // One counter per organization per record kind, updated in place.
+            // It does not accumulate and it names nobody.
+            'record_sequences' => 'the next number for each kind of record, one row per '
+                .'counter, incremented rather than appended to',
+
+            /*
+             * ── THE TENANT'S OWN STRUCTURE AND CONFIGURATION ─────
+             *
+             * Each of these has a model and states no policy, and until this
+             * test was narrowed that alone was enough to pass. What they have
+             * in common is the shape of the answer rather than the answer
+             * itself: one row per THING the organization has, edited in place
+             * for as long as that thing exists, and removed by the cascade when
+             * the organization is. There is no age at which a live one stops
+             * being current, so there is nothing for a sweep to do — which is a
+             * different statement from "nobody has looked".
+             */
+            'organizations' => 'the tenant itself. Every other retention window is measured '
+                .'inside one of these rows, and removing it is what removes them — a sweep '
+                .'here would not be retention, it would be deleting clients on a timer',
+            'companies'  => 'a level of the organization\'s own structure (§3): one row per '
+                .'company, edited in place, soft-deleted when the client closes one and gone '
+                .'with the tenant',
+            'franchises' => 'the operating units of that same structure (§5), on exactly the '
+                .'terms above. Whatever the organization has renamed them to (§8)',
+            'roles'      => 'the permission sets an organization composed for itself (§4). '
+                .'One row per role, edited in place; it names nobody, and it grows only when '
+                .'somebody creates a role',
+            'assignments' => 'where a user may act (§4). It records CURRENT access rather '
+                .'than a history of it — the row is deleted when the access is taken away, '
+                .'so there is no accumulation to sweep. Who reached what, and when, is '
+                .'`audit_events`, which has a window',
+            'settings'   => 'one override per setting per scope (§6), overwritten when the '
+                .'value changes rather than appended to. Absence means inherit, so a stale '
+                .'row is a wrong answer rather than clutter, and it is corrected rather than '
+                .'expired',
+            'automations' => 'the rule, not its history: a name, a trigger and a pointer at '
+                .'the version that is live (§5.5). The three tables that accumulate beneath '
+                .'it — automation_versions, automation_runs, automation_events — each state a '
+                .'policy of their own',
+            'contracts'  => 'the template, never the signed thing. `contract_versions` and '
+                .'`contract_signatures` are the records that matter and both state a policy; '
+                .'this row is a name and a pointer at the current version',
+
+            /*
+             * `jobs` sits next to the group above and is not one of them: it is
+             * a BUSINESS record rather than structure, so it does not get to
+             * lean on that paragraph and is argued on its own.
+             *
+             * It accumulates, one row per piece of work, and it is kept — which
+             * is the same answer `customers` gives, for the same reason: the
+             * invoices §9 insists on keeping are found through it and tax law
+             * wants them. What it does not hold is a person. The customer is a
+             * foreign key into `customers`, which states its policy and
+             * anonymises in place; the photographs are `attachments`, which
+             * states its own and drops them; and free text somebody typed into
+             * a job description is the caveat the purge already publishes,
+             * which nothing can find and no policy should pretend to.
+             */
+            'jobs' => 'the work itself (§5.2). It accumulates and it is kept, on the same '
+                .'terms as the customer it belongs to — there is no age at which last year\'s '
+                .'job stops being what an invoice refers to. The personal data reachable from '
+                .'it lives in `customers` and `attachments`, and both of those decide about '
+                .'themselves',
+
+            /*
+             * ── EZBIZI'S OWN TABLES, NOT ANY TENANT'S ───────────
+             *
+             * No organization_id, not reachable from a tenant, and none of them
+             * a log: each is a current-state row that is overwritten or removed
+             * rather than appended to.
+             */
+            'permissions' => 'the list of what the software can do (§2.1). It is code kept in '
+                .'a table and synced by ezbizi:sync-permissions; a client composes these into '
+                .'roles and cannot invent one',
+            'platform_module_flags' => 'one row per module, holding EzBizi\'s own '
+                .'availability switch (§2.1 layer 3), changed in place',
+            'platform_subscription_defaults' => 'one row, holding the platform\'s default '
+                .'trial and subscription numbers (§13), changed in place. The expiry that '
+                .'binds a client is `organizations.trial_ends_at`, not this',
+            'platform_staff_links' => 'one row per staff account that is also a user inside '
+                .'an organization (§4.2). It states that two identities are one person while '
+                .'that is true, and is deleted when it stops being true',
+            /*
+             * `platform_staff` does hold personal data — a name, an address, a
+             * last-login IP — and it is named here on RETENTION grounds only:
+             * it is a live account record, one row per person, edited in place
+             * and soft-deleted when somebody leaves, so there is nothing
+             * accumulating for a sweep to reach. Whether EzBizi's own staff
+             * records belong in the §9 inventory is a separate question from
+             * this test's, and it is not answered by this entry.
+             */
+            'platform_staff' => 'EzBizi\'s own staff accounts (§4.2): one row per person, '
+                .'edited in place and soft-deleted when they leave. An account record rather '
+                .'than a log, so it does not accumulate',
+        ];
+
+        /*
+         * ── ONE TABLE IS HERE BECAUSE THE DECISION IS NOT MINE ───
+         *
+         * `staff_impersonations` must not be moved into the list above and must
+         * not be given a window here to make this test quiet. It is one row
+         * every time platform staff reached into a customer's records, it
+         * carries `organization_id`, and it accumulates — the only write after
+         * insert is `end()` stamping `ended_at` once, which does not make it a
+         * table that gets tidied.
+         *
+         * A number already exists, twice, in prose: the model's own docblock
+         * says "retained 12 months (§10)", and AuditEvent's policy names "twelve
+         * of platform-staff access to client data (§4.2)" as one of the four
+         * windows ExpireAuditEvents enforces. Nothing enforces it HERE, and this
+         * is precisely what RetentionPolicy's docblock means by a number inside
+         * an English sentence being a number nothing can read.
+         *
+         * What is undecided is not the length but the MECHANISM, and that is an
+         * owner's call rather than a test's: `RetentionPolicy::window(12,
+         * 'started_at', …)` puts it under the nightly generic sweep, while
+         * `elsewhere('ezbizi:expire-audit', …)` puts staff-access evidence under
+         * the one command that already owns the twelve-month staff window and
+         * keeps the session and the audit rows about it expiring together.
+         * Choosing the first quietly would split one piece of evidence across
+         * two commands with two schedules.
+         */
+        $awaitingTheOwner = [
+            'staff_impersonations' => 'the record of EzBizi staff opening a client\'s data '
+                .'(§4.2). Twelve months is written down in two docblocks and enforced by '
+                .'nothing; which command should enforce it is an open question, not an '
+                .'oversight',
+        ];
+
+        $undecided = [];
+
+        $declared = [];
+
+        foreach (app(DeclaringModels::class)->statingRetention() as $class) {
+            $declared[(new $class)->getTable()] = $class;
+        }
+
+        $database = \Illuminate\Support\Facades\DB::connection()->getDatabaseName();
+
+        foreach (\Illuminate\Support\Facades\Schema::getTables() as $table) {
+            $name = $table['name'];
+
+            if (($table['schema'] ?? $database) !== $database) {
+                continue;   // another sandbox on the same server
+            }
+
+            if (isset($declared[$name]) || isset($needsNoPolicy[$name]) || isset($awaitingTheOwner[$name])) {
+                continue;
+            }
+
+            $undecided[] = $name;
+        }
+
+        sort($undecided);
+
+        /*
+         * Both lists have to stay true as well.
+         *
+         * An entry naming a table that has since stated a policy, or one that no
+         * longer exists, is a sentence asserting something about this schema
+         * that is not so — and the first draft of this list had one: it excused
+         * `jobs` as the queue table, which it is not. A stale exception is also
+         * how a list of exceptions quietly turns into a list of everything.
+         *
+         * The staleness check is what makes narrowing `$declared` safe rather
+         * than merely stricter. Put the app/Models top-up back and every entry
+         * added for a table that HAS a model — fourteen of them, plus the one
+         * below — is immediately excusing a table this test already counts as
+         * covered, and this assertion says so by name.
+         */
+        $stale = [];
+
+        foreach ([...array_keys($needsNoPolicy), ...array_keys($awaitingTheOwner)] as $name) {
+            if (isset($declared[$name])) {
+                $stale[] = "{$name} (states retention now: {$declared[$name]})";
+            } elseif (! \Illuminate\Support\Facades\Schema::hasTable($name)) {
+                $stale[] = "{$name} (no such table)";
+            }
+        }
+
+        $this->assertSame([], $stale, sprintf(
+            "The exception list in this test excuses tables that do not need excusing:\n  %s",
+            implode("\n  ", $stale),
+        ));
+
+        $this->assertSame([], $undecided, sprintf(
+            "These tables exist and nothing has decided anything about them:\n  %s\n"
+            .'A table with no policy is invisible to ezbizi:expire-data, and one with no '
+            .'model at all is invisible to the §9 inventory and to the purge as well — not '
+            .'exempt from them. Implement App\Support\Privacy\StatesRetention on its model '
+            .'(and HoldsPersonalData if a person is in it), or add it to the exception list '
+            .'in this test WITH the reason it needs no policy.',
+            implode("\n  ", $undecided),
         ));
     }
 

@@ -4,9 +4,11 @@ namespace App\Support\Privacy;
 
 use App\Models\Organization;
 use App\Support\Audit\AuditLogger;
+use App\Support\Database\WrittenOnceRefusal;
 use App\Support\Files\FileStore;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
@@ -26,10 +28,24 @@ use RuntimeException;
  * The purge then reports success while leaving the new column untouched, which
  * is worse than not having one.
  *
- * So the rule is: if it is not declared, it is not erased, and a column that
- * exists without a declaration is caught by
- * PersonalDataPurgeTest::test_every_erasable_entry_names_columns_that_exist
- * rather than discovered during a rights request.
+ * So the rule is: if it is not declared, it is not erased. Two tests hold the
+ * declarations to that, and it is worth being exact about which direction each
+ * one runs, because the pair used to be described as one net that did not exist:
+ *
+ *   - PersonalDataPurgeTest::test_every_erasable_entry_names_columns_that_exist
+ *     runs DECLARED → SCHEMA. An entry naming prose where a column should be
+ *     erases nothing while appearing to, and this catches that.
+ *
+ *   - DataInventoryTest::test_every_declared_table_names_its_person_shaped_columns
+ *     runs SCHEMA → DECLARED, over the same list of person-shaped column names
+ *     the inventory's own coverage test uses. This is the one that catches a
+ *     column added to a table that already implements the interface.
+ *
+ * The honest limit, because the second test is a heuristic and not a proof: it
+ * knows the columns whose NAME says a row is about a human being. A column whose
+ * name says nothing — a free-text note, a vendor's evidence blob — is invisible
+ * to it, and stays a judgement somebody has to make while adding the column. The
+ * interface forces the method to exist; nothing can force it to stay complete.
  *
  * ── Anonymise in place, not delete ───────────────────────────────
  *
@@ -80,19 +96,107 @@ class Anonymiser
      * tables hold rows about them, what would be blanked, what would be removed
      * and — the part worth reading before pressing on — what will SURVIVE and
      * why.
+     *
+     * ── What "will survive" covers, and the one case it cannot ───
+     *
+     * That last promise was written unconditionally and is only true of part of
+     * the walk, so here is the exact shape of it. A row survives for one of
+     * three reasons, and a dry run can see two:
+     *
+     *   - it is DECLARED to survive, with `Erasure::keep`. Read off the model,
+     *     so the preview and the purge print an identical `kept` list.
+     *
+     *   - it refuses to be DROPPED. Asked with `deletionRefusal()` before
+     *     anything is attempted, on both paths — see `dropRows`, which is where
+     *     that was fixed and why.
+     *
+     *   - it refuses to be ERASED. Nothing in this system declares such a
+     *     refusal, so the only way one can arise is a guard that fails the
+     *     write, and a dry run performs no write. The preview therefore cannot
+     *     report it.
+     *
+     * The third is a real gap, stated rather than quietly left. Asking
+     * `deletionRefusal()` on the erase path would close it in appearance only:
+     * that method answers "may this ROW be removed", which is a different
+     * question from "may these columns be blanked" — Attachment, its one
+     * implementor today, protects a file a signature fingerprints and lives on
+     * the drop path. Wiring it into `eraseColumns` would make the preview
+     * announce refusals the purge does not make, which is the same lie pointing
+     * the other way.
+     * PersonalDataPurgeTest::test_an_erase_a_model_refuses_is_reported_and_the_preview_cannot_know
+     * holds the gap to that size and fails if it grows.
+     *
+     * ── All of it, or none of it ─────────────────────────────────
+     *
+     * The database work runs in one transaction. It did not, and the walk is
+     * alphabetical across a dozen tables, so anything raising part-way through —
+     * a constraint, a model guard, a declaration somebody changed to `erase` on
+     * an append-only table — left a person half-erased with nothing recording
+     * where it stopped. `{ref}` exists because that already happened once, on
+     * the unique index over `users.email`; the collision was fixed and the
+     * exposure it demonstrated was not.
+     *
+     * The BYTES are deleted after the commit and never inside it, because a
+     * filesystem does not roll back. Deleting a file inside a transaction that
+     * then aborts leaves a row pointing at nothing, which reads to every later
+     * caller as corruption rather than as erasure — so the walk collects what is
+     * doomed and the deletion happens once the rows that indexed those files are
+     * certainly gone. AttachmentsController::destroy orders it the same way for
+     * the same reason.
      */
     public function purge(Model $subject, bool $dryRun = false): array
     {
         $organization = $this->organizationOf($subject);
 
         return $this->tenant->run($organization, function () use ($subject, $dryRun, $organization) {
-            $tables = [];
+            /** @var array<array{disk: ?string, path: string}> */
+            $doomed = [];
 
-            foreach ($this->models->holdingPersonalData() as $class) {
-                $tables[] = $this->purgeOne($class, $subject, $dryRun);
+            $walk = function () use ($subject, $dryRun, &$doomed): array {
+                $tables = [];
+
+                foreach ($this->models->holdingPersonalData() as $class) {
+                    $tables[] = $this->purgeOne($class, $subject, $dryRun, $doomed);
+                }
+
+                return $tables;
+            };
+
+            if ($dryRun) {
+                $tables = $walk();
+            } else {
+                $tables = DB::transaction(function () use ($walk, $subject) {
+                    $tables = $walk();
+
+                    /*
+                     * §9: "and log the purge itself". The counts go in and the
+                     * values do not — "we blanked customers.name" is the
+                     * accountable fact, and what the name WAS is precisely what
+                     * was being removed.
+                     *
+                     * Inside the transaction: an entry saying somebody was purged
+                     * must not outlive a walk that rolled back.
+                     */
+                    $this->audit->log('personal_data.purged', metadata: [
+                        'subject_type' => class_basename($subject),
+                        'subject_id'   => $subject->getKey(),
+                        'tables'       => array_map(
+                            fn (array $t) => array_intersect_key($t, array_flip(
+                                ['table', 'rows', 'columns_erased', 'rows_dropped', 'files_removed', 'refusals'],
+                            )),
+                            array_values(array_filter($tables, fn ($t) => $t['applies'])),
+                        ),
+                    ]);
+
+                    return $tables;
+                });
+
+                foreach ($doomed as $file) {
+                    $this->files->delete($file['path'], $file['disk']);
+                }
             }
 
-            $report = [
+            return [
                 'subject' => [
                     // Type and id only. See the class docblock: naming the person
                     // in the record of their own erasure defeats the erasure.
@@ -105,26 +209,6 @@ class Anonymiser
                 'caveats'  => $this->caveats(),
                 'purged_at' => now()->toIso8601String(),
             ];
-
-            if (! $dryRun) {
-                /*
-                 * §9: "and log the purge itself". The counts go in and the values
-                 * do not — "we blanked customers.name" is the accountable fact,
-                 * and what the name WAS is precisely what was being removed.
-                 */
-                $this->audit->log('personal_data.purged', metadata: [
-                    'subject_type' => class_basename($subject),
-                    'subject_id'   => $subject->getKey(),
-                    'tables'       => array_map(
-                        fn (array $t) => array_intersect_key($t, array_flip(
-                            ['table', 'rows', 'columns_erased', 'rows_dropped', 'files_removed', 'refusals'],
-                        )),
-                        array_values(array_filter($tables, fn ($t) => $t['applies'])),
-                    ),
-                ]);
-            }
-
-            return $report;
         });
     }
 
@@ -132,8 +216,9 @@ class Anonymiser
      * One table's worth.
      *
      * @param  class-string<Model&HoldsPersonalData>  $class
+     * @param  array<array{disk: ?string, path: string}>  $doomed  files to delete once the transaction commits
      */
-    private function purgeOne(string $class, Model $subject, bool $dryRun): array
+    private function purgeOne(string $class, Model $subject, bool $dryRun, array &$doomed): array
     {
         $table = (new $class)->getTable();
 
@@ -172,8 +257,8 @@ class Anonymiser
         }
 
         return $drops !== []
-            ? $this->dropRows($line, $rows, $dryRun)
-            : $this->eraseColumns($line, $rows, $entries, $table, $dryRun);
+            ? $this->dropRows($line, $rows, $dryRun, $doomed)
+            : $this->eraseColumns($line, $rows, $entries, $table, $dryRun, $doomed);
     }
 
     /**
@@ -187,6 +272,27 @@ class Anonymiser
      * here is the reason" is an answer somebody can act on, and a purge that
      * swallowed it would report a completeness it had not achieved.
      *
+     * ── The refusal is ASKED FOR, not caught ─────────────────────
+     *
+     * It used to be discovered only by catching what `->delete()` threw, which
+     * meant the dry run could not discover it at all: it never called `delete()`,
+     * so it counted every refused row as dropped and every protected file as
+     * removed. Measured against a signed onboarding, the preview said
+     * `rows_dropped: 1, refusals: []` about the very row the real run answered
+     * `rows_dropped: 0, refusals: 1` for. The preview promised to destroy the
+     * signed contract; the purge refused to. That is the worst way for a privacy
+     * tool to be wrong, because the preview is the artefact somebody quotes back
+     * to the person asking.
+     *
+     * So a row is asked `deletionRefusal()` first, on both paths, and the answer
+     * is the same sentence either way. `method_exists`, in the same way
+     * `personalDataFiles` is asked for: most rows cannot refuse anything, and
+     * making every droppable model implement a method returning null would be
+     * ceremony. `refusalRaisedBy` stays as the backstop for a refusal nobody
+     * declared — a guard on some other model's `deleting` — which is a bug to
+     * report rather than a case to plan for, and which is not the same thing as
+     * the database saying no. That distinction is the whole of that method.
+     *
      * ── No `attachment.removed` entry, deliberately ──────────────
      *
      * AttachmentsController writes one on its own delete path, carrying
@@ -197,10 +303,17 @@ class Anonymiser
      * own entry records the counts per table instead, which is the accountable
      * fact without being the thing being erased.
      */
-    private function dropRows(array $line, $rows, bool $dryRun): array
+    private function dropRows(array $line, $rows, bool $dryRun, array &$doomed): array
     {
         foreach ($rows as $row) {
-            $files = $this->filesOf($row);
+            $files   = $this->filesOf($row);
+            $refusal = $this->refusalFor($row);
+
+            if ($refusal !== null) {
+                $line['refusals'][] = ['id' => $row->getKey(), 'because' => $refusal];
+
+                continue;
+            }
 
             if ($dryRun) {
                 $line['rows_dropped']++;
@@ -209,29 +322,94 @@ class Anonymiser
                 continue;
             }
 
-            try {
-                $row->delete();
-            } catch (RuntimeException $e) {
-                $line['refusals'][] = [
-                    'id'      => $row->getKey(),
-                    'because' => $e->getMessage(),
-                ];
+            $raised = $this->refusalRaisedBy(fn () => $row->delete());
+
+            if ($raised !== null) {
+                $line['refusals'][] = ['id' => $row->getKey(), 'because' => $raised];
 
                 continue;
             }
 
             $line['rows_dropped']++;
 
-            // Only after the row is gone. Bytes deleted first and a delete that
-            // then failed would leave a row pointing at nothing, which reads to
-            // every later caller as corruption rather than as erasure.
+            // Counted here, deleted after the commit. See purge(): the bytes go
+            // once the rows that index them are certainly gone, because a file
+            // removed inside a transaction that then aborts leaves a row
+            // pointing at nothing.
             foreach ($files as $file) {
-                $this->files->delete($file['path'], $file['disk']);
+                $doomed[] = $file;
                 $line['files_removed']++;
             }
         }
 
         return $line;
+    }
+
+    /**
+     * Why this row will not go, asked before anything is attempted.
+     *
+     * Optional, like `personalDataFiles`. A model that can refuse its own
+     * deletion says so with a `deletionRefusal()` returning the sentence a person
+     * should read; everything else has nothing to declare. Attachment is the one
+     * implementor today, and it forwards the question to the record the file
+     * hangs off, because only that record knows which of its files are evidence.
+     */
+    private function refusalFor(Model $row): ?string
+    {
+        return method_exists($row, 'deletionRefusal') ? $row->deletionRefusal() : null;
+    }
+
+    /**
+     * Perform one row's write, and turn a model's refusal into a line of report.
+     *
+     * ── Why this is not simply `catch (RuntimeException)` ────────
+     *
+     * It was, on both paths, and it caught the one thing it must never catch.
+     * `Illuminate\Database\QueryException` extends `PDOException`, which extends
+     * `RuntimeException` — so a deadlock (MySQL 1213) or a lock-wait timeout
+     * (1205) arrived looking exactly like a model guard and was written into the
+     * report as a considered refusal, with the driver's message as the reason a
+     * person's data had been kept.
+     *
+     * That is not merely an ugly report. MySQL resolves both of those by rolling
+     * back the WHOLE transaction, so from that row on the walk was writing with
+     * no transaction around it at all — `purge()`'s "all of it, or none of it"
+     * quietly stopped being true, later tables committed on their own, and the
+     * report described writes that no longer existed. A privacy tool that files
+     * a deadlock as a decision is lying about what it did.
+     *
+     * Re-throwing `PDOException` closed that, and left the same hole one step
+     * narrower. Laravel's `EncryptException`, `DecryptException` and
+     * `JsonEncodingException` all extend `RuntimeException` too, and none of
+     * them is a database error — so they stayed caught. That is reachable, not
+     * theoretical: this walk erases `onboarding_answers.value`, which is written
+     * through an `encrypted` cast. A cipher failure there would have been filed
+     * as a considered refusal, the walk would have carried on, and the
+     * transaction would have COMMITTED — somebody's answers surviving an erasure
+     * request, with a framework message as the published reason they were kept.
+     *
+     * A catch cannot be narrowed by listing what to let past; the list is
+     * open-ended and every framework release lengthens it. So the guard is
+     * TYPED. [WrittenOnceRefusal] is thrown by `WriteOnceBuilder` and by nothing
+     * else, and it is the only thing caught here. Everything else — the
+     * database, the encrypter, a bug in a `deleting` hook — reaches the top and
+     * `purge()`'s transaction does what it is for. The report can then only ever
+     * carry a refusal somebody declared, which is what it always claimed to
+     * carry. Both paths ask through here, rather than each keeping its own copy
+     * of a distinction this fiddly.
+     *
+     * @param  callable():mixed  $write
+     * @return string|null  the refusal, or null where the write went through
+     */
+    private function refusalRaisedBy(callable $write): ?string
+    {
+        try {
+            $write();
+        } catch (WrittenOnceRefusal $e) {
+            return $e->getMessage();
+        }
+
+        return null;
     }
 
     /**
@@ -258,8 +436,24 @@ class Anonymiser
      * reaches it.
      * PersonalDataPurgeTest::test_the_evidentiary_tables_keep_everything is what
      * holds that boundary in place.
+     *
+     * A write that is nonetheless refused is reported the way `dropRows` reports
+     * one, rather than thrown. This path used to catch nothing at all, so a
+     * single guarded row aborted the whole walk part-way down an alphabetical
+     * list of tables; now the refusal is a line in the report and the transaction
+     * around the walk is what keeps everything else consistent.
+     *
+     * That last clause is only true because a database error is NOT treated as a
+     * refusal — `refusalRaisedBy` sends those back up so the transaction can roll
+     * back. A catch that swallowed a deadlock would have made this sentence
+     * describe a transaction that MySQL had already discarded.
+     *
+     * Nothing declares an erase-time refusal, so nothing here is ASKED the way
+     * `dropRows` asks `deletionRefusal()`. `purge()`'s docblock states what that
+     * costs the dry run, and why asking the deletion question here would be the
+     * wrong answer rather than a cheap one.
      */
-    private function eraseColumns(array $line, $rows, array $entries, string $table, bool $dryRun): array
+    private function eraseColumns(array $line, $rows, array $entries, string $table, bool $dryRun, array &$doomed): array
     {
         $erasable = array_values(array_filter(
             $entries, fn (PersonalDataEntry $e) => $e->erasure->disposition === Erasure::ERASE,
@@ -317,10 +511,19 @@ class Anonymiser
                 continue;
             }
 
-            $row->forceFill($values)->saveQuietly();
+            $raised = $this->refusalRaisedBy(
+                fn () => $row->forceFill($values)->saveQuietly(),
+            );
 
+            if ($raised !== null) {
+                $line['refusals'][] = ['id' => $row->getKey(), 'because' => $raised];
+
+                continue;
+            }
+
+            // Counted now, deleted after the commit — see dropRows and purge().
             foreach ($files as $file) {
-                $this->files->delete($file['path'], $file['disk']);
+                $doomed[] = $file;
                 $line['files_removed']++;
             }
         }

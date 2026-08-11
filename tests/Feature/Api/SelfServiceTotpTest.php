@@ -175,6 +175,50 @@ class SelfServiceTotpTest extends TestCase
             ->getJson('/api/v1/staff/organizations')->assertForbidden();
     }
 
+    /**
+     * R8 does not stop at the customer surface.
+     *
+     * Both of these were bare `abort_unless(..., 403)`, so both answered with
+     * Laravel's "This action is unauthorized." — which names nothing and offers
+     * nothing. The reader is a person halfway through setting up an
+     * authenticator, and the control plane already holds itself to this
+     * standard: StaffAccountsController::authorizeManagement has written a
+     * sentence since the day it was added.
+     */
+    public function test_a_customer_account_at_the_staff_setup_is_told_where_it_is(): void
+    {
+        $message = $this->signedIn()
+            ->postJson('/api/v1/staff/auth/enrolment/confirm', ['code' => '000000'])
+            ->assertForbidden()
+            ->json('message');
+
+        $this->assertStringNotContainsString('This action is unauthorized', $message);
+        $this->assertStringContainsString('customer account', $message);
+        $this->assertStringContainsString('staff sign-in screen', $message);
+    }
+
+    public function test_an_ordinary_staff_session_is_told_to_start_the_setup_again(): void
+    {
+        $staff = $this->staff(enrolled: true);
+
+        // What signing in normally hands back: the `staff` ability, not `enrol`.
+        $token = $staff->createToken('staff:web', ['staff'])->plainTextToken;
+
+        $this->app['auth']->forgetGuards();
+
+        $message = $this->withHeader('Authorization', "Bearer {$token}")
+            ->postJson('/api/v1/staff/auth/enrolment/confirm', ['code' => '000000'])
+            ->assertForbidden()
+            ->json('message');
+
+        $this->assertStringNotContainsString('This action is unauthorized', $message);
+
+        // The commonest way to arrive here is a QR code left on screen over
+        // lunch, so the sentence has to name the lifetime and the way back.
+        $this->assertStringContainsString('fifteen minutes', $message);
+        $this->assertStringContainsString('Start the authenticator setup again', $message);
+    }
+
     public function test_a_pending_secret_an_administrator_created_is_reused(): void
     {
         $staff = $this->staff();

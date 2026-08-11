@@ -56,8 +56,11 @@ class HrDashboardController extends Controller
      * so there is no way to ask "which certifications lapse this month" without
      * first inventing a seventh field property that onboarding, the diff, the
      * renderer and every stored version would then have to match. That is a
-     * contract-template decision, not a dashboard one; it is recorded in
-     * EZBIZI-TODO.md and the panel stays out until the field model can answer.
+     * contract-template decision, not a dashboard one; it is recorded as
+     * EZBIZI-TODO.md #26 and the panel stays out until the field model can
+     * answer. The client draws the card badged "Not built yet" and says what it
+     * waits for, rather than the tab quietly having one fewer panel than the
+     * plan names.
      */
     private const PANELS = [
         Headcount::KEY,
@@ -75,6 +78,12 @@ class HrDashboardController extends Controller
      * can be resolved. The second is not redundant: a widget added to the HR list
      * later with a narrower permission is filtered by the registry without this
      * controller having to remember it exists.
+     *
+     * No widget in PANELS needs it yet — all four answer `hr.view`, which is
+     * what the route already asked — so on THIS tab the second gate is
+     * unexercised rather than proven. Where it is exercised is the catalogue,
+     * which any signed-in caller may read: HrDashboardTest
+     * ::test_the_registry_withholds_hr_widgets_from_somebody_without_hr_view.
      */
     public function index(Request $request): array
     {

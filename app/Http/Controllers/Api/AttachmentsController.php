@@ -239,14 +239,17 @@ class AttachmentsController extends Controller
          * App\Models\Concerns\HasAttachments::attachmentRemovalRefusal, whose
          * default is null so that nothing else has to think about it.
          *
+         * Asked through `Attachment::deletionRefusal()` rather than reaching for
+         * the subject's method here, so the sentence a person is shown, the one
+         * `Attachment::deleting` throws and the one the purge report prints are
+         * all the same sentence from the same place (R6).
+         *
          * A 422 with the reason, and not a 403: the person is entitled to manage
          * this record's files, and this particular one simply is not removable.
          * Attachment::deleting refuses it again for every writer that never
          * comes through here.
          */
-        $refusal = method_exists($subject, 'attachmentRemovalRefusal')
-            ? $subject->attachmentRemovalRefusal($attachment)
-            : null;
+        $refusal = $attachment->deletionRefusal();
 
         if ($refusal !== null) {
             throw \Illuminate\Validation\ValidationException::withMessages(['attachment' => $refusal]);

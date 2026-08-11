@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/dashboard_panels.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
@@ -416,7 +417,11 @@ class _Panel extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    (row['status'] ?? row['title'] ?? '').toString(),
+                    // Carries the window when the widget says the window covers
+                    // this row. Dropped here, HR's "Joined" — a rolling 30-day
+                    // count — read as an all-time figure on this screen while
+                    // the HR tab labelled the same number correctly.
+                    dashboardRowLabel(data, row),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),

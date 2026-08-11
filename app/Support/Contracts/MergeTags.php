@@ -3,6 +3,7 @@
 namespace App\Support\Contracts;
 
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 /**
  * The merge tag: how one is written, what one may name, and how it becomes text
@@ -104,10 +105,45 @@ final class MergeTags
      * The key half is `[a-z][a-z0-9_]*` — FieldSet's rule for a field key,
      * written the same way — with one optional dotted segment for the facts.
      */
-    private const TAG = '/\{\{[ \t]*([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]+)?)[ \t]*\}\}/';
+    private const TAG = '\{\{[ \t]*([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]+)?)[ \t]*\}\}';
 
-    /** The same pattern, anchored, for asking "does a tag START here". */
-    private const TAG_HERE = self::TAG.'A';
+    /**
+     * ONE SCANNER, AND IT MATCHES A STRAY `{{` AS WELL AS A TAG.
+     *
+     * A tag if it can be, and otherwise the bare delimiter — which is what makes
+     * "every `{{` opens a tag" a property of one pattern rather than an agreement
+     * between two.
+     *
+     * There used to be two ways through this grammar. `validate()` walked `{{`
+     * with strpos and asked an anchored copy of TAG whether a tag started there;
+     * `render()` ran a free-floating TAG over the whole document. They disagreed
+     * about overlap, and the disagreement went the dangerous way round:
+     * `{{{first_name}}` was refused at publish, because the `{{` at offset 0 is
+     * not a tag and validate stepped past both braces without ever looking at the
+     * one at offset 1 — while render's free-floating pass found `{{first_name}}`
+     * at offset 1 and merged it. A body the validator says it never inspected and
+     * the renderer resolves anyway is a gap under a signature, and the only thing
+     * closing it was the refusal always firing first.
+     *
+     * With one pattern that cannot happen by construction. The alternation is
+     * leftmost-first: at offset 0 the tag branch fails, the `\{\{` branch matches
+     * and consumes BOTH braces, and scanning resumes at offset 2 — so the same
+     * `{{` is a stray to both of them and the tag at offset 1 exists for neither.
+     *
+     * Group 1 is set only on the tag branch. Its absence is how a caller tells the
+     * two apart, and that is the whole protocol.
+     */
+    private const SCAN = '/'.self::TAG.'|\{\{/';
+
+    /**
+     * The same shape with capitals allowed, used ONLY to explain a refusal.
+     *
+     * Never to accept one: a key is lower-case, this pattern is anchored, and the
+     * only thing it is asked is "would this have been a tag if it were written in
+     * lower case" — see malformedRefusal.
+     */
+    private const MISCASED_TAG_HERE =
+        '/\{\{[ \t]*([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]+)?)[ \t]*\}\}/A';
 
     /** Where a value came from, so the editor can group the tag picker. */
     public const SOURCE_FIELD = 'field';
@@ -137,22 +173,31 @@ final class MergeTags
     }
 
     /**
-     * Every key tagged in this body, in the order they first appear.
+     * Every `{{` in this body, in order, as `[key or null, offset]`.
      *
-     * Well-formed tags only. A malformed `{{` is validate()'s to complain about,
-     * and this is asked by callers that want to know what a body depends on.
+     * The one walk over the grammar. `null` for the key means the delimiter did
+     * not open a tag — see SCAN for why that is one pattern's job and not two.
      *
-     * @return string[]
+     * @return list<array{0: string|null, 1: int}>
      */
-    public static function keysIn(?string $body): array
+    private static function scan(string $body): array
     {
-        if ($body === null) {
-            return [];
+        if (preg_match_all(self::SCAN, $body, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE) === false) {
+            throw self::pcreFailed('scanned for merge tags');
         }
 
-        preg_match_all(self::TAG, $body, $matches);
+        $found = [];
 
-        return array_values(array_unique($matches[1]));
+        foreach ($matches as $match) {
+            // Group 1 is absent on the stray branch, and `''` can never be a key
+            // — the pattern requires a letter — so both spellings mean the same
+            // thing and neither can be confused with a real one.
+            $key = ($match[1][0] ?? '') === '' ? null : $match[1][0];
+
+            $found[] = [$key, $match[0][1]];
+        }
+
+        return $found;
     }
 
     // ── refusing a body, at publish ──────────────────────────────
@@ -188,28 +233,19 @@ final class MergeTags
 
         $problems = [];
         $seen     = [];
-        $offset   = 0;
         $extra    = 0;
 
-        while (($at = strpos($body, self::OPEN, $offset)) !== false) {
-            if (preg_match(self::TAG_HERE, $body, $matched, 0, $at) !== 1) {
-                self::report($problems, $extra, $seen, 'malformed@'.$at, self::malformedRefusal($body, $at));
-
-                // Past the delimiter rather than past the tag: there is no tag to
-                // step over, and stepping one character would find the same `{{`
-                // again and report it forever.
-                $offset = $at + strlen(self::OPEN);
+        foreach (self::scan($body) as [$key, $at]) {
+            if ($key === null) {
+                self::report($problems, $extra, $seen, self::malformedRefusal($body, $at, $fields));
 
                 continue;
             }
 
-            $key    = $matched[1];
-            $offset = $at + strlen($matched[0]);
-
             $refusal = self::refusalFor($key, $fields);
 
             if ($refusal !== null) {
-                self::report($problems, $extra, $seen, $key, $refusal);
+                self::report($problems, $extra, $seen, $refusal);
             }
         }
 
@@ -230,24 +266,42 @@ final class MergeTags
     }
 
     /**
-     * One complaint per distinct problem, capped, so the reply stays readable.
+     * One complaint per distinct SENTENCE, capped, so the reply stays readable.
      *
-     * A BAD KEY is deduped by the key, because the same typo repeated forty times
-     * is one thing to fix and forty identical sentences is a wall. A STRAY `{{` is
-     * deduped by its position instead — there is no key to dedupe by, and two
-     * malformed tags in different places are genuinely two different things to go
-     * and look at.
+     * The same typo repeated forty times is one thing to fix and forty identical
+     * sentences is a wall, so repeats are dropped and counted instead. What they
+     * are deduped BY is the complaint itself, and that is the fix rather than the
+     * shortcut:
+     *
+     * A bad key used to be deduped by the key and a stray `{{` by its OFFSET, on
+     * the reasoning that two malformed tags in different places are two different
+     * things to go and look at. That held while every stray quoted its own
+     * surroundings, and stopped holding the moment one of them did not: the
+     * miscased-key refusal names only the key, so seven `{{First_Name}}` in seven
+     * differently-worded clauses were seven offsets and seven byte-identical
+     * sentences — five appended here and two counted into `$extra`. MessageBag
+     * then dropped the four duplicate appends, and a refusal added to be honest
+     * about a mistake told somebody there were 2 more of it when there were 6.
+     *
+     * A stand-in key keeps the count true only while it moves exactly as the words
+     * do, which is an agreement between two places and was already broken by the
+     * time anybody looked. The words cannot come apart from themselves: two
+     * complaints are the same complaint exactly when they read the same, which is
+     * also precisely what MessageBag collapses downstream, so `$extra` counts what
+     * the reader is genuinely not being shown. A stray quoting a different excerpt
+     * still gets its own sentence — that is what the offset was reaching for, and
+     * the excerpt carries it.
      *
      * @param  string[]  $problems
-     * @param  array<string, true>  $seen
+     * @param  array<string, true>  $seen  every distinct complaint so far, shown or counted
      */
-    private static function report(array &$problems, int &$extra, array &$seen, string $token, string $message): void
+    private static function report(array &$problems, int &$extra, array &$seen, string $message): void
     {
-        if (isset($seen[$token])) {
+        if (isset($seen[$message])) {
             return;
         }
 
-        $seen[$token] = true;
+        $seen[$message] = true;
 
         if (count($problems) >= self::MAX_REPORTED) {
             $extra++;
@@ -313,7 +367,13 @@ final class MergeTags
             );
         }
 
-        if ($field->type === FieldType::SIGNATURE) {
+        // Asked of FieldType, which is where the fact is declared and where the
+        // catalogue publishes it from as `merges`. It was `=== SIGNATURE` here,
+        // again in resolvable() below, and a third time nowhere at all — the
+        // body editor had no way to ask, so it offered signature fields as
+        // insertable tags and this paragraph is what somebody got for clicking
+        // one.
+        if (! FieldType::merges($field->type)) {
             return sprintf(
                 '%s%s%s names "%s", which is a signature. A signature is not text that gets '
                 .'merged into a sentence — it is an act, recorded separately with who performed '
@@ -333,16 +393,66 @@ final class MergeTags
      * somebody hunting through twenty pages. The excerpt is cut on a CHARACTER
      * boundary — a byte-cut through a multibyte character produces a string that
      * cannot be JSON-encoded, which would turn a validation message into a 500.
+     *
+     * ── The capital letter gets its own sentence ─────────────────
+     *
+     * `{{First_Name}}` is the likeliest thing a person hand-types, and it is the
+     * one case the general refusal answered worst: it describes a tag as "a key
+     * between double braces and nothing else inside", which is exactly what the
+     * author believes they just wrote. Nothing in it says keys are lower-case —
+     * and the capital is not carelessness, it is the shape of what this file
+     * itself hands out: `resolvable()` publishes "First name" as the LABEL beside
+     * every tag, and a label is what a person reads and then retypes.
+     *
+     * So a `{{` that would have been a tag but for its case is told so, with the
+     * spelling to use. And it is checked against the field list straight away,
+     * because a refusal that fixes the case and then refuses the key on the next
+     * publish is two round trips for one mistake.
+     *
+     * ── What it no longer says, and why ──────────────────────────
+     *
+     * It used to end "the chips above the wording insert the spelling the server
+     * expects, which is why they are there" — a sentence about where a control
+     * sits on a screen, sent to a user, by a file that cannot see one. It was
+     * true of the Flutter editor at a wide window on the day it was written,
+     * which is the whole problem: nothing here fails when that layout moves, the
+     * next client puts the same list in a side panel or behind a menu, and the
+     * refusal goes on describing furniture that is not there. What is left names
+     * the missing thing and the exact text to type, which is what a refusal owes
+     * the reader; the rest was decoration with a dependency on another codebase.
+     * Same rule as `resolvable()`'s — this file says what it SENDS.
      */
-    private static function malformedRefusal(string $body, int $at): string
+    private static function malformedRefusal(string $body, int $at, FieldSet $fields): string
     {
+        if (preg_match(self::MISCASED_TAG_HERE, $body, $matched, 0, $at) === 1) {
+            $typed = $matched[1];
+            // ASCII by construction — the pattern admits nothing else — so this
+            // is the same lowering FieldSet's key rule is written against.
+            $lower = strtolower($typed);
+
+            $refusal = self::refusalFor($lower, $fields);
+
+            return $refusal === null
+                ? sprintf(
+                    '%s%s%s is not a tag, because a key is written in lower case. Write %s%s%s and '
+                    .'it resolves — the case is the only thing wrong with it.',
+                    self::OPEN, $typed, self::CLOSE, self::OPEN, $lower, self::CLOSE,
+                )
+                : sprintf(
+                    '%s%s%s is not a tag, because a key is written in lower case — so this would '
+                    .'have to be %s%s%s. That does not resolve either: %s',
+                    self::OPEN, $typed, self::CLOSE, self::OPEN, $lower, self::CLOSE, $refusal,
+                );
+        }
+
         $excerpt = mb_substr(mb_strcut($body, $at), 0, 40);
 
         return sprintf(
             'Every "%s" in the body opens a merge tag, and this one does not: "%s…". A tag is a '
-            .'key between double braces and nothing else inside — %sfirst_name%s. There is no way '
-            .'to write a literal "%s" in a contract body, because nothing in ordinary contract '
-            .'wording needs one; a single brace passes through untouched.',
+            .'key between double braces and nothing else inside, written in lower case — '
+            .'%sfirst_name%s. There is no way to write a literal "%s" in a contract body, because '
+            .'nothing in ordinary contract wording needs one; a single brace passes through '
+            .'untouched.',
             self::OPEN, $excerpt, self::OPEN, self::CLOSE, self::OPEN,
         );
     }
@@ -389,6 +499,21 @@ final class MergeTags
      *  for it to have the wrong escaping for.
      * ═══════════════════════════════════════════════════════════════
      *
+     * ── A FAILED PCRE CALL THROWS, AND DOES NOT RETURN "" ────────────
+     *
+     * Every regex call below used to swallow its own failure: `?: []` on the
+     * split and a `(string)` cast over a possible null on the substitution. Both
+     * turn "the engine gave up" into "the agreement is empty" — and the output of
+     * this function is what DocumentFingerprint is taken over and what somebody
+     * signs. An empty contract under a signature is the one outcome that must not
+     * be reachable, so a PCRE failure comes out as an exception: a 500 and an
+     * audit event, which is what a rendering engine that has stopped working
+     * should look like.
+     *
+     * It should also stay unreachable. `e()` passes ENT_SUBSTITUTE, so the
+     * subject is always valid UTF-8, and neither pattern backtracks. This is the
+     * failure MODE being right rather than a bug being fixed.
+     *
      * @param  array<string, MergeValue>  $values  what each key resolves to
      */
     public static function render(string $body, array $values): string
@@ -398,8 +523,13 @@ final class MergeTags
         // Blank lines separate paragraphs — "blank" including a line of spaces,
         // because a line somebody left a stray tab on is still a blank line to
         // the person who typed it.
-        $blocks = preg_split('/(?:\R[ \t]*){2,}/u', $escaped) ?: [];
-        $out    = [];
+        $blocks = preg_split('/(?:\R[ \t]*){2,}/u', $escaped);
+
+        if ($blocks === false) {
+            throw self::pcreFailed('split into paragraphs');
+        }
+
+        $out = [];
 
         foreach ($blocks as $block) {
             $block = trim($block);
@@ -408,16 +538,50 @@ final class MergeTags
                 continue;
             }
 
-            $out[] = '<p>'.preg_replace('/\R/u', '<br>', $block).'</p>';
+            $broken = preg_replace('/\R/u', '<br>', $block);
+
+            if ($broken === null) {
+                throw self::pcreFailed('broken into lines');
+            }
+
+            $out[] = '<p>'.$broken.'</p>';
         }
 
         $html = implode("\n", $out);
 
-        return (string) preg_replace_callback(
-            self::TAG,
-            fn (array $m) => self::resolveOne($m[1], $values),
+        $merged = preg_replace_callback(
+            // The same pattern validate() walks. A stray `{{` reaches here as a
+            // match with no group 1 and is written back exactly as it was — the
+            // renderer resolving something the validator never inspected is the
+            // gap SCAN exists to close.
+            self::SCAN,
+            fn (array $m) => ($m[1] ?? '') === ''
+                ? $m[0]
+                : self::resolveOne($m[1], $values),
             $html,
         );
+
+        if ($merged === null) {
+            throw self::pcreFailed('merged');
+        }
+
+        return $merged;
+    }
+
+    /**
+     * A PCRE call that came back false or null, as the exception it is.
+     *
+     * Named rather than inlined three times, and it carries `preg_last_error_msg`
+     * so the log says which limit was hit instead of "rendering failed".
+     */
+    private static function pcreFailed(string $step): RuntimeException
+    {
+        return new RuntimeException(sprintf(
+            'A contract body could not be %s: %s. Nothing is rendered rather than something '
+            .'shorter, because this output is fingerprinted and signed.',
+            $step,
+            preg_last_error_msg(),
+        ));
     }
 
     /**
@@ -483,8 +647,28 @@ final class MergeTags
      * common core is asked but `middle_name` is not, and that facts are dotted —
      * four server rules, restated, in a language that cannot see them change.
      *
-     * `tag` is the exact text to insert. The client does not concatenate
-     * delimiters either.
+     * `tag` is the exact text to insert: the key already wrapped, so a caller has
+     * a ready-made string and nothing downstream needs to know that a key is
+     * wrapped rather than, say, prefixed. `open` and `close` go out beside it on
+     * the catalogue for the one list this endpoint cannot pre-assemble — a
+     * template's own questions while the template does not exist yet.
+     *
+     * ── AND THAT IS THE LAST SENTENCE ABOUT ANY CLIENT ──────────
+     *
+     * This docblock used to end "the client does not concatenate delimiters
+     * either", which was false when it was written and stayed false through a
+     * whole review: the Flutter editor built `{{key}}` itself, and the type it
+     * parsed these entries into had no `tag` field to read. The claim was not
+     * merely stale — it was unverifiable from here in the first place. A PHP file
+     * cannot see a Dart file, cannot enforce it, and cannot be re-checked when it
+     * changes, so a sentence like that is wrong the moment either end moves and
+     * nothing fails when it does.
+     *
+     * What this file gets to say is what it SENDS. Whether `{{` is also spelt out
+     * somewhere on the far end is that end's business and §2.1's — the delimiters
+     * are the wire grammar, which is an API contract and is allowed to be in code
+     * on both sides, the way any client has to match a format it also has to
+     * parse.
      *
      * @return array<int, array{key: string, tag: string, label: string, source: string, is: string|null}>
      */
@@ -497,7 +681,7 @@ final class MergeTags
             // offering either here would be offering something that cannot be
             // published — the exact "greyed out with no explanation" failure the
             // catalogue's reserved keys exist to avoid, in reverse.
-            if ($field->retired || $field->type === FieldType::SIGNATURE || $field->key === '') {
+            if ($field->retired || ! FieldType::merges($field->type) || $field->key === '') {
                 continue;
             }
 

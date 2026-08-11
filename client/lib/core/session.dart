@@ -38,7 +38,10 @@ class Session extends ChangeNotifier {
   /// design. Pulling the two fields apart at each call site is how the second
   /// one ends up forgetting the staff token — a linked account that signs in
   /// and finds the Development section missing, with nothing failing loudly.
-  Future<bool> adoptAuthResponse(Map<String, dynamic> body, {bool persist = false}) {
+  Future<bool> adoptAuthResponse(
+    Map<String, dynamic> body, {
+    bool persist = false,
+  }) {
     staffToken = body['staff_token'] as String?;
 
     return adopt(body['token'] as String, persist: persist);
@@ -365,10 +368,9 @@ class Me {
   /// makes the difference — that a permission belongs to a ROLE, so the person
   /// to ask is whoever edits roles rather than whoever set up the account.
   ///
-  /// It deliberately does NOT try to answer the reach half of §4. "You are not
-  /// assigned anywhere" is a different refusal with a different remedy, and only
-  /// the screen knows which of the two it is looking at — see [franchises],
-  /// which the server fills with reach rather than with everything that exists.
+  /// It deliberately does NOT answer the reach half of §4 — that is
+  /// [nowhereToAct], because the two have different remedies and only the
+  /// screen knows which of them it is looking at.
   ///
   /// [act] reads as an infinitive without "to": "add a customer", "delete this
   /// automation". Kept as the caller's words on purpose, because a permission
@@ -377,6 +379,55 @@ class Me {
       ? null
       : 'You do not have permission to $act. That is part of a role rather than '
             'of an account, so somebody who can edit roles can add it to yours.';
+
+  /// The other half of §4: the permission is held and there is nowhere to use it.
+  ///
+  /// Read [franchises] to decide whether to call this — the server fills it
+  /// with REACH rather than with everything that exists, so an empty list is
+  /// the answer rather than something to work out.
+  ///
+  /// ── Why the sentence lives here too ──────────────────────────────
+  ///
+  /// Jobs and Customers each wrote their own and they had already drifted: one
+  /// said "there is nowhere to put one" and the other "an administrator can
+  /// assign you to one", against a server that says "there is nowhere to do it"
+  /// and "an administrator can assign you to a franchise". A disabled control
+  /// and the 403 behind it explaining the same refusal in two different ways is
+  /// how somebody comes to believe they are two different problems.
+  ///
+  /// The words are Refusal::unassigned's, deliberately verbatim, and the pair
+  /// has to be kept in step by hand. That is the price of answering without a
+  /// round trip, and the alternative — every screen asking the server whether a
+  /// button should be live — is a request per control per render.
+  ///
+  /// Not `nowhereToAct`'s, which is where they arrive from: that method is a
+  /// ROUTER over two sentences, and only one of them is mirrored here. Which
+  /// one, and why the other is left alone, is the section below.
+  ///
+  /// ── One server state this cannot see, and why that is all right ──
+  ///
+  /// Refusal::nowhereToAct's other branch — `nothingBelow` — tells a THIRD kind
+  /// of person something different: somebody assigned above the level who has
+  /// nothing beneath them yet, where the fix is a place rather than an
+  /// assignment. This cannot distinguish that case — /me's `companies` is built
+  /// from the companies BEHIND reachable franchises, so it is empty in exactly
+  /// the cases [franchises] is — and it does not try to guess. §3 forbids a
+  /// company without a place and every write path enforces it, so that state
+  /// does not arise from anything the API will do; this sentence is correct for
+  /// every state it can produce. If a company ever does turn up placeless, the
+  /// server's 403 will be right and this tooltip will be the stale one, which is
+  /// the safer way round.
+  ///
+  /// [note] is one more sentence for a screen where the rule itself is
+  /// surprising, appended rather than spliced in — the same argument, and the
+  /// same shape, as Refusal::outsideReach's own note argument.
+  String nowhereToAct(String act, {String? note}) {
+    final label = organization.franchiseLabel.toLowerCase();
+
+    return 'You have permission to $act, but you are not assigned to any $label, '
+        'so there is nowhere to do it. An administrator can assign you to a '
+        '$label.${note == null ? '' : ' $note'}';
+  }
 
   /// May this person reach this module — both gates, as [ModuleAccess] carries
   /// them: the platform permits it AND their role holds its view permission.
@@ -406,34 +457,34 @@ class Me {
   /// A copy with one preference changed. Me is immutable, which is what makes
   /// "did the theme actually change" a question with one answer.
   Me withPreference(String key, Object value) => Me(
-        id: id,
-        name: name,
-        email: email,
-        roleName: roleName,
-        hasAvatar: hasAvatar,
-        permissions: permissions,
-        modules: modules,
-        preferences: {...preferences, key: value},
-        development: development,
-        twoFactorEnrolmentRequired: twoFactorEnrolmentRequired,
-        passwordMinLength: passwordMinLength,
-        organization: organization,
-        scope: scope,
-        display: display,
-        companies: companies,
-        franchises: franchises,
-        onboardingId: onboardingId,
-      );
+    id: id,
+    name: name,
+    email: email,
+    roleName: roleName,
+    hasAvatar: hasAvatar,
+    permissions: permissions,
+    modules: modules,
+    preferences: {...preferences, key: value},
+    development: development,
+    twoFactorEnrolmentRequired: twoFactorEnrolmentRequired,
+    passwordMinLength: passwordMinLength,
+    organization: organization,
+    scope: scope,
+    display: display,
+    companies: companies,
+    franchises: franchises,
+    onboardingId: onboardingId,
+  );
 
   /// Never null and never unknown — an unrecognised stored value falls back to
   /// following the device rather than leaving the app with no theme at all.
   String get theme => switch (preferences['appearance.theme']) {
-        'light' => 'light',
-        'dark' => 'dark',
-        'mixed_dark_nav' => 'mixed_dark_nav',
-        'mixed_light_nav' => 'mixed_light_nav',
-        _ => 'system',
-      };
+    'light' => 'light',
+    'dark' => 'dark',
+    'mixed_dark_nav' => 'mixed_dark_nav',
+    'mixed_light_nav' => 'mixed_light_nav',
+    _ => 'system',
+  };
 
   String get navigationStyle =>
       preferences['navigation.style'] == 'blocks' ? 'blocks' : 'list';
@@ -451,40 +502,46 @@ class Me {
   }
 
   factory Me.fromJson(Map<String, dynamic> json) => Me(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        email: json['email'] as String,
-        roleName: (json['role'] as Map<String, dynamic>?)?['name'] as String?,
-        hasAvatar: json['has_avatar'] == true,
-        permissions: ((json['permissions'] as List<dynamic>?) ?? const [])
-            .whereType<String>()
-            .toSet(),
-        modules: ModuleAccess.listFrom(json['modules']),
-        preferences: Map<String, dynamic>.from(
-            json['preferences'] as Map<String, dynamic>? ?? const {}),
-        development: json['development'] == null
-            ? null
-            : DevelopmentAccess.fromJson(json['development'] as Map<String, dynamic>),
-        twoFactorEnrolmentRequired: json['two_factor_enrolment_required'] == true,
-        // Falls back to the compiled floor rather than to zero. A server that
-        // does not send this is an older one, and its own minimum is the floor —
-        // asking for nothing would be a form that promises to accept `a`.
-        passwordMinLength:
-            (json['password_min_length'] as num?)?.toInt() ?? PasswordPolicy.minLength,
-        organization:
-            OrganizationSummary.fromJson(json['organization'] as Map<String, dynamic>),
-        scope: ViewScope.fromJson(
-            json['scope'] as Map<String, dynamic>? ?? const {}),
-        display: DisplayFormats.fromJson(json['display']),
-        companies: (json['companies'] as List<dynamic>? ?? [])
-            .map((c) => CompanySummary.fromJson(c as Map<String, dynamic>))
-            .toList(),
-        franchises: (json['franchises'] as List<dynamic>? ?? [])
-            .map((f) => FranchiseSummary.fromJson(f as Map<String, dynamic>))
-            .toList(),
-        onboardingId:
-            (json['onboarding'] as Map<String, dynamic>?)?['id']?.toString(),
-      );
+    id: json['id'] as String,
+    name: json['name'] as String,
+    email: json['email'] as String,
+    roleName: (json['role'] as Map<String, dynamic>?)?['name'] as String?,
+    hasAvatar: json['has_avatar'] == true,
+    permissions: ((json['permissions'] as List<dynamic>?) ?? const [])
+        .whereType<String>()
+        .toSet(),
+    modules: ModuleAccess.listFrom(json['modules']),
+    preferences: Map<String, dynamic>.from(
+      json['preferences'] as Map<String, dynamic>? ?? const {},
+    ),
+    development: json['development'] == null
+        ? null
+        : DevelopmentAccess.fromJson(
+            json['development'] as Map<String, dynamic>,
+          ),
+    twoFactorEnrolmentRequired: json['two_factor_enrolment_required'] == true,
+    // Falls back to the compiled floor rather than to zero. A server that
+    // does not send this is an older one, and its own minimum is the floor —
+    // asking for nothing would be a form that promises to accept `a`.
+    passwordMinLength:
+        (json['password_min_length'] as num?)?.toInt() ??
+        PasswordPolicy.minLength,
+    organization: OrganizationSummary.fromJson(
+      json['organization'] as Map<String, dynamic>,
+    ),
+    scope: ViewScope.fromJson(
+      json['scope'] as Map<String, dynamic>? ?? const {},
+    ),
+    display: DisplayFormats.fromJson(json['display']),
+    companies: (json['companies'] as List<dynamic>? ?? [])
+        .map((c) => CompanySummary.fromJson(c as Map<String, dynamic>))
+        .toList(),
+    franchises: (json['franchises'] as List<dynamic>? ?? [])
+        .map((f) => FranchiseSummary.fromJson(f as Map<String, dynamic>))
+        .toList(),
+    onboardingId: (json['onboarding'] as Map<String, dynamic>?)?['id']
+        ?.toString(),
+  );
 }
 
 class OrganizationSummary {
@@ -502,7 +559,8 @@ class OrganizationSummary {
   final String franchiseLabel;
   final bool isReadOnly;
 
-  factory OrganizationSummary.fromJson(Map<String, dynamic> json) => OrganizationSummary(
+  factory OrganizationSummary.fromJson(Map<String, dynamic> json) =>
+      OrganizationSummary(
         id: json['id'] as String,
         name: json['name'] as String,
         franchiseLabel: json['franchise_label'] as String? ?? 'Franchise',
@@ -550,20 +608,21 @@ class ViewScope {
   /// Enough to disambiguate in a top bar without spending the width on a full
   /// chain; the whole path goes in the tooltip and on the settings screen,
   /// where there is room to be complete.
-  String get shortPath =>
-      path.length <= 2 ? path.join(' › ') : path.sublist(path.length - 2).join(' › ');
+  String get shortPath => path.length <= 2
+      ? path.join(' › ')
+      : path.sublist(path.length - 2).join(' › ');
 
   String get fullPath => path.join(' › ');
 
   factory ViewScope.fromJson(Map<String, dynamic> json) => ViewScope(
-        type: json['type'] as String? ?? 'organization',
-        id: json['id'] as String?,
-        label: json['label'] as String? ?? '',
-        path: (json['path'] as List<dynamic>? ?? []).cast<String>(),
-        logoPath: json['logo_path'] as String? ?? '/branding/organization',
-        logoVersion: json['logo_version'] as String? ?? '',
-        logoAspect: json['logo_aspect'] as String?,
-      );
+    type: json['type'] as String? ?? 'organization',
+    id: json['id'] as String?,
+    label: json['label'] as String? ?? '',
+    path: (json['path'] as List<dynamic>? ?? []).cast<String>(),
+    logoPath: json['logo_path'] as String? ?? '/branding/organization',
+    logoVersion: json['logo_version'] as String? ?? '',
+    logoAspect: json['logo_aspect'] as String?,
+  );
 }
 
 class CompanySummary {
@@ -584,20 +643,25 @@ class CompanySummary {
   final String? parentCompanyId;
 
   factory CompanySummary.fromJson(Map<String, dynamic> json) => CompanySummary(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        parentCompanyId: json['parent_company_id'] as String?,
-      );
+    id: json['id'] as String,
+    name: json['name'] as String,
+    parentCompanyId: json['parent_company_id'] as String?,
+  );
 }
 
 class FranchiseSummary {
-  const FranchiseSummary({required this.id, required this.name, this.companyId});
+  const FranchiseSummary({
+    required this.id,
+    required this.name,
+    this.companyId,
+  });
 
   final String id;
   final String name;
   final String? companyId;
 
-  factory FranchiseSummary.fromJson(Map<String, dynamic> json) => FranchiseSummary(
+  factory FranchiseSummary.fromJson(Map<String, dynamic> json) =>
+      FranchiseSummary(
         id: json['id'] as String,
         name: json['name'] as String,
         companyId: json['company_id'] as String?,
@@ -624,7 +688,8 @@ class DevelopmentAccess {
 
   String get tierLabel => isLead ? 'Lead Developer' : 'Developer';
 
-  factory DevelopmentAccess.fromJson(Map<String, dynamic> json) => DevelopmentAccess(
+  factory DevelopmentAccess.fromJson(Map<String, dynamic> json) =>
+      DevelopmentAccess(
         tier: json['tier'] as String? ?? 'developer',
         staffName: json['staff_name'] as String? ?? '',
         focusedAt: json['focused_at'] as String? ?? 'https://dev.ezbizi.com',

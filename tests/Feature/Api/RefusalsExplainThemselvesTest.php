@@ -6,9 +6,12 @@ use App\Models\Assignment;
 use App\Models\Automation;
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\Job;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\Access\Refusal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Gate;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -130,6 +133,136 @@ class RefusalsExplainThemselvesTest extends TestCase
         $this->assertStringNotContainsString('franchise', $message);
     }
 
+    /**
+     * Refusal's levels ARE Assignment's scope types, which is load-bearing.
+     *
+     * OnboardingPolicy hands `Onboarding::scope()['type']` — an Assignment scope
+     * type — straight to Refusal::labelFor. That only works while the two
+     * vocabularies are the same three strings, and if they ever drift the
+     * failure is silent: labelFor's `default` arm would quietly answer with the
+     * franchise's label for a company or the organization.
+     */
+    public function test_the_two_vocabularies_for_a_level_are_the_same_strings(): void
+    {
+        $this->assertSame(Assignment::SCOPE_ORGANIZATION, Refusal::AT_ORGANIZATION);
+        $this->assertSame(Assignment::SCOPE_COMPANY, Refusal::AT_COMPANY);
+        $this->assertSame(Assignment::SCOPE_FRANCHISE, Refusal::AT_FRANCHISE);
+    }
+
+    /**
+     * The third reach state: assigned, standing above, and nothing down there.
+     *
+     * The two-state model said "you are not assigned to any franchise, an
+     * administrator can assign you to one" to somebody who IS assigned, about a
+     * franchise that does not exist for an administrator to assign them to.
+     * Both halves wrong, which is precisely the shape R8 exists to stop.
+     *
+     * The state is built here rather than through the API because the API
+     * refuses to produce it — see the test below, which is what makes that
+     * claim something other than an assumption.
+     */
+    public function test_standing_above_an_empty_level_is_not_called_being_unassigned(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $fresh = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $placeless = Company::create([
+                'organization_id' => $alpha['org']->id,
+                'name'            => 'Just incorporated',
+                'is_active'       => true,
+            ]);
+
+            $role = Role::create([
+                'organization_id' => $alpha['org']->id,
+                'name'            => 'Fresh',
+                'is_system'       => false,
+            ]);
+            $role->syncPermissionKeys(['jobs.view', 'jobs.create']);
+
+            $user = User::create([
+                'organization_id' => $alpha['org']->id,
+                'role_id'         => $role->id,
+                'name'            => 'Fresh',
+                'email'           => 'fresh@'.$alpha['org']->slug.'.test',
+                'password'        => 'a-real-password',
+                'is_active'       => true,
+            ]);
+
+            Assignment::create([
+                'organization_id'     => $alpha['org']->id,
+                'user_id'             => $user->id,
+                'assigned_company_id' => $placeless->id,
+            ]);
+
+            return $user->fresh();
+        });
+
+        $message = $this->inTenant($alpha['org'], fn () => Gate::forUser($fresh)
+            ->inspect('create', Job::class)
+            ->message());
+
+        $this->assertStringNotContainsString(
+            'not assigned to any',
+            $message,
+            'They hold a company assignment. Telling them otherwise is false.',
+        );
+        $this->assertStringNotContainsString(
+            'administrator can assign you',
+            $message,
+            'There is no franchise for an administrator to assign them to — the '
+            .'remedy would send them to somebody who cannot help.',
+        );
+
+        // What IS missing, and the fact that they are the one standing over it.
+        $this->assertStringContainsString('add one where you are already assigned', $message);
+        $this->assertStringContainsString('rather than an assignment', $message);
+    }
+
+    /**
+     * §3's invariant, guarded — because the docblock above leans on it.
+     *
+     * Refusal::nothingBelow calls the state "off-invariant rather than
+     * routine", which is only worth saying if it stays true. These are the four
+     * edges: a company is born with a place, its last active one cannot be
+     * switched off, a place cannot be moved out from under it, and there is no
+     * way to delete one.
+     */
+    public function test_the_api_will_not_leave_a_company_without_a_place(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/companies', ['name' => 'No place'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('franchise.name');
+
+        $this->signedInAs($alpha['admin'])->postJson('/api/v1/companies', [
+            'name'      => 'Second',
+            'franchise' => ['name' => 'Its only place'],
+        ])->assertSuccessful();
+
+        $only = $this->inTenant(
+            $alpha['org'],
+            fn () => Franchise::where('name', 'Its only place')->firstOrFail(),
+        );
+
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/franchises/{$only->getKey()}", ['is_active' => false])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('is_active');
+
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/franchises/{$only->getKey()}", [
+                'company_id' => $alpha['company']->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('company_id');
+
+        $this->signedInAs($alpha['admin'])
+            ->deleteJson("/api/v1/franchises/{$only->getKey()}")
+            ->assertStatus(405);
+    }
+
     public function test_a_place_outside_the_assignment_is_named(): void
     {
         $alpha = $this->provisionTenant('Alpha');
@@ -153,6 +286,252 @@ class RefusalsExplainThemselvesTest extends TestCase
         // somebody with four franchises no better off than a blank 403.
         $this->assertStringContainsString('Rhode Island', $message);
         $this->assertStringContainsString('outside where you are assigned', $message);
+    }
+
+    /**
+     * The two gates were one sentence on the Records tab, and it named the
+     * wrong one.
+     *
+     * UserPolicy::update asked `hr.edit` and reach in a single `if` and
+     * answered both with "You do not have permission to change this person's
+     * account." A branch manager who holds `hr.edit` and opened somebody from
+     * another company was therefore told to go and ask for a permission they
+     * were already holding.
+     */
+    public function test_reaching_the_wrong_person_is_not_called_a_missing_permission(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $elsewhere = $this->inTenant($alpha['org'], fn () => Franchise::create([
+            'organization_id' => $alpha['org']->id,
+            'company_id'      => $alpha['company']->id,
+            'name'            => 'Rhode Island',
+        ]));
+
+        $manager = $this->userWithRole(
+            $alpha, 'Branch Manager', ['hr.view', 'hr.edit'], onlyAt: $alpha['franchise'],
+        );
+
+        $stranger = $this->userWithRole(
+            $alpha, 'Somebody Else', ['jobs.view'], onlyAt: $elsewhere,
+        );
+
+        $message = $this->signedInAs($manager)
+            ->patchJson("/api/v1/hr/people/{$stranger->getKey()}", ['is_active' => false])
+            ->assertForbidden()
+            ->json('message');
+
+        $this->assertStringNotContainsString('do not have permission', $message);
+        $this->assertStringContainsString('administrator can widen your assignment', $message);
+
+        // The people list is reach-filtered, so this caller has never been shown
+        // that name or that place. A helpful refusal must not be where they
+        // first learn either.
+        $this->assertStringNotContainsString('Somebody Else', $message);
+        $this->assertStringNotContainsString('Rhode Island', $message);
+
+        // And the other gate still answers for itself.
+        $reader = $this->userWithRole($alpha, 'Reader', ['hr.view']);
+
+        $this->assertStringContainsString(
+            'part of a role',
+            $this->signedInAs($reader)
+                ->patchJson("/api/v1/hr/people/{$stranger->getKey()}", ['is_active' => false])
+                ->assertForbidden()
+                ->json('message'),
+        );
+    }
+
+    /**
+     * The same refusal, for somebody standing nowhere at all.
+     *
+     * One sentence used to cover both, and for this reader both halves of it
+     * were false: "this person is assigned outside where you are" names a where
+     * they do not have, and "an administrator can widen your assignment" names a
+     * widening of nothing. The fix is a FIRST assignment, and sending them to
+     * ask for a wider one is how they end up in the wrong conversation.
+     */
+    public function test_having_no_assignment_is_not_called_being_in_the_wrong_place(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $stranded = $this->userWithNoAssignment($alpha, 'Stranded', ['hr.view', 'hr.edit']);
+        $somebody = $this->userWithRole(
+            $alpha, 'Somebody Else', ['jobs.view'], onlyAt: $alpha['franchise'],
+        );
+
+        $message = $this->signedInAs($stranded)
+            ->patchJson("/api/v1/hr/people/{$somebody->getKey()}", ['is_active' => false])
+            ->assertForbidden()
+            ->json('message');
+
+        $this->assertStringNotContainsString('outside where you are', $message);
+        $this->assertStringNotContainsString('widen your assignment', $message);
+
+        $this->assertStringContainsString('not assigned anywhere', $message);
+        $this->assertStringContainsString('administrator can assign you', $message);
+
+        // Still not a permission problem — they hold `hr.edit`.
+        $this->assertStringNotContainsString('do not have permission', $message);
+
+        // And the target is still not named, whichever branch answered.
+        $this->assertStringNotContainsString('Somebody Else', $message);
+        $this->assertStringNotContainsString('Alpha F1', $message);
+    }
+
+    /**
+     * A permission key is a wire name, and R8 keeps those off the screen.
+     *
+     * BrandingController answered "Missing permission: organizations.edit." —
+     * a string that appears nowhere in the product, naming a thing the reader
+     * cannot go and look at. Its sibling route answered with nothing at all,
+     * which renders as the framework's "This action is unauthorized."
+     */
+    public function test_the_logo_routes_refuse_in_words_rather_than_in_keys(): void
+    {
+        $alpha  = $this->provisionTenant('Alpha');
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['companies.view']);
+
+        foreach ([
+            $this->signedInAs($viewer)->postJson('/api/v1/branding/organization'),
+            $this->signedInAs($viewer)->deleteJson('/api/v1/branding/organization'),
+        ] as $response) {
+            $message = $response->assertForbidden()->json('message');
+
+            $this->assertStringNotContainsString('organizations.edit', $message);
+            $this->assertStringNotContainsString('This action is unauthorized', $message);
+            $this->assertStringContainsString('logo', $message);
+            $this->assertStringContainsString('part of a role', $message);
+        }
+    }
+
+    /**
+     * The same literal, one file over, on the screen customers actually use.
+     *
+     * The round that fixed BrandingController and DataController never grepped
+     * for the string, so SettingsController::authorizeEdit went on rendering
+     * "Missing permission: organizations.edit." for every write on the Settings
+     * screen — PATCH and DELETE alike, since both authorize through it. A
+     * permission key is a wire name (R8): it appears nowhere in the product, so
+     * the reader cannot go and look at the thing it names, and it says nothing
+     * about who could hand it to them.
+     */
+    public function test_the_settings_routes_refuse_in_words_rather_than_in_keys(): void
+    {
+        $alpha  = $this->provisionTenant('Alpha');
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['organizations.view']);
+
+        $scope = ['scope_type' => 'organization', 'scope_id' => $alpha['org']->id];
+
+        foreach ([
+            $this->signedInAs($viewer)->patchJson('/api/v1/settings/timezone', $scope + ['value' => 'UTC']),
+            $this->signedInAs($viewer)->deleteJson('/api/v1/settings/timezone', $scope),
+            $this->signedInAs($viewer)->patchJson(
+                '/api/v1/settings/security.require_two_factor', $scope + ['value' => true],
+            ),
+        ] as $response) {
+            $message = $response->assertForbidden()->json('message');
+
+            $this->assertStringNotContainsString('organizations.edit', $message);
+            $this->assertStringNotContainsString('Missing permission', $message);
+            $this->assertStringNotContainsString('This action is unauthorized', $message);
+
+            // What is missing, and who can hand it over.
+            $this->assertStringContainsString('part of a role', $message);
+        }
+
+        // The setting is named by its label rather than by its key, so the
+        // sentence names something the reader can see on the screen in front
+        // of them.
+        $this->assertStringContainsString(
+            'Default timezone',
+            $this->signedInAs($viewer)
+                ->patchJson('/api/v1/settings/timezone', $scope + ['value' => 'UTC'])
+                ->json('message'),
+        );
+    }
+
+    /**
+     * The reach half of the same method, which carried no remedy either.
+     *
+     * "Organization-wide settings need an organization-level assignment." and
+     * "That scope is outside your assignments." both state a fact and stop.
+     * Neither says who could fix it, which is the half of R8 that turns a 403
+     * into a dead end.
+     */
+    public function test_a_settings_scope_out_of_reach_says_who_can_help(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $elsewhere = $this->inTenant($alpha['org'], fn () => Franchise::create([
+            'organization_id' => $alpha['org']->id,
+            'company_id'      => $alpha['company']->id,
+            'name'            => 'Rhode Island',
+        ]));
+
+        // Holds the permission. Stands at one place, and asks about two others.
+        $manager = $this->userWithRole(
+            $alpha, 'Branch Manager', ['organizations.view', 'organizations.edit'],
+            onlyAt: $alpha['franchise'],
+        );
+
+        // Upwards: refused by POSITION, so "ask for the permission" is the wrong
+        // advice — they are holding it.
+        $upward = $this->signedInAs($manager)->patchJson('/api/v1/settings/timezone', [
+            'scope_type' => 'organization',
+            'scope_id'   => $alpha['org']->id,
+            'value'      => 'UTC',
+        ])->assertForbidden()->json('message');
+
+        $this->assertStringContainsString('whole organization', $upward);
+        $this->assertStringContainsString('does not flow upwards', $upward);
+        $this->assertStringNotContainsString('do not have permission', $upward);
+
+        // Sideways: a place that exists and is not theirs. Named, because they
+        // picked it, and followed by the two people who could act.
+        $sideways = $this->signedInAs($manager)->patchJson('/api/v1/settings/timezone', [
+            'scope_type' => 'franchise',
+            'scope_id'   => $elsewhere->getKey(),
+            'value'      => 'UTC',
+        ])->assertForbidden()->json('message');
+
+        $this->assertStringContainsString('Rhode Island', $sideways);
+        $this->assertStringContainsString('administrator can widen your assignment', $sideways);
+        $this->assertStringNotContainsString('do not have permission', $sideways);
+    }
+
+    /** And the person standing nowhere hears about the assignment, not the role. */
+    public function test_a_settings_write_with_no_assignment_names_the_assignment(): void
+    {
+        $alpha    = $this->provisionTenant('Alpha');
+        $stranded = $this->userWithNoAssignment(
+            $alpha, 'Stranded', ['organizations.view', 'organizations.edit'],
+        );
+
+        $message = $this->signedInAs($stranded)->patchJson('/api/v1/settings/timezone', [
+            'scope_type' => 'franchise',
+            'scope_id'   => $alpha['franchise']->id,
+            'value'      => 'UTC',
+        ])->assertForbidden()->json('message');
+
+        $this->assertStringContainsString('not assigned to any', $message);
+        $this->assertStringContainsString('administrator can assign you', $message);
+        $this->assertStringNotContainsString('do not have permission', $message);
+    }
+
+    /** The same, for the export and import routes that sit outside the policies. */
+    public function test_export_and_import_refuse_in_words(): void
+    {
+        $alpha   = $this->provisionTenant('Alpha');
+        $nothing = $this->userWithRole($alpha, 'Nothing', ['jobs.view']);
+
+        $message = $this->signedInAs($nothing)
+            ->getJson('/api/v1/exports/customers')
+            ->assertForbidden()
+            ->json('message');
+
+        $this->assertStringContainsString('export customers', $message);
+        $this->assertStringNotContainsString('This action is unauthorized', $message);
     }
 
     // ── the position is what is missing ──────────────────────────

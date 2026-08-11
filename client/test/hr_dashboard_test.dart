@@ -200,6 +200,43 @@ void main() {
     expect(find.textContaining('counted in each of them'), findsNothing);
   });
 
+  /// The panel keyed on `places` rather than on whether any rows arrived, and
+  /// the two are not the same question: a place nobody is in is still a place,
+  /// and it is the row somebody most often opened this tab to find.
+  testWidgets('an organization with nowhere to count says so, and says what '
+      'to add', (tester) async {
+    await _pump(
+      tester,
+      _handler(headcount: 0, places: 0, headcountRows: const []),
+    );
+
+    expect(find.textContaining('Nowhere to count yet'), findsOneWidget);
+    expect(find.textContaining('Add a company and a branch'), findsOneWidget);
+  });
+
+  /// The other half of that: places that exist get their rows and NOT the
+  /// "go and set one up" sentence, however empty they are.
+  testWidgets('a place nobody is in is a row, not a prompt to create one', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        headcount: 0,
+        places: 3,
+        headcountRows: const [
+          {'title': 'Everdoors', 'total': 0},
+          {'title': 'Connecticut', 'total': 0},
+          {'title': 'Texas', 'total': 0},
+        ],
+      ),
+    );
+
+    expect(find.textContaining('Nowhere to count yet'), findsNothing);
+    expect(find.text('Connecticut'), findsOneWidget);
+    expect(find.text('Texas'), findsOneWidget);
+  });
+
   /// A panel withheld by permission is absent, not drawn empty. The server
   /// filters the list; a client that assumed four panels would throw on the
   /// first index it could not find.
@@ -259,6 +296,7 @@ Future<void> _pump(
 MockClientHandler _handler({
   int status = 200,
   int headcount = 1,
+  int places = 1,
   List<Map<String, Object?>>? headcountRows,
   int expired = 0,
   int neverOpened = 0,
@@ -278,7 +316,7 @@ MockClientHandler _handler({
           {'title': 'Everdoors', 'total': headcount},
         ],
         'total': headcount,
-        'places': 1,
+        'places': places,
       },
     },
     {

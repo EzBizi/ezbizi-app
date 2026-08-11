@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Customer;
 use App\Models\Franchise;
+use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Data\Exporter;
 use App\Support\Data\Importer;
@@ -69,7 +70,11 @@ class DataController extends Controller
     {
         $definition = $this->definitionOr404($resource);
 
-        $this->denyUnless($request, $definition['permission']);
+        $this->denyUnless(
+            $request,
+            $definition['permission'],
+            'export '.strtolower($definition['label']),
+        );
 
         $includeSensitive = $request->boolean('include_sensitive');
 
@@ -92,7 +97,11 @@ class DataController extends Controller
     public function bundle(Request $request): array
     {
         foreach (ResourceMap::all() as $definition) {
-            $this->denyUnless($request, $definition['permission']);
+            $this->denyUnless(
+                $request,
+                $definition['permission'],
+                'export everything this organization holds',
+            );
         }
 
         $includeSensitive = $request->boolean('include_sensitive');
@@ -131,7 +140,11 @@ class DataController extends Controller
     public function inventory(Request $request): array
     {
         foreach (ResourceMap::all() as $definition) {
-            $this->denyUnless($request, $definition['permission']);
+            $this->denyUnless(
+                $request,
+                $definition['permission'],
+                'read the record of what this organization holds about people',
+            );
         }
 
         // Recorded, because "who asked what we hold about people" is exactly the
@@ -164,7 +177,11 @@ class DataController extends Controller
             abort(Response::HTTP_UNPROCESSABLE_ENTITY, "{$definition['label']} cannot be imported.");
         }
 
-        $this->denyUnless($request, $definition['import']['permission']);
+        $this->denyUnless(
+            $request,
+            $definition['import']['permission'],
+            'import '.strtolower($definition['label']),
+        );
 
         $input = $request->validate([
             // The file, or the same content pasted in — the second is what makes
@@ -202,8 +219,24 @@ class DataController extends Controller
         return ResourceMap::get($resource) ?? abort(Response::HTTP_NOT_FOUND);
     }
 
-    private function denyUnless(Request $request, string $permission): void
+    /**
+     * Refuse, in a sentence, rather than with a bare 403.
+     *
+     * `abort_unless(..., 403)` with no message renders "This action is
+     * unauthorized." — the framework's words, which name no permission and no
+     * remedy (R8). These four call sites sit outside the policies, so they were
+     * missed when the policies were given sentences; the wording still comes
+     * from the same place, so there is one home for it.
+     *
+     * [$act] is what they were trying to do, as an infinitive without "to" —
+     * the same contract Refusal::permission states.
+     */
+    private function denyUnless(Request $request, string $permission, string $act): void
     {
-        abort_unless($request->user()->hasPermission($permission), Response::HTTP_FORBIDDEN);
+        abort_unless(
+            $request->user()->hasPermission($permission),
+            Response::HTTP_FORBIDDEN,
+            Refusal::permission($act)->message(),
+        );
     }
 }

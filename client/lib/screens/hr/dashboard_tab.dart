@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/dashboard_panels.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
@@ -170,6 +171,12 @@ class _DashboardTabState extends State<DashboardTab> {
     final rows = (data['rows'] as List<dynamic>).cast<Map<String, dynamic>>();
     final total = data['total'] as int;
 
+    // How many places this view covers, which is what the sentence below is
+    // about. Read rather than counted off `rows`: `rows` is the list to DRAW,
+    // not a list of places — "Not assigned to a place" is one of its rows and
+    // is not a place — so the server is the side that can answer this.
+    final places = data['places'] as int;
+
     return _Panel(
       title: 'Headcount by place',
       icon: Icons.groups_outlined,
@@ -178,7 +185,7 @@ class _DashboardTabState extends State<DashboardTab> {
         children: [
           _BigNumber(total, total == 1 ? 'person' : 'people'),
           const SizedBox(height: 12),
-          if (rows.isEmpty)
+          if (places == 0)
             const _Explains(
               'Nowhere to count yet. Add a company and a branch under '
               'Organization, and each one will appear here with its own '
@@ -297,11 +304,6 @@ class _DashboardTabState extends State<DashboardTab> {
     final days = data['days'] as int;
     final more = data['more_people'] as int;
 
-    /// Which rows the window covers. Sent by the server rather than assumed
-    /// here, so a row added later cannot silently inherit a period it is not
-    /// counted over.
-    final dated = (data['period_applies_to'] as List<dynamic>).cast<String>();
-
     return _Panel(
       title: 'Starting and leaving',
       icon: Icons.trending_up_outlined,
@@ -310,9 +312,11 @@ class _DashboardTabState extends State<DashboardTab> {
         children: [
           for (final row in rows)
             _CountRow(
-              label: dated.contains(row['title'])
-                  ? '${row['title']} in the last $days days'
-                  : row['title'] as String,
+              // Which rows the window covers is the server's answer, not this
+              // tab's — and it is composed by the same function the main
+              // dashboard uses, so the identical figure cannot be labelled
+              // "in the last 30 days" here and left bare over there.
+              label: dashboardRowLabel(data, row),
               value: row['total'] as int,
             ),
 

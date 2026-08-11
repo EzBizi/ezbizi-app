@@ -193,14 +193,7 @@ class DataInventoryTest extends TestCase
      */
     public function test_every_model_holding_a_person_shaped_column_declares_it(): void
     {
-        // Columns whose presence means a row is about a human being. Narrow on
-        // purpose: a false positive here is a nuisance, and a false negative is
-        // the whole problem.
-        $tells = [
-            'email', 'phone', 'first_name', 'last_name', 'middle_name',
-            'date_of_birth', 'gender', 'ip_address', 'user_agent',
-            'signer_label', 'affirmation', 'address_line1',
-        ];
+        $tells = self::PERSON_SHAPED_COLUMNS;
 
         $exempt = [
             /*
@@ -262,6 +255,91 @@ class DataInventoryTest extends TestCase
             'Declare purpose, retention and the fields — or add the class to the',
             'exempt list in this test, WITH the reason.',
         ]));
+    }
+
+    /**
+     * Columns whose presence means a row is about a human being.
+     *
+     * Narrow on purpose: a false positive here is a nuisance, and a false
+     * negative is the whole problem. One home, because the two tests below read
+     * it in opposite directions and a second copy would be the copy that drifts.
+     */
+    private const PERSON_SHAPED_COLUMNS = [
+        'email', 'phone', 'first_name', 'last_name', 'middle_name',
+        'date_of_birth', 'gender', 'ip_address', 'user_agent',
+        'signer_label', 'affirmation', 'address_line1',
+    ];
+
+    /**
+     * The other direction, and the one that was missing.
+     *
+     * The test above runs SCHEMA → INTERFACE: a table with a person in it must
+     * declare itself. It says nothing about whether the declaration is COMPLETE,
+     * and the Anonymiser's docblock used to claim
+     * `test_every_erasable_entry_names_columns_that_exist` covered that. It does
+     * not — that one runs DECLARED → SCHEMA and is structurally incapable of
+     * finding a column nobody declared. So the argument the whole "derived, not
+     * a list" design rests on ("somebody adds a personal-data column and updates
+     * the inventory because the interface makes them") had no test behind it:
+     * the interface forces the method to exist, not to stay complete.
+     *
+     * This is that test. A model already implementing HoldsPersonalData must name
+     * every person-shaped column of its own table in some entry — and adding a
+     * column to a table already in the inventory is exactly the edit that skips
+     * the other test entirely, because the class already implements the interface.
+     *
+     * ── What it cannot do, said plainly ──────────────────────────
+     *
+     * It knows the columns whose NAME says a person is in them. `provider_evidence`
+     * — a signing vendor's certificate, contents decided by the vendor — was
+     * undeclared for exactly that reason and had to be found by reading. A
+     * heuristic that catches the common case and admits its edge is worth more
+     * than a docblock claiming a proof that does not exist.
+     */
+    public function test_every_declared_table_names_its_person_shaped_columns(): void
+    {
+        $undeclared = [];
+
+        foreach (glob(app_path('Models').'/*.php') ?: [] as $file) {
+            $class = 'App\\Models\\'.basename($file, '.php');
+
+            if (! is_subclass_of($class, HoldsPersonalData::class)
+                || ! is_subclass_of($class, Model::class)) {
+                continue;
+            }
+
+            $table = (new $class)->getTable();
+
+            if (! \Illuminate\Support\Facades\Schema::hasTable($table)) {
+                continue;
+            }
+
+            $present = array_intersect(
+                self::PERSON_SHAPED_COLUMNS,
+                \Illuminate\Support\Facades\Schema::getColumnListing($table),
+            );
+
+            $declared = [];
+
+            foreach ($class::personalDataHeld() as $entry) {
+                $declared = array_merge($declared, $entry->columns());
+            }
+
+            foreach (array_diff($present, $declared) as $column) {
+                $undeclared[] = "{$table}.{$column}";
+            }
+        }
+
+        sort($undeclared);
+
+        $this->assertSame([], $undeclared, sprintf(
+            "These columns describe a person and are not named by any entry on the model "
+            ."that owns them:\n  %s\nThe table is already in the §9 inventory, so nothing "
+            .'else will notice: the answer to "what do you hold about me" omits the column '
+            .'and the purge, which reads the same declarations as its instructions, walks '
+            .'straight past it.',
+            implode("\n  ", $undeclared),
+        ));
     }
 
 

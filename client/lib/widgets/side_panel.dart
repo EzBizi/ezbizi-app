@@ -24,8 +24,8 @@ import 'package:flutter/material.dart';
 ///
 /// ── Reaching it without a mouse ──────────────────────────────────
 ///
-/// Two separate things, both of which this class owns so that all 47 panels get
-/// them at once:
+/// Two separate things, both of which this class owns so that every panel in
+/// the app gets them at once rather than each one remembering:
 ///
 ///   - **A screen reader is told.** `scopesRoute` says a new surface has opened
 ///     and the page behind is no longer part of what is being read; `namesRoute`
@@ -35,10 +35,20 @@ import 'package:flutter/material.dart';
 ///     scope, which is enough for Tab to eventually find its way inside, but
 ///     nothing in the panel holds focus until then — so the first press of Tab
 ///     is spent and there is nothing highlighted to say where you are. This
-///     takes focus explicitly, and gives it back on close, which the route
-///     already does correctly.
+///     takes focus explicitly on open.
 ///
-/// Both were measured absent before they were added; see test/side_panel_test.
+/// ── Giving focus BACK is the framework's job, not this class's ───
+///
+/// Closing restores focus to the control that opened the panel, and there is
+/// deliberately no code here doing it. A FocusScopeNode remembers its
+/// focusedChild, the route beneath keeps its own scope while the panel is up,
+/// and popping hands focus back to what that scope was last on. Adding a
+/// remember-and-restore of our own would be a second implementation racing the
+/// framework's, and the failure mode of the two disagreeing is worse than
+/// either alone.
+///
+/// Both halves are asserted in test/side_panel_test — the taking here, and the
+/// giving back that this class does not do.
 class SidePanel extends StatefulWidget {
   const SidePanel({
     super.key,
@@ -132,10 +142,7 @@ class _SidePanelState extends State<SidePanel> {
       namesRoute: true,
       explicitChildNodes: true,
       label: widget.title,
-      child: Focus(
-        focusNode: _entry,
-        child: _panel(context, scheme),
-      ),
+      child: Focus(focusNode: _entry, child: _panel(context, scheme)),
     );
   }
 

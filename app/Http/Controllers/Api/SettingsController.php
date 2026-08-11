@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\User;
+use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
@@ -72,7 +73,7 @@ class SettingsController extends Controller
         }
 
         $scope = $this->resolveScope($request);
-        $this->authorizeEdit($request, $definition, $scope);
+        $this->authorizeEdit($request, $definition, $scope, 'change');
 
         $request->validate(['value' => ['present']]);
 
@@ -123,7 +124,7 @@ class SettingsController extends Controller
         }
 
         $scope = $this->resolveScope($request);
-        $this->authorizeEdit($request, $definition, $scope);
+        $this->authorizeEdit($request, $definition, $scope, 'reset');
 
         DB::transaction(function () use ($key, $scope) {
             $this->resolver->forget($key, $scope);
@@ -164,6 +165,14 @@ class SettingsController extends Controller
         $source    = $this->resolver->sourceOf($key, $scope);
         $group     = $this->registry->groupOf($key);
 
+        // Asked once, and answered here rather than in the client, so the
+        // disabled control and the 403 behind it cannot come to disagree: they
+        // are the same string. 'change' because that is the act a live control
+        // would have performed — the Reset button's refusal is the same one
+        // worded for DELETE, and destroy() asks for it separately.
+        $allowsScope = $definition->allowsScope($scopeType);
+        $refused     = $this->refusalFor($request->user(), $definition, $scope, 'change');
+
         return [
             'key'            => $key,
             'label'          => $definition->label,
@@ -201,17 +210,28 @@ class SettingsController extends Controller
             'not_yet_in_effect' => $definition->notYetInEffect,
 
             // Can this SCOPE hold it? Inheritance, not permission.
-            'editable_here'  => $definition->allowsScope($scopeType),
+            'editable_here'  => $allowsScope,
 
             // Can this PERSON set it here? Two separate questions, and the
             // client had only the first — so somebody without
             // `organizations.edit` saw every control live, changed one, and
             // got a 403 from a switch that had already animated.
-            'may_edit'       => $this->mayEdit($request->user(), $definition, $scope),
+            'may_edit'       => $allowsScope && $refused === null,
 
-            // Named so a refusal can say which one is missing rather than
-            // "you cannot do that".
-            'permission'     => $definition->permissionRequired(),
+            // And WHY not, in words, when the answer is no.
+            //
+            // This row used to carry `permission` instead — the bare key — and
+            // the client printed it: "Read-only — needs organizations.edit". A
+            // wire name on a customer's screen, naming something that appears
+            // nowhere in the product, with no hint of who could grant it (R8).
+            // The key is gone rather than left beside this sentence, because a
+            // field whose only use was being printed is one somebody prints
+            // again.
+            //
+            // Null when the scope itself cannot hold the setting: that is not
+            // about this person, and the client says so in its own words.
+            'may_edit_reason' => $allowsScope ? $refused : null,
+
             'allowed_scopes' => $definition->allowedScopes,
             'source'         => $source === null ? null : [
                 'type'      => $this->scopeTypeOf($source),
@@ -253,34 +273,6 @@ class SettingsController extends Controller
         abort_if($model === null, Response::HTTP_NOT_FOUND, 'Scope not found.');
 
         return $model;
-    }
-
-    /**
-     * Two checks, both required:
-     *
-     *   1. Does the role grant the permission? (what)
-     *   2. Can the user reach this scope?      (where)
-     *
-     * A permission without reach lets a New Jersey manager edit Texas's tax
-     * rate; reach without permission lets anyone who can see a franchise
-     * reconfigure it.
-     */
-    /**
-     * May this person set this setting AT THIS SCOPE?
-     *
-     * One predicate, asked in two places: `may_edit` on every row, and
-     * `authorizeEdit` before every write. They used to be computed differently —
-     * the row asked only about permission — so the screen drew a live control
-     * for a scope the person could not write to, and the save came back 403 from
-     * a switch that had already animated. That is the exact regression
-     * SettingsVisibilityTest exists to prevent, live again for every scope
-     * outside the person's reach.
-     */
-    private function mayEdit(User $user, SettingDefinition $definition, Model $scope): bool
-    {
-        return $definition->allowsScope($this->scopeTypeOf($scope))
-            && $user->hasPermission($definition->permissionRequired())
-            && $this->reaches($user, $scope);
     }
 
     /**
@@ -332,23 +324,97 @@ class SettingsController extends Controller
         );
     }
 
-    private function authorizeEdit(Request $request, SettingDefinition $definition, Model $scope): void
-    {
-        $user = $request->user();
+    /**
+     * Refuse the write, in the same words the disabled control uses (R8).
+     *
+     * @param  string  $verb  'change' or 'reset' — PATCH and DELETE are two
+     *                        different acts to the person doing them, and a
+     *                        refusal that says "change" when they pressed Reset
+     *                        makes them wonder which control answered.
+     */
+    private function authorizeEdit(
+        Request $request,
+        SettingDefinition $definition,
+        Model $scope,
+        string $verb,
+    ): void {
+        $refusal = $this->refusalFor($request->user(), $definition, $scope, $verb);
 
-        abort_unless(
-            $user->hasPermission($definition->permissionRequired()),
-            Response::HTTP_FORBIDDEN,
-            "Missing permission: {$definition->permissionRequired()}."
-        );
+        abort_if($refusal !== null, Response::HTTP_FORBIDDEN, (string) $refusal);
+    }
 
-        abort_unless(
-            $this->reaches($user, $scope),
-            Response::HTTP_FORBIDDEN,
-            $scope instanceof Organization
-                ? 'Organization-wide settings need an organization-level assignment.'
-                : 'That scope is outside your assignments.'
-        );
+    /**
+     * Why this person may not write this setting here, or null when they may.
+     *
+     * ── Two checks, both required ────────────────────────────────
+     *
+     * Does the role grant the permission (what), and can the user reach this
+     * scope (where)? A permission without reach lets a New Jersey manager edit
+     * Texas's tax rate; reach without permission lets anyone who can see a
+     * franchise reconfigure it.
+     *
+     * One predicate, asked in two places: the row `may_edit` draws from, and
+     * `authorizeEdit` before every write. They used to be computed differently —
+     * the row asked only about permission — so the screen drew a live control
+     * for a scope the person could not write to, and the save came back 403 from
+     * a switch that had already animated. That is the exact regression
+     * SettingsVisibilityTest exists to prevent, live again for every scope
+     * outside the person's reach.
+     *
+     * ── Why a sentence rather than the permission key ────────────
+     *
+     * This method used to answer "Missing permission: organizations.edit." — a
+     * wire name on the Settings screen, which R8 forbids for the reason it
+     * reads as: `organizations.edit` appears nowhere in the product, so nobody
+     * can go and look at it, and the string says nothing about who could hand it
+     * over. The reach half was no better: "That scope is outside your
+     * assignments." states a fact and names no remedy, which is a dead end
+     * rather than a refusal.
+     *
+     * ── Why the row carries it too ───────────────────────────────
+     *
+     * `may_edit` draws a dead control, and a dead control with no explanation is
+     * indistinguishable from a broken one. Answering here rather than in the
+     * client is what keeps the tooltip and the 403 the same refusal: they are
+     * the same string, computed once. The organization tree already works this
+     * way — `may_add_company_reason` and its siblings.
+     *
+     * The three cases are Refusal's, not this controller's, so the settings
+     * screen refuses in the same words as every other screen (§4 has one home).
+     */
+    private function refusalFor(
+        User $user,
+        SettingDefinition $definition,
+        Model $scope,
+        string $verb,
+    ): ?string {
+        // Named by its label, which is the text on the row in front of them.
+        $act = "{$verb} the ‘{$definition->label}’ setting";
+
+        if (! $user->hasPermission($definition->permissionRequired())) {
+            return Refusal::permission($act)->message();
+        }
+
+        if ($this->reaches($user, $scope)) {
+            return null;
+        }
+
+        // An organization-wide setting is refused by POSITION rather than by
+        // place: there is no other organization they could have set it on
+        // instead, so "somebody assigned there can" would be nonsense and
+        // widening their assignment is not a smaller ask than promoting them.
+        if ($scope instanceof Organization) {
+            return Refusal::abovePosition($act)->message();
+        }
+
+        return Refusal::noReach(
+            $user,
+            $scope instanceof Company ? Refusal::AT_COMPANY : Refusal::AT_FRANCHISE,
+            $act,
+            // Safe to name: the caller sent this scope's id, having picked it
+            // out of a tree the API already showed them.
+            $scope->name,
+        )->message();
     }
 
     private function scopeTypeOf(Model $scope): string

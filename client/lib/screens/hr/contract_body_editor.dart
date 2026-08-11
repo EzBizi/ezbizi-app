@@ -7,7 +7,6 @@ import '../../core/contracts.dart';
 import '../../core/document_html.dart';
 import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
-import '../../widgets/tab_bar_like.dart';
 import 'contract_document_page.dart';
 
 /// Writing the contract, beside the page it makes.
@@ -28,16 +27,24 @@ import 'contract_document_page.dart';
 ///
 /// So a version carries a `body`, and this is where it is written.
 ///
-/// ── Half and half, and why the right half is white ───────────────
+/// ── Half the TAB, not half of a step ─────────────────────────────
 ///
-///   *"on Contracts it should be 50% on one side and 50% showing the actual
-///    contract, and how it looks with white background as that's the color of
-///    pages"*
+///   *"I specifically told you to do 50% each, as in the whole tab, not inside
+///    the form […] on one side of the tab it should be the form editor, and on
+///    the other side of the tab the contract"*
 ///
-/// Both halves are here: the text on the left, the page on the right. The page
-/// is white in every theme — the reasoning is written out on
-/// [ContractDocumentPage], and it is the one surface in this app that does not
-/// follow the theme.
+/// The first build put both halves inside step 4 of a stacked form, so the
+/// document was a 620px panel between two form sections — a preview widget,
+/// which is not what was asked for and reads as one. The split belongs to the
+/// screen: the whole designer down the left, the whole page down the right, and
+/// the page in view the entire time somebody is naming the contract or adding a
+/// question, not only while they are scrolled to the wording.
+///
+/// That is why this file is three pieces rather than one widget. The two halves
+/// are no longer siblings — the writing surface sits inside the left column's
+/// scroll view and the page is a full-height pane beside it — so the render
+/// state cannot live in a common ancestor widget. [ContractPageController] owns
+/// it, and both halves attach to the same instance.
 ///
 /// ── It is a text area, deliberately, and not a rich-text editor ──
 ///
@@ -66,20 +73,28 @@ import 'contract_document_page.dart';
 /// If a contract ever needs headings and emphasis, the honest way in is a
 /// declared markup the renderer owns — not a WYSIWYG surface over a field that
 /// is escaped at the far end.
-class ContractBodyEditor extends StatefulWidget {
-  const ContractBodyEditor({
-    super.key,
+class ContractPageController extends ChangeNotifier {
+  ContractPageController({
     required this.api,
     required this.vocabulary,
     required this.body,
     required this.contractId,
-    required this.fields,
     required this.payload,
-    required this.canEdit,
-  });
+    this.resolvable = const [],
+  }) {
+    body.addListener(_typed);
+    _renderedAgainst = _signature;
+    _render();
+  }
 
   final ApiClient api;
+
+  /// Held for one thing only: the delimiters a merge tag is written between,
+  /// so the page can mark one without `{{` being written in Dart.
   final ContractVocabulary vocabulary;
+
+  TagDelimiters get _delimiters =>
+      TagDelimiters(vocabulary.mergeTags.open, vocabulary.mergeTags.close);
 
   /// The document's text. Owned by the designer, because it is part of what
   /// gets saved and the publish panel has to send it.
@@ -89,39 +104,20 @@ class ContractBodyEditor extends StatefulWidget {
   /// [_render] for what that changes.
   final String? contractId;
 
-  /// The questions as they stand this instant, for the list of insertable tags.
-  /// A function rather than a list: somebody adds a question in step 3 and it
-  /// has to be insertable here without this widget being rebuilt with new
-  /// arguments.
-  final List<ContractField> Function() fields;
-
-  /// The same questions in the shape the wire wants, for the preview request.
-  /// The designer owns that shape — one place decides what a field looks like
-  /// on the wire, and it is not this file.
+  /// The questions in the shape the wire wants, for the preview request. The
+  /// designer owns that shape — one place decides what a field looks like on
+  /// the wire, and it is not this file. A function rather than a list:
+  /// somebody adds a question in step 3 and the page has to follow without
+  /// this object being rebuilt with new arguments.
   final List<Map<String, dynamic>> Function() payload;
 
-  final bool canEdit;
-
-  @override
-  State<ContractBodyEditor> createState() => _ContractBodyEditorState();
-}
-
-class _ContractBodyEditorState extends State<ContractBodyEditor> {
   /// Long enough that a sentence is not four requests, short enough that the
   /// page moves while somebody is still looking at what they typed.
   static const Duration _settle = Duration(milliseconds: 400);
 
-  /// Below this there is not room for two readable columns — see [build].
-  static const double _splitAbove = 900;
-
-  /// Tall enough to write in. The designer is a scrolling page and this is a
-  /// fixed region inside it, which is the one shape that lets both halves keep
-  /// their own scroll instead of the page growing to the length of the
-  /// contract.
-  static const double _tall = 620;
-  static const double _tallNarrow = 540;
-
-  final FocusNode _writing = FocusNode();
+  /// Focus for the writing surface, held here because [insert] has to give it
+  /// back and the chip that calls [insert] is drawn by the other half.
+  final FocusNode writing = FocusNode();
 
   Timer? _debounce;
 
@@ -129,13 +125,59 @@ class _ContractBodyEditorState extends State<ContractBodyEditor> {
   /// answer arriving late would redraw the page as it was two words ago.
   int _request = 0;
 
-  List<DocumentBlock> _document = const [];
-  List<String> _unresolved = const [];
-  bool _rendering = false;
-  String? _error;
+  List<DocumentBlock> document = const [];
+  bool rendering = false;
+  String? error;
 
-  /// Which half is on screen when there is only room for one.
-  bool _previewing = false;
+  /// The page below the error is from BEFORE the change that was refused.
+  ///
+  /// ── Why the stale page is kept and labelled, not cleared ─────
+  ///
+  /// `preview()` validates the body before it renders a character of it, so a
+  /// mistyped tag comes back as a refusal naming the tag and there is no
+  /// document in the answer at all. This used to set the error and return,
+  /// leaving the last good page on screen with nothing saying it was no longer
+  /// what the text says — the one state a preview must never be in, because the
+  /// whole promise of the pane is "this is your contract".
+  ///
+  /// Clearing it instead would be worse in the common case: a tag is mistyped
+  /// halfway through writing, and blanking four pages of document over one
+  /// keystroke loses the place somebody was reading. So it stays, and it says
+  /// what it is.
+  bool stale = false;
+
+  /// Every tag that resolves for the questions as they stand — the server's own
+  /// list, out of `merge_tags`.
+  ///
+  /// This is `MergeTags::resolvable()`, which is the registry. The preview
+  /// answer carries it and so re-states it on every render, because every
+  /// render sends the current field list: adding a question in step 3 puts its
+  /// tag in the picker on the same round trip that re-renders the page.
+  ///
+  /// It STARTS from `GET /hr/contracts/{contract}`, which publishes the same
+  /// registry for the version in force and is the response the designer opened
+  /// with. That mattered more than it looks. Before it was read, this was empty
+  /// until the first preview answered, and an empty list is what makes
+  /// [ContractWriting] assemble the own-question chips in Dart out of the
+  /// questions on screen — the four server rules restated on this side that
+  /// [MergeTag] exists to keep off it. The gap is a few hundred milliseconds
+  /// when the preview succeeds and PERMANENT when it is refused, which is
+  /// precisely when somebody is reaching for a chip to fix the tag that was
+  /// refused.
+  ///
+  /// Empty only on the create path, where there is neither a contract to
+  /// preview against nor one to have loaded — see [ContractWriting] for what is
+  /// offered then and why it is not the same thing.
+  List<MergeTag> resolvable;
+
+  /// Which version this draft would BE, from the preview's `version`.
+  ///
+  /// Published so the pane can say it. A preview is of the next version by
+  /// definition, and "the page, with sample answers" over a document that is
+  /// four edits ahead of the one in force is a picture without a date on it.
+  int? previewVersion;
+
+  bool get draft => contractId == null;
 
   /// The questions as they stood when the page was last asked for.
   ///
@@ -147,7 +189,7 @@ class _ContractBodyEditorState extends State<ContractBodyEditor> {
   /// fixed it would be looking at a stale accusation.
   String _renderedAgainst = '';
 
-  bool get _draft => widget.contractId == null;
+  bool _disposed = false;
 
   /// Enough of the questions to know whether the page would come back
   /// different: the key a tag names, the wording, the kind of answer, and
@@ -158,24 +200,31 @@ class _ContractBodyEditorState extends State<ContractBodyEditor> {
   /// the form do not change a word of the document, and re-asking the server
   /// over a reshuffle would be one request per press of an arrow.
   String get _signature => [
-    for (final field in widget.payload())
-      '${field['key']} ${field['label']} ${field['type']} '
-      '${field['retired']}',
+    for (final field in payload())
+      '${field['key']} ${field['label']} ${field['type']} ${field['retired']}',
   ].join(' ');
 
-  @override
-  void initState() {
-    super.initState();
-    widget.body.addListener(_typed);
-    _renderedAgainst = _signature;
-    _render();
+  /// Called from the designer's build: a question may have changed somewhere
+  /// else on the screen, which the body's own listener cannot see.
+  ///
+  /// Scheduling the same debounce a keystroke schedules, rather than rendering
+  /// on the spot: this runs during a build, nothing about a build may set
+  /// state, and a timer does not.
+  void syncQuestions() {
+    final signature = _signature;
+
+    if (signature == _renderedAgainst) return;
+
+    _renderedAgainst = signature;
+    _typed();
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _debounce?.cancel();
-    widget.body.removeListener(_typed);
-    _writing.dispose();
+    body.removeListener(_typed);
+    writing.dispose();
     super.dispose();
   }
 
@@ -198,100 +247,98 @@ class _ContractBodyEditorState extends State<ContractBodyEditor> {
   /// implementation of the merge, agreeing with the document right up until the
   /// day it did not — and the day it did not, somebody would have signed.
   Future<void> _render() async {
-    final id = widget.contractId;
+    final id = contractId;
 
     if (id == null) {
-      if (!mounted) return;
+      if (_disposed) return;
 
-      setState(() {
-        _document = readDraftText(widget.body.text);
-        _unresolved = const [];
-        _rendering = false;
-        _error = null;
-      });
+      document = readDraftText(body.text, _delimiters);
+      resolvable = const [];
+      previewVersion = null;
+      stale = false;
+      rendering = false;
+      error = null;
+      notifyListeners();
 
       return;
     }
 
     final request = ++_request;
 
-    setState(() => _rendering = true);
+    rendering = true;
+    notifyListeners();
 
-    final response = await widget.api.post('/hr/contracts/$id/preview', {
-      'body': widget.body.text,
-      'fields': widget.payload(),
+    final response = await api.post('/hr/contracts/$id/preview', {
+      'body': body.text,
+      'fields': payload(),
     });
 
-    if (!mounted || request != _request) return;
+    if (_disposed || request != _request) return;
 
-    setState(() {
-      _rendering = false;
+    rendering = false;
 
-      if (!response.ok) {
-        _error = response.reason;
-        return;
-      }
+    if (!response.ok) {
+      error = response.reason;
+      // Whatever is on screen is now older than the text beside it. The refusal
+      // itself is legible — `ApiResponse.reason` lifts the server's field-level
+      // sentence out of `errors`, and for a body that is the one naming the tag
+      // and saying what to do about it — but a legible refusal over a page that
+      // silently disagrees with the wording is still a lie by arrangement.
+      stale = document.isNotEmpty;
+      notifyListeners();
 
-      final html = _htmlOf(response.data);
+      return;
+    }
 
-      // Answered, and with nothing this build can find a document in. Said out
-      // loud rather than drawn as an empty page: "nothing written yet" over a
-      // contract somebody has just written is the one message that would send
-      // them looking for lost work.
-      if (html.isEmpty && widget.body.text.trim().isNotEmpty) {
-        _error =
-            'The server answered without a document in it, so there is '
-            'nothing to draw here. Your wording is untouched — this pane is '
-            'the only thing affected.';
-        _document = const [];
-        _unresolved = const [];
-        return;
-      }
+    final html = _htmlOf(response.data);
 
-      _error = null;
-      _document = readDocumentHtml(html);
-      _unresolved = _unresolvedIn(response.data, _document);
-    });
+    // Answered, and with nothing this build can find a document in. Said out
+    // loud rather than drawn as an empty page: "nothing written yet" over a
+    // contract somebody has just written is the one message that would send
+    // them looking for lost work.
+    if (html.isEmpty && body.text.trim().isNotEmpty) {
+      error =
+          'The server answered without a document in it, so there is '
+          'nothing to draw here. Your wording is untouched — this pane is '
+          'the only thing affected.';
+      document = const [];
+      stale = false;
+      notifyListeners();
+
+      return;
+    }
+
+    final data = response.data;
+
+    error = null;
+    stale = false;
+    document = readDocumentHtml(html, _delimiters);
+
+    if (data is Map) {
+      resolvable = MergeTag.listFrom(data['merge_tags'], mergeSourceField);
+      previewVersion = (data['version'] as num?)?.toInt();
+    }
+
+    notifyListeners();
   }
 
   /// The document out of the answer.
   ///
-  /// Two readings of one thing, for the reason `ContractVocabulary.fromJson`
-  /// gives: a wording difference between the two halves of a contract should
-  /// not become a blank pane that says nothing about why.
+  /// `content`, and nothing else. This read `html`, then `document`, then
+  /// `content` — two names no server sends, on the theory that tolerance about
+  /// spelling is free. It is not: the same habit in
+  /// `ContractVocabulary.fromJson` read three invented names for the
+  /// always-available facts and produced an empty list that looked exactly like
+  /// a server declaring none, and the feature was missing in production for as
+  /// long as nobody looked. An alternative spelling is worth carrying when both
+  /// spellings exist; these did not.
   static String _htmlOf(Object? data) {
-    if (data is String) return data;
-
-    if (data is Map) {
-      final html = data['html'] ?? data['document'] ?? data['content'];
-
-      if (html is String) return html;
+    if (data is Map && data['content'] is String) {
+      return data['content'] as String;
     }
 
     return '';
   }
-
-  /// Which tags did not resolve.
-  ///
-  /// The server's own list when it publishes one. Otherwise the tags still
-  /// sitting in what it rendered — the same fact read from the other end, since
-  /// a tag it resolved is not in the output any more. Neither branch decides
-  /// what CAN resolve; that is the server's list and it never appears here.
-  static List<String> _unresolvedIn(Object? data, List<DocumentBlock> document) {
-    if (data is Map && data['unresolved'] is List) {
-      return [
-        for (final entry in data['unresolved'] as List)
-          if (entry is String)
-            entry
-          else if (entry is Map && entry['key'] is String)
-            entry['key'] as String,
-      ];
-    }
-
-    return tagsIn(document);
-  }
-
-  // ── inserting one ────────────────────────────────────────────────
 
   /// The whole point of the exercise: a tag lands where the cursor is.
   ///
@@ -301,174 +348,261 @@ class _ContractBodyEditorState extends State<ContractBodyEditor> {
   /// An untouched box has no cursor at all — `selection` is offset -1 — and
   /// then the end of the text is the only sensible place, rather than throwing
   /// a range error over somebody clicking a chip first.
-  void _insert(String key) {
-    final tag = '{{$key}}';
-    final value = widget.body.value;
+  /// [tag] is the exact text to insert, assembled by the server — this end
+  /// never wraps a key in delimiters of its own. See [MergeTag.tag].
+  void insert(String tag) {
+    final value = body.value;
     final selection = value.selection;
 
     final start = selection.isValid ? selection.start : value.text.length;
     final end = selection.isValid ? selection.end : value.text.length;
 
-    widget.body.value = TextEditingValue(
+    body.value = TextEditingValue(
       text: value.text.replaceRange(start, end, tag),
       selection: TextSelection.collapsed(offset: start + tag.length),
     );
 
     // Straight back to writing. Clicking a chip should feel like typing the
     // tag, and typing does not lose the caret.
-    _writing.requestFocus();
+    writing.requestFocus();
   }
+}
 
-  // ── the two halves ───────────────────────────────────────────────
+// ── the left half: the tags, then the writing ──────────────────────
+
+/// The writing surface, for step 4 of the form down the left.
+class ContractWriting extends StatelessWidget {
+  const ContractWriting({
+    super.key,
+    required this.page,
+    required this.vocabulary,
+    required this.fields,
+    required this.canEdit,
+  });
+
+  final ContractPageController page;
+  final ContractVocabulary vocabulary;
+
+  /// The questions as they stand this instant, for the list of insertable
+  /// tags — a function for the same reason the payload is one.
+  final List<ContractField> Function() fields;
+
+  final bool canEdit;
+
+  /// Tall enough to write a clause in without the box being the whole column.
+  ///
+  /// Fixed, because this sits inside the left column's scroll view: a surface
+  /// that grew with the text would push every later step down the page, and
+  /// `expands` has no meaning against unbounded height.
+  static const double _tall = 360;
 
   @override
   Widget build(BuildContext context) {
-    // A question changed since the last render, so the page is stale — see
-    // [_renderedAgainst]. Scheduling the same debounce a keystroke schedules,
-    // rather than rendering here: nothing about a build may set state, and a
-    // timer does not.
-    final signature = _signature;
-
-    if (signature != _renderedAgainst) {
-      _renderedAgainst = signature;
-      _typed();
-    }
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // R7. Half and half is a DESKTOP layout: a 50/50 split at 375px is two
-        // unusable columns, so below the threshold the two halves become one
-        // pane with a control that says which you are looking at. Only the
-        // chosen half is built — there is no hidden second column off screen.
-        final wide = constraints.maxWidth >= _splitAbove;
-
-        return SizedBox(
-          height: wide ? _tall : _tallNarrow,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              border: Border.all(color: EzBiziTheme.edge(context)),
-              borderRadius: BorderRadius.circular(12),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: EzBiziTheme.edge(context)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(11),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (canEdit) ...[
+              _tags(context),
+              Divider(height: 1, color: EzBiziTheme.edge(context)),
+            ],
+            SizedBox(
+              height: _tall,
+              child: TextField(
+                controller: page.body,
+                focusNode: page.writing,
+                // Read-only rather than DISABLED, which is the difference
+                // between a reader who can scroll a four-page contract and
+                // select a clause out of it and one who is handed a greyed box
+                // they cannot even move. The caret is hidden with it, so
+                // nothing invites typing that would go nowhere; the palette
+                // above is gone for the same reason.
+                readOnly: !canEdit,
+                showCursor: canEdit,
+                expands: true,
+                maxLines: null,
+                textAlignVertical: TextAlignVertical.top,
+                keyboardType: TextInputType.multiline,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(height: 1.6, fontSize: 14),
+                decoration: InputDecoration(
+                  // A page to write on, not a form control: the app's boxed,
+                  // filled input styling around a five-hundred-word document
+                  // makes it look like a comment field.
+                  filled: false,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  contentPadding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+                  hintText: _hint(),
+                  hintMaxLines: 6,
+                ),
+              ),
             ),
-            child: ClipRRect(
-              // The page runs to the edge of its half, so the corner has to be
-              // cut or the white squares off the rounded border.
-              borderRadius: BorderRadius.circular(11),
-              child: wide ? _split(context) : _narrow(context),
-            ),
+            if (canEdit && vocabulary.mergeTags.maxBodyLength > 0) ...[
+              Divider(height: 1, color: EzBiziTheme.edge(context)),
+              _lengthNote(context),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// How long the wording is against the cap, once it is worth saying.
+  ///
+  /// ── The cap was published and unread, which is the failure ───
+  ///
+  /// `merge_tags.max_body_length` is 50,000 characters, and the catalogue sends
+  /// it for exactly one reason: so nobody types a twenty-page agreement and
+  /// finds out at publish. The server's refusal is a good one — it says the
+  /// number, it says why a published version cannot be trimmed afterwards, and
+  /// it suggests an annexe — but it arrives after the work, which is the
+  /// "taught them a rule the hard way" failure the catalogue exists to prevent.
+  ///
+  /// Silent until the last tenth, because a counter over an empty box is
+  /// clutter and a counter that appears when it starts to matter is a warning.
+  /// It does not TRUNCATE, and that is deliberate: `maxLength` on the field
+  /// would silently eat the end of a pasted contract, which is a worse thing to
+  /// do to a legal document than let the server refuse it whole.
+  ///
+  /// ── Counting what the server counts ──────────────────────────
+  ///
+  /// `runes`, which is code points, because `MergeTags::validate` refuses on
+  /// `mb_strlen` and that is code points too. This counted GRAPHEME CLUSTERS —
+  /// what a reader would call a character, and the defensible answer to a
+  /// different question. The two disagree on combining marks, on anything
+  /// outside the basic plane, and on every emoji joined with a zero-width
+  /// joiner: a body of 39,900 clusters can be 50,400 code points, so the
+  /// counter said there was room and the publish was refused anyway, quoting a
+  /// number the person had just watched a counter contradict. A client
+  /// re-implementing a server measure has to re-implement THAT measure.
+  Widget _lengthNote(BuildContext context) {
+    final theme = Theme.of(context);
+    final cap = vocabulary.mergeTags.maxBodyLength;
+
+    return ListenableBuilder(
+      listenable: page.body,
+      builder: (context, _) {
+        final length = page.body.text.runes.length;
+
+        if (length < cap - (cap ~/ 10)) return const SizedBox.shrink();
+
+        final over = length > cap;
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+          child: Row(
+            children: [
+              Icon(
+                over
+                    ? Icons.error_outline
+                    : Icons.speaker_notes_outlined,
+                size: 15,
+                color: over ? theme.colorScheme.error : null,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  over
+                      ? 'This wording is $length characters and the limit is '
+                            '$cap. Publishing will be refused until it is '
+                            'shorter — a published version can never be edited '
+                            'or deleted, so anything longer is text nobody '
+                            'could take back.'
+                      : '$length of $cap characters.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: over ? theme.colorScheme.error : null,
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },
     );
   }
 
-  Widget _split(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      // flex 1 and flex 1. Half and half, as asked for.
-      Expanded(child: _writingHalf(context)),
-      VerticalDivider(width: 1, thickness: 1, color: EzBiziTheme.edge(context)),
-      Expanded(child: _pageHalf(context)),
-    ],
-  );
+  /// The empty-box prompt, with a real tag in it.
+  ///
+  /// The tag comes from `merge_tags.example`, which the catalogue publishes for
+  /// this exact purpose. A hint with `{{start_date}}` written into Dart would
+  /// be a second opinion about the syntax — and the one somebody copies, since
+  /// it is the example in front of them while they learn what a tag looks like.
+  /// Without it the sentence simply loses its tag rather than inventing one.
+  String _hint() {
+    final example = vocabulary.mergeTags.example;
 
-  Widget _narrow(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      TabBarLike(
-        labels: const [
-          ('Write it', Icons.edit_outlined),
-          ('The page', Icons.description_outlined),
-        ],
-        selected: _previewing ? 1 : 0,
-        onSelected: (index) => setState(() => _previewing = index == 1),
-      ),
-      Divider(height: 1, color: EzBiziTheme.edge(context)),
-      Expanded(
-        child: _previewing ? _pageHalf(context) : _writingHalf(context),
-      ),
-    ],
-  );
-
-  // ── the left half: the tags, then the writing ────────────────────
-
-  Widget _writingHalf(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (widget.canEdit) ...[
-          _tags(context),
-          Divider(height: 1, color: EzBiziTheme.edge(context)),
-        ],
-        Expanded(
-          child: TextField(
-            controller: widget.body,
-            focusNode: _writing,
-            // Read-only rather than DISABLED, which is the difference between
-            // a reader who can scroll a four-page contract and select a clause
-            // out of it and one who is handed a greyed box they cannot even
-            // move. The caret is hidden with it, so nothing invites typing
-            // that would go nowhere; the palette above is gone for the same
-            // reason.
-            readOnly: !widget.canEdit,
-            showCursor: widget.canEdit,
-            expands: true,
-            maxLines: null,
-            textAlignVertical: TextAlignVertical.top,
-            keyboardType: TextInputType.multiline,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(height: 1.6, fontSize: 14),
-            decoration: const InputDecoration(
-              // A page to write on, not a form control: the app's boxed,
-              // filled input styling around a five-hundred-word document makes
-              // it look like a comment field.
-              filled: false,
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              disabledBorder: InputBorder.none,
-              contentPadding: EdgeInsets.fromLTRB(18, 16, 18, 24),
-              hintText:
-                  'This Employment Agreement is made on {{start_date}} '
-                  'between…\n\n'
-                  'Write the contract here. Click any of the fields above to '
-                  'drop it in where the cursor is.',
-              hintMaxLines: 6,
-            ),
-          ),
-        ),
-      ],
-    );
+    return '${example.isEmpty ? 'This Employment Agreement is made between…' : 'This Employment Agreement is made on $example between…'}'
+        '\n\n'
+        'Write the contract here. Click any of the fields above to drop it in '
+        'where the cursor is.';
   }
 
   /// Everything that can be dropped into the text, grouped by where it comes
   /// from.
   ///
-  /// Three groups, and not one of them is a list in Dart: the contract's own
-  /// questions are the ones on this screen, the common core and the
-  /// always-available facts both arrive from `GET /hr/contracts/catalogue`. A
-  /// server that starts publishing a fourth fact offers it here the same day —
-  /// and a build that invented `{{organization_name}}` because everybody knows
-  /// it exists would put a tag in an employment contract that renders as
-  /// itself.
+  /// ── The list is the server's, and it is one list ─────────────
+  ///
+  /// `MergeTags::resolvable()` is the registry, and it arrives in full as
+  /// `merge_tags` — this template's own questions included — from the response
+  /// that opened the contract and again from every preview. When it is there it
+  /// is used for all three groups, split by `source`. Nothing is filtered,
+  /// sorted or relabelled on the way through.
+  ///
+  /// The headings are this end's words. Everything else — which keys exist,
+  /// what each is called, the exact characters that get inserted — is the
+  /// server's, and the four rules that decide them (live fields only, no
+  /// signatures, the core is asked-not-reserved, facts are dotted) are stated
+  /// nowhere in Dart. They used to be, badly: three of the four were wrong, so
+  /// this offered `{{name}}` and `{{middle_name}}` and signature fields, all of
+  /// which are refused by name the moment somebody publishes.
+  ///
+  /// ── Except while the contract does not exist yet ─────────────
+  ///
+  /// There is no preview for a contract with no id, so on the create path the
+  /// own-questions group is assembled here from the questions on screen. Two
+  /// server facts are needed to do it and both are published rather than
+  /// guessed: the delimiters, and whether a kind of question merges at all
+  /// (`field_types[].merges` — a signature does not). The other two groups do
+  /// not depend on the template and come from the catalogue either way.
   Widget _tags(BuildContext context) {
     final theme = Theme.of(context);
 
-    final own = [
-      for (final field in widget.fields())
-        if (!field.retired && field.key.isNotEmpty)
-          (field.key, field.label.isEmpty ? field.key : field.label, null),
+    final syntax = vocabulary.mergeTags;
+    final offered = page.resolvable;
+
+    List<MergeTag> from(String source) => [
+      for (final tag in offered)
+        if (tag.source == source) tag,
     ];
 
-    final core = [
-      for (final field in widget.vocabulary.core)
-        (field.key, field.label, field.note),
-    ];
+    final own = offered.isNotEmpty
+        ? from(mergeSourceField)
+        : [
+            for (final field in fields())
+              if (!field.retired &&
+                  field.key.isNotEmpty &&
+                  syntax.isUsable &&
+                  vocabulary.typeMerges(field.type))
+                MergeTag(
+                  key: field.key,
+                  tag: syntax.wrap(field.key),
+                  label: field.label.isEmpty ? field.key : field.label,
+                  source: mergeSourceField,
+                ),
+          ];
 
-    final facts = [
-      for (final tag in widget.vocabulary.documentTags)
-        (tag.key, tag.label, tag.note),
-    ];
+    final core = offered.isNotEmpty ? from(mergeSourceCore) : syntax.core;
+    final facts = offered.isNotEmpty ? from(mergeSourceFact) : syntax.facts;
 
     return ConstrainedBox(
       // Capped and scrolling. A contract with thirty questions would otherwise
@@ -494,11 +628,7 @@ class _ContractBodyEditorState extends State<ContractBodyEditor> {
     );
   }
 
-  Widget _group(
-    BuildContext context,
-    String title,
-    List<(String, String, String?)> tags,
-  ) {
+  Widget _group(BuildContext context, String title, List<MergeTag> tags) {
     if (tags.isEmpty) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
@@ -519,16 +649,18 @@ class _ContractBodyEditorState extends State<ContractBodyEditor> {
             spacing: 6,
             runSpacing: 6,
             children: [
-              for (final (key, label, note) in tags)
+              for (final tag in tags)
                 Tooltip(
-                  // The key, because that is what lands in the text and
+                  // The tag itself, because that is what lands in the text and
                   // somebody re-reading their own contract needs to recognise
                   // it. The server's sentence under it where there is one.
-                  message: note == null ? '{{$key}}' : '{{$key}}\n$note',
+                  message: tag.note == null
+                      ? tag.tag
+                      : '${tag.tag}\n${tag.note}',
                   child: ActionChip(
-                    label: Text(label),
+                    label: Text(tag.label),
                     avatar: const Icon(Icons.data_object, size: 15),
-                    onPressed: () => _insert(key),
+                    onPressed: () => page.insert(tag.tag),
                   ),
                 ),
             ],
@@ -537,42 +669,62 @@ class _ContractBodyEditorState extends State<ContractBodyEditor> {
       ),
     );
   }
+}
 
-  // ── the right half: the page ─────────────────────────────────────
+// ── the right half: the page, the height of the tab ────────────────
 
-  Widget _pageHalf(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _pageChrome(context),
-        Divider(height: 1, color: EzBiziTheme.edge(context)),
-        Expanded(
-          // The white starts here and runs to the edges — see
-          // ContractDocumentPage for why it is white in both themes. The
-          // ColoredBox is under the scroll view as well as inside it, so
-          // over-scrolling does not flash the theme's surface behind the page.
-          child: ColoredBox(
-            color: ContractDocumentPage.paper,
-            child: SingleChildScrollView(
-              child: ContractDocumentPage(
-                blocks: _document,
-                tagNote: _draft
-                    ? 'A merge tag. Nothing is filled in yet — create the '
-                          'contract and the page here fills in with sample '
-                          'answers.'
-                    : 'This tag did not resolve, so the finished contract '
-                          'would carry it exactly like this.',
-                placeholder: _draft
-                    ? 'Nothing written yet. What you type on the left appears '
-                          'here as you go.'
-                    : 'Nothing written yet. Whatever you type on the left is '
-                          'rendered here with sample answers, exactly as the '
-                          'page will look.',
+/// The document, beside the form rather than inside it.
+class ContractPagePane extends StatelessWidget {
+  const ContractPagePane({super.key, required this.page});
+
+  final ContractPageController page;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: page,
+      builder: (context, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _chrome(context),
+          Divider(height: 1, color: EzBiziTheme.edge(context)),
+          Expanded(
+            // The white starts here and runs to the edges — see
+            // ContractDocumentPage for why it is white in both themes. The
+            // ColoredBox is under the scroll view as well as inside it, so
+            // over-scrolling does not flash the theme's surface behind the
+            // page.
+            child: ColoredBox(
+              color: ContractDocumentPage.paper,
+              child: SingleChildScrollView(
+                child: ContractDocumentPage(
+                  blocks: page.document,
+                  // The second of these is a BACKSTOP and is not expected to
+                  // appear from this endpoint: `preview()` validates before it
+                  // renders, so a tag that resolves to nothing is a refusal and
+                  // not a document. It is worded for the case
+                  // `MergeTags::resolveOne` exists to cover — a version
+                  // published before that rule, or a bug in it — and it is here
+                  // rather than removed because the alternative is a tag drawn
+                  // with no explanation at all if that day ever comes.
+                  tagNote: page.draft
+                      ? 'A merge tag. Nothing is filled in yet — create the '
+                            'contract and the page here fills in with sample '
+                            'answers.'
+                      : 'This tag did not resolve, so the finished contract '
+                            'would carry it exactly like this.',
+                  placeholder: page.draft
+                      ? 'Nothing written yet. What you type on the left '
+                            'appears here as you go.'
+                      : 'Nothing written yet. Whatever you type on the left '
+                            'is rendered here with sample answers, exactly as '
+                            'the page will look.',
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -580,27 +732,18 @@ class _ContractBodyEditorState extends State<ContractBodyEditor> {
   ///
   /// Chrome, so it follows the theme like everything else. The page below it
   /// does not, and that line between them is the boundary.
-  Widget _pageChrome(BuildContext context) {
+  Widget _chrome(BuildContext context) {
     final theme = Theme.of(context);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  _draft
-                      ? 'Your wording, not yet merged. Sample answers appear '
-                            'here once the contract exists.'
-                      : 'The page, with sample answers merged in by the '
-                            'server.',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ),
-              if (_rendering) ...[
+              Expanded(child: Text(_what(), style: theme.textTheme.bodySmall)),
+              if (page.rendering) ...[
                 const SizedBox(width: 10),
                 const SizedBox(
                   width: 14,
@@ -610,29 +753,61 @@ class _ContractBodyEditorState extends State<ContractBodyEditor> {
               ],
             ],
           ),
-          if (_error != null) ...[
+          if (page.error != null) ...[
             const SizedBox(height: 8),
-            ErrorNote(_error!),
-          ],
-          if (_error == null && !_draft && _unresolved.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            _unresolvedNote(context),
+            ErrorNote(page.error!),
+            if (page.stale) ...[
+              const SizedBox(height: 8),
+              _staleNote(context),
+            ],
           ],
         ],
       ),
     );
   }
 
-  /// The tags that did not resolve, named, while somebody is typing.
+  /// What is in the pane, and which version it is a draft of.
   ///
-  /// It is here rather than only on publish because a mistyped tag is a
-  /// mistyped tag the moment it is typed, and finding out at the confirmation
-  /// panel means going back through a document to look for it. They are marked
-  /// in the page itself too — this says how many and which, the page says
-  /// where.
-  Widget _unresolvedNote(BuildContext context) {
+  /// ── Saying the number, because a preview has one ─────────────
+  ///
+  /// The answer carries `version`: the number this draft WOULD take, which is
+  /// always the next one, because a preview is by definition of something not
+  /// yet published. It was ignored, so the pane said "the page" over a document
+  /// that is not the document currently in force and did not say which one it
+  /// was. On a screen whose whole subject is versioned wording, that is the one
+  /// fact worth printing.
+  String _what() {
+    if (page.draft) {
+      return 'Your wording, not yet merged. Sample answers appear here once '
+          'the contract exists.';
+    }
+
+    final version = page.previewVersion;
+
+    return version == null
+        ? 'The page, with sample answers merged in by the server.'
+        : 'A draft of version $version, with sample answers merged in by the '
+              'server. Nothing is published until you say so.';
+  }
+
+  /// The page is older than the wording beside it.
+  ///
+  /// ── Why this exists, and what it replaced ────────────────────
+  ///
+  /// There was a note here listing the tags that did not resolve, and it could
+  /// never appear. `preview()` validates the body BEFORE it renders — a tag
+  /// naming nothing comes back as a refusal quoting the tag, so the answer has
+  /// no document in it and never an `unresolved` list, and a document it did
+  /// render cannot contain a surviving tag. The note was reading a key no
+  /// server sends, from a response that is not sent when the condition holds.
+  ///
+  /// What actually happens is this: the refusal appears above, and the page
+  /// below it is the last one that rendered — from before the typo. The server
+  /// names the tag and says what to do about it, which is a better sentence
+  /// than the one this end was composing. What was missing is the admission
+  /// that the picture underneath has stopped keeping up.
+  Widget _staleNote(BuildContext context) {
     final theme = Theme.of(context);
-    final one = _unresolved.length == 1;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
@@ -643,17 +818,13 @@ class _ContractBodyEditorState extends State<ContractBodyEditor> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber_rounded, size: 16),
+          const Icon(Icons.history_toggle_off, size: 16),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              one
-                  ? 'Nothing answers {{${_unresolved.first}}}, so it stays in '
-                        'the contract exactly as written. Check the spelling, '
-                        'or insert it from the list on the left.'
-                  : '${_unresolved.length} tags have nothing to fill them in: '
-                        '${_unresolved.map((key) => '{{$key}}').join(', ')}. '
-                        'They stay in the contract exactly as written.',
+              'The page below is the last one that rendered, from before that '
+              'change. Your wording is untouched — fix what is named above and '
+              'the page catches up on its own.',
               style: theme.textTheme.bodySmall,
             ),
           ),

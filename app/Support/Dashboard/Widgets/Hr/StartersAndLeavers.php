@@ -36,7 +36,11 @@ use Illuminate\Database\Eloquent\Builder;
  * column, and it does not invent an employment-lifecycle shape that onboarding
  * would then have to match. `period_applies_to` tells the client which half the
  * window covers so it can label them honestly rather than implying both are
- * "in the last 30 days" — see EZBIZI-TODO.md for the decision this is waiting on.
+ * "in the last 30 days".
+ *
+ * Whether leaving should BE a dated event is recorded as EZBIZI-TODO.md #27 —
+ * parked rather than forgotten, and the size of that decision is why this panel
+ * reports what the schema can support instead of waiting for it.
  */
 class StartersAndLeavers implements Widget
 {

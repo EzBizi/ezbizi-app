@@ -112,10 +112,27 @@ class SettingsVisibilityTest extends TestCase
                 "{$setting['key']} claimed to be editable by somebody without the permission.",
             );
 
-            // Named, so a refusal can say WHICH permission is missing rather
-            // than "you cannot do that" — which sends two people looking for
-            // something neither of them can name.
-            $this->assertNotEmpty($setting['permission']);
+            // And told WHY, in words. The row used to carry the bare permission
+            // key for the client to print — "Read-only — needs
+            // organizations.edit" — which R8 forbids: a wire name on a
+            // customer's screen, naming something that appears nowhere in the
+            // product and nobody they could go and ask.
+            $this->assertNotEmpty($setting['may_edit_reason']);
+            $this->assertStringNotContainsString(
+                'organizations.edit',
+                $setting['may_edit_reason'],
+                "{$setting['key']} explained itself with a permission key.",
+            );
+            $this->assertStringContainsString(
+                'part of a role',
+                $setting['may_edit_reason'],
+                "{$setting['key']} said what was missing and not who could add it.",
+            );
+            $this->assertArrayNotHasKey(
+                'permission',
+                $setting,
+                'A field whose only use was being printed is one somebody prints again.',
+            );
         }
     }
 

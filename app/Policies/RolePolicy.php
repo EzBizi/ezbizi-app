@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Support\Access\Refusal;
 use Illuminate\Auth\Access\Response;
 
 /**
@@ -53,11 +54,21 @@ class RolePolicy
 
     public function update(User $user, Role $role): Response
     {
-        // The ordinary refusal comes first, so somebody with no business on this
-        // screen is not told which role is the special one.
-        if ($role->organization_id !== $user->organization_id
-            || ! $user->hasPermission('roles.edit')) {
-            return Response::deny('You do not have permission to change roles.');
+        // A role from another organization answers "no such role" — the same
+        // answer JobPolicy and OnboardingPolicy give, and for the same reason:
+        // an explanation would confirm the id exists somewhere on the platform.
+        // Unreachable in practice, because Role is tenant-scoped and the route
+        // binding 404s first; kept because that is one global scope away from
+        // being the only thing standing here.
+        if ($role->organization_id !== $user->organization_id) {
+            return Response::denyAsNotFound();
+        }
+
+        // The ordinary refusal still comes before the Administrator one, so
+        // somebody with no business on this screen is not told which role is
+        // the special one.
+        if (! $user->hasPermission('roles.edit')) {
+            return Refusal::permission('change roles');
         }
 
         if ($role->isAdministrator()) {
@@ -74,9 +85,12 @@ class RolePolicy
 
     public function delete(User $user, Role $role): Response
     {
-        if ($role->organization_id !== $user->organization_id
-            || ! $user->hasPermission('roles.delete')) {
-            return Response::deny('You do not have permission to delete roles.');
+        if ($role->organization_id !== $user->organization_id) {
+            return Response::denyAsNotFound();
+        }
+
+        if (! $user->hasPermission('roles.delete')) {
+            return Refusal::permission('delete roles');
         }
 
         if ($role->isAdministrator()) {

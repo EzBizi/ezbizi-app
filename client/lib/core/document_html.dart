@@ -53,7 +53,10 @@ class DocumentSpan {
   final bool strong;
   final bool emphasis;
 
-  /// This run is a merge tag that is still, literally, `{{like_this}}`.
+  /// This run is still a merge tag — delimiters and all, exactly as typed.
+  ///
+  /// What the delimiters ARE is not known here; they arrive as
+  /// [TagDelimiters]. What is known is that this run matched them.
   ///
   /// It is not called "unresolved", because what it MEANS depends on where the
   /// text came from and this file does not know: in a document the server
@@ -61,18 +64,6 @@ class DocumentSpan {
   /// draft of a contract that has not been created yet, nothing has been merged
   /// at all. The widget drawing it says which — see ContractDocumentPage.
   final bool tag;
-
-  /// `first_name` out of `{{ first_name }}`, and empty when this is not a tag.
-  String get tagKey {
-    if (!tag) return '';
-
-    var inner = text.trim();
-
-    if (inner.startsWith('{{')) inner = inner.substring(2);
-    if (inner.endsWith('}}')) inner = inner.substring(0, inner.length - 2);
-
-    return inner.trim();
-  }
 }
 
 /// One paragraph, heading or list line of the document.
@@ -86,9 +77,55 @@ class DocumentBlock {
   String get text => spans.map((span) => span.text).join();
 }
 
+/// The characters a merge tag is written between, as the server published them.
+///
+/// ── Why they are carried in rather than written here ─────────────
+///
+/// `{{` and `}}` were a literal in this file and in the editor's insert. The
+/// catalogue publishes `merge_tags.open` and `merge_tags.close` precisely so
+/// that neither end has to know them, and it publishes them as two strings
+/// rather than a format string so that a tag is built by wrapping a key and
+/// never by parsing an example.
+///
+/// The undertaking in that last clause is this end's own, and not a promise the
+/// server makes on our behalf: `HrContractsController` says its delimiters are
+/// "Sent, not enforced". See `MergeTagSyntax` in core/contracts.dart.
+///
+/// [none] is the honest state before the catalogue lands: nothing is marked as
+/// a tag, because nothing here knows what one looks like. Marking is a picture
+/// of the document, and a wrong picture is worse than a plain one.
+@immutable
+class TagDelimiters {
+  const TagDelimiters(this.open, this.close);
+
+  static const TagDelimiters none = TagDelimiters('', '');
+
+  final String open;
+  final String close;
+
+  bool get declared => open.isNotEmpty && close.isNotEmpty;
+
+  /// A run that opens and closes with the delimiters, on one line.
+  ///
+  /// One line because the server's own grammar says so, and load-bearing there
+  /// rather than fussy: it turns the author's line breaks into markup BEFORE it
+  /// substitutes, so a tag straddling a break would be cut in half by its own
+  /// paragraph.
+  ///
+  /// It is deliberately NOT the server's key grammar. What can legally go
+  /// between the delimiters is a server rule this end is not told, and a copy
+  /// of it in Dart is the exact mistake that produced half of this file's
+  /// history. This only answers "is this run of text a tag rather than prose",
+  /// which is a drawing question; whether the key inside it resolves is the
+  /// server's answer and arrives as a refusal naming the tag.
+  RegExp? pattern() => declared
+      ? RegExp('${RegExp.escape(open)}[^\n]*?${RegExp.escape(close)}')
+      : null;
+}
+
 /// The document the server rendered, as blocks.
-List<DocumentBlock> readDocumentHtml(String html) =>
-    (_Reader()..read(html)).blocks;
+List<DocumentBlock> readDocumentHtml(String html, TagDelimiters delimiters) =>
+    (_Reader(delimiters.pattern())..read(html)).blocks;
 
 /// A body somebody is typing, as blocks — no merging, no server.
 ///
@@ -98,8 +135,9 @@ List<DocumentBlock> readDocumentHtml(String html) =>
 /// screen. Nothing is resolved here and nothing ever should be — the values are
 /// the server's answer, and a second implementation of the merge would be a
 /// preview that agrees with the document until the day it does not.
-List<DocumentBlock> readDraftText(String text) {
+List<DocumentBlock> readDraftText(String text, TagDelimiters delimiters) {
   final blocks = <DocumentBlock>[];
+  final pattern = delimiters.pattern();
 
   // A blank line ends a paragraph, which is how anybody typing prose already
   // expects it to work. Single newlines are kept inside the block and drawn as
@@ -110,7 +148,7 @@ List<DocumentBlock> readDraftText(String text) {
     blocks.add(
       DocumentBlock(
         DocumentBlockKind.paragraph,
-        _spans(paragraph.trim(), strong: false, emphasis: false),
+        _spans(paragraph.trim(), pattern, strong: false, emphasis: false),
       ),
     );
   }
@@ -118,37 +156,22 @@ List<DocumentBlock> readDraftText(String text) {
   return blocks;
 }
 
-/// Every merge tag still sitting in the text, in the order they appear, once
-/// each.
-List<String> tagsIn(List<DocumentBlock> blocks) {
-  final keys = <String>[];
-
-  for (final block in blocks) {
-    for (final span in block.spans) {
-      if (span.tag && !keys.contains(span.tagKey)) keys.add(span.tagKey);
-    }
-  }
-
-  return keys;
-}
-
-/// `{{ … }}`, with no braces inside it.
-///
-/// Deliberately un-greedy about nesting: `{{a}} and {{b}}` is two tags, and a
-/// stray `{{` with no closing pair is text, which is what somebody mid-keystroke
-/// has typed.
-final RegExp _tagPattern = RegExp(r'\{\{[^{}]*\}\}');
-
 /// Splits a run of text into spans, marking the merge tags in it.
+///
+/// A null pattern marks nothing — see [TagDelimiters.none].
 List<DocumentSpan> _spans(
-  String text, {
+  String text,
+  RegExp? pattern, {
   required bool strong,
   required bool emphasis,
 }) {
   final spans = <DocumentSpan>[];
   var at = 0;
 
-  for (final match in _tagPattern.allMatches(text)) {
+  final Iterable<RegExpMatch> matches =
+      pattern == null ? const [] : pattern.allMatches(text);
+
+  for (final match in matches) {
     if (match.start > at) {
       spans.add(
         DocumentSpan(
@@ -178,6 +201,12 @@ List<DocumentSpan> _spans(
 /// one open block and one style depth, and everything it does not recognise is
 /// a no-op that leaves the text flowing into the block it is already in.
 class _Reader {
+  _Reader(this._pattern);
+
+  /// What a merge tag looks like, or null when nothing said — see
+  /// [TagDelimiters].
+  final RegExp? _pattern;
+
   final List<DocumentBlock> blocks = [];
 
   final List<DocumentSpan> _spansSoFar = [];
@@ -332,7 +361,9 @@ class _Reader {
 
     if (text.isEmpty) return;
 
-    _spansSoFar.addAll(_spans(text, strong: _strong > 0, emphasis: _emphasis > 0));
+    _spansSoFar.addAll(
+      _spans(text, _pattern, strong: _strong > 0, emphasis: _emphasis > 0),
+    );
   }
 
   void _endBlock(DocumentBlockKind next) {
@@ -410,7 +441,10 @@ class _Reader {
         'lt' => '<',
         'gt' => '>',
         'quot' => '"',
-        'apos' || '#39' => "'",
+        // `#39` was here beside it, and could never arrive: the branch above
+        // returns for anything starting with `#`, which is what `&#39;` is.
+        // A case handling input it cannot receive reads as coverage and is not.
+        'apos' => "'",
         'nbsp' => ' ',
         'mdash' => '—',
         'ndash' => '–',

@@ -32,7 +32,7 @@ class AutomationRun extends Model implements StatesRetention
      * expired: "this rule fired" with no record of what it fired ABOUT, which is
      * the one state a run log must never be in.
      *
-     * `workflow_runs.event_id` has `cascadeOnDelete`, so this is enforced by the
+     * `automation_runs.event_id` has `cascadeOnDelete`, so this is enforced by the
      * database rather than by the sweep remembering to do it in the right order.
      */
     public static function retention(): RetentionPolicy

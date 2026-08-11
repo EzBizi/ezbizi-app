@@ -1,10 +1,11 @@
 import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The side panel, as something you can use without a mouse.
 ///
-/// `showSidePanel` is one function and there are 47 panels behind it, so
+/// `showSidePanel` is one function and every panel in the app is behind it, so
 /// everything asserted here is asserted once for all of them. That is the whole
 /// argument for fixing it there rather than panel by panel.
 ///
@@ -54,22 +55,82 @@ void main() {
     );
   });
 
+  /// The half this file used to only claim to test.
+  ///
+  /// It asserted `_focusIsInside(MaterialApp)`, which is true of any focus node
+  /// anywhere in the app — including the empty route scope focus lands on when
+  /// nothing was restored. And it opened the panel with a tap, which in Flutter
+  /// does NOT give a button keyboard focus, so the opener never held focus and
+  /// there was nothing for the close to give back. The test could not have
+  /// failed, and it was named after a behaviour it never looked at.
+  ///
+  /// The behaviour is real and belongs to the framework rather than to
+  /// SidePanel: the route beneath keeps its own FocusScopeNode, that scope
+  /// remembers its focusedChild, and popping the panel hands focus back to it.
+  /// Asserted here anyway, because "the framework does it" is exactly the kind
+  /// of thing that stops being true when the panel is later wrapped in
+  /// something with a scope of its own.
   testWidgets('closing a panel gives focus back to what opened it', (tester) async {
-    await _pump(tester, const SidePanel(title: 'Add customer', child: Text('body')));
+    final opener = FocusNode(debugLabel: 'Opener');
+    addTearDown(opener.dispose);
+
+    await _pump(
+      tester,
+      const SidePanel(title: 'Add customer', child: Text('body')),
+      openerFocus: opener,
+    );
+
+    // What a keyboard user has done by the time they press Enter, and what a
+    // tap alone does not do.
+    opener.requestFocus();
+    await tester.pumpAndSettle();
+    expect(opener.hasFocus, isTrue, reason: 'The premise of the test.');
 
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
+    expect(
+      opener.hasFocus,
+      isFalse,
+      reason: 'Focus should have moved into the panel, not stayed behind it.',
+    );
 
     await tester.tap(find.byTooltip('Close Add customer'));
     await tester.pumpAndSettle();
 
     expect(find.byType(SidePanel), findsNothing);
     expect(
-      _focusIsInside(tester, find.byType(MaterialApp)),
+      opener.hasFocus,
       isTrue,
       reason: 'Focus was left on a panel that no longer exists, so the next Tab '
-          'starts from nowhere.',
+          'starts from nowhere instead of from the control you pressed.',
     );
+  });
+
+  testWidgets('dismissing a panel without the close button restores it too', (
+    tester,
+  ) async {
+    // Escape and the scrim both pop the route rather than pressing the button,
+    // and they are how most panels actually get closed.
+    final opener = FocusNode(debugLabel: 'Opener');
+    addTearDown(opener.dispose);
+
+    await _pump(
+      tester,
+      const SidePanel(title: 'Add customer', child: Text('body')),
+      openerFocus: opener,
+    );
+
+    opener.requestFocus();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SidePanel), findsNothing);
+    expect(opener.hasFocus, isTrue);
   });
 
   testWidgets('the panel is announced by its own name', (tester) async {
@@ -116,13 +177,18 @@ void main() {
 
 // ── driving it ─────────────────────────────────────────────────────
 
-Future<void> _pump(WidgetTester tester, Widget panel) async {
+Future<void> _pump(
+  WidgetTester tester,
+  Widget panel, {
+  FocusNode? openerFocus,
+}) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
         body: Builder(
           builder: (context) => Center(
             child: ElevatedButton(
+              focusNode: openerFocus,
               onPressed: () => showSidePanel<void>(context, builder: (_) => panel),
               child: const Text('Open'),
             ),

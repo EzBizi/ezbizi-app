@@ -44,11 +44,39 @@ class WidgetRegistry
          * tab shows a fixed subset of them in the order the plan names
          * (HrDashboardController); the main dashboard lets people compose the
          * same ones. Two surfaces, one computation, one place to correct it.
+         *
+         * COMPOSE, not receive: they are absent from ON_BY_DEFAULT below, so
+         * declaring them here offered four new panels rather than switching
+         * them on for everybody who has never opened the panel picker.
          */
         Headcount::class,
         OnboardingsInFlight::class,
         InvitationsStalled::class,
         StartersAndLeavers::class,
+    ];
+
+    /**
+     * What the main dashboard opens as before anybody has chosen.
+     *
+     * A named subset, and it has to be a subset. The default used to be
+     * "everything you have permission for", which was invisible while the
+     * registry held five widgets and became a real change the moment HR added
+     * four more: every user in every organization who had never touched the
+     * panel picker would have found four HR panels on their dashboard, put
+     * there by a registration rather than by a decision. Adding a widget should
+     * OFFER it.
+     *
+     * The HR widgets are deliberately out. They have a tab of their own that
+     * shows them in the plan's order, and one of them — starters and leavers —
+     * only reads correctly beside the sentences that tab prints about what the
+     * app cannot date.
+     */
+    private const ON_BY_DEFAULT = [
+        JobsByStatus::class,
+        UpcomingJobs::class,
+        Revenue::class,
+        CustomersAdded::class,
+        AutomationHealth::class,
     ];
 
     /** @return Widget[] */
@@ -81,6 +109,29 @@ class WidgetRegistry
 
     /** @var array<string, Widget[]> */
     private array $available = [];
+
+    /**
+     * The dashboard somebody sees on their first visit.
+     *
+     * Falls back to everything they may see when the default set reaches none
+     * of it. A role holding `hr.view` and nothing else would otherwise open the
+     * product on a blank page, which is the single thing a default exists to
+     * prevent — better four panels they did not ask for than none at all, and
+     * they can then choose.
+     *
+     * @return Widget[]
+     */
+    public function defaultLayoutFor(User $user): array
+    {
+        $available = $this->availableTo($user);
+
+        $defaults = array_values(array_filter(
+            $available,
+            fn (Widget $w) => in_array($w::class, self::ON_BY_DEFAULT, true),
+        ));
+
+        return $defaults === [] ? $available : $defaults;
+    }
 
     public function find(string $key, User $user): ?Widget
     {

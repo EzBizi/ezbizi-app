@@ -305,6 +305,84 @@ class DashboardTest extends TestCase
         );
     }
 
+    /**
+     * A widget publishes the values it can be asked for. Those are the only
+     * values that may be stored.
+     *
+     * Filtering by option NAME was the whole of this, and it let the value
+     * through untouched. `days` is declared as one of 7, 30, 90 or 365; nothing
+     * offers 1, and a stored 1 comes back to resolve() on every later request
+     * and renders as "Joined in the last 1 days".
+     */
+    public function test_a_value_the_widget_never_offered_is_not_stored(): void
+    {
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'widgets' => [['key' => 'hr.starters_and_leavers', 'options' => ['days' => 1]]],
+        ])->assertOk()->assertJsonPath('widgets.0.options', []);
+
+        $this->assertSame(
+            [],
+            User::withoutGlobalScopes()->find($this->alpha['admin']->id)
+                ->preferences['dashboard.widgets'][0]['options'],
+        );
+    }
+
+    /**
+     * The half a write-time check cannot reach.
+     *
+     * Every layout saved before that check existed is still in the database,
+     * and layoutFor() hands it straight to resolve(). The widget KEY has always
+     * been re-checked on the way out for exactly that reason; the values were
+     * not, so a `days` nobody may choose any more still drew the panel.
+     */
+    public function test_a_value_stored_before_the_check_is_not_handed_to_the_widget(): void
+    {
+        // Written straight into the preference — which is what a layout saved by
+        // the previous version of this controller looks like.
+        $this->inTenant(fn () => User::withoutGlobalScopes()
+            ->find($this->alpha['admin']->id)
+            ->forceFill(['preferences' => ['dashboard.widgets' => [
+                ['key' => 'hr.starters_and_leavers', 'options' => ['days' => 1]],
+            ]]])->save());
+
+        $panel = collect(
+            $this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')->assertOk()->json('panels')
+        )->firstWhere('key', 'hr.starters_and_leavers');
+
+        // The widget's own default, not the number somebody stored.
+        $this->assertSame(30, $panel['data']['days']);
+
+        // And echoed back cleaned, so the client's next save writes the
+        // corrected layout rather than handing the 1 straight back in.
+        $this->assertSame([], $panel['options']);
+    }
+
+    /**
+     * Dropped, not refused — and this is the case that decides which.
+     *
+     * A choice list can be the organization's own data: jobs.revenue offers the
+     * statuses that organization configured. The client sends back the options
+     * it was handed, so a status renamed since would refuse the save of
+     * somebody who had merely ticked a different panel, over a value they never
+     * chose and cannot see. The stale member goes; the rest of the save stands.
+     */
+    public function test_a_choice_no_longer_offered_is_dropped_rather_than_refusing_the_save(): void
+    {
+        $this->as($this->alpha['admin'])
+            ->patchJson('/api/v1/settings/jobs.statuses?scope_type=organization&scope_id='
+                .$this->alpha['org']->id, ['value' => ['booked', 'invoiced']])
+            ->assertOk();
+
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'widgets' => [['key' => 'jobs.revenue', 'options' => [
+                'statuses' => ['completed', 'invoiced'], 'days' => 30,
+            ]]],
+        ])
+            ->assertOk()
+            ->assertJsonPath('widgets.0.options.statuses', ['invoiced'])
+            ->assertJsonPath('widgets.0.options.days', 30);
+    }
+
     public function test_a_layout_survives_losing_the_permission_it_was_built_with(): void
     {
         $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
@@ -345,6 +423,89 @@ class DashboardTest extends TestCase
         // A new organization's first sight of the product should not be a blank
         // screen with a "configure me" button.
         $this->assertNotEmpty($panels);
+    }
+
+    /**
+     * Registering a widget OFFERS it. It does not switch it on.
+     *
+     * The default layout was "everything you have permission for", which nobody
+     * noticed while the registry held five widgets. Declaring HR's four in the
+     * same registry then put four HR panels on the dashboard of every user in
+     * every organization who had never opened the panel picker — an existing
+     * screen rearranged by a registration rather than by a decision.
+     *
+     * Pinned here rather than in the HR file because it is not about HR: the
+     * next module to add a widget repeats it otherwise.
+     */
+    public function test_a_newly_registered_widget_is_offered_rather_than_switched_on(): void
+    {
+        $catalogue = array_column(
+            $this->as($this->alpha['admin'])->getJson('/api/v1/dashboard/catalogue')
+                ->assertOk()->json('widgets'),
+            'key',
+        );
+
+        $defaulted = array_column(
+            $this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')
+                ->assertOk()->json('panels'),
+            'key',
+        );
+
+        // Offered to an administrator...
+        $this->assertContains('hr.headcount', $catalogue);
+        $this->assertContains('hr.starters_and_leavers', $catalogue);
+
+        // ...and not already on their dashboard. Starters and leavers matters
+        // most: its leaving half is deliberately undated, and the sentences that
+        // say so live on the HR tab. Turned on here unasked it reads as a
+        // 30-day figure.
+        $this->assertNotContains('hr.headcount', $defaulted);
+        $this->assertNotContains('hr.starters_and_leavers', $defaulted);
+
+        // Exactly what was there before HR existed, in the registry's order.
+        $this->assertSame([
+            'jobs.by_status', 'jobs.upcoming', 'jobs.revenue',
+            'customers.added', 'automations.health',
+        ], $defaulted);
+    }
+
+    /**
+     * The default is a subset, so a role can hold none of it — and a blank first
+     * screen is the one outcome the default exists to prevent.
+     */
+    public function test_a_role_the_default_set_does_not_reach_still_opens_on_something(): void
+    {
+        $hrOnly = $this->inTenant(function () {
+            $role = Role::create([
+                'organization_id' => $this->alpha['org']->id,
+                'name' => 'People only', 'is_system' => false,
+            ]);
+
+            $role->permissions()->sync(Permission::whereIn('key', ['hr.view'])->pluck('id'));
+
+            $user = User::create([
+                'organization_id' => $this->alpha['org']->id, 'role_id' => $role->id,
+                'name' => 'People', 'email' => 'people@alpha.test',
+                'password' => 'a-real-password', 'is_active' => true,
+            ]);
+
+            Assignment::create([
+                'organization_id' => $this->alpha['org']->id,
+                'user_id' => $user->id,
+                'assigned_franchise_id' => $this->alpha['franchise']->id,
+            ]);
+
+            return $user;
+        });
+
+        $keys = array_column(
+            $this->as($hrOnly)->getJson('/api/v1/dashboard')->assertOk()->json('panels'),
+            'key',
+        );
+
+        // Not one of the five defaults is theirs to see, so they fall back to
+        // everything they CAN see rather than to nothing.
+        $this->assertContains('hr.headcount', $keys);
     }
 
     public function test_job_statuses_come_from_the_organizations_own_vocabulary(): void

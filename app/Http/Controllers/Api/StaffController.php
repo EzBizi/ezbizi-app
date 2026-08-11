@@ -14,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * The Development tab (plan §2.1, §4.2).
@@ -185,7 +186,19 @@ class StaffController extends Controller
         // Only the staff member who opened it may close it. Someone else closing
         // it would write an end time attributed to the wrong person, which is a
         // worse record than none.
-        abort_unless($impersonation->staff_id === $staff->getKey(), 403);
+        //
+        // Said out loud rather than left as a bare 403 rendering "This action is
+        // unauthorized." (R8). The reader here is a colleague looking at a
+        // shared list — every staff member sees every session, which is the
+        // point — so the useful answer is who can end it and what happens if
+        // nobody does.
+        abort_unless(
+            $impersonation->staff_id === $staff->getKey(),
+            Response::HTTP_FORBIDDEN,
+            'Only the staff member who opened an impersonation can close it, '
+            .'because the end time is recorded against whoever closes it. Ask them '
+            .'to, or leave it — it expires on its own.',
+        );
 
         $this->impersonation->end($impersonation, $staff);
 

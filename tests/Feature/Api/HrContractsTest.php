@@ -7,6 +7,9 @@ use App\Models\ContractSignature;
 use App\Models\ContractVersion;
 use App\Support\Contracts\DocumentFingerprint;
 use App\Support\Contracts\FieldSet;
+use App\Support\Contracts\FieldType;
+use App\Support\Contracts\FilledBy;
+use App\Support\Contracts\MergeTags;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -246,6 +249,50 @@ class HrContractsTest extends TestCase
                 ->getJson('/api/v1/hr/contracts/catalogue')
                 ->json('data.limits.max_option_length'),
         );
+    }
+
+    /**
+     * And which kinds can be named by a merge tag, which is the same failure
+     * with the sign reversed.
+     *
+     * The body editor offered every live field as an insertable chip, so a
+     * template carrying a signature field offered its tag — and MergeTags
+     * refuses that tag with a paragraph about a signature being an act rather
+     * than text. The editor cannot ask `merge_tags` while the contract is being
+     * CREATED, because that list comes back from `{contract}/preview` and there
+     * is no contract yet, so the fact is on the type.
+     *
+     * Asserted against MergeTags' own behaviour rather than against a repeated
+     * list of type names: what is being pinned is that the two agree.
+     */
+    public function test_the_catalogue_says_which_field_types_merge(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $types = collect($this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/hr/contracts/catalogue')->assertOk()
+            ->json('data.field_types'))->keyBy('key');
+
+        foreach (FieldType::keys() as $key) {
+            $offered = MergeTags::resolvable(FieldSet::fromInput([[
+                'key'       => 'thing',
+                'label'     => 'A thing',
+                'type'      => $key,
+                'filled_by' => $key === FieldType::SIGNATURE
+                    ? FilledBy::EMPLOYEE
+                    : FilledBy::EITHER,
+                'options'   => $key === FieldType::CHOICE ? ['One'] : [],
+            ]]));
+
+            $this->assertSame(
+                collect($offered)->contains(fn (array $tag) => $tag['key'] === 'thing'),
+                $types[$key]['merges'],
+                "The catalogue and MergeTags disagree about whether {$key} merges.",
+            );
+        }
+
+        $this->assertFalse($types[FieldType::SIGNATURE]['merges']);
+        $this->assertTrue($types[FieldType::TEXT]['merges']);
     }
 
     // ── keys are stable across versions ──────────────────────────

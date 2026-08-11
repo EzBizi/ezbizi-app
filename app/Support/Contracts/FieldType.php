@@ -56,6 +56,33 @@ final class FieldType
         self::CHOICE => true,
     ];
 
+    /**
+     * The types whose answer is NOT text that can be merged into the wording.
+     *
+     * ── The same argument TAKES_OPTIONS makes, one column along ──
+     *
+     * `MergeTags::resolvable()` skips signature fields and `refusalFor()`
+     * refuses a tag naming one, with a paragraph explaining that a signature is
+     * an act rather than a sentence. The body editor did not know: it offered
+     * every live field with a key as an insertable chip, so a template with a
+     * signature field offered `{{signed_by_manager}}`, and clicking it produced
+     * a tag that 422s the preview and blocks the publish.
+     *
+     * The editor cannot ask the registry for that answer while the contract is
+     * being CREATED — `MergeTags::resolvable()` is published by
+     * `POST {contract}/preview`, and a contract that does not exist yet has no
+     * id to preview against. So the rule is published here, on the type, where
+     * the client already reads `takes_options` from the same entry.
+     *
+     * `file` is deliberately absent. An uploaded file has no text either, but
+     * `MergeTags` does not refuse it today and this list must not be the place a
+     * second opinion about that appears. It says what the server enforces, and
+     * nothing more.
+     */
+    private const NOT_MERGED = [
+        self::SIGNATURE => true,
+    ];
+
     /** @return string[] */
     public static function keys(): array
     {
@@ -70,6 +97,22 @@ final class FieldType
     public static function takesOptions(string $type): bool
     {
         return self::TAKES_OPTIONS[$type] ?? false;
+    }
+
+    /**
+     * Whether a field of this type can be named by a merge tag.
+     *
+     * Unknown types answer TRUE, which is the opposite default to takesOptions
+     * and right for the opposite reason. That one puts a control on screen, so
+     * absent must mean no. This one takes a tag AWAY, and a type this build has
+     * never heard of is one FieldSet refuses outright — a field of it cannot
+     * exist to be tagged. Answering false would let a stale catalogue quietly
+     * withdraw a tag that publishes perfectly well, which is the failure the
+     * greyed-out reserved keys were fixed for.
+     */
+    public static function merges(string $type): bool
+    {
+        return ! (self::NOT_MERGED[$type] ?? false);
     }
 
     /** The types that take options, in the order ALL declares them. */

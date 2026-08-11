@@ -107,6 +107,30 @@ class HrDashboardTest extends TestCase
         $this->assertContains(['title' => 'F1', 'total' => 0], $rows);
     }
 
+    /**
+     * The invariant the client's empty state is allowed to lean on.
+     *
+     * The headcount panel has two branches — "you have nowhere to count yet"
+     * when `places` is 0, and the rows otherwise — and no third one for "places
+     * that sent no rows", because THIS endpoint cannot produce that. It resolves
+     * every widget with no options (HrDashboardController::index), so
+     * `include_empty` is its `true` default and Headcount emits one row per
+     * place; an empty row list therefore means no places, full stop.
+     *
+     * Pinned rather than assumed. The day this tab starts passing options is the
+     * day that third branch has to come back, and this is what will say so.
+     */
+    public function test_a_place_always_arrives_as_a_row_so_empty_rows_mean_no_places(): void
+    {
+        $headcount = $this->panels($this->alpha['admin'])['hr.headcount'];
+
+        // Three places on a freshly provisioned organization — Alpha, Co, F1 —
+        // and nobody in two of them.
+        $this->assertSame(3, $headcount['places']);
+        $this->assertGreaterThanOrEqual($headcount['places'], count($headcount['rows']));
+        $this->assertNotEmpty($headcount['rows']);
+    }
+
     // ── reach ────────────────────────────────────────────────────
 
     public function test_a_franchise_manager_does_not_see_the_whole_organizations_headcount(): void
@@ -330,12 +354,13 @@ class HrDashboardTest extends TestCase
     }
 
     /**
-     * The registry is the second gate, and it is not decoration.
+     * One computation, two surfaces — the point of declaring these in the
+     * shared registry rather than hand-building four cards.
      *
-     * The route asks for `hr.view` once. Every widget is then filtered by its
-     * own permission before it can be resolved, so an HR widget added later with
-     * a narrower permission is withheld without this controller having to know
-     * it exists.
+     * Offered there, not switched on there: the main dashboard's default layout
+     * is a named subset that does not include them, which
+     * DashboardTest::test_a_newly_registered_widget_is_offered_rather_than_switched_on
+     * is the test for.
      */
     public function test_the_hr_widgets_are_also_offered_on_the_main_dashboard(): void
     {
@@ -343,11 +368,63 @@ class HrDashboardTest extends TestCase
             ->getJson('/api/v1/dashboard/catalogue')->assertOk()->json('widgets'))
             ->pluck('key')->all();
 
-        // One computation, two surfaces: somebody who wants headcount beside
-        // their revenue gets the same widget rather than a second one that
-        // counts slightly differently.
+        // Somebody who wants headcount beside their revenue gets the same
+        // widget rather than a second one that counts slightly differently.
         $this->assertContains('hr.headcount', $keys);
         $this->assertContains('hr.starters_and_leavers', $keys);
+    }
+
+    /**
+     * The registry gates each widget on its OWN permission, not on the route's.
+     *
+     * That is the second gate HrDashboardController's docblock names, and this
+     * is how far it can honestly be demonstrated today: all four HR widgets
+     * return `hr.view`, which is also what the HR route checks, so nothing in
+     * PANELS can currently be withheld from a caller who got past the route.
+     * The gate is real — it is what a widget added later with a narrower
+     * permission would meet — but it is unexercised BY CONSTRUCTION on that
+     * tab, and saying so is better than a test that looks like it proves it.
+     *
+     * What is exercisable is the filter itself, on the surface where the widget
+     * permission and the route permission differ: the catalogue is open to
+     * anybody signed in, so a role with no `hr.view` reaching it is the case
+     * that would leak headcount if the registry trusted the route.
+     */
+    public function test_the_registry_withholds_hr_widgets_from_somebody_without_hr_view(): void
+    {
+        $jobsOnly = $this->inTenant(function () {
+            $role = Role::create([
+                'organization_id' => $this->alpha['org']->id,
+                'name' => 'Jobs only', 'is_system' => false,
+            ]);
+
+            $role->permissions()->sync(Permission::whereIn('key', ['jobs.view'])->pluck('id'));
+
+            $user = User::create([
+                'organization_id' => $this->alpha['org']->id, 'role_id' => $role->id,
+                'name' => 'Jobs', 'email' => 'jobs@alpha.test',
+                'password' => 'a-real-password', 'is_active' => true,
+            ]);
+
+            Assignment::create([
+                'organization_id' => $this->alpha['org']->id,
+                'user_id' => $user->id, 'assigned_franchise_id' => $this->alpha['franchise']->id,
+            ]);
+
+            return $user;
+        });
+
+        $keys = collect($this->as($jobsOnly)
+            ->getJson('/api/v1/dashboard/catalogue')->assertOk()->json('widgets'))
+            ->pluck('key')->all();
+
+        // They can see a dashboard, and none of it is HR.
+        $this->assertContains('jobs.by_status', $keys);
+
+        foreach (['hr.headcount', 'hr.onboardings_in_flight',
+            'hr.invitations_stalled', 'hr.starters_and_leavers'] as $hr) {
+            $this->assertNotContains($hr, $keys);
+        }
     }
 
     // ── helpers ──────────────────────────────────────────────────

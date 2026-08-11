@@ -112,8 +112,17 @@ class Headcount implements Widget
             'rows'  => $rows,
             'total' => $this->distinctPeople($places, $unplaced > 0),
 
-            // So the client can say "no places yet" rather than "nobody yet",
-            // which are different problems with different answers.
+            // So the client can say "you have nowhere to count yet" — which
+            // asks for a company and a branch — rather than "nobody yet". Read
+            // by the HR tab's headcount panel
+            // (client/lib/screens/hr/dashboard_tab.dart).
+            //
+            // Counted off placeNames() and sent, rather than left to the client
+            // to count `rows`, because `rows` is the list to DRAW and not a list
+            // of places: "Not assigned to a place" is a row above and is not a
+            // place, and `include_empty` decides whether a place nobody is in
+            // gets a row at all. Neither of those is visible from a client
+            // holding the payload, so the number is stated.
             'places' => count($names),
         ];
     }

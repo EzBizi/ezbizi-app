@@ -117,7 +117,10 @@ return Application::configure(basePath: dirname(__DIR__))
          * stops the chain, and the next link is the framework writing the full
          * exception — message included — to the log channel. That copy is the
          * one with the detail; see ExceptionAudit for why the audit row does not
-         * repeat it, and why the correlation id is the join between them.
+         * repeat it, and why the correlation id is the join between them. The
+         * join is carried by AuditLogger::useCorrelationId, which shares the id
+         * with the log channel — without that this sentence was describing
+         * something nothing in the codebase did.
          *
          * ExceptionAudit::record() resolves its own collaborators inside its own
          * try/catch, so a container or database failure here cannot bury the

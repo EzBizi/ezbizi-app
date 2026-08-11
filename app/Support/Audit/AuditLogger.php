@@ -6,6 +6,7 @@ use App\Models\AuditEvent;
 use App\Models\User;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -44,7 +45,7 @@ class AuditLogger
 
     public function correlationId(): string
     {
-        return $this->correlationId ??= (string) Str::uuid7();
+        return $this->correlationId ?? $this->useCorrelationId((string) Str::uuid7());
     }
 
     /**
@@ -57,7 +58,34 @@ class AuditLogger
      */
     public function setCorrelationId(string $id): void
     {
-        $this->correlationId = Str::isUuid($id) ? $id : (string) Str::uuid7();
+        $this->useCorrelationId(Str::isUuid($id) ? $id : (string) Str::uuid7());
+    }
+
+    /**
+     * One id, put on the LOG CHANNEL as well as kept for the rows.
+     *
+     * ExceptionAudit deliberately keeps the exception message and the stack
+     * trace out of `audit_events` — that table is append-only, erasure cannot
+     * reach it, and a tenant admin reads their own rows out of it — and the
+     * argument for doing so rests entirely on the message still being findable
+     * in `storage/logs`, "joined by the correlation id".
+     *
+     * It was not findable. The id went on the audit row and on an
+     * X-Correlation-Id response header and nowhere near a log line, so the row
+     * and the log entry that explained it had nothing in common but a timestamp.
+     * On a box handling concurrent requests a timestamp is not a join.
+     *
+     * `shareContext` is what makes the claim true: every channel gets the id in
+     * its context from here on, including the framework's own exception report,
+     * which runs after ExceptionAudit's reportable callback returns.
+     */
+    private function useCorrelationId(string $id): string
+    {
+        $this->correlationId = $id;
+
+        Log::shareContext(['correlation_id' => $id]);
+
+        return $id;
     }
 
     /**

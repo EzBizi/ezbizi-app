@@ -118,20 +118,19 @@ class _JobsScreenState extends State<JobsScreen> {
   @override
   Widget build(BuildContext context) {
     final me = widget.session.me!;
-    final place = me.organization.franchiseLabel.toLowerCase();
 
     // The permission first, because it is the one the button is named after.
     // Reach second, and stated as the ASSIGNMENT it is: telling somebody who
     // holds `jobs.create` that they lack permission sends them to ask for a
     // grant they already have. `franchises` carries reach rather than the whole
     // list — the server computes it — so this is not §4 reimplemented in Dart.
+    //
+    // Both sentences come from Me rather than from here, so this screen and the
+    // 403 it would have got cannot come to describe the same refusal in two
+    // different ways. They already had.
     final refused =
         me.refusal('jobs.create', 'add a job') ??
-        (me.franchises.isEmpty
-            ? 'You have permission to add a job, but you are not assigned to any '
-                  '$place, so there is nowhere to put one. An administrator can '
-                  'assign you to a $place.'
-            : null);
+        (me.franchises.isEmpty ? me.nowhereToAct('add a job') : null);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

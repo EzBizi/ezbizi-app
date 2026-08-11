@@ -3,7 +3,6 @@
 namespace App\Support\Database;
 
 use Illuminate\Database\Eloquent\Builder;
-use RuntimeException;
 
 /**
  * The query builder for a table whose rows are written once and never touched
@@ -50,29 +49,29 @@ class WriteOnceBuilder extends Builder
     /** @param  array<string, mixed>  $values */
     public function update(array $values): int
     {
-        throw new RuntimeException($this->refusal('updated'));
+        throw new WrittenOnceRefusal($this->refusal('updated'));
     }
 
     public function delete(): mixed
     {
-        throw new RuntimeException($this->refusal('deleted'));
+        throw new WrittenOnceRefusal($this->refusal('deleted'));
     }
 
     public function forceDelete(): mixed
     {
-        throw new RuntimeException($this->refusal('deleted'));
+        throw new WrittenOnceRefusal($this->refusal('deleted'));
     }
 
     /** @param  array<string, mixed>  $extra */
     public function increment($column, $amount = 1, array $extra = [])
     {
-        throw new RuntimeException($this->refusal('updated'));
+        throw new WrittenOnceRefusal($this->refusal('updated'));
     }
 
     /** @param  array<string, mixed>  $extra */
     public function decrement($column, $amount = 1, array $extra = [])
     {
-        throw new RuntimeException($this->refusal('updated'));
+        throw new WrittenOnceRefusal($this->refusal('updated'));
     }
 
     /**
@@ -85,7 +84,7 @@ class WriteOnceBuilder extends Builder
      */
     public function upsert(array $values, $uniqueBy, $update = null)
     {
-        throw new RuntimeException($this->refusal('updated'));
+        throw new WrittenOnceRefusal($this->refusal('updated'));
     }
 
     /**

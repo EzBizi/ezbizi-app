@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Models\User;
+use App\Support\Access\Refusal;
 use App\Support\Access\ScopeReach;
 use Illuminate\Auth\Access\Response;
 
@@ -81,11 +82,69 @@ class UserPolicy
      */
     public function update(User $user, User $person): Response
     {
-        if (! $user->hasPermission('hr.edit') || ! $this->withinReach($user, $person)) {
-            return Response::deny('You do not have permission to change this person’s account.');
+        // Asked separately, and answered separately.
+        //
+        // The two used to share one sentence — "You do not have permission to
+        // change this person's account" — for both outcomes, which is the exact
+        // failure Refusal exists to stop: a branch manager who holds `hr.edit`
+        // and asked about somebody in another company was told they lacked a
+        // permission they were holding, and the remedy that sentence implies is
+        // one nobody can give them, because nothing is missing from their role.
+        if (! $user->hasPermission('hr.edit')) {
+            return Refusal::permission('change this person’s account');
+        }
+
+        if (! $this->withinReach($user, $person)) {
+            return $this->outOfBounds($user);
         }
 
         return Response::allow();
+    }
+
+    /**
+     * They hold `hr.edit` and this person is not theirs. Which of two reasons?
+     *
+     * ── Neither the person nor their place is ever named ─────────
+     *
+     * The one way this refusal differs from Refusal::noReach. noReach names the
+     * franchise because the caller picked it and already knows it. Here the
+     * out-of-reach thing is somebody ELSE, and the people list is reach-filtered
+     * — so this caller has never been shown that name or that place, and a
+     * helpful 403 would be the first thing to tell them. Same reasoning as the
+     * presenter trimming the assignments it shows.
+     *
+     * ── But WHOSE assignment is missing is worth saying ──────────
+     *
+     * There was one sentence for both, and it told somebody holding no
+     * assignment at all that "this person is assigned outside where you are" and
+     * that "an administrator can widen your assignment". Both halves wrong for
+     * them: there is no "where you are" for anybody to be outside of, and the
+     * fix is a first assignment rather than a wider one. That is the same defect
+     * Refusal::nowhereToAct exists to prevent one level up — the reach failures
+     * that read alike and need different people to fix them.
+     *
+     * The other branch no longer claims to know where the person IS, only that
+     * they are not inside this caller's part of the business. Somebody with no
+     * assignment of their own is off-invariant rather than impossible (see
+     * [withinReach]), and "assigned outside where you are" would be false about
+     * them too.
+     */
+    private function outOfBounds(User $user): Response
+    {
+        if ($user->assignments->isEmpty()) {
+            return Response::deny(
+                'You hold the permission to change people, but you are not assigned '
+                .'anywhere yet, so there is nobody else whose account is yours to change. '
+                .'An administrator can assign you to a part of the business.'
+            );
+        }
+
+        return Response::deny(
+            'You hold the permission to change people, but this person is not inside the '
+            .'part of the business you are assigned to, so their account is not yours to '
+            .'change. Somebody with authority over them can — and an administrator can '
+            .'widen your assignment.'
+        );
     }
 
     /**

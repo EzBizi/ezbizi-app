@@ -101,6 +101,22 @@ class Invitation extends Model implements HoldsPersonalData
      * before two years. Accepted invitations age out on the same clock: once
      * somebody is a user, the account is the record of them joining and the
      * invitation is a duplicate of a fact stored better elsewhere.
+     *
+     * ── What this reaches that is NOT this table ─────────────────
+     *
+     * `onboardings.invitation_id` is `constrained('invitations')->nullOnDelete()`,
+     * so the sweep does not only remove rows here — at twenty-four months it
+     * nulls that column on an onboarding whose own retention is `forever`. That
+     * is the designed behaviour and the migration argues for it: the alternative
+     * cascade would let expiry take out a signed agreement, and a restrict would
+     * make this window unenforceable the moment anybody was actually hired. What
+     * it must not be is a surprise, so it is written into both sentences and
+     * pinned by
+     * RetentionTest::test_expiring_an_invitation_keeps_the_onboarding_it_produced.
+     *
+     * Nothing reads the link without allowing for its absence — every caller uses
+     * `invitation?->`, and the scope helper checks for null — because an
+     * onboarding started for somebody already employed never had one.
      */
     public static function retention(): RetentionPolicy
     {
@@ -108,7 +124,9 @@ class Invitation extends Model implements HoldsPersonalData
             'Kept after the invitation is spent, withdrawn or lapsed, because the row is how '
             .'"we invited them and changed our mind" stays answerable. Two years is long '
             .'enough for that question and short enough that an invitation nobody accepted '
-            .'does not become a permanent record of a person who never joined.'
+            .'does not become a permanent record of a person who never joined. Where the '
+            .'invitation led to a contract, the paperwork and the contract stay — they simply '
+            .'stop naming the invitation that started them.'
         );
     }
 
@@ -154,10 +172,10 @@ class Invitation extends Model implements HoldsPersonalData
             return null;
         }
 
-        // Grouped, not flat. The tenant global scope is ANDed on, and AND binds
-        // tighter than OR — an ungrouped pair would match every organization's
-        // invitations to this address. See ContractSignature::personalDataAbout,
-        // where the same brackets are argued at length.
+        // Grouped, not flat, so the Builder handed back stays this question when
+        // a caller adds a predicate to it. See ContractSignature::personalDataAbout,
+        // where the same brackets are argued at length — including why the tenant
+        // scope is NOT what they defend against.
         return static::query()->where(fn (Builder $q) => $q
             ->where('accepted_user_id', $subject->getKey())
             ->orWhere('email', $subject->email));

@@ -65,6 +65,19 @@ class AsyncBody extends StatelessWidget {
 }
 
 /// A screen heading with an optional action on the right.
+///
+/// ── Why the action drops below on a narrow screen ────────────────
+///
+/// R7: this has to work on a phone, and as a plain Row it did not. A button
+/// keeps its intrinsic width in a Row and `Expanded` takes what is left, so at
+/// 375px the paragraph beside it was laid out into a column a few characters
+/// wide. Measured, on the Contracts tab: a header 1270px tall inside a 900px
+/// window, overflowing by 370 and taking the list with it. Every screen using
+/// this had the same header, so every one of them was broken at that width.
+///
+/// Below the threshold the action goes under the text and gets the full width
+/// instead. That is a real breakpoint rather than a guess: it is roughly where
+/// the note stops having room for a readable line beside a button.
 class PanelHeader extends StatelessWidget {
   const PanelHeader({super.key, required this.title, required this.note, this.action});
 
@@ -72,25 +85,48 @@ class PanelHeader extends StatelessWidget {
   final String note;
   final Widget? action;
 
+  /// Below this the action goes under the heading rather than beside it.
+  static const double _besideAbove = 620;
+
   @override
   Widget build(BuildContext context) {
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 4),
+        Text(note, style: Theme.of(context).textTheme.bodyMedium),
+      ],
+    );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (action == null) return text;
+
+          if (constraints.maxWidth < _besideAbove) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: Theme.of(context).textTheme.headlineMedium),
-                const SizedBox(height: 4),
-                Text(note, style: Theme.of(context).textTheme.bodyMedium),
+                text,
+                const SizedBox(height: 12),
+                // Aligned to the start, so it reads as the next thing to do
+                // rather than as a control floating off the right edge.
+                Align(alignment: Alignment.centerLeft, child: action!),
               ],
-            ),
-          ),
-          if (action != null) ...[const SizedBox(width: 16), action!],
-        ],
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: text),
+              const SizedBox(width: 16),
+              action!,
+            ],
+          );
+        },
       ),
     );
   }

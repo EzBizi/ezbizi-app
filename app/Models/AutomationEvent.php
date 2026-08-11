@@ -42,7 +42,7 @@ class AutomationEvent extends Model implements StatesRetention
      * set of facts would mean "why did my rule not fire in April?" being
      * answerable from one table and not the other.
      *
-     * `workflow_runs.event_id` cascades from here, so expiring an event expires
+     * `automation_runs.event_id` cascades from here, so expiring an event expires
      * its runs in the same statement. That is why AutomationRun states
      * `withParent` rather than a window of its own — one number, one place, and
      * a run can never outlive the event it explains.

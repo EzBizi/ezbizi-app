@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\Invitation;
 use App\Models\User;
+use App\Support\Access\Refusal;
 use App\Support\Access\ScopeReach;
 use Illuminate\Auth\Access\Response;
 
@@ -62,7 +63,7 @@ class InvitationPolicy
     private function mayManage(User $user, Invitation $invitation, string $verb): Response
     {
         if (! $user->hasPermission('hr.create')) {
-            return Response::deny("You do not have permission to {$verb} invitations.");
+            return Refusal::permission("{$verb} invitations");
         }
 
         if (! $this->withinReach($user, $invitation)) {

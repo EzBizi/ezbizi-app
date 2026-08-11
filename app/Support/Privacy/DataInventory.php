@@ -132,10 +132,25 @@ class DataInventory
             'Anything exported by a person to their own machine has left this system, and '
                 .'nothing here can enumerate or erase it. Exports of sensitive values are '
                 .'refused by default for that reason.',
-            'Sign-in sessions record the IP address and browser of each device, against the '
-                .'account rather than the organization, so they are not counted above. They are '
-                .'listed in full to the person they belong to under "Your account", and they go '
-                .'when the account does.',
+            'Sign-in sessions record the IP address and browser of each device. They hang off '
+                .'the account rather than the organization, so the count above is reached '
+                .'through the accounts in it; they are listed in full to the person they '
+                .'belong to under "Your account", and they go when the account does.',
+            /*
+             * The web session table, named because it is the one place in this
+             * schema that holds an IP address nothing above can account for.
+             *
+             * It is not in the listing and cannot usefully be: the API
+             * authenticates with bearer tokens, so `sessions.user_id` is null on
+             * every row, and there is no person to attach one to or to erase it
+             * for. Saying so is the answer; leaving it out of both the listing
+             * and the caveats would be the inventory quietly omitting an address.
+             */
+            'A visitor to the public page gets an anonymous browser session, which records '
+                .'an IP address and a browser against no account at all. Signing in does not '
+                .'use one — the application authenticates with tokens — so those rows cannot '
+                .'be tied to a person, listed under anybody\'s name, or erased on request. '
+                .'They expire on the session lifetime.',
         ];
     }
 

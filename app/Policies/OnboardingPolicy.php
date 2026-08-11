@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\Onboarding;
 use App\Models\User;
+use App\Support\Access\Refusal;
 use App\Support\Access\ScopeReach;
 use Illuminate\Auth\Access\Response;
 
@@ -171,7 +172,7 @@ class OnboardingPolicy
         }
 
         if (! $user->hasPermission($permission)) {
-            return Response::deny("You do not have permission to {$verb}.");
+            return Refusal::permission($verb);
         }
 
         $scope = $onboarding->scope();
@@ -180,7 +181,10 @@ class OnboardingPolicy
             return Response::deny(sprintf(
                 'That onboarding is for somebody being placed outside your reach, so it is '
                 .'not yours to %s. Somebody with authority over that %s can.',
-                $verb, $scope['type'],
+                $verb,
+                // Not $scope['type'], which is Assignment's word and says
+                // "franchise" to a business that calls them Territories (§8).
+                Refusal::labelFor($user, $scope['type']),
             ));
         }
 

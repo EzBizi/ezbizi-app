@@ -254,6 +254,7 @@ class _ContractsTabState extends State<ContractsTab> {
                   (template['description'] as String).isNotEmpty)
                 template['description'] as String,
               _questionCount(template['field_count']),
+              _wording(template['has_body']),
             ].where((part) => part.isNotEmpty).join(' · '),
             style: Theme.of(context).textTheme.bodyMedium,
           ),
@@ -287,6 +288,29 @@ class _ContractsTabState extends State<ContractsTab> {
 
     return '$count ${count == 1 ? 'question' : 'questions'} asked today';
   }
+
+  /// Whether this template has been WRITTEN, or is still only a set of
+  /// questions.
+  ///
+  /// ── The distinction the owner was pointing at ────────────────
+  ///
+  /// *"We are missing something critical which is the contract writing itself"*
+  /// — a template with no wording still produces a document, but the document
+  /// is a dump of the answers that were collected. That is a record, not an
+  /// agreement, and it is not what anybody means when they say "the contract".
+  ///
+  /// The server puts `has_body` on every row of `GET /hr/contracts` for exactly
+  /// this, and the list read past it. Somebody looking at four templates could
+  /// not tell which of them anybody had actually written.
+  ///
+  /// Read as a tri-state, not a bool: absent means a server that does not send
+  /// it, and the honest answer to "is this one written" is then to say nothing
+  /// rather than to say no about every template on the screen.
+  String _wording(Object? hasBody) => switch (hasBody) {
+    true => 'wording written',
+    false => 'questions only, no wording yet',
+    _ => '',
+  };
 
   void _create() => setState(() {
     _creating = true;

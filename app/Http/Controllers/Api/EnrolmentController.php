@@ -153,12 +153,28 @@ class EnrolmentController extends Controller
 
         $staff = $request->user();
 
-        abort_unless($staff instanceof PlatformStaff, 403);
+        // Both of these used to be bare `abort_unless(..., 403)`, so both
+        // rendered "This action is unauthorized." — the framework's words,
+        // naming nothing and offering nothing. R8 is about who is reading, and
+        // somebody halfway through setting up an authenticator is reading; the
+        // staff plane is a screen with a person in front of it like any other,
+        // which is why authorizeManagement over in StaffAccountsController has
+        // written a sentence since the day it was added.
+        abort_unless($staff instanceof PlatformStaff, Response::HTTP_FORBIDDEN,
+            'This is the EzBizi staff setup, and you are signed in to a customer '
+            .'account. Sign out, then start again from the staff sign-in screen.');
 
         // The ability is the boundary. Without this an ordinary staff token
         // would reach the same endpoint, which is harmless today but is the kind
         // of thing that stops being harmless when somebody adds a route beside it.
-        abort_unless($staff->currentAccessToken()?->can('enrol'), 403);
+        //
+        // Naming the fifteen minutes matters: the commonest way to arrive here
+        // is to have left the QR code on screen over lunch, and "start again" is
+        // an instruction somebody can follow without knowing what a token is.
+        abort_unless($staff->currentAccessToken()?->can('enrol'), Response::HTTP_FORBIDDEN,
+            'This step needs the setup session that showed you the QR code, and this '
+            .'is not it — it lasts fifteen minutes and may have run out. Start the '
+            .'authenticator setup again to get a fresh one.');
 
         if ($staff->hasTotp()) {
             return response()->json([

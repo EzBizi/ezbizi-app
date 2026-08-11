@@ -4,9 +4,13 @@ namespace Tests\Feature\Api;
 
 use App\Models\ContractVersion;
 use App\Models\User;
+use App\Support\Contracts\FieldSet;
+use App\Support\Contracts\FieldType;
 use App\Support\Contracts\MergeTags;
+use App\Support\Contracts\MergeValue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -231,6 +235,248 @@ class HrContractBodyTest extends TestCase
         $this->assertStringContainsString(
             'Schedule {A} applies. Rate 18.50.',
             $this->documentFor($alpha['admin'], $onboarding),
+        );
+    }
+
+    /**
+     * A capitalised key is told it is capitalised.
+     *
+     * The likeliest hand-typed mistake there is, and the one the general refusal
+     * answered worst: it says a tag is "a key between double braces and nothing
+     * else inside", which is what the author believes they just wrote. Nothing
+     * on screen says keys are lower-case either — the picker offers "First name",
+     * so the capital is the shape of the label they were shown.
+     *
+     * A refusal that describes the thing in front of somebody without naming the
+     * change to make is a dead end (R8), and this is the case where a dead end is
+     * most likely.
+     */
+    public function test_a_capitalised_key_is_refused_by_naming_the_case(): void
+    {
+        [$alpha, $contract] = $this->aContract();
+
+        $known = $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/hr/contracts/{$contract}/versions", [
+                'fields' => $this->fields(),
+                'body'   => 'Dear {{First_Name}}, welcome.',
+            ])
+            ->assertStatus(422)
+            ->json('errors.body.0');
+
+        $this->assertStringContainsString('lower case', $known);
+        $this->assertStringContainsString('{{first_name}}', $known);
+
+        // And when lowering it does not save the tag either, both facts arrive
+        // at once rather than one publish apart.
+        $unknown = $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/hr/contracts/{$contract}/versions", [
+                'fields' => $this->fields(),
+                'body'   => 'Pay is {{Hourly_Wage}} per hour.',
+            ])
+            ->assertStatus(422)
+            ->json('errors.body.0');
+
+        $this->assertStringContainsString('lower case', $unknown);
+        $this->assertStringContainsString('{{hourly_wage}}', $unknown);
+        $this->assertStringContainsString('names nothing', $unknown);
+
+        // And it describes the MISTAKE, never the screen. It used to end "the
+        // chips above the wording insert the spelling the server expects, which
+        // is why they are there" — true of one client at one width, unenforceable
+        // from PHP, and silently wrong the day that layout moves. The sentence
+        // before it already names what is missing and exactly what to type, which
+        // is what the reader is owed. See MergeTags::malformedRefusal.
+        $this->assertStringNotContainsString('chips', $known);
+        $this->assertStringNotContainsString('above the wording', $known);
+    }
+
+    /**
+     * The same capital typed twice is ONE complaint — so the summary never counts
+     * a problem that is not there, and no real one is dropped to make room for a
+     * repeat.
+     *
+     * The miscase refusal is POSITION-INDEPENDENT — its text is the key and
+     * nothing else — so N occurrences produce N byte-identical sentences. They
+     * were deduped by OFFSET, which was written for the stray `{{` that quotes its
+     * own surroundings and is wrong for this one: five identical sentences were
+     * appended, the rest counted into "there are N more like that", and then
+     * MessageBag dropped the four duplicate appends on the way out. Seven
+     * `{{First_Name}}` answered "there are 2 more" when there were six. A refusal
+     * added so the server would be honest about a mistake was stating a false
+     * number.
+     *
+     * Asserted on the message list rather than through the endpoint because that
+     * list is exactly what the endpoint returns, and the collapse happens inside
+     * the bag it is assembled in — going through HTTP would test the same array
+     * twice as slowly.
+     */
+    public function test_a_repeated_capital_is_one_complaint_and_the_count_stays_true(): void
+    {
+        $fields = FieldSet::fromInput($this->fields());
+
+        $all = ['{{First_Name}}', '{{aaa}}', '{{bbb}}', '{{ccc}}', '{{ddd}}'];
+
+        /*
+         * TWO, in differently-worded clauses so they are genuinely two offsets,
+         * with four bad keys between them — which is what makes the second one
+         * visible at all. Below the cap a duplicate is invisible either way,
+         * because MessageBag drops it on the way out.
+         *
+         * With the repeat LAST, all five real problems are shown and the damage
+         * is the summary: the duplicate is the sixth thing reported, so it is
+         * counted into `$extra` and the reply ends "there is 1 more like that"
+         * when everything the body gets wrong is already on the screen. Nothing
+         * is hidden here — that is the next case.
+         */
+        $two = $this->refusalsFor(
+            'Dear {{First_Name}}, the rate is {{aaa}}, the hours are {{bbb}}, the site is '
+            ."{{ccc}} and the manager is {{ddd}}.\n\nSigned by {{First_Name}}.",
+            $fields,
+        );
+
+        $this->assertCount(5, $two, 'A duplicate of the first complaint was counted as a sixth.');
+
+        foreach ($all as $expected) {
+            $this->assertTrue(
+                (bool) array_filter($two, fn (string $m) => str_contains($m, $expected)),
+                "{$expected} was refused by nothing the author can read.",
+            );
+        }
+
+        $this->assertStringNotContainsString('more like that', implode(' ', $two));
+
+        /*
+         * The same two, with the REPEAT IN THE MIDDLE, which is the half that
+         * costs somebody a round trip rather than a raised eyebrow.
+         *
+         * Here the duplicate is the fifth thing reported, so it takes the last
+         * slot under the cap and {{ddd}} — a real, distinct problem — is pushed
+         * into `$extra`. MessageBag then drops the duplicate, and what arrives is
+         * four complaints and a sentence saying there is one more, with no way to
+         * tell that the one more is a sixth key rather than a repeat of the
+         * first. The count assertion above cannot see this: five messages come
+         * back either way. The list has to be asked what is IN it.
+         */
+        $middle = $this->refusalsFor(
+            'Dear {{First_Name}}, the rate is {{aaa}}, the hours are {{bbb}} and the site is '
+            ."{{ccc}}.\n\nSigned by {{First_Name}}, whose manager is {{ddd}}.",
+            $fields,
+        );
+
+        foreach ($all as $expected) {
+            $this->assertTrue(
+                (bool) array_filter($middle, fn (string $m) => str_contains($m, $expected)),
+                "{$expected} was dropped from the list to make room for a repeat.",
+            );
+        }
+
+        $this->assertCount(5, $middle);
+        $this->assertStringNotContainsString('more like that', implode(' ', $middle));
+
+        // SEVEN, in seven clauses. One sentence covers all of them, because the
+        // sentence is about the key and the key is the same one.
+        $seven = $this->refusalsFor(implode("\n\n", [
+            'Dear {{First_Name}}, welcome aboard.',
+            'This agreement is between us and {{First_Name}}.',
+            'The duties of {{First_Name}} are set out below.',
+            'Where {{First_Name}} is absent, notice is required.',
+            'Any notice to {{First_Name}} is given in writing.',
+            'The employment of {{First_Name}} may be ended on notice.',
+            'Signed by {{First_Name}}.',
+        ]), $fields);
+
+        $this->assertCount(1, $seven, 'Seven of one mistake came back as more than one complaint.');
+        $this->assertStringContainsString('{{First_Name}}', $seven[0]);
+        $this->assertStringContainsString('{{first_name}}', $seven[0]);
+        $this->assertStringNotContainsString('more like that', $seven[0]);
+    }
+
+    /**
+     * The cap still works, and the summary still counts, for problems that really
+     * are different.
+     *
+     * The other half of the test above: deduping by the sentence must not turn
+     * "there are 2 more" into a line that never appears. Seven distinct bad keys
+     * are seven distinct sentences, five of them shown and two summarised.
+     */
+    public function test_distinct_problems_past_the_cap_are_still_counted(): void
+    {
+        $messages = $this->refusalsFor(
+            'One {{aaa}} two {{bbb}} three {{ccc}} four {{ddd}} five {{eee}} six {{fff}} '
+            .'seven {{ggg}}.',
+            FieldSet::fromInput($this->fields()),
+        );
+
+        $this->assertCount(6, $messages);
+        $this->assertStringContainsString('There are 2 more like that', end($messages));
+    }
+
+    /**
+     * And the stray `{{` has the same exposure, which is why the dedupe is on the
+     * SENTENCE and not on the key the capital names.
+     *
+     * The offset was justified by "two malformed tags in different places are two
+     * different things to go and look at", and that is true exactly as long as the
+     * two of them read differently. A stray quotes the 40 characters that follow
+     * it, so two far apart in a long body with the same following text quote the
+     * same thing and produce the same sentence — six of them answered "there is 1
+     * more" when there were five. Deduping the capitalised branch alone would have
+     * left this one, in the branch nobody had suspected, waiting for a body
+     * repetitive enough to find it.
+     */
+    public function test_strays_that_read_the_same_are_one_complaint_too(): void
+    {
+        // Six, each followed by the same forty characters, so the quoted window
+        // never reaches the next one and every complaint comes out identical.
+        $messages = $this->refusalsFor(
+            str_repeat('{{ 50% }} '.str_repeat('a', 40).' ', 6),
+            FieldSet::fromInput($this->fields()),
+        );
+
+        $this->assertCount(1, $messages, 'The same sentence was counted as two problems.');
+        $this->assertStringNotContainsString('more like that', $messages[0]);
+    }
+
+    /**
+     * The validator and the renderer walk the same `{{`, including the overlapping
+     * ones.
+     *
+     * `{{{first_name}}` used to be the case where they disagreed, and it
+     * disagreed the dangerous way round: publishing refused it, because the `{{`
+     * at offset 0 opens no tag and the walk stepped past both braces without ever
+     * looking at the one at offset 1 — while the renderer's free-floating pass
+     * found `{{first_name}}` there and merged it. A body the validator reports it
+     * never inspected and the renderer resolves anyway is a gap under a
+     * signature, and the only thing closing it was the refusal firing first.
+     *
+     * Asserted against the two functions directly rather than through an
+     * endpoint, because the endpoint cannot reach the disagreement: the refusal
+     * is what hides it, and the refusal is half of what is being tested.
+     */
+    public function test_the_validator_and_the_renderer_agree_about_an_overlapping_brace(): void
+    {
+        $fields = FieldSet::fromInput($this->fields());
+        $values = ['first_name' => new MergeValue('First name', 'Marta')];
+
+        try {
+            MergeTags::validate('Dear {{{first_name}}, welcome.', $fields);
+            $this->fail('An overlapping {{ was accepted at publish.');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('{{', $e->errors()['body'][0]);
+        }
+
+        // The same string through the renderer: left exactly as written, because
+        // the scanner that refused it is the scanner that renders it.
+        $this->assertStringContainsString(
+            '{{{first_name}}',
+            MergeTags::render('Dear {{{first_name}}, welcome.', $values),
+        );
+
+        // The mirror, so this is not just "nothing ever resolves": one brace
+        // further along and both ends see a real tag.
+        $this->assertStringContainsString(
+            'Marta',
+            MergeTags::render('Dear {{first_name}}, welcome.', $values),
         );
     }
 
@@ -472,7 +718,13 @@ class HrContractBodyTest extends TestCase
      * retired fields are out, that signatures are out, that the common core is
      * asked but `middle_name` is not, and that facts are dotted — restated in a
      * language that cannot see them change. The exact text to insert comes back
-     * too, so the client does not even concatenate the delimiters.
+     * too, so a client has a ready-made string for anything the server has
+     * named.
+     *
+     * What this asserts is the RESPONSE, and only the response. It used to end
+     * "so the client does not even concatenate the delimiters" — a claim about a
+     * Dart file, made by a PHP test that cannot execute one, and false at the
+     * time. See MergeTags::resolvable.
      */
     public function test_the_resolvable_tags_are_published_rather_than_compiled_by_the_client(): void
     {
@@ -508,7 +760,8 @@ class HrContractBodyTest extends TestCase
         $this->assertSame('Hourly wage', $wage['label']);
         $this->assertSame('field', $wage['source']);
 
-        // The syntax itself, so the client never hardcodes the delimiters.
+        // The syntax itself, published so that a client needing it has it from
+        // the one place that decides it.
         $catalogue = $this->signedInAs($alpha['admin'])
             ->getJson('/api/v1/hr/contracts/catalogue')->assertOk()->json('data.merge_tags');
 
@@ -517,6 +770,85 @@ class HrContractBodyTest extends TestCase
         $this->assertSame(
             ['organization.name', 'contract.name', 'contract.version', 'document.date'],
             array_column($catalogue['facts'], 'key'),
+        );
+
+        /*
+         * And the catalogue's chips are the SAME entries the preview endpoint
+         * sends, not a second set built beside them.
+         *
+         * They were two hand-rolled `array_map`s here and one `resolvable()`
+         * there, and they had already drifted: `source` was on the preview's
+         * entries and missing from these, so the same `{{first_name}}` chip knew
+         * where it came from down one route and not down the other. Asserted on
+         * `source` because that is the property that caught the drift; asserted
+         * on the whole entry because the next one to drift will be a different
+         * property.
+         */
+        $byKey = array_column($tags, null, 'key');
+
+        foreach ([...$catalogue['core'], ...$catalogue['facts']] as $entry) {
+            $this->assertSame($byKey[$entry['key']], $entry, "The catalogue and the preview disagree about {$entry['key']}.");
+        }
+
+        $this->assertSame('core', $catalogue['core'][0]['source']);
+        $this->assertSame('fact', $catalogue['facts'][0]['source']);
+    }
+
+    /**
+     * Every tag the server OFFERS has a value waiting for it in the document.
+     *
+     * The two ends of one promise, and until now they were two different
+     * questions: `MergeTags::resolvable()` asks `FieldType::merges()` which fields
+     * may be tagged, while `DocumentRenderer::answerValues()` asked
+     * `=== FieldType::SIGNATURE` which fields get a value built. They agree while
+     * signature is the only type that does not merge, so THIS TEST DOES NOT PIN
+     * THAT CHANGE — it passes with either spelling. What it pins is the property
+     * the change protects, and it is red for a renderer that gets the condition
+     * wrong in any other way: a tag offered with nothing behind it renders as an
+     * `unresolved` span in the signed document while the editor's preview, whose
+     * values come from `resolvable()`, shows a tidy "[Label]" in the same place.
+     *
+     * Every type in the catalogue is here, so the field list this walks grows with
+     * `FieldType::ALL` rather than staying at the two somebody happened to write.
+     */
+    public function test_every_tag_the_server_offers_has_a_value_behind_it_in_the_document(): void
+    {
+        $fields = [
+            $this->field(),
+            $this->field(['key' => 'notes', 'label' => 'Notes', 'type' => 'text', 'required' => false]),
+            $this->field(['key' => 'starts', 'label' => 'Start date', 'type' => 'date', 'required' => false]),
+            $this->field(['key' => 'shift', 'label' => 'Shift', 'type' => 'choice',
+                'options' => ['Day', 'Night'], 'required' => false]),
+            $this->field(['key' => 'passport', 'label' => 'Passport', 'type' => 'file',
+                'filled_by' => 'employee', 'required' => false]),
+            $this->signatureField(),
+        ];
+
+        $offered = MergeTags::resolvable(FieldSet::fromInput($fields));
+        $keys    = array_column($offered, 'key');
+
+        // Every type the catalogue declares is represented, so this cannot
+        // quietly stop covering one.
+        $this->assertSame(
+            FieldType::keys(),
+            array_values(array_intersect(FieldType::keys(), array_column($fields, 'type'))),
+            'A field type was added to the catalogue and this walk does not cover it.',
+        );
+        $this->assertNotContains('employer_sign', $keys, 'A signature was offered as a tag.');
+
+        [$alpha, , $onboarding] = $this->scenario(
+            fields: $fields,
+            // Every offered tag, in one body — the field keys, the common core and
+            // the facts, exactly as the server handed them over.
+            body: implode(' ', array_column($offered, 'tag')),
+        );
+
+        $html = $this->documentFor($alpha['admin'], $onboarding);
+
+        $this->assertStringNotContainsString(
+            'class="unresolved"',
+            $html,
+            'A tag the server offered had no value behind it when the document was rendered.',
         );
     }
 
@@ -808,6 +1140,27 @@ class HrContractBodyTest extends TestCase
         ])->assertCreated()->json('data.id');
 
         return [$alpha, $employee, $onboarding, $contract];
+    }
+
+    /**
+     * The messages a body is refused with, in the shape the endpoint returns them.
+     *
+     * Through `ValidationException` rather than around it: `withMessages` builds a
+     * MessageBag, and the bag silently dropping a repeat of an identical string is
+     * half of what the counting test above is about. Reading `$problems` before it
+     * gets there would be reading a number the author never sees.
+     *
+     * @return string[]
+     */
+    private function refusalsFor(string $body, FieldSet $fields): array
+    {
+        try {
+            MergeTags::validate($body, $fields);
+        } catch (ValidationException $e) {
+            return $e->errors()['body'];
+        }
+
+        $this->fail('That body was accepted, so there are no complaints to count.');
     }
 
     private function documentFor(User $actor, string $onboarding): string

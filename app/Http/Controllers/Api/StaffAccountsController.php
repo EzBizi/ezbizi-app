@@ -8,6 +8,7 @@ use App\Support\Audit\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -105,40 +106,48 @@ class StaffAccountsController extends Controller
             }
         }
 
-        $staysLead   = ($input['tier'] ?? $staff->tier) === PlatformStaff::TIER_LEAD;
-        $staysActive = $input['is_active'] ?? $staff->is_active;
+        /*
+         * The account as this request would LEAVE it, asked as a model rather
+         * than as three loose booleans.
+         *
+         * The rules below are all about the resulting state, not about the field
+         * that happened to be sent — demoting an exempt lead and exempting a
+         * Developer are the same mistake arriving from two directions — and this
+         * is what lets `mayBeAuditExempt()` on the model be the one place that
+         * rule lives. Re-implementing it here as `$staysExempt && ! $staysLead`
+         * left the model's copy with no callers and two homes for one fact.
+         *
+         * A clone: the real $staff must stay untouched until the guards have all
+         * passed, because `$before` is read off it below.
+         */
+        $after = (clone $staff)->forceFill([
+            'tier'      => $input['tier'] ?? $staff->tier,
+            'is_active' => $input['is_active'] ?? $staff->is_active,
+        ]);
+
+        $staysLead   = $after->isLeadDeveloper();
+        $staysActive = (bool) $after->is_active;
         $staysExempt = $input['audit_exempt'] ?? (bool) $staff->audit_exempt;
 
-        /*
-         * The exemption survives this request only if it still makes sense after
-         * it. Both refusals below are about the state the account would be LEFT
-         * in, not about the field that was sent — demoting an exempt lead and
-         * exempting a Developer are the same mistake arriving from two
-         * directions, and §4.2's "a Developer promoted by mistake shouldn't
-         * silently stop being audited" is the reason neither may happen quietly.
-         */
-        if ($staysExempt && ! $staysLead) {
-            return $this->refuse(
-                'This account is exempt from the audit trail, and only a Lead Developer '
-                .'may be. Revoke the exemption first, then change the tier.'
+        if ($staysExempt && ! $after->mayBeAuditExempt()) {
+            /*
+             * Two different mistakes reach this line, and they need two
+             * different sentences. One message for both told an operator
+             * granting the exemption to a Developer that "this account is
+             * exempt" (it is not), that "only a Lead Developer may be" (true but
+             * not what they did), and to "revoke the exemption first" (there is
+             * nothing to revoke) — every clause wrong for what they had just
+             * clicked, on a screen that shows server refusals verbatim.
+             *
+             * Which one it is follows from whether the exemption is already
+             * held: if it is, the exemption is not what is moving, the tier is.
+             */
+            return $this->refuse((bool) $staff->audit_exempt
+                ? 'This account is exempt from the audit trail, and only a Lead Developer '
+                    .'may be. Revoke the exemption first, then change the tier.'
+                : 'Only a Lead Developer may be exempt from the audit trail, and this is a '
+                    .'Developer account. Make it a Lead Developer first if that is what you meant.'
             );
-        }
-
-        // One account, which is what §4.2 asks for: "an explicit flag on the
-        // single Lead Developer account". Naming the holder means the answer to
-        // "why can't I?" is on the screen rather than in a table somebody has to
-        // go and read.
-        if ($staysExempt) {
-            $holder = PlatformStaff::where('audit_exempt', true)
-                ->whereKeyNot($staff->getKey())
-                ->first();
-
-            if ($holder !== null) {
-                return $this->refuse(
-                    "The audit exemption is held by {$holder->email}, and it belongs to one "
-                    .'account at a time. Revoke it there first.'
-                );
-            }
         }
 
         // Locking yourself out of the control plane leaves the console on the box
@@ -165,34 +174,77 @@ class StaffAccountsController extends Controller
 
         $before = $staff->only(['name', 'tier', 'is_active', 'audit_exempt']);
 
-        // `audit_exempt` is deliberately outside $fillable — a request body must
-        // not be able to carry "and stop auditing me" alongside a name change —
-        // so it is set on its own line, where it is visible in review.
-        $staff->fill(Arr::except($input, 'audit_exempt'));
+        /*
+         * "Only one account may hold it at a time" is an invariant, so the check
+         * and the write are one transaction and the check takes the row locks.
+         *
+         * Read-then-write with nothing in between is not a uniqueness rule, it
+         * is a race two Lead Developers can lose together: both PATCHes read "no
+         * holder", both write, and two accounts are outside the business audit
+         * trail with the log showing two perfectly ordinary grants. platform_staff
+         * has a handful of rows, so the scan this locks costs nothing.
+         *
+         * MySQL has no partial unique index to lean on here — the column is a
+         * boolean with many legitimate `false`s — which is why this is a lock and
+         * not a constraint.
+         */
+        $refusal = DB::transaction(function () use ($request, $staff, $input, $staysExempt, $staysActive, $before) {
+            // §4.2 asks for "an explicit flag on the single Lead Developer
+            // account". Naming the holder means the answer to "why can't I?" is
+            // on the screen rather than in a table somebody has to go and read.
+            //
+            // withTrashed(), because SoftDeletes hides a deleted holder from this
+            // query and not from the flag: the account keeps `audit_exempt` set,
+            // and restoring it would quietly make two.
+            if ($staysExempt) {
+                $holder = PlatformStaff::withTrashed()
+                    ->where('audit_exempt', true)
+                    ->whereKeyNot($staff->getKey())
+                    ->lockForUpdate()
+                    ->first();
 
-        if (array_key_exists('audit_exempt', $input)) {
-            $staff->forceFill(['audit_exempt' => $input['audit_exempt']]);
-        }
+                if ($holder !== null) {
+                    return $this->refuse($holder->trashed()
+                        ? "The audit exemption is still held by the removed account {$holder->email}. "
+                            .'Restore it and revoke the exemption there, or the two would both be exempt.'
+                        : "The audit exemption is held by {$holder->email}, and it belongs to one "
+                            .'account at a time. Revoke it there first.'
+                    );
+                }
+            }
 
-        $staff->save();
+            // `audit_exempt` is deliberately outside $fillable — a request body must
+            // not be able to carry "and stop auditing me" alongside a name change —
+            // so it is set on its own line, where it is visible in review.
+            $staff->fill(Arr::except($input, 'audit_exempt'));
 
-        // Deactivation must end the sessions too, or "disabled" describes a flag
-        // and not the access.
-        if ($staysActive === false) {
-            $staff->tokens()->delete();
-        }
+            if (array_key_exists('audit_exempt', $input)) {
+                $staff->forceFill(['audit_exempt' => $input['audit_exempt']]);
+            }
 
-        // Written through logStaff, which suppression does not reach. The account
-        // that grants itself the exemption is the one whose next actions vanish,
-        // so the grant is the last thing that can still be evidence — recording
-        // it through the suppressible path would have let the exemption erase the
-        // record of its own arrival.
-        $this->record($request, 'staff.account_updated', $staff, [
-            'before' => $before,
-            'after'  => $staff->only(['name', 'tier', 'is_active', 'audit_exempt']),
-        ]);
+            $staff->save();
 
-        return response()->json(['data' => $this->present($staff->fresh())]);
+            // Deactivation must end the sessions too, or "disabled" describes a flag
+            // and not the access.
+            if ($staysActive === false) {
+                $staff->tokens()->delete();
+            }
+
+            // Written through logStaff, which suppression does not reach. The account
+            // that grants itself the exemption is the one whose next actions vanish,
+            // so the grant is the last thing that can still be evidence — recording
+            // it through the suppressible path would have let the exemption erase the
+            // record of its own arrival. Inside the transaction, so the change and
+            // its record commit together or not at all.
+            $this->record($request, 'staff.account_updated', $staff, [
+                'before' => $before,
+                'after'  => $staff->only(['name', 'tier', 'is_active', 'audit_exempt']),
+            ]);
+
+            return null;
+        });
+
+        return $refusal ?? response()->json(['data' => $this->present($staff->fresh())]);
     }
 
     /**
