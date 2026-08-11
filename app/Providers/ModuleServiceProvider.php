@@ -307,13 +307,26 @@ class ModuleServiceProvider extends ServiceProvider
              *
              * Three actions, not four.
              *
-             *   view    the tab — people, and the invitations in flight
+             *   view    the tab — people, the invitations in flight, and the
+             *           contract templates onboarding is built from
              *   create  inviting somebody, and the whole life of that invitation:
              *           resending it and withdrawing it. Issuing and un-issuing
              *           are one authority, because the person who should be able
              *           to take an invitation back is the person who sent it.
+             *           Also adding a contract template.
              *   edit    changing what somebody's account is — their role, and
-             *           whether it works at all
+             *           whether it works at all — and publishing a new version
+             *           of a contract template
+             *
+             * The two contract clauses were added when the Contracts tab landed.
+             * One module means one set of actions across all five tabs (§4: the
+             * tab IS the view permission), so `hr.create` genuinely does cover
+             * both inviting a technician and authoring the schema every
+             * onboarding uses. Those are not the same size of authority, and
+             * ContractPolicy narrows the second one on top: writing a template
+             * additionally requires standing at the ORGANIZATION, because a
+             * template reaches every franchise. The permission alone would have
+             * handed a branch manager the whole business's onboarding form.
              *
              * There is no `delete`, and its absence is a decision rather than an
              * omission. §5: deactivate is not delete, and an employment record
@@ -346,11 +359,29 @@ class ModuleServiceProvider extends ServiceProvider
                  * gesture rather than about the business, and the three events
                  * above already cover every moment that changes what somebody
                  * can do.
+                 *
+                 * ── And nor does publishing a contract template ──────
+                 *
+                 * Added when the Contracts tab landed, because until then this
+                 * exemption could truthfully say everything HR does happens to a
+                 * user, and publishing a template does not. It is a change to the
+                 * SCHEMA — what onboarding will ask the next person — rather than
+                 * an event about anybody. A rule triggered by it would be a rule
+                 * about the shape of the system, which is the same thing the
+                 * Roles module is held out of automation for, and a rule ACTING
+                 * on it could rewrite what every future employee is asked without
+                 * a person ever seeing the diff that publishing exists to show.
+                 * The moment a template affects a real person is the moment an
+                 * onboarding uses it, and that raises `user.activated`.
                  */
                 automationExemptBecause:
-                    'Everything HR does happens to a user — invited, activated, deactivated — '
-                    .'and those three events are declared by the Users module, whose subject is '
-                    .'the User record. HR is what raises them.',
+                    'Everything HR does to a PERSON happens to a user — invited, activated, '
+                    .'deactivated — and those three events are declared by the Users module, '
+                    .'whose subject is the User record. HR is what raises them. What HR does '
+                    .'that is not about a person is publishing a contract template, which '
+                    .'changes the schema rather than any record, and automating a schema change '
+                    .'would bypass the readable diff that publishing exists to put in front of '
+                    .'somebody.',
             ),
 
             new ModuleDefinition(

@@ -4,6 +4,8 @@ namespace App\Support\Data;
 
 use App\Models\Customer;
 use App\Models\User;
+use App\Support\Privacy\HoldsSensitiveValues;
+use App\Support\Privacy\SensitiveValues;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -26,15 +28,37 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *
  * So every query below goes through scoped(), and which resources are
  * reach-scoped is declared in ResourceMap rather than decided here.
+ *
+ * ── Sensitive values do not leave through here by default ────────
+ *
+ * The third of the four behaviours the HR plan gives the sensitive flag:
+ * "excluded from exports unless explicitly requested with permission. Otherwise
+ * the first CSV puts every account number on somebody's laptop."
+ *
+ * Nothing reachable today can leak one — ResourceMap lists its columns by hand,
+ * and neither `customers` nor `jobs` holds a tenant-defined value. That is a
+ * fact about the current map rather than a property of this class, and the map
+ * grows: the moment contract answers become exportable, "the columns happen not
+ * to include one" stops being true and nothing would have changed here to
+ * notice. So the rule is structural instead — every row is asked, and the
+ * default answer is the mask.
+ *
+ * `$includeSensitive` is a REQUEST, not an authorisation. Even with it set, each
+ * row is still asked `mayReveal()` for this caller, so a flag on a query string
+ * cannot widen what somebody may see — it can only stop hiding what they were
+ * already entitled to.
  */
 class Exporter
 {
     /** Rows per query. Big enough to be few round trips, small enough to stay flat. */
     private const CHUNK = 500;
 
-    public function __construct(private TenantContext $tenant) {}
+    public function __construct(
+        private TenantContext $tenant,
+        private SensitiveValues $sensitive,
+    ) {}
 
-    public function csv(string $resource, User $user): StreamedResponse
+    public function csv(string $resource, User $user, bool $includeSensitive = false): StreamedResponse
     {
         $definition = ResourceMap::get($resource);
         $columns    = $definition['columns'];
@@ -50,7 +74,7 @@ class Exporter
         $organization = $this->tenant->get();
         $reach        = $this->reachFor($definition, $user);
 
-        return response()->streamDownload(function () use ($definition, $columns, $organization, $reach) {
+        return response()->streamDownload(function () use ($definition, $columns, $organization, $reach, $user, $includeSensitive) {
             $out = fopen('php://output', 'w');
 
             // Excel reads a bare UTF-8 CSV as the system codepage, so an accented
@@ -60,16 +84,18 @@ class Exporter
 
             fputcsv($out, $columns);
 
-            $this->tenant->run($organization, function () use ($definition, $columns, $out, $reach) {
+            $this->tenant->run($organization, function () use ($definition, $columns, $out, $reach, $user, $includeSensitive) {
                 $this->scoped($definition, $reach)
                     // No orderBy here: chunkById needs to page by the column it
                     // cursors on, and a second ordering in front of it can drop
                     // rows between pages. Ids are UUIDv7, so id order IS creation
                     // order — the chronological export is preserved for free.
-                    ->chunkById(self::CHUNK, function ($rows) use ($out, $columns) {
+                    ->chunkById(self::CHUNK, function ($rows) use ($out, $columns, $user, $includeSensitive) {
                         foreach ($rows as $row) {
+                            $values = $this->readable($row, $columns, $user, $includeSensitive);
+
                             fputcsv($out, array_map(
-                                fn (string $c) => $this->cell($row->getAttribute($c)),
+                                fn (string $c) => $this->cell($values[$c]),
                                 $columns,
                             ));
                         }
@@ -89,7 +115,7 @@ class Exporter
      * somebody can hand to a lawyer or load into another system, and a truncated
      * JSON file is worthless in a way a truncated CSV is not.
      */
-    public function bundle(User $user): array
+    public function bundle(User $user, bool $includeSensitive = false): array
     {
         $out = [];
 
@@ -97,8 +123,42 @@ class Exporter
             $out[$key] = $this->scoped($definition, $this->reachFor($definition, $user))
                 ->orderBy('created_at')
                 ->get()
-                ->map(fn (Model $m) => $m->only($definition['columns']))
+                // `readable()` rather than `only()`, so this file obeys the same
+                // rule the CSV does. A portability bundle that carried values
+                // the CSV masks would be the same leak through the quieter door.
+                ->map(fn (Model $m) => $this->readable($m, $definition['columns'], $user, $includeSensitive))
                 ->all();
+        }
+
+        return $out;
+    }
+
+    /**
+     * One row's columns, with anything sensitive masked unless it may be shown.
+     *
+     * Two conditions, and both have to hold: the caller ASKED for the values,
+     * and the row itself says this caller may see them. Splitting it that way is
+     * what keeps a query parameter from being an authorisation — see the note on
+     * this class.
+     *
+     * A model that does not implement HoldsSensitiveValues answers no sensitive
+     * attributes and this costs one instanceof per row.
+     *
+     * @param  string[]  $columns
+     * @return array<string, mixed>
+     */
+    private function readable(Model $row, array $columns, User $user, bool $includeSensitive): array
+    {
+        $reveal = $includeSensitive
+            && $row instanceof HoldsSensitiveValues
+            && $row->mayReveal($user);
+
+        $out = [];
+
+        foreach ($columns as $column) {
+            $out[$column] = (! $reveal && $this->sensitive->isSensitive($row, $column))
+                ? SensitiveValues::MASK
+                : $row->getAttribute($column);
         }
 
         return $out;
@@ -118,7 +178,7 @@ class Exporter
      * endpoint was handing over every franchise's work for that customer to
      * anybody who could open their record.
      */
-    public function person(Customer $customer, User $user): array
+    public function person(Customer $customer, User $user, bool $includeSensitive = false): array
     {
         $jobs = ResourceMap::get('jobs');
 
@@ -128,9 +188,16 @@ class Exporter
                 ->orderBy('created_at')->get()
             : collect();
 
+        // Through `readable()` like the other two, so the one export that is
+        // ABOUT a person is not the one that hands over their sensitive values
+        // without being asked.
         return [
-            'customer' => $customer->only(ResourceMap::get('customers')['columns']),
-            'jobs'     => $visible->map(fn (Model $j) => $j->only($jobs['columns']))->all(),
+            'customer' => $this->readable(
+                $customer, ResourceMap::get('customers')['columns'], $user, $includeSensitive,
+            ),
+            'jobs' => $visible->map(
+                fn (Model $j) => $this->readable($j, $jobs['columns'], $user, $includeSensitive),
+            )->all(),
         ];
     }
 

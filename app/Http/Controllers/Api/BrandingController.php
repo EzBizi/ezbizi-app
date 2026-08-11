@@ -6,9 +6,9 @@ use App\Models\Company;
 use App\Models\Organization;
 use App\Support\Audit\AuditLogger;
 use App\Support\Branding\Branding;
+use App\Support\Files\FileStore;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Logos for the organization and its companies (plan §12).
@@ -40,7 +40,19 @@ class BrandingController extends Controller
      */
     private const MAX_KILOBYTES = 1024;
 
-    public function __construct(private AuditLogger $audit) {}
+    /**
+     * Storage goes through FileStore, not `Storage::disk('local')`.
+     *
+     * This controller was one of the two places that named the disk by hand —
+     * four times, and read files back with `->path()`, which exists only on the
+     * local driver. FILESYSTEM_DISK therefore moved nothing, which is the
+     * opposite of what §11 promises. See FileStore, including what somebody has
+     * to do to the existing `logos/` tree before changing that value.
+     */
+    public function __construct(
+        private AuditLogger $audit,
+        private FileStore $files,
+    ) {}
 
     public function uploadOrganization(Request $request): array
     {
@@ -167,7 +179,10 @@ class BrandingController extends Controller
 
         $previous = $subject->logo_path;
 
-        $path = $file->store("logos/{$request->user()->organization_id}", 'local');
+        $path = $this->files->put(
+            $file,
+            $this->files->directoryFor('logos', $request->user()->organization_id),
+        );
 
         // Written together. A path without a shape is a state nothing can lay
         // out, so neither is ever set alone.
@@ -176,7 +191,7 @@ class BrandingController extends Controller
         // Removed only after the new one is safely stored, so a failed write
         // never leaves a business with no mark and no way back.
         if ($previous !== null && $previous !== $path) {
-            Storage::disk('local')->delete($previous);
+            $this->files->delete($previous);
         }
 
         $this->audit->log($action, $subject);
@@ -187,7 +202,7 @@ class BrandingController extends Controller
     private function clear(Model $subject, string $action): array
     {
         if ($subject->logo_path !== null) {
-            Storage::disk('local')->delete($subject->logo_path);
+            $this->files->delete($subject->logo_path);
             $subject->forceFill(['logo_path' => null, 'logo_aspect' => null])->save();
 
             $this->audit->log($action, $subject);
@@ -196,11 +211,22 @@ class BrandingController extends Controller
         return ['logo' => false];
     }
 
+    /**
+     * `inline`, and it is the safe half of that decision.
+     *
+     * The upload validator has already established that these bytes are a PNG of
+     * one of two exact sizes — `getimagesize` read them, not a header somebody
+     * sent — so rendering them in the page is what they are for. An arbitrary
+     * customer upload gets `attachment` instead; see AttachmentsController.
+     */
     private function serve(Organization|Company $subject)
     {
         abort_if($subject->logo_path === null, 404);
-        abort_unless(Storage::disk('local')->exists($subject->logo_path), 404);
 
-        return response()->file(Storage::disk('local')->path($subject->logo_path));
+        return $this->files->serve(
+            $subject->logo_path,
+            mime: Branding::contentType(),
+            disposition: 'inline',
+        );
     }
 }

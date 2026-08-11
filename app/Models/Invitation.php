@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Privacy\HoldsPersonalData;
+use App\Support\Privacy\PersonalDataEntry;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,9 +16,10 @@ use InvalidArgumentException;
  *
  * ── Status is derived, never stored ──────────────────────────────
  *
- * The plan names five: sent · received · in progress · completed · abandoned.
- * Four of them are a question about the timestamps on this row, and "abandoned"
- * is mostly a question about the CLOCK — a week has passed and nobody came.
+ * The plan names six: sent · received · in progress · completed · abandoned ·
+ * revoked. Five of them are a question about the timestamps on this row, and
+ * "abandoned" is mostly a question about the CLOCK — a week has passed and
+ * nobody came.
  *
  * Storing it would mean a scheduled job whose only purpose is to make a column
  * agree with `now()`. When such a job stops, every expired invitation goes on
@@ -28,28 +31,67 @@ use InvalidArgumentException;
  * omitted: it belongs to the onboarding form the two sides fill, which does not
  * exist yet, so nothing can produce it today. The constant is declared because
  * the client and the server have to agree on the whole vocabulary from the
- * start — learning a sixth word later is a release where the two disagree.
+ * start — learning a new word later is a release where the two disagree.
  *
- * ── Revoked collapses into abandoned, but the row still says why ─
+ * ── Revoked is its own status, decided 2026-08-11 ────────────────
  *
- * The owner settled on five statuses and "revoked" is not one of them, so a
- * withdrawn invitation reports `abandoned` like an expired one. `revoked_at` is
- * carried on every representation beside the status, because "we changed our
- * mind" and "they never opened it" are the same outcome and completely
- * different facts, and the screen has to be able to say which.
+ * It was first collapsed into `abandoned`, with `revoked_at` carried beside it
+ * so a screen could still tell the two apart by hand. That was wrong, and the
+ * owner settled it: "we changed our mind" and "they never came" are different
+ * facts about different failures. A list that reports them as one word cannot
+ * answer the question the Invitations tab exists to answer — whether the
+ * invitations being sent are being ignored — because every withdrawal inflates
+ * the same number.
+ *
+ * The distinction is now in the STATUS rather than in a timestamp beside it,
+ * which is what lets a filter, a count and a dashboard tile each get it right
+ * without re-deriving the rule. `revoked_at` stays on every representation: it
+ * is when, and the status is what.
  */
-class Invitation extends Model
+class Invitation extends Model implements HoldsPersonalData
 {
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
 
-    /** The plan's five, and the only strings the API ever puts in `status`. */
+    // ── §9 data inventory ────────────────────────────────────────
+
+    public static function personalDataPurpose(): string
+    {
+        return 'People who were asked to join, whether or not they ever did. An invitation '
+            .'nobody accepted still holds a real person\'s name and address — which is the '
+            .'reason this table is listed at all, since nothing else in the system knows '
+            .'that person exists.';
+    }
+
+    public static function personalDataRetention(): string
+    {
+        return 'Kept after the invitation is spent, withdrawn or lapsed. The row is how "we '
+            .'invited them and changed our mind" stays answerable, and deleting it would '
+            .'erase the fact that anybody was invited at all.';
+    }
+
+    public static function personalDataHeld(): array
+    {
+        return [
+            new PersonalDataEntry('email', PersonalDataEntry::CONTACT,
+                'Who the invitation is for, and the address the link is sent to.'),
+            new PersonalDataEntry('first_name, last_name', PersonalDataEntry::IDENTITY,
+                'Pre-filled by the employer where they knew it, so the person does not '
+                .'have to type it again.'),
+            new PersonalDataEntry('token_hash', PersonalDataEntry::TECHNICAL,
+                'The invitation link, stored as a sha256 so the credential itself is not '
+                .'held. It is not reversible and is never sent anywhere.'),
+        ];
+    }
+
+    /** The plan's six, and the only strings the API ever puts in `status`. */
     public const SENT        = 'sent';
     public const RECEIVED    = 'received';
     public const IN_PROGRESS = 'in_progress';
     public const COMPLETED   = 'completed';
     public const ABANDONED   = 'abandoned';
+    public const REVOKED     = 'revoked';
 
     /** Mirrors Assignment's three scope kinds — the wire names for them (§4). */
     public const SCOPE_ORGANIZATION = Assignment::SCOPE_ORGANIZATION;
@@ -177,6 +219,32 @@ class Invitation extends Model
         ];
     }
 
+    /**
+     * Is the place this invitation names still somewhere a person can be put?
+     *
+     * Asked at acceptance, a week after the invitation was written. Companies
+     * and franchises are soft-deleted, so the foreign key's ON DELETE CASCADE
+     * never fires for them — the row survives pointing at a `deleted_at` that
+     * makes the relation answer null. And either can be switched off, which
+     * leaves it present and not somewhere to place a new starter: they would get
+     * an account whose only assignment is to a franchise nobody works at.
+     *
+     * The ORGANIZATION level asks about existence only, deliberately. An
+     * organization that is switched off is a lapsed subscription (§13), and the
+     * acceptance write already answers that with a 402 carrying the
+     * subscription's own refusal. Restating it here would turn a payment problem
+     * into "this invitation is no longer valid", which sends the wrong person to
+     * fix the wrong thing.
+     */
+    public function scopeIsLive(): bool
+    {
+        return match ($this->scopeType()) {
+            self::SCOPE_ORGANIZATION => $this->assignedOrganization !== null,
+            self::SCOPE_COMPANY      => $this->assignedCompany?->is_active === true,
+            self::SCOPE_FRANCHISE    => $this->assignedFranchise?->is_active === true,
+        };
+    }
+
     /** What the assigned place is CALLED — for the list, and for the audit trail. */
     public function scopeLabel(): ?string
     {
@@ -210,20 +278,25 @@ class Invitation extends Model
     }
 
     /**
-     * The plan's five, in the order that resolves them.
+     * The plan's six, in the order that resolves them.
      *
      * Acceptance wins over everything: an invitation accepted on the sixth day
      * is `completed` forever, even when read a year later, because what happened
-     * happened. Revocation is checked before expiry so the row is not reported
-     * as merely stale when somebody actually withdrew it — the status is the same
-     * word either way, but the order is what keeps `revoked_at` meaningful to
-     * anything that reads this alongside it.
+     * happened.
+     *
+     * Revocation is checked before expiry, and now that the two are different
+     * words the order decides which one a withdrawn invitation reports once its
+     * week has also run out. `revoked` is the right answer there: the
+     * organization made a decision, and the clock running out afterwards did not
+     * un-make it. Reversing these two would turn every withdrawal into an
+     * expiry after seven days and quietly rewrite the history the row exists to
+     * keep.
      */
     public function status(): string
     {
         return match (true) {
             $this->accepted_at !== null => self::COMPLETED,
-            $this->revoked_at !== null  => self::ABANDONED,
+            $this->revoked_at !== null  => self::REVOKED,
             $this->hasExpired()         => self::ABANDONED,
             $this->opened_at !== null   => self::RECEIVED,
             default                     => self::SENT,

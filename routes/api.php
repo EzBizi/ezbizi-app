@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AttachmentsController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AutomationsController;
 use App\Http\Controllers\Api\BrandingController;
@@ -10,6 +11,7 @@ use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\HrContractsController;
 use App\Http\Controllers\Api\HrInvitationsController;
 use App\Http\Controllers\Api\HrPeopleController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
@@ -214,6 +216,44 @@ Route::prefix('v1')
         Route::post('hr/invitations/{invitation}/resend', [HrInvitationsController::class, 'resend']);
         Route::delete('hr/invitations/{invitation}', [HrInvitationsController::class, 'destroy']);
 
+        // The Contracts tab — the template designer, and the schema every other
+        // HR tab is built on (EZBIZI-HR-PLAN.md).
+        //
+        // `catalogue` sits BEFORE `{contract}` or it binds as a contract id and
+        // 404s — the same trap `automations/catalogue` documents.
+        //
+        // There is no DELETE. A template is what produced somebody's employment
+        // record; removing it would leave that record describing questions
+        // nothing can reproduce. Fields are retired rather than deleted, and a
+        // template that is no longer used is simply not chosen.
+        Route::get('hr/contracts/catalogue', [HrContractsController::class, 'catalogue']);
+        Route::get('hr/contracts', [HrContractsController::class, 'index']);
+        Route::post('hr/contracts', [HrContractsController::class, 'store']);
+        Route::get('hr/contracts/{contract}/versions', [HrContractsController::class, 'versions']);
+        // Publishing is its own act with its own diff — see the controller for
+        // why PATCH refuses a field list rather than accepting one.
+        Route::post('hr/contracts/{contract}/versions', [HrContractsController::class, 'publishVersion']);
+        Route::get('hr/contracts/{contract}', [HrContractsController::class, 'show']);
+        Route::patch('hr/contracts/{contract}', [HrContractsController::class, 'update']);
+
+        // ── Attachments (§9, §11) ────────────────────────────────
+        //
+        // One endpoint for every record type that can carry a file, rather than
+        // a nested collection per module. The subject arrives in the body and is
+        // resolved through App\Support\Files\Attachables, which is also where
+        // the authorization comes from: a file is exactly as private as the
+        // thing it hangs off, so there is no `attachments.*` permission and
+        // there must not be one.
+        //
+        // `GET attachments/{attachment}` answers BYTES, not JSON, and never a
+        // public path — a guessable URL to somebody's licence is the §9 failure
+        // this whole primitive has to avoid. The list is the query-string form
+        // above it, which is what keeps the two from colliding.
+        Route::get('attachments', [AttachmentsController::class, 'index']);
+        Route::post('attachments', [AttachmentsController::class, 'store']);
+        Route::get('attachments/{attachment}', [AttachmentsController::class, 'show']);
+        Route::delete('attachments/{attachment}', [AttachmentsController::class, 'destroy']);
+
         // ── Dashboard (§18 Phase 4) ──────────────────────────────
         //
         // `catalogue` before nothing in particular — there is no {id} route to
@@ -229,8 +269,12 @@ Route::prefix('v1')
         // their own prefix precisely so they do NOT inherit that exemption.
         //
         // `bundle` is declared before `{resource}` or it binds as one and 404s.
+        // `inventory` is the §9 data map — what personal data is held, in which
+        // table, and why — and sits beside the other two §9 answers rather than
+        // in a module of its own. Same rule about declaration order applies.
         Route::get('exports', [DataController::class, 'catalogue']);
         Route::get('exports/bundle', [DataController::class, 'bundle']);
+        Route::get('exports/inventory', [DataController::class, 'inventory']);
         Route::get('exports/{resource}', [DataController::class, 'export']);
         Route::get('customers/{customer}/export', [DataController::class, 'person']);
 

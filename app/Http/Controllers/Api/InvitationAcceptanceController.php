@@ -8,7 +8,6 @@ use App\Models\Invitation;
 use App\Models\User;
 use App\Services\Auth\IssueSession;
 use App\Services\Hr\Invitations;
-use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Auth\PasswordPolicy;
 use App\Support\Automations\EventEmitter;
@@ -47,24 +46,43 @@ use Symfony\Component\HttpFoundation\Response;
  * whatever the process handles next, and platform scope skips both the tenant
  * stamp and the §13 subscription floor.
  *
- * ── Two things are checked AGAIN at acceptance ───────────────────
+ * ── An invitation belongs to the ORGANIZATION ────────────────────
  *
- * The invitation was bounded by the inviter's reach when it was sent, and a week
- * is long enough for that to change. So both bounds are re-asked here against
- * the inviter as they are NOW: the role they offered, and the place they offered
- * it at. An invitation sent by somebody who has since been demoted — or switched
- * off — is not honoured, because otherwise a demotion leaves a week's worth of
- * grants they are no longer entitled to make.
+ * Decided 2026-08-11, correcting the first implementation of this file.
  *
- * That does mean an invitation can die because the person who sent it left. The
- * trade is deliberate and the refusal says so, so the fix is one click for
- * anybody still there: send a new one.
+ * Both bounds used to be re-asked here against the INVITER as they are now:
+ * could that person still grant this role, and does their reach still cover this
+ * place. The reasoning was that a demotion should not leave a week's worth of
+ * grants behind it. What it actually built was an invitation that died when the
+ * manager who sent it changed jobs — a new starter turned away at the door
+ * because of a reorganisation on the other side of a business they had not
+ * joined yet, holding a link nobody had withdrawn.
+ *
+ * The bound belongs where the authority does. Reach and role assignability are
+ * checked at SENDING, by HrInvitationsController, against the person choosing —
+ * that is where §4's escalation rule bites, and it is the moment somebody is
+ * actually exercising authority. What survives them leaving is the
+ * organization's decision, not their personal standing.
+ *
+ * So what is re-asked here is only what the ORGANIZATION can still offer:
+ *
+ *   - the role still exists, and the platform has not switched off everything
+ *     behind it (§13)
+ *   - the place still exists and is still switched on
+ *
+ * Whether the individual who sent it is still there, or could still send
+ * another, is not the question. `invited_by_user_id` remains nullable and the
+ * acceptance screen still names them where it can, because "who asked me here"
+ * is worth showing — it is simply no longer a condition of getting in.
  */
 class InvitationAcceptanceController extends Controller
 {
     public function __construct(
         private readonly Invitations $invitations,
-        private readonly ScopeReach $reach,
+        // No ScopeReach here any more. Reach is the INVITER's bound and it is
+        // checked where they exercise it — at sending, in
+        // HrInvitationsController. See the note on this class about who an
+        // invitation belongs to.
         private readonly PermissionCatalogue $catalogue,
         private readonly AuditLogger $audit,
         private readonly EventEmitter $events,
@@ -252,30 +270,56 @@ class InvitationAcceptanceController extends Controller
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        if ($invitation->role === null) {
-            return $this->noLongerGrantable();
+        /*
+         * The role, as the ORGANIZATION can offer it today.
+         *
+         * Gone entirely: `invitations.role_id` is ON DELETE SET NULL, and
+         * RolesController refuses to delete a role with an outstanding
+         * invitation — so this is reachable only by a path that goes around the
+         * API, and it is still checked, because the alternative is an account
+         * created with no role at all.
+         *
+         * Emptied by the platform: §13 switched off every module behind it. See
+         * PermissionCatalogue::platformHasWithdrawnEverything for why that is
+         * the line rather than "any permission is unavailable".
+         */
+        if ($invitation->role === null
+            || $this->catalogue->platformHasWithdrawnEverything($invitation->role)) {
+            return $this->refuseWith(
+                'This invitation can no longer be completed — the role it offers is not '
+                .'something '.$invitation->organization->name.' can give out any more. Ask '
+                .'somebody there to send you a new one.',
+            );
         }
 
-        $inviter = $invitation->invitedBy;
-
-        // No inviter left, or one who can no longer grant this. Both mean the
-        // same thing: nobody currently stands behind what this link offers.
-        if ($inviter === null
-            || ! $this->catalogue->mayAssignRole($inviter, $invitation->role)
-            || ! $this->reach->covers($inviter, $invitation->scopeType(), $invitation->scopeId())) {
-            return $this->noLongerGrantable();
+        // And the place. A franchise that has been switched off or removed since
+        // the link was sent would give somebody an account whose only assignment
+        // is somewhere nobody works.
+        if (! $invitation->scopeIsLive()) {
+            return $this->refuseWith(
+                'This invitation can no longer be completed — the '.$invitation->scopeType()
+                .' it was for has been closed or switched off. Ask somebody at '
+                .$invitation->organization->name.' to send you a new one.',
+            );
         }
 
         return null;
     }
 
-    private function noLongerGrantable(): JsonResponse
+    /**
+     * One code, two sentences.
+     *
+     * `invitation_superseded` is what the client keys off, and both refusals are
+     * the same thing to it: the link is real, it cannot be completed, and a new
+     * one is the fix. The MESSAGE differs because the two send somebody to ask
+     * about different things — a role and a place — and one generic sentence
+     * would have them describing the wrong problem to whoever picks up.
+     */
+    private function refuseWith(string $message): JsonResponse
     {
         return response()->json([
-            'message' => 'This invitation can no longer be completed — the person who sent it '
-                .'is no longer able to grant what it offers. Ask them, or somebody else there, '
-                .'to send you a new one.',
-            'code' => 'invitation_superseded',
+            'message' => $message,
+            'code'    => 'invitation_superseded',
         ], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 

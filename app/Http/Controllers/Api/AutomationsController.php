@@ -14,6 +14,7 @@ use App\Support\Modules\ActionDefinition;
 use App\Support\Modules\ModuleDefinition;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Modules\TriggerDefinition;
+use App\Support\Privacy\SensitiveValues;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -703,12 +704,19 @@ class AutomationsController extends Controller
         return $labels === [] ? $last : implode(', ', $labels).' or '.$last;
     }
 
-    /** @param array<int,array> $actions */
+    /**
+     * @param  array<int,array>  $actions
+     *
+     * The mask is SensitiveValues::MASK rather than a literal, so there is one
+     * masked-looking string in the whole product. A client that learns to
+     * recognise one — and to refuse to save it back over a real value, which
+     * this screen had to learn the hard way — learns it once.
+     */
     private function maskSecrets(array $actions): array
     {
         return array_map(function (array $action) {
             if (isset($action['secret'])) {
-                $action['secret'] = '••••••••';
+                $action['secret'] = SensitiveValues::MASK;
             }
 
             return $action;

@@ -11,11 +11,13 @@ use App\Models\AutomationVersion;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Invitation;
+use App\Models\PlatformModuleFlag;
 use App\Models\Role;
 use App\Models\User;
 use App\Notifications\InvitationLink;
 use App\Services\Hr\Invitations;
 use App\Support\Automations\AutomationEngine;
+use App\Support\Modules\ModuleAvailability;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Tests\Concerns\BuildsTenants;
@@ -378,9 +380,23 @@ class HrInvitationsTest extends TestCase
         $this->assertSame(['mine@example.test'], $emails);
     }
 
-    // ── reach is checked AGAIN at acceptance ─────────────────────
+    // ── an invitation belongs to the ORGANIZATION (decided 2026-08-11) ──
 
-    public function test_an_invitation_from_somebody_since_demoted_is_not_honoured(): void
+    /**
+     * The three tests in this section asserted the opposite rule until today.
+     *
+     * They were right about the code and wrong about the product: acceptance
+     * re-checked the INVITER's role-granting ability and reach, so a manager
+     * being demoted, switched off, or moved to a smaller patch killed every link
+     * they had outstanding. A new starter was turned away because of a change on
+     * the other side of a business they had not joined yet.
+     *
+     * They are kept, inverted, rather than deleted. Each one still exercises the
+     * exact path that used to refuse — which is what makes them a guard against
+     * the old rule coming back rather than three tests that simply stopped
+     * existing.
+     */
+    public function test_an_invitation_from_somebody_since_demoted_is_still_honoured(): void
     {
         $alpha   = $this->provisionTenant('Alpha');
         $role    = $this->roleIn($alpha, 'Dispatcher', ['customers.view', 'customers.edit']);
@@ -394,21 +410,25 @@ class HrInvitationsTest extends TestCase
         ]);
 
         // A week passes and the manager loses the permission the invited role
-        // carries. The grant they made is no longer one they could make.
+        // carries — so they could not send this invitation today. The
+        // organization can still offer it, which is the question that counts.
         $this->inTenant($alpha['org'], fn () => $manager->role->syncPermissionKeys(
             ['hr.view', 'hr.create', 'customers.view'],
         ));
 
-        $this->acceptWith($token, ['password' => 'a-real-password'])
-            ->assertStatus(422)
-            ->assertJsonPath('code', 'invitation_superseded');
+        $this->acceptWith($token, ['password' => 'a-real-password'])->assertCreated();
 
-        $this->inTenant($alpha['org'], fn () => $this->assertNull(
-            User::where('email', 'newstarter@example.test')->first(),
-        ));
+        // And with exactly the role the invitation named. The demotion does not
+        // quietly trim what the new person gets either — that would be the same
+        // bug wearing a friendlier face.
+        $this->inTenant($alpha['org'], function () use ($role) {
+            $user = User::where('email', 'newstarter@example.test')->firstOrFail();
+
+            $this->assertSame($role->id, $user->role_id);
+        });
     }
 
-    public function test_an_invitation_from_somebody_since_deactivated_is_not_honoured(): void
+    public function test_an_invitation_from_somebody_since_deactivated_is_still_honoured(): void
     {
         $alpha   = $this->provisionTenant('Alpha');
         $role    = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
@@ -420,11 +440,145 @@ class HrInvitationsTest extends TestCase
             'role_id' => $role->id, 'scope_type' => 'organization', 'scope_id' => $alpha['org']->id,
         ]);
 
+        // The person who invited them has left. This is the case the old rule
+        // got most visibly wrong: the manager's last act before leaving was
+        // hiring somebody, and it stopped working the moment they were switched
+        // off.
         $this->inTenant($alpha['org'], fn () => $manager->forceFill(['is_active' => false])->save());
+
+        $this->acceptWith($token, ['password' => 'a-real-password'])->assertCreated();
+    }
+
+    /**
+     * And the inviter gone from the row entirely.
+     *
+     * `invited_by_user_id` is ON DELETE SET NULL, and the old rule read "no
+     * inviter left" as "nobody stands behind this". The organization does.
+     */
+    public function test_an_invitation_whose_inviter_is_gone_from_the_row_is_still_honoured(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $token = $this->invite($alpha);
+
+        $this->inTenant($alpha['org'], fn () => Invitation::firstOrFail()
+            ->forceFill(['invited_by_user_id' => null])->save());
+
+        $this->acceptWith($token, ['password' => 'a-real-password'])->assertCreated();
+    }
+
+    // ── what the ORGANIZATION must still be able to offer ────────
+
+    public function test_an_invitation_into_a_franchise_since_switched_off_is_refused(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $role  = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
+
+        $token = $this->invite($alpha, [
+            'role_id' => $role->id, 'scope_type' => 'franchise',
+            'scope_id' => $alpha['franchise']->id,
+        ]);
+
+        $this->inTenant($alpha['org'], fn () => $alpha['franchise']
+            ->forceFill(['is_active' => false])->save());
+
+        $this->acceptWith($token, ['password' => 'a-real-password'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'invitation_superseded')
+            // The sentence has to name the thing that went wrong, or the person
+            // holding the link has no idea what to ask about.
+            ->assertJsonPath('message', fn ($m) => str_contains((string) $m, 'franchise'));
+
+        $this->inTenant($alpha['org'], fn () => $this->assertNull(
+            User::where('email', 'newstarter@example.test')->first(),
+        ));
+    }
+
+    /**
+     * And one that has been removed rather than switched off.
+     *
+     * Franchises are soft-deleted, so the foreign key's ON DELETE CASCADE never
+     * fires: the invitation row survives, pointing at a `deleted_at`. Without
+     * the existence half of the check this would create an assignment to a
+     * franchise that is not in any list.
+     */
+    public function test_an_invitation_into_a_franchise_since_removed_is_refused(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $role  = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
+
+        $token = $this->invite($alpha, [
+            'role_id' => $role->id, 'scope_type' => 'franchise',
+            'scope_id' => $alpha['franchise']->id,
+        ]);
+
+        $this->inTenant($alpha['org'], fn () => $alpha['franchise']->delete());
 
         $this->acceptWith($token, ['password' => 'a-real-password'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'invitation_superseded');
+    }
+
+    /**
+     * §13, at the only line where it should refuse: the platform has switched
+     * off every module behind the invited role, so the account would sign in and
+     * reach nothing.
+     */
+    public function test_an_invitation_is_refused_when_the_platform_has_emptied_its_role(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $role  = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
+
+        $token = $this->invite($alpha, ['role_id' => $role->id]);
+
+        app(ModuleAvailability::class)->setState(
+            'customers', PlatformModuleFlag::DISABLED, reason: 'Incident 41.',
+        );
+
+        $this->acceptWith($token, ['password' => 'a-real-password'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'invitation_superseded');
+    }
+
+    /**
+     * And the line NOT drawn one step earlier, which is the part worth pinning.
+     *
+     * A role that touches a switched-off module alongside a live one is still
+     * worth having: the same thing happens to every employee already here, whose
+     * permissions are filtered by availability without their account being taken
+     * away. `beta` is the ordinary rollout state, so the stricter rule would
+     * kill every outstanding invitation for a switch the organization cannot see.
+     */
+    public function test_a_role_that_keeps_one_available_permission_is_still_honoured(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $role  = $this->roleIn($alpha, 'Dispatcher', ['customers.view', 'jobs.view']);
+
+        $token = $this->invite($alpha, ['role_id' => $role->id]);
+
+        app(ModuleAvailability::class)->setState(
+            'jobs', PlatformModuleFlag::DISABLED, reason: 'Incident 41.',
+        );
+
+        $this->acceptWith($token, ['password' => 'a-real-password'])->assertCreated();
+    }
+
+    /**
+     * A role with nothing on it is the organization's own choice, unchanged.
+     *
+     * It grants nothing before and after, so "the platform has withdrawn
+     * everything" must not be true of it — otherwise an invitation that was
+     * perfectly valid when it was sent is refused for a condition nobody
+     * changed.
+     */
+    public function test_an_invitation_into_a_role_holding_no_permissions_is_honoured(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $role  = $this->roleIn($alpha, 'Nothing Yet', []);
+
+        $this->acceptWith(
+            $this->invite($alpha, ['role_id' => $role->id]),
+            ['password' => 'a-real-password'],
+        )->assertCreated();
     }
 
     // ── §4: email is unique PER organization ─────────────────────
@@ -521,6 +675,33 @@ class HrInvitationsTest extends TestCase
         $this->travelBack();
     }
 
+    /**
+     * The two dead ends do not converge, and the order of the match is why.
+     *
+     * A withdrawn invitation whose week then runs out is still `revoked`: the
+     * organization made a decision and the clock did not un-make it. Under the
+     * old collapse both said `abandoned`, so this could not have been asked —
+     * which is exactly the reporting question the owner named, arriving one week
+     * later on every row.
+     */
+    public function test_a_withdrawn_invitation_stays_revoked_after_its_week_runs_out(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->invite($alpha);
+
+        $id = $this->inTenant($alpha['org'], fn () => Invitation::firstOrFail()->id);
+
+        $this->signedInAs($alpha['admin'])->deleteJson("/api/v1/hr/invitations/{$id}")->assertOk();
+
+        $this->assertSame('revoked', $this->statusOf($alpha));
+
+        $this->travel(Invitations::LIFETIME_DAYS + 1)->days();
+
+        $this->assertSame('revoked', $this->statusOf($alpha));
+
+        $this->travelBack();
+    }
+
     public function test_resending_mints_a_new_token_and_kills_the_old_one(): void
     {
         $alpha = $this->provisionTenant('Alpha');
@@ -552,9 +733,9 @@ class HrInvitationsTest extends TestCase
 
         $this->signedInAs($alpha['admin'])->deleteJson("/api/v1/hr/invitations/{$id}")
             ->assertOk()
-            ->assertJsonPath('data.status', 'abandoned')
-            // Beside the status, because "abandoned" is the same word for
-            // "nobody came" and "we changed our mind".
+            // Its own word since 2026-08-11, not `abandoned`. The timestamp is
+            // carried beside it because the status says what and this says when.
+            ->assertJsonPath('data.status', 'revoked')
             ->assertJsonPath('data.revoked_at', fn ($v) => $v !== null);
 
         $this->lookup($token)->assertNotFound();
@@ -827,12 +1008,17 @@ class HrInvitationsTest extends TestCase
      * Accepting, with the token in the BODY.
      *
      * And with the scoped container forgotten first, which is not tidiness.
-     * ScopeReach is registered `scoped` and memoises per actor; Laravel does NOT
-     * reset scoped instances between requests made inside one test. So a change
-     * to the inviter's reach made after the invite — the whole point of the
-     * acceptance-time re-check — was invisible to the second request, and a test
-     * of that rule passed whether or not the rule still existed. Deleting the
-     * reach clause from the controller left the suite green.
+     * Laravel does NOT reset scoped instances between requests made inside one
+     * test, and several of the classes acceptance consults memoise: ScopeReach
+     * caches reach per actor, ModuleAvailability caches the platform flags for
+     * its lifetime. So a change made between the invite and the accept — which
+     * is what every test in this file is about — was invisible to the second
+     * request, and a test of the rule passed whether or not the rule still
+     * existed. Deleting the reach clause from the controller left the suite
+     * green.
+     *
+     * The classes have changed since — reach is no longer asked at acceptance,
+     * and §13 availability is — but the trap has not, so neither has this line.
      *
      * A real request gets a fresh container. This makes the test agree with it.
      */
@@ -851,14 +1037,19 @@ class HrInvitationsTest extends TestCase
     }
 
     /**
-     * The half of the re-check that had no test, and could not have had one.
+     * The reach half of the old rule, inverted.
      *
-     * Both shipped tests move the inviter's PERMISSIONS, which trips
-     * mayAssignRole and never reaches the reach clause beside it. This narrows
-     * the inviter's ASSIGNMENT instead, leaving their permissions untouched, so
-     * it is the reach check or nothing.
+     * It was written because the two shipped tests both moved the inviter's
+     * PERMISSIONS, which tripped mayAssignRole and never reached the reach
+     * clause beside it — so that clause could be deleted with the suite still
+     * green. It narrows the inviter's ASSIGNMENT instead, leaving their
+     * permissions untouched, which makes it the one test that exercised reach
+     * at acceptance and nothing else.
+     *
+     * That makes it the right test to keep now that reach is deliberately NOT
+     * asked here: it is the only one that would notice the clause coming back.
      */
-    public function test_an_invitation_from_somebody_whose_reach_no_longer_covers_it_is_refused(): void
+    public function test_an_invitation_is_honoured_though_the_inviters_reach_has_narrowed(): void
     {
         $alpha = $this->provisionTenant('Alpha');
         $role  = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
@@ -873,7 +1064,8 @@ class HrInvitationsTest extends TestCase
         ]);
 
         // A week passes. Their permissions are untouched — only where they may
-        // act has narrowed, to the one franchise.
+        // act has narrowed, to the one franchise. The place the invitation names
+        // is still open, and the organization still stands behind it.
         $this->inTenant($alpha['org'], function () use ($manager, $alpha) {
             $manager->assignments()->delete();
             $manager->assignments()->create([
@@ -885,9 +1077,19 @@ class HrInvitationsTest extends TestCase
             ]);
         });
 
-        $this->acceptWith($token, ['password' => 'a-real-password'])
-            ->assertStatus(422)
-            ->assertJsonPath('code', 'invitation_superseded');
+        $this->acceptWith($token, ['password' => 'a-real-password'])->assertCreated();
+
+        // Organization-wide, exactly as the link said — not trimmed to whatever
+        // the inviter can reach today.
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            $user = User::where('email', 'newstarter@example.test')->firstOrFail();
+
+            $assignments = Assignment::where('user_id', $user->id)->get();
+
+            $this->assertCount(1, $assignments);
+            $this->assertSame(Assignment::SCOPE_ORGANIZATION, $assignments[0]->scopeType());
+            $this->assertSame($alpha['org']->id, $assignments[0]->scopeId());
+        });
     }
 
 }

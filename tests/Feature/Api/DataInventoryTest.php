@@ -1,0 +1,304 @@
+<?php
+
+namespace Tests\Feature\Api;
+
+use App\Models\Customer;
+use App\Support\Privacy\HoldsPersonalData;
+use App\Support\Privacy\PersonalDataEntry;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsTenants;
+use Tests\TestCase;
+
+/**
+ * The §9 data inventory — what personal data, in which table, why.
+ *
+ * §9 puts it in the "build now" list and gives the reason: "Impossible to
+ * reconstruct later; trivial to maintain as you go." The HR plan sharpens it —
+ * once a tenant defines their own fields, an erasure request cannot be answered
+ * without one, because nobody but the tenant knows what `acct` holds.
+ *
+ * The most valuable test here is the last one, which fails when somebody adds a
+ * table of personal data and does not declare it.
+ */
+class DataInventoryTest extends TestCase
+{
+    use BuildsTenants;
+    use RefreshDatabase;
+
+    public function test_it_lists_the_tables_holding_personal_data_and_why(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $body = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/exports/inventory')->assertOk()->json();
+
+        $tables = array_column($body['holdings'], 'table');
+
+        // The obvious ones, and the ones that get forgotten. §9 names audit logs
+        // and notification history among the places personal data hides, and an
+        // inventory listing only `users` and `customers` would be worse than
+        // none — because it would be believed.
+        foreach (['users', 'customers', 'invitations', 'attachments',
+            'audit_events', 'notifications'] as $table) {
+            $this->assertContains($table, $tables, "The inventory does not mention {$table}.");
+        }
+
+        $users = collect($body['holdings'])->firstWhere('table', 'users');
+
+        // A purpose per table and a purpose per field. "We hold a phone number"
+        // is readable off a schema; "we hold it to call ahead on the day" is the
+        // part that cannot be reconstructed later, and is what a rights request
+        // actually needs.
+        $this->assertNotEmpty($users['purpose']);
+        $this->assertNotEmpty($users['retention']);
+
+        foreach ($users['fields'] as $field) {
+            $this->assertNotEmpty($field['purpose'], "{$field['field']} is listed with no reason.");
+            $this->assertNotEmpty($field['category']);
+        }
+    }
+
+    /**
+     * Counts, and counts that belong to the right organization.
+     *
+     * "We may hold audit entries about you" and "we hold 41,208 of them" are
+     * different answers. A count that quietly included another customer's rows
+     * would be both a wrong answer and a tenant leak.
+     */
+    public function test_the_counts_are_this_organizations_only(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $beta  = $this->provisionTenant('Beta');
+
+        $this->inTenant($beta['org'], fn () => Customer::create([
+            'owning_franchise_id' => $beta['franchise']->id,
+            'number' => 'C-beta-1', 'name' => 'Somebody Else',
+        ]));
+
+        $this->inTenant($alpha['org'], fn () => Customer::create([
+            'owning_franchise_id' => $alpha['franchise']->id,
+            'number' => 'C-alpha-1', 'name' => 'Ours',
+        ]));
+
+        $holdings = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/exports/inventory')->assertOk()->json('holdings');
+
+        $customers = collect($holdings)->firstWhere('table', 'customers');
+
+        $this->assertSame(1, $customers['rows']);
+
+        // The audit log is the model with no tenant SCOPE — it is written in
+        // platform scope too — so its count is the one that needs the predicate
+        // spelt out, and the one that would silently have been every
+        // organization's.
+        $events = collect($holdings)->firstWhere('table', 'audit_events');
+
+        $this->assertGreaterThan(0, $events['rows']);
+        $this->assertLessThan(
+            $this->inTenant($alpha['org'], fn () => \App\Models\AuditEvent::count()) + 1,
+            $events['rows'],
+            'The audit count looks like it spans organizations.',
+        );
+    }
+
+    /**
+     * A listing that says what it cannot see.
+     *
+     * The failure mode of an inventory is being trusted as complete. Backups
+     * cannot be rewritten and web server logs are outside the application; both
+     * are named in §9, and both are invisible to anything that reads models.
+     */
+    public function test_it_publishes_what_it_cannot_account_for(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $caveats = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/exports/inventory')->assertOk()->json('caveats');
+
+        $this->assertNotEmpty($caveats);
+
+        $joined = strtolower(implode(' ', $caveats));
+
+        $this->assertStringContainsString('backup', $joined);
+    }
+
+    /**
+     * Tenant-defined data is named as such.
+     *
+     * This is the entry that makes the inventory worth having once Contracts
+     * lands: an uploaded file's contents cannot be described by the schema,
+     * because the person uploading decided what it was. Saying so is the honest
+     * answer; omitting it because it cannot be quantified is the misleading one.
+     */
+    public function test_data_the_schema_cannot_describe_is_flagged_rather_than_omitted(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $holdings = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/exports/inventory')->assertOk()->json('holdings');
+
+        $attachments = collect($holdings)->firstWhere('table', 'attachments');
+
+        $this->assertTrue(
+            collect($attachments['fields'])->contains(fn (array $f) => $f['tenant_defined']),
+            'Uploaded file contents are personal data the schema cannot describe, and the '
+            .'inventory has to say so rather than leave it out.',
+        );
+    }
+
+    public function test_it_is_gated_by_the_same_permissions_the_bundle_needs(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        // It describes every resource, so reading it means being allowed to read
+        // all of them — the same rule `exports/bundle` applies.
+        $partial = $this->userWithRole($alpha, 'Partial', ['data.view', 'customers.view']);
+
+        $this->signedInAs($partial)->getJson('/api/v1/exports/inventory')->assertForbidden();
+
+        $full = $this->userWithRole($alpha, 'Full', ['data.view', 'customers.view', 'jobs.view']);
+
+        $this->signedInAs($full)->getJson('/api/v1/exports/inventory')->assertOk();
+    }
+
+    /**
+     * The test that earns its place.
+     *
+     * A hand-kept inventory has one failure mode and it is fatal to the purpose:
+     * a table of personal data is added, nobody thinks about the inventory, and
+     * the document that is supposed to be the complete answer confidently omits
+     * it. DataInventory discovers implementors rather than reading a list, so
+     * the only way to be missing is to not implement the interface — and this is
+     * what makes that a decision rather than an oversight.
+     *
+     * DERIVED, not a list somebody keeps.
+     *
+     * This was a hand-written array of six model classes — and on the very day
+     * it was written, `ContractSignature` shipped in the same changeset holding
+     * a person's name, their typed affirmation, their IP address and their user
+     * agent, and was on neither the interface nor the list. Nothing failed.
+     *
+     * That is verbatim the failure `DataInventory`'s docblock says discovery
+     * prevents: "the only way to be missing from here is to not implement the
+     * interface". True, and circular — discovery finds implementors and cannot
+     * find the model that never declared itself. A hand-kept guard against a
+     * hand-kept list is the same maintenance burden twice.
+     *
+     * So the check is derived instead: any model with a column whose NAME says
+     * it is about a person must declare itself, or name itself here with the
+     * reason it does not. Adding a table of personal data now fails the build
+     * the day it lands rather than the day somebody audits it.
+     */
+    public function test_every_model_holding_a_person_shaped_column_declares_it(): void
+    {
+        // Columns whose presence means a row is about a human being. Narrow on
+        // purpose: a false positive here is a nuisance, and a false negative is
+        // the whole problem.
+        $tells = [
+            'email', 'phone', 'first_name', 'last_name', 'middle_name',
+            'date_of_birth', 'gender', 'ip_address', 'user_agent',
+            'signer_label', 'affirmation', 'address_line1',
+        ];
+
+        $exempt = [
+            /*
+             * A COMPANY IS NOT A PERSON. §3 makes it the legal-ish entity whose
+             * name and address go on an invoice, so `phone` and `address_line1`
+             * are the business's, not an individual's. The honest caveat: for a
+             * sole trader those are the same, and if EzBizi ever markets at
+             * one-person businesses this belongs back in the inventory.
+             */
+            \App\Models\Company::class,
+
+            /*
+             * EzBizi's own staff (§4.2), in a separate control plane. The
+             * inventory is answered PER ORGANIZATION — "what do you hold about
+             * me" asked by a tenant's employee — and a platform operator's
+             * address is not in that answer. It is our own obligation and a
+             * different register.
+             */
+            \App\Models\PlatformStaff::class,
+        ];
+
+        $missing = [];
+
+        foreach ((new \Symfony\Component\Finder\Finder)->files()->in(app_path('Models'))->name('*.php') as $file) {
+            $class = 'App\\Models\\'.$file->getFilenameWithoutExtension();
+
+            if (! class_exists($class) || ! is_subclass_of($class, \Illuminate\Database\Eloquent\Model::class)) {
+                continue;
+            }
+
+            $model = new $class;
+            $table = $model->getTable();
+
+            if (! \Illuminate\Support\Facades\Schema::hasTable($table)) {
+                continue;
+            }
+
+            $columns = \Illuminate\Support\Facades\Schema::getColumnListing($table);
+            $found   = array_values(array_intersect($tells, $columns));
+
+            if ($found === [] || in_array($class, $exempt, true)) {
+                continue;
+            }
+
+            if (! is_subclass_of($class, HoldsPersonalData::class)) {
+                $missing[] = $class.' ('.implode(', ', $found).')';
+            }
+        }
+
+        sort($missing);
+
+        $this->assertSame([], $missing, implode(PHP_EOL, [
+            'These hold columns that describe a person and do not implement',
+            'HoldsPersonalData, so the §9 inventory does not list them and an',
+            'erasure request cannot be answered for what is in them:',
+            '',
+            '  '.implode(PHP_EOL.'  ', $missing),
+            '',
+            'Declare purpose, retention and the fields — or add the class to the',
+            'exempt list in this test, WITH the reason.',
+        ]));
+    }
+
+
+    /** Every declared entry is usable — a category and a purpose, not a stub. */
+    public function test_every_declaration_is_answerable_rather_than_a_placeholder(): void
+    {
+        $categories = [
+            PersonalDataEntry::IDENTITY, PersonalDataEntry::CONTACT,
+            PersonalDataEntry::FINANCIAL, PersonalDataEntry::ACTIVITY,
+            PersonalDataEntry::TECHNICAL, PersonalDataEntry::CONTENT,
+        ];
+
+        foreach (glob(app_path('Models').'/*.php') as $file) {
+            $class = 'App\\Models\\'.basename($file, '.php');
+
+            if (! is_subclass_of($class, HoldsPersonalData::class)
+                || ! is_subclass_of($class, Model::class)) {
+                continue;
+            }
+
+            $this->assertNotEmpty($class::personalDataPurpose(), "{$class} states no purpose.");
+            $this->assertNotEmpty($class::personalDataRetention(), "{$class} states no retention.");
+            $this->assertNotEmpty($class::personalDataHeld(), "{$class} lists no fields.");
+
+            foreach ($class::personalDataHeld() as $entry) {
+                $this->assertContains($entry->category, $categories, sprintf(
+                    '%s::%s uses a category nothing else recognises.',
+                    class_basename($class), $entry->field,
+                ));
+
+                // A purpose is a sentence somebody reads in an answer to a rights
+                // request. Three words is a placeholder wearing a purpose's
+                // clothes, and it is the field that cannot be reconstructed later.
+                $this->assertGreaterThan(30, strlen($entry->purpose), sprintf(
+                    '%s::%s is listed with a purpose too short to answer anything.',
+                    class_basename($class), $entry->field,
+                ));
+            }
+        }
+    }
+}

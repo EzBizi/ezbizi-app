@@ -214,21 +214,31 @@ class AssignableRole {
 
 /// A status as a person reads it.
 ///
-/// The five are the owner's own, settled: sent · received · in progress ·
-/// completed · abandoned. They are compiled in under §2.1's carve-out for API
-/// contracts — an organization does not get to invent a sixth — and anything
-/// this build has not heard of is shown exactly as the server sent it rather
-/// than as "unknown", which would hide the one fact worth knowing.
+/// The six are the owner's own, settled: sent · received · in progress ·
+/// completed · abandoned · revoked. They are compiled in under §2.1's carve-out
+/// for API contracts — an organization does not get to invent a seventh — and
+/// anything this build has not heard of is shown exactly as the server sent it
+/// rather than as "unknown", which would hide the one fact worth knowing.
+///
+/// `revoked` was the fifth-and-a-half for a while: the server reported a
+/// withdrawn invitation as `abandoned` and carried `revoked_at` beside it, and
+/// this list had no word for it. It is a word now (decided 2026-08-11), and the
+/// two must not be shown as the same thing — see [invitationStatusNeedsAttention].
 String invitationStatusLabel(String status) => switch (status) {
   'sent' => 'Sent',
   'received' => 'Received',
   'in_progress' => 'In progress',
   'completed' => 'Completed',
   'abandoned' => 'Abandoned',
+  'revoked' => 'Revoked',
   _ => status,
 };
 
 /// Whether a status is something the reader needs to notice rather than merely
 /// know. An abandoned invitation is somebody who was asked to join and did not,
 /// which is the one row on the list that wants doing something about.
+///
+/// Revoked deliberately does NOT count. Somebody here decided to withdraw it, so
+/// there is nothing to chase and nothing went wrong — marking it would train the
+/// reader to ignore the marker, which costs them the rows that do need chasing.
 bool invitationStatusNeedsAttention(String status) => status == 'abandoned';

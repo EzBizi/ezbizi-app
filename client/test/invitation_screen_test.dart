@@ -224,7 +224,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.textContaining('is no longer able to grant what it offers'),
+      find.textContaining('is not something Serenisima can give out any more'),
       findsOneWidget,
     );
   });
@@ -335,12 +335,18 @@ MockClientHandler _handler({
                       ],
                     },
                   }
+                // Reworded on 2026-08-11, and the fixture with it. Acceptance
+                // used to be re-checked against the INVITER, so the refusal
+                // blamed them — "the person who sent it is no longer able to
+                // grant what it offers". An invitation belongs to the
+                // organization now, so both refusals are about what the
+                // organization can still offer, and a fixture still quoting the
+                // old sentence would be describing a server that is gone.
                 : {
                     'message':
-                        'This invitation can no longer be completed — the '
-                        'person who sent it is no longer able to grant what '
-                        'it offers. Ask them, or somebody else there, to send '
-                        'you a new one.',
+                        'This invitation can no longer be completed — the role '
+                        'it offers is not something Serenisima can give out any '
+                        'more. Ask somebody there to send you a new one.',
                     'code': 'invitation_superseded',
                   },
             acceptStatus,

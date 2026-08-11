@@ -4,6 +4,7 @@ import '../core/automation_catalogue.dart';
 import '../core/timestamps.dart';
 import '../widgets/catalogue_picker.dart';
 import '../widgets/error_note.dart';
+import '../widgets/numbered_step.dart';
 import '../widgets/tag.dart';
 
 /// Building one automation, on the page rather than in a panel (plan §5.5).
@@ -1612,6 +1613,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     );
   }
 
+  /// The numbered-step shape this screen invented, now drawn by a shared widget
+  /// so the contract designer cannot slowly disagree with it about a heading
+  /// size. Kept as a method because every call site here reads
+  /// `_step(context, 3, …)` and rewriting six of them buys nothing.
   Widget _step(
     BuildContext context,
     int number,
@@ -1620,41 +1625,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     Widget body, {
     Widget? action,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              radius: 13,
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              child: Text(
-                '$number',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 2),
-                  Text(note, style: Theme.of(context).textTheme.bodyMedium),
-                ],
-              ),
-            ),
-            if (action != null) ...[const SizedBox(width: 12), action],
-          ],
-        ),
-        const SizedBox(height: 12),
-        Padding(padding: const EdgeInsets.only(left: 38), child: body),
-      ],
+    return NumberedStep(
+      number: number,
+      title: title,
+      note: note,
+      action: action,
+      child: body,
     );
   }
 }

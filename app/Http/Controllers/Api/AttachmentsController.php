@@ -1,0 +1,266 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Models\Attachment;
+use App\Support\Audit\AuditLogger;
+use App\Support\Files\Attachables;
+use App\Support\Files\FileStore;
+use App\Support\Files\UploadLimits;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+/**
+ * Files on records (plan §9, §11).
+ *
+ * ── Never a public path, and this is the §9 failure it avoids ────
+ *
+ * A file at a URL anybody can construct is a file anybody can read. For a logo
+ * that means enumerating the platform's customers; for the files this endpoint
+ * exists to carry — a signed contract, a photograph of somebody's licence,
+ * proof of an address — it means the personal data of an employee of a customer,
+ * served to a stranger who guessed a uuid. There is no path on the wire and no
+ * `public` disk in play: `GET /attachments/{attachment}` runs the same
+ * authorization the record itself would.
+ *
+ * ── Authorization is the subject's, every time ───────────────────
+ *
+ * `view` on the record to list or download, `update` on the record to add or
+ * remove. Never a permission of this endpoint's own — see Attachables for why a
+ * second answer to "who may read this" is a second answer that drifts.
+ *
+ * That also means reach is applied without this file knowing what reach is. A
+ * job's policy asks `canActOnFranchise`; a customer's asks nothing of the kind.
+ * Both are right for their record, and neither is restated here.
+ *
+ * ── The type comes in the BODY, not the path ─────────────────────
+ *
+ * `POST /attachments` with `attachable_type` and `attachable_id`, rather than
+ * `POST /jobs/{job}/attachments`. One endpoint that resolves a declared type is
+ * one place to get authorization right; a route per module is a route per
+ * module to forget it on. It also keeps `GET /attachments/{attachment}` free of
+ * the two-segment ambiguity a nested collection would have introduced.
+ */
+class AttachmentsController extends Controller
+{
+    public function __construct(
+        private readonly FileStore $files,
+        private readonly UploadLimits $limits,
+        private readonly AuditLogger $audit,
+    ) {}
+
+    /**
+     * GET /api/v1/attachments?attachable_type=jobs&attachable_id=...
+     *
+     * Everything on one record. Not paginated, deliberately: this is the file
+     * list on a record's own screen, and a record with enough attachments to
+     * need paging is a different product decision than a page parameter.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $subject = $this->subject($request);
+
+        $this->authorize('view', $subject);
+
+        return response()->json([
+            'data' => $subject->attachments()->with('uploadedBy:id,name')->get()
+                ->map(fn (Attachment $a) => $a->present())->all(),
+
+            // So the upload control can state the limit before somebody spends
+            // four minutes uploading something that will be refused. The number
+            // is the one the validator will really apply — UploadLimits clamps
+            // the configured value to what PHP will carry.
+            'limits' => [
+                'max_kilobytes' => $this->limits->maxKilobytes(),
+                'max_readable'  => $this->limits->humanMax(),
+                'extensions'    => $this->limits->extensions(),
+            ],
+        ]);
+    }
+
+    /** POST /api/v1/attachments */
+    public function store(Request $request): JsonResponse
+    {
+        // BEFORE validation, because a file PHP refused for its own size arrives
+        // present and empty — `max:` has nothing to weigh and the caller is told
+        // the transfer broke. See UploadLimits.
+        $this->limits->assertUploadArrived($request, 'file');
+
+        $subject = $this->subject($request);
+
+        $this->authorize('update', $subject);
+
+        $request->validate(
+            $this->limits->rulesFor('file'),
+            $this->limits->messagesFor('file'),
+        );
+
+        $file = $request->file('file');
+
+        /*
+         * All three read BEFORE the file moves.
+         *
+         * `store()` moves the temporary upload, after which `getSize()` and
+         * `getRealPath()` describe a file that is no longer there. Read
+         * afterwards they answer false and 0, and the row records a zero-byte
+         * file with the sha256 of an empty string — which looks like data and
+         * is not.
+         */
+        $size     = $file->getSize();
+        $checksum = hash_file('sha256', $file->getRealPath());
+        // From the CONTENT. `getClientMimeType()` is whatever the uploader's
+        // browser claimed, and this value is echoed back as a Content-Type on
+        // every download — a caller-supplied one is a caller-supplied header.
+        $mime = $file->getMimeType() ?: 'application/octet-stream';
+
+        $path = $this->files->put(
+            $file,
+            $this->files->directoryFor('attachments', $request->user()->organization_id),
+        );
+
+        $attachment = DB::transaction(function () use ($request, $subject, $path, $file, $mime, $size, $checksum) {
+            $attachment = new Attachment([
+                'attachable_type' => $request->input('attachable_type'),
+                'attachable_id'   => $subject->getKey(),
+                // Kept for the person, not for the filesystem: `path` is the
+                // framework's own random name, and a filename from a request
+                // never goes near a directory. Trimmed to the column rather
+                // than refused — a long name is not a reason to lose the file.
+                'original_name' => mb_substr((string) $file->getClientOriginalName(), 0, 255),
+                'mime'          => mb_substr($mime, 0, 160),
+                'uploaded_by_user_id' => $request->user()->getKey(),
+            ]);
+
+            $attachment->forceFill([
+                'disk'       => $this->files->defaultDisk(),
+                'path'       => $path,
+                'size_bytes' => $size,
+                'checksum'   => $checksum,
+            ])->save();
+
+            // §10: the record and its history in one transaction. The checksum
+            // is in the entry because "which file was attached" is a question
+            // an audit trail should be able to answer after the file is gone.
+            $this->audit->log('attachment.added', $attachment, metadata: [
+                'original_name' => $attachment->original_name,
+                'mime'          => $attachment->mime,
+                'size_bytes'    => $attachment->size_bytes,
+                'checksum'      => $attachment->checksum,
+                'attached_to'   => [
+                    'type' => $attachment->attachable_type,
+                    'id'   => $attachment->attachable_id,
+                ],
+            ]);
+
+            return $attachment;
+        });
+
+        return response()->json(['data' => $attachment->present()], Response::HTTP_CREATED);
+    }
+
+    /**
+     * GET /api/v1/attachments/{attachment} — the bytes.
+     *
+     * Bound tenant-scoped, so another organization's id is a 404 from the scope
+     * before this method runs. The policy check below is the second gate and the
+     * one that matters within an organization: being in the same business does
+     * not make somebody's employment file yours to read.
+     */
+    public function show(Attachment $attachment): StreamedResponse
+    {
+        $this->authorize('view', $this->subjectOf($attachment));
+
+        return $this->files->serve(
+            $attachment->path,
+            $attachment->disk,
+            $attachment->mime,
+            $attachment->original_name,
+            // Never `inline`. The mime is detected rather than claimed, which
+            // makes it honest, not safe — an honest `text/html` rendered on this
+            // origin is still script running as the reader. FileStore sends
+            // `nosniff` beside this; two locks, because a download endpoint for
+            // arbitrary customer files is exactly where one is not enough.
+            disposition: 'attachment',
+        );
+    }
+
+    /** DELETE /api/v1/attachments/{attachment} */
+    public function destroy(Attachment $attachment): JsonResponse
+    {
+        $this->authorize('update', $this->subjectOf($attachment));
+
+        $disk = $attachment->disk;
+        $path = $attachment->path;
+
+        DB::transaction(function () use ($attachment) {
+            // Logged with everything about the file, because after this there is
+            // no row left to look at and the bytes are gone too. An entry saying
+            // only "an attachment was deleted" answers nothing anybody would ask.
+            $this->audit->log('attachment.removed', $attachment, metadata: [
+                'original_name' => $attachment->original_name,
+                'checksum'      => $attachment->checksum,
+                'attached_to'   => [
+                    'type' => $attachment->attachable_type,
+                    'id'   => $attachment->attachable_id,
+                ],
+            ]);
+
+            $attachment->delete();
+        });
+
+        // Outside the transaction and after it, in that order. A file removed
+        // first and a transaction that then rolls back leaves a row pointing at
+        // nothing — a download that 404s with no explanation. This way round the
+        // worst case is bytes with no row, which the §9 sweep can find.
+        $this->files->delete($path, $disk);
+
+        return response()->json(['message' => 'Attachment removed.']);
+    }
+
+    // ── shared ───────────────────────────────────────────────────
+
+    /**
+     * The record this request is about, resolved from a DECLARED type.
+     *
+     * `attachable_type` is a string from a request body; it is looked up in
+     * Attachables and never treated as a class name. The find is tenant-scoped,
+     * so another organization's id answers 404 — the same answer as a type that
+     * exists and an id that does not, which is the answer that says nothing.
+     */
+    private function subject(Request $request): Model
+    {
+        $input = $request->validate([
+            'attachable_type' => ['required', 'string', Attachables::rule()],
+            'attachable_id'   => ['required', 'uuid'],
+        ]);
+
+        $class = Attachables::classFor($input['attachable_type']);
+
+        $subject = $class::query()->find($input['attachable_id']);
+
+        abort_if($subject === null, Response::HTTP_NOT_FOUND);
+
+        return $subject;
+    }
+
+    /**
+     * The subject of an attachment that already exists.
+     *
+     * A missing subject is a 404 rather than an open door. The morph pair has no
+     * foreign key behind it (see the migration), so an orphan is possible in
+     * principle — and an orphan whose authorization cannot be asked must not be
+     * readable, because there is nothing left to ask.
+     */
+    private function subjectOf(Attachment $attachment): Model
+    {
+        $subject = $attachment->attachable;
+
+        abort_if($subject === null, Response::HTTP_NOT_FOUND);
+
+        return $subject;
+    }
+}

@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use App\Models\Concerns\HasTotp;
 use App\Support\Modules\ModuleAvailability;
+use App\Support\Privacy\HoldsPersonalData;
+use App\Support\Privacy\PersonalDataEntry;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -31,7 +33,7 @@ use Laravel\Sanctum\HasApiTokens;
     'first_name', 'middle_name', 'last_name', 'phone', 'gender', 'date_of_birth',
 ])]
 #[Hidden(['password', 'remember_token', 'totp_secret', 'pending_totp_secret', 'recovery_codes'])]
-class User extends Authenticatable
+class User extends Authenticatable implements HoldsPersonalData
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory;
@@ -41,6 +43,50 @@ class User extends Authenticatable
     use HasTotp;
     use HasApiTokens;
     use Notifiable;
+
+    // ── §9 data inventory ────────────────────────────────────────
+
+    public static function personalDataPurpose(): string
+    {
+        return 'The people who work at this organization. Every employee is an account, '
+            .'so this is where their name, contact details and second factor live — and the '
+            .'HR plan\'s one-home rule means it is the ONLY place they live: HR points here '
+            .'rather than keeping a second copy.';
+    }
+
+    public static function personalDataRetention(): string
+    {
+        return 'For as long as the account exists. Somebody who leaves is deactivated rather '
+            .'than deleted, because everything they did stays attributed to them (§5) — so '
+            .'the record of a former employee is kept deliberately, and erasing one means '
+            .'anonymising it rather than removing the row.';
+    }
+
+    public static function personalDataHeld(): array
+    {
+        return [
+            new PersonalDataEntry('name, first_name, middle_name, last_name',
+                PersonalDataEntry::IDENTITY,
+                'Who somebody is, and the name shown against everything they do.'),
+            new PersonalDataEntry('email', PersonalDataEntry::CONTACT,
+                'The identity they sign in with, and where a password reset goes.'),
+            new PersonalDataEntry('phone', PersonalDataEntry::CONTACT,
+                'Reaching a colleague about work in progress.'),
+            new PersonalDataEntry('date_of_birth', PersonalDataEntry::IDENTITY,
+                'Asked at onboarding because contracts and payroll need it. Deliberately '
+                .'excluded from the audit log — §9 gives it a legal weight that an '
+                .'append-only table erasure cannot reach is the wrong home for.'),
+            new PersonalDataEntry('gender', PersonalDataEntry::IDENTITY,
+                'Optional, and free text rather than a closed list. Held only where '
+                .'somebody chose to give it.'),
+            new PersonalDataEntry('avatar_path', PersonalDataEntry::IDENTITY,
+                'A photograph of the person, served only to their own organization.'),
+            new PersonalDataEntry('totp_secret, pending_totp_secret, recovery_codes',
+                PersonalDataEntry::TECHNICAL,
+                'The second factor, where the account has one.',
+                encrypted: true),
+        ];
+    }
 
     protected function casts(): array
     {

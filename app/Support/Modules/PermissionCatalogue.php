@@ -341,8 +341,6 @@ class PermissionCatalogue
      */
     public function keysGrantedBy(Role $role): array
     {
-        $keys = $role->isAdministrator() ? $this->keys() : $role->permissionKeys();
-
         /*
          * Filtered by availability, exactly as heldBy() is — and the asymmetry
          * was a lockout, not a nuisance.
@@ -369,12 +367,74 @@ class PermissionCatalogue
          * same organization.
          */
         return array_values(array_filter(
-            $keys,
+            $this->keysDeclaredBy($role),
             fn (string $key) => $this->availability->isPermissionAvailable(
                 $key,
                 $role->organization,
             ),
         ));
+    }
+
+    /**
+     * The same list BEFORE §13 is applied — what the organization itself put on
+     * this role.
+     *
+     * Split out of keysGrantedBy so the two can be compared, which is the only
+     * way to ask whether the PLATFORM has taken something away rather than the
+     * organization never having granted it. Those two produce an identical empty
+     * list and mean opposite things: one is a role somebody deliberately created
+     * with nothing on it, the other is a role whose every module has been
+     * switched off underneath it.
+     *
+     * Intersected with the registry for the same reason heldBy() is: a key left
+     * in `permission_role` by a module that no longer exists grants nothing, and
+     * must not count as something the role declares.
+     *
+     * @return string[]
+     */
+    public function keysDeclaredBy(Role $role): array
+    {
+        return $role->isAdministrator()
+            ? $this->keys()
+            : array_values(array_intersect($this->keys(), $role->permissionKeys()));
+    }
+
+    /**
+     * Has the platform left this role with nothing at all to grant? (§13)
+     *
+     * Asked at invitation acceptance, where the question is what the
+     * ORGANIZATION can still offer somebody who has not joined yet. A role whose
+     * every module has been switched off produces an account that signs in and
+     * reaches nothing, with nothing on screen saying why — which is the exact
+     * failure `invitations.role_id` exists to prevent, arriving a week late.
+     *
+     * ── Why this is not "every permission must still be available" ──
+     *
+     * That stricter reading was considered and rejected, and the reason is
+     * recorded because it is the version somebody will propose again.
+     *
+     * `beta` is the ordinary rollout state: a module is available to a pilot
+     * list and unavailable to everyone else. Under the strict rule, every
+     * outstanding invitation into any role that touches that module would be
+     * refused at acceptance — for a switch the organization cannot see, did not
+     * set and cannot undo. It is the same shape as the lockout recorded in
+     * keysGrantedBy above.
+     *
+     * It would also be inconsistent with how the app treats everybody already
+     * here. `heldBy()` filters an existing employee's permissions by the same
+     * availability rule, so a switched-off module quietly costs them those keys
+     * and nothing else — they are not signed out and their role is not taken
+     * away. A new starter should land in the same place, not be turned away at
+     * the door for it.
+     *
+     * A role that grants nothing because nobody put anything on it is left
+     * alone: that is the organization's own choice, it was as true when the
+     * invitation was sent as it is now, and refusing it would break a link that
+     * was valid the day it was issued.
+     */
+    public function platformHasWithdrawnEverything(Role $role): bool
+    {
+        return $this->keysDeclaredBy($role) !== [] && $this->keysGrantedBy($role) === [];
     }
 
     /**

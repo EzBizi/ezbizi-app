@@ -246,11 +246,25 @@ class _InvitationsTabState extends State<InvitationsTab> {
         .where((part) => part.trim().isNotEmpty)
         .join(' ');
 
+    // Two ends, and neither has anything left to do to it.
+    //
     // An accepted invitation is a person now, and the Records tab is where they
     // live. Resending would mint a fresh token for an account that already
-    // exists; revoking would take back something already spent. The row stays,
-    // because how somebody got here is worth being able to read.
-    final settled = status == 'completed';
+    // exists; revoking would take back something already spent.
+    //
+    // A revoked one is a decision somebody here made. The server refuses to
+    // resend it — "send a new one if you have changed your mind, so the record
+    // still shows what was decided and when" — so the button was a control that
+    // could only ever answer an error, and Revoke on it does nothing at all.
+    // This row could not tell revoked from expired until `revoked` became a
+    // status of its own; now it can, so it stops offering both.
+    //
+    // Expired is deliberately NOT settled: chasing one that lapsed is the single
+    // most useful thing Resend does.
+    //
+    // The row stays either way, because how somebody got here — or did not — is
+    // worth being able to read.
+    final settled = status == 'completed' || status == 'revoked';
 
     return Card(
       child: Padding(
@@ -315,22 +329,20 @@ class _InvitationsTabState extends State<InvitationsTab> {
 
   /// What became of it, in a phrase.
   ///
-  /// "Abandoned" is one word for two different things — nobody came, and we
-  /// changed our mind — and the two want opposite responses. The server carries
-  /// `revoked_at` beside the status for exactly this, so the line says which.
+  /// The status already says which of the two ends this was — "abandoned" and
+  /// "revoked" are separate words since 2026-08-11, so this no longer has to
+  /// tell them apart by looking for `revoked_at`. It adds the WHEN, which the
+  /// status cannot carry.
   String _outcome(Map<String, dynamic> invitation, String status) {
     String at(Object? iso) =>
         formatStamp(iso, 'at no stated time', formats: _formats);
 
-    if (status == 'completed') return 'accepted ${at(invitation['accepted_at'])}';
-
-    if (status == 'abandoned') {
-      return invitation['revoked_at'] != null
-          ? 'withdrawn ${at(invitation['revoked_at'])}'
-          : 'expired ${at(invitation['expires_at'])}';
-    }
-
-    return 'expires ${at(invitation['expires_at'])}';
+    return switch (status) {
+      'completed' => 'accepted ${at(invitation['accepted_at'])}',
+      'revoked' => 'withdrawn ${at(invitation['revoked_at'])}',
+      'abandoned' => 'expired ${at(invitation['expires_at'])}',
+      _ => 'expires ${at(invitation['expires_at'])}',
+    };
   }
 
   // ── inviting, resending, revoking ────────────────────────────────

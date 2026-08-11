@@ -60,6 +60,19 @@ final class Branding
      */
     public const MIME = 'png';
 
+    /**
+     * The same decision as a response header.
+     *
+     * `MIME` is an EXTENSION, because that is what Laravel's `mimes:` rule and
+     * the client's file picker both want. A `Content-Type` is not an extension,
+     * and writing `image/png` at the point of serving would be a second place
+     * the format is decided. Derived, so there is still only one.
+     */
+    public static function contentType(): string
+    {
+        return 'image/'.self::MIME;
+    }
+
     /** The shape whose dimensions these are, or null if they match neither. */
     public static function shapeOf(int $width, int $height): ?string
     {

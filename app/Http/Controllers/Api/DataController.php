@@ -8,6 +8,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Data\Exporter;
 use App\Support\Data\Importer;
 use App\Support\Data\ResourceMap;
+use App\Support\Privacy\DataInventory;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -28,6 +29,7 @@ class DataController extends Controller
         private Exporter $exporter,
         private Importer $importer,
         private AuditLogger $audit,
+        private DataInventory $inventory,
     ) {}
 
     /**
@@ -69,12 +71,21 @@ class DataController extends Controller
 
         $this->denyUnless($request, $definition['permission']);
 
+        $includeSensitive = $request->boolean('include_sensitive');
+
         // A bulk export of every customer is the single most useful thing to
         // steal from this system, so it is logged as its own act rather than
-        // disappearing among ordinary reads (§10).
-        $this->audit->log('data.exported', metadata: ['resource' => $resource, 'format' => 'csv']);
+        // disappearing among ordinary reads (§10). Asking for sensitive values
+        // is recorded on the same entry rather than as a second one: it is a
+        // property of this export, and two entries would have to be joined up by
+        // whoever read them.
+        $this->audit->log('data.exported', metadata: [
+            'resource' => $resource,
+            'format'   => 'csv',
+            'sensitive_values_requested' => $includeSensitive,
+        ]);
 
-        return $this->exporter->csv($resource, $request->user());
+        return $this->exporter->csv($resource, $request->user(), $includeSensitive);
     }
 
     /** Everything, as one JSON document — the §9 portability answer. */
@@ -84,9 +95,50 @@ class DataController extends Controller
             $this->denyUnless($request, $definition['permission']);
         }
 
-        $this->audit->log('data.exported', metadata: ['resource' => 'all', 'format' => 'json']);
+        $includeSensitive = $request->boolean('include_sensitive');
 
-        return $this->exporter->bundle($request->user());
+        $this->audit->log('data.exported', metadata: [
+            'resource' => 'all',
+            'format'   => 'json',
+            'sensitive_values_requested' => $includeSensitive,
+        ]);
+
+        return $this->exporter->bundle($request->user(), $includeSensitive);
+    }
+
+    /**
+     * GET /api/v1/exports/inventory — where this organization's personal data is (§9).
+     *
+     * ── Why it lives here rather than in a module of its own ─────
+     *
+     * §9's three "build now" mechanisms are export, purge and inventory, and
+     * they are three answers to one question somebody asks about their own data.
+     * Two of them are already on this controller. A `privacy` module would mean a
+     * new tab permission, a new sidebar entry and a screen nobody has designed,
+     * to separate the third from the two it belongs beside.
+     *
+     * ── What it does and does not expose ─────────────────────────
+     *
+     * Table names, field names, purposes and counts. No personal data at all —
+     * this is the MAP, not the territory, which is why the export permissions
+     * are the right gate: somebody who may download every customer is not
+     * learning anything new from being told that customers have addresses.
+     *
+     * Gated on the same set `bundle` requires, and for the same reason: it
+     * describes every resource, so being able to read it should mean being
+     * allowed to read all of them.
+     */
+    public function inventory(Request $request): array
+    {
+        foreach (ResourceMap::all() as $definition) {
+            $this->denyUnless($request, $definition['permission']);
+        }
+
+        // Recorded, because "who asked what we hold about people" is exactly the
+        // kind of question a compliance answer should itself be able to answer.
+        $this->audit->log('data.inventory_read');
+
+        return $this->inventory->forOrganization($request->user()->organization);
     }
 
     /** One person's record and work history (§9). */
@@ -94,9 +146,14 @@ class DataController extends Controller
     {
         $this->authorize('view', $customer);
 
-        $this->audit->log('data.exported', $customer, metadata: ['resource' => 'person']);
+        $includeSensitive = $request->boolean('include_sensitive');
 
-        return $this->exporter->person($customer, $request->user());
+        $this->audit->log('data.exported', $customer, metadata: [
+            'resource' => 'person',
+            'sensitive_values_requested' => $includeSensitive,
+        ]);
+
+        return $this->exporter->person($customer, $request->user(), $includeSensitive);
     }
 
     public function import(Request $request, string $resource)

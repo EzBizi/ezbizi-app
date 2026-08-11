@@ -38,8 +38,61 @@ use Laravel\Sanctum\PersonalAccessToken;
  * cannot reach outside the organization it was issued for. The widening is one
  * row deep and lasts one lookup.
  */
-class ApiToken extends PersonalAccessToken
+class ApiToken extends PersonalAccessToken implements \App\Support\Privacy\HoldsPersonalData
 {
+    /*
+     * §9. Found by the inventory's derived check rather than by anybody
+     * remembering: this table carries `ip_address` and `user_agent` per session,
+     * which is a record of where a person has been and on what.
+     */
+    public static function personalDataPurpose(): string
+    {
+        return 'One row per signed-in device, so somebody can see their own sessions and '
+            .'end one they do not recognise. That list is only useful because it says '
+            .'where and on what, which is what makes the row personal data.';
+    }
+
+    public static function personalDataRetention(): string
+    {
+        return 'Deleted when the session ends, when the token expires, or when the person '
+            .'signs out everywhere. Nothing retains it beyond the session it describes.';
+    }
+
+    public static function personalDataHeld(): array
+    {
+        return [
+            new \App\Support\Privacy\PersonalDataEntry(
+                'ip_address, user_agent',
+                \App\Support\Privacy\PersonalDataEntry::TECHNICAL,
+                'Naming a session well enough that its owner can recognise it — "Chrome on '
+                .'Windows, from the office" — and end the one they do not.',
+            ),
+            new \App\Support\Privacy\PersonalDataEntry(
+                'name',
+                \App\Support\Privacy\PersonalDataEntry::TECHNICAL,
+                'The device label the client sent, not the person.',
+            ),
+        ];
+    }
+
+    /**
+     * How this table narrows to one organization: through the user holding it.
+     *
+     * There is no `organization_id` here — a token belongs to an account, and
+     * the account belongs to the organization. Without this the inventory can
+     * only answer "we hold this and cannot tell you how much", which is honest
+     * and much less useful than the number.
+     */
+    public static function scopeToOrganization($query, string $organizationId)
+    {
+        return $query->whereHasMorph(
+            'tokenable',
+            [User::class],
+            fn ($user) => $user->withoutGlobalScopes()
+                ->where('organization_id', $organizationId),
+        );
+    }
+
     /**
      * Named for what it is, so the table has to be stated.
      *

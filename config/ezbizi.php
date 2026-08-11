@@ -68,6 +68,39 @@ return [
     ],
 
     /*
+     * What a tenant may attach to a record (§9, §11).
+     *
+     * Category 2 rather than a tenant setting, and the test §2.1 gives decides
+     * it: would a second installation need a different value? Yes — the ceiling
+     * has to sit under this box's `post_max_size`, and that differs between the
+     * app server and a laptop. An organization does not get to raise it, because
+     * raising it past what PHP will carry produces a refusal nobody can read.
+     * See App\Support\Files\UploadLimits, which clamps this to what PHP will
+     * really accept and quotes the resulting number in the refusal.
+     */
+    'attachments' => [
+        // 20MB. Big enough for a scanned multi-page contract or a photograph
+        // straight off a phone, small enough that one upload is not an outage.
+        'max_kilobytes' => (int) env('EZBIZI_ATTACHMENT_MAX_KB', 20480),
+
+        /*
+         * Extensions, checked against the DETECTED content type by the `mimes`
+         * rule — so this is not a list a filename can talk its way past.
+         *
+         * Deliberately no `svg`, and no `html`. Both are documents a browser
+         * executes script from, and the one thing an attachment endpoint must
+         * never become is a way to serve attacker-authored script from this
+         * app's own origin. FileStore sends `nosniff` and `Content-Disposition:
+         * attachment` as well; this is the layer that means neither has to hold
+         * alone.
+         */
+        'extensions' => array_map('trim', explode(',', (string) env(
+            'EZBIZI_ATTACHMENT_EXTENSIONS',
+            'pdf,jpg,jpeg,png,webp,heic,heif,doc,docx,xls,xlsx,csv,txt,rtf',
+        ))),
+    ],
+
+    /*
      * Where the nightly backup leaves its verdict.
      *
      * Read by the scheduler so a failed or stale backup becomes a notification

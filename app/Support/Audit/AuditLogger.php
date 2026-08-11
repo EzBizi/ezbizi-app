@@ -136,6 +136,42 @@ class AuditLogger
         $after  = $model->getDirty();
         $before = array_intersect_key($model->getOriginal(), $after);
 
+        /*
+         * A sensitive value never enters the log, in either direction.
+         *
+         * Two separate wrongs before this. `getOriginal()` APPLIES casts and
+         * `getDirty()` does not, so for an encrypted column the row read:
+         *
+         *     before: "OLD-BANK-ACCOUNT"        <- the previous value, in clear
+         *     after:  "eyJpdiI6Ijk4V3BQS29..."  <- the new one, unreadable
+         *
+         * So the old bank account went into an append-only table in plaintext,
+         * and the new one went in as a blob nobody could ever read. Erasure
+         * cannot reach audit_events by design, which makes it strictly the worst
+         * destination for the one value the tenant marked as needing protection.
+         *
+         * `REDACT` — the keyword list above — could not have caught it. It
+         * matches on English column names, and these fields are named by the
+         * tenant: somebody calling theirs `acct` is invisible to it. This asks
+         * the RECORD which of its own attributes are sensitive, which is the
+         * same question the mask and the export ask, so all three agree without
+         * anybody maintaining a list.
+         *
+         * The fact of the change is still recorded. What changed, when, and by
+         * whom is the point of the entry; the value was never the point.
+         */
+        if ($model instanceof \App\Support\Privacy\HoldsSensitiveValues) {
+            foreach ($model->sensitiveAttributes() as $attribute) {
+                if (array_key_exists($attribute, $after)) {
+                    $after[$attribute] = \App\Support\Privacy\SensitiveValues::MASK;
+                }
+
+                if (array_key_exists($attribute, $before)) {
+                    $before[$attribute] = \App\Support\Privacy\SensitiveValues::MASK;
+                }
+            }
+        }
+
         return $this->log($action, $model, ['before' => $before, 'after' => $after], actor: $actor);
     }
 

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\HasAttachments;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -30,6 +31,16 @@ class Job extends Model
     use HasUuids;
     use BelongsToTenant;
     use SoftDeletes;
+    /*
+     * Photographs, invoices from a supplier, a signed worksheet.
+     *
+     * The first attachable record in the app, and the one a review named: work
+     * gets disputed over the photograph of what was found on arrival, and until
+     * now that photograph lived in somebody's phone. Soft deletes and files
+     * interact — see HasAttachments, which keeps them through a soft delete and
+     * takes them on a force delete.
+     */
+    use HasAttachments;
 
     protected function casts(): array
     {

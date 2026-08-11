@@ -207,6 +207,25 @@ class HrInvitationsController extends Controller
     {
         $this->authorize('resend', $invitation);
 
+        /*
+         * The SAME role check `store()` makes, because resend mints a new
+         * credential and is therefore the same act.
+         *
+         * It was missing, and that was an escalation anybody with `hr.create`
+         * could execute. Proven: a franchise-scoped user holding only hr.view
+         * and hr.create is refused when INVITING into a role carrying
+         * roles.create and users.delete — "it reaches further than yours does"
+         * — and then resends an administrator's invitation into that same role,
+         * gets 200, and is handed a fresh accept_url with a live token in it.
+         * Accepting produced an account holding permissions the person who
+         * pressed the button could never have granted.
+         *
+         * The policy asks whether they may resend THIS invitation — reach, and
+         * hr.create. It has never asked what the invitation is FOR, and the
+         * whole escalation bound is about what it is for.
+         */
+        $this->catalogue->assertRoleAssignable($request->user(), $invitation->role);
+
         if ($invitation->accepted_at !== null) {
             throw ValidationException::withMessages(['invitation' =>
                 'That invitation has already been accepted — they have an account. If they '
@@ -240,11 +259,11 @@ class HrInvitationsController extends Controller
     /**
      * DELETE /api/v1/hr/invitations/{invitation} — withdraw it.
      *
-     * The row stays. `revoked_at` is set, the status becomes `abandoned` like
-     * any other invitation nobody used, and `revoked_at` beside it is what says
-     * the organization changed its mind rather than the person never turning up.
-     * Deleting instead would erase the fact that somebody was invited at all,
-     * which is exactly the kind of thing an audit trail is for.
+     * The row stays. `revoked_at` is set and the status becomes `revoked`, which
+     * is its own word and not `abandoned`: the organization changed its mind, and
+     * that is a different fact from the person never turning up. Deleting instead
+     * would erase the fact that somebody was invited at all, which is exactly the
+     * kind of thing an audit trail is for.
      *
      * The token is NOT left alive. `isOpen()` refuses a revoked invitation, so
      * the link stops working the moment this returns.
@@ -385,9 +404,10 @@ class HrInvitationsController extends Controller
             ],
             'sent_at'    => $invitation->sent_at->toIso8601String(),
             'expires_at' => $invitation->expires_at->toIso8601String(),
-            // Carried beside the status because `abandoned` is the same word for
-            // "nobody came" and "we changed our mind", and the screen has to be
-            // able to tell somebody which one this is.
+            // The status says WHAT became of it; these say WHEN. Carried on
+            // every row rather than only on the one the status names, because a
+            // withdrawn invitation that was opened first is two facts about the
+            // same person and the screen shows both.
             'opened_at'   => $invitation->opened_at?->toIso8601String(),
             'accepted_at' => $invitation->accepted_at?->toIso8601String(),
             'revoked_at'  => $invitation->revoked_at?->toIso8601String(),

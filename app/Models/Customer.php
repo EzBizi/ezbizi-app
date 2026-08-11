@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Privacy\HoldsPersonalData;
+use App\Support\Privacy\PersonalDataEntry;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -28,7 +30,7 @@ use Illuminate\Support\Collection;
     'address_line1', 'address_line2', 'city', 'state', 'postal_code',
     'notes', 'is_active',
 ])]
-class Customer extends Model
+class Customer extends Model implements HoldsPersonalData
 {
     use HasFactory;
     use HasUuids;
@@ -38,6 +40,42 @@ class Customer extends Model
     protected function casts(): array
     {
         return ['is_active' => 'boolean'];
+    }
+
+    // ── §9 data inventory ────────────────────────────────────────
+
+    public static function personalDataPurpose(): string
+    {
+        return 'The people and businesses this organization works for. A customer is often '
+            .'an individual at a home address, so most of this row is personal data even '
+            .'though the record is a commercial one.';
+    }
+
+    public static function personalDataRetention(): string
+    {
+        return 'Soft-deleted rather than removed, because jobs and invoices reference it and '
+            .'tax law requires those to survive. §9\'s resolution is that erasure here means '
+            .'anonymising in place — keep the invoice and its amounts, blank the name, email, '
+            .'phone and address — rather than deleting the row.';
+    }
+
+    public static function personalDataHeld(): array
+    {
+        return [
+            new PersonalDataEntry('name', PersonalDataEntry::IDENTITY,
+                'Who the work is for, and what every list and invoice shows.'),
+            new PersonalDataEntry('email, phone', PersonalDataEntry::CONTACT,
+                'Arranging and confirming the work.'),
+            new PersonalDataEntry('address_line1, address_line2, city, state, postal_code',
+                PersonalDataEntry::CONTACT,
+                'Where the work happens. Usually somebody\'s home, which is what makes '
+                .'this the most re-identifying field on the row — §9 warns that blanking '
+                .'a name is not anonymisation while a unique address remains.'),
+            new PersonalDataEntry('notes', PersonalDataEntry::CONTENT,
+                'Free text written by staff. Deliberately listed: it is the field with no '
+                .'schema, so it is the one that ends up holding whatever somebody thought '
+                .'was worth writing down about a person.'),
+        ];
     }
 
     // ── relations ────────────────────────────────────────────────

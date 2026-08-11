@@ -4,10 +4,11 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import '../widgets/tag.dart';
+import 'hr/contracts_tab.dart';
 import 'hr/invitations_tab.dart';
 import 'hr/records_tab.dart';
 
-/// Human Resources — five tabs, two of which are built (HR plan).
+/// Human Resources — five tabs, three of which are built (HR plan).
 ///
 /// The owner's words: *"this is the most integral part of the app as it allows
 /// its basic function."* It is what lets an organization have employees at all —
@@ -15,7 +16,7 @@ import 'hr/records_tab.dart';
 /// so an organization has been exactly one person no matter how many roles it
 /// defined.
 ///
-/// ── Why three of the tabs are drawn and do nothing ───────────────
+/// ── Why two of the tabs are drawn and do nothing ─────────────────
 ///
 /// Because that is this codebase's answer, and it is the honest one. An
 /// automation action the engine cannot run is listed, badged "Not built yet",
@@ -25,9 +26,9 @@ import 'hr/records_tab.dart';
 /// to conclude the app is broken or that they have lost a permission, and both
 /// guesses are worse than the truth.
 ///
-/// So Dashboard, Onboarding and Contracts appear in the owner's order and each
-/// says what it is waiting for. A tab that vanishes reads as broken; a tab that
-/// explains itself reads as unfinished, which is what it is.
+/// So Dashboard and Onboarding appear in the owner's order and each says what
+/// it is waiting for. A tab that vanishes reads as broken; a tab that explains
+/// itself reads as unfinished, which is what it is.
 ///
 /// ── The tab strip, not a second sidebar ──────────────────────────
 ///
@@ -105,8 +106,9 @@ class _HrScreenState extends State<HrScreen> {
             'it is enough for office staff, a co-owner, or anybody who just '
             'needs a login. Onboarding is the richer path: the form both sides '
             'fill in, the employer starting it and the employee completing and '
-            'correcting it. It is waiting on the contract designer, because a '
-            'contract template is what decides which questions it asks.',
+            'correcting it. The Contracts tab now decides which questions that '
+            'form asks; what is missing is the form itself, and somewhere to '
+            'keep the answers it collects.',
       ),
     ),
     (
@@ -122,18 +124,7 @@ class _HrScreenState extends State<HrScreen> {
     (
       'Contracts',
       Icons.description_outlined,
-      () => const NotBuiltYet(
-        title: 'Contracts',
-        icon: Icons.description_outlined,
-        waitingFor:
-            'The template designer, and the schema for everything else here: a '
-            'template defines the fields, and those definitions decide what '
-            'onboarding asks, who is asked, and what merges into the finished '
-            'document. It is last because a signed contract is a PDF kept '
-            'forever, and there is nowhere to keep one yet — file storage is '
-            'still wired to the local disk, so a signed document would sit '
-            'outside every backup that covers customer data.',
-      ),
+      () => ContractsTab(api: widget.api, session: widget.session),
     ),
   ];
 

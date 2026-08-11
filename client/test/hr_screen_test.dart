@@ -27,10 +27,11 @@ import 'package:http/testing.dart';
 /// substitute. The fixture below makes the two lists deliberately disagree, so
 /// a Dart implementation of an access-control rule cannot pass this file.
 ///
-/// The third is that the three unbuilt tabs say what they are waiting for. A
-/// tab that vanishes reads as broken and a blank one reads as broken; this
-/// codebase's answer is to draw it and mark it, the same as an automation
-/// action the engine cannot run.
+/// The third is that the tabs still waiting on something say what they are
+/// waiting for. A tab that vanishes reads as broken and a blank one reads as
+/// broken; this codebase's answer is to draw it and mark it, the same as an
+/// automation action the engine cannot run. Two are left — the Contracts tab is
+/// built now, and client/test/hr_contracts_test.dart is what defends it.
 void main() {
   testWidgets('the five tabs are drawn, in the owner’s order, and switch', (
     tester,
@@ -65,7 +66,7 @@ void main() {
   ) async {
     await _pump(tester, _handler());
 
-    for (final tab in ['Dashboard', 'Onboarding', 'Contracts']) {
+    for (final tab in ['Dashboard', 'Onboarding']) {
       await _tap(tester, _tab(tab));
 
       expect(
@@ -81,10 +82,26 @@ void main() {
     expect(find.textContaining('headcount by place'), findsOneWidget);
 
     await _tap(tester, _tab('Onboarding'));
-    expect(find.textContaining('contract designer'), findsOneWidget);
+    expect(find.textContaining('the form itself'), findsOneWidget);
+  });
+
+  /// Contracts stopped being a placeholder. The tab is what it always said it
+  /// would be — the template designer — so the test that used to assert it was
+  /// unfinished now asserts that it is not.
+  ///
+  /// Only that it opens and reaches the server; everything the screen DOES is
+  /// defended in client/test/hr_contracts_test.dart, against a catalogue
+  /// written so a client with its own copy of the vocabulary cannot pass.
+  testWidgets('the Contracts tab is the designer, not a placeholder', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
 
     await _tap(tester, _tab('Contracts'));
-    expect(find.textContaining('outside every backup'), findsOneWidget);
+
+    expect(find.text('Not built yet'), findsNothing);
+    expect(find.text('New contract'), findsOneWidget);
+    expect(find.textContaining('what onboarding asks'), findsOneWidget);
   });
 
   testWidgets('the invite form will not submit until it is complete', (
@@ -419,8 +436,9 @@ void main() {
     expect(find.text('Deactivate'), findsOneWidget);
   });
 
-  /// "Abandoned" is one word for two different things — nobody came, and we
-  /// changed our mind — and the two want opposite responses.
+  /// "Abandoned" used to be one word for two different things — nobody came,
+  /// and we changed our mind — and the two want opposite responses. They are two
+  /// words now, and this is what proves the screen uses both.
   testWidgets('a withdrawn invitation is not confused with one that ran out', (
     tester,
   ) async {
@@ -428,9 +446,43 @@ void main() {
 
     await _tap(tester, _tab('Invitations'));
 
-    expect(find.text('Abandoned'), findsOneWidget);
+    expect(find.text('Revoked'), findsOneWidget);
     expect(find.textContaining('withdrawn'), findsOneWidget);
-    expect(find.textContaining('expired'), findsNothing);
+
+    expect(find.text('Abandoned'), findsOneWidget);
+    expect(find.textContaining('expired'), findsOneWidget);
+  });
+
+  /// Withdrawing is a decision, not a gap in the process.
+  ///
+  /// The server refuses to resend a revoked invitation with a 422 — "send a new
+  /// one if you have changed your mind" — so the button could only ever have
+  /// answered an error.
+  testWidgets('a revoked invitation offers neither resend nor revoke', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(invitations: _revokedOnly));
+
+    await _tap(tester, _tab('Invitations'));
+
+    expect(find.text('Revoked'), findsOneWidget);
+    expect(find.text('Resend'), findsNothing);
+    expect(find.text('Revoke'), findsNothing);
+  });
+
+  /// The other half of the same change, and the easy mistake to make with it.
+  ///
+  /// An expired invitation is the row Resend exists for: chasing one that
+  /// lapsed is the single most useful thing the button does, and the server
+  /// allows it deliberately. Hiding it here alongside the revoked one would
+  /// have cost the feature its main use.
+  testWidgets('an expired invitation can still be chased', (tester) async {
+    await _pump(tester, _handler(invitations: _expiredOnly));
+
+    await _tap(tester, _tab('Invitations'));
+
+    expect(find.text('Abandoned'), findsOneWidget);
+    expect(find.text('Resend'), findsOneWidget);
   });
 }
 
@@ -539,6 +591,30 @@ MockClientHandler _handler({
     final path = request.url.path;
 
     if (path.endsWith('/me')) return _json({'data': _me});
+
+    // Enough for the Contracts tab to open and say it has nothing yet. What
+    // that tab actually does is defended in hr_contracts_test.dart, against a
+    // catalogue written to catch a client reading its own vocabulary — a second
+    // copy of that fixture here would be a second thing to keep in step.
+    if (path.endsWith('/hr/contracts/catalogue')) {
+      return _json({
+        'data': {
+          'types': [
+            {'key': 'text', 'label': 'Text'},
+          ],
+          'filled_by': [
+            {'key': 'employer', 'label': 'The employer'},
+            {'key': 'employee', 'label': 'The employee'},
+            {'key': 'either', 'label': 'Either'},
+          ],
+          'core': <Map<String, Object?>>[],
+        },
+      });
+    }
+
+    if (path.endsWith('/hr/contracts')) {
+      return _json({'data': <Map<String, Object?>>[]});
+    }
 
     if (path.endsWith('/hr/people/scope-options')) {
       return scopeOptionsStatus == 200
@@ -666,11 +742,33 @@ const _invitations = [
     'accepted_at': null,
     'revoked_at': null,
   },
-  // Abandoned is one word for two different things, and the row has to say
-  // which — this one was withdrawn rather than left to run out.
+  // The two dead ends, as the server now reports them: `revoked` is a status of
+  // its own since 2026-08-11, so this pair is what tells the screen apart.
+  //
+  // This one was withdrawn. It used to arrive as `abandoned` with `revoked_at`
+  // beside it, and this fixture said so — which made it a fixture for a server
+  // that no longer exists.
   {
     'id': 'i-9',
     'email': 'kit@example.com',
+    'first_name': null,
+    'last_name': null,
+    'status': 'revoked',
+    'role': {'id': 'role-2', 'name': 'Technician'},
+    'scope': {'type': 'company', 'id': 'co-1', 'name': 'Serenisima'},
+    'invited_by': {'id': 'u-1', 'name': 'Jose Silva'},
+    'sent_at': '2026-08-02T09:00:00+00:00',
+    'expires_at': '2026-08-09T09:00:00+00:00',
+    'opened_at': null,
+    'accepted_at': null,
+    'revoked_at': '2026-08-03T09:00:00+00:00',
+  },
+  // And this one nobody came to — the same shape, with the clock as the only
+  // difference. Without it the test below could not prove the two are told
+  // apart, only that one of them renders.
+  {
+    'id': 'i-10',
+    'email': 'lee@example.com',
     'first_name': null,
     'last_name': null,
     'status': 'abandoned',
@@ -681,9 +779,18 @@ const _invitations = [
     'expires_at': '2026-08-09T09:00:00+00:00',
     'opened_at': null,
     'accepted_at': null,
-    'revoked_at': '2026-08-03T09:00:00+00:00',
+    'revoked_at': null,
   },
 ];
+
+/// The two dead ends on their own, so a test can assert what a row does NOT
+/// offer without another row supplying the same button.
+///
+/// `final` rather than `const`: indexing a const list is not itself a constant
+/// expression in Dart. Sliced from the list above rather than copied, so a
+/// change to either row cannot leave these two describing an older server.
+final _revokedOnly = [_invitations[1]];
+final _expiredOnly = [_invitations[2]];
 
 const _completedOnly = [
   {

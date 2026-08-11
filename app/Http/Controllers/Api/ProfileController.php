@@ -4,9 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Support\Audit\AuditLogger;
 use App\Support\Auth\SessionContext;
+use App\Support\Files\FileStore;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\Rule;
 
 /**
  * Your own account (plan §2.1 category 6, §4).
@@ -25,7 +24,18 @@ use Illuminate\Validation\Rule;
  */
 class ProfileController extends Controller
 {
-    public function __construct(private AuditLogger $audit) {}
+    /**
+     * Avatars go through FileStore, not `Storage::disk('local')`.
+     *
+     * This was the second of the two controllers that named the disk by hand and
+     * read files back with `->path()` — a method only the local driver has. See
+     * FileStore for what that cost, and for the one thing that has to happen to
+     * the existing `avatars/` tree before FILESYSTEM_DISK is changed.
+     */
+    public function __construct(
+        private AuditLogger $audit,
+        private FileStore $files,
+    ) {}
 
     /**
      * Change your own name.
@@ -120,14 +130,17 @@ class ProfileController extends Controller
 
         $previous = $user->avatar_path;
 
-        $path = $request->file('photo')->store("avatars/{$user->organization_id}", 'local');
+        $path = $this->files->put(
+            $request->file('photo'),
+            $this->files->directoryFor('avatars', $user->organization_id),
+        );
 
         $user->forceFill(['avatar_path' => $path])->save();
 
         // Removed only after the new one is safely stored, so a failed write
         // never leaves somebody with no picture and no way back.
         if ($previous !== null && $previous !== $path) {
-            Storage::disk('local')->delete($previous);
+            $this->files->delete($previous);
         }
 
         $this->audit->log('user.avatar_changed', $user);
@@ -149,9 +162,11 @@ class ProfileController extends Controller
             404,
         );
 
-        abort_unless(Storage::disk('local')->exists($subject->avatar_path), 404);
-
-        return response()->file(Storage::disk('local')->path($subject->avatar_path));
+        // `inline`, because the point of an avatar is to appear in a page, and
+        // the upload validator has already established it is an image of a
+        // sane size. The mime is left to the driver to detect: three formats are
+        // accepted here, and the column does not record which one this is.
+        return $this->files->serve($subject->avatar_path, disposition: 'inline');
     }
 
     public function destroyAvatar(Request $request): array
@@ -159,7 +174,7 @@ class ProfileController extends Controller
         $user = $request->user();
 
         if ($user->avatar_path !== null) {
-            Storage::disk('local')->delete($user->avatar_path);
+            $this->files->delete($user->avatar_path);
             $user->forceFill(['avatar_path' => null])->save();
             $this->audit->log('user.avatar_removed', $user);
         }

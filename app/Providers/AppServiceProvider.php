@@ -119,6 +119,26 @@ class AppServiceProvider extends ServiceProvider
          */
         \Laravel\Sanctum\Sanctum::usePersonalAccessTokenModel(\App\Models\ApiToken::class);
 
+        /*
+         * `attachments.attachable_type` holds `jobs`, not `App\Models\Job`.
+         *
+         * Without a map, Eloquent writes the fully-qualified class name into
+         * every polymorphic row — which makes moving or renaming a class a data
+         * migration across a table nobody thinks about, and puts the shape of
+         * the PHP namespace into the database and onto the wire.
+         *
+         * `morphMap` and not `enforceMorphMap`: enforcing would throw for any
+         * morph relation whose class is not listed, and ApiToken's `tokenable`
+         * is one — it stores FQCNs today, written by Sanctum, and rewriting
+         * those is not this change's business.
+         *
+         * The map comes from Attachables so the wire name, the stored value and
+         * the validation rule are one list rather than three.
+         */
+        \Illuminate\Database\Eloquent\Relations\Relation::morphMap(
+            \App\Support\Files\Attachables::all(),
+        );
+
         $this->defineRateLimiters();
     }
 
