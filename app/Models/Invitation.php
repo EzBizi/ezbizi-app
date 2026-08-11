@@ -3,8 +3,11 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
+use App\Support\Privacy\RetentionPolicy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -83,25 +86,81 @@ class Invitation extends Model implements HoldsPersonalData
             .'that person exists.';
     }
 
-    public static function personalDataRetention(): string
+    /**
+     * Twenty-four months, and the number is here rather than in a comment.
+     *
+     * This table was the clearest case of unbounded growth in the system: a row
+     * per person ever invited, kept forever, holding a real name and a real email
+     * address for people who never became users and about whom nothing else in
+     * the software knows anything. An organization that invites twenty people a
+     * month and hires five accumulates a mailing list of the fifteen it did not.
+     *
+     * Two years, because the question this row answers — "we invited them and
+     * changed our mind", "they were offered a job and never took it" — is a
+     * question about a hiring round, and hiring rounds stop being disputed long
+     * before two years. Accepted invitations age out on the same clock: once
+     * somebody is a user, the account is the record of them joining and the
+     * invitation is a duplicate of a fact stored better elsewhere.
+     */
+    public static function retention(): RetentionPolicy
     {
-        return 'Kept after the invitation is spent, withdrawn or lapsed. The row is how "we '
-            .'invited them and changed our mind" stays answerable, and deleting it would '
-            .'erase the fact that anybody was invited at all.';
+        return RetentionPolicy::window(24, 'created_at',
+            'Kept after the invitation is spent, withdrawn or lapsed, because the row is how '
+            .'"we invited them and changed our mind" stays answerable. Two years is long '
+            .'enough for that question and short enough that an invitation nobody accepted '
+            .'does not become a permanent record of a person who never joined.'
+        );
     }
 
     public static function personalDataHeld(): array
     {
         return [
             new PersonalDataEntry('email', PersonalDataEntry::CONTACT,
-                'Who the invitation is for, and the address the link is sent to.'),
+                'Who the invitation is for, and the address the link is sent to.',
+                // NOT NULL, and `.invalid` is unroutable by RFC 2606 — this
+                // column is one that other code is entitled to send mail to.
+                Erasure::erase('removed-{ref}@invalid')),
             new PersonalDataEntry('first_name, last_name', PersonalDataEntry::IDENTITY,
                 'Pre-filled by the employer where they knew it, so the person does not '
-                .'have to type it again.'),
+                .'have to type it again.',
+                Erasure::erase()),
             new PersonalDataEntry('token_hash', PersonalDataEntry::TECHNICAL,
                 'The invitation link, stored as a sha256 so the credential itself is not '
-                .'held. It is not reversible and is never sent anywhere.'),
+                .'held. It is not reversible and is never sent anywhere.',
+                Erasure::keep('A sha256 of a 48-character random string this system '
+                    .'generated. It identifies the invitation, says nothing about the '
+                    .'person, and is not reversible — and it is what the acceptance link '
+                    .'is matched against, so blanking it on a live invitation would break '
+                    .'a link somebody is holding rather than erase anything about them.')),
         ];
+    }
+
+    /**
+     * Invitations addressed to this person.
+     *
+     * By `accepted_user_id` where they joined, and by EMAIL where they did not —
+     * which is the whole reason this table is in the inventory. An invitation
+     * nobody accepted is the only record that a particular person exists, so
+     * matching only on the foreign key would leave exactly the rows that cannot
+     * be found any other way.
+     *
+     * `invited_by_user_id` is not matched. An invitation the subject SENT is a
+     * record about its recipient, and erasing the sender must not take somebody
+     * else's row with it.
+     */
+    public static function personalDataAbout(Model $subject): ?Builder
+    {
+        if (! $subject instanceof User) {
+            return null;
+        }
+
+        // Grouped, not flat. The tenant global scope is ANDed on, and AND binds
+        // tighter than OR — an ungrouped pair would match every organization's
+        // invitations to this address. See ContractSignature::personalDataAbout,
+        // where the same brackets are argued at length.
+        return static::query()->where(fn (Builder $q) => $q
+            ->where('accepted_user_id', $subject->getKey())
+            ->orWhere('email', $subject->email));
     }
 
     /** The plan's six, and the only strings the API ever puts in `status`. */

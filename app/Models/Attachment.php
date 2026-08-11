@@ -3,8 +3,11 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
+use App\Support\Privacy\RetentionPolicy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -35,11 +38,15 @@ class Attachment extends Model implements HoldsPersonalData
             .'this row is the index to it.';
     }
 
-    public static function personalDataRetention(): string
+    public static function retention(): RetentionPolicy
     {
-        return 'For as long as the record it hangs off. A soft-deleted record keeps its '
+        return RetentionPolicy::withParent(
+            'For as long as the record it hangs off. A soft-deleted record keeps its '
             .'files, because it can be restored; a permanently deleted one takes them, row '
-            .'and bytes together, in the same transaction.';
+            .'and bytes together, in the same transaction. An age-based sweep here would '
+            .'delete the photograph of what was found on arrival while the job it proves is '
+            .'still open.'
+        );
     }
 
     public static function personalDataHeld(): array
@@ -61,13 +68,117 @@ class Attachment extends Model implements HoldsPersonalData
                 .'cannot tell, and does not inspect it beyond checking the type and the '
                 .'size. Files are served only through an authorization check, never from '
                 .'a public path.',
+                /*
+                 * The one kind of personal data that cannot be anonymised in
+                 * place. §9's whole resolution is "keep the record, blank the
+                 * fields", and there are no fields here — the personal data is
+                 * inside a PDF or a JPEG that this software has never parsed and
+                 * has no business parsing. There is no third option between
+                 * keeping a scan of somebody's passport and deleting it.
+                 *
+                 * The veto on Attachment::deleting is what makes this safe rather
+                 * than reckless: a file a signature fingerprints refuses to go,
+                 * and the Anonymiser reports the refusal instead of swallowing
+                 * it. So evidence survives, ordinary uploads do not, and the
+                 * person running the purge is told which was which.
+                 */
+                Erasure::drop('The contents cannot be blanked — this software has never '
+                    .'looked inside the file and cannot edit somebody out of a photograph. '
+                    .'A file that is evidence refuses to be removed and is reported instead; '
+                    .'everything else goes, bytes and row together.'),
                 tenantDefined: true),
             new PersonalDataEntry('original_name', PersonalDataEntry::CONTENT,
                 'What the person called the file, which often names its subject — '
-                .'"marta-licence.pdf" says something even before it is opened.'),
+                .'"marta-licence.pdf" says something even before it is opened.',
+                Erasure::drop('Goes with the file it names. Keeping the row for its '
+                    .'filename alone would keep the one part of it that is readable '
+                    .'without opening anything.')),
             new PersonalDataEntry('uploaded_by_user_id', PersonalDataEntry::ACTIVITY,
-                'Who attached it, so a file can be traced to the person who added it.'),
+                'Who attached it, so a file can be traced to the person who added it.',
+                Erasure::keep('A foreign key to an account, not a name. When that person is '
+                    .'erased their own row is anonymised at its one home, and this key then '
+                    .'points at a record with no name in it — so the provenance of somebody '
+                    .'else\'s file survives without identifying anybody.')),
         ];
+    }
+
+    /**
+     * Files that are ABOUT this person — theirs, and their jobs'.
+     *
+     * The uploader link is deliberately not part of this. A photograph of a job
+     * site taken by somebody who has since left is that customer's record, not
+     * the photographer's, and returning it here would delete another person's
+     * evidence in the name of erasing this one.
+     *
+     * Reaching through jobs is what makes a customer purge complete rather than
+     * nearly complete. §9 names uploaded files among the places a purge misses,
+     * and the way it misses them is exactly this: the obvious query — files hung
+     * directly off the customer — finds none of the ones that matter, because
+     * photographs get attached to the visit rather than to the person.
+     */
+    public static function personalDataAbout(Model $subject): ?Builder
+    {
+        /*
+         * `getMorphClass()`, never `::class`. `attachable_type` stores the wire
+         * name from the morph map registered in AppServiceProvider — see
+         * `present()` — so comparing against a fully-qualified class name matches
+         * nothing at all, silently, and the purge would report a clean sweep of a
+         * table it never looked in.
+         *
+         * The whole disjunction is wrapped in ONE closure. BelongsToTenant ANDs
+         * `organization_id = ?` onto this query and AND binds tighter than OR, so
+         * a flat chain would match another organization's attachments — see
+         * ContractSignature::personalDataAbout, where that is argued at length.
+         */
+        return static::query()->where(function (Builder $query) use ($subject) {
+            $query->where(fn (Builder $q) => $q
+                ->where('attachable_type', $subject->getMorphClass())
+                ->where('attachable_id', $subject->getKey()));
+
+            if ($subject instanceof Customer) {
+                $query->orWhere(fn (Builder $q) => $q
+                    ->where('attachable_type', (new Job)->getMorphClass())
+                    ->whereIn('attachable_id', Job::query()
+                        ->where('customer_id', $subject->getKey())
+                        ->select('id')));
+            }
+
+            /*
+             * An employee's files hang off their ONBOARDING, not off them.
+             *
+             * The rendered contract is the case that matters, and it is the one
+             * the refusal above exists for: it contains every answer they gave,
+             * sensitive ones included, in the clear, because it is the thing that
+             * was signed. Reaching it here is what makes the purge report say
+             * "this could not be removed, and here is why" instead of never
+             * looking. Onboarding refuses it, the refusal is printed, and
+             * somebody reading the report learns that the signed document
+             * survives — which is true, and is not something they should have to
+             * find out from a lawyer.
+             */
+            if ($subject instanceof User) {
+                $query->orWhere(fn (Builder $q) => $q
+                    ->where('attachable_type', (new Onboarding)->getMorphClass())
+                    ->whereIn('attachable_id', Onboarding::query()
+                        ->where('user_id', $subject->getKey())
+                        ->select('id')));
+            }
+        });
+    }
+
+    /**
+     * The bytes this row is the index to.
+     *
+     * Deleting the row and leaving the file is the failure this exists to stop —
+     * the app forgets where the identity document is and the identity document is
+     * still there. AttachmentsController::destroy does the same two steps in the
+     * same order for the same reason; this is how every OTHER caller gets it.
+     *
+     * @return array<array{disk: ?string, path: ?string}>
+     */
+    public function personalDataFiles(): array
+    {
+        return [['disk' => $this->disk, 'path' => $this->path]];
     }
 
     /**

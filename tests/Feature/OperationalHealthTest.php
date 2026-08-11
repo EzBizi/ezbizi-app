@@ -325,4 +325,35 @@ class OperationalHealthTest extends TestCase
             ->assertOk()
             ->assertJsonPath('sent', false);
     }
+
+    public function test_sending_a_test_email_is_recorded(): void
+    {
+        $token = $this->staffToken();
+
+        // The same shape as a healthy transport above, so the send is attempted
+        // rather than refused at the door — faked, so nothing leaves the box.
+        config([
+            'mail.default'        => 'ses',
+            'mail.from.address'   => 'noreply@ezbizi.com',
+            'services.ses.key'    => 'a-key',
+            'services.ses.secret' => 'a-secret',
+        ]);
+
+        \Illuminate\Support\Facades\Mail::fake();
+
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->postJson('/api/v1/staff/health/test-email', ['address' => 'someone@example.test'])
+            ->assertOk()
+            ->assertJsonPath('sent', true);
+
+        // The one control on this screen that DOES something rather than
+        // reporting something: real mail, from the platform's identity, to any
+        // address the caller types. Recorded through logStaff, so it is written
+        // even for the account the audit exemption covers.
+        $event = \App\Models\AuditEvent::where('action', 'staff.test_email_sent')->first();
+
+        $this->assertNotNull($event);
+        $this->assertSame(\App\Models\AuditEvent::ACTOR_STAFF, $event->actor_type);
+        $this->assertSame('someone@example.test', $event->metadata['address']);
+    }
 }

@@ -1,0 +1,173 @@
+<?php
+
+namespace App\Support\Dashboard\Widgets\Hr;
+
+use App\Models\Company;
+use App\Models\Franchise;
+use App\Models\User;
+use App\Support\Dashboard\Widgets\ReportsOverAPeriod;
+use App\Support\Scoping\ViewScope;
+use Illuminate\Database\Eloquent\Builder;
+
+/**
+ * Which PLACES an HR widget is answering about — reach (§4) narrowed by the
+ * chosen view (§3).
+ *
+ * ── Why HR cannot use the other widgets' franchise filter ────────
+ *
+ * `ScopesToReach::reachable()` narrows a query with `where franchise_id in (…)`,
+ * which is right for jobs and customers: those rows carry a franchise column,
+ * because work happens in exactly one place.
+ *
+ * People do not. §4 places somebody at organization, company OR franchise level,
+ * and a person assigned at company level has no franchise id at all. Filtering
+ * headcount by franchise ids would therefore drop every manager, every company
+ * -level employee, and — the case that matters most — the founding administrator,
+ * who ProvisionOrganization assigns at ORGANIZATION level and who is the only
+ * person a new organization has. The dashboard would have reported a headcount of
+ * zero for an organization with somebody in it, and looked right doing it.
+ *
+ * So this resolves the three levels together, and everything downstream filters
+ * on all three or on none.
+ *
+ * ── Reach ∩ view, not reach alone ────────────────────────────────
+ *
+ * `ScopeReach::constrain()` answers "may this person act there", which is the
+ * floor. It does not know which part of the business is currently being LOOKED
+ * at, and the top-bar scope switcher is what the rest of the app filters by.
+ * Somebody who runs the whole organization but has switched to Connecticut is
+ * asking about Connecticut, and a dashboard that answered organization-wide
+ * while every list beside it showed one franchise would be reporting a number
+ * that belongs to a different screen.
+ *
+ * The view can only ever NARROW: every list below is built from
+ * `reachableCompanies()` / `reachableFranchises()` and then filtered, so a stored
+ * scope naming somewhere the user has since lost cannot widen anything.
+ */
+trait ScopesToPlaces
+{
+    use ReportsOverAPeriod;
+
+    /**
+     * The places in view, as the three lists §4 recognises.
+     *
+     * `organization` is non-null only for somebody who actually stands at the
+     * top AND is looking at the whole organization — the same condition
+     * ScopeReach::constrain() puts on its organization branch, and for the same
+     * reason: a company manager may not manage somebody whose authority is wider
+     * than their own, so organization-wide rows are not theirs to count.
+     *
+     * @return array{organization: ?string, companies: string[], franchises: string[]}
+     */
+    protected function placesInView(User $user): array
+    {
+        $view = ViewScope::forUser($user);
+
+        // Both already intersected with reach — franchiseIds() does it itself,
+        // and the company list is intersected here.
+        $franchises = $view->franchiseIds();
+        $reachableCompanies = $user->reachableCompanies()->modelKeys();
+
+        $companies = match ($view->type) {
+            // §3's roll-up: the company being viewed and its Sub Companies,
+            // never the parent above it.
+            ViewScope::COMPANY => array_values(array_intersect(
+                $reachableCompanies,
+                $view->companyIds(),
+            )),
+
+            // A franchise view is one franchise. Nobody is counted at the
+            // company above it, because that is not what is being looked at.
+            ViewScope::FRANCHISE => [],
+
+            default => $reachableCompanies,
+        };
+
+        return [
+            'organization' => $view->isOrganization()
+                && $user->canActOnOrganization($user->organization)
+                    ? $user->organization_id
+                    : null,
+            'companies'  => $companies,
+            'franchises' => $franchises,
+        ];
+    }
+
+    /**
+     * Narrow any table carrying the three `assigned_*` columns — `assignments`
+     * and `invitations` — to the places in view.
+     *
+     * The shape ScopeReach::constrain() uses, with the view applied. An empty
+     * list compiles to `0 = 1` rather than being dropped, which is the safe
+     * direction: somebody whose view covers nothing matches nothing, rather than
+     * matching everything because a clause disappeared.
+     *
+     * @param  array{organization: ?string, companies: string[], franchises: string[]}  $places
+     */
+    protected function constrainToPlaces(Builder $query, array $places): Builder
+    {
+        return $query->where(function (Builder $scoped) use ($places) {
+            $scoped->whereIn('assigned_franchise_id', $places['franchises'])
+                ->orWhereIn('assigned_company_id', $places['companies']);
+
+            if ($places['organization'] !== null) {
+                $scoped->orWhere('assigned_organization_id', $places['organization']);
+            }
+        });
+    }
+
+    /**
+     * People this view covers, by their assignment.
+     *
+     * Deliberately does NOT include people with no assignment at all — see
+     * countsUnplaced() for why they are a separate question with a separate
+     * answer rather than being folded in here.
+     */
+    protected function peopleInView(array $places): Builder
+    {
+        return User::query()->whereHas(
+            'assignments',
+            fn (Builder $a) => $this->constrainToPlaces($a, $places),
+        );
+    }
+
+    /**
+     * Should this view also count people who are not assigned anywhere?
+     *
+     * HrPeopleController::visibleTo shows assignment-less people to somebody
+     * standing at the organization, and the Records tab is the list this
+     * dashboard is supposed to be a summary of. If the two disagreed, the first
+     * thing anybody would do is count the rows in Records and conclude the
+     * dashboard was broken — so the rule is copied from there rather than
+     * invented here.
+     *
+     * Nothing creates such a person today: ProvisionOrganization assigns the
+     * founder and acceptance assigns everybody else. It is guarded anyway
+     * because "nothing creates one" is a statement about today's code, and the
+     * cost of being wrong is a person who exists in one list and not the other.
+     */
+    protected function countsUnplaced(array $places): bool
+    {
+        return $places['organization'] !== null;
+    }
+
+    /** What the places in view are CALLED, for a row somebody reads. */
+    protected function placeNames(array $places, User $user): array
+    {
+        $names = [];
+
+        if ($places['organization'] !== null) {
+            $names[$places['organization']] = $user->organization->name;
+        }
+
+        foreach (Company::query()->whereKey($places['companies'])->orderBy('name')->get() as $company) {
+            $names[$company->getKey()] = $company->name;
+        }
+
+        foreach (Franchise::query()->whereKey($places['franchises'])->orderBy('name')->get() as $franchise) {
+            $names[$franchise->getKey()] = $franchise->name;
+        }
+
+        return $names;
+    }
+}

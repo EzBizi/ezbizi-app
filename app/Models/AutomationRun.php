@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -16,11 +18,31 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * asking why their automation did not fire, and only a recorded skip can tell
  * them apart.
  */
-class AutomationRun extends Model
+class AutomationRun extends Model implements StatesRetention
 {
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
+
+    /**
+     * Goes with the event that caused it — one number, in one place.
+     *
+     * A window of its own here would be a second number governing one history,
+     * and the day the two disagreed the system would hold runs whose events had
+     * expired: "this rule fired" with no record of what it fired ABOUT, which is
+     * the one state a run log must never be in.
+     *
+     * `workflow_runs.event_id` has `cascadeOnDelete`, so this is enforced by the
+     * database rather than by the sweep remembering to do it in the right order.
+     */
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::withParent(
+            'A run explains one event, and is removed with it by the cascade when that '
+            .'event expires. Keeping runs longer would leave "the rule fired" with no '
+            .'record of what it fired about.'
+        );
+    }
 
     public const UPDATED_AT = null;
     public const CREATED_AT = null;

@@ -110,6 +110,38 @@ class CoreField {
   final bool required;
 }
 
+/// A fact about the business and the moment that any contract can merge in.
+///
+/// ── Why the list is the server's and never this end's ────────────
+///
+/// The body of a contract is written with `{{tags}}` in it, and a tag resolves
+/// against three things: the contract's own fields, the common core, and this —
+/// the organization's name, the contract's name, the version, the date. The
+/// first two already arrive from the server. This one is the tempting one to
+/// compile in, because it is four obvious strings and everybody knows what they
+/// are.
+///
+/// It is not compiled in, for the reason the automation builder learned twice:
+/// a client-side copy of a server vocabulary offers what the engine refuses and
+/// hides what it accepts. Whatever resolves is decided where the merge happens.
+/// If the server declares none of these, the editor offers none of these and
+/// says so — it does not guess `organization_name` and put a tag in somebody's
+/// employment contract that renders as itself.
+@immutable
+class DocumentTag {
+  const DocumentTag({required this.key, required this.label, this.note});
+
+  /// What goes between the braces — `organization_name`.
+  final String key;
+
+  /// The server's word for it, or the key when it sent none — the same
+  /// fallback, and the same reasoning, as [CoreField.label].
+  final String label;
+
+  /// A sentence about what it fills in with.
+  final String? note;
+}
+
 /// Everything `GET /hr/contracts/catalogue` declares.
 ///
 /// ── Why the parsing is tolerant in exactly three places ──────────
@@ -128,6 +160,7 @@ class ContractVocabulary {
     required this.types,
     required this.filledBy,
     required this.core,
+    required this.documentTags,
     required this.loaded,
   });
 
@@ -138,6 +171,7 @@ class ContractVocabulary {
     types: [],
     filledBy: [],
     core: [],
+    documentTags: [],
     loaded: false,
   );
 
@@ -150,6 +184,10 @@ class ContractVocabulary {
 
   /// The questions asked whatever the contract says.
   final List<CoreField> core;
+
+  /// The facts about the business and the moment a contract's body can merge
+  /// in. Empty when the server declared none — see [DocumentTag].
+  final List<DocumentTag> documentTags;
 
   final bool loaded;
 
@@ -221,6 +259,27 @@ class ContractVocabulary {
             json['common_core'] ??
             json['reserved'],
       ),
+      // The always-available facts, read through the same tolerant reader the
+      // common core uses — they are the same shape, `{key, label, note}` or a
+      // map of key to either — so there is one implementation of "a list the
+      // server might have written two ways" rather than two.
+      // `merge_tags.facts` is what the endpoint actually sends. This read three
+      // other names and none of them existed, so the always-available tags —
+      // the organization's name, the contract's name, its version, the date —
+      // were simply never offered in the editor. The tolerant reader hid it:
+      // three fallbacks that all miss produce an empty list, not an error, and
+      // an empty list looks exactly like "this contract declares no facts".
+      //
+      // Guessing at names is what let that happen, so the real key is first and
+      // the others stay only as a courtesy to an older server mid-deploy.
+      documentTags: [
+        for (final field in _coreFields(
+          (json['merge_tags'] as Map<String, dynamic>?)?['facts'] ??
+              json['document_tags'] ??
+              json['always_available'],
+        ))
+          DocumentTag(key: field.key, label: field.label, note: field.note),
+      ],
       loaded: true,
     );
   }
@@ -404,6 +463,8 @@ class ContractDiff {
     required this.unretired,
     required this.changed,
     required this.reordered,
+    required this.bodyChanged,
+    this.bodyChange,
     required this.isEmpty,
   });
 
@@ -414,6 +475,23 @@ class ContractDiff {
 
   /// Order is the order of the form, so a reshuffle is a real change.
   final bool reordered;
+
+  /// The wording of the document itself moved.
+  ///
+  /// Its own line rather than one of [changed], because it is not a property of
+  /// a field: the body is the contract, and "the text of the agreement is
+  /// different" is the single most consequential thing a publish can say. The
+  /// server decides it — this end holds the old body and the new one and could
+  /// compare them, which is exactly the second implementation the rest of this
+  /// file refuses to be.
+  final bool bodyChanged;
+
+  /// Which kind of change: 'added', 'edited' or 'removed'.
+  ///
+  /// `removed` matters and is not a smaller `edited` — it does not blank the
+  /// contract, it drops the document back to the generated form dump, which is
+  /// a different document entirely. Worth naming before somebody publishes.
+  final String? bodyChange;
 
   final bool isEmpty;
 
@@ -431,9 +509,15 @@ class ContractDiff {
         .map((row) => ChangedField.fromJson(Map<String, dynamic>.from(row)))
         .toList(growable: false),
     reordered: json['reordered'] == true,
-    // Computed by the server, never re-derived from the four lists above: a
-    // server that grows a fifth kind of change would otherwise be told by this
-    // client that nothing happened.
+    // The server sends `body` as 'added' | 'edited' | 'removed' | null — not a
+    // boolean called `body_changed`, which exists nowhere. So the publish panel
+    // never said the wording had changed, on the one screen whose whole job is
+    // telling somebody what they are about to change.
+    bodyChanged: json['body'] != null,
+    bodyChange: json['body'] as String?,
+    // Computed by the server, never re-derived from the lists above: a server
+    // that grows another kind of change would otherwise be told by this client
+    // that nothing happened.
     isEmpty: json['is_empty'] == true,
   );
 }

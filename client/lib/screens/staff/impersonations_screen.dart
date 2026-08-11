@@ -140,6 +140,7 @@ class _ImpersonationsScreenState extends State<ImpersonationsScreen> {
                   active ? Icons.lock_open : Icons.lock_outline,
                   size: 18,
                   color: active ? Theme.of(context).colorScheme.error : null,
+                  semanticLabel: active ? 'Open now' : 'Closed',
                 ),
                 const SizedBox(width: 8),
                 Expanded(

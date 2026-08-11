@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
-import '../widgets/tag.dart';
 import 'hr/contracts_tab.dart';
+import 'hr/dashboard_tab.dart';
 import 'hr/invitations_tab.dart';
 import 'hr/onboarding_tab.dart';
 import 'hr/records_tab.dart';
 
-/// Human Resources — five tabs, four of which are built (HR plan).
+/// Human Resources — five tabs (HR plan).
 ///
 /// The owner's words: *"this is the most integral part of the app as it allows
 /// its basic function."* It is what lets an organization have employees at all —
@@ -17,19 +17,20 @@ import 'hr/records_tab.dart';
 /// so an organization has been exactly one person no matter how many roles it
 /// defined.
 ///
-/// ── Why the last unbuilt tab is drawn and does nothing ───────────
+/// ── All five are built, and one panel inside one of them is not ──
 ///
-/// Because that is this codebase's answer, and it is the honest one. An
-/// automation action the engine cannot run is listed, badged "Not built yet",
-/// and refuses the tap (see widgets/catalogue_picker.dart); a module the
-/// platform has switched off is drawn greyed in the role editor with the reason
-/// beside it. The rule underneath all three: something absent invites the reader
-/// to conclude the app is broken or that they have lost a permission, and both
+/// Dashboard was the last placeholder and is now real. The convention it used
+/// has not gone away, it has moved down a level: the HR plan names five figures
+/// for that tab and "expiring certifications" cannot be computed, because a
+/// contract field has no way to say that a date IS an expiry. So the PANEL is
+/// drawn, badged "Not built yet", and says what it is waiting for — the same
+/// answer an automation action the engine cannot run gets in
+/// widgets/catalogue_picker.dart, and a module the platform has switched off
+/// gets in the role editor.
+///
+/// The rule underneath all three: something absent invites the reader to
+/// conclude the app is broken or that they have lost a permission, and both
 /// guesses are worse than the truth.
-///
-/// So Dashboard appears in the owner's order and says what it is waiting for. A
-/// tab that vanishes reads as broken; a tab that explains itself reads as
-/// unfinished, which is what it is.
 ///
 /// ── The tab strip, not a second sidebar ──────────────────────────
 ///
@@ -49,20 +50,22 @@ class HrScreen extends StatefulWidget {
 }
 
 class _HrScreenState extends State<HrScreen> {
-  /// Onboarding's place in [_tabs] below, and where this screen opens.
+  /// Dashboard's place in [_tabs] below, and where this screen opens.
   ///
-  /// Not tab zero. Landing on Dashboard would make everybody's first sight of
-  /// Human Resources a placeholder, which says the module does not work rather
-  /// than that one tab does not yet. So it opens on the first tab in the
-  /// owner's order that actually does something, and the unbuilt one is found
-  /// by looking rather than by arriving.
+  /// The rule has always been "the first tab in the owner's order that actually
+  /// does something", and the landing tab has moved twice under it: Records
+  /// while Onboarding was a placeholder, Onboarding while Dashboard was one, and
+  /// now Dashboard, which is where the rule pointed all along. Leaving it on
+  /// Onboarding would have made the sentence above false — which is the reason
+  /// this constant is written as the rule rather than as a number somebody has
+  /// to remember to revisit.
   ///
-  /// That was Records while Onboarding was a placeholder. It moved when
-  /// Onboarding stopped being one — the rule is "the first that works", not
-  /// "Records", and leaving it would have made the sentence above false.
-  static const _onboarding = 1;
+  /// It is also the right landing tab on its own merits: it is the only one that
+  /// says how the module is doing rather than asking the reader to go and find
+  /// out, and its empty state names the next thing to do.
+  static const _dashboard = 0;
 
-  int _tab = _onboarding;
+  int _tab = _dashboard;
 
   /// Which tabs have been shown at least once.
   ///
@@ -76,7 +79,7 @@ class _HrScreenState extends State<HrScreen> {
   /// The stack below always has five children, so a tab's position never moves
   /// and its State survives every switch after the first; only the CONTENT of a
   /// slot arrives late.
-  final Set<int> _shown = {_onboarding};
+  final Set<int> _shown = {_dashboard};
 
   /// The five, in the owner's order: Dashboard · Onboarding · Records ·
   /// Invitations · Contracts.
@@ -89,16 +92,7 @@ class _HrScreenState extends State<HrScreen> {
     (
       'Dashboard',
       Icons.insights_outlined,
-      () => const NotBuiltYet(
-        title: 'Dashboard',
-        icon: Icons.insights_outlined,
-        waitingFor:
-            'It counts the things this module is about: headcount by place, '
-            'onboardings in flight, invitations that have stalled, expiring '
-            'certifications, who is starting and who is leaving. None of those '
-            'exist to be counted until people are being taken on, so it is the '
-            'last piece of Human Resources rather than the first.',
-      ),
+      () => DashboardTab(api: widget.api, session: widget.session),
     ),
     (
       'Onboarding',
@@ -162,66 +156,6 @@ class _HrScreenState extends State<HrScreen> {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// A tab that is part of the plan and is not built yet.
-///
-/// Shown, marked, and saying what it is waiting for. The badge is the same word
-/// the automation builder uses for an action the engine cannot run, on purpose:
-/// somebody who has met one of these knows what the other one means.
-///
-/// Public because it is a promise about how this codebase treats unfinished
-/// work, not a detail of one screen — the next module with a tab ahead of its
-/// dependencies should reach for this rather than inventing a second way of
-/// saying the same thing.
-class NotBuiltYet extends StatelessWidget {
-  const NotBuiltYet({
-    super.key,
-    required this.title,
-    required this.icon,
-    required this.waitingFor,
-  });
-
-  final String title;
-  final IconData icon;
-
-  /// What has to exist before this can. In prose, and specific: "coming soon"
-  /// tells a reader nothing they had not already worked out from the empty page.
-  final String waitingFor;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 34, color: theme.colorScheme.onSurfaceVariant),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(title, style: theme.textTheme.titleMedium),
-                  const Tag('Not built yet', warn: true),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                waitingFor,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium,
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

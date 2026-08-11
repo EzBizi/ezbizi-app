@@ -9,8 +9,13 @@ use App\Support\Contracts\FieldType;
 use App\Support\Contracts\FilledBy;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Support\Privacy\ConsentRecord;
+use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
+use App\Support\Privacy\RecordsConsent;
+use App\Support\Privacy\RetentionPolicy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use RuntimeException;
@@ -75,7 +80,7 @@ use RuntimeException;
  * through unopposed before it. Raw SQL beneath Eloquent is not stopped by either,
  * and WriteOnceBuilder's docblock says why the line falls there.
  */
-class ContractSignature extends Model implements HoldsPersonalData
+class ContractSignature extends Model implements HoldsPersonalData, RecordsConsent
 {
     use BelongsToTenant;
     use HasFactory;
@@ -121,7 +126,9 @@ class ContractSignature extends Model implements HoldsPersonalData
      * was not added to it — which is exactly the omission the inventory's own
      * docblock says discovery prevents. Discovery finds implementors; it cannot
      * find a model that never declared itself, and nothing failed when this one
-     * did not. See ContractSignatureInventoryTest for the check that now does.
+     * did not. See
+     * DataInventoryTest::test_every_model_holding_a_person_shaped_column_declares_it
+     * for the check that now does.
      */
     public static function personalDataPurpose(): string
     {
@@ -131,30 +138,114 @@ class ContractSignature extends Model implements HoldsPersonalData
             .'be identified from is not a signature.';
     }
 
-    public static function personalDataRetention(): string
+    public static function retention(): RetentionPolicy
     {
-        return 'Kept for as long as the agreement matters, which outlives the account: the '
+        return RetentionPolicy::forever(
+            'Kept for as long as the agreement matters, which outlives the account: the '
             .'name is captured verbatim rather than joined, so it survives that person being '
             .'anonymised. Deliberate, and the one place §9 gives way — you cannot erase your '
             .'way out of having signed something, and a contract whose signatory can be '
-            .'removed is not enforceable.';
+            .'removed is not enforceable.'
+        );
     }
 
+    /*
+     * ── THE TABLE THAT SURVIVES ERASURE, AND WHY ─────────────────
+     *
+     * Every entry below is `Erasure::keep`. That is the most consequential set of
+     * declarations in the privacy machinery and it is not a shortcut, so it is
+     * argued here once rather than four times.
+     *
+     * §9 resolves erasure as anonymise-in-place: keep the record, blank the
+     * person. It works because the RECORD and the PERSON are separable — an
+     * invoice is still an invoice with the name taken out, and its amounts are
+     * what tax law wants. A signature is the one row in this system where that
+     * separation destroys the record rather than cleaning it, because the
+     * personal data IS the record. ESIGN and UETA both turn on attribution: a
+     * signature that cannot be attributed to a human being is not a signature,
+     * it is a timestamp. Blank `signer_label` and what is left does not evidence
+     * a weaker version of the agreement — it evidences nothing, and the
+     * organization holding it has silently lost the contract.
+     *
+     * That is also why `signer_label` is a captured string rather than a join to
+     * `users.name`. Anonymising the account was ANTICIPATED here: the label was
+     * copied at the moment of signing precisely so that erasing the person leaves
+     * the evidence standing. A purge that then blanked the copy would be defeating
+     * a design decision made for its benefit.
+     *
+     * The honest cost, stated rather than hidden: somebody who signs a contract
+     * cannot have their name removed from that contract. That is true on paper
+     * too, it is what signing means, and the report says so to whoever runs the
+     * purge instead of quietly leaving the row untouched.
+     *
+     * What bounds it is that this table holds ONLY the evidence. There is no
+     * address here, no date of birth, no phone number — the contents of what was
+     * agreed live in `onboarding_answers`, which erases in full. The keep is
+     * narrow because the table was kept narrow.
+     */
     public static function personalDataHeld(): array
     {
         return [
             new PersonalDataEntry('signer_label', PersonalDataEntry::IDENTITY,
                 'Who signed, captured as text at the moment of signing so it still answers '
-                .'the question after the account is gone.'),
+                .'the question after the account is gone.',
+                Erasure::keep('Attribution is what makes this a signature at all under '
+                    .'ESIGN/UETA. It is captured verbatim rather than joined precisely so '
+                    .'that it survives the account being anonymised, and erasing it would '
+                    .'not weaken the evidence but destroy it.')),
             new PersonalDataEntry('affirmation', PersonalDataEntry::IDENTITY,
                 'What they typed to sign. Their own name, in their own keystrokes — the '
-                .'affirmative act ESIGN requires.'),
+                .'affirmative act ESIGN requires.',
+                Erasure::keep('The affirmative act itself. Without it the record says an '
+                    .'agreement was reached and cannot say that anybody did anything.')),
             new PersonalDataEntry('ip_address, user_agent', PersonalDataEntry::TECHNICAL,
                 'Where the act came from. Attribution evidence, and the part a dispute '
-                .'turns on.'),
+                .'turns on.',
+                Erasure::keep('Corroboration of attribution, and the first thing asked for '
+                    .'when a signature is denied. It is kept with the signature it '
+                    .'corroborates and expires with it, not before.')),
             new PersonalDataEntry('signer_user_id, subject_user_id', PersonalDataEntry::IDENTITY,
-                'Who signed and who it was about, while those accounts exist.'),
+                'Who signed and who it was about, while those accounts exist.',
+                Erasure::keep('Foreign keys to accounts that the purge has already '
+                    .'anonymised at their one home. Nulling them here would remove the link '
+                    .'between a person\'s record and their own contract without removing any '
+                    .'fact about them — the name behind the key is already gone.')),
         ];
+    }
+
+    /**
+     * Signatures naming this person, on either side.
+     *
+     * Returned even though every entry is a keep, deliberately. The purge report
+     * is where somebody learns what did NOT go, and a table that answered `null`
+     * here would be reported as "holds nothing about this person", which is
+     * false — it holds their name, permanently, and they are entitled to be told
+     * so rather than to find out later.
+     */
+    public static function personalDataAbout(Model $subject): ?Builder
+    {
+        if (! $subject instanceof User) {
+            return null;
+        }
+
+        /*
+         * The `orWhere` pair is NESTED, and it has to be.
+         *
+         * BelongsToTenant adds `organization_id = ?` as a global scope, and SQL
+         * binds AND tighter than OR — so a flat `->where(signer)->orWhere(subject)`
+         * compiles to
+         *
+         *     organization_id = X AND signer_user_id = A OR subject_user_id = A
+         *
+         * which matches every organization's signatures where the subject happens
+         * to be A. On a purge that means erasing, or reporting, another tenant's
+         * rows: §5.1's highest-severity bug class, produced by a missing pair of
+         * brackets. Every `orWhere` in a personalDataAbout is grouped for this
+         * reason.
+         */
+        return static::query()->where(fn (Builder $q) => $q
+            ->where('signer_user_id', $subject->getKey())
+            ->orWhere('subject_user_id', $subject->getKey()));
     }
 
     protected static function booted(): void
@@ -368,6 +459,57 @@ class ContractSignature extends Model implements HoldsPersonalData
             .'be corrected once written — updates and deletes both throw — so a row that is '
             .'wrong is wrong permanently, and refusing it now is the only chance there is.'
         );
+    }
+
+    /**
+     * ── The one consent this product actually takes (§9) ─────────
+     *
+     * ESIGN's agreement to transact electronically, which the five-question
+     * docblock at the top of this class already calls out as "a separate
+     * agreement from the contract and is why it has its own timestamp". That
+     * separateness is exactly what makes it a consent rather than a term: the
+     * person is agreeing to the MEDIUM, and they are asked before they are bound.
+     *
+     * It was already stored correctly — the verbatim sentence in
+     * `consent_statement`, the moment in `consented_at` — before any of the
+     * privacy machinery existed. So nothing here writes anything. This method
+     * makes an existing record readable as what it is, which is the whole
+     * difference between "consent absent" and "consent unlisted".
+     *
+     * The `affirmation` is given as the ACT rather than the consent's own text,
+     * because ESIGN's consent and the signature were taken in one motion: the
+     * name they typed is what performed both, and a ledger claiming a separate
+     * gesture that never happened would be describing a ceremony this software
+     * does not run.
+     *
+     * @return ConsentRecord[]
+     */
+    public static function consentsGivenBy(User $subject): array
+    {
+        return static::query()
+            ->where('signer_user_id', $subject->getKey())
+            ->orderByDesc('consented_at')
+            ->get()
+            ->map(fn (self $signature) => new ConsentRecord(
+                kind:  'electronic_transaction',
+                label: 'Agreeing to sign and receive this agreement electronically',
+                // Verbatim, from the row. Never re-composed from Ceremony: that
+                // class's own docblock turns on each record keeping the sentence
+                // it was signed under, so revising the wording changes what the
+                // next signer reads and nothing about what this one agreed to.
+                statement: (string) $signature->consent_statement,
+                givenAt:   $signature->consented_at?->toIso8601String(),
+                act:       'Typed "'.$signature->affirmation.'" to sign, having been shown '
+                    .'the statement above first.',
+                evidenceType: 'contract_signature',
+                evidenceId:   (string) $signature->getKey(),
+                withdrawal: 'Cannot be withdrawn, and withdrawing it would not undo anything. '
+                    .'This consent is to using an electronic medium; the agreement it was '
+                    .'given for has already been reached, and a signature is not unsigned by '
+                    .'objecting to how it was collected. A paper copy can be asked for at any '
+                    .'time — the statement itself says so.',
+            ))
+            ->all();
     }
 
     public function contractVersion(): BelongsTo

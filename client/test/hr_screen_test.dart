@@ -27,12 +27,15 @@ import 'package:http/testing.dart';
 /// substitute. The fixture below makes the two lists deliberately disagree, so
 /// a Dart implementation of an access-control rule cannot pass this file.
 ///
-/// The third is that the tab still waiting on something says what it is
+/// The third is that whatever is still waiting on something says what it is
 /// waiting for. A tab that vanishes reads as broken and a blank one reads as
 /// broken; this codebase's answer is to draw it and mark it, the same as an
-/// automation action the engine cannot run. One is left — Contracts and
-/// Onboarding are built now, and client/test/hr_contracts_test.dart and
-/// client/test/hr_onboarding_test.dart are what defend them.
+/// automation action the engine cannot run.
+///
+/// No tab is left — all five are built, and hr_contracts_test.dart,
+/// hr_onboarding_test.dart and hr_dashboard_test.dart defend what they do. What
+/// is left is one PANEL on the Dashboard: expiring certifications, which has no
+/// field model to read yet. The rule is the same one level down.
 void main() {
   testWidgets('the five tabs are drawn, in the owner’s order, and switch', (
     tester,
@@ -47,11 +50,14 @@ void main() {
       'Contracts',
     ]);
 
-    // It opens on Onboarding, not on tab zero: the first tab in that order that
-    // does something. Landing on a placeholder says the module is broken. It
-    // was Records until Onboarding stopped being a placeholder — the rule is
-    // "the first that works", not "Records".
-    expect(find.text('Not built yet'), findsNothing);
+    // It opens on tab zero now, and the rule that put it there has not changed:
+    // "the first tab in the owner's order that does something". That was Records
+    // while Onboarding was a placeholder, then Onboarding while Dashboard was
+    // one, and now Dashboard — which is where the rule pointed all along.
+    expect(find.text('At a glance'), findsOneWidget);
+
+    await _tap(tester, _tab('Onboarding'));
+
     expect(find.text('Start an onboarding'), findsOneWidget);
 
     await _tap(tester, _tab('Records'));
@@ -68,22 +74,30 @@ void main() {
     expect(find.text('Jose Silva'), findsOneWidget);
   });
 
-  testWidgets('an unbuilt tab is drawn, marked, and says what it waits for', (
+  /// The convention moved down a level rather than going away.
+  ///
+  /// Every tab is built now, so nothing on the strip is a placeholder. What is
+  /// still unfinished is one PANEL — expiring certifications, which cannot be
+  /// computed because a contract field has no way to say a date is an expiry —
+  /// and it gets the same treatment a whole tab used to: drawn, marked, and
+  /// saying specifically what it waits for.
+  testWidgets('the unbuilt panel is drawn, marked, and says what it waits for', (
     tester,
   ) async {
     await _pump(tester, _handler());
 
-    await _tap(tester, _tab('Dashboard'));
-
+    expect(find.text('Expiring certifications'), findsOneWidget);
     expect(
       find.text('Not built yet'),
       findsOneWidget,
-      reason: 'Dashboard was drawn with nothing to say it is unfinished.',
+      reason: 'The certifications panel was drawn with nothing to say it is '
+          'unfinished.',
     );
 
     // And it says something specific. "Coming soon" tells a reader nothing they
-    // had not already worked out from the empty page.
-    expect(find.textContaining('headcount by place'), findsOneWidget);
+    // had not already worked out from the empty panel.
+    expect(find.textContaining('nothing yet marks one as an expiry'),
+        findsOneWidget);
   });
 
   /// Onboarding stopped being a placeholder. Only that it opens and reaches the
@@ -612,6 +626,15 @@ MockClientHandler _handler({
 
     if (path.endsWith('/me')) return _json({'data': _me});
 
+    // The tab this screen now opens on, so every test in this file pays for it.
+    // Enough for it to draw; what the panels DO is defended in
+    // client/test/hr_dashboard_test.dart, against fixtures written to catch a
+    // client that invents its own figures — a second copy of those here would be
+    // a second thing to keep in step.
+    if (path.endsWith('/hr/dashboard')) {
+      return _json({'panels': _dashboardPanels});
+    }
+
     // Enough for the Contracts tab to open and say it has nothing yet. What
     // that tab actually does is defended in hr_contracts_test.dart, against a
     // catalogue written to catch a client reading its own vocabulary — a second
@@ -842,6 +865,65 @@ const _completedOnly = [
   },
 ];
 
+/// `GET /hr/dashboard` — just enough for the tab to draw.
+///
+/// The one-person organization, which is what most people open this on. What
+/// each panel says in that state is defended in hr_dashboard_test.dart.
+const _dashboardPanels = [
+  {
+    'key': 'hr.headcount',
+    'label': 'Headcount by place',
+    'data': {
+      'rows': [
+        {'title': 'Everdoors', 'total': 1},
+      ],
+      'total': 1,
+      'places': 1,
+    },
+  },
+  {
+    'key': 'hr.onboardings_in_flight',
+    'label': 'Onboardings in flight',
+    'data': {
+      'rows': [
+        {'title': 'Being filled in', 'total': 0},
+        {'title': 'Waiting on a signature', 'total': 0},
+      ],
+      'total': 0,
+      'oldest_started_at': null,
+    },
+  },
+  {
+    'key': 'hr.invitations_stalled',
+    'label': 'Invitations that have stalled',
+    'data': {
+      'rows': [
+        {'title': 'Expired before anyone accepted', 'total': 0},
+        {'title': 'Sent but never opened', 'total': 0},
+      ],
+      'total': 0,
+      'sent_total': 0,
+    },
+  },
+  {
+    'key': 'hr.starters_and_leavers',
+    'label': 'Starting and leaving',
+    'data': {
+      'rows': [
+        {'title': 'Joined', 'total': 1},
+        {'title': 'No longer active', 'total': 0},
+      ],
+      'total': 1,
+      'days': 30,
+      'period_applies_to': ['Joined'],
+      'people': [
+        {'id': 'u-1', 'name': 'Jose Silva', 'joined_at': '2026-08-01T09:00:00+00:00'},
+      ],
+      'more_people': 0,
+    },
+  },
+];
+
 /// The create response — the one moment the raw token exists.
 const _created = {
   'id': 'i-3',
@@ -915,7 +997,10 @@ const _me = {
   'email': 'jose@example.com',
   'has_avatar': false,
   'role': {'id': 'role-1', 'name': 'Administrator'},
-  'permissions': ['hr.view'],
+  // What the Records tab actually exercises. It held `hr.view` alone while the
+  // screen checked nothing, so tests drove Deactivate and Change their role
+  // through a role that could do neither.
+  'permissions': ['hr.view', 'hr.create', 'hr.edit'],
   'modules': [
     {'key': 'hr', 'label': 'Human Resources', 'available': true, 'reachable': true},
   ],

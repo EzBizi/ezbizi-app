@@ -425,6 +425,7 @@ class _IdentityCardState extends State<IdentityCard> {
             if (_dob != null)
               IconButton(
                 icon: const Icon(Icons.clear, size: 16),
+                tooltip: 'Clear the date of birth',
                 onPressed: () => setState(() => _dob = null),
               ),
             const Icon(Icons.calendar_today_outlined, size: 16),

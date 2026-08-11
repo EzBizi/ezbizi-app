@@ -270,6 +270,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ? Icons.visibility_off_outlined
                       : Icons.visibility_outlined,
                 ),
+                tooltip: _showPassword ? 'Hide the password' : 'Show the password',
                 onPressed: () => setState(() => _showPassword = !_showPassword),
               ),
             ),

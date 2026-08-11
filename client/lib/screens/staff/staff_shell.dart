@@ -149,7 +149,9 @@ class _StaffShellState extends State<StaffShell> {
             ),
           ),
           PopupMenuButton<String>(
-            tooltip: me.email,
+            // The control is the account menu; the email is whose. Reading out
+            // an address alone does not say what pressing it does.
+            tooltip: 'Your staff account — ${me.email}',
             icon: CircleAvatar(
               radius: 15,
               backgroundColor: EzBiziTheme.accent,

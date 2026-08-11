@@ -4,8 +4,11 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use App\Models\Concerns\WrittenOnce;
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
 use App\Support\Contracts\FieldDefinition;
 use App\Support\Contracts\FieldSet;
+use App\Support\Contracts\MergeTags;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -34,7 +37,7 @@ use RuntimeException;
  * Eloquent is not covered, and WriteOnceBuilder's docblock says why that is
  * where the line falls rather than leaving it to be assumed.
  */
-class ContractVersion extends Model
+class ContractVersion extends Model implements StatesRetention
 {
     use BelongsToTenant;
     use HasFactory;
@@ -43,8 +46,30 @@ class ContractVersion extends Model
 
     public const UPDATED_AT = null;   // versions are written once
 
+    /**
+     * Never, and the reason is the same one that makes the class written-once.
+     *
+     * A version is what somebody signed. Retiring a field produces a NEW version
+     * and the old one stays, because an onboarding pins the version it began
+     * under and its answers are unreadable without the questions. An age-based
+     * window would delete the oldest version first — which is the one the
+     * longest-standing contracts are pinned to.
+     *
+     * It grows one row per publish, which is a human act, so the growth is
+     * bounded by how often people edit templates rather than by traffic.
+     */
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::forever(
+            'Kept for as long as the organization exists. A version is the exact set of '
+            .'questions an onboarding was pinned to, and deleting one would leave the '
+            .'answers already given to it unreadable — a signed contract nobody can '
+            .'reproduce.'
+        );
+    }
+
     protected $fillable = [
-        'organization_id', 'contract_id', 'version', 'fields', 'notes', 'created_by',
+        'organization_id', 'contract_id', 'version', 'fields', 'body', 'notes', 'created_by',
     ];
 
     protected function casts(): array
@@ -100,6 +125,19 @@ class ContractVersion extends Model
     public function fieldSet(): FieldSet
     {
         return FieldSet::fromStored($this->fields);
+    }
+
+    /**
+     * Does this version carry the agreement's own wording?
+     *
+     * The one question that decides which of the two documents DocumentRenderer
+     * produces, asked here so that both the renderer and the API presenter ask it
+     * the same way — including the "a body of whitespace is no body" rule, which
+     * is MergeTags::normalise's and must not be re-invented at either site.
+     */
+    public function hasBody(): bool
+    {
+        return MergeTags::normalise($this->body) !== null;
     }
 
     /**

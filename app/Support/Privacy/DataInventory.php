@@ -46,11 +46,16 @@ use Illuminate\Support\Str;
  */
 class DataInventory
 {
-    /** @var array<class-string<Model&HoldsPersonalData>>|null */
-    private ?array $models = null;
-
     public function __construct(
         private readonly TenantContext $tenant,
+        /*
+         * The walk of app/Models moved to DeclaringModels when the purge and the
+         * retention sweep needed the same one. Three copies of a glob is three
+         * places for the condition to drift — and the condition DID differ:
+         * this asks for HoldsPersonalData, the sweep asks for the strictly larger
+         * StatesRetention, and two hand-written loops would have looked identical.
+         */
+        private readonly DeclaringModels $models,
     ) {}
 
     /**
@@ -67,7 +72,7 @@ class DataInventory
         return $this->tenant->run($organization, function () use ($organization) {
             $holdings = [];
 
-            foreach ($this->models() as $class) {
+            foreach ($this->models->holdingPersonalData() as $class) {
                 /** @var Model $model */
                 $model = new $class;
 
@@ -76,7 +81,11 @@ class DataInventory
                     'table'   => $model->getTable(),
                     'label'   => Str::headline(class_basename($class)),
                     'purpose' => $class::personalDataPurpose(),
-                    'retention' => $class::personalDataRetention(),
+                    // The sentence AND the machine-readable policy behind it, so
+                    // a reader can see that "3 months" is a thing something acts
+                    // on rather than a number somebody typed into prose.
+                    'retention' => $class::retention()->sentence(),
+                    'retention_policy' => $class::retention()->toArray(),
                     'fields'  => array_map(
                         fn (PersonalDataEntry $e) => $e->toArray(),
                         $class::personalDataHeld(),
@@ -185,40 +194,5 @@ class DataInventory
         }
 
         return $query->where('organization_id', $this->tenant->idOrFail())->count();
-    }
-
-    /**
-     * Every model that declares itself.
-     *
-     * A directory read and a class check, memoised for the request. It is not
-     * free, and it does not need to be: this runs once, when somebody opens a
-     * compliance answer, and the alternative is a list that goes stale silently.
-     *
-     * @return array<class-string<Model&HoldsPersonalData>>
-     */
-    private function models(): array
-    {
-        if ($this->models !== null) {
-            return $this->models;
-        }
-
-        $found = [];
-
-        foreach (glob(app_path('Models').'/*.php') ?: [] as $file) {
-            $class = 'App\\Models\\'.basename($file, '.php');
-
-            if (! class_exists($class)) {
-                continue;
-            }
-
-            if (is_subclass_of($class, HoldsPersonalData::class)
-                && is_subclass_of($class, Model::class)) {
-                $found[] = $class;
-            }
-        }
-
-        sort($found);
-
-        return $this->models = $found;
     }
 }

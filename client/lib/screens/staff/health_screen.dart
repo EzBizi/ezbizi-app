@@ -158,6 +158,7 @@ class _HealthScreenState extends State<HealthScreen> {
             Icon(
               ok ? Icons.check_circle_outline : Icons.error_outline,
               color: ok ? scheme.primary : scheme.error,
+              semanticLabel: ok ? 'Healthy' : 'Needs attention',
             ),
             const SizedBox(width: 12),
             Expanded(

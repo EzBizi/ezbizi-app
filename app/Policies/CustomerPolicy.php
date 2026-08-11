@@ -5,6 +5,8 @@ namespace App\Policies;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\User;
+use App\Support\Access\Refusal;
+use Illuminate\Auth\Access\Response;
 
 /**
  * Who may do what to a customer (plan §4, §5.2).
@@ -33,36 +35,63 @@ use App\Models\User;
  * off per tenant. Nothing ever read it and it has been dropped — what keeps the
  * relationship unambiguous is the owning-franchise tag, which is visible
  * wherever the customer appears, and the audit trail behind every edit.)
+ *
+ * ── Why the refusals carry sentences ─────────────────────────────
+ *
+ * Precisely because the rules above are not obvious. "You may edit any
+ * customer in the business but may only delete your own franchise's" is a
+ * deliberate asymmetry, and a bare 403 on the delete makes it look like the
+ * edit that just worked was the accident. See App\Support\Access\Refusal.
  */
 class CustomerPolicy
 {
-    public function viewAny(User $user): bool
+    public function viewAny(User $user): Response
     {
-        return $user->hasPermission('customers.view');
+        return $user->hasPermission('customers.view')
+            ? Response::allow()
+            : Refusal::permission('see customers');
     }
 
-    public function view(User $user, Customer $customer): bool
+    public function view(User $user, Customer $customer): Response
     {
         // Same organization is already guaranteed by the tenant scope; asserting
         // it here as well costs nothing and means the policy is still correct if
         // it is ever called outside a scoped query.
+        if ($customer->organization_id !== $user->organization_id) {
+            return Response::denyAsNotFound();
+        }
+
         return $user->hasPermission('customers.view')
-            && $customer->organization_id === $user->organization_id;
+            ? Response::allow()
+            : Refusal::permission('see customers');
     }
 
     /** @param  Franchise|null  $owner  the franchise that will be accountable. */
-    public function create(User $user, ?Franchise $owner = null): bool
+    public function create(User $user, ?Franchise $owner = null): Response
     {
         if (! $user->hasPermission('customers.create')) {
-            return false;
+            return Refusal::permission('add a customer');
         }
 
-        // No owner named yet — this is the "can you open the form" question.
+        // No owner named yet — the "can you open the form" question. Nothing
+        // asks it today; see the same branch in JobPolicy::create for why it is
+        // still here and why it does not answer `true`.
         if ($owner === null) {
-            return $user->reachableFranchises()->isNotEmpty();
+            return $user->reachableFranchises()->isNotEmpty()
+                ? Response::allow()
+                : Refusal::nowhereToAct($user, Refusal::AT_FRANCHISE, 'add a customer');
         }
 
-        return $user->canActOnFranchise($owner);
+        return $user->canActOnFranchise($owner)
+            ? Response::allow()
+            : Refusal::noReach(
+                $user,
+                Refusal::AT_FRANCHISE,
+                'add a customer',
+                $owner->name,
+                'It would be accountable for this relationship and would count it '
+                .'in its own numbers, which is why it has to be somewhere you stand.'
+            );
     }
 
     /**
@@ -70,10 +99,15 @@ class CustomerPolicy
      * the audit log records who and from where. The tag creates social clarity;
      * the audit trail creates accountability."
      */
-    public function update(User $user, Customer $customer): bool
+    public function update(User $user, Customer $customer): Response
     {
+        if ($customer->organization_id !== $user->organization_id) {
+            return Response::denyAsNotFound();
+        }
+
         return $user->hasPermission('customers.edit')
-            && $customer->organization_id === $user->organization_id;
+            ? Response::allow()
+            : Refusal::permission('change a customer');
     }
 
     /**
@@ -83,19 +117,38 @@ class CustomerPolicy
      * making that franchise answerable for a relationship; over the source
      * because a franchise's customer count is its own number, and someone with
      * no authority there should not be able to reduce it.
+     *
+     * Both halves are named separately when they fail, because "you cannot move
+     * this customer" is useless when the reader has authority over one end and
+     * is looking straight at it.
      */
-    public function reassignOwner(User $user, Customer $customer, Franchise $newOwner): bool
+    public function reassignOwner(User $user, Customer $customer, Franchise $newOwner): Response
     {
-        if (! $user->hasPermission('customers.edit')) {
-            return false;
-        }
-
         if ($customer->organization_id !== $user->organization_id) {
-            return false;
+            return Response::denyAsNotFound();
         }
 
-        return $user->canActOnFranchise($newOwner)
-            && $user->canActOnFranchise($customer->owningFranchise);
+        if (! $user->hasPermission('customers.edit')) {
+            return Refusal::permission('move a customer to another '
+                .strtolower($user->organization?->franchise_label ?? 'franchise'));
+        }
+
+        if (! $user->canActOnFranchise($newOwner)) {
+            return Refusal::noReach(
+                $user, Refusal::AT_FRANCHISE, 'hand this customer over', $newOwner->name,
+            );
+        }
+
+        return $user->canActOnFranchise($customer->owningFranchise)
+            ? Response::allow()
+            : Refusal::noReach(
+                $user,
+                Refusal::AT_FRANCHISE,
+                'hand this customer on',
+                $customer->owningFranchise->name,
+                'That is who is accountable for it today, and a customer count is '
+                .'that part of the business’s own number to lose.'
+            );
     }
 
     /**
@@ -104,10 +157,26 @@ class CustomerPolicy
      * Editing a shared record is collaboration; removing one is not something
      * another franchise should be able to do to the franchise accountable for it.
      */
-    public function delete(User $user, Customer $customer): bool
+    public function delete(User $user, Customer $customer): Response
     {
-        return $user->hasPermission('customers.delete')
-            && $customer->organization_id === $user->organization_id
-            && $user->canActOnFranchise($customer->owningFranchise);
+        if ($customer->organization_id !== $user->organization_id) {
+            return Response::denyAsNotFound();
+        }
+
+        if (! $user->hasPermission('customers.delete')) {
+            return Refusal::permission('delete a customer');
+        }
+
+        return $user->canActOnFranchise($customer->owningFranchise)
+            ? Response::allow()
+            : Refusal::noReach(
+                $user,
+                Refusal::AT_FRANCHISE,
+                'delete this customer',
+                $customer->owningFranchise->name,
+                'Any part of the business may CHANGE a shared customer — that is '
+                .'collaboration. Removing one is not something to be able to do to '
+                .'whoever is accountable for it.'
+            );
     }
 }

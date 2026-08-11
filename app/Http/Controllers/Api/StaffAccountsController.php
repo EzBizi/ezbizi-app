@@ -7,6 +7,7 @@ use App\Services\Staff\StaffAuthenticator;
 use App\Support\Audit\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -86,18 +87,59 @@ class StaffAccountsController extends Controller
             'name'      => ['string', 'max:120'],
             'tier'      => [Rule::in([PlatformStaff::TIER_LEAD, PlatformStaff::TIER_DEV])],
             'is_active' => ['boolean'],
+
+            // The Lead Developer exemption (§4.2), which is a property of THIS
+            // ACCOUNT and not of its tier. See the guards below for the two
+            // things that are true of it: only a lead may hold it, and only one
+            // account may hold it at a time.
+            'audit_exempt' => ['boolean'],
         ]);
 
         // Normalised ONCE, up front. Laravel's `boolean` rule accepts 0, 1, "0"
         // and "1" as well as real booleans, so a strict `=== false` further down
         // would quietly miss `{"is_active": 0}` — disabling the account while
         // leaving every live token valid for the next time it is re-enabled.
-        if (array_key_exists('is_active', $input)) {
-            $input['is_active'] = filter_var($input['is_active'], FILTER_VALIDATE_BOOL);
+        foreach (['is_active', 'audit_exempt'] as $flag) {
+            if (array_key_exists($flag, $input)) {
+                $input[$flag] = filter_var($input[$flag], FILTER_VALIDATE_BOOL);
+            }
         }
 
         $staysLead   = ($input['tier'] ?? $staff->tier) === PlatformStaff::TIER_LEAD;
         $staysActive = $input['is_active'] ?? $staff->is_active;
+        $staysExempt = $input['audit_exempt'] ?? (bool) $staff->audit_exempt;
+
+        /*
+         * The exemption survives this request only if it still makes sense after
+         * it. Both refusals below are about the state the account would be LEFT
+         * in, not about the field that was sent — demoting an exempt lead and
+         * exempting a Developer are the same mistake arriving from two
+         * directions, and §4.2's "a Developer promoted by mistake shouldn't
+         * silently stop being audited" is the reason neither may happen quietly.
+         */
+        if ($staysExempt && ! $staysLead) {
+            return $this->refuse(
+                'This account is exempt from the audit trail, and only a Lead Developer '
+                .'may be. Revoke the exemption first, then change the tier.'
+            );
+        }
+
+        // One account, which is what §4.2 asks for: "an explicit flag on the
+        // single Lead Developer account". Naming the holder means the answer to
+        // "why can't I?" is on the screen rather than in a table somebody has to
+        // go and read.
+        if ($staysExempt) {
+            $holder = PlatformStaff::where('audit_exempt', true)
+                ->whereKeyNot($staff->getKey())
+                ->first();
+
+            if ($holder !== null) {
+                return $this->refuse(
+                    "The audit exemption is held by {$holder->email}, and it belongs to one "
+                    .'account at a time. Revoke it there first.'
+                );
+            }
+        }
 
         // Locking yourself out of the control plane leaves the console on the box
         // as the only way back in. Refusing is cheaper than that evening.
@@ -121,8 +163,18 @@ class StaffAccountsController extends Controller
             );
         }
 
-        $before = $staff->only(['name', 'tier', 'is_active']);
-        $staff->fill($input)->save();
+        $before = $staff->only(['name', 'tier', 'is_active', 'audit_exempt']);
+
+        // `audit_exempt` is deliberately outside $fillable — a request body must
+        // not be able to carry "and stop auditing me" alongside a name change —
+        // so it is set on its own line, where it is visible in review.
+        $staff->fill(Arr::except($input, 'audit_exempt'));
+
+        if (array_key_exists('audit_exempt', $input)) {
+            $staff->forceFill(['audit_exempt' => $input['audit_exempt']]);
+        }
+
+        $staff->save();
 
         // Deactivation must end the sessions too, or "disabled" describes a flag
         // and not the access.
@@ -130,9 +182,14 @@ class StaffAccountsController extends Controller
             $staff->tokens()->delete();
         }
 
+        // Written through logStaff, which suppression does not reach. The account
+        // that grants itself the exemption is the one whose next actions vanish,
+        // so the grant is the last thing that can still be evidence — recording
+        // it through the suppressible path would have let the exemption erase the
+        // record of its own arrival.
         $this->record($request, 'staff.account_updated', $staff, [
             'before' => $before,
-            'after'  => $staff->only(['name', 'tier', 'is_active']),
+            'after'  => $staff->only(['name', 'tier', 'is_active', 'audit_exempt']),
         ]);
 
         return response()->json(['data' => $this->present($staff->fresh())]);
@@ -414,6 +471,10 @@ class StaffAccountsController extends Controller
             'email'             => $staff->email,
             'tier'              => $staff->tier,
             'is_active'         => $staff->is_active,
+            // Sent so the control plane can SHOW which account is outside the
+            // business audit trail. An exemption nobody can see on a screen is
+            // one nobody reviews, and §4.2 asks for it to be deliberate.
+            'audit_exempt'      => (bool) $staff->audit_exempt,
             'totp_confirmed'    => $staff->hasTotp(),
             'totp_pending'      => $staff->hasPendingTotp(),
             'recovery_code_count' => count($staff->recovery_codes ?? []),

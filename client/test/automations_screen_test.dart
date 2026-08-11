@@ -362,6 +362,92 @@ void main() {
     ]);
   });
 
+  /// The finding, in one screen: `Me.can` had ONE call site in ~28,000 lines.
+  ///
+  /// So the client downloaded the permission set on every /me and consulted it
+  /// nowhere. A view-only role was offered New, the switch on every row and
+  /// Delete, and learnt what it could not do by pressing each one and reading
+  /// "This action is unauthorized."
+  group('a view-only role', () {
+    testWidgets('is refused the controls it cannot use, and told why', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _handler(permissions: const ['automations.view']),
+      );
+
+      // Still on screen. Hiding it is not compliance — somebody looking for
+      // "New automation" and not finding it concludes the app is broken.
+      final create = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'New automation'),
+      );
+      expect(create.onPressed, isNull);
+
+      expect(
+        find.byTooltip(
+          'You do not have permission to build an automation. That is part of a '
+          'role rather than of an account, so somebody who can edit roles can '
+          'add it to yours.',
+        ),
+        findsOneWidget,
+        reason: 'A dead button with no explanation is indistinguishable from a bug.',
+      );
+
+      // The switch is `automations.edit`, the same authority as opening the
+      // builder — see AutomationPolicy.
+      final live = tester.widget<Switch>(find.byType(Switch));
+      expect(live.onChanged, isNull);
+    });
+
+    testWidgets('sees the reason inside the row menu, not a grey line', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _handler(permissions: const ['automations.view']),
+      );
+
+      await _tap(tester, find.byType(PopupMenuButton<String>));
+
+      // Every entry still listed. Run history is `automations.view` and stays
+      // usable; the rest say which grant is missing. Rehearsing is `update`
+      // rather than `view` — see AutomationsController::test — so it is refused
+      // with the same sentence as opening the builder, which is why that one
+      // appears twice.
+      expect(find.text('Open and edit'), findsOneWidget);
+      expect(find.text('Run history'), findsOneWidget);
+      expect(find.text('Test against a real event'), findsOneWidget);
+      expect(
+        find.textContaining('permission to change an automation'),
+        findsNWidgets(2),
+      );
+      expect(
+        find.textContaining('permission to delete an automation'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('cannot reach the builder by opening the tab directly', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _handler(permissions: const ['automations.view']),
+      );
+
+      await _tap(tester, find.text('Build'));
+
+      // Gating the button alone would leave a whole form to fill in and a
+      // refusal at the save, which is the worst moment to find out.
+      expect(find.text('Name it'), findsNothing);
+      expect(
+        find.textContaining('permission to build an automation'),
+        findsOneWidget,
+      );
+    });
+  });
+
   testWidgets('the condition editor still sends the payload it always did', (
     tester,
   ) async {
@@ -754,11 +840,24 @@ MockClientHandler _handler({
   Map<String, dynamic> detail = _detail,
   Object catalogue = _catalogue,
   int deleteStatus = 200,
+  // What the signed-in role holds. The screen consults this now, so a test that
+  // does not say produces an administrator — which is what every one of these
+  // tests was written against.
+  List<String> permissions = const [
+    'automations.view',
+    'automations.create',
+    'automations.edit',
+    'automations.delete',
+  ],
 }) {
   return (request) async {
     final path = request.url.path;
 
-    if (path.endsWith('/me')) return _json({'data': _me});
+    if (path.endsWith('/me')) {
+      return _json({
+        'data': {..._me, 'permissions': permissions},
+      });
+    }
 
     if (path.endsWith('/automations/catalogue')) {
       return _json({'data': catalogue});

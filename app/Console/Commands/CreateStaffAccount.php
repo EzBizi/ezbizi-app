@@ -11,10 +11,11 @@ use Illuminate\Support\Facades\Validator;
 /**
  * Create an EzBizi staff account (plan §4.2).
  *
- * CONSOLE ONLY, deliberately. There is no HTTP endpoint that creates staff:
- * an internet-reachable "create an account that can see every customer" route
- * is a liability no amount of authorization makes comfortable. Making one
- * requires shell access to the box.
+ * THE BOOTSTRAP PATH, and the only one that needs no existing account.
+ * `POST /api/v1/staff/accounts` also creates staff, behind a session that is
+ * already a Lead Developer's — which is fine and is how the second account
+ * onwards should be made. This one exists for the first, and for the evening
+ * when nobody can sign in to the control plane at all.
  *
  * The account cannot be used until TOTP enrolment is completed — this command
  * prints the enrolment secret and the account stays unusable until a code
@@ -69,8 +70,16 @@ class CreateStaffAccount extends Command
             $this->warn('  Creating a LEAD DEVELOPER account. This tier:');
             $this->warn('    · reaches every organization on the platform');
             $this->warn('    · may enter a tenant without client approval');
-            $this->warn('    · is exempt from the ordinary business audit trail (§4.2)');
-            $this->warn('  Impersonations are still always recorded.');
+            $this->warn('    · may manage every other staff account');
+            $this->warn('  Impersonations are always recorded, whatever the tier.');
+            $this->newLine();
+            // Said here because the tier used to carry it, and anyone who has
+            // read this warning before will remember that it did. It is now a
+            // separate flag on one account (§4.2 — "per-account, not per-role"),
+            // and this command does not grant it.
+            $this->warn('  It is NOT exempt from the audit trail. That exemption is a');
+            $this->warn('  separate flag, held by one account at a time, granted through');
+            $this->warn('  the control plane and recorded when it changes hands.');
             $this->warn('');
 
             if (! $this->confirm('Continue?', false)) {

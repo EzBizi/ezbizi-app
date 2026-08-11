@@ -12,8 +12,10 @@ use PragmaRX\Google2FA\Google2FA;
  *
  * Two factors, always. Unlike tenant users — where the organization decides
  * whether to require TOTP — staff have no choice: these accounts reach every
- * customer's data on the platform, and the Lead Developer tier is deliberately
- * outside the ordinary audit trail. Password-only on that combination would be
+ * customer's data on the platform, and one of them — the account holding
+ * `audit_exempt` (§4.2) — is deliberately outside the ordinary audit trail. It
+ * is a flag on one account rather than a property of the Lead Developer tier,
+ * but the reasoning is unchanged: password-only on that combination would be
  * the weakest link in the entire system.
  */
 class StaffAuthenticator

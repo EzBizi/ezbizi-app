@@ -98,6 +98,48 @@ use Illuminate\Support\Collection;
  * was agreed. What protects it is where it lives — behind the same authorization
  * as the onboarding, served as an attachment with `nosniff`, never at a
  * guessable path.
+ *
+ * ═══════════════════════════════════════════════════════════════════
+ *  TWO DOCUMENTS COME OUT OF HERE. WHICH ONE IS DECIDED BY ONE
+ *  THING: WHETHER THE VERSION HAS A BODY.
+ *
+ *  This matters more than an ordinary branch, because
+ *  DocumentFingerprint is taken over whatever this produces and a
+ *  signature is recorded against that fingerprint. So somebody
+ *  reading a signature record years from now has to be able to say
+ *  which of the two they are looking at.
+ *
+ *  BODY-DRIVEN — `contract_versions.body` is not null.
+ *      The agreement, in the tenant's own words, with merge tags
+ *      resolved (MergeTags). This is a contract: prose somebody wrote
+ *      and somebody else read. The header identifying the document and
+ *      the list of signature lines are added around it; the answers
+ *      appear only where the wording puts them.
+ *
+ *  FORM DUMP — no body. THE FALLBACK, AND ONLY THAT.
+ *      Headings and a definition list: the person, then every question
+ *      with its answer. It is what this class produced before a body
+ *      existed, it is what every version published before then still
+ *      produces, and it is byte-for-byte what it was — so a document
+ *      re-rendered from an old version is the same document.
+ *
+ *      It is a record of what was collected rather than a contract,
+ *      and it is kept because a template with no wording yet must
+ *      still produce something a person can read and sign, not an
+ *      empty page.
+ *
+ *  ── Why the body does not also print the leftover answers ───
+ *
+ *  A body-driven document shows the fields its wording mentions and
+ *  no others, and that is the decision rather than an omission. A
+ *  contract says what it says. The answers a template collects but the
+ *  wording never mentions — a National Insurance number for payroll,
+ *  an emergency contact — are data the employer gathered, not terms
+ *  the employee agreed to, and appending them to the signature page
+ *  would have somebody signing under a data dump. They remain on the
+ *  record, in the export, and in the §9 inventory, which is where
+ *  collected data belongs.
+ * ═══════════════════════════════════════════════════════════════════
  */
 final class DocumentRenderer
 {
@@ -116,66 +158,160 @@ final class DocumentRenderer
      */
     public function render(Onboarding $onboarding, array $identity, Collection $answers): string
     {
-        $version  = $onboarding->contractVersion;
-        $contract = $version->contract;
-        $byKey    = $answers->keyBy('field_key');
+        $version      = $onboarding->contractVersion;
+        $contract     = $version->contract;
+        $fields       = $version->fieldSet();
+        $organization = (string) $onboarding->organization->name;
+        $name         = (string) $contract->name;
 
+        return $this->document(
+            organizationName: $organization,
+            contractName:     $name,
+            description:      $contract->description,
+            version:          (int) $version->version,
+            fields:           $fields,
+            body:             MergeTags::normalise($version->body),
+            values: array_replace(
+                $this->answerValues($fields, $identity, $answers),
+                ContractFacts::values(
+                    organizationName: $organization,
+                    contractName:     $name,
+                    version:          (int) $version->version,
+                    /*
+                     * The day the paperwork was drawn up, and never `now()`.
+                     *
+                     * This method is deterministic by contract (see the note
+                     * above), and `started_at` is the only date in reach that
+                     * was fixed before the signer read anything — so the
+                     * preview they fingerprinted and the render taken to store
+                     * the document carry the same date. See ContractFacts for
+                     * why the SIGNING date cannot be in the document at all.
+                     */
+                    date: $onboarding->started_at?->toDateString() ?? '',
+                ),
+            ),
+        );
+    }
+
+    /**
+     * The same document, with sample values — what the editor is shown.
+     *
+     * It goes through `document()` and `MergeTags::render()`, which is the point
+     * rather than an implementation detail: the preview a person approves and the
+     * document a person signs are produced by one piece of code, so the preview
+     * cannot quietly be a good-enough approximation of the thing with the
+     * signature on it.
+     *
+     * Two things differ, and both are honest. The VALUES are samples rather than
+     * answers, because nobody has answered yet. And the VERSION is the one this
+     * draft would become rather than the one in force, because a draft is by
+     * definition not yet published — so the header and `{{contract.version}}`
+     * both name the next number. The merged wording is identical for identical
+     * inputs, which is what the editor is actually approving.
+     *
+     * ── The one non-deterministic value in this class ────────────
+     *
+     * `now()` below. It is safe exactly here and nowhere else: nothing this
+     * method returns is ever stored, attached or fingerprinted — the caller is
+     * an editor screen — and a preview dated anything but today would be lying
+     * about what the tenant is looking at. Every other date in this file is read
+     * off a record.
+     */
+    public function sample(
+        string $organizationName,
+        string $contractName,
+        ?string $description,
+        int $version,
+        FieldSet $fields,
+        ?string $body,
+    ): string {
+        return $this->document(
+            organizationName: $organizationName,
+            contractName:     $contractName,
+            description:      $description,
+            version:          $version,
+            fields:           $fields,
+            body:             MergeTags::normalise($body),
+            values: MergeTags::samples($fields, ContractFacts::values(
+                organizationName: $organizationName,
+                contractName:     $contractName,
+                version:          $version,
+                date:             now()->toDateString(),
+            )),
+        );
+    }
+
+    /**
+     * The one place a contract document is assembled, from values rather than
+     * from records.
+     *
+     * It takes strings and a field list, not an Onboarding, so that the signed
+     * document and the editor's preview cannot drift: there is no second
+     * assembler for either to be built by.
+     *
+     * @param  array<string, MergeValue>  $values  every key a tag may name, resolved
+     */
+    private function document(
+        string $organizationName,
+        string $contractName,
+        ?string $description,
+        int $version,
+        FieldSet $fields,
+        ?string $body,
+        array $values,
+    ): string {
         $out = [];
         $out[] = '<!doctype html>';
         $out[] = '<html lang="en"><head><meta charset="utf-8">';
-        $out[] = '<title>'.$this->e($contract->name).'</title>';
-        // Inline, minimal, and no external anything — see point 3 above.
-        $out[] = '<style>'.self::STYLE.'</style>';
+        $out[] = '<title>'.$this->e($contractName).'</title>';
+        // Inline, minimal, and no external anything — see point 3 above. The
+        // agreement's rules are appended only when there is an agreement, so a
+        // document with no body is byte-for-byte the one it always was.
+        $out[] = '<style>'.self::STYLE.($body === null ? '' : "\n".self::AGREEMENT_STYLE).'</style>';
         $out[] = '</head><body>';
 
         $out[] = '<header>';
-        $out[] = '<p class="org">'.$this->e($onboarding->organization->name).'</p>';
-        $out[] = '<h1>'.$this->e($contract->name).'</h1>';
-        $out[] = '<p class="version">Version '.((int) $version->version).'</p>';
+        $out[] = '<p class="org">'.$this->e($organizationName).'</p>';
+        $out[] = '<h1>'.$this->e($contractName).'</h1>';
+        $out[] = '<p class="version">Version '.$version.'</p>';
 
-        if (($contract->description ?? '') !== '') {
-            $out[] = '<p class="description">'.$this->e($contract->description).'</p>';
+        if (($description ?? '') !== '') {
+            $out[] = '<p class="description">'.$this->e($description).'</p>';
         }
 
         $out[] = '</header>';
 
-        // ── the person ───────────────────────────────────────────
-        //
-        // Merged from the profile rather than stored twice — the one-home rule
-        // says HR points at core identity, and this is the pointing.
-        $out[] = '<section><h2>The person</h2><dl>';
+        // Retired fields are out of both paths for the same reason they are out
+        // of a new onboarding: they are not part of what this version asks.
+        $live = array_values(array_filter(
+            $fields->fields,
+            fn (FieldDefinition $f) => ! $f->retired,
+        ));
 
-        foreach (CommonCore::asked() as $key) {
-            $out[] = $this->row(
-                CommonCore::labelFor($key),
-                $this->blankIfEmpty($identity[$key] ?? null),
-            );
+        if ($body === null) {
+            $this->formDump($out, $live, $values);
+        } else {
+            // The agreement itself. `MergeTags::render` escapes the whole body
+            // before it does anything else and puts the result in element
+            // content only — this is that one place.
+            $out[] = '<section class="agreement">';
+            $out[] = MergeTags::render($body, $values);
+            $out[] = '</section>';
         }
-
-        $out[] = '</dl></section>';
-
-        // ── the template's own questions ─────────────────────────
-        $out[] = '<section><h2>Terms</h2><dl>';
-
-        foreach ($onboarding->fields() as $field) {
-            if ($field->type === FieldType::SIGNATURE) {
-                continue;   // rendered below, as a line rather than as an answer
-            }
-
-            $out[] = $this->row(
-                $field->label,
-                $this->answerText($field, $byKey->get($field->key)),
-            );
-        }
-
-        $out[] = '</dl></section>';
 
         // ── who signs ────────────────────────────────────────────
         //
         // The lines, not the signatures. Naming them here is what makes the
         // document say who was supposed to sign it, so a reader can check that
         // the signature records beside it are the complete set.
-        $signatureFields = $onboarding->signatureFields();
+        //
+        // Appended by this class in both paths rather than merged, so a body
+        // cannot omit them: a contract whose author forgot to mention the
+        // signature lines is still a contract that says who has to sign it.
+        $signatureFields = array_values(array_filter(
+            $live,
+            fn (FieldDefinition $f) => $f->type === FieldType::SIGNATURE,
+        ));
 
         if ($signatureFields !== []) {
             $out[] = '<section><h2>Signatures</h2>';
@@ -205,18 +341,124 @@ final class DocumentRenderer
     }
 
     /**
-     * One answer, as words.
+     * THE FALLBACK — the person, then every question with its answer.
+     *
+     * Reached only when the version has no body. Its output is unchanged from
+     * before bodies existed, down to the bytes, so a document re-rendered from a
+     * version published back then is the same document it was.
+     *
+     * A blank prints as an em dash here and as "[Label not provided]" in a body,
+     * and the difference is the context rather than an inconsistency: in a
+     * definition list the label is on the same line, so a dash under it is
+     * unambiguous. In the middle of a sentence there is nothing to say which term
+     * went missing. See MergeTags::resolveOne.
+     *
+     * @param  string[]  $out
+     * @param  FieldDefinition[]  $live
+     * @param  array<string, MergeValue>  $values
+     */
+    private function formDump(array &$out, array $live, array $values): void
+    {
+        // ── the person ───────────────────────────────────────────
+        //
+        // Merged from the profile rather than stored twice — the one-home rule
+        // says HR points at core identity, and this is the pointing.
+        $out[] = '<section><h2>The person</h2><dl>';
+
+        foreach (CommonCore::asked() as $key) {
+            $out[] = $this->row(
+                CommonCore::labelFor($key),
+                // `?? null` before the `?->`, not after: a key this map has never
+                // heard of is an undefined index and warns, and a renderer that
+                // emits a warning is one whose output depends on the error
+                // handler. Every key here is in the map today; this is what keeps
+                // that from being something a reader has to verify.
+                ($values[$key] ?? null)?->value ?? '—',
+            );
+        }
+
+        $out[] = '</dl></section>';
+
+        // ── the template's own questions ─────────────────────────
+        $out[] = '<section><h2>Terms</h2><dl>';
+
+        foreach ($live as $field) {
+            if ($field->type === FieldType::SIGNATURE) {
+                continue;   // rendered below, as a line rather than as an answer
+            }
+
+            $out[] = $this->row(
+                $field->label,
+                ($values[$field->key] ?? null)?->value ?? '—',
+            );
+        }
+
+        $out[] = '</dl></section>';
+    }
+
+    /**
+     * What every tag may resolve to, for one onboarding: the common core and the
+     * template's own answers.
+     *
+     * Both documents read this same map — the body merges it, the form dump lists
+     * it — so an answer cannot appear one way in a contract with wording and
+     * another way in one without.
+     *
+     * Retired fields are IN it. Their answers stay readable on the records that
+     * carry them, which is the whole difference between retiring and deleting; it
+     * is `document()` that leaves them out of what is printed.
+     *
+     * @param  array<string, string|null>  $identity
+     * @param  Collection<int, OnboardingAnswer>  $answers
+     * @return array<string, MergeValue>
+     */
+    private function answerValues(FieldSet $fields, array $identity, Collection $answers): array
+    {
+        $byKey  = $answers->keyBy('field_key');
+        $values = [];
+
+        foreach (CommonCore::asked() as $key) {
+            $raw = $identity[$key] ?? null;
+
+            $values[$key] = new MergeValue(
+                CommonCore::labelFor($key),
+                $raw === null || trim($raw) === '' ? null : $raw,
+            );
+        }
+
+        foreach ($fields->fields as $field) {
+            if ($field->key === '' || $field->type === FieldType::SIGNATURE) {
+                // A signature is an act, not an answer. MergeTags refuses a tag
+                // naming one at publish; leaving it out of the map is what makes
+                // that refusal the only way it can be written.
+                continue;
+            }
+
+            $values[$field->key] = new MergeValue(
+                $field->label,
+                $this->answerText($field, $byKey->get($field->key)),
+            );
+        }
+
+        return $values;
+    }
+
+    /**
+     * One answer, as words — or null when there is no answer.
      *
      * The type decides the wording, which is the one thing about a field this
      * software is allowed to know — see FieldType for why the list of types is
      * code while everything else about a field is the tenant's.
+     *
+     * Null rather than a dash, because the two documents spell a blank
+     * differently and the decision belongs to whichever one is being written.
      */
-    private function answerText(FieldDefinition $field, ?OnboardingAnswer $answer): string
+    private function answerText(FieldDefinition $field, ?OnboardingAnswer $answer): ?string
     {
         $value = $answer?->value;
 
         if ($value === null || $value === '') {
-            return '—';
+            return null;
         }
 
         return match ($field->type) {
@@ -225,11 +467,6 @@ final class DocumentRenderer
             FieldType::FILE => 'A file was provided and is attached to this record.',
             default         => (string) $value,
         };
-    }
-
-    private function blankIfEmpty(?string $value): string
-    {
-        return $value === null || trim($value) === '' ? '—' : $value;
     }
 
     private function row(string $label, string $value): string
@@ -263,5 +500,25 @@ final class DocumentRenderer
     dt{font-weight:bold}
     dd{margin:0}
     .note{color:#555;font-size:12px;margin:0 0 1em}
+    CSS;
+
+    /**
+     * The wording's own rules, appended ONLY to a body-driven document.
+     *
+     * Kept apart from STYLE rather than merged into it so that a version with no
+     * body still renders the exact bytes it rendered before bodies existed — see
+     * formDump. A stylesheet grown by one rule is a different file, and "the same
+     * record produces the same document" is a promise worth three lines to keep.
+     *
+     * No colour on the two markers. A contract is read on a screen, printed,
+     * photocopied and faxed, and a gap that is only visible in colour is one that
+     * disappears on the way — so the brackets and the wording carry the meaning
+     * and the styling only reinforces it.
+     */
+    private const AGREEMENT_STYLE = <<<'CSS'
+    .agreement{margin:2.4em 0}
+    .agreement p{margin:0 0 1em}
+    .unanswered{font-style:italic}
+    .unresolved{font-family:monospace;font-weight:bold}
     CSS;
 }

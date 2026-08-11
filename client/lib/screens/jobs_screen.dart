@@ -6,6 +6,7 @@ import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
 import '../widgets/franchise_field.dart';
+import '../widgets/refused.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tag.dart';
 
@@ -117,6 +118,20 @@ class _JobsScreenState extends State<JobsScreen> {
   @override
   Widget build(BuildContext context) {
     final me = widget.session.me!;
+    final place = me.organization.franchiseLabel.toLowerCase();
+
+    // The permission first, because it is the one the button is named after.
+    // Reach second, and stated as the ASSIGNMENT it is: telling somebody who
+    // holds `jobs.create` that they lack permission sends them to ask for a
+    // grant they already have. `franchises` carries reach rather than the whole
+    // list — the server computes it — so this is not §4 reimplemented in Dart.
+    final refused =
+        me.refusal('jobs.create', 'add a job') ??
+        (me.franchises.isEmpty
+            ? 'You have permission to add a job, but you are not assigned to any '
+                  '$place, so there is nowhere to put one. An administrator can '
+                  'assign you to a $place.'
+            : null);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -129,16 +144,15 @@ class _JobsScreenState extends State<JobsScreen> {
               ? 'Showing ${_jobs.length} of $_total across the '
                     '${me.organization.franchiseLabel.toLowerCase()}s you can reach.'
               : '$_total across the ${me.organization.franchiseLabel.toLowerCase()}s you can reach.',
-          action: Tooltip(
-            // Permission without reach (§4). A dead button with no explanation
-            // reads as a broken app; the missing thing is an assignment, and
-            // only an administrator can grant it.
-            message: me.franchises.isEmpty
-                ? 'You are not assigned to a franchise, so there is nowhere to '
-                      'put a job. An administrator can assign you to one.'
-                : '',
+          action: Refused(
+            // §4 refuses in two places and they have different remedies. The
+            // screen used to test only the second, so somebody whose role
+            // lacks `jobs.create` was offered the button and got a 403; and the
+            // sentence it did have named "franchise" rather than whatever this
+            // organization calls one (§8).
+            reason: refused,
             child: FilledButton.icon(
-              onPressed: me.franchises.isEmpty ? null : _create,
+              onPressed: refused == null ? _create : null,
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Add job'),
             ),

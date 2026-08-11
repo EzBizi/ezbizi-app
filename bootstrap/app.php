@@ -93,4 +93,40 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
+
+        /*
+         * Errors and crashes reach the audit log (§2.2, §10).
+         *
+         * "Audit everything" names three streams — actions, errors, crashes —
+         * and only the first existed. AuditLogger::logError was written for this
+         * and documented as the one thing the Lead Developer exemption does NOT
+         * cover, but nothing had ever handed it an unhandled exception: five
+         * hand-written refusals called it and the framework called it never. A
+         * 500 left a line in storage/logs and no evidence in the audit trail at
+         * all, which is the stream a compliance question is actually asked of.
+         *
+         * WHAT REACHES HERE. Handler::report() consults shouldntReport() first,
+         * so the framework's own ignore list — ValidationException,
+         * AuthenticationException, AuthorizationException, HttpException,
+         * ModelNotFoundException — is filtered out before this runs. Every 404,
+         * 403 and 422 the application answers on purpose is therefore NOT a row.
+         * What is left is the class of thing nobody intended, in requests, queued
+         * jobs and console commands alike.
+         *
+         * RETURNS NOTHING, deliberately. A reportable callback that returns false
+         * stops the chain, and the next link is the framework writing the full
+         * exception — message included — to the log channel. That copy is the
+         * one with the detail; see ExceptionAudit for why the audit row does not
+         * repeat it, and why the correlation id is the join between them.
+         *
+         * ExceptionAudit::record() resolves its own collaborators inside its own
+         * try/catch, so a container or database failure here cannot bury the
+         * exception it was called about. Nothing is captured in this closure for
+         * the same reason — it is built while the exception handler is being
+         * resolved, which is far too early to construct anything that talks to
+         * the database.
+         */
+        $exceptions->report(function (Throwable $e): void {
+            App\Support\Audit\ExceptionAudit::record($e);
+        });
     })->create();

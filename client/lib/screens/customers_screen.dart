@@ -4,6 +4,7 @@ import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
 import '../widgets/franchise_field.dart';
+import '../widgets/refused.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tag.dart';
 
@@ -139,6 +140,17 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final me = widget.session.me!;
     final label = me.organization.franchiseLabel;
 
+    // Two gates, two remedies, and this screen tested neither out loud: the
+    // button was disabled on reach alone, silently, and `customers.create` was
+    // never consulted at all. See jobs_screen for the same pair.
+    final refused =
+        me.refusal('customers.create', 'add a customer') ??
+        (me.franchises.isEmpty
+            ? 'You have permission to add a customer, but you are not assigned '
+                  'to any ${label.toLowerCase()}, and one has to be accountable '
+                  'for the relationship. An administrator can assign you to one.'
+            : null);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -151,12 +163,16 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     'organization. The $label tag shows who is accountable.'
               : '$_total shared across the organization. The $label tag shows who is '
                     'accountable for each relationship.',
-          action: FilledButton.icon(
-            // The server decides in the end; hiding the button when the user has
-            // no reach anywhere just avoids offering a guaranteed failure.
-            onPressed: me.franchises.isEmpty ? null : _create,
-            icon: const Icon(Icons.person_add_outlined, size: 18),
-            label: const Text('Add customer'),
+          action: Refused(
+            // The server decides in the end. This decides what is OFFERED, and
+            // a control that cannot be used stays on screen saying why rather
+            // than going dark or disappearing.
+            reason: refused,
+            child: FilledButton.icon(
+              onPressed: refused == null ? _create : null,
+              icon: const Icon(Icons.person_add_outlined, size: 18),
+              label: const Text('Add customer'),
+            ),
           ),
         ),
         Padding(
@@ -170,6 +186,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   ? null
                   : IconButton(
                       icon: const Icon(Icons.clear),
+                      tooltip: 'Clear the search',
                       onPressed: () {
                         _search.clear();
                         _load();

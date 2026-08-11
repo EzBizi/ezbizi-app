@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\AutomationEvent;
+use App\Support\Audit\AuditLogger;
 use App\Support\Mail\MailStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -30,6 +31,10 @@ use Illuminate\Support\Facades\Validator;
  */
 class HealthController extends Controller
 {
+    public function __construct(
+        private readonly AuditLogger $audit,
+    ) {}
+
     public function index(Request $request, MailStatus $mail): array
     {
         return [
@@ -74,6 +79,26 @@ class HealthController extends Controller
             // which identity or credential it objected to.
             return ['sent' => false, 'message' => $e->getMessage(), 'missing' => []];
         }
+
+        /*
+         * Recorded, because this is the one control on the health screen that
+         * does something rather than reporting something.
+         *
+         * It sends real mail, from the platform's own identity, to any address
+         * the caller types. That is a small outbound capability held by every
+         * staff tier, and an unrecorded one is indistinguishable from somebody
+         * testing whether the box can reach their own mailbox. logStaff, not
+         * log: the actor is a PlatformStaff, and this must be written even for
+         * the account the exemption covers.
+         */
+        $staff = $request->user();
+
+        $this->audit->logStaff(
+            action: 'staff.test_email_sent',
+            staffId: $staff->getKey(),
+            staffLabel: "{$staff->name} <{$staff->email}>",
+            metadata: ['address' => $input['address']],
+        );
 
         return [
             'sent'    => true,

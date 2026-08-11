@@ -6,6 +6,10 @@ use App\Models\User;
 use App\Support\Dashboard\Widgets\AutomationHealth;
 use App\Support\Dashboard\Widgets\CustomersAdded;
 use App\Support\Dashboard\Widgets\JobsByStatus;
+use App\Support\Dashboard\Widgets\Hr\Headcount;
+use App\Support\Dashboard\Widgets\Hr\InvitationsStalled;
+use App\Support\Dashboard\Widgets\Hr\OnboardingsInFlight;
+use App\Support\Dashboard\Widgets\Hr\StartersAndLeavers;
 use App\Support\Dashboard\Widgets\Revenue;
 use App\Support\Dashboard\Widgets\UpcomingJobs;
 
@@ -25,6 +29,26 @@ class WidgetRegistry
         Revenue::class,
         CustomersAdded::class,
         AutomationHealth::class,
+
+        /*
+         * Human Resources (EZBIZI-HR-PLAN.md — Dashboard).
+         *
+         * Declared HERE rather than in a registry of their own, which was the
+         * decision worth writing down. HR's Dashboard tab could have been a
+         * screen with four hand-built cards and its own endpoint, and that would
+         * have put every one of these figures in two places the first time
+         * somebody wanted headcount on their main dashboard as well.
+         *
+         * A widget is not "a card on the main dashboard" — it is one question,
+         * asked once, answered under the caller's permissions and reach. HR's
+         * tab shows a fixed subset of them in the order the plan names
+         * (HrDashboardController); the main dashboard lets people compose the
+         * same ones. Two surfaces, one computation, one place to correct it.
+         */
+        Headcount::class,
+        OnboardingsInFlight::class,
+        InvitationsStalled::class,
+        StartersAndLeavers::class,
     ];
 
     /** @return Widget[] */

@@ -5,6 +5,7 @@ import '../core/permissions.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
+import '../widgets/refused.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tag.dart';
 
@@ -285,6 +286,7 @@ class _RolesScreenState extends State<RolesScreen> {
   @override
   Widget build(BuildContext context) {
     final me = widget.session.me;
+    final noCreate = me?.refusal('roles.create', 'add a role');
 
     return AsyncBody(
       loading: _loading,
@@ -299,13 +301,18 @@ class _RolesScreenState extends State<RolesScreen> {
                 'Every role is this organization’s own. A role decides which '
                 'tabs the people holding it see, and what they may do inside '
                 'them.',
-            action: (me?.can('roles.create') ?? false)
-                ? FilledButton.icon(
-                    onPressed: _create,
-                    icon: const Icon(Icons.add),
-                    label: const Text('New role'),
-                  )
-                : null,
+            // The one place in the client that ever consulted the permission
+            // set — and it HID the button, which leaves somebody looking for
+            // "New role" concluding the screen is broken. Shown and refused,
+            // like everywhere else now.
+            action: Refused(
+              reason: noCreate,
+              child: FilledButton.icon(
+                onPressed: noCreate == null ? _create : null,
+                icon: const Icon(Icons.add),
+                label: const Text('New role'),
+              ),
+            ),
           ),
           Expanded(
             child: _roles.isEmpty
@@ -384,7 +391,9 @@ class _RoleCard extends StatelessWidget {
             if (onDelete != null)
               IconButton(
                 icon: const Icon(Icons.delete_outline),
-                tooltip: 'Delete this role',
+                // Named, because there is one of these per row and "Delete
+                // this role" is the same words on all of them.
+                tooltip: 'Delete ${role.name}',
                 onPressed: onDelete,
               ),
             // The word changes with what opening it will let you do, so the

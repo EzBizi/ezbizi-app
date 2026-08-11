@@ -5,13 +5,17 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use App\Models\Concerns\HasTotp;
 use App\Support\Modules\ModuleAvailability;
+use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
+use App\Support\Privacy\RetentionPolicy;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -54,38 +58,99 @@ class User extends Authenticatable implements HoldsPersonalData
             .'rather than keeping a second copy.';
     }
 
-    public static function personalDataRetention(): string
+    public static function retention(): RetentionPolicy
     {
-        return 'For as long as the account exists. Somebody who leaves is deactivated rather '
+        return RetentionPolicy::forever(
+            'For as long as the account exists. Somebody who leaves is deactivated rather '
             .'than deleted, because everything they did stays attributed to them (§5) — so '
             .'the record of a former employee is kept deliberately, and erasing one means '
-            .'anonymising it rather than removing the row.';
+            .'anonymising it rather than removing the row.'
+        );
     }
 
     public static function personalDataHeld(): array
     {
         return [
-            new PersonalDataEntry('name, first_name, middle_name, last_name',
+            new PersonalDataEntry('name', PersonalDataEntry::IDENTITY,
+                'The composed display name, shown against everything they do.',
+                /*
+                 * Stated rather than left to the schema, because this string is
+                 * what appears against every job this person ever did. It has to
+                 * read as a deliberate removal rather than as missing data: the
+                 * audit trail beside it still shows their actions, since §5
+                 * requires those to stay attributed.
+                 */
+                Erasure::erase('Removed account')),
+            new PersonalDataEntry('first_name, middle_name, last_name',
                 PersonalDataEntry::IDENTITY,
-                'Who somebody is, and the name shown against everything they do.'),
+                'The parts the display name is composed from, stored separately because '
+                .'HR and payroll need them apart.',
+                // Emptied rather than stood in for. Nothing renders these on
+                // their own, so a null is the cleaner erasure — there is no
+                // screen where it could read as a fault.
+                Erasure::erase()),
             new PersonalDataEntry('email', PersonalDataEntry::CONTACT,
-                'The identity they sign in with, and where a password reset goes.'),
+                'The identity they sign in with, and where a password reset goes.',
+                // NOT NULL and uniquely indexed per organization, so a constant
+                // would collide the second time anybody is erased. `.invalid` is
+                // reserved by RFC 2606 and can never be delivered to, which
+                // matters more than it looks: this address stays in a column
+                // that other code is entitled to send mail to.
+                Erasure::erase('removed-{ref}@invalid')),
             new PersonalDataEntry('phone', PersonalDataEntry::CONTACT,
-                'Reaching a colleague about work in progress.'),
+                'Reaching a colleague about work in progress.',
+                Erasure::erase()),
             new PersonalDataEntry('date_of_birth', PersonalDataEntry::IDENTITY,
                 'Asked at onboarding because contracts and payroll need it. Deliberately '
                 .'excluded from the audit log — §9 gives it a legal weight that an '
-                .'append-only table erasure cannot reach is the wrong home for.'),
+                .'append-only table erasure cannot reach is the wrong home for.',
+                Erasure::erase()),
             new PersonalDataEntry('gender', PersonalDataEntry::IDENTITY,
                 'Optional, and free text rather than a closed list. Held only where '
-                .'somebody chose to give it.'),
+                .'somebody chose to give it.',
+                Erasure::erase()),
             new PersonalDataEntry('avatar_path', PersonalDataEntry::IDENTITY,
-                'A photograph of the person, served only to their own organization.'),
+                'A photograph of the person, served only to their own organization.',
+                // Blanking this column alone would erase the POINTER and leave
+                // the photograph on disk. `personalDataFiles()` below is what
+                // makes the file go too.
+                Erasure::erase()),
             new PersonalDataEntry('totp_secret, pending_totp_secret, recovery_codes',
                 PersonalDataEntry::TECHNICAL,
                 'The second factor, where the account has one.',
+                Erasure::erase(),
                 encrypted: true),
         ];
+    }
+
+    /**
+     * The person's own row.
+     *
+     * `password` is not listed above and is not erased. It is a bcrypt hash of
+     * something the person chose, not a fact about them, and it is what stops the
+     * anonymised account from being signed into — replacing it with a stand-in
+     * would produce a KNOWN value in a password column, which is worse in every
+     * direction. Deactivation is what closes the account; see `is_active`.
+     */
+    public static function personalDataAbout(Model $subject): ?Builder
+    {
+        return $subject instanceof self
+            ? static::query()->whereKey($subject->getKey())
+            : null;
+    }
+
+    /**
+     * The photograph, which lives on a disk rather than in a column.
+     *
+     * §9 names "uploaded files" among the places a purge misses, and this is that
+     * miss at its most literal: erasing `avatar_path` removes the app's way of
+     * finding a picture of somebody's face and changes nothing about the picture.
+     *
+     * @return array<array{disk: ?string, path: ?string}>
+     */
+    public function personalDataFiles(): array
+    {
+        return [['disk' => null, 'path' => $this->avatar_path]];
     }
 
     protected function casts(): array

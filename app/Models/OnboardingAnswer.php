@@ -5,10 +5,13 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use App\Support\Contracts\FieldDefinition;
 use App\Support\Contracts\FilledBy;
+use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\HoldsSensitiveValues;
 use App\Support\Privacy\MasksSensitiveValues;
 use App\Support\Privacy\PersonalDataEntry;
+use App\Support\Privacy\RetentionPolicy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -76,11 +79,14 @@ class OnboardingAnswer extends Model implements HoldsPersonalData, HoldsSensitiv
             .'contract to the next within the same one.';
     }
 
-    public static function personalDataRetention(): string
+    public static function retention(): RetentionPolicy
     {
-        return 'Kept for as long as the contract they belong to. These are the terms that '
+        return RetentionPolicy::withParent(
+            'Kept for as long as the contract they belong to. These are the terms that '
             .'were agreed, so they outlive the employment: the answers and the document '
-            .'rendered from them are the same record seen two ways.';
+            .'rendered from them are the same record seen two ways. The cascade from '
+            .'`onboardings` is what enforces it — an answer cannot outlive its form.'
+        );
     }
 
     public static function personalDataHeld(): array
@@ -103,13 +109,58 @@ class OnboardingAnswer extends Model implements HoldsPersonalData, HoldsSensitiv
                 .'sensitive. Every value is encrypted at rest whether it was flagged or '
                 .'not; the flag additionally masks it, keeps it out of exports, and makes '
                 .'every reveal an audit event.',
+                /*
+                 * THE COLUMN THE WHOLE MECHANISM IS FOR.
+                 *
+                 * §9's sharpest sentence is about this row: "nobody except the
+                 * tenant knows that the field they called `acct` is a bank
+                 * account", and an erasure request "cannot be answered at all"
+                 * without the inventory. It can be answered here, and the reason
+                 * is that the inventory does not need to know: whatever a tenant
+                 * asked for, the answer is in this column, and this column is
+                 * erased. Tenant-defined data turns out to be the EASY case for
+                 * a purge as long as it lives in one column that says what it is.
+                 *
+                 * NOT NULL, so a stand-in is written rather than a null — and it
+                 * goes through the model so the `encrypted` cast applies. A
+                 * query-builder update would leave plaintext in a column every
+                 * reader decrypts, and the next read would throw on a row nobody
+                 * could then repair.
+                 *
+                 * The row stays rather than being dropped so that the FORM
+                 * survives: which questions were asked, and that they were
+                 * answered, is part of the contract record. What they were
+                 * answered WITH is the personal data, and that is what goes.
+                 */
+                Erasure::erase('(removed)'),
                 tenantDefined: true,
                 encrypted: true),
             new PersonalDataEntry('set_by_user_id, set_at', PersonalDataEntry::ACTIVITY,
                 'Who last wrote this answer and when. It exists because a field marked '
                 .'"either" can be written by both sides, and "the employer typed it" and '
-                .'"I corrected it" have to stay distinguishable.'),
+                .'"I corrected it" have to stay distinguishable.',
+                Erasure::keep('Provenance, and the setter may be a manager rather than the '
+                    .'subject — erasing the employee must not blank who at the employer '
+                    .'filled a field in. The key points at an account the purge anonymises '
+                    .'at its one home, so no name survives here.')),
         ];
+    }
+
+    /**
+     * Answers on this person's own onboarding forms.
+     *
+     * Through the onboarding rather than through `set_by_user_id`: an answer a
+     * manager typed into somebody else's form is that person's data, not the
+     * manager's, and matching on the setter would erase the wrong employee's
+     * bank details.
+     */
+    public static function personalDataAbout(Model $subject): ?Builder
+    {
+        return $subject instanceof User
+            ? static::query()->whereIn('onboarding_id', Onboarding::query()
+                ->where('user_id', $subject->getKey())
+                ->select('id'))
+            : null;
     }
 
     // ── relations ────────────────────────────────────────────────

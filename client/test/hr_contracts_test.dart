@@ -1,8 +1,11 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/contracts.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/hr/contract_body_editor.dart';
+import 'package:ezbizi_client/screens/hr/contract_document_page.dart';
 import 'package:ezbizi_client/screens/hr/contract_form_preview.dart';
 import 'package:ezbizi_client/screens/hr/contracts_tab.dart';
 import 'package:flutter/material.dart';
@@ -259,6 +262,10 @@ void main() {
     expect(created, {
       'name': 'Contractor',
       'description': null,
+      // Nothing was written, so there is no wording — the same null the
+      // description gets, rather than an empty string that would be a second
+      // spelling of the same emptiness.
+      'body': null,
       'fields': [
         {
           'key': 'shoe_size_2',
@@ -519,6 +526,284 @@ void main() {
       find.text('Your role can read contracts here and not change them.'),
       findsOneWidget,
     );
+
+    // The contract itself is READABLE and not writable — read-only rather than
+    // disabled, so a four-page agreement can still be scrolled through and a
+    // clause copied out of it. Nothing offers to insert a tag into a document
+    // this person cannot save.
+    final writing = tester.widget<TextField>(_writingBox);
+
+    expect(writing.readOnly, isTrue);
+    expect(writing.controller!.text, contains('This Agreement is made on'));
+    expect(find.byType(ActionChip), findsNothing);
+  });
+
+  // ── the contract body: writing it, and the page beside it ────────
+  //
+  // The owner's two sentences, which is what all of this is:
+  //
+  //   "We are missing something critical which is the contract writing itself,
+  //    you have the shortcodes but nowhere to put them."
+  //
+  //   "on Contracts it should be 50% on one side and 50% showing the actual
+  //    contract, and how it looks with white background as that's the color of
+  //    pages"
+
+  testWidgets('the contract is written on one half and drawn on the other', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('Design'));
+
+    // The wording the version already carries, in a box somebody can type in.
+    expect(
+      tester.widget<TextField>(_writingBox).controller!.text,
+      contains('is made on {{date_started}}'),
+      reason: 'The version’s body has to arrive in the editor, or every save '
+          'would wipe the contract that was already written.',
+    );
+
+    // And the page, beside it.
+    expect(find.byType(ContractDocumentPage), findsOneWidget);
+
+    final writing = tester.getRect(_writingBox);
+    final page = tester.getRect(find.byType(ContractDocumentPage));
+
+    expect(
+      writing.right,
+      lessThanOrEqualTo(page.left + 1),
+      reason: 'The two are meant to be side by side, not stacked.',
+    );
+    expect(
+      (writing.width - page.width).abs(),
+      lessThan(2),
+      reason: '“50% on one side and 50% showing the actual contract”.',
+    );
+  });
+
+  /// The page is the server's rendering, not a merge worked out in Dart.
+  testWidgets('the page shows the document the server rendered, with the '
+      'sample answers merged in', (tester) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('Design'));
+
+    // Merged values, which only the server knows: it filled the tags in. And
+    // `&amp;` reads as an ampersand — the business is called "Bell & Sons",
+    // and a page showing its own escaping is not a picture of the document.
+    // Twice, because the rendering names the business in the header and again
+    // in the first line, which is what a contract does.
+    expect(_inPage('Bell & Sons Chimneys'), findsNWidgets(2));
+    expect(_inPage('The hourly wage is 14.50'), findsOneWidget);
+
+    // Read as a document rather than shown as markup — the paragraph tags are
+    // not on screen, and the stylesheet in the head is not prose.
+    expect(_inPage('<p>'), findsNothing);
+    expect(find.textContaining('font:14px'), findsNothing);
+  });
+
+  /// A mistyped tag is a problem while somebody is typing, not a refusal at
+  /// the end.
+  testWidgets('a tag nothing can fill in is marked in the page and named '
+      'underneath it', (tester) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('Design'));
+
+    // In the page, where it is, so somebody can see WHERE it is.
+    expect(_inPage('{{overtime_rate}}'), findsOneWidget);
+
+    // And said out loud, with what to do about it.
+    expect(
+      find.textContaining('Nothing answers {{overtime_rate}}'),
+      findsOneWidget,
+    );
+  });
+
+  /// The whole of the owner's complaint: the shortcodes existed and there was
+  /// nowhere to put them.
+  testWidgets('clicking a field drops its tag in at the cursor', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('Design'));
+
+    final body = tester.widget<TextField>(_writingBox).controller!;
+
+    body.text = 'Made on  between the parties.';
+    body.selection = const TextSelection.collapsed(offset: 8);
+    await tester.pump();
+
+    // The chip carries the question's WORDING. Nobody should have to remember
+    // that "First day" is stored as `date_started` — that is the entire point.
+    await _tap(tester, find.widgetWithText(ActionChip, 'First day'));
+
+    expect(
+      body.text,
+      'Made on {{date_started}} between the parties.',
+      reason: 'At the cursor, not appended to the end.',
+    );
+
+    await _settle(tester);
+  });
+
+  /// The page does not only depend on the wording. A tag is unresolvable right
+  /// up until somebody adds the question that answers it — in step 3, which
+  /// never touches the body — and a pane that waited for the next keystroke
+  /// would keep accusing them of a mistake they had just fixed.
+  testWidgets('adding a question re-renders the page against it', (
+    tester,
+  ) async {
+    final rendered = <Map<String, dynamic>>[];
+
+    await _pump(tester, _handler(onRender: rendered.add));
+    await _tap(tester, find.text('Design'));
+    await _settle(tester);
+
+    final before = rendered.length;
+
+    await _tap(tester, find.text('Add a question'));
+    await tester.enterText(
+      find.widgetWithText(TextField, 'The question').last,
+      'Overtime rate',
+    );
+    await _settle(tester);
+
+    expect(rendered.length, greaterThan(before));
+    expect(
+      (rendered.last['fields'] as List).map((field) => field['key']),
+      contains('overtime_rate'),
+      reason: 'The server has to be re-asked with the question that answers '
+          'the tag, or the page still says nothing fills it in.',
+    );
+  });
+
+  /// §2.1. The facts a contract can merge in are the server's list, and this
+  /// fixture's are ones nobody would guess.
+  testWidgets('the always-available facts are the server’s, never a list in '
+      'Dart', (tester) async {
+    await _pump(tester, _handler());
+    await _tap(tester, find.text('Design'));
+
+    expect(find.widgetWithText(ActionChip, 'What the business trades as'),
+        findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'The day it is drawn up'),
+        findsOneWidget);
+
+    // The obvious guesses a client compiling its own list would offer. The
+    // catalogue never mentioned them, so nothing may put them in a contract.
+    expect(find.widgetWithText(ActionChip, 'Organization name'), findsNothing);
+    expect(find.widgetWithText(ActionChip, 'Today’s date'), findsNothing);
+
+    final body = tester.widget<TextField>(_writingBox).controller!;
+    body.text = '';
+    await tester.pump();
+
+    await _tap(
+      tester,
+      find.widgetWithText(ActionChip, 'What the business trades as'),
+    );
+
+    expect(body.text, '{{trading_name}}');
+
+    await _settle(tester);
+  });
+
+  /// The wording is part of the version, so publishing has to carry it and say
+  /// that it moved.
+  testWidgets('the wording is published with the questions, and the panel '
+      'says the contract itself changed', (tester) async {
+    Map<String, dynamic>? previewed;
+
+    await _pump(
+      tester,
+      _handler(onPreview: (body) => previewed = body, diff: _rewrittenDiff),
+    );
+    await _tap(tester, find.text('Design'));
+
+    tester.widget<TextField>(_writingBox).controller!.text =
+        'Rewritten from scratch.';
+    await _settle(tester);
+
+    await _tap(tester, find.text('Review and publish'));
+
+    expect(previewed!['body'], 'Rewritten from scratch.');
+    expect(
+      find.textContaining('The text of the contract itself has changed'),
+      findsOneWidget,
+    );
+  });
+
+  /// R7. Half and half is a desktop layout; 50/50 at 375px is two unusable
+  /// columns.
+  testWidgets('on a narrow screen it is one pane at a time, never two '
+      'columns', (tester) async {
+    await _pumpEditor(tester, size: const Size(375, 900));
+
+    // Writing first, and the page is not built at all — not built narrow, not
+    // built off screen.
+    expect(_writingBox, findsOneWidget);
+    expect(find.byType(ContractDocumentPage), findsNothing);
+
+    await tester.tap(find.text('The page'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ContractDocumentPage), findsOneWidget);
+    expect(_writingBox, findsNothing);
+
+    final page = tester.getRect(find.byType(ContractDocumentPage));
+
+    expect(
+      page.width,
+      greaterThan(300),
+      reason: 'The one pane on screen gets the whole width.',
+    );
+  });
+
+  /// The one surface in this app that does not follow the theme. A page is
+  /// white, and a dark-mode preview would be a preview of a document that does
+  /// not exist.
+  testWidgets('the page is white in dark mode', (tester) async {
+    await _pumpEditor(tester, theme: EzBiziTheme.dark());
+
+    final paper = tester.widget<ColoredBox>(
+      find
+          .descendant(
+            of: find.byType(ContractDocumentPage),
+            matching: find.byType(ColoredBox),
+          )
+          .first,
+    );
+
+    expect(paper.color, const Color(0xFFFFFFFF));
+
+    // And the chrome around it did follow the theme, so this is a deliberate
+    // exception rather than a screen that ignores the theme entirely.
+    expect(
+      Theme.of(tester.element(find.byType(ContractBodyEditor))).brightness,
+      Brightness.dark,
+    );
+  });
+
+  /// A contract being created has no id, so there is no endpoint to render it.
+  /// It says so rather than resolving anything locally — a second
+  /// implementation of the merge is a preview that agrees with the document
+  /// until the day it does not.
+  testWidgets('before the contract exists the page shows the wording unmerged, '
+      'and says so', (tester) async {
+    await _pump(tester, _handler());
+
+    await _tap(tester, find.text('New contract'));
+
+    final body = tester.widget<TextField>(_writingBox).controller!;
+    body.text = 'Made between {{business_name}} and the person named below.';
+    await _settle(tester);
+
+    expect(_inPage('Made between'), findsOneWidget);
+    expect(
+      _inPage('{{business_name}}'),
+      findsOneWidget,
+      reason: 'Nothing may be filled in here. The server does the merging.',
+    );
+    expect(find.textContaining('not yet merged'), findsOneWidget);
   });
 
   /// Without the vocabulary there is nothing to build a question out of, and
@@ -572,6 +857,80 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+/// The body editor on its own, for the two things that are about the editor
+/// rather than about the designer: the narrow layout, and the colour of the
+/// page.
+///
+/// Pumped directly because both are questions about a surface of a given SIZE,
+/// and driving them through the whole designer would mean asserting the layout
+/// of five other steps at 375px to get at this one.
+Future<TextEditingController> _pumpEditor(
+  WidgetTester tester, {
+  Size size = const Size(1200, 900),
+  ThemeData? theme,
+  String? contractId = 'c-1',
+}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  final controller = TextEditingController();
+  addTearDown(controller.dispose);
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: theme ?? EzBiziTheme.light(),
+      home: Scaffold(
+        body: ContractBodyEditor(
+          api: ApiClient(client: MockClient(_handler())),
+          vocabulary: ContractVocabulary.fromJson(
+            Map<String, dynamic>.from(_catalogue),
+          ),
+          body: controller,
+          contractId: contractId,
+          fields: () => const [],
+          payload: () => const [],
+          canEdit: true,
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+
+  return controller;
+}
+
+/// The writing surface — the one text box inside the body editor. Everything
+/// else in that half is a chip.
+final Finder _writingBox = find.descendant(
+  of: find.byType(ContractBodyEditor),
+  matching: find.byType(TextField),
+);
+
+/// Everything on the page, and nothing in the chrome around it.
+Finder _inPage(String text) => find.descendant(
+  of: find.byType(ContractDocumentPage),
+  matching: find.textContaining(text),
+);
+
+/// Past the preview's debounce and through the request it then makes.
+///
+/// Needed after anything that changes the body or the questions: the editor
+/// waits before asking the server, and a test that ended on the wait would
+/// leave a live timer behind it.
+///
+/// Twice round, and the second round is not superstition. A change to the
+/// QUESTIONS is noticed while the editor rebuilds, so the debounce is started
+/// during a frame — and `pumpAndSettle` returns as soon as no frame is
+/// scheduled, which a pending timer does not do. One round fires whatever was
+/// waiting and starts the new wait; the second serves it.
+Future<void> _settle(WidgetTester tester) async {
+  for (var round = 0; round < 2; round++) {
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+  }
 }
 
 /// Everything inside the form preview, and nothing above it.
@@ -634,12 +993,24 @@ DropdownButton<String> _dropdown(WidgetTester tester, String label) =>
 MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onCreate,
   void Function(Map<String, dynamic> body)? onPreview,
+  void Function(Map<String, dynamic> body)? onRender,
   void Function()? onPublish,
   Map<String, Object?> diff = _diff,
   int catalogueStatus = 200,
 }) {
   return (request) async {
     final path = request.url.path;
+
+    // The document, rendered. Ahead of the `/hr/contracts/` catch-all below,
+    // and ahead of `/versions`, because it is a different act: `/versions`
+    // previews a PUBLISH, this renders a PAGE.
+    if (path.endsWith('/preview')) {
+      onRender?.call(jsonDecode(request.body) as Map<String, dynamic>);
+
+      return _json({
+        'data': {'html': _rendered, 'unresolved': ['overtime_rate']},
+      });
+    }
 
     if (path.endsWith('/hr/contracts/catalogue')) {
       return catalogueStatus == 200
@@ -785,6 +1156,19 @@ const _catalogue = {
       'reason': 'Also invented.',
     },
   ],
+  // The facts a contract's WORDING can merge in, beyond its own questions and
+  // the common core. Named nothing like the obvious guesses on purpose: a
+  // client carrying `organization_name` and `today` in Dart would offer two
+  // tags this server has never heard of, and they would render in an
+  // employment contract as themselves.
+  'document_tags': [
+    {
+      'key': 'trading_name',
+      'label': 'What the business trades as',
+      'note': 'The name over the door, which is not always the legal one.',
+    },
+    {'key': 'agreement_date', 'label': 'The day it is drawn up'},
+  ],
 };
 
 const _templates = [
@@ -807,6 +1191,12 @@ const _template = {
   'version': 3,
   'versions_count': 3,
   'field_count': 3,
+  // The wording, which belongs to the version the same way the fields do. A
+  // designer that loaded the questions and not this would wipe the contract on
+  // the next publish.
+  'body':
+      'This Agreement is made on {{date_started}} between the business and '
+      'the person named in it.',
   'fields': [
     {
       'key': 'wage',
@@ -901,6 +1291,52 @@ const _diff = {
     'is_empty': false,
   },
 };
+
+/// The same publish, with the wording rewritten.
+///
+/// `body` is the SERVER's answer, and its real shape:
+/// `'added' | 'edited' | 'removed' | null`. This fixture said `body_changed:
+/// true`, a key the server has never sent — so the client's parser looked for
+/// it, found nothing, and the publish panel never mentioned the wording. Both
+/// ends were green against different fictions, which is the specific way a
+/// hand-written fixture can hide a wire break rather than catch one.
+///
+/// Kept as the server's answer rather than computed here: this end holds both
+/// versions of the text and could compare them, and that would be the second
+/// implementation the rest of this screen refuses to be.
+const _rewrittenDiff = {
+  'version': 4,
+  'diff': {
+    'added': <Map<String, Object?>>[],
+    'retired': <Map<String, Object?>>[],
+    'unretired': <Map<String, Object?>>[],
+    'changed': <Map<String, Object?>>[],
+    'reordered': false,
+    'body': 'edited',
+    'is_empty': false,
+  },
+};
+
+/// `POST /hr/contracts/{id}/preview` — the document, rendered, with sample
+/// answers already merged in.
+///
+/// A whole HTML page, because that is what the server renders and stores
+/// (DocumentRenderer). It carries the three things the editor has to cope with:
+/// a `<head>` full of things that are not prose, an escaped entity in the
+/// middle of a sentence, and a merge tag the server could not resolve and
+/// therefore left exactly where it was.
+const _rendered = '''
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Technician, full time</title>
+<style>body{font:14px/1.6 Georgia,serif}</style></head><body>
+<header><p class="org">Bell &amp; Sons Chimneys</p>
+<h1>Technician, full time</h1></header>
+<p>This Agreement is made on 4 August 2026 between Bell &amp; Sons Chimneys
+and Alex Fielder.</p>
+<p>The hourly wage is 14.50, paid monthly.</p>
+<p>Overtime is paid at {{overtime_rate}} of the above.</p>
+</body></html>
+''';
 
 const _emptyDiff = {
   'version': 4,

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\AuditEvent;
+use App\Support\Audit\AuditLogger;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -66,23 +67,26 @@ class ExpireAuditEvents extends Command
         parent::__construct();
     }
 
-    public function handle(): int
+    public function handle(AuditLogger $audit): int
     {
         $dryRun = (bool) $this->option('dry-run');
         $total  = 0;
+        $removed = [];
 
         // Staff events are identified by actor_type, not action prefix — a staff
         // member creating a company writes 'company.created', which must still
         // fall under the 12-month rule.
-        $total += $this->expire(
+        $removed['staff'] = $this->expire(
             'staff activity',
             AuditEvent::query()->where('actor_type', AuditEvent::ACTOR_STAFF),
             self::RETENTION['staff'],
             $dryRun
         );
 
+        $total += $removed['staff'];
+
         foreach (['developer', 'crash', 'error'] as $prefix) {
-            $total += $this->expire(
+            $removed[$prefix] = $this->expire(
                 "{$prefix} events",
                 AuditEvent::query()
                     ->where('actor_type', '!=', AuditEvent::ACTOR_STAFF)
@@ -90,6 +94,8 @@ class ExpireAuditEvents extends Command
                 self::RETENTION[$prefix],
                 $dryRun
             );
+
+            $total += $removed[$prefix];
         }
 
         // Everything else: ordinary business activity.
@@ -102,7 +108,36 @@ class ExpireAuditEvents extends Command
                 }
             });
 
-        $total += $this->expire('business activity', $business, self::DEFAULT_MONTHS, $dryRun);
+        $removed['business'] = $this->expire('business activity', $business, self::DEFAULT_MONTHS, $dryRun);
+        $total += $removed['business'];
+
+        /*
+         * The expiry writes its own entry (§10).
+         *
+         * AuditEvent's docblock has always said "Expiry happens via the
+         * retention command, which is itself audited" — and it was not. This is
+         * the only code in the application permitted to remove audit rows, it
+         * does so through the query builder specifically to get around the
+         * model's append-only guard, and it left nothing behind saying it had
+         * run. A deletion path with no record of the deletion is the one hole
+         * that makes every other guarantee on that table unprovable: "the row
+         * isn't there" and "the row was never written" become the same answer.
+         *
+         * Written AFTER the deletes, so it cannot be caught by its own run, and
+         * only when something was actually removed — a nightly job that removed
+         * nothing destroyed no history, and a row a day saying so is noise in
+         * the table it is supposed to keep readable.
+         *
+         * No tenant and no actor: this is the scheduler, and `system` is what
+         * that is called here.
+         */
+        if (! $dryRun && $total > 0) {
+            $audit->log('audit.expired', metadata: [
+                'removed' => array_filter($removed),
+                'total'   => $total,
+                'policy'  => self::RETENTION + ['business' => self::DEFAULT_MONTHS],
+            ]);
+        }
 
         $this->newLine();
         $this->info($dryRun

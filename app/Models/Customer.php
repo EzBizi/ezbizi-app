@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
+use App\Support\Privacy\RetentionPolicy;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -51,31 +54,63 @@ class Customer extends Model implements HoldsPersonalData
             .'though the record is a commercial one.';
     }
 
-    public static function personalDataRetention(): string
+    public static function retention(): RetentionPolicy
     {
-        return 'Soft-deleted rather than removed, because jobs and invoices reference it and '
+        return RetentionPolicy::forever(
+            'Soft-deleted rather than removed, because jobs and invoices reference it and '
             .'tax law requires those to survive. §9\'s resolution is that erasure here means '
             .'anonymising in place — keep the invoice and its amounts, blank the name, email, '
-            .'phone and address — rather than deleting the row.';
+            .'phone and address — rather than deleting the row, so there is no age at which '
+            .'a customer stops being needed.'
+        );
     }
 
     public static function personalDataHeld(): array
     {
         return [
             new PersonalDataEntry('name', PersonalDataEntry::IDENTITY,
-                'Who the work is for, and what every list and invoice shows.'),
+                'Who the work is for, and what every list and invoice shows.',
+                // NOT NULL, and it is what every list renders, so it cannot go to
+                // nothing: a row of blank space reads as a bug rather than as a
+                // record somebody asked to be removed from.
+                Erasure::erase('Removed customer')),
             new PersonalDataEntry('email, phone', PersonalDataEntry::CONTACT,
-                'Arranging and confirming the work.'),
+                'Arranging and confirming the work.',
+                Erasure::erase()),
             new PersonalDataEntry('address_line1, address_line2, city, state, postal_code',
                 PersonalDataEntry::CONTACT,
                 'Where the work happens. Usually somebody\'s home, which is what makes '
                 .'this the most re-identifying field on the row — §9 warns that blanking '
-                .'a name is not anonymisation while a unique address remains.'),
+                .'a name is not anonymisation while a unique address remains.',
+                // Which is exactly why all five go rather than the street lines
+                // alone. A city and a postal code with one job against them is a
+                // household, and §9 says so in as many words.
+                Erasure::erase()),
             new PersonalDataEntry('notes', PersonalDataEntry::CONTENT,
                 'Free text written by staff. Deliberately listed: it is the field with no '
                 .'schema, so it is the one that ends up holding whatever somebody thought '
-                .'was worth writing down about a person.'),
+                .'was worth writing down about a person.',
+                Erasure::erase()),
         ];
+    }
+
+    /**
+     * The customer's own row, including a soft-deleted one.
+     *
+     * `withTrashed` is the whole point: a customer somebody already "deleted" is
+     * retained personal data — §9's tension in one line — and is the likeliest
+     * row to be the subject of the request, since the organization believes they
+     * are gone.
+     *
+     * `number` is deliberately not erased and is not listed above. It identifies
+     * the RECORD, not the person; the invoices §9 insists on keeping are found by
+     * it, and it was assigned by this system rather than known about anybody.
+     */
+    public static function personalDataAbout(Model $subject): ?Builder
+    {
+        return $subject instanceof self
+            ? static::query()->withTrashed()->whereKey($subject->getKey())
+            : null;
     }
 
     // ── relations ────────────────────────────────────────────────

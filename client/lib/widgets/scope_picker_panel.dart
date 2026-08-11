@@ -170,6 +170,7 @@ class _ScopePickerPanelState extends State<ScopePickerPanel> {
                     ? null
                     : IconButton(
                         icon: const Icon(Icons.clear, size: 18),
+                        tooltip: 'Clear the search',
                         onPressed: () => setState(_search.clear),
                       ),
               ),

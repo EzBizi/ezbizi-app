@@ -29,15 +29,24 @@ class StaffAuditTest extends TestCase
         $this->totp = app(Google2FA::class);
     }
 
-    private function signedIn(string $tier = PlatformStaff::TIER_LEAD): array
-    {
+    private function signedIn(
+        string $tier = PlatformStaff::TIER_LEAD,
+        bool $exempt = false,
+        ?string $email = null,
+    ): array {
         $staff = PlatformStaff::create([
-            'name' => 'Jose', 'email' => $tier.'@ezbizi.test',
+            'name' => 'Jose', 'email' => $email ?? $tier.'@ezbizi.test',
             'password' => 'a-sufficiently-long-password', 'tier' => $tier, 'is_active' => true,
         ]);
 
         $secret = $this->totp->generateSecretKey(32);
-        $staff->forceFill(['totp_secret' => $secret, 'totp_confirmed_at' => now()])->save();
+        $staff->forceFill([
+            'totp_secret' => $secret,
+            'totp_confirmed_at' => now(),
+            // Not fillable, deliberately — see the migration. Set here the way
+            // the controller sets it, on its own line.
+            'audit_exempt' => $exempt,
+        ])->save();
 
         $token = $this->postJson('/api/v1/staff/auth/login', [
             'email' => $staff->email, 'password' => 'a-sufficiently-long-password',
@@ -170,6 +179,153 @@ class StaffAuditTest extends TestCase
             $org->id,
             AuditEvent::where('action', 'staff.impersonation_started')->value('organization_id'),
         );
+    }
+
+    // ── the exemption is a flag on one account, not a tier ───────
+
+    public function test_the_exemption_follows_the_flag_and_not_the_tier(): void
+    {
+        // The defect §4.2 names in so many words: "a Developer promoted by
+        // mistake shouldn't silently stop being audited". suppressesBusinessAudit()
+        // returned `tier === lead_developer`, and tier is an ordinary editable
+        // field on an ordinary PATCH — so promoting somebody removed them from
+        // the business audit trail with nothing anywhere saying it had happened.
+        [$promoted] = $this->signedIn(PlatformStaff::TIER_LEAD, exempt: false);
+        [$exempt]   = $this->signedIn(PlatformStaff::TIER_DEV, exempt: true, email: 'owner@ezbizi.test');
+
+        $this->assertFalse(
+            $promoted->suppressesBusinessAudit(),
+            'A Lead Developer without the flag must still be audited.'
+        );
+
+        // The flag is what decides, which is the property the whole fix rests on.
+        $this->assertTrue($exempt->suppressesBusinessAudit());
+    }
+
+    /**
+     * A staff endpoint whose only job is to write an ordinary, suppressible
+     * entry.
+     *
+     * Suppression lives for the length of the request — StaffOnly wraps `$next`
+     * and restores in a `finally` — so it can only be observed from INSIDE one.
+     * Every real staff endpoint records through logStaff, which is deliberately
+     * unsuppressible, so there is nothing already routed that answers this
+     * question.
+     */
+    private function routeThatWritesAnOrdinaryEntry(): string
+    {
+        \Illuminate\Support\Facades\Route::middleware(['auth:sanctum', 'staff'])
+            ->get('api/staff-audit-probe', function (AuditLogger $audit) {
+                $audit->log('something.ordinary');
+
+                return response()->json(['ok' => true]);
+            });
+
+        return '/api/staff-audit-probe';
+    }
+
+    public function test_a_promoted_developer_is_still_audited_end_to_end(): void
+    {
+        $probe = $this->routeThatWritesAnOrdinaryEntry();
+
+        [$lead, $leadAuth] = $this->signedIn();
+        [$dev, $devAuth]   = $this->signedIn(PlatformStaff::TIER_DEV);
+
+        $this->withHeader('Authorization', $leadAuth)
+            ->patchJson("/api/v1/staff/accounts/{$dev->id}", ['tier' => PlatformStaff::TIER_LEAD])
+            ->assertOk();
+
+        // Their token survives a tier change, so this is the same session
+        // continuing across the promotion — which is what made the old behaviour
+        // so quiet: nothing about the request changed, only what it recorded.
+        $this->withHeader('Authorization', $devAuth)->getJson($probe)->assertOk();
+
+        $this->assertSame(
+            1,
+            AuditEvent::where('action', 'something.ordinary')->count(),
+            'A promoted Developer stopped being audited.',
+        );
+    }
+
+    public function test_granting_the_exemption_is_itself_recorded(): void
+    {
+        [$lead, $auth] = $this->signedIn();
+
+        $this->withHeader('Authorization', $auth)
+            ->patchJson("/api/v1/staff/accounts/{$lead->id}", ['audit_exempt' => true])
+            ->assertOk()
+            ->assertJsonPath('data.audit_exempt', true);
+
+        $event = AuditEvent::where('action', 'staff.account_updated')->latest('occurred_at')->first();
+
+        // The account that grants itself the exemption is the one whose next
+        // actions vanish, so the grant is the last thing that can still be
+        // evidence. logStaff writes it, and suppression does not reach logStaff.
+        $this->assertNotNull($event);
+        $this->assertFalse($event->metadata['before']['audit_exempt']);
+        $this->assertTrue($event->metadata['after']['audit_exempt']);
+    }
+
+    public function test_a_developer_may_not_be_exempt(): void
+    {
+        [$lead, $auth] = $this->signedIn();
+        [$dev]         = $this->signedIn(PlatformStaff::TIER_DEV);
+
+        $this->withHeader('Authorization', $auth)
+            ->patchJson("/api/v1/staff/accounts/{$dev->id}", ['audit_exempt' => true])
+            ->assertStatus(422);
+
+        // A Developer reaches client records only through an impersonation the
+        // client approved; exempting them would remove the record of approved
+        // access, which is the opposite of what §4.2 asks for.
+        $this->assertFalse($dev->fresh()->suppressesBusinessAudit());
+    }
+
+    public function test_only_one_account_may_hold_the_exemption(): void
+    {
+        [$lead, $auth] = $this->signedIn(PlatformStaff::TIER_LEAD, exempt: true);
+        [$other]       = $this->signedIn(PlatformStaff::TIER_LEAD, exempt: false, email: 'second@ezbizi.test');
+
+        $response = $this->withHeader('Authorization', $auth)
+            ->patchJson("/api/v1/staff/accounts/{$other->id}", ['audit_exempt' => true])
+            ->assertStatus(422);
+
+        // §4.2 says "the single Lead Developer account". The refusal names who
+        // holds it, so the answer to "why can't I?" is on the screen.
+        $this->assertStringContainsString($lead->email, $response->json('message'));
+        $this->assertFalse($other->fresh()->suppressesBusinessAudit());
+    }
+
+    public function test_an_exempt_account_cannot_be_demoted_without_revoking_it_first(): void
+    {
+        [$lead, $auth] = $this->signedIn(PlatformStaff::TIER_LEAD, exempt: true);
+        [$other]       = $this->signedIn(PlatformStaff::TIER_LEAD, exempt: false, email: 'second@ezbizi.test');
+
+        // Demoting the exempt account would otherwise leave an exempt Developer —
+        // the same mistake as exempting one, arriving from the other direction.
+        $this->withHeader('Authorization', $auth)
+            ->patchJson("/api/v1/staff/accounts/{$other->id}", ['audit_exempt' => true])
+            ->assertStatus(422);
+
+        $this->withHeader('Authorization', $auth)
+            ->patchJson("/api/v1/staff/accounts/{$lead->id}", ['tier' => PlatformStaff::TIER_DEV])
+            ->assertStatus(422);
+
+        $this->assertTrue($lead->fresh()->isLeadDeveloper());
+    }
+
+    public function test_the_exempt_accounts_business_actions_are_not_recorded(): void
+    {
+        $probe = $this->routeThatWritesAnOrdinaryEntry();
+
+        [$lead, $auth] = $this->signedIn(PlatformStaff::TIER_LEAD, exempt: true);
+
+        $this->withHeader('Authorization', $auth)->getJson($probe)->assertOk();
+
+        // The owner's decision, faithfully: ordinary work by that one account
+        // does not reach the business trail. Everything above is what keeps the
+        // set of accounts this is true of equal to one.
+        $this->assertSame(0, AuditEvent::where('action', 'something.ordinary')->count());
     }
 
     public function test_recovery_codes_would_be_redacted_if_they_ever_reached_metadata(): void

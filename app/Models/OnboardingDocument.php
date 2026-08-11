@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use App\Support\Contracts\DocumentFingerprint;
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\Concerns\WrittenOnce;
@@ -34,7 +36,7 @@ use RuntimeException;
  * The two are usually identical and the day they are not is the day the hash
  * would have been worthless.
  */
-class OnboardingDocument extends Model
+class OnboardingDocument extends Model implements StatesRetention
 {
     /*
      * WRITTEN ONCE, at the query builder too — not only at the model.
@@ -60,6 +62,29 @@ class OnboardingDocument extends Model
 
     /** Revision 1: the agreement as it was when the first party signed it. */
     public const ORIGINAL = 1;
+
+    /**
+     * Stated, and the statement is "never" — which is a decision, not a gap.
+     *
+     * This row holds no personal data of its own: a revision number, a reason, a
+     * hash, and a pointer to the attachment that holds the bytes. So it cannot
+     * implement HoldsPersonalData without claiming something untrue, and before
+     * StatesRetention existed that left it with no way to say anything at all —
+     * a table nobody had decided about, which is the gap §10 is really about.
+     *
+     * It grows one row per contract amendment, which is slow, and every one of
+     * them is an artefact a signature fingerprints. Deleting the oldest first
+     * would delete revision 1 first: the document that was actually signed.
+     */
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::forever(
+            'Kept for as long as the organization exists. Revision 1 is the document that '
+            .'was signed and every later revision is an amendment to it — an age-based '
+            .'window would remove the original first, which is exactly the one that has to '
+            .'survive. `deleting` refuses on this model for the same reason.'
+        );
+    }
 
     protected $fillable = [
         'organization_id', 'onboarding_id', 'attachment_id', 'revision',

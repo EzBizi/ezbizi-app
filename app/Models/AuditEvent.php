@@ -2,8 +2,11 @@
 
 namespace App\Models;
 
+use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
+use App\Support\Privacy\RetentionPolicy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -63,12 +66,15 @@ class AuditEvent extends Model implements HoldsPersonalData
             .'so the entry still says who it was after their account is gone.';
     }
 
-    public static function personalDataRetention(): string
+    public static function retention(): RetentionPolicy
     {
-        return 'Append-only, with retention set by §10 and enforced by the scheduled '
-            .'expiry command. Entries cannot be edited or removed individually — a log that '
-            .'could be would not be evidence of anything — so erasing somebody from here '
-            .'means anonymising the actor label rather than deleting rows.';
+        return RetentionPolicy::elsewhere('ezbizi:expire-audit',
+            'Four windows rather than one, because the categories answer different '
+            .'questions: three months of business activity, three of developer events, one '
+            .'of crashes and errors, twelve of platform-staff access to client data (§4.2). '
+            .'The generic sweep cannot express that, so this table keeps the command that '
+            .'can — and that command is the only thing permitted to delete from here.'
+        );
     }
 
     public static function personalDataHeld(): array
@@ -77,21 +83,87 @@ class AuditEvent extends Model implements HoldsPersonalData
             new PersonalDataEntry('actor_label', PersonalDataEntry::IDENTITY,
                 'The name and email address of whoever acted, written at the time so the '
                 .'entry survives their account being removed. This is the copy that makes '
-                .'erasure here an anonymise rather than a delete.'),
+                .'erasure here an anonymise rather than a delete.',
+                /*
+                 * The one write into an append-only table, and it is the write
+                 * this class's own retention sentence has always described:
+                 * "erasing somebody from here means anonymising the actor label
+                 * rather than deleting rows."
+                 *
+                 * The entry stays, so the count of what happened is unchanged and
+                 * the sequence is unbroken; what goes is the name. "Somebody
+                 * deleted this job on the 4th" is still evidence — of the act, of
+                 * the time, of the target. It is the fact of the action that the
+                 * log exists to hold, and the label was only ever the convenience
+                 * of not having to join.
+                 */
+                Erasure::erase('Removed account')),
             new PersonalDataEntry('target_label', PersonalDataEntry::IDENTITY,
-                'What was acted ON, by name — which for a user or customer is a person.'),
+                'What was acted ON, by name — which for a user or customer is a person.',
+                Erasure::erase('Removed record')),
             new PersonalDataEntry('changes, metadata', PersonalDataEntry::CONTENT,
                 'The before and after of what changed. Secrets are redacted on the way in '
                 .'and sensitive values are never copied here at all, but ordinary personal '
                 .'data — a phone number being corrected — is recorded, because that is '
-                .'what the entry is for.'),
+                .'what the entry is for.',
+                /*
+                 * Kept, and this is the uncomfortable one, so the reasoning is
+                 * spelt out rather than asserted.
+                 *
+                 * `changes` holds the OLD value of whatever was edited, which for
+                 * an edit to a phone number is a phone number. Blanking it would
+                 * be the thorough answer and it would also empty the column that
+                 * makes the entry worth having: an audit row saying "the customer
+                 * was updated" and refusing to say what changed is not a weaker
+                 * audit trail, it is a list of timestamps.
+                 *
+                 * What makes the keep defensible is the retention above rather
+                 * than any argument about necessity. This is the only personal
+                 * data in the system with a hard expiry measured in months — it
+                 * ages out on its own, without anybody asking, which is more than
+                 * the tables that erase on request can say. A purge is not the
+                 * mechanism that reaches it; §10 is, and §10 already runs nightly.
+                 */
+                Erasure::keep('The before-and-after IS the entry; an audit row that cannot '
+                    .'say what changed records nothing. It is not erased on request and '
+                    .'does not need to be — it is the one place in this system where '
+                    .'personal data expires on a clock, within three months, under the §10 '
+                    .'retention this table states.')),
             new PersonalDataEntry('metadata.ip, metadata.user_agent',
                 PersonalDataEntry::TECHNICAL,
                 'Inside the metadata rather than in columns of their own, and only on the '
                 .'events where they mean something: signing in, changing a password, '
                 .'enrolling a second factor. They are what makes "was that me?" '
-                .'answerable.'),
+                .'answerable.',
+                Erasure::keep('Inside the metadata JSON rather than in a column, so it is '
+                    .'covered by the same expiry as the rest of that column and by the same '
+                    .'reasoning. Listed separately because a reader looking for "do you '
+                    .'keep my IP address" will not find it under "metadata".')),
         ];
+    }
+
+    /**
+     * Entries where this person is the actor, or the thing acted on.
+     *
+     * Both halves, and they are stored differently: the actor is a pair of
+     * columns, the target is a polymorphic pair, and only this class knows that.
+     * `withoutGlobalScopes` is not needed — there is no tenant scope here, by the
+     * deliberate decision recorded in `booted()` — but the organization IS
+     * narrowed, because a bare query on this table crosses tenants and the purge
+     * must not.
+     */
+    public static function personalDataAbout(Model $subject): ?Builder
+    {
+        return static::query()
+            ->where('organization_id', $subject->getAttribute('organization_id'))
+            ->where(function (Builder $q) use ($subject) {
+                $q->where(fn (Builder $a) => $a
+                    ->where('actor_type', self::ACTOR_USER)
+                    ->where('actor_id', $subject->getKey()))
+                  ->orWhere(fn (Builder $t) => $t
+                      ->where('target_type', $subject::class)
+                      ->where('target_id', $subject->getKey()));
+            });
     }
 
     public const UPDATED_AT = null;   // append-only

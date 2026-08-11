@@ -3,6 +3,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/logo_badge.dart';
+import '../widgets/refused.dart';
 import '../widgets/side_panel.dart';
 import 'company_form_panel.dart';
 
@@ -146,12 +147,27 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                         ],
                       ),
                     ),
-                    if (tree['organization']['may_add_company'] == true)
-                      FilledButton.icon(
-                        onPressed: () => _createCompany(parent: null),
+                    // Shown either way now. It used to vanish for anybody who
+                    // could not use it, which reads as a missing feature rather
+                    // than as a refusal — and this is the refusal least likely
+                    // to be guessed, because it is about POSITION rather than
+                    // permission (§4): somebody holding `companies.create` at a
+                    // branch has earned the button and still cannot press it.
+                    Refused(
+                      reason: tree['organization']['may_add_company'] == true
+                          ? null
+                          : tree['organization']['may_add_company_reason']
+                                    as String? ??
+                                'Adding a company is the whole business’s to do.',
+                      child: FilledButton.icon(
+                        onPressed:
+                            tree['organization']['may_add_company'] == true
+                            ? () => _createCompany(parent: null)
+                            : null,
                         icon: const Icon(Icons.add, size: 18),
                         label: const Text('Add company'),
                       ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -431,6 +447,23 @@ class _CompanyCard extends StatelessWidget {
     final active = company['is_active'] as bool;
     final mayEdit = company['may_edit'] as bool? ?? false;
 
+    // Three acts, three answers, all of them the server's (§4 has one home).
+    // "Add a place" used to be drawn from `may_edit` — `companies.edit` — which
+    // is not the permission it needs: `franchises.create`, asked against this
+    // company. So it was taken away from people who held it and offered to
+    // people who did not, and either way it said nothing.
+    final mayAddFranchise = company['may_add_franchise'] as bool? ?? false;
+    final noAddFranchise = mayAddFranchise
+        ? null
+        : company['may_add_franchise_reason'] as String? ??
+              'Adding a place to ${company['name']} is not yours to do.';
+
+    final mayAddSub = company['may_add_sub_company'] as bool? ?? false;
+    final noAddSub = mayAddSub
+        ? null
+        : company['may_add_sub_company_reason'] as String? ??
+              'Adding a sub company to ${company['name']} is not yours to do.';
+
     final franchises = (company['franchises'] as List<dynamic>)
         .cast<Map<String, dynamic>>();
 
@@ -479,26 +512,48 @@ class _CompanyCard extends StatelessWidget {
                   ),
                 ],
                 const Spacer(),
-                if (mayEdit)
+                // Shown whenever ANY entry in it is reachable. Hiding the
+                // whole menu from somebody who may add a place but not rename
+                // the company is how a control that exists becomes one nobody
+                // can find.
+                if (mayEdit || mayAddFranchise || mayAddSub)
                   PopupMenuButton<String>(
                     icon: const Icon(Icons.more_horiz, size: 20),
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(
+                    tooltip: 'What to do with ${company['name']}',
+                    itemBuilder: (context) => [
+                      refusedMenuItem(
+                        context,
                         value: 'edit',
-                        child: Text('Edit details'),
+                        label: 'Edit details',
+                        reason: mayEdit
+                            ? null
+                            : 'Your role does not include changing a company.',
                       ),
-                      PopupMenuItem(
+                      refusedMenuItem(
+                        context,
                         value: 'franchise',
-                        child: Text('Add a place'),
+                        label: 'Add a place',
+                        reason: noAddFranchise,
                       ),
+                      // §3 fixes the depth: only a top-level company may hold
+                      // one. For a sub company the entry is absent rather than
+                      // refused — there is no rule to explain, the thing does
+                      // not exist.
                       if (onAddSubCompany != null)
-                        const PopupMenuItem(
+                        refusedMenuItem(
+                          context,
                           value: 'sub',
-                          child: Text('Add a sub company'),
+                          label: 'Add a sub company',
+                          reason: noAddSub,
                         ),
-                      PopupMenuItem(
+                      refusedMenuItem(
+                        context,
                         value: 'active',
-                        child: Text(active ? 'Switch off' : 'Switch back on'),
+                        label: active ? 'Switch off' : 'Switch back on',
+                        reason: mayEdit
+                            ? null
+                            : 'Your role does not include switching a company '
+                                  'off or back on.',
                       ),
                     ],
                     onSelected: (v) => switch (v) {
@@ -521,10 +576,13 @@ class _CompanyCard extends StatelessWidget {
                     onRename: () => onRenameFranchise(f),
                     onToggle: () => onToggleFranchise(f),
                   ),
-                ActionChip(
-                  avatar: const Icon(Icons.add, size: 15),
-                  label: const Text('Add a place'),
-                  onPressed: mayEdit ? onAddFranchise : null,
+                Refused(
+                  reason: noAddFranchise,
+                  child: ActionChip(
+                    avatar: const Icon(Icons.add, size: 15),
+                    label: const Text('Add a place'),
+                    onPressed: mayAddFranchise ? onAddFranchise : null,
+                  ),
                 ),
               ],
             ),
@@ -551,10 +609,18 @@ class _FranchiseChip extends StatelessWidget {
     final active = franchise['is_active'] as bool;
     final mayEdit = franchise['may_edit'] as bool? ?? false;
     final scheme = Theme.of(context).colorScheme;
+    final name = franchise['name'] as String;
+    final facts = '${franchise['timezone']} · ${franchise['currency']}';
 
     return PopupMenuButton<String>(
       enabled: mayEdit,
-      tooltip: '${franchise['timezone']} · ${franchise['currency']}',
+      // A menu that will not open, over a chip that looks like every other
+      // chip, is indistinguishable from a bug. The server's own sentence says
+      // which half of §4 is missing.
+      tooltip: mayEdit
+          ? facts
+          : '$facts — '
+                '${franchise['may_edit_reason'] as String? ?? 'This one is not yours to change.'}',
       itemBuilder: (_) => [
         const PopupMenuItem(value: 'rename', child: Text('Rename')),
         PopupMenuItem(
@@ -563,17 +629,24 @@ class _FranchiseChip extends StatelessWidget {
         ),
       ],
       onSelected: (v) => v == 'rename' ? onRename() : onToggle(),
-      child: Chip(
-        avatar: Icon(
-          Icons.storefront_outlined,
-          size: 15,
-          color: active ? null : scheme.onSurfaceVariant,
-        ),
-        label: Text(
-          franchise['name'] as String,
-          style: TextStyle(
+      child: Semantics(
+        // Being switched off was carried by grey text and a line through it.
+        // The line is not colour, so it survives a reader who cannot see the
+        // grey — but neither reaches a screen reader, which got the name and
+        // nothing else.
+        label: active ? name : '$name — switched off',
+        child: Chip(
+          avatar: Icon(
+            Icons.storefront_outlined,
+            size: 15,
             color: active ? null : scheme.onSurfaceVariant,
-            decoration: active ? null : TextDecoration.lineThrough,
+          ),
+          label: Text(
+            name,
+            style: TextStyle(
+              color: active ? null : scheme.onSurfaceVariant,
+              decoration: active ? null : TextDecoration.lineThrough,
+            ),
           ),
         ),
       ),

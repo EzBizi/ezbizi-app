@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 /// A panel that slides in from the right — the app's answer to a modal dialog.
@@ -19,7 +21,25 @@ import 'package:flutter/material.dart';
 /// Not a new route with its own back button, for anything small — losing your
 /// place on the screen behind is the cost a panel exists to avoid. Something
 /// substantial enough to want a URL should be a screen instead.
-class SidePanel extends StatelessWidget {
+///
+/// ── Reaching it without a mouse ──────────────────────────────────
+///
+/// Two separate things, both of which this class owns so that all 47 panels get
+/// them at once:
+///
+///   - **A screen reader is told.** `scopesRoute` says a new surface has opened
+///     and the page behind is no longer part of what is being read; `namesRoute`
+///     with the panel's own [title] says which one. Without the pair, opening a
+///     panel is silent and the reader carries on down the page underneath.
+///   - **Keyboard focus moves in.** Flutter's ModalRoute focuses the route's
+///     scope, which is enough for Tab to eventually find its way inside, but
+///     nothing in the panel holds focus until then — so the first press of Tab
+///     is spent and there is nothing highlighted to say where you are. This
+///     takes focus explicitly, and gives it back on close, which the route
+///     already does correctly.
+///
+/// Both were measured absent before they were added; see test/side_panel_test.
+class SidePanel extends StatefulWidget {
   const SidePanel({
     super.key,
     required this.title,
@@ -57,9 +77,69 @@ class SidePanel extends StatelessWidget {
   final bool scrollable;
 
   @override
+  State<SidePanel> createState() => _SidePanelState();
+}
+
+class _SidePanelState extends State<SidePanel> {
+  /// Where focus lands when nothing inside the panel asked for it.
+  ///
+  /// Skipped in traversal, so once it has been left by the first Tab it never
+  /// comes back around — it is a starting point, not a stop.
+  final _entry = FocusNode(debugLabel: 'Side panel', skipTraversal: true);
+
+  @override
+  void initState() {
+    super.initState();
+
+    // ── Why this is scheduled twice ──────────────────────────────
+    //
+    // Most panels are forms, and a form with `autofocus: true` on its first box
+    // must keep it — landing in the Name field is the reason you opened the
+    // thing. Autofocus is applied by the focus manager from a MICROTASK queued
+    // during build; post-frame callbacks run at the end of the same frame, which
+    // is BEFORE that microtask. So a plain post-frame `requestFocus` here would
+    // win the race, and the pending autofocus would then be discarded — the
+    // manager skips it once the scope already has a focused child.
+    //
+    // Queuing a microtask from the post-frame callback puts this behind the one
+    // build queued, because microtasks run in order. By the time it runs, a
+    // field that wanted focus has it, `hasFocus` is true for this node — which
+    // reports its descendants as well as itself — and there is nothing to do.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      scheduleMicrotask(() {
+        if (!mounted || _entry.hasFocus) return;
+
+        _entry.requestFocus();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _entry.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
+    return Semantics(
+      // "A surface opened, it is called this, and the page behind is not part of
+      // it." The same three flags Flutter's own Drawer and AlertDialog set, for
+      // the same reason.
+      scopesRoute: true,
+      namesRoute: true,
+      explicitChildNodes: true,
+      label: widget.title,
+      child: Focus(
+        focusNode: _entry,
+        child: _panel(context, scheme),
+      ),
+    );
+  }
+
+  Widget _panel(BuildContext context, ColorScheme scheme) {
     return Align(
       alignment: Alignment.centerRight,
       child: Material(
@@ -72,10 +152,10 @@ class SidePanel extends StatelessWidget {
           constraints: BoxConstraints(
             // Never wider than the window on a small screen, where it becomes
             // a full-width sheet rather than a panel with nothing beside it.
-            maxWidth: width,
-            minWidth: width > MediaQuery.sizeOf(context).width
+            maxWidth: widget.width,
+            minWidth: widget.width > MediaQuery.sizeOf(context).width
                 ? MediaQuery.sizeOf(context).width
-                : width,
+                : widget.width,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -90,13 +170,13 @@ class SidePanel extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            title,
+                            widget.title,
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
-                          if (subtitle != null) ...[
+                          if (widget.subtitle != null) ...[
                             const SizedBox(height: 6),
                             Text(
-                              subtitle!,
+                              widget.subtitle!,
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ],
@@ -105,7 +185,9 @@ class SidePanel extends StatelessWidget {
                     ),
                     IconButton(
                       icon: const Icon(Icons.close),
-                      tooltip: 'Close',
+                      // Named, because "Close" alone does not say close what when a
+                      // panel sits over a page that also has controls.
+                      tooltip: 'Close ${widget.title}',
                       onPressed: () => Navigator.of(context).maybePop(),
                     ),
                   ],
@@ -113,17 +195,17 @@ class SidePanel extends StatelessWidget {
               ),
               const Divider(height: 1),
               Expanded(
-                child: scrollable
+                child: widget.scrollable
                     ? SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-                        child: child,
+                        child: widget.child,
                       )
                     : Padding(
                         padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-                        child: child,
+                        child: widget.child,
                       ),
               ),
-              if (actions.isNotEmpty) ...[
+              if (widget.actions.isNotEmpty) ...[
                 const Divider(height: 1),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
@@ -135,7 +217,7 @@ class SidePanel extends StatelessWidget {
                     alignment: WrapAlignment.end,
                     spacing: 10,
                     runSpacing: 8,
-                    children: actions,
+                    children: widget.actions,
                   ),
                 ),
               ],

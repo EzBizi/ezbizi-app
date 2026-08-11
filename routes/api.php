@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\HrContractsController;
+use App\Http\Controllers\Api\HrDashboardController;
 use App\Http\Controllers\Api\HrInvitationsController;
 use App\Http\Controllers\Api\HrOnboardingsController;
 use App\Http\Controllers\Api\HrPeopleController;
@@ -205,8 +206,18 @@ Route::prefix('v1')
         // same habit `roles/catalogue` follows. There is no collision today —
         // the literal is a GET and the parameter route is a PATCH — and the day
         // somebody adds `GET people/{user}` it must already be above it.
+
+        // The tab the owner asked for. It computes nothing itself — the figures
+        // are widgets in the shared registry, so headcount on this tab and
+        // headcount on somebody's main dashboard are the same code.
+        Route::get('hr/dashboard', [HrDashboardController::class, 'index']);
+
         Route::get('hr/people/scope-options', [HrPeopleController::class, 'scopeOptions']);
         Route::get('hr/people', [HrPeopleController::class, 'index']);
+        // Before the {user} PATCH is irrelevant — different verbs — but declared
+        // beside it so the three read as one resource. §9's consent answer, which
+        // lives next to the person rather than in a privacy module of its own.
+        Route::get('hr/people/{user}/consents', [HrPeopleController::class, 'consents']);
         Route::patch('hr/people/{user}', [HrPeopleController::class, 'update']);
 
         Route::get('hr/invitations', [HrInvitationsController::class, 'index']);
@@ -232,8 +243,18 @@ Route::prefix('v1')
         Route::post('hr/contracts', [HrContractsController::class, 'store']);
         Route::get('hr/contracts/{contract}/versions', [HrContractsController::class, 'versions']);
         // Publishing is its own act with its own diff — see the controller for
-        // why PATCH refuses a field list rather than accepting one.
+        // why PATCH refuses a field list, or a body, rather than accepting one.
         Route::post('hr/contracts/{contract}/versions', [HrContractsController::class, 'publishVersion']);
+        /*
+         * The wording, rendered as the document it would produce.
+         *
+         * POST rather than GET because a body is the whole agreement — pages of
+         * it — and a draft does not belong in a URL: it would be logged by every
+         * proxy between here and the editor, and §9 says a contract's text is not
+         * something to scatter. It writes nothing, and it is gated on `update`
+         * rather than `view` because it renders a draft of what people sign.
+         */
+        Route::post('hr/contracts/{contract}/preview', [HrContractsController::class, 'preview']);
         Route::get('hr/contracts/{contract}', [HrContractsController::class, 'show']);
         Route::patch('hr/contracts/{contract}', [HrContractsController::class, 'update']);
 

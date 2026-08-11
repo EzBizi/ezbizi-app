@@ -9,10 +9,12 @@ namespace App\Support\Contracts;
  *
  * ── Why a diff, and not just a version number ────────────────────
  *
- * A contract template is the schema for onboarding. Publishing decides what the
- * next new starter is asked, who is asked it, and what merges into a document
- * somebody signs. "Version 4" tells the person clicking publish none of that.
- * The three lists below are the difference between an explicit act and a button.
+ * A contract template is the schema for onboarding AND the wording of the
+ * agreement. Publishing decides what the next new starter is asked, who is asked
+ * it, what merges into the document, and what that document actually says.
+ * "Version 4" tells the person clicking publish none of that. What is below —
+ * the field lists, the order, and whether the wording moved — is the difference
+ * between an explicit act and a button.
  *
  * ── Computed, never stored ───────────────────────────────────────
  *
@@ -25,6 +27,11 @@ namespace App\Support\Contracts;
  */
 final class VersionDiff
 {
+    /** What happened to the wording, when something did. */
+    public const BODY_ADDED   = 'added';
+    public const BODY_EDITED  = 'edited';
+    public const BODY_REMOVED = 'removed';
+
     private function __construct(
         /** @var array<int, array<string, mixed>> fields this version introduces */
         public readonly array $added,
@@ -36,14 +43,42 @@ final class VersionDiff
         public readonly array $changed,
         /** Order is meaningful — it is the order of the form — so a reshuffle is reported. */
         public readonly bool $reordered,
+        /**
+         * What happened to the agreement's wording: one of the three constants
+         * above, or null when it did not change.
+         *
+         * ── Why the change is named and the TEXT is not carried ──
+         *
+         * The field lists above are short and a person reads them. A body is
+         * pages of prose, and a line-by-line diff of it belongs on a screen built
+         * for one — meanwhile this same array goes into the audit metadata of
+         * every publish, where a full before-and-after would store two copies of
+         * text that is already stored, immutably, on the two versions themselves.
+         * The rule VersionDiff opens with, applied to the largest thing in the
+         * row: a diff is computed from the versions, never duplicated beside them.
+         *
+         * The three states are distinguished because they are three different
+         * acts. "Removed" in particular is the one somebody needs to see loudly:
+         * it does not blank the contract, it drops it back to the generated form
+         * dump (DocumentRenderer), and a publisher who did that by pasting an
+         * empty box has changed what every new starter signs.
+         */
+        public readonly ?string $body,
     ) {}
 
     /**
      * @param  FieldSet|null  $before  null for the first version of a contract,
      *                                 where everything is an addition
+     * @param  string|null  $bodyBefore  already normalised — '' and null are one
+     *         state (MergeTags::normalise), or this would report an "edit" for
+     *         somebody clearing a box that was already empty
      */
-    public static function between(?FieldSet $before, FieldSet $after): self
-    {
+    public static function between(
+        ?FieldSet $before,
+        FieldSet $after,
+        ?string $bodyBefore = null,
+        ?string $bodyAfter = null,
+    ): self {
         $old = $before?->keyed() ?? [];
         $new = $after->keyed();
 
@@ -87,7 +122,21 @@ final class VersionDiff
             unretired: $unretired,
             changed: $changed,
             reordered: self::orderChanged($old, $new),
+            body: self::bodyChange(
+                MergeTags::normalise($bodyBefore),
+                MergeTags::normalise($bodyAfter),
+            ),
         );
+    }
+
+    private static function bodyChange(?string $before, ?string $after): ?string
+    {
+        return match (true) {
+            $before === $after  => null,
+            $before === null    => self::BODY_ADDED,
+            $after  === null    => self::BODY_REMOVED,
+            default             => self::BODY_EDITED,
+        };
     }
 
     /**
@@ -126,14 +175,24 @@ final class VersionDiff
         return $out;
     }
 
-    /** Nothing moved. A publish with an empty diff is one somebody should reconsider. */
+    /**
+     * Nothing moved. A publish with an empty diff is one somebody should
+     * reconsider.
+     *
+     * The body counts, and it has to: an edit to the wording is as much a change
+     * as an edit to a field, because it changes what somebody is agreeing to. If
+     * it were left out here, rewriting the entire agreement while touching no
+     * field would be refused as "the field list this contract already has" — the
+     * one publish that most needs a version of its own.
+     */
     public function isEmpty(): bool
     {
         return $this->added === []
             && $this->retired === []
             && $this->unretired === []
             && $this->changed === []
-            && ! $this->reordered;
+            && ! $this->reordered
+            && $this->body === null;
     }
 
     public function toArray(): array
@@ -144,7 +203,11 @@ final class VersionDiff
             'unretired' => $this->unretired,
             'changed'   => $this->changed,
             'reordered' => $this->reordered,
-            'is_empty'  => $this->isEmpty(),
+            // Null when the wording did not change — present either way, because
+            // an absent key is indistinguishable from an older server and the
+            // client would have to guess which.
+            'body'     => $this->body,
+            'is_empty' => $this->isEmpty(),
         ];
     }
 }

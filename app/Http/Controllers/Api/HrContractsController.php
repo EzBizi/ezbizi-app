@@ -6,9 +6,12 @@ use App\Models\Contract;
 use App\Models\ContractVersion;
 use App\Support\Audit\AuditLogger;
 use App\Support\Contracts\CommonCore;
+use App\Support\Contracts\ContractFacts;
+use App\Support\Contracts\DocumentRenderer;
 use App\Support\Contracts\FieldSet;
 use App\Support\Contracts\FieldType;
 use App\Support\Contracts\FilledBy;
+use App\Support\Contracts\MergeTags;
 use App\Support\Contracts\VersionDiff;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -31,11 +34,25 @@ use Symfony\Component\HttpFoundation\Response;
  * product that varies most between customers, and every refusal below is about
  * the SHAPE of the list rather than about its content.
  *
- * ── Two endpoints, because editing and publishing are different ──
+ * ── The template is TWO things, and both are versioned ──────────
+ *
+ * The field list — what onboarding asks — and the BODY, the wording of the
+ * agreement itself with `{{merge_tags}}` in it (MergeTags). The owner's words
+ * when the designer first shipped: *"we are missing something critical which is
+ * the contract writing itself, you have the shortcodes but nowhere to put
+ * them."* The two are published together, into one immutable row, because an
+ * edit to the text changes what somebody is agreeing to exactly as much as an
+ * edit to a field does.
+ *
+ * ── Three endpoints, because editing, previewing and publishing
+ *    are different ─────────────────────────────────────────────
  *
  *   PATCH /hr/contracts/{contract}            its name and description, and
- *                                             nothing about the fields
- *   POST  /hr/contracts/{contract}/versions   publishes a new field list
+ *                                             nothing about the fields or the
+ *                                             wording
+ *   POST  /hr/contracts/{contract}/preview    an unsaved draft, rendered with
+ *                                             sample values; writes nothing
+ *   POST  /hr/contracts/{contract}/versions   publishes a field list AND a body
  *
  * `AutomationsController::update` folds both into one PATCH. This does not, and
  * the plan is the reason: "publishing a new version must be an explicit act with
@@ -64,6 +81,8 @@ class HrContractsController extends Controller
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly TenantContext $tenant,
+        // The same renderer the signed document goes through — see `preview`.
+        private readonly DocumentRenderer $renderer,
     ) {}
 
     /**
@@ -126,10 +145,49 @@ class HrContractsController extends Controller
                 ],
                 CommonCore::keys(),
             ),
+            /*
+             * How a merge tag is written, and the half of the vocabulary that
+             * does not depend on which contract is open.
+             *
+             * The FIELD half cannot be here — it is different for every template
+             * and different again for a template being edited — so the full list
+             * comes back from `POST {contract}/preview`, which is the request
+             * that knows the field list. What is published here is everything a
+             * client would otherwise hardcode: the delimiters, the details every
+             * onboarding collects, and the facts.
+             *
+             * `open` and `close` rather than a format string, because the client
+             * inserts a tag by wrapping a key and never by parsing an example.
+             */
+            'merge_tags' => [
+                'open'            => MergeTags::OPEN,
+                'close'           => MergeTags::CLOSE,
+                'example'         => MergeTags::OPEN.'first_name'.MergeTags::CLOSE,
+                'max_body_length' => MergeTags::MAX_BODY_LENGTH,
+                'core' => array_map(
+                    fn (string $key) => [
+                        'key'   => $key,
+                        'tag'   => MergeTags::OPEN.$key.MergeTags::CLOSE,
+                        'label' => CommonCore::labelFor($key),
+                        'is'    => CommonCore::describe($key),
+                    ],
+                    CommonCore::asked(),
+                ),
+                'facts' => array_map(
+                    fn (string $key) => [
+                        'key'   => $key,
+                        'tag'   => MergeTags::OPEN.$key.MergeTags::CLOSE,
+                        'label' => ContractFacts::labelFor($key),
+                        'is'    => ContractFacts::describe($key),
+                    ],
+                    ContractFacts::keys(),
+                ),
+            ],
             'limits' => [
                 'max_fields'        => FieldSet::MAX_FIELDS,
                 'max_options'       => FieldSet::MAX_OPTIONS,
                 'max_option_length' => FieldSet::MAX_OPTION_LENGTH,
+                'max_body_length'   => MergeTags::MAX_BODY_LENGTH,
             ],
         ]]);
     }
@@ -197,24 +255,36 @@ class HrContractsController extends Controller
             'description' => ['nullable', 'string', 'max:2000'],
             'notes'       => ['nullable', 'string', 'max:500'],
             'fields'      => ['required', 'array'],
+            // No `max` here: the limit is MergeTags::MAX_BODY_LENGTH and it is
+            // enforced with the sentence explaining why, one line down. A `max`
+            // rule as well would be a second copy of the number, and the two
+            // would answer with different words.
+            'body'        => ['nullable', 'string'],
         ]);
 
         // Validated before anything is written, and by the same class that will
         // validate every later version — so the first field list is held to
         // exactly the rules the second one will be.
         $fields = FieldSet::fromInput($request->input('fields'));
+        $body   = MergeTags::normalise($input['body'] ?? null);
 
-        $contract = DB::transaction(function () use ($input, $fields, $request) {
+        // The wording is checked against the field list it is published WITH,
+        // never against the one already stored: they arrive together and they
+        // become one immutable version together.
+        MergeTags::validate($body, $fields);
+
+        $contract = DB::transaction(function () use ($input, $fields, $body, $request) {
             $contract = Contract::create([
                 'name'        => $input['name'],
                 'description' => $input['description'] ?? null,
                 'created_by'  => $request->user()->getKey(),
             ]);
 
-            $this->publish($contract, $fields, $input['notes'] ?? null, $request);
+            $this->publish($contract, $fields, $body, $input['notes'] ?? null, $request);
 
             $this->audit->log('contract.created', $contract, metadata: [
-                'fields' => count($fields->fields),
+                'fields'   => count($fields->fields),
+                'has_body' => $body !== null,
             ]);
 
             return $contract;
@@ -229,9 +299,9 @@ class HrContractsController extends Controller
     /**
      * PATCH /api/v1/hr/contracts/{contract}
      *
-     * The name and the description. Not the fields — see the class docblock for
-     * why publishing is its own act, and why `fields` here is refused rather
-     * than quietly dropped.
+     * The name and the description. Not the fields, and not the wording — see the
+     * class docblock for why publishing is its own act, and why both are refused
+     * here rather than quietly dropped.
      */
     public function update(Request $request, Contract $contract): JsonResponse
     {
@@ -245,11 +315,25 @@ class HrContractsController extends Controller
             // fields here is doing something it believes will take effect, and
             // the reply has to be the reason rather than silence.
             'fields'      => ['missing'],
+            /*
+             * And the body, for a reason that is stronger rather than merely
+             * consistent. `description` on this same request is a note ABOUT the
+             * template; the body is the agreement ITSELF. Accepting it here would
+             * let somebody rewrite what new starters sign while correcting a
+             * typo in the name — with no version, no diff, and nothing in the
+             * history saying the terms had moved.
+             */
+            'body'        => ['missing'],
         ], [
             'fields.missing' => 'Changing the fields publishes a new version of the template, '
                 .'which is a separate, deliberate act — POST to this contract’s /versions '
                 .'instead. It answers with a diff of what would change, so nobody publishes a '
                 .'new schema while renaming something.',
+            'body.missing' => 'Changing the wording publishes a new version too — it is what '
+                .'people are agreeing to, so an edit to it is as consequential as an edit to a '
+                .'field. POST to this contract’s /versions with the wording and the field list '
+                .'together, and /preview first if you want to see it rendered. The description '
+                .'here is the note about the template, not the agreement.',
         ]);
 
         DB::transaction(function () use ($contract, $input) {
@@ -307,6 +391,20 @@ class HrContractsController extends Controller
             'fields'  => ['required', 'array'],
             'notes'   => ['nullable', 'string', 'max:500'],
             'preview' => ['boolean'],
+            /*
+             * ABSENT MEANS EMPTY, and this is the one place that is dangerous
+             * enough to spell out.
+             *
+             * A version is the whole template, not a patch of one — the field
+             * list is sent in full on every publish and the wording is sent the
+             * same way. So a client that omits `body` publishes a version with no
+             * wording, which drops the document back to the generated form dump.
+             * That is the correct reading of "publish this version", and it is
+             * exactly why VersionDiff reports `removed` as its own kind of change
+             * rather than folding it in with an edit: the person clicking publish
+             * sees it named before they click.
+             */
+            'body'    => ['nullable', 'string'],
         ]);
 
         $fields = FieldSet::fromInput(
@@ -316,8 +414,12 @@ class HrContractsController extends Controller
             $contract->pinnedKeyProperties(),
         );
 
+        $body = MergeTags::normalise($input['body'] ?? null);
+
+        MergeTags::validate($body, $fields);
+
         $current = $contract->currentVersion;
-        $diff    = VersionDiff::between($current?->fieldSet(), $fields);
+        $diff    = VersionDiff::between($current?->fieldSet(), $fields, $current?->body, $body);
 
         if ($request->boolean('preview')) {
             return response()->json(['data' => [
@@ -347,8 +449,8 @@ class HrContractsController extends Controller
             ]);
         }
 
-        $version = DB::transaction(function () use ($contract, $fields, $input, $request, $diff) {
-            $version = $this->publish($contract, $fields, $input['notes'] ?? null, $request);
+        $version = DB::transaction(function () use ($contract, $fields, $body, $input, $request, $diff) {
+            $version = $this->publish($contract, $fields, $body, $input['notes'] ?? null, $request);
 
             /*
              * The diff goes in the audit metadata, not in a column.
@@ -378,6 +480,99 @@ class HrContractsController extends Controller
         ], Response::HTTP_CREATED);
     }
 
+    /**
+     * POST /api/v1/hr/contracts/{contract}/preview
+     *
+     * An UNSAVED body and field list, rendered as the document they would
+     * produce, with sample values — so the wording can be written while looking
+     * at the contract rather than at a text box.
+     *
+     * ── It renders through the same code as signing ──────────────
+     *
+     * `DocumentRenderer::sample` and `DocumentRenderer::render` are the same
+     * assembler with different values (see that class). So this is not "roughly
+     * what it will look like": every merge tag lands where it will land, every
+     * escape happens where it will happen, and the signature block is the same
+     * block. The alternative — a preview renderer of its own — is the one that
+     * drifts, and it drifts silently, and what it drifts about is a document with
+     * a signature on it.
+     *
+     * ── And it refuses exactly what publishing refuses ───────────
+     *
+     * A tag naming a key that does not exist, or one that was retired, comes back
+     * 422 with the tag named, WHILE THE PERSON IS LOOKING AT THE EDITOR. That is
+     * the whole reason this endpoint validates instead of rendering something
+     * best-effort: finding a typo months later, on somebody's employment
+     * contract, is the failure the check exists to prevent, and a preview that
+     * quietly rendered around it would put the check back where it started.
+     *
+     * ── `merge_tags` comes back too, and that is not a convenience ─
+     *
+     * The list of tags that resolve depends on the field list being EDITED, which
+     * only this request has. Without it the client would have to compile its own
+     * — from the fields on screen, plus the common core, plus the facts, minus
+     * the retired ones, minus the signatures — which is four server rules
+     * restated in Dart. It is published here instead, with the exact text to
+     * insert.
+     *
+     * ── Why there is no preview for a contract that does not exist yet ─
+     *
+     * The route is bound to a contract because the document names one: the
+     * business, the contract's own name and its version are three of the four
+     * always-available facts. A brand-new template is created first — with or
+     * without wording — and previewed from the version after that. Nothing is
+     * lost by writing the first body blind, because publishing refuses a bad tag
+     * with the tag named rather than accepting it silently.
+     */
+    public function preview(Request $request, Contract $contract): JsonResponse
+    {
+        $this->assertMine($contract);
+        // The same permission publishing needs, not `view`. This renders a draft
+        // of the agreement, which is the authoring act — and §4 says authoring
+        // reaches every franchise, so it is gated where authoring is gated.
+        $this->authorize('update', $contract);
+
+        $input = $request->validate([
+            'fields' => ['required', 'array'],
+            'body'   => ['nullable', 'string'],
+        ]);
+
+        $fields = FieldSet::fromInput($request->input('fields'), $contract->pinnedKeyProperties());
+        $body   = MergeTags::normalise($input['body'] ?? null);
+
+        MergeTags::validate($body, $fields);
+
+        // The number this draft WOULD take. A preview is of the next version by
+        // definition — it is a draft of something not yet published — so
+        // `{{contract.version}}` and the header both say so rather than
+        // reprinting the number of the version currently in force.
+        $version = (int) ($contract->versions()->max('version') ?? 0) + 1;
+
+        return response()->json(['data' => [
+            'version' => $version,
+            'content' => $this->renderer->sample(
+                // Off the contract rather than off the session: the document
+                // names the business the AGREEMENT belongs to, and `assertMine`
+                // has already established those are the same one.
+                organizationName: (string) $contract->organization->name,
+                contractName:     (string) $contract->name,
+                description:      $contract->description,
+                version:          $version,
+                fields:           $fields,
+                body:             $body,
+            ),
+            'mime' => DocumentRenderer::MIME,
+            /*
+             * Named, because a screen that presented this as "the contract"
+             * would be showing a draft full of sample values as a document —
+             * the same distinction `hr/onboardings/{id}/document` draws with
+             * `is_preview`, and drawn with the same word.
+             */
+            'is_preview' => true,
+            'merge_tags' => MergeTags::resolvable($fields),
+        ]]);
+    }
+
     // ── shared ───────────────────────────────────────────────────
 
     /**
@@ -388,14 +583,23 @@ class HrContractsController extends Controller
      * current in the same transaction that creates it, so there is no moment
      * where a contract has a version nobody is using and no way to say so.
      */
-    private function publish(Contract $contract, FieldSet $fields, ?string $notes, Request $request): ContractVersion
-    {
+    private function publish(
+        Contract $contract,
+        FieldSet $fields,
+        ?string $body,
+        ?string $notes,
+        Request $request,
+    ): ContractVersion {
         $next = (int) ($contract->versions()->max('version') ?? 0) + 1;
 
         $version = ContractVersion::create([
             'contract_id' => $contract->getKey(),
             'version'     => $next,
             'fields'      => $fields->toArray(),
+            // Written in the same statement as the fields, into the same
+            // write-once row. That is what makes "the wording is versioned with
+            // the questions" a property of the schema rather than a convention.
+            'body'        => $body,
             'notes'       => $notes,
             'created_by'  => $request->user()->getKey(),
         ]);
@@ -433,7 +637,22 @@ class HrContractsController extends Controller
             // fields in the total would overstate every template that has ever
             // been tidied up.
             'field_count' => $current === null ? 0 : count($current->liveFields()),
-            'updated_at'  => $contract->updated_at?->toIso8601String(),
+            /*
+             * Whether this template has been WRITTEN, or is still only a set of
+             * questions.
+             *
+             * On the list rather than only in the detail, because it is the
+             * distinction the owner was pointing at: a template with no wording
+             * produces a form dump of answers, which is a record of what was
+             * collected and not an agreement. Somebody looking at the list needs
+             * to be able to see which of their templates are still in that
+             * state without opening each one.
+             *
+             * A flag rather than the text, because the list is every template in
+             * the organization and the text is pages.
+             */
+            'has_body'   => $current?->hasBody() ?? false,
+            'updated_at' => $contract->updated_at?->toIso8601String(),
         ];
 
         if (! $detailed) {
@@ -450,6 +669,26 @@ class HrContractsController extends Controller
              * can draw the distinction the plan draws.
              */
             'fields' => $current?->fieldSet()->toArray() ?? [],
+            /*
+             * The agreement's own wording, as it was written — the source text
+             * with its tags still in it, not the rendered document.
+             *
+             * This is what the editor opens. The RENDERED form is what /preview
+             * answers and what an onboarding's /document answers; sending either
+             * here would be sending a document nobody can edit in place of the
+             * thing they came to edit.
+             */
+            'body' => $current?->body,
+            /*
+             * And what the tags in it may name, for THIS version's field list.
+             *
+             * Published rather than compiled by the client — see
+             * MergeTags::resolvable. Present as an empty list for a contract with
+             * no version rather than absent, for the reason FieldDefinition gives
+             * about `options`: empty is an answer, missing is indistinguishable
+             * from an older server.
+             */
+            'merge_tags' => MergeTags::resolvable($current?->fieldSet()),
             'current_version' => $current === null ? null : [
                 'id'         => $current->id,
                 'version'    => $current->version,
@@ -469,6 +708,11 @@ class HrContractsController extends Controller
             'created_at' => $version->created_at?->toIso8601String(),
             'created_by' => $version->createdBy?->name,
             'fields'     => $version->fieldSet()->toArray(),
+            // The wording as this version had it. Sent in full, per version,
+            // because "what did version 3 say" is the question this screen
+            // exists to answer and a length or a flag does not answer it. It is
+            // what MergeTags::MAX_BODY_LENGTH is sized against.
+            'body'       => $version->body,
             /*
              * What this publish changed, against the version before it.
              *
@@ -476,7 +720,12 @@ class HrContractsController extends Controller
              * see VersionDiff. Version 1's diff is everything, because a first
              * version genuinely does add every field it has.
              */
-            'diff' => VersionDiff::between($previous?->fieldSet(), $version->fieldSet())->toArray(),
+            'diff' => VersionDiff::between(
+                $previous?->fieldSet(),
+                $version->fieldSet(),
+                $previous?->body,
+                $version->body,
+            )->toArray(),
         ];
     }
 }

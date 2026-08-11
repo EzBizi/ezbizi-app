@@ -41,6 +41,7 @@ class PlatformStaff extends Authenticatable
         return [
             'password'          => 'hashed',
             'is_active'         => 'boolean',
+            'audit_exempt'      => 'boolean',
             // Read back from MySQL as a string otherwise, and it is compared
             // numerically against the next time-slice.
             'last_totp_timestamp' => 'integer',
@@ -96,12 +97,41 @@ class PlatformStaff extends Authenticatable
      * activity is not written to the business audit trail, so it doesn't drown
      * the log. Errors and crashes are still recorded.
      *
+     * ── Keyed on the ACCOUNT, which is the whole point ───────────
+     *
+     * This returned `$this->isLeadDeveloper()` — the tier — and §4.2 forbids
+     * exactly that: "The exemption is per-account, not per-role — a Developer
+     * promoted by mistake shouldn't silently stop being audited." A tier is an
+     * editable field on a staff account; promoting somebody, or creating a
+     * second lead, removed them from the audit trail with nothing on the screen
+     * or in the request saying so, and nothing in the log either, because the
+     * exemption is the thing that stops the log.
+     *
+     * `audit_exempt` is granted deliberately, held by at most one account, and
+     * every grant and revocation is written through logStaff — which suppression
+     * does not touch. So the exemption itself has a history even though the
+     * exempt account's ordinary work does not.
+     *
      * The cost, stated here rather than left in someone's memory: the audit log
      * cannot prove every access or change made by this account. Impersonation
      * rows are the exception — those are always written, whatever the tier,
      * because they evidence staff access to client data.
      */
     public function suppressesBusinessAudit(): bool
+    {
+        return (bool) $this->audit_exempt;
+    }
+
+    /**
+     * May this account hold the exemption at all?
+     *
+     * Lead Developer only. The exemption exists for the owner's development and
+     * testing activity, and a Developer reaches client records solely through an
+     * impersonation the client approved — taking that account out of the trail
+     * would remove the record of approved access, which is the opposite of what
+     * §4.2 asks for.
+     */
+    public function mayBeAuditExempt(): bool
     {
         return $this->isLeadDeveloper();
     }

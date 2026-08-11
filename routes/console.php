@@ -10,6 +10,18 @@ Artisan::command('inspire', function () {
 // Audit retention (plan §10). Runs nightly; the command reports what it removed.
 Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
 
+// Everything else's retention (§10), read off each model's own declaration.
+//
+// Ten minutes after the audit sweep rather than beside it, so the two never
+// contend for the same table locks on a busy night — and after, deliberately:
+// audit events are the record of what the rest of the system did, so if only one
+// of the two gets to finish it should be the one whose backlog grows fastest.
+//
+// It skips `audit_events` itself, which declares its retention as enforced by the
+// command above. Two sweeps deleting from one table on different rules is a bug
+// waiting for the night they disagree.
+Schedule::command('ezbizi:expire-data')->dailyAt('03:50');
+
 // Close impersonation sessions past their expiry (§4.2). Every five minutes,
 // because the value is a truthful record rather than cutting off access —
 // access already stops by itself the moment the expiry passes.

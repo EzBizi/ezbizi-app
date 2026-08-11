@@ -121,6 +121,30 @@ class ContractDiffPanel extends StatelessWidget {
                           'these are the same ones.',
                 style: theme.textTheme.bodyMedium,
               ),
+            // First, because it is the contract. Every other line here is
+            // about a question on a form; this one is about the words somebody
+            // signs, and it should not arrive underneath a reorder.
+            if (diff.bodyChanged)
+              _section(context, 'The wording', [
+                _line(
+                  context,
+                  Icons.article_outlined,
+                  // Named, because `removed` is not a smaller `edited`: it drops
+                  // the document back to the generated list of answers, which is
+                  // a different document rather than a reworded one.
+                  switch (diff.bodyChange) {
+                    'added' => 'The contract now has wording of its own.',
+                    'removed' =>
+                      'The wording has been removed, so this contract goes back '
+                          'to listing the answers rather than reading as an '
+                          'agreement.',
+                    _ => 'The text of the contract itself has changed.',
+                  },
+                  'Everybody onboarded from now on signs the new wording. '
+                      'Contracts already signed keep the words they were '
+                      'signed under, which is what the version is for.',
+                ),
+              ]),
             if (diff.added.isNotEmpty)
               _section(context, 'Added', [
                 for (final field in diff.added)

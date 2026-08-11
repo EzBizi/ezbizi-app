@@ -350,10 +350,33 @@ class Me {
 
   /// Does this person's role hold this exact permission?
   ///
-  /// Fails closed, including when the server sent no list at all. Hiding one
-  /// button from somebody who should have it is a smaller wrong than drawing a
-  /// control that answers 403 when pressed.
+  /// Fails closed, including when the server sent no list at all. The server is
+  /// asked again on every write regardless — this decides what a screen OFFERS,
+  /// never what anybody is allowed to do.
   bool can(String permission) => permissions.contains(permission);
+
+  /// Why a control is refused for want of a permission, or null when it is not.
+  ///
+  /// ── Why the sentence lives here ──────────────────────────────────
+  ///
+  /// Because it is the same sentence every time, and the moment each screen
+  /// writes its own the wording drifts: half say "you do not have permission",
+  /// half say "ask an administrator", and none of them say the one thing that
+  /// makes the difference — that a permission belongs to a ROLE, so the person
+  /// to ask is whoever edits roles rather than whoever set up the account.
+  ///
+  /// It deliberately does NOT try to answer the reach half of §4. "You are not
+  /// assigned anywhere" is a different refusal with a different remedy, and only
+  /// the screen knows which of the two it is looking at — see [franchises],
+  /// which the server fills with reach rather than with everything that exists.
+  ///
+  /// [act] reads as an infinitive without "to": "add a customer", "delete this
+  /// automation". Kept as the caller's words on purpose, because a permission
+  /// key is a wire name and R8 forbids those on screen.
+  String? refusal(String permission, String act) => can(permission)
+      ? null
+      : 'You do not have permission to $act. That is part of a role rather than '
+            'of an account, so somebody who can edit roles can add it to yours.';
 
   /// May this person reach this module — both gates, as [ModuleAccess] carries
   /// them: the platform permits it AND their role holds its view permission.

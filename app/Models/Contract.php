@@ -85,10 +85,18 @@ class Contract extends Model
     {
         $pinned = [];
 
-        // Oldest first, so the most recent publication of a key is the one left
-        // standing. `versions()` is newest-first for the screen's benefit, and
-        // reusing it here would silently invert that.
-        foreach ($this->versions()->reorder('version')->get() as $version) {
+        /*
+         * Oldest first, so the most recent publication of a key is the one left
+         * standing. `versions()` is newest-first for the screen's benefit, and
+         * reusing it here would silently invert that.
+         *
+         * `fields` only. This runs on EVERY publish and reads EVERY version, and
+         * a version now also carries a body of up to 50,000 characters — so
+         * selecting the whole row would drag the full text of every version of
+         * the contract through PHP to answer a question about key types. The
+         * primary key comes along because Eloquent hydrates models with it.
+         */
+        foreach ($this->versions()->reorder('version')->get(['id', 'fields']) as $version) {
             foreach ($version->fieldSet()->pinnedProperties() as $key => $properties) {
                 $pinned[$key] = [
                     'type'      => $properties['type'],

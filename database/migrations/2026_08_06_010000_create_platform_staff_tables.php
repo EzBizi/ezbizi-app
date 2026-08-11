@@ -38,9 +38,10 @@ return new class extends Migration
             $table->enum('tier', ['lead_developer', 'developer'])->default('developer');
 
             // TOTP is MANDATORY here, not optional. This account can reach every
-            // customer's data on the platform, and the Lead Developer tier is
-            // deliberately outside the ordinary audit trail — password-only on
-            // that combination is the weakest link in the system.
+            // customer's data on the platform, and one account — whichever holds
+            // `audit_exempt`, added by a later migration — is deliberately
+            // outside the ordinary audit trail. Password-only on that
+            // combination is the weakest link in the system.
             //
             // Encrypted at rest: a database leak that exposes TOTP secrets makes
             // the second factor worthless.

@@ -7,6 +7,7 @@ import '../../widgets/error_note.dart';
 import '../../widgets/numbered_step.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
+import 'contract_body_editor.dart';
 import 'contract_diff_panel.dart';
 import 'contract_form_preview.dart';
 
@@ -60,6 +61,20 @@ import 'contract_form_preview.dart';
 /// a paragraph, and a copy of the rule in Dart would be a second answer to a
 /// question that must only have one. So this screen blocks a save when the FORM
 /// is unfinished, and never when it merely disagrees with a policy.
+///
+/// ── The contract itself is step 4 ────────────────────────────────
+///
+/// The questions used to be the whole of it, and the document was generated
+/// from them. The owner's words: *"we are missing something critical which is
+/// the contract writing itself, you have the shortcodes but nowhere to put
+/// them."* A version now carries a `body` — the actual wording, with the field
+/// keys as merge tags in it — and [ContractBodyEditor] is where it is written,
+/// beside a live rendering of the page it makes.
+///
+/// It sits after the questions and before the form preview because that is the
+/// order the decisions happen in: a tag cannot be inserted before the question
+/// it names exists, and what each side is ASKED is a different question from
+/// what the document SAYS.
 class ContractDesigner extends StatefulWidget {
   const ContractDesigner({
     super.key,
@@ -211,6 +226,13 @@ class _ContractDesignerState extends State<ContractDesigner> {
   final _name = TextEditingController();
   final _description = TextEditingController();
 
+  /// The wording of the contract itself.
+  ///
+  /// Held here rather than inside the editor widget because it is part of what
+  /// gets saved: the create request carries it, the publish preview carries it,
+  /// and the publish carries it. The editor draws it and inserts into it.
+  final _body = TextEditingController();
+
   final List<_Question> _questions = [];
 
   /// What the template was called when this screen opened, so a rename can be
@@ -239,6 +261,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
     if (template != null) {
       _name.text = template['name'] as String? ?? '';
       _description.text = template['description'] as String? ?? '';
+      _body.text = _bodyOf(template);
       _originalName = _name.text;
       _originalDescription = _description.text;
 
@@ -254,12 +277,36 @@ class _ContractDesignerState extends State<ContractDesigner> {
   void dispose() {
     _name.dispose();
     _description.dispose();
+    _body.dispose();
 
     for (final question in _questions) {
       question.dispose();
     }
 
     super.dispose();
+  }
+
+  /// The wording, out of `GET /hr/contracts/{contract}`.
+  ///
+  /// The body belongs to the VERSION — it is versioned and diffed with the
+  /// fields — so it is read either from the top of the detail payload, beside
+  /// the field list that is also the version's, or from the current version
+  /// where the server nests it. Two readings of one fact, for the reason
+  /// `ContractVocabulary.fromJson` gives; and a template that has no body yet
+  /// is the ordinary case for everything published before this existed, which
+  /// is an empty box rather than an error.
+  static String _bodyOf(Map<String, dynamic> template) {
+    final top = template['body'];
+
+    if (top is String) return top;
+
+    final version = template['current_version'] ?? template['version'];
+
+    if (version is Map && version['body'] is String) {
+      return version['body'] as String;
+    }
+
+    return '';
   }
 
   /// Every keystroke re-asks whether the form can be saved.
@@ -508,6 +555,17 @@ class _ContractDesignerState extends State<ContractDesigner> {
     for (final question in _questions) question.toJson(),
   ];
 
+  /// The wording as it goes on the wire.
+  ///
+  /// Null when there is nothing in it, the same as the description: a body of
+  /// spaces is not a contract, and "" and null should not be two states of the
+  /// same emptiness on the server.
+  String? get _sentBody {
+    final text = _body.text.trim();
+
+    return text.isEmpty ? null : text;
+  }
+
   // ── saving ───────────────────────────────────────────────────────
 
   /// Creating one. There is no diff to show — everything is new — so the
@@ -523,6 +581,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
       'description': _description.text.trim().isEmpty
           ? null
           : _description.text.trim(),
+      'body': _sentBody,
       'fields': _payload,
     });
 
@@ -548,6 +607,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
         vocabulary: widget.vocabulary,
         templateId: _id!,
         fields: _payload,
+        body: _sentBody,
         renamedFrom: _renamed ? _originalName : null,
         commit: _commit,
       ),
@@ -584,6 +644,10 @@ class _ContractDesignerState extends State<ContractDesigner> {
 
     final published = await widget.api.post('/hr/contracts/$_id/versions', {
       'fields': _payload,
+      // The wording travels with the questions, because it is the same version.
+      // Publishing a field list without the body it was written against would
+      // pin a document to answers it does not mention.
+      'body': _sentBody,
     });
 
     return published.ok ? null : published.reason;
@@ -613,6 +677,8 @@ class _ContractDesignerState extends State<ContractDesigner> {
                     _coreStep(context),
                     const SizedBox(height: 26),
                     _questionsStep(context),
+                    const SizedBox(height: 26),
+                    _bodyStep(context),
                     const SizedBox(height: 26),
                     _previewStep(context),
                     if (_isEdit) ...[
@@ -1161,9 +1227,31 @@ class _ContractDesignerState extends State<ContractDesigner> {
     );
   }
 
-  Widget _previewStep(BuildContext context) {
+  /// The contract itself — the wording, and the page it makes.
+  Widget _bodyStep(BuildContext context) {
     return NumberedStep(
       number: 4,
+      title: 'Write the contract',
+      note:
+          'The agreement itself, in your words. Anything in double braces is '
+          'filled in when somebody is onboarded — click a field to drop its '
+          'tag in where the cursor is, rather than remembering what it was '
+          'called.',
+      child: ContractBodyEditor(
+        api: widget.api,
+        vocabulary: widget.vocabulary,
+        body: _body,
+        contractId: _id,
+        fields: () => [for (final question in _questions) question.toField()],
+        payload: () => _payload,
+        canEdit: widget.canEdit,
+      ),
+    );
+  }
+
+  Widget _previewStep(BuildContext context) {
+    return NumberedStep(
+      number: 5,
       title: 'What each side sees',
       note:
           'The form as it will be asked. This is the answer to “who fills it '
@@ -1187,7 +1275,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
     final current = widget.template?['version'];
 
     return NumberedStep(
-      number: 5,
+      number: 6,
       title: 'History',
       note: _history.isEmpty
           ? 'Every publish writes one of these, and each record remembers which '
@@ -1320,6 +1408,7 @@ class _PublishFlow extends StatefulWidget {
     required this.vocabulary,
     required this.templateId,
     required this.fields,
+    required this.body,
     required this.renamedFrom,
     required this.commit,
   });
@@ -1328,6 +1417,11 @@ class _PublishFlow extends StatefulWidget {
   final ContractVocabulary vocabulary;
   final String templateId;
   final List<Map<String, dynamic>> fields;
+
+  /// The wording, sent with the preview so the server can diff it. Without it
+  /// the panel would show every change except the one to the contract.
+  final String? body;
+
   final String? renamedFrom;
 
   /// Does the writing, and answers with the server's refusal or null.
@@ -1352,7 +1446,7 @@ class _PublishFlowState extends State<_PublishFlow> {
   Future<void> _preview() async {
     final response = await widget.api.post(
       '/hr/contracts/${widget.templateId}/versions',
-      {'fields': widget.fields, 'preview': true},
+      {'fields': widget.fields, 'body': widget.body, 'preview': true},
     );
 
     if (!mounted) return;

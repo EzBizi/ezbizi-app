@@ -114,6 +114,10 @@ class DashboardController extends Controller
             ];
         }
 
+        // Not audited, and the reason is PreferencesController's: this writes to
+        // `user.preferences`, it is category 6, and §10 records what people do to
+        // the BUSINESS. Said here because a write path with no audit call is
+        // otherwise indistinguishable from one where somebody forgot.
         $user->forceFill([
             'preferences' => array_merge($user->preferences ?? [], ['dashboard.widgets' => $layout]),
         ])->save();

@@ -14,6 +14,13 @@ use Illuminate\Http\Request;
  * signed in. A permission would suggest one user might read another's, which is
  * never true — and a policy that always returns true is a place for a bug to
  * hide.
+ *
+ * No audit either, on the reasoning PreferencesController sets out: read state
+ * is a fact about one person's own inbox and changes nothing anybody else can
+ * observe. markAllRead in particular fires every time the panel is opened, so
+ * auditing it would add the loudest rows in the table to the log least likely to
+ * ever be read — which is the failure §4.2 worries about when it talks about
+ * development noise drowning real business activity.
  */
 class NotificationsController extends Controller
 {

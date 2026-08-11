@@ -18,6 +18,10 @@ use Illuminate\Database\Eloquent\Builder;
  */
 trait ScopesToReach
 {
+    // The rolling window lives in its own trait: the HR widgets need it and must
+    // not inherit reachable() with it. See ReportsOverAPeriod for why.
+    use ReportsOverAPeriod;
+
     /**
      * Narrow a query to the franchises this person may act on (§4).
      *
@@ -47,34 +51,6 @@ trait ScopesToReach
         return $franchise instanceof Franchise
             ? Job::allowedStatuses($franchise)
             : [];
-    }
-
-    /**
-     * The window a widget reports on.
-     *
-     * Days rather than "this month", because a month boundary makes the first of
-     * the month look like a collapse in business and is the single most common
-     * complaint about dashboards.
-     */
-    protected function since(array $options, int $default = 30): \Illuminate\Support\Carbon
-    {
-        $days = (int) ($options['days'] ?? $default);
-
-        // Clamped: an unbounded window invites a full-table scan from a URL, and
-        // nobody has a use for a ten-year rolling count on a dashboard.
-        return now()->subDays(max(1, min($days, 365)));
-    }
-
-    protected function periodOption(int $default = 30): array
-    {
-        return [
-            'label'   => 'Period',
-            'type'    => 'enum',
-            'options' => [7, 30, 90, 365],
-            'default' => $default,
-            'help'    => 'A rolling window, not a calendar month — so the first of the '
-                .'month does not look like business fell off a cliff.',
-        ];
     }
 
     protected function resolver(): SettingsResolver

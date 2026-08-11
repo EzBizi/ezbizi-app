@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Models\Customer;
+use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use Illuminate\Database\Eloquent\Model;
@@ -282,7 +283,11 @@ class DataInventoryTest extends TestCase
             }
 
             $this->assertNotEmpty($class::personalDataPurpose(), "{$class} states no purpose.");
-            $this->assertNotEmpty($class::personalDataRetention(), "{$class} states no retention.");
+            // Retention moved to StatesRetention, which HoldsPersonalData now
+            // extends: the same sentence, composed from a policy something can
+            // act on rather than typed as prose nothing can read. See
+            // RetentionTest for the enforcement half.
+            $this->assertNotEmpty($class::retention()->sentence(), "{$class} states no retention.");
             $this->assertNotEmpty($class::personalDataHeld(), "{$class} lists no fields.");
 
             foreach ($class::personalDataHeld() as $entry) {
@@ -298,6 +303,26 @@ class DataInventoryTest extends TestCase
                     '%s::%s is listed with a purpose too short to answer anything.',
                     class_basename($class), $entry->field,
                 ));
+
+                /*
+                 * And what erasure does to it. §9's purge is derived from these
+                 * declarations rather than from a list of its own, so an entry
+                 * without a disposition is a column the purge would miss while
+                 * reporting success. `keep` and `drop` additionally have to say
+                 * why, since those are the two that get challenged.
+                 */
+                $this->assertContains($entry->erasure->disposition, [
+                    Erasure::ERASE,
+                    Erasure::KEEP,
+                    Erasure::DROP,
+                ]);
+
+                if ($entry->erasure->disposition !== Erasure::ERASE) {
+                    $this->assertGreaterThan(30, strlen((string) $entry->erasure->because), sprintf(
+                        '%s::%s survives or removes a row without a reason anybody could read.',
+                        class_basename($class), $entry->field,
+                    ));
+                }
             }
         }
     }

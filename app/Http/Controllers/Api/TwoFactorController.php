@@ -109,6 +109,13 @@ class TwoFactorController extends Controller
 
         $enrolment = $this->totp->begin($subject, $subject->email, revokeExisting: false);
 
+        // The staff plane records the same moment as `staff.totp_rotation_started`
+        // and this side recorded nothing, so `user.two_factor_enabled` arrived
+        // with no beginning to it. That gap matters most in the case worth
+        // reading about later: an enrolment somebody started and never confirmed
+        // is exactly the shape of an attempt that failed or was interrupted.
+        $this->audit->log('user.two_factor_enrolment_started', $request->user());
+
         return response()->json(['enrolment' => $enrolment]);
     }
 

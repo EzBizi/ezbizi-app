@@ -228,6 +228,20 @@ class SelfServiceTotpTest extends TestCase
         ])->assertOk()->assertJsonPath('status', 'authenticated');
     }
 
+    public function test_starting_an_enrolment_is_recorded(): void
+    {
+        $this->signedIn()->postJson('/api/v1/me/totp')->assertOk();
+
+        // The staff plane records the same moment and this side recorded nothing,
+        // so `user.two_factor_enabled` arrived with no beginning to it. The gap
+        // matters most in the case worth reading about later: an enrolment
+        // somebody started and never confirmed.
+        $this->assertSame(
+            1,
+            \App\Models\AuditEvent::where('action', 'user.two_factor_enrolment_started')->count(),
+        );
+    }
+
     public function test_turning_it_off_needs_the_password(): void
     {
         $begin = $this->signedIn()->postJson('/api/v1/me/totp')->assertOk();

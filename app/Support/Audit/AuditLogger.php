@@ -74,10 +74,16 @@ class AuditLogger
      * the audit log cannot prove every access or change. If the
      * highest-privilege account is ever compromised or misused, there may be no
      * business audit trail of what it did. Errors and crashes are still recorded
-     * (see logError), so a *failing* action leaves a trace — a successful one
-     * does not.
+     * (see logError, and ExceptionAudit which now feeds it every unhandled
+     * exception), so a *failing* action leaves a trace — a successful one does
+     * not.
      *
-     * Regular Developers are audited normally; only the Lead Developer is exempt.
+     * WHO IS EXEMPT is one account, not a tier. StaffOnly reaches this only for
+     * a staff member whose `audit_exempt` flag is set, which §4.2 requires to be
+     * "an explicit flag on the single Lead Developer account" — it was keyed on
+     * the tier, so every promotion silently widened the exemption. Granting and
+     * revoking that flag is itself written, through logStaff, which this method
+     * cannot suppress.
      */
     public function suppressForLeadDeveloper(callable $callback): mixed
     {
@@ -181,6 +187,13 @@ class AuditLogger
      * Recorded even under Lead Developer suppression — that was the explicit
      * carve-out, and it's the one that matters: a crash nobody logged is a crash
      * nobody fixes.
+     *
+     * The framework's exception handling reaches this through ExceptionAudit
+     * (registered in bootstrap/app.php), which is what makes "every crash" true
+     * rather than "every crash somebody remembered to catch". Read that class
+     * before adding anything to `$context` from a throwable: REDACT matches
+     * array KEYS and is inert against free text, so a message or a raw trace put
+     * in here is not filtered by anything.
      */
     public function logError(string $action, array $context = [], ?User $actor = null): AuditEvent
     {

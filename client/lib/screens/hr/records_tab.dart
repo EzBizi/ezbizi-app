@@ -9,6 +9,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/load_more.dart';
+import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'onboarding_form.dart';
@@ -259,6 +260,14 @@ class _RecordsTabState extends State<RecordsTab> {
     final roleName = (person['role'] as Map<String, dynamic>?)?['name'];
     final active = person['is_active'] != false;
 
+    // What UserPolicy::update asks for. The screen never asked it, so the one
+    // control on this list that writes to somebody else's account was offered
+    // to a reader who could only ever be refused.
+    final noEdit = widget.session.me?.refusal(
+      'hr.edit',
+      'change somebody’s account',
+    );
+
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.fromLTRB(20, 8, 8, 8),
@@ -298,21 +307,31 @@ class _RecordsTabState extends State<RecordsTab> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : PopupMenuButton<String>(
-                itemBuilder: (_) => [
+                // Every row on this list carries the same icon, so the
+                // framework default — "Show menu" — is what a screen reader
+                // reads for all of them, with no way to tell whose.
+                tooltip: 'What to do about ${person['name'] ?? 'this person'}',
+                itemBuilder: (context) => [
                   const PopupMenuItem(
                     value: 'record',
                     child: Text('What onboarding collected'),
                   ),
                   const PopupMenuDivider(),
-                  PopupMenuItem(
+                  // It was greyed with nothing said, and [_cannotChangeRole]
+                  // held the sentence the whole time — it was drawn once at the
+                  // top of the screen and never beside the control it is about.
+                  refusedMenuItem(
+                    context,
                     value: 'role',
-                    enabled: _options.roles.any((role) => role.assignable),
-                    child: const Text('Change their role'),
+                    label: 'Change their role',
+                    reason: _cannotChangeRole,
                   ),
                   const PopupMenuDivider(),
-                  PopupMenuItem(
+                  refusedMenuItem(
+                    context,
                     value: 'active',
-                    child: Text(active ? 'Deactivate' : 'Reactivate'),
+                    label: active ? 'Deactivate' : 'Reactivate',
+                    reason: noEdit,
                   ),
                 ],
                 onSelected: (action) => switch (action) {

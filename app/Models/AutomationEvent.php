@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -19,11 +21,43 @@ use Illuminate\Database\Eloquent\Model;
  * the commit can fail after the job was queued and act on something that never
  * happened.
  */
-class AutomationEvent extends Model
+class AutomationEvent extends Model implements StatesRetention
 {
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
+
+    /**
+     * Three months, and it takes the runs with it.
+     *
+     * This is the table §10 was written about and the inventory could not see:
+     * it holds no personal data of its own, so it could not implement
+     * HoldsPersonalData without lying, and until StatesRetention existed there
+     * was nowhere else to say anything. It was therefore not a table with a
+     * generous policy — it was a table nobody had ever decided about, taking a
+     * row for every business change in every organization, forever.
+     *
+     * Three months matches business audit, deliberately: this is the same
+     * history seen from the automation side, and two different windows over one
+     * set of facts would mean "why did my rule not fire in April?" being
+     * answerable from one table and not the other.
+     *
+     * `workflow_runs.event_id` cascades from here, so expiring an event expires
+     * its runs in the same statement. That is why AutomationRun states
+     * `withParent` rather than a window of its own — one number, one place, and
+     * a run can never outlive the event it explains.
+     *
+     * The sweep is bounded to DELIVERED or FAILED events by the command, because
+     * an undelivered event is work still owed rather than history.
+     */
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::window(3, 'occurred_at',
+            'The outbox of what happened, kept so "why did my automation not fire?" stays '
+            .'answerable — the same three months as the business audit trail it mirrors. '
+            .'Expiring an event removes the runs it caused, by the cascade.'
+        );
+    }
 
     public const UPDATED_AT = null;
     public const CREATED_AT = null;   // occurred_at is the real timestamp

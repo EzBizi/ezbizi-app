@@ -108,6 +108,7 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
 
   Widget _row(BuildContext context, Map<String, dynamic> account) {
     final active = account['is_active'] as bool? ?? false;
+    final exempt = account['audit_exempt'] as bool? ?? false;
     final confirmed = account['totp_confirmed'] as bool? ?? false;
     final pending = account['totp_pending'] as bool? ?? false;
     final isMe = account['id'] == widget.staff.me!.id;
@@ -135,6 +136,11 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
                           ),
                           if (isMe) const Tag('You'),
                           if (!active) const Tag('Disabled', warn: true),
+                          // §4.2's exemption, on the screen rather than only in
+                          // the database. One account is outside the business
+                          // audit trail; which one has to be visible to whoever
+                          // is looking at this list, or nobody ever reviews it.
+                          if (exempt) const Tag('Not audited', warn: true),
                         ],
                       ),
                       const SizedBox(height: 2),
@@ -147,6 +153,9 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
                   ),
                 ),
                 PopupMenuButton<String>(
+                  // One of these per row, all the same icon: the framework
+                  // default reads "Show menu" on every one of them.
+                  tooltip: 'What to do about ${account['name'] ?? account['email']}',
                   itemBuilder: (_) => [
                     if (pending)
                       const PopupMenuItem(
@@ -179,6 +188,20 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
                               : 'Make Lead Developer',
                         ),
                       ),
+                    // Offered on your OWN row too, unlike the two above. Those
+                    // are guarded because locking yourself out of the control
+                    // plane leaves the console on the box as the only way back;
+                    // nothing here can lock anybody out, and the owner granting
+                    // it to their own account is the case it exists for.
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: 'exempt',
+                      child: Text(
+                        exempt
+                            ? 'Put back in the audit trail'
+                            : 'Exempt from the audit trail',
+                      ),
+                    ),
                   ],
                   onSelected: (action) => _act(action, account),
                 ),
@@ -223,6 +246,10 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
           'tier': account['tier'] == 'lead_developer'
               ? 'developer'
               : 'lead_developer',
+        });
+      case 'exempt':
+        await _patch(account, {
+          'audit_exempt': !(account['audit_exempt'] as bool? ?? false),
         });
     }
   }
@@ -520,8 +547,10 @@ class _NewStaffPanelState extends State<_NewStaffPanel> {
           Text(
             _tier == 'lead_developer'
                 ? 'Reaches every organization, may enter a client without their '
-                      'approval, and is exempt from the ordinary audit trail. '
-                      'Client access is still always recorded.'
+                      'approval, and may manage staff accounts. Client access is '
+                      'always recorded. It is NOT exempt from the audit trail — '
+                      'that is a separate setting held by one account, and this '
+                      'form does not grant it.'
                 : 'Platform work only. Reaching client records needs the client\'s '
                       'approval on each session.',
             style: Theme.of(context).textTheme.bodyMedium,

@@ -582,7 +582,7 @@ class _HomeShellState extends State<HomeShell> {
                   ),
                 ),
               PopupMenuButton<String>(
-                tooltip: me.email,
+                tooltip: 'Your account — ${me.name} (${me.email})',
                 // The photo, not just the initial. It was an initial always: the
                 // profile screen was the only place a picture appeared, and even
                 // there it did not, because it was fetched without the token the

@@ -2,8 +2,12 @@
 
 namespace App\Support\Privacy;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+
 /**
- * A table that holds personal data, and says which of it and why (§9).
+ * A table that holds personal data, and says which of it, why, and what erasing
+ * it means (§9).
  *
  * §9 asks for a data inventory — "what personal data, in which table, why" —
  * and gives the reason it cannot wait: "Impossible to reconstruct later; trivial
@@ -30,8 +34,23 @@ namespace App\Support\Privacy;
  * indexes, caches, automation payloads, notification history, exports and
  * backups" — and an inventory that lists only the obvious three tables is worse
  * than none, because it will be believed.
+ *
+ * ── The inventory is now also the purge ──────────────────────────
+ *
+ * §9's second build-now mechanism is "purge personal data — anonymise in place",
+ * and it "must touch every table holding personal data" — which is the sentence
+ * this interface already answers. So the purge is derived from these
+ * declarations rather than keeping a parallel list: each PersonalDataEntry
+ * carries an Erasure saying what a purge does to it, and `personalDataAbout()`
+ * says which rows are about a given person. See App\Support\Privacy\Anonymiser.
+ *
+ * The two halves are split that way because they are known by different things.
+ * WHICH COLUMNS is knowledge the entry already carries and must not be written
+ * down twice. WHICH ROWS is a join — through `tokenable`, through an onboarding,
+ * through a morph — and nothing but the model can state it, which is why it is a
+ * method here and not something the Anonymiser guesses from a column name.
  */
-interface HoldsPersonalData
+interface HoldsPersonalData extends StatesRetention
 {
     /**
      * Why this table exists at all, in one sentence a non-engineer can read.
@@ -45,13 +64,37 @@ interface HoldsPersonalData
     public static function personalDataHeld(): array;
 
     /**
-     * How long it stays, in the words of whatever decides it.
+     * The rows here that are about this person, or null if none ever are.
      *
-     * A sentence rather than a number of days, because the honest answers are
-     * not all numbers: some of this is kept for as long as the record it belongs
-     * to, some has a retention window set in §10, and some — the audit trail —
-     * is deliberately append-only. A column of integers would force each of
-     * those into a shape that misrepresents it.
+     * ── Why the model answers rather than the purge ──────────────
+     *
+     * "Everything about Marta" is a different query in every table: her own row
+     * in `users`, rows whose `tokenable` morphs to her in
+     * `personal_access_tokens`, rows two joins away through an onboarding in
+     * `onboarding_answers`, and — in `audit_events` — rows where she is the
+     * ACTOR and rows where she is the TARGET, which are stored as a polymorphic
+     * pair rather than a column. A purge that tried to infer those would infer
+     * some of them wrongly, and the failure mode is silent: it erases less than
+     * it reports.
+     *
+     * NULL rather than an empty query is deliberate. "This table never holds
+     * anything about a customer" and "it does, and this one has none" are
+     * different answers, and the purge report prints them differently — the
+     * second is a fact about this person, the first is a fact about the schema.
+     *
+     * ── Scope ────────────────────────────────────────────────────
+     *
+     * The subject is the person being erased. Today that is a User or a
+     * Customer, the two kinds of person this system holds records about, and an
+     * implementation is expected to return null for a kind it has nothing to do
+     * with rather than to throw — a new kind of subject should not break every
+     * existing table.
+     *
+     * Soft-deleted rows must be INCLUDED. A soft-deleted customer is retained
+     * personal data, which is §9's whole point about the tension, and a purge
+     * that skipped them would leave the exact rows somebody is asking about.
+     *
+     * @return Builder<Model>|null
      */
-    public static function personalDataRetention(): string;
+    public static function personalDataAbout(Model $subject): ?Builder;
 }

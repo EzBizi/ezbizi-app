@@ -9,6 +9,7 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -56,12 +57,42 @@ class CompaniesController extends Controller
         $user = $request->user();
 
         $present = function (Company $company) use ($user) {
+            // Three different acts, three different answers — and until now the
+            // client had one flag for all of them.
+            //
+            // "Add a place" was drawn from `may_edit`, which is `companies.edit`:
+            // the wrong permission. Adding a franchise is `franchises.create`
+            // asked against THIS company (§4), so somebody holding it and not
+            // `companies.edit` had the control taken away, and somebody holding
+            // `companies.edit` and not `franchises.create` was offered a control
+            // that answered 403. Both are asked properly here rather than
+            // approximated in Dart, because §4 has one home.
+            $addFranchise = Gate::inspect('create', [Franchise::class, $company]);
+            $addSub       = $company->parent_company_id === null
+                ? Gate::inspect('create', [Company::class, $company])
+                : null;
+
             return [
                 'id'         => $company->id,
                 'name'       => $company->name,
                 'is_active'  => $company->is_active,
                 'parent_company_id' => $company->parent_company_id,
                 'may_edit'   => $user->can('update', $company),
+
+                'may_add_franchise' => $addFranchise->allowed(),
+                // The policy's own sentence, carried so the disabled control can
+                // explain itself in the same words the 403 would have used. Null
+                // when it is allowed: there is nothing to explain.
+                'may_add_franchise_reason' => $addFranchise->allowed()
+                    ? null
+                    : $addFranchise->message(),
+
+                // §3 fixes the depth, so a sub company can never hold one and
+                // the question is not asked of it at all.
+                'may_add_sub_company' => $addSub?->allowed() ?? false,
+                'may_add_sub_company_reason' => ($addSub === null || $addSub->allowed())
+                    ? null
+                    : $addSub->message(),
 
                 // Whether it has one OF ITS OWN. A company with none renders
                 // the organization's, and the difference matters here: this is
@@ -77,23 +108,39 @@ class CompaniesController extends Controller
                 'franchises' => $company->franchises
                     ->sortBy('name')
                     ->values()
-                    ->map(fn (Franchise $f) => [
-                        'id'        => $f->id,
-                        'name'      => $f->name,
-                        'timezone'  => $f->timezone,
-                        'currency'  => $f->currency,
-                        'is_active' => $f->is_active,
-                        'may_edit'  => $user->can('update', $f),
-                    ])->all(),
+                    ->map(function (Franchise $f) {
+                        $edit = Gate::inspect('update', $f);
+
+                        return [
+                            'id'        => $f->id,
+                            'name'      => $f->name,
+                            'timezone'  => $f->timezone,
+                            'currency'  => $f->currency,
+                            'is_active' => $f->is_active,
+                            'may_edit'  => $edit->allowed(),
+                            // A chip whose menu simply does not open is
+                            // indistinguishable from one that is broken.
+                            'may_edit_reason' => $edit->allowed() ? null : $edit->message(),
+                        ];
+                    })->all(),
             ];
         };
+
+        $addCompany = Gate::inspect('create', Company::class);
 
         return [
             'organization' => [
                 'id'   => $request->user()->organization->id,
                 'name' => $request->user()->organization->name,
                 // Whether the person may add a whole new branch to the business.
-                'may_add_company' => $user->can('create', Company::class),
+                'may_add_company' => $addCompany->allowed(),
+                // Carried because this is the refusal least likely to be guessed:
+                // it is about POSITION, not permission (§4, decision 12), so
+                // somebody holding `companies.create` at a branch is looking at a
+                // dead button they appear to have earned.
+                'may_add_company_reason' => $addCompany->allowed()
+                    ? null
+                    : $addCompany->message(),
                 'has_logo'        => $request->user()->organization->logo_path !== null,
                 'logo_aspect'     => $request->user()->organization->logo_aspect,
                 'logo_version'    => \App\Support\Branding\Branding::version(

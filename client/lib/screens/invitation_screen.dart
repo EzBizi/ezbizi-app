@@ -296,7 +296,7 @@ class _InvitationScreenState extends State<InvitationScreen> {
               icon: Icon(
                 _showPassword ? Icons.visibility_off : Icons.visibility,
               ),
-              tooltip: _showPassword ? 'Hide' : 'Show',
+              tooltip: _showPassword ? 'Hide the password' : 'Show the password',
               onPressed: () => setState(() => _showPassword = !_showPassword),
             ),
           ),

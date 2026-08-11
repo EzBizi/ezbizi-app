@@ -5,6 +5,7 @@ import '../core/session.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
+import '../widgets/refused.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tab_bar_like.dart';
 import '../widgets/tag.dart';
@@ -113,8 +114,26 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     });
   }
 
+  /// Why this person may not build one, or null when they may.
+  ///
+  /// Read from the permission set `/me` already sent. Before this, the screen
+  /// downloaded that set and consulted it nowhere: New, the switch on every row
+  /// and Delete were offered to a view-only holder, who got a 403 for each.
+  String? get _noCreate =>
+      widget.session.me?.refusal('automations.create', 'build an automation');
+
+  /// Editing a rule and switching one on or off are the same authority — see
+  /// AutomationPolicy, which routes both through `automations.edit`.
+  String? get _noEdit =>
+      widget.session.me?.refusal('automations.edit', 'change an automation');
+
+  String? get _noDelete =>
+      widget.session.me?.refusal('automations.delete', 'delete an automation');
+
   @override
   Widget build(BuildContext context) {
+    final noCreate = _noCreate;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -125,10 +144,18 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
               'never need a new release.',
           action: _tab != 0
               ? null
-              : FilledButton.icon(
-                  onPressed: _catalogue == null ? null : _new,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('New automation'),
+              : Refused(
+                  // Visible and refused, never hidden: somebody looking for
+                  // "New automation" and not finding it concludes the app is
+                  // broken, and never that their role is missing one grant.
+                  reason: noCreate,
+                  child: FilledButton.icon(
+                    onPressed: (noCreate != null || _catalogue == null)
+                        ? null
+                        : _new,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('New automation'),
+                  ),
                 ),
         ),
         Material(
@@ -187,10 +214,15 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 16),
-                    OutlinedButton.icon(
-                      onPressed: _catalogue == null ? null : _new,
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Build your first one'),
+                    Refused(
+                      reason: _noCreate,
+                      child: OutlinedButton.icon(
+                        onPressed: (_noCreate != null || _catalogue == null)
+                            ? null
+                            : _new,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Build your first one'),
+                      ),
                     ),
                   ],
                 ),
@@ -206,6 +238,8 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
   }
 
   Widget _row(BuildContext context, Map<String, dynamic> automation) {
+    final noEdit = _noEdit;
+    final noDelete = _noDelete;
     final live = automation['is_live'] as bool? ?? false;
     final disabledReason = automation['disabled_reason'] as String?;
     final runs = automation['runs_count'] as int? ?? 0;
@@ -236,20 +270,50 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                     ],
                   ),
                 ),
-                Switch(
-                  value: automation['is_active'] as bool? ?? false,
-                  onChanged: (on) => _setActive(automation, on),
+                Refused(
+                  reason: noEdit,
+                  child: Semantics(
+                    // A bare Switch announces "on" or "off" and nothing about
+                    // what. The rule's name is a sibling widget, which a screen
+                    // reader has no reason to read as belonging to it.
+                    label: 'Live — ${automation['name']}',
+                    child: Switch(
+                      value: automation['is_active'] as bool? ?? false,
+                      onChanged: noEdit != null
+                          ? null
+                          : (on) => _setActive(automation, on),
+                    ),
+                  ),
                 ),
                 PopupMenuButton<String>(
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'edit', child: Text('Open and edit')),
-                    PopupMenuItem(value: 'runs', child: Text('Run history')),
-                    PopupMenuItem(
-                      value: 'test',
-                      child: Text('Test against a real event'),
+                  // Every menu on this screen is drawn from the same icon, so
+                  // "Show menu" — the framework's default — is what a screen
+                  // reader reads for all of them.
+                  tooltip: 'What to do with ${automation['name']}',
+                  itemBuilder: (context) => [
+                    refusedMenuItem(
+                      context,
+                      value: 'edit',
+                      label: 'Open and edit',
+                      reason: noEdit,
                     ),
-                    PopupMenuDivider(),
-                    PopupMenuItem(value: 'delete', child: Text('Delete')),
+                    const PopupMenuItem(value: 'runs', child: Text('Run history')),
+                    // A rehearsal is authorized as `update`, not `view` —
+                    // AutomationsController::test — because rehearsing is part
+                    // of authoring a rule rather than of reading one.
+                    refusedMenuItem(
+                      context,
+                      value: 'test',
+                      label: 'Test against a real event',
+                      reason: noEdit,
+                    ),
+                    const PopupMenuDivider(),
+                    refusedMenuItem(
+                      context,
+                      value: 'delete',
+                      label: 'Delete',
+                      reason: noDelete,
+                    ),
                   ],
                   onSelected: (v) => _act(v, automation),
                 ),
@@ -285,6 +349,23 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
 
   Widget _buildTab(BuildContext context) {
     final catalogue = _catalogue;
+
+    // The tab is reachable by tapping it, not only through "New automation", so
+    // gating the button alone would leave a whole form somebody can fill in and
+    // then be refused at the save — which is the worst place to find out.
+    final refused = _editing == null ? _noCreate : _noEdit;
+
+    if (refused != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: ErrorNote(refused),
+          ),
+        ),
+      );
+    }
 
     if (catalogue == null) {
       return AsyncBody(
@@ -600,6 +681,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                   color: r['ok'] == true
                       ? null
                       : Theme.of(context).colorScheme.error,
+                  semanticLabel: r['ok'] == true ? 'done' : 'failed',
                 ),
                 const SizedBox(width: 8),
                 Expanded(child: Text(r['detail'] as String? ?? '')),
@@ -725,6 +807,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     matched ? Icons.check_circle_outline : Icons.cancel_outlined,
     size: 16,
     color: matched ? null : Theme.of(context).colorScheme.error,
+    semanticLabel: matched ? 'matched' : 'did not match',
   );
 
   /// A stored value as something a person can read, with empty distinguishable

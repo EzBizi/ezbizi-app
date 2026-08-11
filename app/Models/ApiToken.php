@@ -52,10 +52,13 @@ class ApiToken extends PersonalAccessToken implements \App\Support\Privacy\Holds
             .'where and on what, which is what makes the row personal data.';
     }
 
-    public static function personalDataRetention(): string
+    public static function retention(): \App\Support\Privacy\RetentionPolicy
     {
-        return 'Deleted when the session ends, when the token expires, or when the person '
-            .'signs out everywhere. Nothing retains it beyond the session it describes.';
+        return \App\Support\Privacy\RetentionPolicy::elsewhere('signing out, and token expiry',
+            'Deleted when the session ends, when the token expires, or when the person '
+            .'signs out everywhere. Nothing retains it beyond the session it describes, so '
+            .'an age-based sweep would have nothing left to find.'
+        );
     }
 
     public static function personalDataHeld(): array
@@ -66,13 +69,47 @@ class ApiToken extends PersonalAccessToken implements \App\Support\Privacy\Holds
                 \App\Support\Privacy\PersonalDataEntry::TECHNICAL,
                 'Naming a session well enough that its owner can recognise it — "Chrome on '
                 .'Windows, from the office" — and end the one they do not.',
+                /*
+                 * The row goes rather than being blanked, and for once that is
+                 * the LESS destructive choice: a token row with its address and
+                 * device removed is a live credential nobody can recognise, so
+                 * blanking would leave the sign-in working while destroying the
+                 * only thing that makes it revocable.
+                 *
+                 * Erasing somebody should also end their sessions. Anything else
+                 * leaves an authenticated browser open on an account whose owner
+                 * has just been told their data is gone.
+                 */
+                \App\Support\Privacy\Erasure::drop('A session is nothing but the person '
+                    .'and the device it belongs to. Blanking it would leave a credential '
+                    .'that still authenticates and can no longer be recognised or revoked; '
+                    .'removing it signs them out, which is what erasing an account should '
+                    .'do anyway.'),
             ),
             new \App\Support\Privacy\PersonalDataEntry(
                 'name',
                 \App\Support\Privacy\PersonalDataEntry::TECHNICAL,
                 'The device label the client sent, not the person.',
+                \App\Support\Privacy\Erasure::drop('Goes with the row above; a device label '
+                    .'without the session it names is not a record of anything.'),
             ),
         ];
+    }
+
+    /**
+     * Sessions belonging to this account.
+     *
+     * `whereMorphedTo` rather than a column comparison: `tokenable` is a morph,
+     * and platform staff hold tokens in the same table (§4.2). Matching on
+     * `tokenable_id` alone would delete a staff member's sessions whenever a user
+     * happened to share their uuid — which cannot happen today and is exactly the
+     * assumption that stops being true quietly.
+     */
+    public static function personalDataAbout(\Illuminate\Database\Eloquent\Model $subject): ?\Illuminate\Database\Eloquent\Builder
+    {
+        return $subject instanceof User
+            ? static::query()->whereMorphedTo('tokenable', $subject)
+            : null;
     }
 
     /**

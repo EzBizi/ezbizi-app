@@ -10,6 +10,7 @@ use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Modules\PermissionCatalogue;
+use App\Support\Privacy\ConsentLedger;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -52,7 +53,40 @@ class HrPeopleController extends Controller
         private readonly AuditLogger $audit,
         private readonly EventEmitter $events,
         private readonly TenantContext $tenant,
+        private readonly ConsentLedger $consents,
     ) {}
+
+    /**
+     * GET /api/v1/hr/people/{user}/consents — what this person has agreed to (§9).
+     *
+     * ── Why it hangs off the person and not off a privacy module ──
+     *
+     * There is one consent in this product and it is taken during onboarding, so
+     * the answer belongs beside the person it is about — which is this tab. A
+     * `privacy` module would mean a new tab permission and a screen nobody has
+     * designed, to separate one answer from the record it describes.
+     *
+     * Gated by the ordinary `view` policy rather than by something stricter. The
+     * caller can already read this person's record; a consent statement is the
+     * text this software showed them, not a new disclosure, and refusing it to
+     * somebody who may see the contract would be a lock on the door of a room
+     * they are standing in.
+     *
+     * `not_consent` comes back with it, always. See ConsentLedger: the failure
+     * mode of a consent list is a reader assuming everything else was consented
+     * to as well.
+     */
+    public function consents(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('view', $user);
+
+        // Recorded, on the same reasoning as the data inventory read: "who asked
+        // what this person agreed to" is a question a compliance answer should
+        // itself be able to answer.
+        $this->audit->log('data.consents_read', $user);
+
+        return response()->json($this->consents->forPerson($user));
+    }
 
     /**
      * GET /api/v1/hr/people

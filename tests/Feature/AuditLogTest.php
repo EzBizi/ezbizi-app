@@ -274,6 +274,37 @@ class AuditLogTest extends TestCase
         $this->assertSame(1, AuditEvent::where('action', 'company.created')->count());
     }
 
+    public function test_the_expiry_records_what_it_removed(): void
+    {
+        ['organization' => $org] = $this->provision();
+        app(TenantContext::class)->run($org, fn () => $this->audit->log('company.created'));
+        DB::table('audit_events')->update(['occurred_at' => now()->subMonths(6)]);
+
+        $this->artisan('ezbizi:expire-audit')->assertSuccessful();
+
+        // This is the only code allowed to remove audit rows, and it reaches
+        // around the model's append-only guard to do it. Without this entry,
+        // "the row isn't there" and "the row was never written" are the same
+        // answer — which makes every other guarantee on the table unprovable.
+        $event = AuditEvent::where('action', 'audit.expired')->first();
+
+        $this->assertNotNull($event, 'The retention command removed history and recorded nothing.');
+        $this->assertSame(1, $event->metadata['total']);
+        $this->assertSame(1, $event->metadata['removed']['business']);
+    }
+
+    public function test_the_expiry_records_nothing_when_it_removed_nothing(): void
+    {
+        ['organization' => $org] = $this->provision();
+        app(TenantContext::class)->run($org, fn () => $this->audit->log('company.created'));
+
+        $this->artisan('ezbizi:expire-audit')->assertSuccessful();
+
+        // A nightly job that destroyed no history has nothing to evidence, and a
+        // row a day saying so is noise in the table it exists to keep readable.
+        $this->assertSame(0, AuditEvent::where('action', 'audit.expired')->count());
+    }
+
     public function test_dry_run_removes_nothing(): void
     {
         ['organization' => $org] = $this->provision();
@@ -282,6 +313,7 @@ class AuditLogTest extends TestCase
 
         $this->artisan('ezbizi:expire-audit --dry-run')->assertSuccessful();
 
+        // Nothing removed, and nothing written about removing nothing.
         $this->assertSame(1, AuditEvent::count());
     }
 }

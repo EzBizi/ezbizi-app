@@ -7,8 +7,11 @@ use App\Models\Concerns\HasAttachments;
 use App\Support\Contracts\FieldDefinition;
 use App\Support\Contracts\FieldType;
 use App\Support\Contracts\FilledBy;
+use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
+use App\Support\Privacy\RetentionPolicy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -84,26 +87,62 @@ class Onboarding extends Model implements HoldsPersonalData
             .'finished. The answers themselves are in a table of their own.';
     }
 
-    public static function personalDataRetention(): string
+    public static function retention(): RetentionPolicy
     {
-        return 'Kept for as long as the agreement it produced matters, which outlives the '
+        return RetentionPolicy::forever(
+            'Kept for as long as the agreement it produced matters, which outlives the '
             .'employment. It is the index to a signed contract, and a signed contract whose '
-            .'paperwork can be deleted is one nobody can produce when it is disputed.';
+            .'paperwork can be deleted is one nobody can produce when it is disputed. An '
+            .'age-based window here would delete the paperwork of the longest-standing '
+            .'employees first, which is precisely backwards.'
+        );
     }
 
     public static function personalDataHeld(): array
     {
         return [
             new PersonalDataEntry('user_id', PersonalDataEntry::IDENTITY,
-                'Who this onboarding is about — the employee whose contract it is.'),
+                'Who this onboarding is about — the employee whose contract it is.',
+                Erasure::keep('A foreign key to the account, which the purge anonymises at '
+                    .'its one home. Nulling it here would orphan the paperwork from the '
+                    .'person it belongs to without removing anything about them — and an '
+                    .'onboarding nobody can attach to an employee is a contract nobody can '
+                    .'produce.')),
             new PersonalDataEntry('started_by_user_id', PersonalDataEntry::ACTIVITY,
                 'Who at the employer started it, so the paperwork can be traced to the '
-                .'person who set it going.'),
+                .'person who set it going.',
+                Erasure::keep('A foreign key to a DIFFERENT person — whoever at the '
+                    .'employer began the paperwork. Erasing the subject must not remove the '
+                    .'provenance of the record from somebody else.')),
             new PersonalDataEntry('started_at, submitted_at, completed_at',
                 PersonalDataEntry::ACTIVITY,
                 'When each stage happened. Part of the evidentiary record: "when did I '
-                .'agree to this" is answered from here and from the signature.'),
+                .'agree to this" is answered from here and from the signature.',
+                Erasure::keep('Timestamps, and the ones a signature is checked against. '
+                    .'"When did I agree to this" is answered from here; a blank answer is '
+                    .'not a private one, it is a broken contract record.')),
         ];
+    }
+
+    /**
+     * The paperwork about this person, or started by them.
+     *
+     * Both, even though every entry is a keep, so the purge report can say that
+     * an onboarding exists and is staying — see ContractSignature for the same
+     * reasoning. What actually erases under this row is `onboarding_answers`,
+     * which is where the personal data that was collected lives.
+     */
+    public static function personalDataAbout(Model $subject): ?Builder
+    {
+        if (! $subject instanceof User) {
+            return null;
+        }
+
+        // Grouped: the tenant global scope is ANDed on and AND binds tighter than
+        // OR. See ContractSignature::personalDataAbout for the full argument.
+        return static::query()->where(fn (Builder $q) => $q
+            ->where('user_id', $subject->getKey())
+            ->orWhere('started_by_user_id', $subject->getKey()));
     }
 
     // ── relations ────────────────────────────────────────────────
