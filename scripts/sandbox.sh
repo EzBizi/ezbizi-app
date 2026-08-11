@@ -77,12 +77,26 @@ rm -f "\$DIR/.env" "\$DIR/.env.testing" "\$DIR/.env.backup"
 # safe.
 rm -f "\$DIR/bootstrap/cache/config.php" "\$DIR/bootstrap/cache/routes-v7.php" "\$DIR/bootstrap/cache/events.php"
 
+# THE STORAGE SYMLINK, WHICH POINTED AT LIVE CUSTOMER FILES.
+#
+# A release has `storage` symlinked to /var/www/ezbizi/storage — that is how
+# deploy keeps uploads across releases — and `cp -a` preserves symlinks. So every
+# sandbox this script has ever built was reading and WRITING production storage:
+# branding logos, profile pictures, onboarding attachments, signed contracts.
+# A test that writes a file, or any cleanup that empties a directory, reached
+# real customer data.
+#
+# The guard below asks which DATABASE a bare artisan resolves to. It never asked
+# about the filesystem, and the filesystem is where the files actually are.
+rm -rf "\$DIR/storage"
+mkdir -p \n  "\$DIR/storage/app/private" "\$DIR/storage/app/public" \n  "\$DIR/storage/framework/cache/data" "\$DIR/storage/framework/sessions" \n  "\$DIR/storage/framework/testing" "\$DIR/storage/framework/views" \n  "\$DIR/storage/logs"
+
 # The tree in a release is installed --no-dev, so phpunit is absent. Borrow the
 # dev dependencies from the long-lived test sandbox rather than downloading.
 [ -d /opt/ezbizi-test/vendor ] && rm -rf "\$DIR/vendor" && cp -a /opt/ezbizi-test/vendor "\$DIR/vendor"
 
 mysql -e "DROP DATABASE IF EXISTS \\\`\$DB\\\`; CREATE DATABASE \\\`\$DB\\\`;
-          GRANT ALL ON \\\`\$DB\\\`.* TO 'ezbizi'@'127.0.0.1';"
+          GRANT ALL ON \\\`\$DB\\\`.* TO 'ezbizi_sandbox'@'127.0.0.1';"
 
 # One database name, written into all three places that decide it. phpunit.xml
 # is the one that catches people out: its <env> block OVERRIDES .env.testing,
@@ -97,8 +111,8 @@ DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_DATABASE=\$DB
-DB_USERNAME=ezbizi
-DB_PASSWORD=\$(grep -m1 '^DB_PASSWORD=' /var/www/ezbizi/.env | cut -d= -f2-)
+DB_USERNAME=ezbizi_sandbox
+DB_PASSWORD=\$(cat /root/.ezbizi-sandbox.pw)
 CACHE_STORE=array
 QUEUE_CONNECTION=sync
 SESSION_DRIVER=array

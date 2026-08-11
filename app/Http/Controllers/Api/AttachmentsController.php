@@ -172,7 +172,41 @@ class AttachmentsController extends Controller
      */
     public function show(Attachment $attachment): StreamedResponse
     {
-        $this->authorize('view', $this->subjectOf($attachment));
+        $subject = $this->subjectOf($attachment);
+
+        $this->authorize('view', $subject);
+
+        /*
+         * SOME FILES ARE A REVEAL, and this was the second door to the room.
+         *
+         * A rendered onboarding contract is stored as an ordinary attachment and
+         * contains every sensitive answer in the clear — it cannot be masked,
+         * because it is the thing being signed. The /document endpoint was
+         * taught to demand the reveal permission and write an audit entry. This
+         * served the same bytes on `view` alone, with no log of any kind:
+         *
+         *     GET /hr/onboardings/{id}/answers/iban  -> 403
+         *     GET /hr/onboardings/{id}/document      -> 403
+         *     GET /attachments/{id}                  -> 200, the IBAN
+         *
+         * The subject is asked rather than this controller knowing about
+         * contracts — the same arrangement `attachmentRemovalRefusal` already
+         * uses, so a future subject holding sensitive files inherits the
+         * behaviour instead of needing this method edited again.
+         */
+        $discloses = method_exists($subject, 'attachmentDisclosesSensitive')
+            ? $subject->attachmentDisclosesSensitive($attachment)
+            : null;
+
+        if ($discloses !== null) {
+            $this->authorize('reveal', $subject);
+
+            $this->audit->log('sensitive_value.revealed', $subject, metadata: [
+                'via'        => 'attachment download',
+                'attachment' => $attachment->getKey(),
+                'fields'     => $discloses,
+            ]);
+        }
 
         return $this->files->serve(
             $attachment->path,

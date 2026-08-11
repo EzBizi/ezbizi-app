@@ -182,6 +182,37 @@ class Onboarding extends Model implements HoldsPersonalData
      * ATTACHMENT through the ordinary file endpoint took the row with it without
      * the model ever hearing about it. This is the half that was missing.
      */
+    /**
+     * A rendered contract carries every sensitive answer in the clear.
+     *
+     * It has to — it is the document being signed, and one with the bank
+     * account starred out is not the document. So reading it is a reveal, and
+     * is authorized and audited as one, exactly as the /document endpoint is.
+     *
+     * A file somebody UPLOADED as an answer is a different case and returns
+     * null here: the sensitivity flag on a `file` field masks the attachment
+     * id, which is a pointer of no consequence, while the file itself is
+     * governed by the subject's own policy. That gap is real and is recorded in
+     * EZBIZI-TODO.md rather than papered over here — encrypting uploaded files
+     * at rest is a storage change, not a controller one.
+     *
+     * @return string[]|null
+     */
+    public function attachmentDisclosesSensitive(Attachment $attachment): ?array
+    {
+        $isRenderedContract = $this->documents()
+            ->where('attachment_id', $attachment->getKey())
+            ->exists();
+
+        if (! $isRenderedContract) {
+            return null;
+        }
+
+        $keys = $this->sensitiveAnswerKeys();
+
+        return $keys === [] ? null : $keys;
+    }
+
     public function attachmentRemovalRefusal(Attachment $attachment): ?string
     {
         $document = $this->documents()->where('attachment_id', $attachment->getKey())->first();

@@ -86,4 +86,37 @@ trait HasAttachments
     {
         return null;
     }
+
+    /**
+     * Is READING this file a disclosure of sensitive data?
+     *
+     * The same shape as the refusal above, and it exists for the same reason:
+     * only the subject knows what is in its own files.
+     *
+     * ── The hole this closes ─────────────────────────────────────
+     *
+     * The rendered onboarding contract is stored as an ordinary attachment and
+     * deliberately contains every sensitive answer in the clear — it is the
+     * thing being signed, so it cannot be masked. The document ENDPOINT was
+     * taught to demand the reveal permission and write an audit entry. This one
+     * was not, and it serves the same bytes:
+     *
+     *     GET /hr/onboardings/{id}/answers/iban  -> 403
+     *     GET /hr/onboardings/{id}/document      -> 403   (fixed earlier)
+     *     GET /attachments/{id}                  -> 200, the IBAN in the bytes
+     *
+     * Two doors to one room, and only one of them was locked. That is the
+     * pattern this whole audit kept finding, and the fix belongs here rather
+     * than in the controller so the NEXT subject holding sensitive files
+     * inherits it.
+     *
+     * Returning a key list means "this is a reveal": the caller must be allowed
+     * to reveal, and the read is recorded. Null means an ordinary file.
+     *
+     * @return string[]|null the sensitive field keys this file discloses
+     */
+    public function attachmentDisclosesSensitive(Attachment $attachment): ?array
+    {
+        return null;
+    }
 }
