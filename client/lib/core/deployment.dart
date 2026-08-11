@@ -64,10 +64,25 @@ class Deployment {
   /// the link every password-reset email contains — rendered the sign-in screen
   /// and dropped the token. The flow was built end to end on the server and had
   /// no ending in the client.
-  static String? resetToken() {
-    final uri = Uri.base;
+  static String? resetToken() => tokenAt(Uri.base, '/reset');
 
-    if (!uri.path.startsWith('/reset')) return null;
+  /// The invitation token in the current URL, if this is an invitation link.
+  ///
+  /// `/invite?token=…` is what `POST /hr/invitations` puts in `accept_url`, so
+  /// it is the exact string an inviter copies out of the app and sends to
+  /// somebody. If nothing here read it, every invitation ever sent would land on
+  /// the sign-in screen of an account that does not exist yet — which is the
+  /// reset bug above, repeated, in the flow whose whole point is that the person
+  /// following the link has no other way in.
+  static String? inviteToken() => tokenAt(Uri.base, '/invite');
+
+  /// The `token` query parameter, when [uri] points at [path].
+  ///
+  /// Takes the URI rather than reading `Uri.base` itself so a test can hand it
+  /// one: `Uri.base` is the process's own address and there is no way to set it.
+  /// Public for the same reason [isStaffHost] is.
+  static String? tokenAt(Uri uri, String path) {
+    if (!uri.path.startsWith(path)) return null;
 
     final token = uri.queryParameters['token'];
 

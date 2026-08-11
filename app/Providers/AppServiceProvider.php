@@ -83,6 +83,23 @@ class AppServiceProvider extends ServiceProvider
          * allowed to have. setState() and flushCache() clear it within one.
          */
         $this->app->scoped(\App\Support\Modules\ModuleAvailability::class);
+
+        /*
+         * Scoped, for the same reason and with the same lifetime.
+         *
+         * ScopeReach memoises what each person can reach, and the answer costs
+         * two full table reads to work out (`reachableCompanies` and
+         * `reachableFranchises` both read everything and filter in PHP). One HTTP
+         * request asks that question from the controller, from the policy, and
+         * once per row of the people list — and an unbound concrete class is
+         * built fresh at every injection point, so each of those would keep its
+         * own empty memo and the caching would do nothing.
+         *
+         * Not a singleton: reach is derived from assignments, which change, and
+         * a queue worker lives for days. `scoped` is reset between requests AND
+         * between jobs, which is exactly as long as the answer stays true.
+         */
+        $this->app->scoped(\App\Support\Access\ScopeReach::class);
     }
 
     /**
@@ -156,33 +173,75 @@ class AppServiceProvider extends ServiceProvider
          */
         RateLimiter::for('signup', fn (Request $request) => Limit::perHour(10)
             ->by($request->ip())
-            // The same body login's hand-rolled throttle returns, because the
-            // client parses one shape for a 429 and there is no reason for this
-            // route to be the exception. Laravel's default is a bare
-            // "Too Many Attempts." with no code and no retry_after.
-            // The wait is IN the sentence, not only in the field beside it.
-            //
-            // The client renders `message` verbatim on a 429, on the stated
-            // reasoning that the response "carries the only number worth reading
-            // — how long until they can try again". It said "Try again later",
-            // and nothing read `retry_after`, so the number the argument rests
-            // on never reached anybody. Either the sentence carries it or the
-            // claim was false; this is the cheaper half to fix.
-            ->response(function (Request $request, array $headers) {
-                $seconds = (int) ($headers['Retry-After'] ?? 0);
+            ->response($this->throttledWith('Too many signups from this address.')));
 
-                $wait = match (true) {
-                    $seconds <= 0    => 'shortly',
-                    $seconds < 60    => "in {$seconds} seconds",
-                    $seconds < 3600  => 'in '.max(1, (int) round($seconds / 60)).' minutes',
-                    default          => 'in '.max(1, (int) round($seconds / 3600)).' hours',
-                };
+        /*
+         * Invitation links: 30 an hour per IP, across BOTH public endpoints.
+         *
+         * WHAT IT PROTECTS AGAINST: the two things an unauthenticated endpoint
+         * that takes a credential is for. Guessing — 48 random characters make
+         * that hopeless arithmetically, but "hopeless" assumes somebody is
+         * paying for the attempts, and an unlimited endpoint is free. And load:
+         * every request here is a hash lookup, and the POST then hashes a
+         * password, which is deliberately slow and therefore deliberately
+         * expensive to ask for over and over.
+         *
+         * WHY THIRTY: a real person opening a link spends a handful — the page,
+         * a reload or two, the submit, perhaps a password the organization's
+         * policy refuses. A whole visit is under ten. Thirty leaves room for
+         * several people joining on the same morning from one office NAT, which
+         * is the normal case this must not break, and still caps a script hard.
+         *
+         * KEYED BY IP, NOT BY TOKEN. Keying on the token would let an attacker
+         * rotate guesses freely and never spend more than one attempt on any of
+         * them, which is precisely backwards — the budget belongs to whoever is
+         * asking, and the token is the thing being asked about.
+         *
+         * WHAT IT DOES NOT PROTECT AGAINST: a distributed attempt, for the same
+         * reason signup's does not. Against a random 48-character token that is
+         * an acceptable gap; against a guessable one it would not be, which is
+         * why the token is not guessable.
+         */
+        RateLimiter::for('invitation', fn (Request $request) => Limit::perHour(30)
+            ->by($request->ip())
+            ->response($this->throttledWith('Too many attempts from this address.')));
+    }
 
-                return response()->json([
-                    'message'     => "Too many signups from this address. Try again {$wait}.",
-                    'code'        => 'throttled',
-                    'retry_after' => $seconds ?: null,
-                ], Response::HTTP_TOO_MANY_REQUESTS, $headers);
-            }));
+    /**
+     * The 429 body, written once.
+     *
+     * The same shape login's hand-rolled throttle returns, because the client
+     * parses ONE shape for a 429 and there is no reason for a route to be the
+     * exception. Laravel's default is a bare "Too Many Attempts." with no code
+     * and no retry_after.
+     *
+     * The wait is IN the sentence, not only in the field beside it. The client
+     * renders `message` verbatim on a 429, on the stated reasoning that the
+     * response "carries the only number worth reading — how long until they can
+     * try again". It said "Try again later", and nothing read `retry_after`, so
+     * the number the argument rests on never reached anybody. Either the
+     * sentence carries it or the claim was false.
+     *
+     * Shared rather than copied into each limiter: two limiters wording the same
+     * 429 two different ways is how a client ends up with two parsers.
+     */
+    private function throttledWith(string $reason): callable
+    {
+        return function (Request $request, array $headers) use ($reason) {
+            $seconds = (int) ($headers['Retry-After'] ?? 0);
+
+            $wait = match (true) {
+                $seconds <= 0    => 'shortly',
+                $seconds < 60    => "in {$seconds} seconds",
+                $seconds < 3600  => 'in '.max(1, (int) round($seconds / 60)).' minutes',
+                default          => 'in '.max(1, (int) round($seconds / 3600)).' hours',
+            };
+
+            return response()->json([
+                'message'     => "{$reason} Try again {$wait}.",
+                'code'        => 'throttled',
+                'retry_after' => $seconds ?: null,
+            ], Response::HTTP_TOO_MANY_REQUESTS, $headers);
+        };
     }
 }

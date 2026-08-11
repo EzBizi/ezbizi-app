@@ -140,7 +140,12 @@ cat <<DONE
   Overlay your working tree, then run anything you like — there is no
   production credential in that directory:
 
-    cd /h/EzBizi && git ls-files -co --exclude-standard | tar -czf - -T - \\
+    # phpunit.xml is EXCLUDED on purpose: it is tracked, so an overlay replaces
+    # the sed'd copy with yours, and its <env> block overrides .env.testing —
+    # silently putting the run back on the shared database with nothing said.
+    # storage/ is excluded because tar cannot read those files from here.
+    cd /h/EzBizi && git ls-files -co --exclude-standard \
+      | grep -vE '^(phpunit[.]xml|storage/)' | tar -czf - -T - \\
       | ssh $REMOTE 'tar -xzf - -C $DIR'
     cd /h/EzBizi && git status --porcelain | awk '/^R/ {print \$2} /^.?D/ {print \$2}' \\
       | ssh $REMOTE "cd $DIR && xargs -r rm -f"

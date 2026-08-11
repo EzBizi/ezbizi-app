@@ -9,6 +9,7 @@ import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
 import 'screens/development_screen.dart';
+import 'screens/invitation_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/organization_screen.dart';
 import 'screens/profile_screen.dart';
@@ -86,6 +87,12 @@ class _EzBiziAppState extends State<EzBiziApp> {
   /// bounce straight back into the reset screen off the same URL.
   bool _resetHandled = false;
 
+  /// The same latch for an invitation. Without it, accepting would sign the
+  /// person in and then be handed straight back the token still sitting in the
+  /// address bar — a spent one, so they would land on "this link has already
+  /// been used" seconds after it worked.
+  bool _inviteHandled = false;
+
   /// Whether the signup form is being shown instead of the sign-in one.
   ///
   /// The public screens are swapped here rather than pushed, because there is no
@@ -128,6 +135,37 @@ class _EzBiziAppState extends State<EzBiziApp> {
       return _staffSession.signedIn
           ? StaffShell(staff: _staffSession)
           : StaffLoginScreen(staff: _staffSession);
+    }
+
+    // An invitation link, swapped in the way the reset screen is — there is no
+    // router, so the public screens are chosen here.
+    //
+    // Two things put it BELOW the staff branch and the restore gate, where the
+    // reset screen sits above both:
+    //
+    //   - §4.2. Platform staff have their own accounts in their own control
+    //     plane, created by staff. Nobody is invited into it, so the customer
+    //     face is the only face that offers this;
+    //   - accepting SIGNS THEM IN. A restore still in flight would be racing to
+    //     put a stored token back over the one acceptance just adopted. The
+    //     screen fetches what the invitation is for before it can draw anything
+    //     anyway, so waiting for the restore costs nothing anybody can see.
+    //
+    // Above the signed-in branch, though: somebody who follows an invitation
+    // while already signed in elsewhere means to join the place that invited
+    // them, and one account belongs to one organization (§4).
+    final invite = _inviteHandled ? null : Deployment.inviteToken();
+
+    if (invite != null) {
+      return InvitationScreen(
+        api: _api,
+        session: _session,
+        token: invite,
+        onDone: () {
+          Files.clearQuery();
+          setState(() => _inviteHandled = true);
+        },
+      );
     }
 
     // Before the signup branch, so a successful signup lands in the app rather

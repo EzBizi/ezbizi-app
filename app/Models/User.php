@@ -148,6 +148,31 @@ class User extends Authenticatable
         return false;
     }
 
+    /**
+     * The top tier of the same question — the one that had no method.
+     *
+     * `canActOnFranchise` and `canActOnCompany` have existed since there was
+     * something to act on at those levels. Nothing had ever acted on the
+     * ORGANIZATION as a target, so the third case was never written; the first
+     * thing that needs it is assigning somebody organization-wide, where getting
+     * it wrong means a company manager handing out reach over companies they
+     * cannot see themselves.
+     *
+     * Authority cascades downwards and never up (§4), so the organization is the
+     * one level that no company or franchise assignment can reach: the answer is
+     * simply whether this person holds an organization-scoped assignment.
+     */
+    public function canActOnOrganization(Organization $organization): bool
+    {
+        if (! $this->is_active || $organization->getKey() !== $this->organization_id) {
+            return false;
+        }
+
+        return $this->assignments->contains(
+            fn (Assignment $assignment) => $assignment->scopeType() === Assignment::SCOPE_ORGANIZATION
+        );
+    }
+
     /** Every franchise this user may act on, across all their assignments. */
     public function reachableFranchises(): \Illuminate\Support\Collection
     {

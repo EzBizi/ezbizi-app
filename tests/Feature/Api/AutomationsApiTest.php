@@ -194,13 +194,35 @@ class AutomationsApiTest extends TestCase
     {
         $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
 
-        $users = collect($data['modules'])->firstWhere('key', 'users');
-        $invited = collect($users['triggers'])->firstWhere('key', 'user.invited');
+        /*
+         * Settings, not `user.invited`.
+         *
+         * This test used to name `user.invited`, which was the clearest example
+         * of an unraised trigger right up until Human Resources started raising
+         * it. Settings are still saved without going through the outbox, so
+         * `organization.settings_changed` is the remaining one — and it is asked
+         * of the REGISTRY rather than named twice, so the day that one is wired
+         * up as well this test says what needs doing instead of failing on a
+         * detail of which trigger happened to be chosen.
+         */
+        $unraised = collect(app(\App\Support\Modules\ModuleRegistry::class)->all())
+            ->flatMap(fn ($module) => $module->triggers)
+            ->first(fn (\App\Support\Modules\TriggerDefinition $t) => ! $t->isRaised);
 
-        $this->assertSame('Invited', $invited['label']);
+        $this->assertNotNull(
+            $unraised,
+            'Every declared trigger is now raised. Delete this test, or keep it by declaring '
+            .'the next unraised one — it exists to prove the catalogue MARKS them.',
+        );
+
+        $listed = collect($data['modules'])
+            ->flatMap(fn (array $m) => $m['triggers'])
+            ->firstWhere('key', $unraised->key);
+
+        $this->assertSame($unraised->label, $listed['label']);
         $this->assertStringContainsString(
             \App\Support\Modules\TriggerDefinition::NOT_RAISED_YET,
-            $invited['description']
+            $listed['description'],
         );
     }
 

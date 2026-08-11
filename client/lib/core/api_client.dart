@@ -185,5 +185,28 @@ class ApiResponse {
   String get message =>
       body['message'] as String? ?? 'Something went wrong (HTTP $statusCode).';
 
+  /// Why the server said no, in the most specific words it offered.
+  ///
+  /// A 422 carries two messages: a generic one at the top ("The given data was
+  /// invalid.") and the real sentence under `errors`, keyed by field — "That
+  /// address already has an account in this organization." Showing the top-level
+  /// one throws away the only part somebody who is stuck can act on.
+  ///
+  /// Falls back to [message] when there is no field-level answer, which is every
+  /// 403, 404 and 500: those explain themselves at the top level, and the rules
+  /// this API enforces are written to be shown verbatim.
+  String get reason {
+    final errors = body['errors'];
+
+    if (errors is Map && errors.isNotEmpty) {
+      final first = errors.values.first;
+
+      if (first is List && first.isNotEmpty) return first.first.toString();
+      if (first is String) return first;
+    }
+
+    return message;
+  }
+
   dynamic get data => body['data'];
 }

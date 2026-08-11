@@ -325,6 +325,117 @@ class PermissionCatalogue
     }
 
     /**
+     * What a role actually grants — the whole catalogue for Administrator.
+     *
+     * Administrator owns no `permission_role` rows at all, because
+     * `Role::hasPermission()` answers true for it unconditionally. So its
+     * `permissionKeys()` is an empty array, and anything that reasons about
+     * "what does this role hand out" from that list concludes: nothing.
+     *
+     * That is harmless where the list is only being displayed. It is a
+     * privilege-escalation path the moment somebody is being GIVEN the role —
+     * see assertRoleAssignable, which is the first caller and the reason this
+     * exists.
+     *
+     * @return string[]
+     */
+    public function keysGrantedBy(Role $role): array
+    {
+        $keys = $role->isAdministrator() ? $this->keys() : $role->permissionKeys();
+
+        /*
+         * Filtered by availability, exactly as heldBy() is — and the asymmetry
+         * was a lockout, not a nuisance.
+         *
+         * This answered with the raw registry while heldBy() answers with the
+         * registry MINUS whatever §13 has switched off for the organization.
+         * assertRoleAssignable diffs one against the other, so the difference
+         * was non-empty the moment ANY module was unavailable, for keys the
+         * actor genuinely holds.
+         *
+         * Reachable by the ordinary rollout path, not an edge case: `beta` makes
+         * a module unavailable to every organization outside the pilot, and
+         * `disabled` is the mid-incident kill switch. With `jobs` switched off,
+         * a founding Administrator was refused on BOTH routes to a second
+         * administrator — promote and invite — with "it reaches further than
+         * yours does: jobs.create, jobs.delete, jobs.edit, jobs.view", keys they
+         * hold as fully as anybody can. Combined with last-administrator
+         * protection, which correctly refuses to let the only administrator be
+         * demoted or switched off, that organization could never have a second
+         * one: locked out by a switch its own staff cannot see, until EzBizi
+         * turned the module back on.
+         *
+         * Both sides of the comparison now answer the same question about the
+         * same organization.
+         */
+        return array_values(array_filter(
+            $keys,
+            fn (string $key) => $this->availability->isPermissionAvailable(
+                $key,
+                $role->organization,
+            ),
+        ));
+    }
+
+    /**
+     * Refuse handing somebody a role that reaches further than the giver's own.
+     *
+     * ── The hole this closes ─────────────────────────────────────
+     *
+     * §4's escalation bound — "nobody can grant a permission they do not
+     * themselves hold" — was written for the roles EDITOR, where the permissions
+     * are visible on screen. Giving a person a role grants exactly the same
+     * permissions without naming any of them, so a Manager with `hr.edit` and
+     * nothing else could have invited somebody as Administrator and then signed
+     * in as them. Same escalation, different door.
+     *
+     * Deliberately its own method rather than `assertGrantable($actor,
+     * $role->permissionKeys())` for two reasons. Administrator's key list is
+     * empty (see keysGrantedBy), so the naive call would have passed for the one
+     * role that matters most. And the refusal belongs on `role_id` — the field
+     * the person actually chose — rather than on `permissions`, which is not a
+     * field on this form at all.
+     *
+     * @throws ValidationException
+     */
+    public function assertRoleAssignable(User $actor, Role $role): void
+    {
+        $beyond = $this->beyondTheReachOf($actor, $role);
+
+        if ($beyond === []) {
+            return;
+        }
+
+        throw ValidationException::withMessages(['role_id' => sprintf(
+            'You cannot give somebody the %s role, because it reaches further than yours does: '
+            .'%s. Nobody can hand out more than they have.',
+            $role->name,
+            implode(', ', array_slice($beyond, 0, 5))
+                .(count($beyond) > 5 ? sprintf(' and %d more', count($beyond) - 5) : ''),
+        )]);
+    }
+
+    /**
+     * The same question without the exception — for a picker that has to show
+     * every role and mark the ones this caller cannot hand out.
+     *
+     * Shown-and-marked rather than filtered away, the same call `grantableTreeFor`
+     * makes about actions: a role that simply vanishes from the list leaves
+     * somebody unable to tell "we do not have that" from "I am not allowed to
+     * give it".
+     */
+    public function mayAssignRole(User $actor, Role $role): bool
+    {
+        return $this->beyondTheReachOf($actor, $role) === [];
+    }
+
+    /** @return string[] the keys this role grants that the actor does not hold */
+    private function beyondTheReachOf(User $actor, Role $role): array
+    {
+        return array_values(array_diff($this->keysGrantedBy($role), $this->heldBy($actor)));
+    }
+
+    /**
      * The permissions on a role that this caller's edit must LEAVE ALONE.
      *
      * The mirror of the escalation bound. The caller's window is exactly their

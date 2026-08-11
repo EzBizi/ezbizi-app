@@ -2,13 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\User;
 use App\Services\Auth\AuthenticateUser;
+use App\Services\Auth\IssueSession;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Auth\PasswordPolicy;
-use App\Support\Auth\SessionContext;
-use App\Support\Auth\SessionLifetime;
-use App\Support\Auth\TwoFactorPolicy;
 use App\Services\Auth\AuthenticationResult;
 use App\Support\Audit\AuditLogger;
 use App\Support\Tenancy\TenantContext;
@@ -25,10 +22,15 @@ use Symfony\Component\HttpFoundation\Response;
  * user and no organization until one of these succeeds.
  *
  * Signup lives here rather than in a controller of its own because it ENDS in a
- * login: its success body has the same keys as `login`'s, produced by the same
- * private method. Splitting it out would mean either making that method public
- * or copying it, and a second copy of the session contract is a second thing to
- * keep in step with the client.
+ * login: its success body has the same keys as `login`'s, and both are built by
+ * IssueSession — one object, so a second copy of the session contract is not a
+ * second thing to keep in step with the client.
+ *
+ * That used to be a PRIVATE method here, and the argument for keeping it private
+ * was the same argument for keeping signup in this file. Accepting an invitation
+ * is a third entry point that also ends in a session and cannot live here — it
+ * is public, tenant-less and belongs to the HR module — so the method moved out
+ * whole rather than being made public or copied.
  *
  * Same keys, not the same bytes — the token differs, the staff token may, and
  * signup answers 201 where login answers 200.
@@ -40,6 +42,10 @@ class AuthController extends Controller
         private readonly AuditLogger $audit,
         private readonly ProvisionOrganization $provision,
         private readonly TenantContext $tenant,
+        // The session body, shared with the other two entry points that end in
+        // one — signup below, and accepting an invitation. See IssueSession for
+        // why the private method this replaced could not stay private.
+        private readonly IssueSession $session,
     ) {}
 
     /**
@@ -171,10 +177,10 @@ class AuthController extends Controller
         // treat this response as one. Not byte for byte: the token differs, and
         // so does the status.
         //
-        // Inside the tenant as well, because issueToken audits the sign-in.
+        // Inside the tenant as well, because IssueSession audits the sign-in.
         return $this->tenant->run(
             $tree['organization'],
-            fn () => $this->issueToken($request, $tree['administrator'], Response::HTTP_CREATED),
+            fn () => ($this->session)($request, $tree['administrator'], Response::HTTP_CREATED),
         );
     }
 
@@ -254,7 +260,7 @@ class AuthController extends Controller
             ]);
         }
 
-        return $this->issueToken($request, $result->user);
+        return ($this->session)($request, $result->user);
     }
 
     /** POST /api/v1/auth/choose — complete an ambiguous login. */
@@ -281,7 +287,7 @@ class AuthController extends Controller
             ], Response::HTTP_UNAUTHORIZED);
         }
 
-        return $this->issueToken($request, $result->user);
+        return ($this->session)($request, $result->user);
     }
 
     /** POST /api/v1/auth/logout — revoke the token that made this request. */
@@ -292,126 +298,5 @@ class AuthController extends Controller
         $this->audit->log('auth.signed_out', actor: $request->user());
 
         return response()->json(['message' => 'Signed out.']);
-    }
-
-    /**
-     * The session body every successful entry point returns.
-     *
-     * Takes a User rather than an AuthenticationResult: signup has no
-     * authentication attempt behind it — it just created the account — and the
-     * only thing this ever read off the result was `->user`.
-     */
-    private function issueToken(
-        Request $request,
-        User $user,
-        int $status = Response::HTTP_OK,
-    ): JsonResponse {
-        // Named after the device so a user can revoke one client without
-        // signing out everywhere.
-        //
-        // `?:` and not `input(..., 'web')`. A default applies only to a MISSING
-        // key, and ConvertEmptyStringsToNull turns `"device_name": ""` into
-        // null — which reached createToken() and raised a TypeError. On login
-        // that was a 500 where a 401 belonged; on signup it was a 500 raised
-        // AFTER the tenant transaction had committed, so the caller was told
-        // the server broke while a real, reachable organization existed, and
-        // retrying built a second one. Resolved here rather than in each
-        // caller's validation, because this is the line that cannot accept it.
-        $deviceName = trim((string) $request->input('device_name')) ?: 'web';
-
-        /*
-         * The idle window, not a flat month (§6 — `security.session_timeout_minutes`).
-         *
-         * It was `now()->addDays(30)`, which was the only lifetime this app had:
-         * the setting labelled "Sign out after inactivity" was read by nothing,
-         * so an unattended browser stayed signed in for thirty days.
-         *
-         * SlideIdleWindow pushes this forward on every request the token makes,
-         * so the thirty days survives as the absolute ceiling and the setting
-         * decides how long a session may sit untouched inside it.
-         */
-        $token = $user->createToken(
-            $deviceName,
-            expiresAt: app(SessionLifetime::class)->expiryFor($user->organization, now()),
-        );
-
-        // The user agent and address, so the session list can name this row
-        // later. Every device sends `device_name: web`, so without this the
-        // list is five identical entries and revoking one specific machine is
-        // impossible.
-        SessionContext::stamp($token->accessToken, $request);
-
-        $this->audit->log('auth.signed_in', actor: $user, metadata: [
-            'ip'         => $request->ip(),
-            'user_agent' => $request->userAgent(),
-        ]);
-
-        /*
-         * A linked account gets BOTH tokens from one sign-in.
-         *
-         * Both factors have just been proven against the staff credential set,
-         * so making them authenticate again to open the Development tab would be
-         * ceremony rather than security. The tokens stay separate — the tenant
-         * one still cannot touch /api/v1/staff and the staff one still cannot
-         * touch tenant endpoints — because that separation is what keeps a
-         * stolen CRM session from being a platform session.
-         *
-         * The staff token is deliberately shorter-lived (12 hours, as at
-         * dev.ezbizi.com) even though the tenant token lasts 30 days.
-         */
-        $staff = $this->authenticate->staffFor($user);
-
-        $staffToken = null;
-
-        if ($staff !== null) {
-            $staffToken = $staff->createToken(
-                "staff:{$deviceName} (via CRM)",
-                ['staff'],
-                expiresAt: now()->addHours(12),
-            )->plainTextToken;
-
-            $staff->forceFill(['last_login_at' => now(), 'last_login_ip' => $request->ip()])->save();
-
-            $this->audit->logStaff(
-                action: 'staff.signed_in',
-                staffId: $staff->getKey(),
-                staffLabel: "{$staff->name} <{$staff->email}>",
-                metadata: [
-                    'ip' => $request->ip(),
-                    'via' => 'linked tenant login',
-                    'organization' => $user->organization->name,
-                ],
-            );
-        }
-
-        return response()->json([
-            'status' => 'authenticated',
-            'token'  => $token->plainTextToken,
-            // Present only for linked accounts. The client shows the Development
-            // section when it is there and hides it when it is not, so the tab
-            // cannot appear for somebody who has no staff account behind them.
-            'staff_token' => $staffToken,
-            'staff' => $staff === null ? null : [
-                'id' => $staff->id, 'name' => $staff->name, 'tier' => $staff->tier,
-            ],
-            'user'   => [
-                'id'    => $user->id,
-                'name'  => $user->name,
-                'email' => $user->email,
-            ],
-            // The organization requires a second factor and this account has
-            // none (§6). Sent at sign-in, so the client can take somebody
-            // straight to enrolment rather than letting them find out by way of
-            // a dashboard that answers 403. See RequireTwoFactorEnrolment for
-            // why this is a detour and not a refusal.
-            'two_factor_enrolment_required' => app(TwoFactorPolicy::class)->mustEnrol($user),
-            'organization' => [
-                'id'           => $user->organization->id,
-                'name'         => $user->organization->name,
-                // Surfaced at login so the client can explain the state up
-                // front rather than after the first failed write (§13).
-                'is_read_only' => $user->organization->isReadOnly(),
-            ],
-        ], $status);
     }
 }

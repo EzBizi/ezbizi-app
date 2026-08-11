@@ -10,6 +10,9 @@ use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\HrInvitationsController;
+use App\Http\Controllers\Api\HrPeopleController;
+use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\PasswordController;
@@ -79,6 +82,51 @@ Route::prefix('v1/auth')->group(function () {
     Route::post('reset',  [PasswordController::class, 'reset']);
 });
 
+/*
+|--------------------------------------------------------------------------
+| Accepting an invitation — public, and the second front door (§4, HR plan)
+|--------------------------------------------------------------------------
+|
+| Outside /auth because it is not authentication: it is somebody who has never
+| had an account being handed one. It ends in a session all the same, and the
+| POST answers exactly what `login` answers, so the client can treat it as a
+| sign-in.
+|
+| No `auth:sanctum`, no `tenant`, no `subscription` middleware — there is no user
+| and no session, and the TOKEN is the only thing that names an organization.
+| TenantScope throws with no tenant set, so the controller establishes tenancy
+| itself, the way AuthController::signup does. See InvitationAcceptanceController.
+|
+| THE TOKEN IS IN THE BODY, NOT THE PATH — and it was in the path first.
+|
+| nginx logs the request line, so `GET /api/v1/invitations/<token>` wrote every
+| invitation credential into /var/log/nginx/app.ezbizi.com.access.log, kept for
+| a fortnight and copied into anything that ships those logs. The same URL then
+| went out as a `Referer` on the XHR the acceptance page fires, and was logged
+| again. Nothing about the token being hashed at rest helps once the raw value is
+| sitting in a text file.
+|
+| `POST /lookup` for a read is not REST, and that is the smaller price.
+| PasswordController::reset already carries its token in the JSON body for
+| exactly this reason, so this now matches the one precedent in the codebase
+| rather than departing from it. The token still travels in the URL of the LINK
+| somebody clicks — it has to, that is what a link is — but the browser only ever
+| sends it to the client bundle, and the API call it triggers keeps it in a body.
+|
+| No route model binding: a bound {invitation} would run a tenant-scoped read
+| with no tenant, and a token is not a primary key. Looking up a credential
+| belongs in the controller.
+|
+| Throttled, and the only routes outside /auth that are. Both share one named
+| limiter because they are one visit; see AppServiceProvider for the number and
+| what it does and does not cover.
+|
+*/
+Route::prefix('v1/invitations')->middleware('throttle:invitation')->group(function () {
+    Route::post('lookup', [InvitationAcceptanceController::class, 'show']);
+    Route::post('accept', [InvitationAcceptanceController::class, 'accept']);
+});
+
 // ── Authenticated ────────────────────────────────────────────────
 Route::prefix('v1')
     ->middleware(['auth:sanctum', 'tenant', 'subscription', 'two-factor', 'idle'])
@@ -143,6 +191,28 @@ Route::prefix('v1')
         Route::post('roles', [RolesController::class, 'store']);
         Route::patch('roles/{role}', [RolesController::class, 'update']);
         Route::delete('roles/{role}', [RolesController::class, 'destroy']);
+
+        // ── Human Resources (§4, EZBIZI-HR-PLAN.md) ──────────────
+        //
+        // The module that lets an organization have employees at all. Until it
+        // existed nothing wrote `users.role_id`, so every role an organization
+        // composed had nobody to give it to.
+        //
+        // `people/scope-options` is declared BEFORE `people/{user}` out of the
+        // same habit `roles/catalogue` follows. There is no collision today —
+        // the literal is a GET and the parameter route is a PATCH — and the day
+        // somebody adds `GET people/{user}` it must already be above it.
+        Route::get('hr/people/scope-options', [HrPeopleController::class, 'scopeOptions']);
+        Route::get('hr/people', [HrPeopleController::class, 'index']);
+        Route::patch('hr/people/{user}', [HrPeopleController::class, 'update']);
+
+        Route::get('hr/invitations', [HrInvitationsController::class, 'index']);
+        Route::post('hr/invitations', [HrInvitationsController::class, 'store']);
+        // Resend and revoke, one at a time. The owner was explicit that there is
+        // no bulk form of either, and there is no route here that could become
+        // one without somebody adding it deliberately.
+        Route::post('hr/invitations/{invitation}/resend', [HrInvitationsController::class, 'resend']);
+        Route::delete('hr/invitations/{invitation}', [HrInvitationsController::class, 'destroy']);
 
         // ── Dashboard (§18 Phase 4) ──────────────────────────────
         //

@@ -192,28 +192,53 @@ class ModuleServiceProvider extends ServiceProvider
                 key:   'users',
                 label: 'Users',
                 subject: new AutomationSubject(User::class, 'User'),
-                // Nothing in user management reaches the outbox yet, so all
-                // three say so rather than being quietly listed as if they work.
+                /*
+                 * All three were declared `isRaised: false` — "nothing in user
+                 * management reaches the outbox yet" — because there was no way
+                 * to invite anybody, no way to switch an account off, and in
+                 * practice only ever one user per organization.
+                 *
+                 * Human Resources is what raises them. The events stay declared
+                 * HERE rather than moving with the module that emits them,
+                 * because a trigger belongs to the record it is about: these are
+                 * about a User, this is the module whose subject is User, and the
+                 * field picker reads the subject off the trigger's module. Two
+                 * modules declaring one key would give the registry two answers
+                 * for it.
+                 *
+                 * `user.invited` is the one that carries no subject when it
+                 * fires, and it cannot: at the moment of inviting there is no
+                 * user yet. Its payload names the address, the role and the
+                 * place instead. A rule can act on it — send a notification, call
+                 * a webhook — but "update a field" has nothing to write to, which
+                 * is the honest shape of an event about somebody who does not
+                 * exist yet.
+                 */
                 triggers: [
                     new TriggerDefinition(
                         key:   'user.invited',
                         label: 'Invited',
-                        description: 'Somebody was invited to join, before they have accepted.',
-                        isRaised: false,
+                        description: 'Somebody was invited to join, before they have accepted. '
+                            .'There is no account yet, so this one arrives with the invitation’s '
+                            .'details rather than a person.',
                     ),
                     new TriggerDefinition(
                         key:   'user.activated',
                         label: 'Activated',
-                        description: 'An invited person accepted, and their account can now '
-                            .'be used.',
-                        isRaised: false,
+                        // Widened from "an invited person accepted", because
+                        // switching a deactivated account back on reaches the
+                        // same state and there is no second event for it. A
+                        // description that named only one of the two ways in
+                        // would be wrong about the other.
+                        description: 'An account became usable — either an invited person '
+                            .'accepted, or somebody who had been switched off was switched '
+                            .'back on.',
                     ),
                     new TriggerDefinition(
                         key:   'user.deactivated',
                         label: 'Deactivated',
                         description: 'Someone’s access was switched off. The account stays, and '
                             .'so does everything it did.',
-                        isRaised: false,
                     ),
                 ],
                 automationActions: [
@@ -271,6 +296,63 @@ class ModuleServiceProvider extends ServiceProvider
     private function businessModules(): array
     {
         return [
+            /*
+             * Human Resources — EZBIZI-HR-PLAN.md.
+             *
+             * First in this list, and therefore first in the sidebar after the
+             * foundation, because it is the module that lets an organization
+             * have employees at all: until it existed, no endpoint wrote
+             * `users.role_id`, so every tenant was permanently one Administrator
+             * and every role an organization composed had nobody to give it to.
+             *
+             * Three actions, not four.
+             *
+             *   view    the tab — people, and the invitations in flight
+             *   create  inviting somebody, and the whole life of that invitation:
+             *           resending it and withdrawing it. Issuing and un-issuing
+             *           are one authority, because the person who should be able
+             *           to take an invitation back is the person who sent it.
+             *   edit    changing what somebody's account is — their role, and
+             *           whether it works at all
+             *
+             * There is no `delete`, and its absence is a decision rather than an
+             * omission. §5: deactivate is not delete, and an employment record
+             * survives deactivation — a person who leaves is switched off, not
+             * erased, because everything they did stays attributed to them.
+             * Revoking an invitation does not delete it either; it becomes
+             * abandoned, and the row is how "we invited them and changed our
+             * mind" stays answerable.
+             */
+            new ModuleDefinition(
+                key:     'hr',
+                label:   'Human Resources',
+                actions: ['view', 'create', 'edit'],
+                /*
+                 * Outside automation as a DECLARER, not as a participant — the
+                 * distinction matters, so it is spelt out.
+                 *
+                 * Everything HR does happens to a User: somebody is invited,
+                 * their account becomes usable, their access is switched off.
+                 * Those are `user.invited`, `user.activated` and
+                 * `user.deactivated`, and this module is what finally raises all
+                 * three. They are declared by the Users module because that is
+                 * the module whose subject is the User record, and the field
+                 * picker resolves a trigger's subject through the module that
+                 * declares it — so declaring them a second time here would give
+                 * the registry two answers for one key.
+                 *
+                 * The invitation itself raises nothing of its own. A rule on
+                 * "invitation resent" would be a rule about an administrative
+                 * gesture rather than about the business, and the three events
+                 * above already cover every moment that changes what somebody
+                 * can do.
+                 */
+                automationExemptBecause:
+                    'Everything HR does happens to a user — invited, activated, deactivated — '
+                    .'and those three events are declared by the Users module, whose subject is '
+                    .'the User record. HR is what raises them.',
+            ),
+
             new ModuleDefinition(
                 key:   'customers',
                 label: 'Customers',

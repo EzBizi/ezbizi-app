@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Invitation;
 use App\Models\Role;
 use App\Support\Audit\AuditLogger;
 use App\Support\Modules\PermissionCatalogue;
@@ -32,6 +33,10 @@ use Illuminate\Validation\ValidationException;
  *   No granting what you do not hold    PermissionCatalogue::assertGrantable (422)
  *   A role in use cannot be deleted     here (422) — see destroy()
  *   Names unique per organization       the validator, backed by a unique index
+ *
+ * "In use" grew a second meaning when Human Resources arrived: a role is also in
+ * use by an invitation nobody has accepted yet. Both are refused in destroy(),
+ * for the same reason and with two different sentences.
  *
  * The split between 403 and 422 is deliberate and consistent: 403 means the
  * TARGET is off limits, 422 means the VALUES are. An administrator editing a
@@ -203,6 +208,43 @@ class RolesController extends Controller
     public function destroy(Request $request, Role $role): JsonResponse
     {
         $this->authorize('delete', $role);
+
+        /*
+         * An invitation nobody has accepted yet holds this role too.
+         *
+         * `invitations.role_id` is nullable with ON DELETE SET NULL, for the
+         * same reason `users.role_id` is: the historical record of who was
+         * invited must survive a role being retired years later. But an OPEN
+         * invitation whose role evaporates produces the account this method
+         * already refuses to create — one that signs in, shows an empty
+         * application, and says nothing about why — except that here nobody
+         * would even connect it to a role, because the person does not exist yet
+         * and the failure surfaces a week later at acceptance.
+         *
+         * So an outstanding one blocks the delete exactly as a holder does.
+         * Accepted, withdrawn and lapsed invitations do not: their role_id going
+         * null costs nothing but a name in a list, and refusing on those would
+         * make a role with a long history undeletable forever.
+         */
+        $pending = Invitation::query()
+            ->where('role_id', $role->getKey())
+            ->whereNull('accepted_at')
+            ->whereNull('revoked_at')
+            ->where('expires_at', '>', now())
+            ->count();
+
+        if ($pending > 0) {
+            throw ValidationException::withMessages(['role' => sprintf(
+                '%d %s still waiting to be accepted %s this role. Withdraw %s first, or let '
+                .'%s lapse — deleting the role now would leave whoever accepts with an account '
+                .'that can do nothing.',
+                $pending,
+                $pending === 1 ? 'invitation is' : 'invitations are',
+                $pending === 1 ? 'for' : 'for',
+                $pending === 1 ? 'it' : 'them',
+                $pending === 1 ? 'it' : 'them',
+            )]);
+        }
 
         $holders = $role->users()->count();
 
