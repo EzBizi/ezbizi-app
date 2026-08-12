@@ -19,8 +19,10 @@ use Illuminate\Support\Carbon;
  * failure this work exists to remove.
  *
  * Before this, neither existed: the token was minted with a flat thirty-day
- * expiry in AuthController::issueToken and there was no idle check anywhere, so
- * an unattended browser stayed signed in for a month.
+ * expiry and there was no idle check anywhere, so an unattended browser stayed
+ * signed in for a month. That minting was a private `issueToken` on
+ * AuthController at the time; it is now App\Services\Auth\IssueSession, which
+ * is the one place any entry point gets a session from.
  *
  * ── Where the refusal happens ────────────────────────────────────
  *
@@ -46,8 +48,8 @@ final class SessionLifetime
     /**
      * The longest a session may live no matter how much it is used.
      *
-     * Thirty days because that is what `issueToken` already minted and nothing
-     * about this change is a reason to extend it.
+     * Thirty days because that is what the login path already minted before any
+     * of this, and nothing about this change is a reason to extend it.
      */
     public const ABSOLUTE_DAYS = 30;
 
@@ -76,8 +78,9 @@ final class SessionLifetime
     public function idleMinutesFor(Organization $organization): int
     {
         // Setting rows are tenant-scoped and this is called from both inside a
-        // request that has a tenant and from `issueToken`, which runs during
-        // login. Entering the organization explicitly covers both.
+        // request that has a tenant (SlideIdleWindow) and from IssueSession,
+        // which runs during login before there is one. Entering the
+        // organization explicitly covers both.
         $configured = $this->tenant->run(
             $organization,
             fn () => $this->settings->get('security.session_timeout_minutes', $organization),

@@ -36,7 +36,11 @@ class AuditLogger
     /** Ties every event from one request together. */
     private ?string $correlationId = null;
 
-    /** Set while a Lead Developer is acting — see shouldRecord(). */
+    /**
+     * Set while a Lead Developer is acting — raised by
+     * suppressForLeadDeveloper(), and the one thing log() checks before it
+     * writes. logError() and logStaff() write regardless; both say why.
+     */
     private bool $suppressed = false;
 
     public function __construct(

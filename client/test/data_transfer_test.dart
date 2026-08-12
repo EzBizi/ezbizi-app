@@ -94,6 +94,55 @@ void main() {
     );
   });
 
+  /// R8, and the control an organization can now take away.
+  ///
+  /// Export used to ride on the resource's view permission, so standing on the
+  /// Customers tab was the same thing as being allowed to download every
+  /// customer's name, email, phone and address. `customers.export` is a grant of
+  /// its own now, and when it is missing the server says so on the catalogue
+  /// entry — as a finished sentence, which is what this renders.
+  testWidgets('an export nobody granted still says why', (tester) async {
+    _wide(tester);
+
+    await _pumpCustomers(
+      tester,
+      permissions: ['customers.create'],
+      exportRefusal: _refusedExport,
+    );
+
+    expect(
+      find.text('Export'),
+      findsOneWidget,
+      reason:
+          'A control that is simply absent explains nothing — and this one used '
+          'to be there for everybody, so its disappearance would read as a bug.',
+    );
+    expect(_enabled(tester, 'Export'), isFalse);
+
+    expect(
+      tester.widgetList<Tooltip>(find.byType(Tooltip)).map((t) => t.message),
+      contains(_refusedExport),
+      reason: 'The words are the ones the 403 carries, sent by the server.',
+    );
+
+    // The control. Import is a different permission and this person holds it,
+    // so exactly one of the two controls went dead — not the header.
+    expect(_enabled(tester, 'Import'), isTrue);
+  });
+
+  /// The other side of it, which is the reason the first test in this file
+  /// asserts an ENABLED Export: a null refusal draws a live button, so the one
+  /// above is not passing because everything is disabled.
+  testWidgets('an export the server permits is live', (tester) async {
+    _wide(tester);
+
+    await _pumpCustomers(tester, permissions: const []);
+
+    expect(_enabled(tester, 'Export'), isTrue);
+    // …while the import this person genuinely lacks is not, on the same header.
+    expect(_enabled(tester, 'Import'), isFalse);
+  });
+
   /// Jobs are export-only on the server, because a CSV of names cannot say
   /// WHICH "J. Smith" a job belongs to. The tab must not offer an import that
   /// the server would refuse — and this is different from the refusal above:
@@ -134,6 +183,15 @@ void main() {
 
 // ── harness ────────────────────────────────────────────────────────
 
+/// Verbatim what `Refusal::permission('export customers')` composes, which is
+/// what DataController publishes on the catalogue entry and answers with from
+/// the endpoint. Written out rather than built here: a helper that composed it
+/// would agree with itself no matter what the server said.
+const _refusedExport =
+    'You do not have permission to export customers. That is part of a role '
+    'rather than of an account, so somebody who can edit roles can add it to '
+    'yours.';
+
 void _wide(WidgetTester tester) {
   tester.view.physicalSize = const Size(1400, 900);
   tester.view.devicePixelRatio = 1.0;
@@ -157,12 +215,17 @@ bool _enabled(WidgetTester tester, String label) {
 /// `importable` is a property of the RESOURCE — jobs are false for everybody —
 /// and `import_permission` is the grant it takes. Two fields, because one
 /// boolean could not tell those apart and the screen drew nothing for both.
+/// `export_refusal` is the other half: null when the Export control works, and
+/// otherwise the finished sentence the endpoint would answer with. A SENTENCE
+/// rather than a key, unlike the import pair, so the greyed control and the 403
+/// behind it cannot word one refusal two ways.
 Map<String, dynamic> _resource(
   String key,
   String label, {
   required bool importable,
   String? importPermission,
   List<String> importColumns = const [],
+  String? exportRefusal,
 }) => {
   'key': key,
   'label': label,
@@ -170,12 +233,14 @@ Map<String, dynamic> _resource(
   'importable': importable,
   'import_permission': importPermission,
   'import_columns': importColumns,
+  'export_refusal': exportRefusal,
 };
 
 Future<void> _pumpCustomers(
   WidgetTester tester, {
   required List<String> permissions,
   List<Map<String, dynamic>>? resources,
+  String? exportRefusal,
 }) async {
   resources ??= [
     _resource(
@@ -184,6 +249,7 @@ Future<void> _pumpCustomers(
       importable: true,
       importPermission: 'customers.create',
       importColumns: const ['number', 'name', 'email'],
+      exportRefusal: exportRefusal,
     ),
     _resource('jobs', 'Jobs', importable: false),
   ];

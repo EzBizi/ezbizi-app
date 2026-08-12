@@ -349,20 +349,47 @@ Route::prefix('v1')
         // table, and why — and sits beside the other two §9 answers rather than
         // in a module of its own. Same rule about declaration order applies.
         //
-        // ── The client reaches these from three places now ───────
+        // ── Where the client reaches these from ──────────────────
         //
-        // Not one. The "Import & export" tab was removed on 2026-08-12 and the
-        // ROUTES did not move: per-resource export and import are reached from
-        // the Customers and Jobs tabs, and `bundle` and `inventory` from the
-        // organization's data section in Settings.
+        // The "Import & export" tab was removed on 2026-08-12 and the ROUTES did
+        // not move. The lines below do not share a history, though, so naming
+        // them one at a time is the only way to be right about any of them:
+        //
+        //   - `exports/{resource}` and `imports/{resource}` were reached from
+        //     that one tab. They are now reached from the DataTransfer widget,
+        //     which the Customers and Jobs tabs both put in their header.
+        //   - `exports` — the catalogue — was read by that tab and is now read
+        //     by both of those AND by Settings, which uses its `organization`
+        //     block to decide whether to offer the two below.
+        //   - `exports/bundle` and `exports/inventory` were on NO screen. That
+        //     tab never listed them and nothing else did either: from the day
+        //     each route shipped until 2026-08-12 the only way to call either
+        //     was an API token and the URL. The organization's data section in
+        //     Settings is their first interface, not their second home.
+        //   - `customers/{customer}/export` still has no screen. It answers a
+        //     §9 request for one customer's own file, and nothing in the client
+        //     calls it — worth writing down so the next reader does not go
+        //     hunting for the control.
         //
         // Worth stating because the obvious worry is misplaced. Removing the
         // `data` module took its only permission, `data.view`, with it — and
-        // none of these routes ever consulted it. Each is gated on the view
-        // permission of the RESOURCE it touches (`customers.view` to export
-        // customers), on the resource's create permission to import one, and
-        // `bundle` and `inventory` on holding every resource's view. So nobody
-        // gained or lost reach here; only the screens in front changed.
+        // none of these routes ever consulted it.
+        //
+        // What each takes now, after export became its own action:
+        //   exports/{resource}  the resource's view AND export permissions
+        //   imports/{resource}  the resource's create permission
+        //   exports/bundle      every resource's export permission — it returns
+        //                       every row of every resource, so anything less
+        //                       would be a second door beside the first
+        //   exports/inventory   every resource's view permission. It emits
+        //                       table names, columns, purposes and counts, and
+        //                       never a row, so the export gate is not the one
+        //                       that belongs on it
+        //
+        // Removing the tab is what MADE the export permission necessary: the
+        // tab was the only way an organization could withhold bulk export, and
+        // taking it away without replacing it would have handed every customer
+        // list to anybody who could read one customer.
         Route::get('exports', [DataController::class, 'catalogue']);
         Route::get('exports/bundle', [DataController::class, 'bundle']);
         Route::get('exports/inventory', [DataController::class, 'inventory']);

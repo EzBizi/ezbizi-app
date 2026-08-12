@@ -64,7 +64,8 @@ final Map<String, ModuleScreen> moduleScreens = {
   // in Jobs (see the DataTransfer widget). The two §9 answers that are about
   // the whole organization rather than one resource — export everything, and
   // the record of what is held about people — are in Settings, under the
-  // organization's own data.
+  // organization's own data. Those two did not come off that tab: it never
+  // listed them, and they had no screen anywhere until Settings got one.
 };
 
 /// How to draw one module: its glyph, and the screen behind it.

@@ -9,6 +9,7 @@ import 'package:ezbizi_client/screens/dashboard_screen.dart';
 import 'package:ezbizi_client/screens/hr/dashboard_tab.dart';
 import 'package:ezbizi_client/widgets/dashboard_card.dart';
 import 'package:ezbizi_client/widgets/dashboard_grid.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -181,31 +182,6 @@ void main() {
       expect(find.text('Nothing doing.'), findsOneWidget);
     });
 
-    /// The mouse path, which is the one the owner asked for by name.
-    testWidgets('dragging a card onto another takes its place', (tester) async {
-      final sent = <Map<String, dynamic>>[];
-
-      await _pumpDashboard(tester, _dashboard(record: sent));
-
-      final handle = find.descendant(
-        of: find.byType(DashboardCard).at(3),
-        matching: find.byType(Draggable<int>),
-      );
-
-      await tester.drag(
-        handle,
-        tester.getCenter(find.byType(DashboardCard).first) -
-            tester.getCenter(handle),
-      );
-      await tester.pumpAndSettle();
-
-      expect(_cardTitles(tester).first, 'Customers added');
-      expect(
-        [for (final w in sent.single['widgets'] as List) w['key']],
-        ['customers.added', 'jobs.by_status', 'jobs.upcoming', 'jobs.revenue'],
-      );
-    });
-
     /// Turning a panel on is not a reason to lose an arrangement. Rebuilding
     /// the layout from the catalogue, as the panel picker used to, threw away
     /// the order every time somebody ticked a box.
@@ -286,6 +262,297 @@ void main() {
       expect(_cardTitles(tester).first, 'Invitations that have stalled');
       expect(find.text('Expiring certifications'), findsOneWidget);
       expect(find.byType(DashboardCard), findsNWidgets(4));
+    });
+  });
+
+  /// The grip is a 48-point target sitting inside a page that scrolls, and
+  /// those two facts were in each other's way.
+  ///
+  /// MEASURED on a 375x700 window with `PointerDeviceKind.touch`, before this
+  /// was fixed: a swipe starting on the grip moved the page 0.0, while the same
+  /// swipe starting on the card body moved it 300.0. `Draggable` recognises on
+  /// the first pixel of movement, so it won the gesture arena against the
+  /// ListView every time — and the swipe did not rearrange anything either,
+  /// because it ended over the card it started on. Every card carried a band
+  /// that silently refused to scroll.
+  ///
+  /// Both halves are asserted here on purpose. Fixing the scroll by taking the
+  /// drag away, or fixing the drag by taking the scroll away, are the two ways
+  /// to make one of these tests pass while the page is still wrong.
+  group('a grip a finger can find, on a page a finger can scroll (R7)', () {
+    testWidgets('a finger swiping from the grip scrolls the page', (
+      tester,
+    ) async {
+      await _pumpHr(tester, _hr(), size: const Size(375, 700));
+
+      // Controls. A page with nothing to scroll would pass the assertion below
+      // by standing still, and so would a test that swiped a page already at
+      // the bottom.
+      expect(_scrollPixels(tester), 0);
+      expect(
+        _scrollExtent(tester),
+        greaterThan(300),
+        reason: 'This window already fits the whole tab; nothing to scroll.',
+      );
+
+      await tester.drag(
+        _gripOf('Headcount by place'),
+        const Offset(0, -300),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        _scrollPixels(tester),
+        greaterThan(0),
+        reason: 'The grip swallowed the swipe.',
+      );
+
+      // And a swipe is not a sideways way to rearrange anything: it finished
+      // over a different card, and no card moved.
+      expect(_cardTitles(tester).first, 'Headcount by place');
+    });
+
+    testWidgets('a finger held on the grip picks the card up', (tester) async {
+      final sent = <Map<String, dynamic>>[];
+
+      await _pumpHr(tester, _hr(record: sent), size: const Size(375, 700));
+
+      expect(_cardTitles(tester).first, 'Headcount by place');
+
+      final felt = _recordHaptics(tester);
+
+      final finger = await tester.startGesture(
+        tester.getCenter(_gripOf('Onboardings in flight')),
+        kind: PointerDeviceKind.touch,
+      );
+
+      // Control: nothing has been said to the hand yet, so the assertion after
+      // the hold is about the pick-up and not about something the screen did
+      // while it was loading.
+      expect(felt, isEmpty);
+
+      // Held still, which is where a swipe and a pick-up part company.
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 20));
+
+      // The finger holding the card is also covering it, so "it is up now"
+      // cannot only be something to look at.
+      expect(felt, ['HapticFeedbackType.selectionClick']);
+
+      // The hold produced the card, not a caption about it. A Tooltip's own
+      // touch trigger is also a long press, and it must not be answering this
+      // one.
+      expect(
+        find.text(
+          'Drag “Onboardings in flight” onto the card whose place it should '
+          'take',
+        ),
+        findsNothing,
+      );
+
+      await finger.moveTo(tester.getCenter(find.byType(DashboardCard).first));
+      await tester.pump();
+      await finger.up();
+      await tester.pumpAndSettle();
+
+      expect(_cardTitles(tester).first, 'Onboardings in flight');
+      expect(_cardTitles(tester)[1], 'Headcount by place');
+
+      // The card was carried UP the page. Had the hold leaked to the ListView
+      // instead, this is the number that would have moved and the order that
+      // would not have.
+      expect(_scrollPixels(tester), 0);
+
+      expect(sent, hasLength(1));
+      expect(
+        [for (final w in sent.single['widgets'] as List) w['key']],
+        [
+          'hr.onboardings_in_flight',
+          'hr.headcount',
+          'hr.invitations_stalled',
+          'hr.starters_and_leavers',
+          'hr.certifications',
+        ],
+      );
+    });
+
+    /// "A control a finger misses is a control a phone does not have." The box
+    /// is 48 points; this is the assertion that all 48 of them drag, rather
+    /// than the 18-point glyph drawn in the middle of a decorative margin.
+    testWidgets('the corner of the grip is grip, not decoration', (
+      tester,
+    ) async {
+      await _pumpHr(tester, _hr(), size: const Size(375, 700));
+
+      final box = tester.getRect(_gripOf('Onboardings in flight'));
+
+      expect(
+        box.size,
+        const Size(kMinInteractiveDimension, kMinInteractiveDimension),
+      );
+
+      final finger = await tester.startGesture(
+        box.topLeft + const Offset(2, 2),
+        kind: PointerDeviceKind.touch,
+      );
+
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 20));
+      await finger.moveTo(tester.getCenter(find.byType(DashboardCard).first));
+      await tester.pump();
+      await finger.up();
+      await tester.pumpAndSettle();
+
+      expect(_cardTitles(tester).first, 'Onboardings in flight');
+    });
+
+    /// A finger's long press had to stop being the tooltip's trigger, because
+    /// it is now the drag's. That must not cost the grip its sentence: it is
+    /// the only thing that says what the grip does, and it is the whole reason
+    /// this control is not icon-only to somebody who cannot see it.
+    testWidgets('the grip still says what it is, hovered and read aloud', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+
+      await _pumpHr(tester, _hr(), size: const Size(375, 700));
+
+      const said =
+          'Drag “Headcount by place” onto the card whose place it should take';
+
+      expect(tester.getSemantics(_gripOf('Headcount by place')).tooltip, said);
+
+      // Control: it is not on screen yet, so the assertion after the hover is
+      // about the hover and not about a caption that was always drawn.
+      expect(find.text(said), findsNothing);
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(_gripOf('Headcount by place')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(said), findsOneWidget);
+
+      semantics.dispose();
+    });
+
+    /// The mouse path, which is the one the owner asked for by name, and which
+    /// the touch fix must not cost. `tester.drag` presses, moves and releases
+    /// without a frame in between, so a mouse that had to be held down first
+    /// would not move this card at all.
+    testWidgets('a mouse drags a card onto another without holding it', (
+      tester,
+    ) async {
+      final sent = <Map<String, dynamic>>[];
+
+      await _pumpDashboard(tester, _dashboard(record: sent));
+
+      final grip = _gripOf('Customers added');
+
+      await tester.drag(
+        grip,
+        tester.getCenter(find.byType(DashboardCard).first) -
+            tester.getCenter(grip),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pumpAndSettle();
+
+      expect(_cardTitles(tester).first, 'Customers added');
+      expect(
+        [for (final w in sent.single['widgets'] as List) w['key']],
+        ['customers.added', 'jobs.by_status', 'jobs.upcoming', 'jobs.revenue'],
+      );
+    });
+
+    /// "Immediate" is not a figure of speech, and this is the assertion that
+    /// keeps it literal. A mouse does not drag-scroll — Flutter's own scroll
+    /// behaviour leaves mice out of `dragDevices` — so nothing contests the
+    /// press and the card is in hand on the press itself, with no travel and
+    /// no wait.
+    ///
+    /// It is also what catches a held drag that has quietly been handed mice
+    /// as well as fingers: two recognizers would then be contesting one press,
+    /// and the card would sit there until one of them won.
+    testWidgets('a mouse has the card the moment it presses', (tester) async {
+      await _pumpHr(tester, _hr(), size: const Size(375, 700));
+
+      // Control: one of this title, drawn in the card's own header. The
+      // assertion below is about a SECOND one appearing.
+      expect(find.text('Onboardings in flight'), findsOneWidget);
+
+      final mouse = await tester.startGesture(
+        tester.getCenter(_gripOf('Onboardings in flight')),
+        kind: PointerDeviceKind.mouse,
+      );
+
+      // One frame. Not a moved pointer, not an elapsed delay — a frame.
+      await tester.pump();
+
+      expect(
+        find.text('Onboardings in flight'),
+        findsNWidgets(2),
+        reason: 'The preview is not following the pointer: nothing was picked '
+            'up by the press alone.',
+      );
+
+      await mouse.up();
+      await tester.pumpAndSettle();
+    });
+
+    /// The stylus, which is where `triggerMode: manual` stops being tidiness.
+    ///
+    /// The grip's tooltip and its delayed drag both wait 500ms, and the comment
+    /// on `triggerMode` used to say the drag wins that race by tree order — and
+    /// that "no test can tell the two apart, which is the point". Both halves
+    /// were wrong, and a held pen is what shows it.
+    ///
+    /// Tooltip's trigger recognizer excludes a MOUSE and includes a STYLUS. The
+    /// delayed drag listener is registered for touch only. So on a stylus there
+    /// is no race at all: without `manual` the tooltip's long press wins
+    /// outright, a caption appears, and the card is never picked up. That line
+    /// is load-bearing on this one input, and it was nearly removed as debt.
+    testWidgets('a held stylus picks the card up and shows no caption', (
+      tester,
+    ) async {
+      await _pumpHr(tester, _hr(), size: const Size(375, 700));
+
+      // Control, as in the mouse test above: one of this title to begin with,
+      // drawn in the card's own header.
+      expect(find.text('Onboardings in flight'), findsOneWidget);
+
+      final pen = await tester.startGesture(
+        tester.getCenter(_gripOf('Onboardings in flight')),
+        kind: PointerDeviceKind.stylus,
+      );
+
+      // One frame first: a pen must NOT have the card yet, or it is back in
+      // the immediate set and the dead band comes with it.
+      await tester.pump();
+      expect(find.text('Onboardings in flight'), findsOneWidget);
+
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 20));
+
+      expect(
+        find.textContaining('Drag “'),
+        findsNothing,
+        reason:
+            'A caption came up under the held pen instead of the card. The '
+            'tooltip won the press, which is what happens the moment '
+            'triggerMode stops being manual — and on a stylus nothing else '
+            'is contesting it.',
+      );
+
+      expect(
+        find.text('Onboardings in flight'),
+        findsNWidgets(2),
+        reason:
+            'The pen held the grip and nothing was picked up, so a stylus '
+            'cannot rearrange the dashboard at all.',
+      );
+
+      await pen.up();
+      await tester.pumpAndSettle();
     });
   });
 
@@ -423,6 +690,55 @@ List<String> _cardTitles(WidgetTester tester) => [
   for (final card in tester.widgetList<DashboardCard>(find.byType(DashboardCard)))
     card.title,
 ];
+
+/// The grip in the card called [title].
+///
+/// Found by the sentence it says rather than by widget type, because that
+/// sentence is what a screen reader reads off it and what a pointer hovering
+/// sees — so a grip this finder cannot reach is a grip a person cannot either.
+Finder _gripOf(String title) =>
+    find.byTooltip('Drag “$title” onto the card whose place it should take');
+
+/// How far down the dashboard's own scroll view has been moved.
+ScrollPosition _scroll(WidgetTester tester) => tester
+    .state<ScrollableState>(
+      find
+          .ancestor(
+            of: find.byType(DashboardGrid),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    )
+    .position;
+
+double _scrollPixels(WidgetTester tester) => _scroll(tester).pixels;
+
+/// Collects the haptics the app asks the device for, in order.
+List<String> _recordHaptics(WidgetTester tester) {
+  final felt = <String>[];
+
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.platform,
+    (call) async {
+      if (call.method == 'HapticFeedback.vibrate') {
+        felt.add(call.arguments as String);
+      }
+
+      return null;
+    },
+  );
+
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    ),
+  );
+
+  return felt;
+}
+
+double _scrollExtent(WidgetTester tester) => _scroll(tester).maxScrollExtent;
 
 // ── driving the screens ────────────────────────────────────────────
 

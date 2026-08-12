@@ -19,6 +19,31 @@ use App\Models\Job;
  *
  * The client reads this through /api/v1/exports, so adding a resource never
  * means editing the UI.
+ *
+ * ── The three permissions a resource declares ────────────────────
+ *
+ * `permission`        may you read this resource at all — the tab (§4)
+ * `export.permission` may you take EVERY row of it, as one file
+ * `import.permission` may you put rows into it
+ *
+ * Export used to have no permission of its own, and `permission` did both jobs:
+ * anybody holding `customers.view` could download every customer's name, email,
+ * phone and address as a spreadsheet. While there was an "Import & export" tab
+ * that was survivable — the tab was gated on `data.view`, so an organization
+ * that did not want a role reaching bulk transfer could withhold the tab. The
+ * tab was removed on 2026-08-12 and the Export control moved into Customers and
+ * Jobs, which took that control away with it: there was then no grant an
+ * organization could withhold to stop somebody exporting.
+ *
+ * So export is its own act, declared here the way import already was. Reading
+ * one customer's record and downloading the whole list are different acts, and
+ * the second is the one that leaves the building on a laptop.
+ *
+ * Every resource must declare `export.permission`, and it must be a key the
+ * module registry actually offers — otherwise the roles editor cannot grant it
+ * and export is off for everybody, permanently. DataTest checks both against the
+ * registry, because there is nothing here that fails at boot the way
+ * ModuleDefinition does.
  */
 final class ResourceMap
 {
@@ -35,6 +60,7 @@ final class ResourceMap
                 'model'      => Customer::class,
                 'label'      => 'Customers',
                 'permission' => 'customers.view',
+                'export'     => ['permission' => 'customers.export'],
                 'columns'    => [
                     'number', 'name', 'email', 'phone',
                     'address_line1', 'address_line2', 'city', 'state', 'postal_code',
@@ -68,6 +94,7 @@ final class ResourceMap
                 'model'      => Job::class,
                 'label'      => 'Jobs',
                 'permission' => 'jobs.view',
+                'export'     => ['permission' => 'jobs.export'],
 
                 // The WHERE gate (§4), as data rather than a special case in the
                 // exporter. Permission says a person may look at jobs; reach says

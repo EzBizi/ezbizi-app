@@ -9,6 +9,7 @@ use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
+use App\Support\Data\ResourceMap;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Subscriptions\SubscriptionGuard;
 use App\Support\Tenancy\TenantContext;
@@ -522,11 +523,17 @@ class DataTest extends TestCase
     /**
      * The two §9 answers say, up front, whether they will work.
      *
-     * They live in Settings now. That screen has no way to work the gate out
-     * for itself — both require the view permission of EVERY exportable
-     * resource, and that list is ResourceMap's — so the catalogue carries the
-     * answer as one nullable sentence each: null means the control works, a
-     * string is what to show instead.
+     * They live in Settings now, and that screen has no way to work the gate
+     * out for itself. Nor are the two gates the same, which is why there are
+     * two sentences and not one: `bundle` needs every resource's EXPORT
+     * permission, because it returns every row of every resource and would
+     * otherwise be a second door beside the one export just locked; the
+     * inventory needs every resource's VIEW permission, because it emits table
+     * names, columns, purposes and counts and never reads a row.
+     *
+     * So the catalogue carries the answer as one nullable sentence each: null
+     * means the control works, a string is what to show instead. The same
+     * person can now be refused one and permitted the other.
      */
     public function test_the_catalogue_says_whether_the_whole_organization_answers_are_permitted(): void
     {
@@ -604,7 +611,16 @@ class DataTest extends TestCase
 
         // Every exportable resource, and not one permission more — in
         // particular not the module's, which cannot be granted any more.
-        $reader = $this->userWithRole($alpha, 'Reader', ['customers.view', 'jobs.view']);
+        //
+        // The two `.export` keys joined this list when export became a
+        // permission of its own: `bundle` takes the export permission of every
+        // resource now (see DataController::bundle for why leaving it on view
+        // would be a second door to the same customer list). `inventory`
+        // deliberately did not move, and the test below is the one that pins
+        // that — this one is about the two answers surviving at all.
+        $reader = $this->userWithRole($alpha, 'Reader', [
+            'customers.view', 'jobs.view', 'customers.export', 'jobs.export',
+        ]);
 
         $bundle = $this->signedInAs($reader)->getJson('/api/v1/exports/bundle')->assertOk();
         $this->assertArrayHasKey('customers', $bundle->json());
@@ -703,5 +719,348 @@ class DataTest extends TestCase
             'The permission went and the grants pointing at it did not, so every role that '
             .'held it now carries a row referring to nothing.',
         );
+    }
+
+    // ── export is its own permission (§12, §4) ───────────────────
+    //
+    // Removing the "Import & export" tab took a control away from
+    // organizations. The tab was gated on `data.view`, so a role could be kept
+    // out of bulk transfer; the per-resource endpoints were only ever gated on
+    // the resource's VIEW permission, so once the Export control moved into the
+    // Customers header there was no grant left to withhold —
+    // anybody who could read a customer could download every customer's name,
+    // email, phone and address as a spreadsheet, and no setting could stop them.
+    //
+    // `customers.export` and `jobs.export` are that setting. Everything below
+    // fails if the gate goes back to being the view permission, if the refusal
+    // starts naming a permission key, or if `bundle` is left as a second way to
+    // fetch the same rows.
+
+    /**
+     * The map and the registry have to agree, or the permission is unusable.
+     *
+     * A typo in `export.permission` — or a resource added to ResourceMap with no
+     * export key at all — is not a crash. It is export refused for everybody
+     * forever, with the fix being a grant the roles editor cannot offer because
+     * the registry never declared it. ModuleDefinition fails at boot for its own
+     * mistakes; ResourceMap has nothing that does, so this is it.
+     */
+    public function test_every_resource_declares_an_export_permission_the_registry_offers(): void
+    {
+        $resources = ResourceMap::all();
+
+        // The control. Every assertion below is inside a loop, so an empty map
+        // would pass this test while proving nothing at all.
+        $this->assertNotEmpty($resources, 'ResourceMap lists nothing to export.');
+
+        $declared = app(ModuleRegistry::class)->allPermissionKeys();
+
+        foreach ($resources as $key => $definition) {
+            $export = $definition['export']['permission'] ?? null;
+
+            $this->assertNotNull(
+                $export,
+                "'{$key}' declares no export permission, so DataController cannot gate it.",
+            );
+
+            $this->assertContains($export, $declared,
+                "'{$export}' is not a permission any module declares, so no role can ever be "
+                .'given it and export is off permanently.',
+            );
+
+            // The other two, checked in the same breath: they have the same
+            // failure mode and there was no test holding them either.
+            $this->assertContains($definition['permission'], $declared);
+
+            if (isset($definition['import'])) {
+                $this->assertContains($definition['import']['permission'], $declared);
+            }
+        }
+    }
+
+    /**
+     * Reading one customer and downloading all of them are different acts.
+     *
+     * The refusal is a SENTENCE about asking somebody for permission (R8), and
+     * it must not name the key — a person reading "customers.export" learns a
+     * string they cannot act on, and the roles screen is not where they are.
+     */
+    public function test_the_resource_export_takes_the_export_permission_and_not_the_view(): void
+    {
+        $alpha = $this->provisionTenant('Iota');
+        $this->makeCustomerIn($alpha, 'Alpha Person');
+
+        $viewer   = $this->userWithRole($alpha, 'Viewer', ['customers.view']);
+        $exporter = $this->userWithRole($alpha, 'Exporter', ['customers.view', 'customers.export']);
+
+        $message = $this->signedInAs($viewer)->get('/api/v1/exports/customers')
+            ->assertForbidden()->json('message');
+
+        $this->assertStringContainsString('export customers', $message);
+        $this->assertStringContainsString('somebody who can edit roles', $message);
+        $this->assertStringNotContainsString('customers.export', $message,
+            'R8: a refusal is a sentence saying what to do, never a permission key.',
+        );
+
+        // The control, and the point of the whole change. One grant apart, the
+        // same person gets the file — so the 403 above is the export permission
+        // being missing rather than this role being locked out of customers,
+        // and the export being tested is one that really produces the rows.
+        $body = $this->signedInAs($exporter)->get('/api/v1/exports/customers')
+            ->assertOk()->streamedContent();
+
+        $this->assertStringContainsString('Alpha Person', $body);
+    }
+
+    /**
+     * The sentence the greyed control shows is the sentence the 403 carries.
+     *
+     * Per resource, exactly as the two organization-wide answers already do it.
+     * The catalogue still LISTS a resource this person may not export, because
+     * being listed means "you may read this" — filtering it out would take the
+     * Import control and the import columns away at the same time, over a
+     * different permission entirely.
+     */
+    public function test_the_catalogue_publishes_the_export_refusal_the_endpoint_gives(): void
+    {
+        $alpha  = $this->provisionTenant('Kappa');
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['customers.view', 'customers.create']);
+
+        $customers = collect(
+            $this->signedInAs($viewer)->getJson('/api/v1/exports')->assertOk()->json('resources'),
+        )->firstWhere('key', 'customers');
+
+        $this->assertNotNull($customers, 'A resource somebody may READ has to stay listed.');
+
+        $this->assertSame(
+            $customers['export_refusal'],
+            $this->signedInAs($viewer)->get('/api/v1/exports/customers')
+                ->assertForbidden()->json('message'),
+        );
+
+        // Still offered the import they DO hold, on the same entry — which is
+        // why the resource is listed rather than filtered out.
+        $this->assertTrue($customers['importable']);
+        $this->assertSame('customers.create', $customers['import_permission']);
+
+        // The control: the field is not simply always a sentence. Somebody who
+        // holds the grant gets null, which is what draws a live button.
+        $exporter = $this->userWithRole($alpha, 'Exporter', ['customers.view', 'customers.export']);
+
+        $permitted = collect(
+            $this->signedInAs($exporter)->getJson('/api/v1/exports')->assertOk()->json('resources'),
+        )->firstWhere('key', 'customers');
+
+        $this->assertNull($permitted['export_refusal']);
+    }
+
+    /**
+     * The bundle is not a second door to the same rows.
+     *
+     * `/exports/bundle` returns every row of every resource in the map, so a
+     * role refused `customers.export` could have fetched the identical customer
+     * list from it in JSON. It now takes the export permission of EVERY
+     * resource, which is the same shape it always had — it used to be the view
+     * permission of every resource — for the same reason: "export everything" is
+     * a bigger act than any single export.
+     */
+    public function test_the_bundle_takes_every_resources_export_permission(): void
+    {
+        $alpha = $this->provisionTenant('Lambda');
+        $this->makeCustomerIn($alpha, 'Alpha Person');
+
+        $partial = $this->userWithRole($alpha, 'Partial', [
+            'customers.view', 'jobs.view', 'jobs.export',
+        ]);
+
+        $refused = $this->signedInAs($partial)->getJson('/api/v1/exports/bundle')->assertForbidden();
+
+        // Not merely refused — refused without the rows in the body, which is
+        // the failure this endpoint would have had if the loop were left on the
+        // view permission.
+        $this->assertStringNotContainsString('Alpha Person', $refused->getContent());
+
+        // And the greyed control in Settings says the same thing this did.
+        $this->assertSame(
+            $this->signedInAs($partial)->getJson('/api/v1/exports')
+                ->assertOk()->json('organization.export_refusal'),
+            $refused->json('message'),
+        );
+
+        // The control: one more grant and the same request works, and answers
+        // with the customer — so the refusal above is the missing permission
+        // rather than an empty organization.
+        $whole = $this->userWithRole($alpha, 'Whole', [
+            'customers.view', 'jobs.view', 'customers.export', 'jobs.export',
+        ]);
+
+        $bundle = $this->signedInAs($whole)->getJson('/api/v1/exports/bundle')->assertOk();
+
+        $this->assertSame('Alpha Person', $bundle->json('customers.0.name'));
+        $this->assertNull($this->signedInAs($whole)->getJson('/api/v1/exports')
+            ->assertOk()->json('organization.export_refusal'));
+    }
+
+    /**
+     * The inventory did NOT move to the export permissions, and that is a
+     * decision rather than a line somebody forgot.
+     *
+     * It is the MAP, not the territory: table names, field names, purposes,
+     * retention and counts, and no personal data at any point — see
+     * DataInventory, which builds it from each model's declarations and never
+     * reads a row. `customers.export` exists to govern personal data leaving in
+     * bulk, in a file; refusing this would withhold no name, address or phone
+     * number from anybody, and would take a §9 obligation away from somebody who
+     * may still read every one of those people one at a time.
+     *
+     * So the two whole-organization answers now genuinely differ for the same
+     * person, and this is the test that says which way round.
+     */
+    public function test_the_inventory_still_takes_the_view_permissions_and_not_the_export_ones(): void
+    {
+        $alpha  = $this->provisionTenant('Mu');
+        $reader = $this->userWithRole($alpha, 'Reader', ['customers.view', 'jobs.view']);
+
+        $inventory = $this->signedInAs($reader)->getJson('/api/v1/exports/inventory')
+            ->assertOk()
+            ->assertJsonStructure(['holdings', 'caveats', 'generated_at']);
+
+        // The control. "It answered 200" proves nothing if the answer is empty —
+        // and an empty inventory is the shape a broken one would have.
+        $this->assertNotEmpty($inventory->json('holdings'));
+
+        // The same person, the same request minus the map: refused, because
+        // that one is the data itself.
+        $this->signedInAs($reader)->getJson('/api/v1/exports/bundle')->assertForbidden();
+
+        // And the catalogue says both of those in advance, differently.
+        $organization = $this->signedInAs($reader)->getJson('/api/v1/exports')
+            ->assertOk()->json('organization');
+
+        $this->assertNull($organization['inventory_refusal']);
+        $this->assertNotNull($organization['export_refusal']);
+    }
+
+    /**
+     * A permission the roles editor cannot offer is a permission nobody can be
+     * given — the mirror of `test_the_removed_modules_permission_can_no_longer_be_granted`.
+     */
+    public function test_the_roles_editor_offers_export_and_a_role_can_be_given_it(): void
+    {
+        $alpha = $this->provisionTenant('Nu');
+
+        $modules = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/roles/catalogue')->assertOk()->json('modules');
+
+        $customers = collect($modules)->firstWhere('key', 'customers');
+
+        $this->assertContains('customers.export', array_column($customers['actions'], 'key'));
+        $this->assertContains('jobs.export', array_column(
+            collect($modules)->firstWhere('key', 'jobs')['actions'], 'key',
+        ));
+
+        // Grantable, not merely listed — the editor greys what the actor cannot
+        // hand out, and an administrator holds the whole catalogue.
+        $export = collect($customers['actions'])->firstWhere('key', 'customers.export');
+        $this->assertTrue($export['grantable']);
+        $this->assertSame('Export', $export['label']);
+
+        // And it survives a save, arriving with the implied view (§4).
+        $this->signedInAs($alpha['admin'])->postJson('/api/v1/roles', [
+            'name' => 'Exporter', 'permissions' => ['customers.export'],
+        ])->assertCreated()->assertJsonPath('data.permissions', [
+            'customers.export', 'customers.view',
+        ]);
+    }
+
+    /**
+     * The migration, tested against the state it exists for.
+     *
+     * A new permission that nobody holds turns export off for every existing
+     * customer overnight. The migration grants `<resource>.export` to every role
+     * that already holds `<resource>.view`, so the day of the upgrade behaves
+     * exactly like the day before it — and the control becomes something an
+     * organization can now REMOVE.
+     *
+     * Built by hand, for the reason the test above it records: under
+     * RefreshDatabase the schema is migrated before any role exists, so the
+     * migration's own run had nobody to grant anything to and asserting the end
+     * state would pass with the file deleted. The upgrade state is a role
+     * holding the view and not the export, which is what `userWithRole` leaves
+     * behind, and the assertion is behavioural on both sides of the run.
+     */
+    public function test_the_migration_grants_export_to_a_role_an_upgrade_left_with_only_view(): void
+    {
+        $alpha = $this->provisionTenant('Xi');
+        $this->makeCustomerIn($alpha, 'Alpha Person');
+
+        // The pre-migration world: a role that could export customers the day
+        // before, because export was the view permission.
+        $reader = $this->userWithRole($alpha, 'Reader', ['customers.view', 'jobs.view']);
+
+        // Somebody who could not, and must not be given the grant by a migration
+        // that took "everybody" to mean "every role".
+        $stranger = $this->userWithRole($alpha, 'Stranger', ['jobs.view']);
+
+        $this->signedInAs($reader)->get('/api/v1/exports/customers')->assertForbidden();
+
+        $migration = require database_path(
+            'migrations/2026_08_12_120000_grant_export_to_roles_that_already_view.php',
+        );
+
+        // The second run against this schema — the first was RefreshDatabase's,
+        // before any of these roles existed — so this also proves it can be
+        // re-run without colliding with the pivot's composite key.
+        $migration->up();
+
+        $body = $this->signedInAs($reader)->get('/api/v1/exports/customers')
+            ->assertOk()->streamedContent();
+
+        $this->assertStringContainsString('Alpha Person', $body,
+            'The upgrade was supposed to be invisible: a role that could export customers '
+            .'yesterday still can.',
+        );
+
+        // Granted for what they hold and nothing else. Without this the
+        // migration could hand every role every export key and still pass.
+        //
+        // Roles and permissions are tenant data, so the read has to say which
+        // organization it is about — see BelongsToTenant, which refuses an
+        // unscoped one rather than quietly answering across tenants.
+        [$mayExportJobs, $mayExportCustomers] = $this->inTenant($alpha['org'], fn () => [
+            $stranger->fresh()->hasPermission('jobs.export'),
+            $stranger->fresh()->hasPermission('customers.export'),
+        ]);
+
+        $this->assertTrue($mayExportJobs);
+        $this->assertFalse($mayExportCustomers);
+
+        // The row the roles screen reads, worded as PermissionCatalogue would —
+        // a label that disagrees with the sync command is a permission spelled
+        // two ways forever.
+        $this->assertDatabaseHas('permissions', [
+            'key' => 'customers.export', 'module' => 'customers',
+            'action' => 'export', 'label' => 'Export customers',
+        ]);
+
+        $this->assertSame(
+            1,
+            DB::table('permission_role')
+                ->join('permissions', 'permissions.id', '=', 'permission_role.permission_id')
+                ->where('permissions.key', 'customers.export')
+                ->where('permission_role.role_id', $reader->role_id)
+                ->count(),
+            'The grant is there exactly once — a second run must not duplicate it.',
+        );
+    }
+
+    /** A customer in a tenant built by BuildsTenants, which keys its array differently. */
+    private function makeCustomerIn(array $tenant, string $name): Customer
+    {
+        return $this->inTenant($tenant['org'], fn () => Customer::create([
+            'owning_franchise_id' => $tenant['franchise']->id,
+            'number' => 'C-'.bin2hex(random_bytes(3)),
+            'name'   => $name,
+        ]));
     }
 }

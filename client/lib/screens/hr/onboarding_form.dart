@@ -1044,10 +1044,13 @@ class _OnboardingFormState extends State<OnboardingForm> {
   /// Drawn, named and refused, the same as an automation action the engine
   /// cannot run: something absent invites the reader to conclude the app is
   /// broken or that they have lost a permission, and both guesses are worse
-  /// than the truth. What is missing is not the picker — `Files.pickAnyFile`
-  /// exists — but the endpoint that ties an uploaded file to one answer.
-  /// Attachments hang off a RECORD, and nothing yet says which question of it
-  /// a file belongs to.
+  /// than the truth. What is missing is not the picking. `Files` has no
+  /// any-file picker — `pickText` and `pickImage` are the two it offers, and
+  /// both narrow the browser input's `accept` list — but widening that list is
+  /// a line, and `PickedBytes` already carries a name and bytes. What does not
+  /// exist is the endpoint that ties an uploaded file to one ANSWER:
+  /// attachments hang off a RECORD, and nothing yet says which question of it a
+  /// file belongs to.
   ///
   /// An answer that has already been collected is still SHOWN, because a record
   /// read months later must not lose a licence number just because this build

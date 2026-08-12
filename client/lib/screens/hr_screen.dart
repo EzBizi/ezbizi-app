@@ -12,10 +12,13 @@ import 'hr/records_tab.dart';
 /// Human Resources — five tabs (HR plan).
 ///
 /// The owner's words: *"this is the most integral part of the app as it allows
-/// its basic function."* It is what lets an organization have employees at all —
-/// roles have existed for a while and nothing has ever written `users.role_id`,
-/// so an organization has been exactly one person no matter how many roles it
-/// defined.
+/// its basic function."* It is what lets an organization have employees at all.
+/// Roles existed for a while before it, and the only thing that ever wrote
+/// `users.role_id` was ProvisionOrganization putting the founding administrator
+/// in one — so an organization was exactly one person no matter how many roles
+/// it defined. This module is what closed that: an invitation carries a role,
+/// InvitationAcceptanceController::createAccount writes it onto the account it
+/// creates, and the Records tab can change it afterwards.
 ///
 /// ── All five are built, and one panel inside one of them is not ──
 ///

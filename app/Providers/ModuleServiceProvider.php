@@ -76,10 +76,19 @@ class ModuleServiceProvider extends ServiceProvider
              * Customers and exporting jobs one in Jobs. The two §9 answers that
              * are about the whole organization rather than one resource live in
              * Settings. None of the three needs a module of its own, because
-             * each is now reached through the permission of the thing it acts
-             * on — `customers.view` exports customers, and always did. The
-             * routes did not move and were never gated on `data.view`; see the
-             * import/export block in routes/api.php.
+             * each is now reached through the permissions of the thing it acts
+             * on. The routes did not move and were never gated on `data.view`;
+             * see the import/export block in routes/api.php.
+             *
+             * WHICH permissions changed with the tab, and that is the part this
+             * paragraph used to get wrong. It said `customers.view` exports
+             * customers "and always did" — true of the endpoint, and it stopped
+             * being true here. Removing the tab removed the only way an
+             * organization could withhold bulk export, so exporting is its own
+             * action now: `customers.view` reads a customer, `customers.export`
+             * downloads all of them. Reading one record and carrying the whole
+             * list out in a file are different acts, and only the second is the
+             * one that leaves the building on a laptop.
              *
              * `view` only. The dashboard has no action beyond looking — it
              * composes what other modules already permit. It is declared FIRST
@@ -575,9 +584,34 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
             ),
 
+            /*
+             * ── Why there is a fifth action here ────────────────
+             *
+             * `export` is the ordinary CRUD set plus one, and it is the only
+             * module action that is not a way of changing a record. It exists
+             * because taking EVERY customer's name, email, phone and address out
+             * of the system as one file is a different act from reading one
+             * customer, and until now it was the same permission.
+             *
+             * It was survivable while the "Import & export" tab existed: that
+             * tab was gated on `data.view`, so an organization could say "this
+             * role does not reach bulk transfer". Removing the tab on 2026-08-12
+             * moved the Export control into this tab and took that control away
+             * with it — the owner's rule is that modules are gated by the tab
+             * permissions the organization sets, and there was suddenly no grant
+             * to withhold.
+             *
+             * Declared here rather than anywhere else because this is where
+             * permissions come from: the roles editor, `/me`, the escalation
+             * bound and the sync command all read the registry, so a key added
+             * here is grantable everywhere with nothing else edited.
+             * ResourceMap names it as the resource's `export.permission` and
+             * DataController enforces it; nothing invents a second mechanism.
+             */
             new ModuleDefinition(
                 key:   'customers',
                 label: 'Customers',
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
                 subject: new AutomationSubject(Customer::class, 'Customer'),
                 triggers: [
                     new TriggerDefinition(
@@ -639,6 +673,11 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key:   'jobs',
                 label: 'Jobs',
+                // The same fifth action, for the same reason — see Customers
+                // above. Jobs cannot be imported by anybody (ResourceMap says
+                // why) and can be exported by everybody who reaches the tab, so
+                // this is the only transfer grant this module has to offer.
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
                 subject: new AutomationSubject(Job::class, 'Job'),
                 triggers: [
                     new TriggerDefinition(

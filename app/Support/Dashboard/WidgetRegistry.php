@@ -41,9 +41,10 @@ class WidgetRegistry
          *
          * A widget is not "a card on the main dashboard" — it is one question,
          * asked once, answered under the caller's permissions and reach. HR's
-         * tab shows a fixed subset of them in the order the plan names
-         * (HrDashboardController); the main dashboard lets people compose the
-         * same ones. Two surfaces, one computation, one place to correct it.
+         * tab shows a fixed subset of them (HrDashboardController), in the plan's
+         * sequence until somebody drags a card and saves an order of their own;
+         * the main dashboard lets people compose the same ones. Two surfaces,
+         * one computation, one place to correct it.
          *
          * COMPOSE, not receive: they are absent from ON_BY_DEFAULT below, so
          * declaring them here offered four new panels rather than switching

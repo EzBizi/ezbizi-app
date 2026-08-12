@@ -27,19 +27,23 @@ import '../widgets/side_panel.dart';
 ///
 /// ── Why the organization's own data lives at the bottom ──────────
 ///
-/// Two §9 obligations — "export everything this organization holds" and "the
-/// record of what it holds about people" — used to sit on an "Import & export"
-/// tab alongside the per-resource exports. That tab is gone: transferring
-/// customers and jobs belongs in those tabs, which is where it now is.
+/// Two §9 obligations — "export everything this organization holds"
+/// (`/exports/bundle`, on the server since 2026-08-06) and "the record of what
+/// it holds about people" (`/exports/inventory`, since 2026-08-11) — get their
+/// FIRST interface here. No screen in this app had ever called either: until
+/// this section, answering either obligation meant holding an API token and
+/// knowing the URL. They did not move here from the "Import & export" tab that
+/// was removed on 2026-08-12 — that tab listed a per-resource Export and Import
+/// button and nothing else.
 ///
-/// These two do not belong there. Neither is about a resource, so neither has a
-/// tab to move into — "export everything this business holds" is not a Customers
-/// feature. What they ARE about is the organization, and they are decided by
-/// whoever administers it, which is who is reading this screen. They are the one
-/// section here that is not a setting, so they sit under their own heading at
-/// the end rather than among the rows, and only at organization scope: they
-/// answer for the whole business and there is no franchise-sized version of
-/// either.
+/// They are here rather than in a resource tab because neither is about a
+/// resource, so neither has a tab to go in — "export everything this business
+/// holds" is not a Customers feature. What they ARE about is the organization,
+/// and they are decided by whoever administers it, which is who is reading this
+/// screen. They are the one section here that is not a setting, so they sit
+/// under their own heading at the end rather than among the rows, and only at
+/// organization scope: they answer for the whole business and there is no
+/// franchise-sized version of either.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.api, required this.session});
 

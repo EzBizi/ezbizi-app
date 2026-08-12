@@ -236,9 +236,16 @@ class _DashboardTabState extends State<DashboardTab> {
 
   /// One panel, or null when there is nothing to draw for it.
   ///
-  /// The title is the SERVER's label, not a copy of it kept here. The same
-  /// widget is offered on the main dashboard, and a panel named two things on
-  /// two screens is one rename away from looking like two different figures.
+  /// Every panel that comes from a registry widget is titled with the SERVER's
+  /// label, not a copy of it kept here. The same widget is offered on the main
+  /// dashboard, and a panel named two things on two screens is one rename away
+  /// from looking like two different figures.
+  ///
+  /// Certifications is the one exception, and only because there is no widget
+  /// behind it to ask: it is drawn by this tab alone and badged as unbuilt, so
+  /// its name is written here with it. That is the same reason it needs
+  /// [_certificationsKey] — and on the day the registry can answer it, the name
+  /// arrives from the same place as every other one and this branch goes.
   DashboardPanel? _panelFor(BuildContext context, String key) {
     if (key == _certificationsKey) {
       return DashboardPanel(

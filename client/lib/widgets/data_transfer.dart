@@ -27,18 +27,31 @@ import 'side_panel.dart';
 ///
 /// ── What it asks the server, and what it decides itself ──────────
 ///
-/// The catalogue at `/exports` says which resources this person may export, and
-/// which of them can be imported at all. This widget decides nothing about
-/// permissions beyond turning the server's answer into a control or a sentence:
-/// the import permission arrives WITH the resource, so no permission key is
-/// compiled into this file.
+/// The catalogue at `/exports` lists the resources this person may READ, and
+/// answers two further questions about each: whether they may take all of it
+/// (`export_refusal`) and whether it can be imported at all. This widget decides
+/// nothing about permissions beyond turning those answers into a control or a
+/// sentence — no permission key is compiled into this file.
 ///
 /// A resource the catalogue does not mention gets no controls, because the
-/// server has said this person may not read it in bulk. A resource that cannot
-/// be imported by anybody — jobs, deliberately — gets Export alone. A resource
-/// that can be, for somebody who lacks the grant, gets the control with the
-/// reason showing, because a control that quietly is not there teaches nobody
-/// anything (R8).
+/// server has said this person may not read it. A resource that cannot be
+/// imported by anybody — jobs, deliberately — gets Export alone.
+///
+/// Neither control is ever silently dropped over a permission. A control that
+/// quietly is not there teaches nobody anything: it stays, disabled, carrying
+/// the server's own sentence about who can grant the missing permission (R8).
+///
+/// ── Export is its own grant now ──────────────────────────────────
+///
+/// Being listed used to mean "you may export this", because export was gated on
+/// the resource's view permission and nothing else. It is `customers.export` and
+/// `jobs.export` since 2026-08-12: the "Import & export" tab was gated on
+/// `data.view`, and when it was removed and these controls moved into the tabs
+/// that own the records, an organization lost its only way to say "this role
+/// does not download the whole customer list". The server publishes the refusal
+/// as a finished SENTENCE rather than as a key — unlike the import half below —
+/// so the greyed control here and the 403 behind it cannot word one refusal two
+/// ways.
 class DataTransfer extends StatefulWidget {
   const DataTransfer({
     super.key,
@@ -141,6 +154,12 @@ class _DataTransferState extends State<DataTransfer> {
         ? widget.session.me!.refusal(importPermission, 'import $label')
         : null;
 
+    // Already a sentence when it arrives, and null when the control works.
+    // Taken as the server sent it rather than rebuilt from a key: this is the
+    // text the endpoint itself would answer with, which is the whole reason it
+    // is on the wire.
+    final refusedExport = entry['export_refusal'] as String?;
+
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -155,10 +174,13 @@ class _DataTransferState extends State<DataTransfer> {
               label: const Text('Import'),
             ),
           ),
-        OutlinedButton.icon(
-          onPressed: _busy ? null : _export,
-          icon: const Icon(Icons.download_outlined, size: 18),
-          label: Text(_busy ? 'Exporting…' : 'Export'),
+        Refused(
+          reason: refusedExport,
+          child: OutlinedButton.icon(
+            onPressed: (_busy || refusedExport != null) ? null : _export,
+            icon: const Icon(Icons.download_outlined, size: 18),
+            label: Text(_busy ? 'Exporting…' : 'Export'),
+          ),
         ),
       ],
     );

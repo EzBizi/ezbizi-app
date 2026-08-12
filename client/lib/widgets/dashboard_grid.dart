@@ -1,5 +1,7 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 
 import 'dashboard_card.dart';
 
@@ -55,9 +57,13 @@ class DashboardPanel {
 /// is unusable to a keyboard user and unreliable on a phone:
 ///
 ///   - **Drag.** A handle in each card's header, dragged onto the card that
-///     should give up its place. Immediate rather than long-press, so a mouse
-///     does not have to be held still first; the handle is small enough that a
-///     finger scrolling the page will not land on it.
+///     should give up its place. A mouse picks the card up on the press
+///     itself, with no travel and no wait; a finger and a stylus have to hold
+///     the grip for a moment first. That difference is not a preference — see
+///     [_GripDrag]: the grip is a full-size touch target sitting inside a page
+///     that scrolls, and a drag that started immediately under a finger would
+///     win the gesture arena against the scroll view and leave a band on every
+///     card that refused to scroll.
 ///   - **Keyboard.** Two buttons per card, reachable by Tab, labelled with the
 ///     panel they move and disabled at the ends of the list. Focus follows the
 ///     card, so a panel can be walked from last to first without hunting for
@@ -258,7 +264,7 @@ class _DashboardGridState extends State<DashboardGrid> {
       onPressed: onPressed,
       icon: Icon(icon),
       // A small glyph in a full-size button. The touch target stays at the
-      // framework's interactive minimum — three of these plus the grip fit a
+      // framework's interactive minimum — two of these plus the grip fit a
       // 375-point card, and a control a finger misses is a control a phone does
       // not have.
       iconSize: 18,
@@ -269,10 +275,23 @@ class _DashboardGridState extends State<DashboardGrid> {
   }
 
   Widget _handle(int index, DashboardPanel panel) {
-    final grip = Icon(
-      Icons.drag_indicator,
-      size: 18,
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    final grip = _grip(
+      Icon(
+        Icons.drag_indicator,
+        size: 18,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    );
+
+    // Two of them around one grip, and never both at once: each answers to a
+    // different family of pointer, so whichever kind arrives, exactly one
+    // enters the gesture arena. See [_GripDrag].
+    Widget drag({required bool hold, required Widget child}) => _GripDrag(
+      hold: hold,
+      data: index,
+      feedback: _preview(panel),
+      childWhenDragging: Opacity(opacity: 0.3, child: grip),
+      child: child,
     );
 
     return Tooltip(
@@ -281,14 +300,35 @@ class _DashboardGridState extends State<DashboardGrid> {
       // reorderable list behaves. A sentence that is right half the time is
       // worse than one that says less.
       message: 'Drag “${panel.title}” onto the card whose place it should take',
+      // Hovering and screen readers only. A Tooltip's own touch trigger is a
+      // long press, which is exactly the gesture that now PICKS THE CARD UP,
+      // and leaving both attached puts two 500ms timers in one gesture arena.
+      //
+      // ON TOUCH the drag wins that race — it is deeper in the tree, so it is
+      // handed the pointer first and starts its timer first, and equal timers
+      // fire in the order they were made. That is a tree order and a timer
+      // queue, which is not what "the card comes up rather than a caption"
+      // should rest on.
+      //
+      // ON A STYLUS IT DOES NOT WIN, AND THIS LINE IS WHAT SAVES IT. Tooltip's
+      // trigger recognizer excludes a mouse and INCLUDES a stylus, while the
+      // delayed drag listener below is registered for touch only — so a held
+      // pen has a long-press tooltip and no competing drag at all. Without
+      // `manual` the caption wins outright and the card is never picked up.
+      // This is load-bearing, not belt-and-braces, and it was nearly written
+      // off as the latter.
+      //
+      // A held stylus is also what tells the two apart, so the claim that "no
+      // test can tell" was wrong by about ten lines — see
+      // `a held stylus picks the card up and shows no caption`.
+      //
+      // Hovering is untouched (triggerMode does not apply to a mouse) and so
+      // is the sentence a screen reader reads, which `Tooltip` puts in the
+      // semantics tree however it is triggered. Both are asserted.
+      triggerMode: TooltipTriggerMode.manual,
       child: MouseRegion(
         cursor: SystemMouseCursors.grab,
-        child: Draggable<int>(
-          data: index,
-          feedback: _preview(panel),
-          childWhenDragging: Opacity(opacity: 0.3, child: _grip(grip)),
-          child: _grip(grip),
-        ),
+        child: drag(hold: false, child: drag(hold: true, child: grip)),
       ),
     );
   }
@@ -296,6 +336,10 @@ class _DashboardGridState extends State<DashboardGrid> {
   /// The grip, boxed to the same [kMinInteractiveDimension] the move buttons
   /// beside it occupy — so the three controls sit on one line at one height,
   /// and dragging is as reachable by a finger as pressing is.
+  ///
+  /// The box being 48 points is not on its own enough for that second half:
+  /// hit testing defers to the child by default, and the child is an 18-point
+  /// glyph in the middle. [_GripDrag] claims the whole box.
   Widget _grip(Widget grip) => SizedBox(
     width: kMinInteractiveDimension,
     height: kMinInteractiveDimension,
@@ -375,5 +419,118 @@ class _DashboardGridState extends State<DashboardGrid> {
     }
 
     reorder(keys);
+  }
+}
+
+/// Half of the grip's drag: a [Draggable] that answers to one family of
+/// pointers, on one gesture. Two of them wrap the one grip.
+///
+/// ── Why the gesture is not the same for everybody ────────────────
+///
+/// The grip is a 48-point target — it has to be, or a finger misses it — and it
+/// sits inside a page that scrolls. A plain [Draggable] recognises a drag on
+/// the first pixel of movement, so it wins the gesture arena against the scroll
+/// view before the scroll view has decided anything, and MEASURED on a
+/// 375x700 window that made a swipe starting on the grip move the page 0
+/// points while the same swipe on the card body moved it 300. It did not
+/// rearrange anything either: the swipe ended over the card it began on. A
+/// 48-point band on every card that silently refuses to scroll is worse than
+/// no grip at all.
+///
+/// So a finger has to hold the grip before the card comes up, and everything
+/// else still picks it up at once. That is the answer Flutter itself gives:
+/// [ReorderableListView] wraps its drag handle in a
+/// `ReorderableDragStartListener` on a desktop and the whole tile in a
+/// `ReorderableDelayedDragStartListener` on a phone, and both of those are the
+/// same one-method override used here — [Draggable.createRecognizer], which is
+/// also what `LongPressDraggable` overrides. The delay, the hit slop that
+/// cancels the hold the moment the finger travels, and the arena that hands the
+/// swipe back to the scroll view are all the framework's.
+///
+/// It is not free, and the price is worth writing down. A swipe that starts on
+/// the grip now has to win a contested arena, so the scroll view is not handed
+/// the gesture until the finger has passed the touch slop, and that first
+/// ~20 points of travel is dropped rather than replayed — MEASURED, the same
+/// 300-point swipe moves the page 300 points from the card body and 280 from
+/// the grip. That is the standard toll for any contested drag surface: every
+/// tile of a `ReorderableListView` on a phone pays exactly the same one.
+///
+/// ── Why the pointer and not the platform ─────────────────────────
+///
+/// `ReorderableListView` chooses by `Theme.of(context).platform`, which answers
+/// "which operating system" rather than "what is touching the screen". A
+/// Windows laptop with a touchscreen answers "desktop" while somebody scrolls
+/// it with a finger, and this app is web today with desktop and mobile behind
+/// it (R7), so the same build has to be right for both hands at once. The
+/// pointer's own kind is the fact that matters, and the arena already filters
+/// on it: each recognizer is simply told which pointers are its own, so exactly
+/// one of the two ever competes for any given pointer.
+class _GripDrag extends Draggable<int> {
+  const _GripDrag({
+    required this.hold,
+    required super.data,
+    required super.feedback,
+    required super.childWhenDragging,
+    required super.child,
+  }) : super(
+         // All 48 points of the grip, not the 18-point glyph in the middle of
+         // it. Left to defer to its child, the corners of the target are
+         // decoration — MEASURED: a drag started two points inside the corner
+         // moved nothing at all.
+         hitTestBehavior: HitTestBehavior.opaque,
+       );
+
+  /// Whether the card has to be held before it comes up.
+  final bool hold;
+
+  /// Everything that is not a finger.
+  ///
+  /// Written as "the rest" rather than as a list of kinds, so that a pointer
+  /// kind Flutter adds later drags a card immediately — which is the behaviour
+  /// every pointer had before — rather than being unable to drag one at all.
+  static final Set<PointerDeviceKind> _pointers = PointerDeviceKind.values
+      .toSet()
+    ..removeAll(_held);
+
+  /// The pointers that have to HOLD the grip before the card comes up.
+  ///
+  /// A stylus is here with the finger, and it is not an obvious call. It is in
+  /// the immediate set in every other respect — it is precise, it hovers, it
+  /// has no fat-finger problem. But it is used on a tablet, on the same
+  /// scrolling page a finger uses, and Flutter's own Tooltip classes it with
+  /// touch rather than with the mouse for exactly that reason. A pen that
+  /// picked a card up on the first pixel would leave the same dead band a
+  /// finger did.
+  static const Set<PointerDeviceKind> _held = {
+    PointerDeviceKind.touch,
+    PointerDeviceKind.stylus,
+    PointerDeviceKind.invertedStylus,
+  };
+
+  @override
+  MultiDragGestureRecognizer createRecognizer(
+    GestureMultiDragStartCallback onStart,
+  ) {
+    if (!hold) {
+      return ImmediateMultiDragGestureRecognizer(
+        debugOwner: this,
+        supportedDevices: _pointers,
+      )..onStart = onStart;
+    }
+
+    return DelayedMultiDragGestureRecognizer(
+      debugOwner: this,
+      supportedDevices: _held,
+    )..onStart = (position) {
+      final drag = onStart(position);
+
+      // The same click `LongPressDraggable` gives a held pickup, and for its
+      // reason: the finger that is holding the card is also covering it, so
+      // the feedback that says "it is up now" cannot only be something to look
+      // at.
+      if (drag != null) HapticFeedback.selectionClick();
+
+      return drag;
+    };
   }
 }

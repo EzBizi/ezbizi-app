@@ -148,12 +148,25 @@ class DataInventoryTest extends TestCase
         );
     }
 
-    public function test_it_is_gated_by_the_same_permissions_the_bundle_needs(): void
+    /**
+     * The inventory takes every resource's VIEW permission — and deliberately
+     * not its export permission, which is what `exports/bundle` now takes.
+     *
+     * This test was called `..._the_same_permissions_the_bundle_needs`, and the
+     * name became the false claim the moment export got its own action: the
+     * bundle needs four keys, this needs two. The name is corrected rather than
+     * the code, because the split is right. The inventory emits table names,
+     * column names, purposes, retention and COUNTS — `DataInventory` has no
+     * path that reads a row. Withholding it takes away a §9 answer without
+     * withholding one person's name, from somebody who may still read every one
+     * of those people individually.
+     */
+    public function test_it_is_gated_by_every_resources_view_permission(): void
     {
         $alpha = $this->provisionTenant('Alpha');
 
         // It describes every resource, so reading it means being allowed to read
-        // all of them — the same rule `exports/bundle` applies.
+        // all of them.
         //
         // Both roles used to be granted `data.view` as well, from when Import &
         // export was a module with a tab of its own. That module was removed on

@@ -26,17 +26,27 @@ use Illuminate\Http\Request;
  * shorter to write and would have created the trap §6 is about: the same figure
  * arrived at two ways, drifting the first time one of them was corrected.
  *
- * ── Fixed here, composable there ─────────────────────────────────
+ * ── Fixed SELECTION, chosen order ────────────────────────────────
  *
- * The main dashboard is a preference: you choose your panels and their order
- * (§2.1 category 6). This tab is not, and that is deliberate rather than
- * unfinished. The HR plan names five things this dashboard is for, an owner
- * opening Human Resources for the first time should see them without having to
- * assemble anything, and the same widgets remain available on the main dashboard
- * for anybody who wants headcount beside their revenue.
+ * The main dashboard is a preference twice over: you choose which panels you
+ * have and what sequence they sit in (§2.1 category 6). This tab is a
+ * preference once. WHICH panels appear is fixed — PANELS below is a constant,
+ * and everybody with `hr.view` gets the same four — because the HR plan names
+ * five things this dashboard is for and an owner opening Human Resources for
+ * the first time should see them without having to assemble anything. The same
+ * widgets stay available on the main dashboard for anybody who wants headcount
+ * beside their revenue.
  *
- * If per-user layout is wanted here later it is the layout mechanism that gets
- * reused, not the widgets rebuilt — which is the point of them being widgets.
+ * The ORDER is theirs. Dragging a card on this tab saves the sequence under
+ * `dashboard.order['hr']` — DashboardController::ORDERABLE, its saveOrder(),
+ * the same endpoint and the same preferences store the main layout uses. That
+ * reuse is why the widgets did not have to be rebuilt to get it.
+ *
+ * This endpoint knows nothing about that order and deliberately does not: it
+ * always answers in the plan's sequence and the CLIENT rearranges (see
+ * `panelsInSavedOrder`). A saved order names panels this endpoint never sends —
+ * "Expiring certifications" is drawn client-side and has no widget — so the
+ * server is the wrong place to apply it.
  */
 class HrDashboardController extends Controller
 {
@@ -111,8 +121,10 @@ class HrDashboardController extends Controller
                 'key'   => $widget->key(),
                 'label' => $widget->label(),
 
-                // Defaults. This tab has no per-user options to echo back —
-                // see the class docblock on why it is fixed rather than composed.
+                // Defaults. This tab has no per-user options to echo back — see
+                // the class docblock on why its SELECTION is fixed rather than
+                // composed. What is per-user here is the order, and the client
+                // applies that.
                 'data'  => $widget->resolve($user, []),
             ];
         }

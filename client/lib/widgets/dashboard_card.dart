@@ -106,8 +106,9 @@ class DashboardCard extends StatelessWidget {
                   // and the only things that cannot are the icon and the
                   // controls, which have a size of their own. That is what
                   // makes the header safe on a phone (R7): the fixed part is
-                  // 26 points plus three buttons, so a long title or a long
-                  // badge shortens instead of running off the card.
+                  // 26 points plus three 48-point controls — two move buttons
+                  // and a grip — so a long title or a long badge shortens
+                  // instead of running off the card.
                   //
                   // Nesting the title and its badge in a row of their own read
                   // better and overflowed a 375-point window by 37 points — a
