@@ -123,7 +123,32 @@ class PanelHeader extends StatelessWidget {
             children: [
               Expanded(child: text),
               const SizedBox(width: 16),
-              action!,
+              // ── The action has to be BOUNDED, not merely placed ──
+              //
+              // A non-flex child of a Row is handed unbounded width. For a
+              // single button that is harmless — it takes its intrinsic width
+              // and `Expanded` gets the rest. For an action that can WRAP it is
+              // the whole bug: a Wrap given infinite width never wraps, so the
+              // Customers screen's three controls laid out at their full 571px
+              // in one line and squeezed the note to 64px, 787px tall inside a
+              // 600px window. The stack-below-620 rule did not catch it because
+              // 700px is above 620.
+              //
+              // A cap rather than `Flexible`: two flex children split the free
+              // space by their factors, so `Flexible` would hold the action to
+              // half the header even on a wide screen where the note wants the
+              // room and one button needs 150px. `maxWidth` only ever binds
+              // when the action is genuinely wide, and then it is what lets the
+              // Wrap do its job.
+              //
+              // 55% rather than half. The action is the denser content — three
+              // controls against a paragraph — and a note reading two words a
+              // line is the failure being fixed, so the tie goes to the text
+              // only after the action has what it needs.
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.55),
+                child: action!,
+              ),
             ],
           );
         },

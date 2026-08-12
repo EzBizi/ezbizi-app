@@ -688,6 +688,22 @@ class HrOnboardingTest extends TestCase
             'no affirmative act'               => ['affirmation' => ''],
             'nobody it is about'               => ['subject_user_id' => null],
             'nobody who signed it'             => ['signer_user_id' => null],
+            /*
+             * The case the OLD condition let through, and the reason this line
+             * is not a duplicate of the one above it.
+             *
+             * The guard used to read `provider === PROVIDER_SELF &&
+             * signer_user_id === null`. The row above never set `provider`, so
+             * it defaulted to `ezbizi` and the old condition already caught it
+             * — making the check look tested while the branch that mattered was
+             * not. Any other provider was accepted naming nobody, with the
+             * attribution supposedly living in `provider_evidence`, a column
+             * that no longer exists and has no vendor to bring it back.
+             */
+            'a signer nobody, under some other provider' => [
+                'provider'       => 'some-vendor',
+                'signer_user_id' => null,
+            ],
             'no name for the signer'           => ['signer_label' => ' '],
         ];
 

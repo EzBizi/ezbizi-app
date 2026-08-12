@@ -14,6 +14,8 @@ use App\Support\Subscriptions\SubscriptionGuard;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -641,9 +643,65 @@ class DataTest extends TestCase
 
         $this->assertNotContains('data', collect($modules)->pluck('key')->all());
 
-        // And gone from the table, so no role can still be carrying it. The
-        // migration of 2026-08-12 is what does this; without it the row would
-        // survive and silently mean nothing.
+        // And gone from the table, so no role can still be carrying it.
         $this->assertDatabaseMissing('permissions', ['key' => 'data.view']);
+    }
+
+    /**
+     * The migration, tested against the state it actually exists for.
+     *
+     * The assertion above is TRUE and proves nothing about the migration:
+     * under RefreshDatabase the schema is built from scratch and the registry
+     * no longer declares `data.view`, so the row was never created and
+     * `assertDatabaseMissing` would pass with the migration deleted. It was —
+     * moving the file out of the way left the whole file green.
+     *
+     * The migration only matters on an UPGRADE: a running installation that
+     * has the permission and roles already granted it. So this builds that
+     * state by hand and runs the migration against it, which is the only
+     * arrangement in which it can fail.
+     *
+     * The grant matters as much as the permission. A permissions row deleted
+     * out from under its pivot rows leaves them pointing at nothing, and
+     * whether that errors or is silently tolerated depends on the driver —
+     * which is why the migration deletes the grants first and why this checks
+     * they went.
+     */
+    public function test_the_migration_removes_the_permission_an_upgrade_still_has(): void
+    {
+        $alpha = $this->provisionTenant('Theta');
+
+        $id = (string) Str::uuid();
+
+        // The pre-migration world: the permission exists and a role holds it.
+        DB::table('permissions')->insert([
+            'id'         => $id,
+            'key'        => 'data.view',
+            'module'     => 'data',
+            'action'     => 'view',
+            'label'      => 'View import & export',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('permission_role')->insert([
+            'permission_id' => $id,
+            'role_id'       => $alpha['admin']->role_id,
+        ]);
+
+        $migration = require database_path(
+            'migrations/2026_08_12_090000_retire_the_data_module_permission.php',
+        );
+
+        $migration->up();
+
+        $this->assertDatabaseMissing('permissions', ['key' => 'data.view']);
+
+        $this->assertSame(
+            0,
+            DB::table('permission_role')->where('permission_id', $id)->count(),
+            'The permission went and the grants pointing at it did not, so every role that '
+            .'held it now carries a row referring to nothing.',
+        );
     }
 }
