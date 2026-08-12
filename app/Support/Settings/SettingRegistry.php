@@ -66,6 +66,7 @@ class SettingRegistry
             'numbering'     => ['Document numbering',   $this->numbering()],
             'security'      => ['Security',             $this->security()],
             'notifications' => ['Notifications',        $this->notifications()],
+            'email'         => ['Shared inboxes',       $this->email()],
             'customers'     => ['Customers',            $this->customers()],
             'jobs'          => ['Jobs',                 $this->jobs()],
         ] as $group => [$label, $definitions]) {
@@ -451,6 +452,51 @@ class SettingRegistry
                 help: 'Blank uses the franchise contact address.',
                 notYetInEffect: 'Takes effect when notifications can be sent by email. There is '
                     .'no message yet for a reply to come back to.',
+            ),
+        ];
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Shared inboxes (the Email module)
+    //
+    // All three scopes, deliberately. This is a preference about how a TEAM
+    // works together rather than a security control: it changes who can see that
+    // a message has been opened, and nothing about who can open it — that is
+    // App\Support\Email\MailboxAccess, which asks for a grant and for §4 reach
+    // and is not affected by anything here.
+    //
+    // So the franchise-level override is legitimate in a way it would not be for
+    // a security setting: a branch running one inbox between three people wants
+    // the shared view, and a company where one person's mailbox happens to be
+    // connected may not. Compare security(), where every setting is organization
+    // -only precisely so a franchise cannot weaken a policy imposed above it.
+    // ─────────────────────────────────────────────────────────────
+    private function email(): array
+    {
+        return [
+            /*
+             * The owner's words: "perhaps we can let the organization choose in
+             * settings if it's shared or not shared view."
+             *
+             * An enum rather than a bool. `shared_read_state: true` reads
+             * ambiguously on a screen — shared with whom, and what is the
+             * opposite? — and a two-value enum makes the settings screen render
+             * the two answers as words somebody can choose between.
+             *
+             * SHARED is the default because it is what the module is FOR: an
+             * inbox several people answer, where the question that matters is
+             * "has anybody dealt with this yet". A private default would make
+             * the commonest need something an organization has to discover a
+             * setting to get.
+             */
+            new SettingDefinition(
+                key: 'email.read_state', label: 'Who can see that a message has been opened',
+                type: SettingDefinition::TYPE_ENUM, default: 'shared',
+                options: ['shared', 'private'],
+                help: 'Shared shows "Seen by" beside each message, so the team can tell what '
+                    .'has already been picked up. Private keeps that to each person. Changing '
+                    .'it does not lose anything — the marks are kept either way, and switching '
+                    .'back shows them again.',
             ),
         ];
     }

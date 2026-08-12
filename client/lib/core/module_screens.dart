@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../screens/automations_screen.dart';
 import '../screens/customers_screen.dart';
 import '../screens/dashboard_screen.dart';
+import '../screens/email/email_screen.dart';
 import '../screens/hr_screen.dart';
 import '../screens/jobs_screen.dart';
 import '../screens/marketing_screen.dart';
@@ -67,6 +68,14 @@ final Map<String, ModuleScreen> moduleScreens = {
   'automations': ModuleScreen(
     Icons.bolt_outlined,
     (api, session) => AutomationsScreen(api: api, session: session),
+  ),
+  // An inbox rather than an envelope. `mail_outline` is already the glyph on
+  // Human Resources' Invitations tab, and this module is not "mail" in general
+  // — it is the shared addresses an organization lets a role read, which is
+  // what the tray says and the envelope does not.
+  'email': ModuleScreen(
+    Icons.inbox_outlined,
+    (api, session) => EmailScreen(api: api, session: session),
   ),
   // There is no `data` entry, and its absence is the decision rather than an
   // omission. "Import & export" was a destination of its own listing every

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/permissions.dart';
+import '../core/role_inboxes.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
@@ -34,6 +35,29 @@ import '../widgets/tag.dart';
 /// from the server's module registry — the same registry that decides what the
 /// permissions ARE. One declaration, one source, no Dart copy of it to fall out
 /// of step.
+///
+/// ── The one module whose detail is not just actions ──────────────
+///
+/// A module may also carry the organization's own INBOXES, nested under it:
+///
+///     Email       [x]
+///       expand
+///           View                      [x]
+///           Send                      [ ]
+///         Inboxes
+///           info@a-1chimney.com       [x]
+///           billing@everdoors.com     [ ]
+///
+/// The owner's requirement is that those are two different acts. Ticking Email
+/// lets a role open the tab; it grants no mail. So the tab's tick never fills in
+/// an inbox, the collapsed row says how many are granted so somebody who expected
+/// otherwise can see that they were not, and the module's own "held of total"
+/// count stays about actions — a count that mixed the two would be a number that
+/// answers neither question.
+///
+/// Which module this is, and which addresses hang off it, arrives from the same
+/// endpoint. This file no more knows that mail exists than it knows Customers
+/// does.
 class RolesScreen extends StatefulWidget {
   const RolesScreen({super.key, required this.api, required this.session});
 
@@ -56,6 +80,12 @@ class _RolesScreenState extends State<RolesScreen> {
 
   List<RoleSummary> _roles = const [];
   PermissionCatalogue _catalogue = const PermissionCatalogue([]);
+
+  /// The organization's inboxes, off the same answer as the catalogue.
+  InboxCatalogue _inboxes = InboxCatalogue.none;
+
+  /// Which of them each role already holds, off the same answer as the roles.
+  Map<String, Set<String>> _held = const {};
 
   @override
   void initState() {
@@ -104,9 +134,14 @@ class _RolesScreenState extends State<RolesScreen> {
 
       _error = null;
       _roles = RoleSummary.listFrom(roles.data);
+      _held = inboxHoldingsFrom(roles.data);
       // The whole body, not `data`: this endpoint answers with `modules` at the
       // top level. PermissionCatalogue.fromResponse reads either.
       _catalogue = PermissionCatalogue.fromResponse(catalogue.body);
+      // The same body read a second time, for the half of the tree that is this
+      // organization's own rather than the platform's. See role_inboxes.dart for
+      // why the two readings are separate.
+      _inboxes = InboxCatalogue.fromResponse(catalogue.body);
     });
   }
 
@@ -205,7 +240,10 @@ class _RolesScreenState extends State<RolesScreen> {
       builder: (context) => _RoleEditor(
         role: role,
         catalogue: _catalogue,
-        onSave: (name, permissions) => _save(role, name, permissions),
+        inboxes: _inboxes,
+        heldInboxes: _held[role.id] ?? const {},
+        onSave: (name, permissions, inboxes) =>
+            _save(role, name, permissions, inboxes),
       ),
     );
 
@@ -219,12 +257,19 @@ class _RolesScreenState extends State<RolesScreen> {
     RoleSummary role,
     String name,
     Set<String> permissions,
+    Set<String>? inboxes,
   ) async {
     final response = await widget.api.patch('/roles/${role.id}', {
       'name': name,
       // Sorted so two saves of the same set produce the same request, which is
       // what makes an audit diff readable.
       'permissions': permissions.toList()..sort(),
+
+      // Omitted entirely when this catalogue has no inboxes in it — absent means
+      // "leave them alone" and an empty list means "this role should hold none",
+      // and sending the second about controls that were never drawn is how an
+      // editor revokes access nobody chose to revoke.
+      if (inboxes != null) 'inboxes': inboxes.toList()..sort(),
     });
 
     // Nothing is spliced from the answer here, unlike the settings screen. The
@@ -414,14 +459,29 @@ class _RoleEditor extends StatefulWidget {
   const _RoleEditor({
     required this.role,
     required this.catalogue,
+    required this.inboxes,
+    required this.heldInboxes,
     required this.onSave,
   });
 
   final RoleSummary role;
   final PermissionCatalogue catalogue;
 
-  /// Answers null on success, or the sentence to show on a refusal.
-  final Future<String?> Function(String name, Set<String> permissions) onSave;
+  /// The organization's own inboxes, by the module they nest under.
+  final InboxCatalogue inboxes;
+
+  /// The ones this role already holds.
+  final Set<String> heldInboxes;
+
+  /// Answers null on success, or the sentence to show on a refusal. The third
+  /// argument is null when there are no inboxes anywhere in the catalogue — see
+  /// [_inboxPayload].
+  final Future<String?> Function(
+    String name,
+    Set<String> permissions,
+    Set<String>? inboxes,
+  )
+  onSave;
 
   @override
   State<_RoleEditor> createState() => _RoleEditorState();
@@ -440,6 +500,10 @@ class _RoleEditorState extends State<_RoleEditor> {
   /// to touch. They are excluded from [_payload] rather than from the screen:
   /// the server preserves them and would refuse a request that named them.
   late final Set<String> _held = {...widget.role.permissions};
+
+  /// The inboxes this role may open, as edited. Same rule as [_held]: all of
+  /// them, including the ones this person cannot move.
+  late final Set<String> _inboxes = {...widget.heldInboxes};
 
   bool _saving = false;
   String? _error;
@@ -461,6 +525,16 @@ class _RoleEditorState extends State<_RoleEditor> {
   /// request is a 422 for the whole save, not a key quietly ignored.
   Set<String> get _payload => _held.where(widget.catalogue.mayGrant).toSet();
 
+  /// The inboxes to send, or null to say nothing about inboxes at all.
+  ///
+  /// Null when no module in this catalogue takes them. The server reads an
+  /// absent field as "leave these alone" and an empty list as "this role should
+  /// hold none" — and this editor has no business making the second statement
+  /// about controls it never drew.
+  Set<String>? get _inboxPayload => widget.inboxes.isEmpty
+      ? null
+      : _inboxes.where(widget.inboxes.mayGrant).toSet();
+
   @override
   void dispose() {
     _name.dispose();
@@ -476,6 +550,15 @@ class _RoleEditorState extends State<_RoleEditor> {
   Iterable<String> _keysUnder(String moduleKey) =>
       _held.where((key) => key.startsWith('$moduleKey.'));
 
+  /// The inboxes this role holds under this module.
+  ///
+  /// Read from the CATALOGUE's list for the module rather than from the held
+  /// set, so a grant naming an inbox the organization has since disconnected
+  /// counts as nothing here — exactly as the server treats it.
+  Iterable<InboxOption> _inboxesUnder(String moduleKey) => widget.inboxes
+      .under(moduleKey)
+      .where((inbox) => _inboxes.contains(inbox.id));
+
   /// The tab: on when the role holds the module's view permission.
   ///
   /// Three states, and the middle one is the point:
@@ -483,6 +566,12 @@ class _RoleEditorState extends State<_RoleEditor> {
   ///   false — the tab is hidden, and nothing inside it is granted
   ///   null  — the tab is visible, and some of its actions are withheld
   ///   true  — the tab is visible and every action inside it is granted
+  ///
+  /// About the ACTIONS, and deliberately not about the inboxes. Folding those in
+  /// would mean a full tick could not be reached without granting every address
+  /// the organization has, and the one state this control must never suggest is
+  /// that switching Email on came with the mail. The inbox count is its own line
+  /// underneath — see [_inboxTally].
   bool? _tabState(PermissionModule module) {
     final viewKey = module.viewKey;
 
@@ -516,7 +605,8 @@ class _RoleEditorState extends State<_RoleEditor> {
     if (viewKey == null) return;
 
     setState(() {
-      if (_keysUnder(module.key).isNotEmpty) {
+      if (_keysUnder(module.key).isNotEmpty ||
+          _inboxesUnder(module.key).isNotEmpty) {
         /*
          * Refused rather than half-done, when some of it is not this person's
          * to remove.
@@ -547,13 +637,72 @@ class _RoleEditorState extends State<_RoleEditor> {
           return;
         }
 
+        /*
+         * The same refusal for an inbox, and it has to be here rather than left
+         * to the save.
+         *
+         * Switching the tab off takes the inboxes with it — a grant behind a tab
+         * the role cannot open opens nothing, and the server refuses that state
+         * outright. So an inbox this person cannot open is an inbox they cannot
+         * switch the tab off over: doing it halfway would leave a save the
+         * server rejects, and doing it silently would revoke mail access nobody
+         * chose to revoke.
+         */
+        final lockedInboxes = _inboxesUnder(
+          module.key,
+        ).where((inbox) => !inbox.grantable).toList();
+
+        if (lockedInboxes.isNotEmpty) {
+          _blocked =
+              'This role can open ${_inboxNames(lockedInboxes)}, which you '
+              'cannot open yourself — so you cannot switch ${module.label} off '
+              'over it. Ask somebody who can.';
+          return;
+        }
+
         _blocked = null;
         _held.removeWhere((key) => key.startsWith('${module.key}.'));
+        // With the tab gone the inboxes under it grant nothing, so they go too
+        // rather than being left as rows the server would refuse.
+        _inboxes.removeAll(widget.inboxes.under(module.key).map((i) => i.id));
         return;
       }
 
       _blocked = null;
       _held.add(viewKey);
+    });
+  }
+
+  /// The refused inboxes, as somebody would name them out loud.
+  String _inboxNames(List<InboxOption> inboxes) {
+    final names = inboxes.map((inbox) => inbox.address).toList();
+
+    if (names.length == 1) return names.first;
+
+    return '${names.sublist(0, names.length - 1).join(', ')} and ${names.last}';
+  }
+
+  /// One inbox, on or off.
+  ///
+  /// Granting one grants the tab it lives on, for the same reason granting an
+  /// action does: a role that may read info@ and cannot open the module has been
+  /// given nothing, and the server refuses to store it. The reverse is
+  /// deliberately NOT true — see the class comment. Switching Email on grants no
+  /// mail, because "I ticked Email so they can read everything" is exactly the
+  /// assumption the owner asked to make impossible.
+  void _toggleInbox(PermissionModule module, InboxOption inbox) {
+    setState(() {
+      _blocked = null;
+
+      if (_inboxes.contains(inbox.id)) {
+        _inboxes.remove(inbox.id);
+        return;
+      }
+
+      _inboxes.add(inbox.id);
+
+      final viewKey = module.viewKey;
+      if (viewKey != null) _held.add(viewKey);
     });
   }
 
@@ -569,6 +718,22 @@ class _RoleEditorState extends State<_RoleEditor> {
             (key) =>
                 key.startsWith('${module.key}.') &&
                 widget.catalogue.mayGrant(key),
+          );
+
+          // And the inboxes with them: behind a tab this role cannot open, an
+          // inbox grant opens nothing and the server refuses to store it.
+          //
+          // Only the ones this person may move, which is what the line above
+          // does with permission keys and is the same compromise: an inbox they
+          // cannot open is left where it is, and the save comes back with a
+          // sentence saying to switch the tab on again. The tab's own checkbox
+          // refuses up front instead — it can, because it is one gesture about
+          // the whole module rather than about one row inside it.
+          _inboxes.removeAll(
+            widget.inboxes
+                .under(module.key)
+                .where((inbox) => inbox.grantable)
+                .map((inbox) => inbox.id),
           );
         } else {
           _held.remove(action.key);
@@ -598,7 +763,7 @@ class _RoleEditorState extends State<_RoleEditor> {
       _error = null;
     });
 
-    final failure = await widget.onSave(name, _payload);
+    final failure = await widget.onSave(name, _payload, _inboxPayload);
 
     if (!mounted) return;
 
@@ -761,7 +926,7 @@ class _RoleEditorState extends State<_RoleEditor> {
       ),
       title: Text(module.label, style: TextStyle(color: muted)),
       subtitle: module.available
-          ? null
+          ? _inboxTally(module, theme)
           : Text(
               module.unavailableReason ??
                   'Switched off for your organization by EzBizi.',
@@ -798,18 +963,142 @@ class _RoleEditorState extends State<_RoleEditor> {
             // editor that misrepresents the role it is describing.
             secondary: action.grantable
                 ? null
-                : Tooltip(
-                    message:
-                        'Your own role does not hold ${action.key}, so you '
-                        'cannot hand it out or take it back.',
-                    child: Icon(
-                      Icons.lock_outline,
-                      size: 16,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                // R8: what the person can do about it, in words they recognise
+                // from the screen in front of them. The permission key was here
+                // and said nothing to anybody who has not read the source.
+                : _lockedMark(
+                    theme,
+                    'Your own role does not include '
+                    '${action.label.toLowerCase()} under ${module.label}, so '
+                    'you cannot hand it out or take it back.',
                   ),
           ),
+
+        ..._inboxRows(module, theme, live: live, muted: muted),
       ],
     );
   }
+
+  /// How many of the organization's inboxes this role can open, said on the
+  /// collapsed row.
+  ///
+  /// Null for a module that has nothing to do with mail, which is all but one of
+  /// them — the count only exists where the server sent inboxes.
+  ///
+  /// This is the whole of the owner's "granting the tab and granting an inbox
+  /// are different acts", made visible without opening anything: somebody who
+  /// ticks Email and expects that to have included the mail sees "0 of 2
+  /// inboxes" sitting under it. A tick that filled in silently would have taught
+  /// them the opposite, once, and they would not check again.
+  Widget? _inboxTally(PermissionModule module, ThemeData theme) {
+    if (!widget.inboxes.nests(module.key)) return null;
+
+    final all = widget.inboxes.under(module.key);
+
+    if (all.isEmpty) {
+      return Text(
+        'No inboxes connected yet.',
+        style: theme.textTheme.bodySmall,
+      );
+    }
+
+    final held = _inboxesUnder(module.key).length;
+
+    return Text(
+      held == 0
+          ? 'No inboxes granted, of ${all.length}. The tab on its own opens none.'
+          : '$held of ${all.length} inboxes granted.',
+      style: theme.textTheme.bodySmall,
+    );
+  }
+
+  /// The inboxes themselves, under the actions they are separate from.
+  List<Widget> _inboxRows(
+    PermissionModule module,
+    ThemeData theme, {
+    required bool live,
+    required Color? muted,
+  }) {
+    if (!widget.inboxes.nests(module.key)) return const [];
+
+    final inboxes = widget.inboxes.under(module.key);
+
+    return [
+      const Divider(height: 20),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Text(
+          'Inboxes',
+          style: theme.textTheme.labelLarge?.copyWith(color: muted),
+        ),
+      ),
+
+      // An organization with no mail connected gets a sentence, never an empty
+      // nested list. The two look identical to somebody who does not already
+      // know the answer, and one of them looks like a bug.
+      if (inboxes.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            'This organization has not connected any shared inboxes yet. They '
+            'appear here as soon as somebody does, and can be granted one at a '
+            'time.',
+            style: theme.textTheme.bodySmall,
+          ),
+        )
+      else ...[
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(
+            'Opening the tab and reading an inbox are separate grants. Tick each '
+            'inbox this role may open.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+        for (final inbox in inboxes)
+          CheckboxListTile(
+            key: ValueKey('inbox:${inbox.id}'),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: _inboxes.contains(inbox.id),
+            // The same control both ways. Revoking is unticking the box that
+            // granted it — there is no second place to go and nothing to undo it
+            // from.
+            onChanged: live && inbox.grantable
+                ? (_) => _toggleInbox(module, inbox)
+                : null,
+            title: Text(inbox.heading, style: TextStyle(color: muted)),
+            // The address as well as the name, whenever they are two different
+            // things. "Support" could be any of four addresses, and which mail a
+            // role can read is the question this row answers.
+            subtitle: inbox.named
+                ? Text(inbox.address, style: theme.textTheme.bodySmall)
+                : null,
+            secondary: inbox.grantable
+                ? null
+                : _lockedMark(
+                    theme,
+                    'You cannot open ${inbox.address} yourself, so you cannot '
+                    'hand it out or take it back.',
+                  ),
+          ),
+      ],
+    ];
+  }
+
+  /// The padlock beside a row this person cannot move, with the sentence saying
+  /// why. One widget, so a lock never appears without one.
+  Widget _lockedMark(ThemeData theme, String reason) => Tooltip(
+    message: reason,
+    child: Icon(
+      Icons.lock_outline,
+      size: 16,
+      color: theme.colorScheme.onSurfaceVariant,
+      // The tooltip is a hover affordance and a pointer is not the only way in
+      // (R7). The label is what a screen reader reads, and what a long-press
+      // announces on a touch device.
+      semanticLabel: reason,
+    ),
+  );
 }

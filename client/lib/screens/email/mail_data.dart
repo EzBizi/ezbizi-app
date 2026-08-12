@@ -1,0 +1,321 @@
+/// What the Email endpoints answer with, as this screen reads it.
+///
+/// ── The wire this end was built against ─────────────────────────
+///
+/// The server for this module is being written in parallel, so the shape below
+/// is a STATED ASSUMPTION rather than a description of running code. It is
+/// written out here, in one file, so that reconciling the two is reading one
+/// list rather than grepping a screen:
+///
+///   GET  /email/mailboxes
+///     data: [ { id, address, label, unread, shared_read, can_reply,
+///               reply_refusal } ]
+///
+///   GET  /email/mailboxes/{mailbox}/messages?page=1
+///     data: [ { id, from: {name, address}, subject, preview, received_at,
+///               unread, has_attachments,
+///               seen_by: [ {id, name} ] } ]
+///     meta: { page, last_page }
+///
+///   GET  /email/mailboxes/{mailbox}/messages/{message}
+///     — and this request is ALSO what records the read, which is what puts
+///       "Seen by" on somebody else's screen. There is deliberately no second
+///       call announcing it: two ways of saying the same thing is two states
+///       that can disagree.
+///     data: { id, subject, from: {name, address}, to: [address],
+///             received_at, seen_by: [...],
+///             blocks: [...],                      ← message_blocks.dart
+///             attachments: [ {name, size} ],
+///             reply: { as: {address, name}, to: [address], subject } }
+///
+///   POST /email/mailboxes/{mailbox}/messages/{message}/reply
+///     { body }  →  data: { sent_at, from }
+///
+/// ── Three things the shape says out loud ────────────────────────
+///
+/// **`shared_read` is per mailbox, not per organization.** It is a §6 setting
+/// and §6 settings cascade franchise → company → organization, so the value in
+/// force depends on which part of the business owns the inbox. Resolving it
+/// server-side and sending the answer beside the mailbox is what stops this
+/// client from implementing the cascade a second time and getting it wrong for
+/// a franchise.
+///
+/// **`reply.as` is the server's answer, never this client's arithmetic.** The
+/// failure this whole screen is shaped around is somebody with three inboxes
+/// replying from the wrong one. If the client composed the sending address by
+/// picking up whichever mailbox it thinks is selected, that bug is one stale
+/// variable away. The address on screen is the one the server says the reply
+/// will go out as, and where the server does not say, replying is not offered.
+///
+/// **`reply_refusal` is a sentence, not a key.** R8: a refusal says what to do.
+/// The server knows both halves — the role's permission and this organization's
+/// grant on this mailbox — so it writes the sentence and this end prints it.
+library;
+
+import 'package:flutter/foundation.dart';
+
+import 'message_blocks.dart';
+
+/// A shared inbox somebody has been granted.
+///
+/// Only inboxes this person may open ever arrive here: per-inbox access is a
+/// tenant-scoped grant on the mailbox record, and the list endpoint applies it.
+/// There is deliberately no filtering in this client — a list it had to filter
+/// would be a list it could get wrong.
+@immutable
+class Mailbox {
+  const Mailbox({
+    required this.id,
+    required this.address,
+    required this.label,
+    required this.unread,
+    required this.sharedRead,
+    required this.canReply,
+    required this.replyRefusal,
+  });
+
+  final String id;
+
+  /// `info@a-1chimney.com`. The inbox's identity, and what the screen shows
+  /// everywhere it says which inbox you are in — never [label], which is a
+  /// nickname and can be the same for two of them.
+  final String address;
+
+  /// What the organization calls it — "Info", "Bookings". May be empty.
+  ///
+  /// `label` rather than `name`, deliberately: the roles editor draws the same
+  /// inboxes nested under this module and calls it that (core/role_inboxes.dart,
+  /// `InboxOption.label`). One word for one fact, so the endpoint behind both
+  /// does not have to answer twice in two dialects.
+  final String label;
+
+  final int unread;
+
+  /// Whether reads are shared, as the §6 cascade resolved it for this mailbox.
+  ///
+  /// True is what puts "Seen by" on screen. False means the organization chose
+  /// private read state, and then who has opened what is nobody else's business
+  /// — so the indicator is not drawn at all rather than drawn empty.
+  final bool sharedRead;
+
+  final bool canReply;
+
+  /// Why not, in the server's words. Null when [canReply] is true.
+  final String? replyRefusal;
+
+  factory Mailbox.fromJson(Map<String, dynamic> json) => Mailbox(
+    id: '${json['id']}',
+    address: json['address'] as String? ?? '',
+    label: json['label'] as String? ?? '',
+    unread: json['unread'] as int? ?? 0,
+    // Absent means the server did not resolve the setting, and the safe
+    // direction is private: drawing "Seen by Marta" in an organization that
+    // asked for private read state would leak what somebody read, and not
+    // drawing it in one that asked for shared costs an indicator.
+    sharedRead: json['shared_read'] == true,
+    canReply: json['can_reply'] == true,
+    replyRefusal: json['reply_refusal'] as String?,
+  );
+}
+
+/// Somebody who has this message open, or has had it open.
+@immutable
+class SeenBy {
+  const SeenBy({required this.id, required this.name});
+
+  final String id;
+  final String name;
+
+  factory SeenBy.fromJson(Map<String, dynamic> json) =>
+      SeenBy(id: '${json['id']}', name: json['name'] as String? ?? '');
+}
+
+/// "Seen by Marta Vieira", or null when there is nobody to name.
+///
+/// ── Why the reader is left out ──────────────────────────────────
+///
+/// This is the substitute for claiming a thread (decision 6): the only thing
+/// standing between a customer and two different answers to the same email. It
+/// answers "is somebody ELSE on this", so the person reading it is removed from
+/// the list — "Seen by you" on every message you open would be noise, and worse,
+/// it would train people to ignore the line that matters.
+///
+/// [meId] is the account id from `/me`, so the comparison is against the same
+/// identity the server used when it recorded the read.
+String? seenBySentence(List<SeenBy> seen, String meId) {
+  final others = [
+    for (final person in seen)
+      if (person.id != meId && person.name.isNotEmpty) person.name,
+  ];
+
+  return switch (others.length) {
+    0 => null,
+    1 => 'Seen by ${others.first}',
+    2 => 'Seen by ${others.first} and ${others[1]}',
+    // Two names and a count, rather than a wall of them: the fact that matters
+    // is that this one is already being handled, and by whom first.
+    _ => 'Seen by ${others.first}, ${others[1]} and ${others.length - 2} others',
+  };
+}
+
+/// A row in the list — a HEADER, which is all that is ever fetched for a list.
+///
+/// Nothing here is a body. The owner's line is *"we don't want to store
+/// thousands and thousands of emails on our database"*, and the shape of that
+/// decision at this end is that the list holds enough to choose from and the
+/// message is fetched when it is opened.
+@immutable
+class MessageHeader {
+  const MessageHeader({
+    required this.id,
+    required this.fromName,
+    required this.fromAddress,
+    required this.subject,
+    required this.preview,
+    required this.receivedAt,
+    required this.unread,
+    required this.hasAttachments,
+    required this.seenBy,
+  });
+
+  final String id;
+  final String fromName;
+  final String fromAddress;
+  final String subject;
+  final String preview;
+
+  /// ISO-8601, as the server sent it. Formatted for display through
+  /// core/timestamps.dart against the organization's own §6 formats, never
+  /// here — a date written the way this file felt like writing it is the bug
+  /// that file exists to prevent.
+  final String? receivedAt;
+
+  final bool unread;
+  final bool hasAttachments;
+  final List<SeenBy> seenBy;
+
+  /// Who it is from, in one line: their name where there is one, and the
+  /// address where there is not. Never the name alone with the address thrown
+  /// away — in a shared inbox the address is half of knowing who is writing.
+  String get from => fromName.isEmpty ? fromAddress : '$fromName <$fromAddress>';
+
+  factory MessageHeader.fromJson(Map<String, dynamic> json) {
+    final from = json['from'] as Map<String, dynamic>? ?? const {};
+
+    return MessageHeader(
+      id: '${json['id']}',
+      fromName: from['name'] as String? ?? '',
+      fromAddress: from['address'] as String? ?? '',
+      subject: json['subject'] as String? ?? '',
+      preview: json['preview'] as String? ?? '',
+      receivedAt: json['received_at'] as String?,
+      unread: json['unread'] == true,
+      hasAttachments: json['has_attachments'] == true,
+      seenBy: readSeenBy(json['seen_by']),
+    );
+  }
+}
+
+/// A file that came with the message, named but not held.
+///
+/// Attachments are not stored (decision 2) and this window does not download
+/// them. Naming them anyway is the honest half: a message whose only content is
+/// a quote PDF would otherwise read as an empty email.
+@immutable
+class MailAttachment {
+  const MailAttachment({required this.name, required this.size});
+
+  final String name;
+
+  /// Bytes, or null where the provider did not say.
+  final int? size;
+
+  factory MailAttachment.fromJson(Map<String, dynamic> json) => MailAttachment(
+    name: json['name'] as String? ?? '',
+    size: json['size'] as int?,
+  );
+}
+
+/// One message, opened.
+@immutable
+class MessageDetail {
+  const MessageDetail({
+    required this.id,
+    required this.subject,
+    required this.fromName,
+    required this.fromAddress,
+    required this.to,
+    required this.receivedAt,
+    required this.seenBy,
+    required this.blocks,
+    required this.attachments,
+    required this.replyAs,
+    required this.replyToName,
+    required this.replyTo,
+    required this.replySubject,
+  });
+
+  final String id;
+  final String subject;
+  final String fromName;
+  final String fromAddress;
+  final List<String> to;
+  final String? receivedAt;
+  final List<SeenBy> seenBy;
+
+  /// The body, sanitised into blocks. Never markup — see message_blocks.dart.
+  final List<MailBlock> blocks;
+
+  final List<MailAttachment> attachments;
+
+  /// The address a reply goes out AS, exactly as the server stated it.
+  ///
+  /// Null when the server said nothing, and then the screen does not offer to
+  /// reply. That is not defensiveness for its own sake: *"info replies as
+  /// info"* is the rule, and a reply composed against an address this client
+  /// guessed is the one way to break it silently.
+  final String? replyAs;
+
+  /// The name that address sends under, where the organization set one.
+  final String? replyToName;
+
+  final List<String> replyTo;
+  final String? replySubject;
+
+  String get from => fromName.isEmpty ? fromAddress : '$fromName <$fromAddress>';
+
+  factory MessageDetail.fromJson(Map<String, dynamic> json) {
+    final from = json['from'] as Map<String, dynamic>? ?? const {};
+    final reply = json['reply'] as Map<String, dynamic>? ?? const {};
+    final as = reply['as'] as Map<String, dynamic>? ?? const {};
+
+    return MessageDetail(
+      id: '${json['id']}',
+      subject: json['subject'] as String? ?? '',
+      fromName: from['name'] as String? ?? '',
+      fromAddress: from['address'] as String? ?? '',
+      to: _addresses(json['to']),
+      receivedAt: json['received_at'] as String?,
+      seenBy: readSeenBy(json['seen_by']),
+      blocks: readMailBlocks(json['blocks']),
+      attachments: [
+        for (final entry in (json['attachments'] as List? ?? const []))
+          if (entry is Map<String, dynamic>) MailAttachment.fromJson(entry),
+      ],
+      replyAs: as['address'] as String?,
+      replyToName: as['name'] as String?,
+      replyTo: _addresses(reply['to']),
+      replySubject: reply['subject'] as String?,
+    );
+  }
+}
+
+List<SeenBy> readSeenBy(Object? json) => [
+  for (final entry in (json as List? ?? const []))
+    if (entry is Map<String, dynamic>) SeenBy.fromJson(entry),
+];
+
+List<String> _addresses(Object? json) => [
+  for (final entry in (json as List? ?? const []))
+    if (entry is String) entry,
+];

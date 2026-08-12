@@ -882,6 +882,150 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
             ),
 
+            /*
+             * ── Email: shared team inboxes ───────────────────────
+             *
+             * The owner: *"In this module the client will be able to add his
+             * emails to this ezbizi module [and it] will work as a Mailbox."*
+             * And what it is FOR, which rules a great deal out: *"the capacity
+             * to let people answer emails they don't regularly have access to —
+             * like company wide emails that receive customer emails or forms"*.
+             *
+             * So it is an access-controlled WINDOW onto addresses like info@,
+             * and not a CRM mail integration: mail is not linked to customers or
+             * jobs, nothing is mirrored into the database, and messages are read
+             * from the provider while somebody is looking at them.
+             *
+             * ── Four actions, and each has code behind it ────────
+             *
+             * A permission with nothing behind it enforces nothing and shows up
+             * on the roles screen as a switch granting a capability the software
+             * does not have (see ModuleRegistry, and Marketing's note). All four
+             * are real here, and the split between them is the one that matters
+             * in this module:
+             *
+             *   view    — READ an inbox. Also requires a grant for that
+             *             particular inbox, which is not a permission and
+             *             cannot be one; see App\Models\MailboxGrant for why
+             *             per-inbox access is a tenant record rather than a row
+             *             in the platform-wide `permissions` table.
+             *   create  — connect a new address.
+             *   edit    — rename or reconnect one, and hand a role access to it.
+             *   delete  — disconnect one.
+             *
+             * Connecting an inbox and READING it are deliberately different
+             * authorities: whoever sets a mailbox up is usually not whoever
+             * answers it, and reading is the invisible one. App\Support\Email\
+             * MailboxAccess holds that split.
+             *
+             * ── No subject, and the reason is this module's own ──
+             *
+             * HR declares none because its events are about three kinds of
+             * record; Marketing because its record does not exist yet. This one
+             * declares none because the record CANNOT exist: the events below
+             * are about a MESSAGE, and there is deliberately no Message model —
+             * the owner's decision was *"we don't want to store thousands and
+             * thousands of emails on our database"*, so a message is fetched
+             * live and never written down. AutomationSubject takes a class-
+             * string of an Eloquent model, and there is no honest one to name.
+             *
+             * It costs what it costs HR: the builder cannot grey out "Update a
+             * field" under one of these triggers in advance, so somebody can
+             * pick it and be refused at save, in a sentence.
+             */
+            new ModuleDefinition(
+                key:   'email',
+                label: 'Email',
+                triggers: [
+                    /*
+                     * THE ONE THIS MODULE EXISTS FOR, AND NOTHING RAISES IT.
+                     *
+                     * "An email arrived at a shared inbox" is the most valuable
+                     * trigger in this application — it is the front door of a
+                     * service business, and every rule somebody would want here
+                     * hangs off it: tell the branch, raise a task, chase it if
+                     * nobody has opened it by the afternoon.
+                     *
+                     * It is declared `isRaised: false` because that is the
+                     * truth, and the truth has a specific shape worth stating so
+                     * that whoever wires it knows exactly what is missing.
+                     * Reading is LIVE and pull-based: mail is fetched when
+                     * somebody opens the screen and at no other time. NOTHING
+                     * POLLS. So no code anywhere learns that a message exists
+                     * until a human being looks, and an event raised at that
+                     * moment would fire hours late and only for mail somebody
+                     * had already read — which is worse than not firing, because
+                     * a rule that says "tell the branch about new mail" would
+                     * tell them about mail that had just been dealt with.
+                     *
+                     * What has to exist first is a way to be TOLD by the
+                     * provider rather than asking: a Gmail push subscription
+                     * delivering to a webhook, or an IMAP IDLE connection held
+                     * open by a worker. Either is a real piece of infrastructure
+                     * — an endpoint the outside world can reach, and a
+                     * subscription that has to be renewed — and neither is
+                     * something this module can quietly grow.
+                     *
+                     * Declared and marked rather than hidden, which is the call
+                     * TriggerDefinition::NOT_RAISED_YET exists to make: a hidden
+                     * trigger is one a tenant cannot build a rule on; a listed
+                     * one with no warning is one they build a rule on, switch
+                     * on, and never hear from again.
+                     */
+                    new TriggerDefinition(
+                        key:   'email.received',
+                        label: 'An email arrived',
+                        description: 'A message reached one of the shared inboxes. It would '
+                            .'carry which inbox, who it is from and the subject — never the '
+                            .'contents, which are not stored anywhere. Nothing watches the '
+                            .'inboxes yet: mail is fetched from the mail service only while '
+                            .'somebody has the screen open, so until EzBizi is told about new '
+                            .'mail as it lands, there is no moment at which this could fire.',
+                        isRaised: false,
+                    ),
+
+                    /*
+                     * The other half, and this one IS raised — by
+                     * MailboxMessagesController after a reply actually leaves.
+                     *
+                     * Worth having on day one rather than day two: "somebody
+                     * answered from the shared inbox" is the event a manager
+                     * builds a rule on, and it is the only thing that happens in
+                     * this module that this application itself causes.
+                     */
+                    new TriggerDefinition(
+                        key:   'email.replied',
+                        label: 'A reply was sent',
+                        description: 'Somebody answered a message from a shared inbox. It '
+                            .'carries which inbox it went out from and who typed it — the '
+                            .'reply goes to the customer as the inbox itself, never as the '
+                            .'individual, so this is the only place that records which of them '
+                            .'it was.',
+                    ),
+                ],
+                /*
+                 * Deliberately no action that SENDS. A rule that could compose
+                 * and send mail from a business's public address, to whoever
+                 * wrote in, with nobody reading it first, is the same objection
+                 * Marketing records against a rule that writes a newsletter —
+                 * and it is worse here, because the recipient is a specific
+                 * customer who asked a specific question.
+                 *
+                 * The one action offered is the one that is safe by
+                 * construction: it changes something inside EzBizi and sends
+                 * nothing to anybody outside it.
+                 */
+                automationActions: [
+                    new ActionDefinition(
+                        key:   'email.mark_seen',
+                        label: 'Mark a message as dealt with',
+                        description: 'Records that a message in a shared inbox has been picked '
+                            .'up, so it stops showing as waiting for somebody. It changes what '
+                            .'the team sees in EzBizi and sends nothing to anyone.',
+                    ),
+                ],
+            ),
+
             new ModuleDefinition(
                 // Renamed from 'workflows' on 2026-08-10, permission keys and
                 // all — see the rename migration of that date. The product says

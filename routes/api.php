@@ -18,6 +18,8 @@ use App\Http\Controllers\Api\HrOnboardingsController;
 use App\Http\Controllers\Api\HrPeopleController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
+use App\Http\Controllers\Api\MailboxesController;
+use App\Http\Controllers\Api\MailboxMessagesController;
 use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\PasswordController;
@@ -328,6 +330,64 @@ Route::prefix('v1')
         // it from nothing: a role the organization has not granted the tab to is
         // refused here in a sentence, like everywhere else.
         Route::get('marketing/newsletter', [MarketingController::class, 'newsletter']);
+
+        // ── Email: shared team inboxes ───────────────────────────
+        //
+        // The owner's purpose, which decides the shape of every route below:
+        // "the capacity to let people answer emails they don't regularly have
+        // access to — like company wide emails that receive customer emails or
+        // forms". An access-controlled window onto info@, not a CRM mail
+        // integration — nothing here links a message to a customer or a job, and
+        // nothing stores one.
+        //
+        // ── Two surfaces, two authorities ───────────────────────
+        //
+        // MailboxesController MANAGES connections: `email.create`, `email.edit`
+        // and `email.delete`, plus §4 reach over the level an inbox hangs off.
+        // MailboxMessagesController READS: `email.view`, plus reach, PLUS a
+        // grant for that particular inbox. Connecting a mailbox and reading
+        // somebody's correspondence are different sizes of authority, and only
+        // the second is invisible.
+        //
+        // The per-inbox grant is a TENANT record and deliberately not a
+        // permission row — App\Models\MailboxGrant sets out why putting one
+        // tenant's inbox addresses into the platform-wide `permissions` table
+        // would be a boundary break.
+        //
+        // There is NO grant route in this block, and that is deliberate. Grants
+        // are written where roles are written: `PATCH /roles/{role}` carries an
+        // `inboxes` list beside `permissions`, which is what the roles editor
+        // actually saves. Two endpoints writing `mailbox_grants` under two
+        // slightly different rules is how the rule ends up depending on which
+        // one a client called — see the note where they used to be, in
+        // MailboxesController.
+        //
+        // ── The message id is a PATH SEGMENT and is opaque ──────
+        //
+        // It is the provider's own id, never anything this application issued,
+        // and it is used for exactly two things: asking the provider for that
+        // message, and as the key of a `message_seen` row. It is not a database
+        // id, so it cannot be enumerated to reach another tenant's anything —
+        // the mailbox in the path is the tenant-scoped model, and it is the
+        // authorization subject.
+        //
+        // Gated inside the controllers rather than by policies, because the
+        // question is never about the Mailbox model alone: it is permission AND
+        // grant AND reach, and App\Support\Email\MailboxAccess is the one place
+        // all three are asked.
+        Route::get('mailboxes', [MailboxesController::class, 'index']);
+        Route::post('mailboxes', [MailboxesController::class, 'store']);
+
+        Route::patch('mailboxes/{mailbox}', [MailboxesController::class, 'update']);
+        Route::delete('mailboxes/{mailbox}', [MailboxesController::class, 'destroy']);
+        Route::post('mailboxes/{mailbox}/connect', [MailboxesController::class, 'connect']);
+
+        Route::get('mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'index']);
+        Route::get('mailboxes/{mailbox}/messages/{message}', [MailboxMessagesController::class, 'show']);
+        Route::post('mailboxes/{mailbox}/messages/{message}/reply',
+            [MailboxMessagesController::class, 'reply']);
+        Route::post('mailboxes/{mailbox}/messages/{message}/seen',
+            [MailboxMessagesController::class, 'markSeen']);
 
         // ── Attachments (§9, §11) ────────────────────────────────
         //

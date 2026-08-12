@@ -308,6 +308,422 @@ void main() {
     expect(find.text('Approve one'), findsOneWidget);
   });
 
+  /// ── The organization's own inboxes, nested under the module ────
+  ///
+  /// The owner: "the organization can grant access to the email module to a
+  /// role, but not necessary to all the emails connected to the module."
+  ///
+  /// Everything about these rows is tenant data — the addresses exist because
+  /// somebody connected them — so they arrive on the same answer as the modules
+  /// and this end knows nothing about them beyond where to nest them.
+  group('inboxes nested under their module', () {
+    testWidgets('the tree carries this organization\'s own addresses', (
+      tester,
+    ) async {
+      _wide(tester);
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-2', 'Manager', permissions: const [])],
+        catalogue: [
+          _catalogueModule('customers', 'Customers'),
+          _catalogueModule(
+            'email',
+            'Email',
+            actions: const [('view', 'View'), ('send', 'Send')],
+            inboxes: [_inbox('mb-1', 'info@a-1chimney.com')],
+          ),
+        ],
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Email'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('info@a-1chimney.com'), findsOneWidget);
+
+      // And nothing under a module the server sent no inboxes for. The absence
+      // of the key is the statement "this module has nothing to do with mail",
+      // and it must not draw an empty Inboxes heading under Customers.
+      await tester.tap(find.text('Customers'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Inboxes'), findsOneWidget);
+    });
+
+    /// The control that carries the whole point: the tab is one grant and the
+    /// inbox is another.
+    testWidgets('ticking the tab grants no inbox, and says so', (tester) async {
+      _wide(tester);
+
+      Map<String, dynamic>? sent;
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-2', 'Manager', permissions: const [])],
+        catalogue: [
+          _catalogueModule(
+            'email',
+            'Email',
+            actions: const [('view', 'View')],
+            inboxes: [
+              _inbox('mb-1', 'info@a-1chimney.com'),
+              _inbox('mb-2', 'billing@everdoors.com'),
+            ],
+          ),
+        ],
+        onPatch: (body) => sent = body,
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(_tabCheckbox('email'));
+      await tester.pumpAndSettle();
+
+      expect(_tabState('email'), isTrue, reason: 'The one action is granted.');
+
+      // Visible without opening anything. Somebody who ticked Email expecting
+      // it to include the mail can see that it did not.
+      expect(
+        find.textContaining('No inboxes granted, of 2'),
+        findsOneWidget,
+        reason:
+            'A tab that quietly granted nothing, with nothing saying so, is how '
+            'somebody concludes the mail is covered and stops checking.',
+      );
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(sent!['permissions'], ['email.view']);
+      expect(
+        sent!['inboxes'],
+        isEmpty,
+        reason: 'Switching the tab on must not hand out anybody’s mail.',
+      );
+    });
+
+    /// And the other direction, which IS implied: an inbox behind a tab the role
+    /// cannot open opens nothing, and the server refuses to store it.
+    testWidgets('ticking an inbox grants the tab it lives on', (tester) async {
+      _wide(tester);
+
+      Map<String, dynamic>? sent;
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-2', 'Manager', permissions: const [])],
+        catalogue: [
+          _catalogueModule(
+            'email',
+            'Email',
+            actions: const [('view', 'View'), ('send', 'Send')],
+            inboxes: [
+              _inbox('mb-1', 'info@a-1chimney.com'),
+              _inbox('mb-2', 'billing@everdoors.com'),
+            ],
+          ),
+        ],
+        onPatch: (body) => sent = body,
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Email'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('inbox:mb-2')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(sent!['permissions'], ['email.view']);
+      expect(sent!['inboxes'], ['mb-2']);
+
+      // The control assertion. Without it this passes just as well against an
+      // editor that grants every inbox the moment one is ticked.
+      expect(sent!['inboxes'], isNot(contains('mb-1')));
+    });
+
+    /// Revoking has to be as reachable as granting. It is the same box.
+    testWidgets('unticking a granted inbox takes it back', (tester) async {
+      _wide(tester);
+
+      Map<String, dynamic>? sent;
+
+      await _pumpRoles(
+        tester,
+        roles: [
+          _role(
+            'r-2',
+            'Manager',
+            permissions: ['email.view'],
+            inboxes: ['mb-1', 'mb-2'],
+          ),
+        ],
+        catalogue: [
+          _catalogueModule(
+            'email',
+            'Email',
+            actions: const [('view', 'View')],
+            inboxes: [
+              _inbox('mb-1', 'info@a-1chimney.com'),
+              _inbox('mb-2', 'billing@everdoors.com'),
+            ],
+          ),
+        ],
+        onPatch: (body) => sent = body,
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('2 of 2 inboxes granted'), findsOneWidget);
+
+      await tester.tap(find.text('Email'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('inbox:mb-1')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(sent!['inboxes'], ['mb-2']);
+      // The tab survives losing an inbox — they are separate grants in both
+      // directions.
+      expect(sent!['permissions'], ['email.view']);
+    });
+
+    /// An organization that has connected nothing sees a sentence, never a
+    /// nested list with nothing in it.
+    testWidgets('a module with no inboxes yet explains itself', (tester) async {
+      _wide(tester);
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-2', 'Manager', permissions: const [])],
+        catalogue: [
+          _catalogueModule(
+            'email',
+            'Email',
+            actions: const [('view', 'View')],
+            inboxes: const [],
+          ),
+        ],
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('No inboxes connected yet.'), findsOneWidget);
+
+      await tester.tap(find.text('Email'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('appear here as soon as somebody does'),
+        findsOneWidget,
+        reason:
+            'An empty list under a heading is indistinguishable from a screen '
+            'that failed to load.',
+      );
+
+      // The heading is there and there is nothing under it to tick, which is
+      // the control: the sentence is not being drawn beside real rows.
+      expect(find.byType(CheckboxListTile), findsOneWidget);
+    });
+
+    /// §4 again, one level down: a role can hold an inbox the person editing it
+    /// cannot open. Shown, ticked, dead — and out of the payload, because
+    /// naming it is a 422 for the whole save and omitting it is not a removal.
+    testWidgets('an inbox the editor cannot open is shown, dead, and preserved',
+        (tester) async {
+      _wide(tester);
+
+      Map<String, dynamic>? sent;
+
+      await _pumpRoles(
+        tester,
+        roles: [
+          _role(
+            'r-2',
+            'Supervisor',
+            permissions: ['email.view'],
+            inboxes: ['mb-1', 'mb-2'],
+          ),
+        ],
+        catalogue: [
+          _catalogueModule(
+            'email',
+            'Email',
+            actions: const [('view', 'View')],
+            inboxes: [
+              _inbox('mb-1', 'info@a-1chimney.com'),
+              _inbox('mb-2', 'payroll@everdoors.com', grantable: false),
+            ],
+          ),
+        ],
+        onPatch: (body) => sent = body,
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Email'));
+      await tester.pumpAndSettle();
+
+      final payroll = tester.widget<CheckboxListTile>(
+        find.byKey(const ValueKey('inbox:mb-2')),
+      );
+
+      expect(payroll.value, isTrue, reason: 'The role does hold it.');
+      expect(payroll.onChanged, isNull, reason: 'This person cannot move it.');
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(sent!['inboxes'], ['mb-1']);
+    });
+
+    /// Switching the tab off takes the mail with it — the state the server
+    /// refuses is one the editor never produces.
+    testWidgets('unticking the tab clears the inboxes under it', (tester) async {
+      _wide(tester);
+
+      Map<String, dynamic>? sent;
+
+      await _pumpRoles(
+        tester,
+        roles: [
+          _role(
+            'r-2',
+            'Manager',
+            permissions: ['email.view'],
+            inboxes: ['mb-1'],
+          ),
+        ],
+        catalogue: [
+          _catalogueModule(
+            'email',
+            'Email',
+            actions: const [('view', 'View')],
+            inboxes: [_inbox('mb-1', 'info@a-1chimney.com')],
+          ),
+        ],
+        onPatch: (body) => sent = body,
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(_tabCheckbox('email'));
+      await tester.pumpAndSettle();
+
+      expect(_tabState('email'), isFalse);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(sent!['permissions'], isEmpty);
+      expect(
+        sent!['inboxes'],
+        isEmpty,
+        reason:
+            'A grant behind a tab the role cannot open opens nothing, and the '
+            'server refuses to store it.',
+      );
+    });
+
+    /// A catalogue with no inboxes anywhere must not make a statement about
+    /// them. Absent means "leave these alone"; an empty list means "this role
+    /// should hold none", and this editor never drew a control to say that.
+    testWidgets('a catalogue with no inbox module sends no inbox field', (
+      tester,
+    ) async {
+      _wide(tester);
+
+      Map<String, dynamic>? sent;
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-2', 'Manager', permissions: const [])],
+        catalogue: [_catalogueModule('customers', 'Customers')],
+        onPatch: (body) => sent = body,
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(_tabCheckbox('customers'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(sent!.containsKey('permissions'), isTrue);
+      expect(
+        sent!.containsKey('inboxes'),
+        isFalse,
+        reason:
+            'Sending an empty list here would revoke every inbox grant on a '
+            'role, from a screen that showed nobody a single inbox.',
+      );
+    });
+
+    /// R7: the tree is already dense and this adds a level to it.
+    testWidgets('it fits a 375px screen', (tester) async {
+      tester.view.physicalSize = const Size(375, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await _pumpRoles(
+        tester,
+        roles: [
+          _role(
+            'r-2',
+            'Manager',
+            permissions: ['email.view'],
+            inboxes: ['mb-1'],
+          ),
+        ],
+        catalogue: [
+          _catalogueModule(
+            'email',
+            'Email',
+            actions: const [('view', 'View'), ('send', 'Send')],
+            inboxes: [
+              _inbox(
+                'mb-1',
+                'scheduling@a-1chimneyandfireplace.com',
+                name: 'Scheduling',
+              ),
+              _inbox('mb-2', 'billing@everdoors.com'),
+            ],
+          ),
+        ],
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Email'));
+      await tester.pumpAndSettle();
+
+      // The named one shows both facts: "Scheduling" is not enough to know
+      // which mail a role would be reading.
+      expect(find.text('Scheduling'), findsOneWidget);
+      expect(
+        find.text('scheduling@a-1chimneyandfireplace.com'),
+        findsOneWidget,
+      );
+
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'A long address must wrap rather than overflow at 375px.',
+      );
+    });
+  });
+
   /// Settings carries the editor, and only for somebody who can reach it.
   group('the roles tab in Settings', () {
     testWidgets('appears when /me says the module is reachable', (
@@ -462,6 +878,7 @@ Map<String, dynamic> _role(
   String id,
   String name, {
   required List<String> permissions,
+  List<String> inboxes = const [],
   bool editable = true,
   int users = 1,
 }) => {
@@ -470,8 +887,25 @@ Map<String, dynamic> _role(
   'is_administrator': !editable,
   'user_count': users,
   'permissions': permissions,
+  // Mailbox ids, not addresses. What the row carries is what a save sends
+  // back; the words beside them come from the catalogue.
+  'inboxes': inboxes,
   'may_edit': editable,
   'may_delete': editable,
+};
+
+/// One of the organization's shared inboxes, as `/roles/catalogue` sends it
+/// nested under the module that owns it.
+Map<String, dynamic> _inbox(
+  String id,
+  String address, {
+  String? name,
+  bool grantable = true,
+}) => {
+  'id': id,
+  'address': address,
+  'label': name,
+  'grantable': grantable,
 };
 
 /// One module in the grantable tree. The default action set is the CRUD one the
@@ -489,6 +923,11 @@ Map<String, dynamic> _catalogueModule(
     ('edit', 'Edit'),
     ('delete', 'Delete'),
   ],
+  /// Null — the default — means the key is ABSENT from the answer, which is how
+  /// the server says a module has nothing to do with mail. An empty list is a
+  /// different statement: it takes inboxes and this organization has connected
+  /// none.
+  List<Map<String, dynamic>>? inboxes,
 }) => {
   'key': key,
   'label': label,
@@ -503,6 +942,7 @@ Map<String, dynamic> _catalogueModule(
         'grantable': !ungrantable.contains(action),
       },
   ],
+  'inboxes': ?inboxes,
 };
 
 /// An administrator, holding the whole catalogue as a LIST rather than a

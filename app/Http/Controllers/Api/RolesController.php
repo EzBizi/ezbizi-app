@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Invitation;
 use App\Models\Role;
+use App\Support\Access\InboxAccess;
 use App\Support\Audit\AuditLogger;
 use App\Support\Modules\PermissionCatalogue;
 use Illuminate\Http\JsonResponse;
@@ -43,12 +44,24 @@ use Illuminate\Validation\ValidationException;
  * role they are allowed to edit, who ticks one box too many, has not done
  * anything forbidden — they have sent a list that needs one item removed, and
  * the response names it.
+ *
+ * ── A role holds two kinds of thing, and only one is a key ───────
+ *
+ * `permissions` is what the software can do, declared in code, identical for
+ * every tenant. `inboxes` is which of THIS organization's shared mailboxes a
+ * role may open — tenant records, unknown to the software until somebody
+ * connects one, and therefore not permission keys. InboxAccess argues that at
+ * length; what matters here is that the two travel as separate fields and obey
+ * the same rules, so a caller sending one, the other, or neither gets consistent
+ * behaviour: absent means leave it alone, present means this is the complete
+ * set within the window of what the caller may grant.
  */
 class RolesController extends Controller
 {
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly PermissionCatalogue $catalogue,
+        private readonly InboxAccess $inboxes,
     ) {}
 
     /**
@@ -66,6 +79,12 @@ class RolesController extends Controller
 
         $roles = Role::query()->withCount('users')->orderBy('name')->get();
 
+        // Every role's inbox grants in one query rather than one per row. The
+        // list draws all of them, and a screen that costs a query per role is a
+        // screen that gets slower as an organization gets more careful about
+        // access.
+        $inboxes = $this->inboxes->heldByRoles($roles);
+
         return response()->json([
             'data' => $roles->map(fn (Role $role) => [
                 'id'               => $role->id,
@@ -82,6 +101,13 @@ class RolesController extends Controller
                     ? $this->catalogue->keys()
                     : $role->permissionKeys(),
 
+                // The mailbox ids this role may open. Ids rather than addresses:
+                // this is what the editor ticks and what a save sends back, and
+                // an address is a label that can be changed. The addresses to
+                // draw beside them come from the catalogue, once, rather than
+                // being repeated on every role.
+                'inboxes' => $inboxes[$role->id] ?? [],
+
                 'may_edit'   => $user->can('update', $role),
                 'may_delete' => $user->can('delete', $role),
             ])->all(),
@@ -95,13 +121,30 @@ class RolesController extends Controller
      * hand here. A module that declares a new action appears in the editor on
      * the deploy that adds it, with no edit to this file — which is the §5.5
      * standing rule and the §2.1 no-hardcoding rule meeting at the same place.
+     *
+     * ── And then composed with the organization's own inboxes ────
+     *
+     * The static tree still comes from PermissionCatalogue, unchanged and
+     * complete. InboxAccess hangs this tenant's shared mailboxes off the one
+     * module that owns them, so the editor draws
+     *
+     *     Email
+     *       * info@a-1chimney.com
+     *
+     * from two sources that stay separate underneath: a platform permission
+     * catalogue every tenant shares, and tenant records no other tenant can see.
      */
     public function catalogue(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Role::class);
 
+        $actor = $request->user();
+
         return response()->json([
-            'modules' => $this->catalogue->grantableTreeFor($request->user()),
+            'modules' => $this->inboxes->compose(
+                $this->catalogue->grantableTreeFor($actor),
+                $actor,
+            ),
         ]);
     }
 
@@ -114,9 +157,12 @@ class RolesController extends Controller
         $actor = $request->user();
 
         $requested = $input['permissions'] ?? [];
-        $this->catalogue->assertGrantable($actor, $requested);
+        $inboxes   = $input['inboxes'] ?? [];
 
-        $role = DB::transaction(function () use ($input, $requested, $actor) {
+        $this->catalogue->assertGrantable($actor, $requested);
+        $this->inboxes->assertGrantable($actor, $inboxes);
+
+        $role = DB::transaction(function () use ($input, $requested, $inboxes, $actor) {
             $role = Role::create([
                 'organization_id' => $actor->organization_id,
                 'name'            => trim($input['name']),
@@ -125,11 +171,21 @@ class RolesController extends Controller
 
             $changed = $role->syncPermissionKeys($requested);
 
+            // AFTER the permissions, because "may this role open the Email tab"
+            // is a question about the role as it will be. Creating a role with
+            // the tab and an inbox under it in one request is the ordinary case.
+            $this->inboxes->assertReachable($role, $inboxes);
+            $mail = $this->inboxes->sync($role, $inboxes);
+
             // One entry, with the permissions in it. A "role created" line
             // followed by nothing about what it can do is the entry somebody
             // reads six months later and learns nothing from.
             $this->audit->log('role.created', $role, metadata: [
                 'permissions' => $changed['added'],
+                // In addresses, not ids — see InboxAccess::sync. An id in an
+                // audit entry is a fact nobody can read, and it stops resolving
+                // to anything the day the inbox is disconnected.
+                'inboxes' => $mail['added'],
             ]);
 
             return $role;
@@ -163,26 +219,53 @@ class RolesController extends Controller
                 }
             }
 
-            if (! array_key_exists('permissions', $input)) {
+            if (array_key_exists('permissions', $input)) {
+                $this->catalogue->assertGrantable($actor, $input['permissions']);
+
+                $changed = $role->syncPermissionKeys([
+                    ...$input['permissions'],
+                    ...$this->catalogue->preservedFor($role, $actor),
+                ]);
+
+                // Its own action, and both directions recorded. "Permissions
+                // changed" with no list is the one audit entry somebody will
+                // actually need and cannot use — the question is never whether a
+                // role was edited, it is what it gained.
+                if ($changed['added'] !== [] || $changed['removed'] !== []) {
+                    $this->audit->log('role.permissions_changed', $role, changes: $changed);
+                }
+            }
+
+            if (! array_key_exists('inboxes', $input)) {
                 return;
             }
 
-            $this->catalogue->assertGrantable($actor, $input['permissions']);
+            $this->inboxes->assertGrantable($actor, $input['inboxes']);
 
-            $changed = $role->syncPermissionKeys([
-                ...$input['permissions'],
-                ...$this->catalogue->preservedFor($role, $actor),
-            ]);
+            $wanted = [
+                ...$input['inboxes'],
+                // The same window as the permissions above: an inbox this person
+                // cannot open was never a live control in their editor, so
+                // leaving it out is not a decision to revoke it.
+                ...$this->inboxes->preservedFor($role, $actor),
+            ];
 
-            if ($changed['added'] === [] && $changed['removed'] === []) {
+            // Asked of the role as this request will leave it — the permissions
+            // block above has already run, so ticking Email and an inbox under
+            // it in one save goes through and an inbox on its own does not.
+            $this->inboxes->assertReachable($role, $wanted);
+
+            $mail = $this->inboxes->sync($role, $wanted);
+
+            if ($mail['added'] === [] && $mail['removed'] === []) {
                 return;
             }
 
-            // Its own action, and both directions recorded. "Permissions
-            // changed" with no list is the one audit entry somebody will
-            // actually need and cannot use — the question is never whether a
-            // role was edited, it is what it gained.
-            $this->audit->log('role.permissions_changed', $role, changes: $changed);
+            // Its own action, beside the permission one rather than folded into
+            // it. Reaching a tab and reaching somebody's mail are different
+            // sizes of decision, and an audit log that spells the second as a
+            // permission key nobody recognises buries the one that matters.
+            $this->audit->log('role.inboxes_changed', $role, changes: $mail);
         });
 
         return response()->json(['data' => $this->present($role->fresh())]);
@@ -265,6 +348,11 @@ class RolesController extends Controller
             // together or not at all.
             $this->audit->log('role.deleted', $role, metadata: [
                 'permissions' => $role->permissionKeys(),
+                // The mail goes with it — `mailbox_grants.role_id` cascades — so
+                // this line is the only record left that this role could read
+                // somebody's inbox. Addresses rather than ids, for the reason
+                // InboxAccess::sync gives: an id here resolves to nothing.
+                'inboxes' => $this->inboxes->addressesHeldBy($role),
             ]);
 
             $role->permissions()->detach();
@@ -299,6 +387,15 @@ class RolesController extends Controller
             // "leave the permissions alone".
             'permissions'   => ['sometimes', 'array'],
             'permissions.*' => ['string', 'max:120'],
+
+            // The shared inboxes this role may open, by mailbox id, on exactly
+            // the terms above: present-and-empty means "no inboxes", absent
+            // means "leave them alone". Which ids are real is not a validation
+            // rule — it is a tenant question, answered against this
+            // organization's own mail in InboxAccess::assertGrantable, where the
+            // refusal can say something useful.
+            'inboxes'   => ['sometimes', 'array'],
+            'inboxes.*' => ['string', 'max:64'],
         ]);
     }
 
@@ -309,6 +406,7 @@ class RolesController extends Controller
             'name'             => $role->name,
             'is_administrator' => $role->isAdministrator(),
             'permissions'      => $role->permissionKeys(),
+            'inboxes'          => $this->inboxes->heldBy($role),
         ];
     }
 }
