@@ -398,6 +398,8 @@ class ContractWriting extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return DecoratedBox(
       decoration: BoxDecoration(
         border: Border.all(color: EzBiziTheme.edge(context)),
@@ -409,41 +411,64 @@ class ContractWriting extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (canEdit) ...[
-              _tags(context),
+              // The palette is chrome and takes the tinted surface, so the
+              // writing area below reads as the one part of this box you type
+              // into rather than the two being one undifferentiated panel.
+              ColoredBox(
+                color: scheme.surfaceContainerLow,
+                child: _tags(context),
+              ),
               Divider(height: 1, color: EzBiziTheme.edge(context)),
             ],
-            SizedBox(
-              height: _tall,
-              child: TextField(
-                controller: page.body,
-                focusNode: page.writing,
-                // Read-only rather than DISABLED, which is the difference
-                // between a reader who can scroll a four-page contract and
-                // select a clause out of it and one who is handed a greyed box
-                // they cannot even move. The caret is hidden with it, so
-                // nothing invites typing that would go nowhere; the palette
-                // above is gone for the same reason.
-                readOnly: !canEdit,
-                showCursor: canEdit,
-                expands: true,
-                maxLines: null,
-                textAlignVertical: TextAlignVertical.top,
-                keyboardType: TextInputType.multiline,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(height: 1.6, fontSize: 14),
-                decoration: InputDecoration(
-                  // A page to write on, not a form control: the app's boxed,
-                  // filled input styling around a five-hundred-word document
-                  // makes it look like a comment field.
-                  filled: false,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
-                  hintText: _hint(),
-                  hintMaxLines: 6,
+            // ── Why this is filled rather than left to the page ────
+            //
+            // It was transparent, and the owner said so. `filled: false` plus
+            // no border was meant to stop it looking like a comment box, and
+            // overshot: with nothing painted behind it the scaffold's grey
+            // showed through, so the one region on the screen you are supposed
+            // to type into was the only one with no surface of its own. A
+            // writing surface has to look like paper.
+            //
+            // `surface` rather than the page's white: this half is chrome and
+            // follows the theme, so it is white in light mode and dark in dark
+            // mode. The document beside it is white in BOTH, and that
+            // difference is the whole boundary — see ContractDocumentPage.
+            ColoredBox(
+              color: scheme.surface,
+              child: SizedBox(
+                height: _tall,
+                child: TextField(
+                  controller: page.body,
+                  focusNode: page.writing,
+                  // Read-only rather than DISABLED, which is the difference
+                  // between a reader who can scroll a four-page contract and
+                  // select a clause out of it and one who is handed a greyed box
+                  // they cannot even move. The caret is hidden with it, so
+                  // nothing invites typing that would go nowhere; the palette
+                  // above is gone for the same reason.
+                  readOnly: !canEdit,
+                  showCursor: canEdit,
+                  expands: true,
+                  maxLines: null,
+                  textAlignVertical: TextAlignVertical.top,
+                  keyboardType: TextInputType.multiline,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(height: 1.6, fontSize: 14),
+                  decoration: InputDecoration(
+                    // The FIELD paints nothing — the ColoredBox above is the
+                    // surface. Material's own filled styling would draw a
+                    // rounded, shaded, underlined control, which around five
+                    // hundred words of contract reads as a comment box.
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    contentPadding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+                    hintText: _hint(),
+                    hintMaxLines: 6,
+                  ),
                 ),
               ),
             ),
@@ -503,9 +528,7 @@ class ContractWriting extends StatelessWidget {
           child: Row(
             children: [
               Icon(
-                over
-                    ? Icons.error_outline
-                    : Icons.speaker_notes_outlined,
+                over ? Icons.error_outline : Icons.speaker_notes_outlined,
                 size: 15,
                 color: over ? theme.colorScheme.error : null,
               ),
@@ -756,10 +779,7 @@ class ContractPagePane extends StatelessWidget {
           if (page.error != null) ...[
             const SizedBox(height: 8),
             ErrorNote(page.error!),
-            if (page.stale) ...[
-              const SizedBox(height: 8),
-              _staleNote(context),
-            ],
+            if (page.stale) ...[const SizedBox(height: 8), _staleNote(context)],
           ],
         ],
       ),
