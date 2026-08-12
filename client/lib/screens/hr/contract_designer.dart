@@ -63,19 +63,26 @@ import 'contract_form_preview.dart';
 /// question that must only have one. So this screen blocks a save when the FORM
 /// is unfinished, and never when it merely disagrees with a policy.
 ///
-/// ── The contract itself is step 4 ────────────────────────────────
+/// ── The contract itself is the LAST step ─────────────────────────
 ///
 /// The questions used to be the whole of it, and the document was generated
 /// from them. The owner's words: *"we are missing something critical which is
 /// the contract writing itself, you have the shortcodes but nowhere to put
 /// them."* A version now carries a `body` — the actual wording, with the field
-/// keys as merge tags in it — and [ContractBodyEditor] is where it is written,
-/// beside a live rendering of the page it makes.
+/// keys as merge tags in it — and [ContractWriting] is where it is written,
+/// beside a live rendering of the page it makes ([ContractPagePane], down the
+/// other half of the tab).
 ///
-/// It sits after the questions and before the form preview because that is the
-/// order the decisions happen in: a tag cannot be inserted before the question
-/// it names exists, and what each side is ASKED is a different question from
-/// what the document SAYS.
+/// It is last for a layout reason that turned out to be a design reason. It was
+/// fourth with a fixed-height surface, which is the wrong shape for the one
+/// field on this screen that holds a five-page document; and letting it grow
+/// where it sat would have pushed the steps beneath it further down with every
+/// paragraph typed. Last, it can be as long as the contract is.
+///
+/// The order still reads as the order the decisions happen in: a tag cannot be
+/// inserted before the question it names exists, what each side is ASKED is a
+/// different question from what the document SAYS, and the wording is written
+/// once both are settled.
 class ContractDesigner extends StatefulWidget {
   const ContractDesigner({
     super.key,
@@ -775,13 +782,27 @@ class _ContractDesignerState extends State<ContractDesigner> {
               const SizedBox(height: 26),
               _questionsStep(context),
               const SizedBox(height: 26),
-              _bodyStep(context),
-              const SizedBox(height: 26),
               _previewStep(context),
               if (_isEdit) ...[
                 const SizedBox(height: 26),
                 _historyStep(context),
               ],
+              // ── Last, because it is the one thing that grows ──────
+              //
+              // It was fourth, with a fixed 360px surface, and a writing
+              // surface that cannot grow is the wrong shape for the one field
+              // on the screen that holds a five-page document. Letting it grow
+              // where it was would have pushed the two steps under it further
+              // down the page with every paragraph — the owner's objection:
+              // *"it should grow, which i believe the best idea would be to
+              // move it as the last item, so it does not push the others
+              // endlessly."*
+              //
+              // Nothing below it now, so it can be as long as the contract is.
+              // The order still reads: decide what is asked, check who is asked
+              // it, then write the wording that uses the answers.
+              const SizedBox(height: 26),
+              _bodyStep(context),
               if (_error != null) ...[
                 const SizedBox(height: 20),
                 ErrorNote(_error!),
@@ -1336,7 +1357,9 @@ class _ContractDesignerState extends State<ContractDesigner> {
   /// The contract itself — the wording, and the page it makes.
   Widget _bodyStep(BuildContext context) {
     return NumberedStep(
-      number: 4,
+      // Last, and History only exists while editing — so the number depends on
+      // whether it is there. Hardcoding 6 would misnumber every new contract.
+      number: _isEdit ? 6 : 5,
       title: 'Write the contract',
       note:
           'The agreement itself, in your words. Anything in double braces is '
@@ -1354,7 +1377,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
 
   Widget _previewStep(BuildContext context) {
     return NumberedStep(
-      number: 5,
+      number: 4,
       title: 'What each side sees',
       note:
           'The form as it will be asked. This is the answer to “who fills it '
@@ -1378,7 +1401,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
     final current = widget.template?['version'];
 
     return NumberedStep(
-      number: 6,
+      number: 5,
       title: 'History',
       note: _history.isEmpty
           ? 'Every publish writes one of these, and each record remembers which '

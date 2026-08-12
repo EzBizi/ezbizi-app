@@ -389,12 +389,21 @@ class ContractWriting extends StatelessWidget {
 
   final bool canEdit;
 
-  /// Tall enough to write a clause in without the box being the whole column.
+  /// How tall the surface is before anything is written in it.
   ///
-  /// Fixed, because this sits inside the left column's scroll view: a surface
-  /// that grew with the text would push every later step down the page, and
-  /// `expands` has no meaning against unbounded height.
-  static const double _tall = 360;
+  /// ── It grows from here, and why that took a reorder ──────────
+  ///
+  /// This was a FIXED 360px box, because it sat fourth in a scrolling form and a
+  /// surface that grew would have pushed the two steps under it down the page
+  /// with every paragraph. The owner's answer was to move the step rather than
+  /// accept the box: *"it should grow, which i believe the best idea would be to
+  /// move it as the last item, so it does not push the others endlessly."*
+  ///
+  /// So this is a MINIMUM in lines rather than a height in pixels, and the field
+  /// grows past it with the text. Lines, because that is the unit the thing is
+  /// measured in — a pixel height has to be re-derived by hand every time the
+  /// font or the line height changes, and is wrong in the interval.
+  static const int _linesBeforeItGrows = 14;
 
   @override
   Widget build(BuildContext context) {
@@ -435,40 +444,40 @@ class ContractWriting extends StatelessWidget {
             // difference is the whole boundary — see ContractDocumentPage.
             ColoredBox(
               color: scheme.surface,
-              child: SizedBox(
-                height: _tall,
-                child: TextField(
-                  controller: page.body,
-                  focusNode: page.writing,
-                  // Read-only rather than DISABLED, which is the difference
-                  // between a reader who can scroll a four-page contract and
-                  // select a clause out of it and one who is handed a greyed box
-                  // they cannot even move. The caret is hidden with it, so
-                  // nothing invites typing that would go nowhere; the palette
-                  // above is gone for the same reason.
-                  readOnly: !canEdit,
-                  showCursor: canEdit,
-                  expands: true,
-                  maxLines: null,
-                  textAlignVertical: TextAlignVertical.top,
-                  keyboardType: TextInputType.multiline,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(height: 1.6, fontSize: 14),
-                  decoration: InputDecoration(
-                    // The FIELD paints nothing — the ColoredBox above is the
-                    // surface. Material's own filled styling would draw a
-                    // rounded, shaded, underlined control, which around five
-                    // hundred words of contract reads as a comment box.
-                    filled: false,
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    disabledBorder: InputBorder.none,
-                    contentPadding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
-                    hintText: _hint(),
-                    hintMaxLines: 6,
-                  ),
+              child: TextField(
+                controller: page.body,
+                focusNode: page.writing,
+                // Read-only rather than DISABLED, which is the difference
+                // between a reader who can scroll a four-page contract and
+                // select a clause out of it and one who is handed a greyed box
+                // they cannot even move. The caret is hidden with it, so
+                // nothing invites typing that would go nowhere; the palette
+                // above is gone for the same reason.
+                readOnly: !canEdit,
+                showCursor: canEdit,
+                // minLines/maxLines rather than `expands`, which needs a
+                // bounded height and so cannot grow. The field is as tall as
+                // the text, never shorter than the minimum.
+                minLines: _linesBeforeItGrows,
+                maxLines: null,
+                textAlignVertical: TextAlignVertical.top,
+                keyboardType: TextInputType.multiline,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(height: 1.6, fontSize: 14),
+                decoration: InputDecoration(
+                  // The FIELD paints nothing — the ColoredBox above is the
+                  // surface. Material's own filled styling would draw a
+                  // rounded, shaded, underlined control, which around five
+                  // hundred words of contract reads as a comment box.
+                  filled: false,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  contentPadding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+                  hintText: _hint(),
+                  hintMaxLines: 6,
                 ),
               ),
             ),

@@ -1108,6 +1108,41 @@ void main() {
 
   /// The split is the TAB's, not step 4's: the page gets half the screen and
   /// keeps it while the form beside it is scrolled.
+  /// The writing surface grows with the contract, which is only safe because
+  /// nothing sits under it. Both halves of that are asserted here: a box that
+  /// stopped growing would silently cap the document, and a box that grew with
+  /// steps beneath it would walk them off the bottom of the page.
+  testWidgets('the writing surface is the last step and grows with the text', (
+    tester,
+  ) async {
+    await _pumpDesign(tester);
+
+    final writing = tester.getRect(_writingBox);
+
+    for (final earlier in ['What each side sees', 'History']) {
+      expect(
+        tester.getRect(find.text(earlier)).top,
+        lessThan(writing.top),
+        reason:
+            '“$earlier” is below the writing surface, so a growing surface '
+            'pushes it further down the page with every paragraph typed — '
+            'which is the reason the surface was moved last.',
+      );
+    }
+
+    tester.widget<TextField>(_writingBox).controller!.text =
+        List.filled(40, 'A clause that goes on for a while.').join('\n');
+    await _settle(tester);
+
+    expect(
+      tester.getRect(_writingBox).height,
+      greaterThan(writing.height),
+      reason:
+          'The surface did not grow, so a long contract is being written '
+          'through a fixed-height window into it.',
+    );
+  });
+
   testWidgets('the contract takes half the tab, beside the form rather than '
       'inside it', (tester) async {
     await _pumpDesign(tester);
