@@ -6,6 +6,7 @@ import '../core/session.dart';
 import '../core/timestamps.dart';
 import '../widgets/error_note.dart';
 import '../widgets/refused.dart';
+import '../widgets/sending_identity_panel.dart';
 import '../widgets/setting_editors.dart';
 import '../widgets/side_panel.dart';
 
@@ -89,11 +90,13 @@ String? _notYetInEffect(Map<String, dynamic> setting) {
 /// Distinct from "has a value" — nearly everything has one. This is the count
 /// that says whether you are looking at a scope that overrides much, or at one
 /// that simply follows its parent.
-bool _setHere(Map<String, dynamic> setting) {
-  final source = setting['source'] as Map<String, dynamic>?;
-
-  return source != null && source['inherited'] != true;
-}
+///
+/// Delegates rather than re-deciding: `sourceIsOwn` is the same test the
+/// sending-identity card makes about the same `source` block, and two answers
+/// to "is this scope's own" is how one screen ends up counting a row the other
+/// calls inherited.
+bool _setHere(Map<String, dynamic> setting) =>
+    sourceIsOwn(setting['source'] as Map<String, dynamic>?);
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _loading = true;
@@ -113,6 +116,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// organization's records is not a request that returns instantly, and a
   /// button that looks untouched for six seconds gets pressed again.
   bool _exportingEverything = false;
+
+  /// Which address this part of the business sends its OWN mail from (§6), and
+  /// whether the domain behind it has been proved.
+  ///
+  /// Fetched here rather than by the card, for the reason `_dataAnswers` is: it
+  /// is one request per scope, it must not run again every time somebody types
+  /// in the search box, and the answer outlives the card being filtered out of
+  /// the list and back into it.
+  ///
+  /// Null while the request is in flight, and null if it failed — see
+  /// [_sendingIdentityCard] for why that draws nothing at all.
+  Map<String, dynamic>? _sendingIdentity;
 
   final TextEditingController _search = TextEditingController();
   _Filter _filter = _Filter.all;
@@ -147,6 +162,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _search.addListener(() => setState(() {}));
     _load();
     _loadDataAnswers();
+    _loadSendingIdentity();
+  }
+
+  /// The sending identity in force at this scope, and where it came from.
+  ///
+  /// Asked of its own endpoint rather than read out of the settings list: the
+  /// answer is an address, a display name, a verification state and a set of
+  /// DNS records, which is not the shape a settings row carries. What it DOES
+  /// borrow from the list is the cascade's vocabulary — `source`, `may_edit`,
+  /// `may_edit_reason` — because it is the same cascade and a second dialect of
+  /// "inherited" would be the bug this screen exists to prevent.
+  Future<void> _loadSendingIdentity() async {
+    final response = await widget.api.get(
+      sendingIdentityPath,
+      sendingIdentityScope(widget.session),
+    );
+
+    if (!mounted || !response.ok) return;
+
+    final data = response.data;
+
+    // Anything that is not the object this card understands draws nothing at
+    // all rather than a card full of blanks.
+    if (data is! Map<String, dynamic>) return;
+
+    setState(() => _sendingIdentity = data);
   }
 
   /// Whether this person may take the two whole-organization §9 answers.
@@ -535,8 +576,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     final organizationData = _organizationData(context);
+    final sendingIdentity = _sendingIdentityCard();
 
-    if (groups.isEmpty && organizationData == null) {
+    if (groups.isEmpty && organizationData == null && sendingIdentity == null) {
       return _nothingMatches(context);
     }
 
@@ -583,8 +625,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+        ?sendingIdentity,
         ?organizationData,
       ],
+    );
+  }
+
+  /// Which address this part of the business sends its own mail from (§6).
+  ///
+  /// A section rather than a row for the same reason the two §9 answers are:
+  /// it is not one value with one editor. It is an address, a display name, a
+  /// verification state that changes while nobody is looking at it, and a set
+  /// of DNS records somebody has to copy into another system — none of which
+  /// fits the 150px control at the end of a row.
+  ///
+  /// It appears at EVERY scope, unlike the data section below it, because the
+  /// cascade is the point: a company overrides the organization's address and a
+  /// place overrides the company's, and the level you are standing at is the
+  /// only one you can set.
+  ///
+  /// Hidden while a filter chip is on, for the reason the data section is:
+  /// "Set here" and "Not in effect" are questions about a settings ROW, and
+  /// claiming a match would put this in a list it is not part of. The search
+  /// box is different — the card answers for its own words.
+  ///
+  /// Nothing is drawn until the server has answered, and nothing at all if it
+  /// did not. A card that cannot say which address is in force, or whether it
+  /// works, is worse than one that appears a moment later; and against a build
+  /// whose server half has not landed, silence beats a form promising to save
+  /// something into a route that is not there.
+  Widget? _sendingIdentityCard() {
+    if (_sendingIdentity == null ||
+        _filter != _Filter.all ||
+        !SendingIdentitySection.matchesSearch(_search.text)) {
+      return null;
+    }
+
+    return SendingIdentitySection(
+      api: widget.api,
+      session: widget.session,
+      identity: _sendingIdentity!,
+      // The panel does the writing, so the card learns the new state from the
+      // answer it already has rather than going back for it.
+      onChanged: (next) => setState(() => _sendingIdentity = next),
     );
   }
 
@@ -1047,14 +1130,12 @@ class _SettingRow extends StatelessWidget {
                 // Where the value came from — always, whatever else is true of
                 // the row. The whole reason the API returns `source` is that an
                 // admin who cannot see it changes the wrong level.
+                //
+                // The sentence itself now lives beside the sending-identity
+                // card, which asks the same question about the same cascade and
+                // would otherwise have grown a second wording of it.
                 Text(
-                  source == null
-                      // Nothing set anywhere in the cascade — the value on
-                      // screen is the platform's, not this organization's.
-                      ? 'EzBizi default'
-                      : inherited
-                      ? 'Inherited from ${source['name']}'
-                      : 'Set here',
+                  provenanceSentence(source),
                   style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
                 ),
 
@@ -1089,7 +1170,7 @@ class _SettingRow extends StatelessWidget {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          'Not in effect yet — $pending',
+                          notInEffectSentence(pending),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.tertiary,
                             fontWeight: FontWeight.w500,

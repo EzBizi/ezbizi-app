@@ -1,0 +1,308 @@
+<?php
+
+namespace Tests\Feature\Api;
+
+use App\Models\User;
+use App\Support\Modules\ActionDefinition;
+use App\Support\Modules\ModuleRegistry;
+use App\Support\Modules\TriggerDefinition;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsTenants;
+use Tests\TestCase;
+
+/**
+ * Marketing — a module declared before it is built (§5.5, §4).
+ *
+ * ── What is worth testing about something that does nothing ──────
+ *
+ * Three things, and none of them is "does the endpoint return 200".
+ *
+ * The first is that being new exempts it from nothing. A placeholder is exactly
+ * the kind of module somebody would wave through the permission model on the
+ * grounds that there is nothing behind it to protect — and the tab would then be
+ * the one module in the app an organization cannot withhold.
+ *
+ * The second is the §5.5 standing rule, which is the reason this module is
+ * declared now rather than when it works. Marketing has to say what Newsletter
+ * will raise AND that nothing raises it yet, or somebody builds a rule that
+ * saves, switches on and waits forever.
+ *
+ * The third is that the screen and the registry do not each keep their own copy
+ * of that answer. The endpoint publishes what the module declared, word for
+ * word, or there are two dictionaries and one of them will go stale.
+ */
+class MarketingModuleTest extends TestCase
+{
+    use BuildsTenants;
+    use RefreshDatabase;
+
+    private const MODULE = 'marketing';
+
+    private const NEWSLETTER = '/api/v1/marketing/newsletter';
+
+    // ── registered, and grantable like anything else (§4) ────────
+
+    public function test_the_module_is_registered_and_offers_exactly_the_tab_permission(): void
+    {
+        $module = app(ModuleRegistry::class)->get(self::MODULE);
+
+        $this->assertNotNull($module, 'Marketing is not in the registry, so it has no tab at all.');
+        $this->assertSame('Marketing', $module->label);
+
+        // `view` and nothing else. There is no newsletter to write and none to
+        // send, so a `create` or a `send` here would be a switch on the roles
+        // screen granting a capability the software does not have.
+        $this->assertSame(['marketing.view'], $module->permissionKeys());
+
+        $this->assertContains(
+            'marketing.view',
+            app(ModuleRegistry::class)->allPermissionKeys(),
+            'The permission the tab is gated on is not one the sync command would ever create.',
+        );
+    }
+
+    /**
+     * Declared is not the same as grantable, and the roles editor is where the
+     * difference shows. A module missing from that tree can be gated on a
+     * permission no administrator can find, which is a tab nobody can ever open.
+     */
+    public function test_an_organization_can_grant_the_tab_from_the_roles_editor(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $modules = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/roles/catalogue')->assertOk()->json('modules');
+
+        $marketing = collect($modules)->firstWhere('key', self::MODULE);
+
+        $this->assertNotNull($marketing, 'Marketing is not offered in the roles editor.');
+        $this->assertSame('Marketing', $marketing['label']);
+        $this->assertContains(
+            'marketing.view',
+            collect($marketing['actions'])->pluck('key')->all(),
+        );
+    }
+
+    // ── the gate, which being new does not lift ──────────────────
+
+    public function test_the_tab_is_refused_to_a_role_the_organization_did_not_grant_it(): void
+    {
+        $alpha  = $this->provisionTenant('Beta');
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['customers.view']);
+
+        $message = $this->signedInAs($viewer)
+            ->getJson(self::NEWSLETTER)
+            ->assertForbidden()
+            ->json('message');
+
+        // R8: a sentence saying what to do, naming the act and the remedy.
+        $this->assertStringContainsString('open Marketing', $message);
+        $this->assertStringContainsString('role', $message);
+
+        // And never the key. Somebody reading "marketing.view" learns a string
+        // they cannot act on, and the roles screen is not where they are.
+        $this->assertStringNotContainsString('marketing.view', $message);
+    }
+
+    /**
+     * The control for the test above.
+     *
+     * Without it, a refusal that fired for the wrong reason — a mistyped route,
+     * a missing controller, a middleware refusing everybody — reads as the
+     * permission model working perfectly.
+     */
+    public function test_a_role_the_organization_granted_it_reaches_the_tab(): void
+    {
+        $alpha    = $this->provisionTenant('Gamma');
+        $marketer = $this->userWithRole($alpha, 'Marketer', ['marketing.view']);
+
+        $this->signedInAs($marketer)->getJson(self::NEWSLETTER)->assertOk();
+    }
+
+    /**
+     * The sidebar's half of the same rule.
+     *
+     * The tab is drawn from `/me`'s `modules` block, so a module that came back
+     * reachable for somebody without the grant would put a destination in front
+     * of them that answers 403 the moment they tap it.
+     */
+    public function test_the_tab_is_reachable_in_me_only_for_a_role_that_holds_it(): void
+    {
+        $alpha    = $this->provisionTenant('Delta');
+        $viewer   = $this->userWithRole($alpha, 'Viewer', ['customers.view']);
+        $marketer = $this->userWithRole($alpha, 'Marketer', ['marketing.view']);
+
+        $this->assertFalse($this->marketingInMeFor($viewer)['reachable']);
+        $this->assertTrue($this->marketingInMeFor($marketer)['reachable']);
+    }
+
+    /** Marketing's entry in a user's `/me` modules block. */
+    private function marketingInMeFor(User $user): array
+    {
+        $modules = $this->signedInAs($user)
+            ->getJson('/api/v1/me')->assertOk()->json('data.modules');
+
+        $marketing = collect($modules)->firstWhere('key', self::MODULE);
+
+        // Present for everybody, reachable for some: the sidebar needs to tell
+        // "your plan does not include this" from "your role does not reach it".
+        $this->assertNotNull($marketing, 'Marketing is missing from /me entirely.');
+
+        return $marketing;
+    }
+
+    // ── the §5.5 standing rule, at the moment the module is declared ──
+
+    public function test_the_module_declares_an_automation_surface_rather_than_an_exemption(): void
+    {
+        $module = app(ModuleRegistry::class)->get(self::MODULE);
+
+        $this->assertNull(
+            $module->automationExemptBecause,
+            'Marketing claimed an exemption. A newsletter having been sent is an event a '
+            .'business builds a rule on, so there is nothing here to be exempt from.',
+        );
+
+        $this->assertNotEmpty($module->triggers, 'Marketing declares no events.');
+        $this->assertNotEmpty($module->automationActions, 'Marketing declares no actions.');
+
+        $this->assertArrayNotHasKey(
+            self::MODULE,
+            app(ModuleRegistry::class)->violatingAutomationRule(),
+        );
+    }
+
+    /**
+     * The honesty half, and the reason `isRaised` exists.
+     *
+     * Nothing sends a newsletter, so every event here must say so — a trigger
+     * listed without that mark is one somebody builds a rule on, switches on and
+     * never hears from again. `ModuleRegistryTest` holds the flag to the source
+     * in the other direction; this holds it to the truth today.
+     */
+    public function test_every_event_newsletter_declares_is_marked_as_not_raised_yet(): void
+    {
+        $module = app(ModuleRegistry::class)->get(self::MODULE);
+
+        // The control. Every assertion below is inside the loop, so a module
+        // that declared nothing at all would pass this while proving nothing.
+        $this->assertNotEmpty($module->triggers);
+
+        foreach ($module->triggers as $trigger) {
+            $this->assertFalse(
+                $trigger->isRaised,
+                "'{$trigger->key}' claims something raises it. If that is now true it is very "
+                .'welcome, and the wording below has to stop saying otherwise.',
+            );
+
+            $this->assertStringContainsString(
+                TriggerDefinition::NOT_RAISED_YET,
+                $trigger->description,
+                "'{$trigger->key}' is flagged unraised but the tenant is not told.",
+            );
+        }
+    }
+
+    /**
+     * The events reach the builder, gated the same way the tab is.
+     *
+     * A surface declared in the registry and absent from `/automations/catalogue`
+     * would satisfy every assertion above and still be invisible to the only
+     * screen where anybody would use it.
+     */
+    public function test_the_declared_events_reach_the_automation_builder_and_only_with_the_tab(): void
+    {
+        $alpha = $this->provisionTenant('Epsilon');
+
+        $marketer = $this->userWithRole(
+            $alpha, 'Marketer', ['automations.view', 'marketing.view'],
+        );
+
+        $modules = $this->signedInAs($marketer)
+            ->getJson('/api/v1/automations/catalogue')->assertOk()->json('data.modules');
+
+        $marketing = collect($modules)->firstWhere('key', self::MODULE);
+
+        $this->assertNotNull($marketing, 'Marketing is not offered to the rule builder.');
+        $this->assertNotEmpty($marketing['triggers']);
+
+        foreach ($marketing['triggers'] as $trigger) {
+            $this->assertStringContainsString(
+                TriggerDefinition::NOT_RAISED_YET,
+                $trigger['description'],
+                'The builder would offer this without saying a rule on it cannot run.',
+            );
+        }
+
+        // The other half: the wording modules write for themselves is real
+        // information about the business, so a role without the tab does not
+        // get to read Marketing's.
+        $planner = $this->userWithRole($alpha, 'Planner', ['automations.view']);
+
+        $withheld = $this->signedInAs($planner)
+            ->getJson('/api/v1/automations/catalogue')->assertOk()->json('data.modules');
+
+        $this->assertNull(collect($withheld)->firstWhere('key', self::MODULE));
+    }
+
+    // ── the endpoint keeps no dictionary of its own ──────────────
+
+    public function test_the_endpoint_publishes_what_the_module_declared_and_invents_nothing(): void
+    {
+        $alpha    = $this->provisionTenant('Zeta');
+        $marketer = $this->userWithRole($alpha, 'Marketer', ['marketing.view']);
+
+        $body = $this->signedInAs($marketer)
+            ->getJson(self::NEWSLETTER)->assertOk()->json('data');
+
+        $module = app(ModuleRegistry::class)->get(self::MODULE);
+
+        $this->assertSame(['key' => self::MODULE, 'label' => 'Marketing'], $body['module']);
+
+        $this->assertSame(
+            array_map(fn (TriggerDefinition $t) => [
+                'key'         => $t->key,
+                'label'       => $t->label,
+                'description' => $t->description,
+                'raised'      => false,
+            ], $module->triggers),
+            $body['triggers'],
+            'The endpoint and the registry disagree about what Newsletter raises.',
+        );
+
+        $this->assertSame(
+            array_map(fn (ActionDefinition $a) => [
+                'key'         => $a->key,
+                'label'       => $a->label,
+                'description' => $a->description,
+            ], $module->automationActions),
+            $body['actions'],
+        );
+
+        // The control against a payload that is right by being empty.
+        $this->assertNotEmpty($body['triggers']);
+        $this->assertNotEmpty($body['actions']);
+    }
+
+    /**
+     * The flag the screen draws its mark from, in the payload rather than only
+     * in the prose.
+     *
+     * A client picking "does this fire" out of an English sentence is a client
+     * that breaks the day somebody rewords the sentence.
+     */
+    public function test_the_payload_flags_each_event_that_nothing_raises(): void
+    {
+        $alpha    = $this->provisionTenant('Eta');
+        $marketer = $this->userWithRole($alpha, 'Marketer', ['marketing.view']);
+
+        $triggers = $this->signedInAs($marketer)
+            ->getJson(self::NEWSLETTER)->assertOk()->json('data.triggers');
+
+        $this->assertNotEmpty($triggers);
+
+        foreach ($triggers as $trigger) {
+            $this->assertFalse($trigger['raised'], "{$trigger['key']} is published as firing.");
+        }
+    }
+}

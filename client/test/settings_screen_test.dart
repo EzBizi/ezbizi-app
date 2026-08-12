@@ -695,7 +695,114 @@ void main() {
       expect(find.text('Minimum password length'), findsNothing);
     });
   });
+
+  // ── the address this business sends its own mail from (§6) ──────
+
+  /// The card belongs to this screen, so this is about it BEING here and
+  /// obeying the screen's rules. What it says about inheritance, verification
+  /// and refusals is test/sending_identity_test.dart.
+  group('the sending identity card', () {
+    /// The same three-state sentence as every row above it, produced by the
+    /// same function — which is the point. A card that grew its own wording for
+    /// "inherited" would be the second dialect this screen exists to prevent.
+    testWidgets('says where the address in force came from, in the same words '
+        'as the rows', (tester) async {
+      _wide(tester);
+
+      await _pumpSettings(
+        tester,
+        _oneSettingAtFranchise,
+        sendingIdentity: _sendingIdentity(),
+      );
+
+      expect(find.text('Email from this business'), findsOneWidget);
+      expect(find.text('info@a-1chimney.com'), findsOneWidget);
+
+      // Two things on screen inherit from somewhere, and they say so
+      // identically: the password setting from Everdoors, and the address from
+      // A-1 Chimney.
+      expect(find.text('Inherited from Everdoors'), findsOneWidget);
+      expect(find.text('Inherited from A-1 Chimney'), findsOneWidget);
+    });
+
+    /// A server that has never heard of the endpoint draws no card at all —
+    /// not an empty one, and not a form promising to save into a 404.
+    testWidgets('is absent when the server does not answer for it', (
+      tester,
+    ) async {
+      _wide(tester);
+
+      await _pumpSettings(tester, _oneSettingAtFranchise);
+
+      // The control: the screen itself loaded, so the absence below is about
+      // the card rather than about a blank page.
+      expect(find.text('Minimum password length'), findsOneWidget);
+      expect(find.text('Email from this business'), findsNothing);
+    });
+
+    /// "Set here" and "Not in effect" are questions about a settings ROW. The
+    /// card is not one, and claiming a match would put it in a list it is not
+    /// part of.
+    testWidgets('drops out while a filter chip is on', (tester) async {
+      _wide(tester);
+
+      await _pumpSettings(
+        tester,
+        _oneSetting,
+        sendingIdentity: _sendingIdentity(),
+      );
+
+      expect(find.text('Email from this business'), findsOneWidget);
+
+      await tester.tap(find.textContaining('Set here ·'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Email from this business'), findsNothing);
+    });
+
+    /// Somebody who has been handed "add these DNS records" is looking for this
+    /// card, and the words they were given are not printed on it.
+    testWidgets('is findable by the words somebody was handed elsewhere', (
+      tester,
+    ) async {
+      _wide(tester);
+
+      await _pumpSettings(
+        tester,
+        _oneSetting,
+        sendingIdentity: _sendingIdentity(),
+      );
+
+      await tester.enterText(find.byType(TextField).first, 'DNS');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Email from this business'), findsOneWidget);
+      expect(find.text('Minimum password length'), findsNothing);
+    });
+  });
 }
+
+/// `GET /mail/sending-identity`, in the shape all four of its routes answer.
+///
+/// Connecticut with nothing of its own, showing the company's address — the
+/// case this screen has to be legible about.
+Map<String, dynamic> _sendingIdentity() => {
+  'from_address': 'info@a-1chimney.com',
+  'from_name': 'A-1 Chimney',
+  'source': _source('company', 'co-a1', 'A-1 Chimney', true),
+  'may_edit': true,
+  'may_edit_reason': null,
+  'not_yet_in_effect': null,
+  'verification': {
+    'state': 'verified',
+    'label': 'Proved and in use',
+    'detail': null,
+    'next_step': null,
+    'records': <dynamic>[],
+  },
+  'transport': null,
+  'automation': null,
+};
 
 /// Is the button carrying this label pressable?
 bool _enabled(WidgetTester tester, String label) => tester
@@ -779,22 +886,38 @@ final Finder _valueField = find.descendant(
 /// screen reads its scope off `session.me` and a hand-built one would let the
 /// test disagree with the client's own parsing.
 ///
-/// `/exports` is answered HERE rather than being passed down to [handler].
-/// The screen asks it once, to decide whether this person may take the two
-/// whole-organization §9 answers at the bottom of the page — and every test
-/// above counts `GET /settings` to prove a write does not refetch the page. A
-/// second endpoint landing in the same counter would make those numbers about
-/// something else. [exports] overrides it for the tests that are about that
-/// section.
+/// `/exports` and `/mail/sending-identity` are answered HERE rather than being
+/// passed down to [handler].
+///
+/// The screen asks each once — the first to decide whether this person may take
+/// the two whole-organization §9 answers at the bottom of the page, the second
+/// for the address this part of the business sends its own mail from — and
+/// every test above counts `GET /settings` to prove a write does not refetch
+/// the page. A second endpoint landing in the same counter would make those
+/// numbers about something else. [exports] and [sendingIdentity] override them
+/// for the tests that are about those sections.
+///
+/// The sending identity defaults to ABSENT, answering 404, because that is the
+/// state of every test above: none of them is about it, and a card appearing in
+/// their fixtures would be a section they never asked for. The tests that are
+/// about it pass one in, and test/sending_identity_test.dart drives the card
+/// and its panel directly.
 Future<void> _pumpSettings(
   WidgetTester tester,
   MockClientHandler handler, {
   Map<String, dynamic>? exports,
+  Map<String, dynamic>? sendingIdentity,
 }) async {
   final api = ApiClient(
     client: MockClient((request) async {
       if (request.url.path.endsWith('/exports')) {
         return _json(exports ?? _exports());
+      }
+
+      if (request.url.path.endsWith('/mail/sending-identity')) {
+        return sendingIdentity == null
+            ? _json({'message': 'Not found.'}, 404)
+            : _json({'data': sendingIdentity});
       }
 
       return handler(request);

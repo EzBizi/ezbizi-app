@@ -5,6 +5,7 @@ import '../screens/customers_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/hr_screen.dart';
 import '../screens/jobs_screen.dart';
+import '../screens/marketing_screen.dart';
 import 'api_client.dart';
 import 'session.dart';
 
@@ -52,6 +53,16 @@ final Map<String, ModuleScreen> moduleScreens = {
   'hr': ModuleScreen(
     Icons.badge_outlined,
     (api, session) => HrScreen(api: api, session: session),
+  ),
+  // Declared and not built, and it has an entry here for exactly that reason.
+  // The sidebar draws the intersection of what the server declares with what
+  // this bundle can render, so a module with no entry is a tab that silently
+  // does not appear — which for a placeholder would be indistinguishable from
+  // having lost the permission. The screen behind it says what Newsletter will
+  // be and what it is waiting for; see marketing_screen.dart.
+  'marketing': ModuleScreen(
+    Icons.campaign_outlined,
+    (api, session) => MarketingScreen(api: api, session: session),
   ),
   'automations': ModuleScreen(
     Icons.bolt_outlined,

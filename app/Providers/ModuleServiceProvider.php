@@ -743,6 +743,145 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                 ],
             ),
+            /*
+             * Marketing — declared before it is built, and NOT a stub.
+             *
+             * The owner asked for the foundation of tenant-authored mail: *"there
+             * will be situations where they will be using Modules in the app that
+             * send emails for their own companies … a company would prefer that
+             * this newsletter came from their own SMTP's like info@company.com"*.
+             * The sending identity is that foundation; this is the module that
+             * will be its first customer, and Newsletter is its first sub-tab.
+             *
+             * ── Why declare it now rather than when it works ────
+             *
+             * Because of the rule the owner set after Human Resources shipped
+             * silent: *"every new thing that gets added or removed from the app
+             * needs to work with the automations system"*. HR was written, shipped
+             * and then retrofitted, and the retrofit is the expensive way. A
+             * newsletter having been sent is an event a business builds a rule on,
+             * so the surface is declared in the same breath as the module — which
+             * is exactly what `isRaised` exists to make honest.
+             *
+             * The tab is NOT exempt from anything for being new. It is reached
+             * through `marketing.view` like every other module, and an
+             * organization that grants it to nobody has no Marketing tab.
+             *
+             * ── `view` only, and that is the whole authority there is ──
+             *
+             * A permission with no code behind it enforces nothing (see
+             * ModuleRegistry) and shows up on the roles screen as a switch that
+             * grants a capability the software does not have. Reaching the tab is
+             * the only act that exists today, so it is the only action declared.
+             *
+             * Writing a newsletter and SENDING one will be two more, and separate
+             * from each other for the reason `customers.export` is separate from
+             * `customers.view`: drafting something and putting it in front of
+             * every customer on the books are different sizes of authority, and
+             * only the second is irreversible. Adding them then is one line here
+             * and the roles editor picks them up with nothing else edited.
+             *
+             * ── No subject, and the reason is not HR's ──────────
+             *
+             * HR declares none because its events are about three kinds of record
+             * at once. This one declares none because there is no record at all:
+             * AutomationSubject takes a class-string of an Eloquent model and
+             * refuses anything else, so a subject cannot be named before the table
+             * exists. When a Newsletter model lands it is named here, and
+             * `assertKeysMatchSubject` will hold these keys to it.
+             *
+             * It costs the same thing it costs HR: the builder cannot grey out
+             * "Update a field" under a Newsletter trigger in advance, so somebody
+             * can pick it and be refused at save, in a sentence.
+             */
+            new ModuleDefinition(
+                key:     'marketing',
+                label:   'Marketing',
+                actions: ['view'],
+                triggers: [
+                    /*
+                     * Both are declared as never raised, because nothing sends a
+                     * newsletter yet — there is no audience to send to and nothing
+                     * written to send. `ModuleRegistryTest` checks that claim
+                     * against the source on every run, so the day either one is
+                     * emitted the build fails until the flag is dropped, rather
+                     * than the builder going on telling tenants a working rule
+                     * will never run.
+                     *
+                     * ── What is deliberately NOT declared ───────
+                     *
+                     * "Opened" and "Clicked". Both need a tracking pixel or a
+                     * rewritten link in somebody's inbox, and whether this product
+                     * watches recipients that way is a decision nobody has made.
+                     * Declaring the event would make it for them: a trigger in the
+                     * builder is a promise the data will exist.
+                     *
+                     * "Bounced" and "Failed to send". Real, wanted, and dependent
+                     * on the transport reporting a bounce back to us — which is a
+                     * property of the transport chosen for tenant mail, not of
+                     * this module. It is declared where that path is built.
+                     */
+                    new TriggerDefinition(
+                        key:   'newsletter.sent',
+                        label: 'Newsletter sent',
+                        description: 'A newsletter went out to its audience. It carries which '
+                            .'one, how many addresses it went to and the identity it was sent '
+                            .'from — not whether anybody read it.',
+                        isRaised: false,
+                    ),
+                    /*
+                     * The one that must exist on day one rather than day two.
+                     *
+                     * Somebody asking to stop receiving marketing mail is the only
+                     * event here the business is obliged to honour, and honouring
+                     * it usually means touching a record this module does not own:
+                     * flag the customer, stop the other campaign, tell the branch.
+                     * That is a rule, and this is the trigger it hangs off.
+                     *
+                     * Declared beside "sent" rather than after it, because a
+                     * mailing programme that can send before it can be left is the
+                     * shape of this that would be wrong.
+                     */
+                    new TriggerDefinition(
+                        key:   'newsletter.unsubscribed',
+                        label: 'Somebody unsubscribed',
+                        description: 'A recipient asked to stop receiving marketing mail. It '
+                            .'carries the address and which mailing it was asked from, and it '
+                            .'is a decision the person made rather than a list being tidied.',
+                        isRaised: false,
+                    ),
+                ],
+                /*
+                 * The engine runs none of these, and the catalogue already says so
+                 * per row: `implemented` is computed from the generic set the
+                 * engine has, so neither of these needs a flag of its own and
+                 * neither can claim to work by being forgotten about.
+                 *
+                 * What is deliberately absent is anything that WRITES the wording
+                 * of a newsletter, for the reason HR has no action that publishes
+                 * a contract version: the entire value of a message going to ten
+                 * thousand people is that a person read it first, and a rule that
+                 * composes one bypasses the only review there is.
+                 */
+                automationActions: [
+                    new ActionDefinition(
+                        key:   'newsletter.send',
+                        label: 'Send a newsletter',
+                        description: 'Sends a mailing that has already been written and '
+                            .'approved, to the audience it was written for. The rule names '
+                            .'which one; it cannot compose one.',
+                    ),
+                    new ActionDefinition(
+                        key:   'newsletter.add_to_audience',
+                        label: 'Add somebody to a mailing list',
+                        description: 'Puts the person a rule fired about onto a named mailing '
+                            .'list, so "a new customer joins the list" is a rule somebody can '
+                            .'write. It does not stand in for their agreement to be mailed, '
+                            .'which the list records separately.',
+                    ),
+                ],
+            ),
+
             new ModuleDefinition(
                 // Renamed from 'workflows' on 2026-08-10, permission keys and
                 // all — see the rename migration of that date. The product says
