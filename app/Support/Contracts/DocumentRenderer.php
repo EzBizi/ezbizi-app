@@ -44,24 +44,40 @@ use Illuminate\Support\Collection;
  *     with no software that has to still exist — and it is legible as
  *     plain text even without one.
  *
- *  4. ADDING THE DEPENDENCY IS A DEPLOY DECISION, NOT A CODE ONE.
- *     Releases are installed --no-dev and vendor/ is built at deploy
- *     time; a PDF writer earns its place through that pipeline and a
- *     conversation about fonts and non-Latin scripts, not by being
- *     required from a feature branch.
+ *  4. THE DEPENDENCY IS INSTALLED, AND IT DOES NOT WRITE THE
+ *     INSTRUMENT. This point used to say that adding a PDF writer was
+ *     a deploy decision rather than a code one, and left it open.
+ *     It is decided: `dompdf/dompdf` is required, it is pure PHP so it
+ *     needs no binary on the instance, and PdfRenderer is what uses
+ *     it — see that class for the argument, including why mPDF was not
+ *     chosen and what the library cannot do.
+ *
+ *     What it produces is a COPY, and the three points above are why.
+ *     The PDF is converted from the STORED BYTES of the document this
+ *     class rendered, never from a second run of this class — two
+ *     independent renders is precisely the "two artefacts" failure
+ *     point 1 describes, and it would be that failure whether or not a
+ *     library were installed. So: one instrument, in one format, with
+ *     one fingerprint over it, and a derived copy that says on its face
+ *     that it is one.
  *
  *  WHAT THIS COSTS, PLAINLY: an HTML file is easier for a layperson to
  *  edit than a PDF. That changes nothing about the evidence — the
  *  fingerprint detects a single altered character either way, and a
  *  PDF is not tamper-proof either — but "we keep PDFs" is a sentence
- *  people find reassuring and this is not it.
+ *  people find reassuring and this is not it. A tenant who needs one to
+ *  hand to somebody can now download it; what they get is a copy,
+ *  labelled as one, carrying the fingerprint of the document it came
+ *  from.
  *
- *  WHAT CHANGES WHEN A PDF WRITER ARRIVES: this class grows a second
- *  output and OnboardingDocuments stores that instead. Nothing else
- *  moves: `onboarding_documents` already carries hash, algorithm and
- *  length per row, and the attachment already carries its own mime, so
- *  documents rendered before and after the change stay verifiable
- *  side by side.
+ *  WHAT DID NOT CHANGE WHEN THE PDF WRITER ARRIVED, because an earlier
+ *  draft of this note predicted otherwise and was wrong: this class did
+ *  NOT grow a second output, and OnboardingDocuments does NOT store the
+ *  PDF instead. Storing the PDF would move the stored bytes away from
+ *  the hashed bytes, which is the one thing point 1 forbids. The stored
+ *  artefact is still this file's output, `onboarding_documents` still
+ *  fingerprints exactly that, and the copy is produced on demand from
+ *  it and kept by nobody.
  * ═══════════════════════════════════════════════════════════════════
  *
  * ── Deterministic, and it has to be ──────────────────────────────

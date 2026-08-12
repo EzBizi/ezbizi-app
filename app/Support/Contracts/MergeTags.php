@@ -89,7 +89,16 @@ final class MergeTags
      */
     public const MAX_BODY_LENGTH = 50000;
 
-    /** What the client puts either side of a key. Published, so it is not guessed. */
+    /**
+     * What THIS file puts either side of a key: `resolvable()` builds every
+     * entry's `tag` out of these, and every refusal below quotes a tag back
+     * between them.
+     *
+     * Published on the catalogue as `merge_tags.open` and `merge_tags.close` so
+     * that nothing downstream has to spell them out. What any client then does
+     * with them is that end's business and is not asserted here — see
+     * `resolvable()`, which says why.
+     */
     public const OPEN  = '{{';
     public const CLOSE = '}}';
 
@@ -501,8 +510,13 @@ final class MergeTags
      *
      * ── A FAILED PCRE CALL THROWS, AND DOES NOT RETURN "" ────────────
      *
-     * Every regex call below used to swallow its own failure: `?: []` on the
-     * split and a `(string)` cast over a possible null on the substitution. Both
+     * All THREE regex calls below used to swallow their own failure: `?: []` on
+     * the paragraph split, a returned null concatenated straight into
+     * `'<p>'.…'</p>'` on the line-break pass, and a `(string)` cast over a
+     * possible null on the substitution. The middle one is why this says three
+     * rather than two — it was the quietest of them, because a null at a
+     * concatenation does not look like a failure, it looks like a paragraph with
+     * nothing in it. All three
      * turn "the engine gave up" into "the agreement is empty" — and the output of
      * this function is what DocumentFingerprint is taken over and what somebody
      * signs. An empty contract under a signature is the one outcome that must not
@@ -511,8 +525,11 @@ final class MergeTags
      * should look like.
      *
      * It should also stay unreachable. `e()` passes ENT_SUBSTITUTE, so the
-     * subject is always valid UTF-8, and neither pattern backtracks. This is the
-     * failure MODE being right rather than a bug being fixed.
+     * subject is always valid UTF-8, and none of the three patterns can run away
+     * backtracking: every quantifier in them is followed by characters it cannot
+     * itself match — `\R` against `[ \t]`, `[a-z0-9_]*` against a dot, a space or
+     * a brace — so there is never a second way to split the same text. This is
+     * the failure MODE being right rather than a bug being fixed.
      *
      * @param  array<string, MergeValue>  $values  what each key resolves to
      */
@@ -571,8 +588,10 @@ final class MergeTags
     /**
      * A PCRE call that came back false or null, as the exception it is.
      *
-     * Named rather than inlined three times, and it carries `preg_last_error_msg`
-     * so the log says which limit was hit instead of "rendering failed".
+     * Named rather than inlined at each of its four call sites — the one walk in
+     * `scan()`, and the three regex steps of `render()` — and it carries
+     * `preg_last_error_msg` so the log says which limit was hit instead of
+     * "rendering failed".
      */
     private static function pcreFailed(string $step): RuntimeException
     {

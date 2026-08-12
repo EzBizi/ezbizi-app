@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/files.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
 import '../widgets/error_note.dart';
+import '../widgets/refused.dart';
 import '../widgets/setting_editors.dart';
 import '../widgets/side_panel.dart';
 
@@ -22,6 +24,22 @@ import '../widgets/side_panel.dart';
 /// this territory" — so the first control is a search box. The second answers
 /// the question this screen exists for: how much of what you are looking at is
 /// decided HERE, rather than somewhere above you.
+///
+/// ── Why the organization's own data lives at the bottom ──────────
+///
+/// Two §9 obligations — "export everything this organization holds" and "the
+/// record of what it holds about people" — used to sit on an "Import & export"
+/// tab alongside the per-resource exports. That tab is gone: transferring
+/// customers and jobs belongs in those tabs, which is where it now is.
+///
+/// These two do not belong there. Neither is about a resource, so neither has a
+/// tab to move into — "export everything this business holds" is not a Customers
+/// feature. What they ARE about is the organization, and they are decided by
+/// whoever administers it, which is who is reading this screen. They are the one
+/// section here that is not a setting, so they sit under their own heading at
+/// the end rather than among the rows, and only at organization scope: they
+/// answer for the whole business and there is no franchise-sized version of
+/// either.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.api, required this.session});
 
@@ -78,6 +96,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _error;
   List<dynamic> _settings = [];
 
+  /// The `organization` block from `/exports` — one nullable sentence per §9
+  /// answer, saying why it is refused or null when it is not.
+  ///
+  /// Null while the request is in flight and null if it failed, and in both
+  /// cases the section is not drawn. A card offering two buttons that cannot
+  /// say whether they will work is worse than one that appears a moment later:
+  /// the settings this screen exists for are already on screen and unaffected.
+  Map<String, dynamic>? _dataAnswers;
+
+  /// True while the bundle is being fetched, so the control can say so. A whole
+  /// organization's records is not a request that returns instantly, and a
+  /// button that looks untouched for six seconds gets pressed again.
+  bool _exportingEverything = false;
+
   final TextEditingController _search = TextEditingController();
   _Filter _filter = _Filter.all;
 
@@ -110,6 +142,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // wiring — no submit button, no debounce. Thirty rows do not need one.
     _search.addListener(() => setState(() {}));
     _load();
+    _loadDataAnswers();
+  }
+
+  /// Whether this person may take the two whole-organization §9 answers.
+  ///
+  /// Asked of `/exports`, which is the endpoint that owns both gates, rather
+  /// than worked out from the permission list on /me. `bundle` and `inventory`
+  /// each require the view permission of EVERY exportable resource, and that
+  /// list lives in ResourceMap on the server — a client deciding it for itself
+  /// would be §4 reimplemented in Dart, and it would be wrong the day a third
+  /// resource is added.
+  Future<void> _loadDataAnswers() async {
+    final response = await widget.api.get('/exports');
+
+    if (!mounted || !response.ok) return;
+
+    setState(() {
+      _dataAnswers = response.body['organization'] as Map<String, dynamic>?;
+    });
   }
 
   @override
@@ -479,7 +530,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           .add(setting);
     }
 
-    if (groups.isEmpty) return _nothingMatches(context);
+    final organizationData = _organizationData(context);
+
+    if (groups.isEmpty && organizationData == null) {
+      return _nothingMatches(context);
+    }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -524,6 +579,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+        ?organizationData,
       ],
     );
   }
@@ -553,6 +609,340 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // ── the organization's own data (§9) ─────────────────────────────
+
+  /// The two whole-organization answers, or null when there is nothing to draw.
+  ///
+  /// Three reasons to draw nothing, and each is a decision:
+  ///
+  ///   - the `/exports` answer has not arrived, or did not. The section says
+  ///     what a person may do; a version of it that cannot say is worse than
+  ///     one that appears a moment later.
+  ///   - the scope is a company or a franchise. Both answers cover the whole
+  ///     business, and there is no franchise-sized version of either — offering
+  ///     "export everything" under a franchise's heading would say there is.
+  ///   - a filter chip is on. "Set here" and "Not in effect" are questions about
+  ///     how a SETTING inherits, and neither of these is a setting; claiming a
+  ///     match would put them in a list they do not belong to.
+  ///
+  /// The search box is different: somebody typing "export" is looking for
+  /// exactly this, so it is matched on the words it actually shows.
+  Widget? _organizationData(BuildContext context) {
+    final answers = _dataAnswers;
+
+    if (answers == null ||
+        _scopeType != 'organization' ||
+        _filter != _Filter.all) {
+      return null;
+    }
+
+    // Written once and used for both the search and the screen, so the words
+    // somebody can find it by are exactly the words they will then read.
+    const exportTitle = 'Export everything';
+    const exportNote =
+        'Every record this organization holds, as one file. It is your data: '
+        'you can keep it, read it, and take it somewhere else.';
+    const inventoryTitle = 'What is held about people';
+    const inventoryNote =
+        'Which records hold personal details, what each one is for, how long '
+        'it is kept, and what erasing it does.';
+
+    final query = _search.text.trim().toLowerCase();
+    final matches =
+        query.isEmpty ||
+        [
+          _organizationDataHeading,
+          exportTitle,
+          exportNote,
+          inventoryTitle,
+          inventoryNote,
+        ].any((text) => text.toLowerCase().contains(query));
+
+    if (!matches) return null;
+
+    final exportRefusal = answers['export_refusal'] as String?;
+    final inventoryRefusal = answers['inventory_refusal'] as String?;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 22, 4, 8),
+          child: Text(
+            _organizationDataHeading,
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ),
+        Card(
+          child: Column(
+            children: [
+              _dataRow(
+                context,
+                title: exportTitle,
+                note: exportNote,
+                refusal: exportRefusal,
+                busy: _exportingEverything,
+                buttonLabel: _exportingEverything
+                    ? 'Preparing…'
+                    : 'Export everything',
+                icon: Icons.download_outlined,
+                onPressed: _exportEverything,
+              ),
+              const Divider(height: 1),
+              _dataRow(
+                context,
+                title: inventoryTitle,
+                note: inventoryNote,
+                refusal: inventoryRefusal,
+                busy: false,
+                buttonLabel: 'Open the record',
+                icon: Icons.fact_check_outlined,
+                onPressed: _openInventory,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The heading, in one place because the search above matches on it.
+  static const String _organizationDataHeading = 'This organization’s data';
+
+  /// One row of that section: what it is, and the one control that does it.
+  ///
+  /// A refused control stays on screen carrying the server's own sentence
+  /// rather than disappearing (R8) — somebody who cannot export everything is
+  /// missing a permission on their role, and that is a five-second fix for
+  /// whoever administers them, if they are ever told.
+  Widget _dataRow(
+    BuildContext context, {
+    required String title,
+    required String note,
+    required String? refusal,
+    required bool busy,
+    required String buttonLabel,
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    final control = Refused(
+      reason: refusal,
+      child: OutlinedButton.icon(
+        onPressed: (busy || refusal != null) ? null : onPressed,
+        icon: Icon(icon, size: 18),
+        label: Text(buttonLabel),
+      ),
+    );
+
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 4),
+        Text(note, style: Theme.of(context).textTheme.bodySmall),
+      ],
+    );
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: LayoutBuilder(
+        // The control drops under the text on a narrow window rather than
+        // squeezing it — the same rule PanelHeader follows, because this has to
+        // survive a phone (R7).
+        builder: (context, constraints) => constraints.maxWidth < 520
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  text,
+                  const SizedBox(height: 12),
+                  Align(alignment: Alignment.centerLeft, child: control),
+                ],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: text),
+                  const SizedBox(width: 16),
+                  control,
+                ],
+              ),
+      ),
+    );
+  }
+
+  /// §9 portability: everything, as one JSON document.
+  Future<void> _exportEverything() async {
+    setState(() => _exportingEverything = true);
+
+    final bytes = await widget.api.getBytes('/exports/bundle');
+
+    if (!mounted) return;
+
+    setState(() => _exportingEverything = false);
+
+    if (bytes == null) {
+      _snack(
+        'Could not export. Nothing was changed, so it is safe to try again.',
+        isError: true,
+      );
+      return;
+    }
+
+    // Named after the organization rather than "bundle.json", because this file
+    // ends up in somebody's downloads folder beside a hundred others.
+    final name = widget.session.me!.organization.name
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-|-$'), '');
+
+    Files.download('${name.isEmpty ? 'organization' : name}-everything.json', bytes);
+  }
+
+  /// §9 inventory: the record of what is held about people.
+  ///
+  /// A side panel rather than a screen of its own — it is read, not worked in,
+  /// and it belongs beside the settings it was opened from.
+  Future<void> _openInventory() async {
+    final response = await widget.api.get('/exports/inventory');
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      _snack(response.message, isError: true);
+      return;
+    }
+
+    await showSidePanel<void>(
+      context,
+      builder: (_) => _InventoryPanel(inventory: response.body),
+    );
+  }
+}
+
+/// What this organization holds about people (§9).
+///
+/// Read-only, and deliberately not a summary: the value of an inventory is that
+/// it is complete, so every holding the server lists is drawn, along with the
+/// caveats it publishes about what it cannot see. Trimming it to the
+/// interesting rows would turn the one document that has to be exhaustive into
+/// somebody's impression of it.
+class _InventoryPanel extends StatelessWidget {
+  const _InventoryPanel({required this.inventory});
+
+  final Map<String, dynamic> inventory;
+
+  @override
+  Widget build(BuildContext context) {
+    final holdings = (inventory['holdings'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+    final caveats = (inventory['caveats'] as List<dynamic>? ?? [])
+        .cast<String>();
+
+    return SidePanel(
+      title: 'What is held about people',
+      width: 560,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+        // Downloadable because the people who ask for this — a regulator, a
+        // customer's lawyer, whoever fills in a security questionnaire — need it
+        // in a file rather than in a screenshot.
+        FilledButton.icon(
+          onPressed: () => Files.download(
+            'personal-data-inventory.json',
+            utf8.encode(const JsonEncoder.withIndent('  ').convert(inventory)),
+          ),
+          icon: const Icon(Icons.download_outlined, size: 18),
+          label: const Text('Download'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Every place this organization keeps something about a person, what '
+            'it is for, and what happens to it over time.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 20),
+          for (final holding in holdings) ...[
+            _holding(context, holding),
+            const SizedBox(height: 18),
+          ],
+          if (caveats.isNotEmpty) ...[
+            const Divider(),
+            const SizedBox(height: 12),
+            Text(
+              'What this record cannot see',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 8),
+            for (final caveat in caveats)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  caveat,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _holding(BuildContext context, Map<String, dynamic> holding) {
+    final fields = (holding['fields'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+    final rows = holding['rows'];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                holding['label'] as String? ?? '',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+            if (rows is int)
+              Text(
+                rows == 1 ? '1 record' : '$rows records',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          holding['purpose'] as String? ?? '',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        if (holding['retention'] is String) ...[
+          const SizedBox(height: 4),
+          Text(
+            holding['retention'] as String,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+        const SizedBox(height: 6),
+        for (final field in fields)
+          Padding(
+            padding: const EdgeInsets.only(left: 12, bottom: 2),
+            child: Text(
+              '${field['field']} — ${field['purpose']}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+      ],
     );
   }
 }

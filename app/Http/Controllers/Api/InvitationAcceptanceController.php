@@ -406,6 +406,32 @@ class InvitationAcceptanceController extends Controller
             'via'       => 'invitation',
         ]], actor: $user);
 
+        /*
+         * And the invitation's own event, which carries the invitation.
+         *
+         * `user.activated` is about the account and is raised two ways — this,
+         * and somebody switching a deactivated person back on — so a rule built
+         * on it cannot mean "a new starter arrived" without a condition. This
+         * one means exactly that and nothing else, and it carries the record
+         * that knows which franchise they were invited into, which is what lets
+         * a branch-level rule match. See HrInvitationsController::store for the
+         * same pairing on the way out.
+         *
+         * The actor is the new person, for the reason the audit entry above
+         * gives: nobody is signed in, and attributing their own acceptance to
+         * `system` loses the one fact worth recording.
+         */
+        $this->events->emit('invitation.accepted', $invitation, ['after' => [
+            'status'           => $invitation->status(),
+            'email'            => $invitation->email,
+            'role'             => $invitation->role?->name,
+            'role_id'          => $invitation->role_id,
+            'scope_type'       => $invitation->scopeType(),
+            'scope_id'         => $invitation->scopeId(),
+            'scope'            => $invitation->scopeLabel(),
+            'accepted_user_id' => $user->getKey(),
+        ]], actor: $user);
+
         return $user;
     }
 

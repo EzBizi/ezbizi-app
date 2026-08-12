@@ -53,9 +53,24 @@ use RuntimeException;
  * person: "keep the invoice and its amounts, blank the name, email, phone and
  * address". So the default is an UPDATE, every foreign key still points where it
  * pointed, and a job history does not develop holes. Rows are removed only where
- * a declaration says `Erasure::drop` — a session, a notification — because those
- * rows are nothing but the person and blanking them leaves litter rather than an
- * anonymous record.
+ * a declaration says `Erasure::drop`, and there are TWO reasons one does:
+ *
+ *   - the row is nothing but the person, so blanking it leaves litter rather
+ *     than an anonymous record. A session (ApiToken), a spent password reset, a
+ *     notification's `user_id` — which is NOT NULL and is what the list is
+ *     queried by, so an anonymised one is a row nobody could read or delete.
+ *
+ *   - there is nothing to blank, because the personal data is not in a column
+ *     with a shape. A notification's title and body are free text and nothing
+ *     can tell which words in them are a name; an Attachment's data is inside a
+ *     PDF or a JPEG this software has never parsed. There is no third option
+ *     between keeping a scan of somebody's passport and deleting it.
+ *
+ * This paragraph used to give only the first reason and only rows fitting it,
+ * which read as the whole rule — and the case it left out is the one carrying
+ * the least predictable personal data in the system. Attachment::deleting is
+ * what keeps that second kind safe rather than reckless: a file a signature
+ * fingerprints refuses to go, and the refusal is reported rather than swallowed.
  *
  * ── What it deliberately does NOT do ─────────────────────────────
  *

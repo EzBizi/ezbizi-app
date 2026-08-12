@@ -54,27 +54,37 @@ class ModuleServiceProvider extends ServiceProvider
     {
         return [
             /*
-             * Two modules that are screens and nothing else.
+             * A module that is a screen and nothing else.
              *
-             * They were the last destinations compiled into the client. The
-             * sidebar is now built from what this registry declares, so a screen
-             * that is not a module simply does not exist to it — and Dashboard
-             * and Import & export both disappeared, for everybody including the
+             * The dashboard was one of the last destinations compiled into the
+             * client. The sidebar is now built from what this registry declares,
+             * so a screen that is not a module simply does not exist to it — and
+             * the dashboard disappeared, for everybody including the
              * Administrator, the first time that list was drawn from the server.
              *
-             * Declaring them is the right answer rather than a workaround. The
+             * Declaring it is the right answer rather than a workaround. The
              * owner's rule is that EVERY module is reached through a tab
              * permission the organization grants; a screen exempt from that
-             * would be a second way in. It also makes them grantable, which is
-             * the point: a technician has no business in Import & export, and
-             * until now there was no way to say so.
+             * would be a second way in.
              *
-             * `view` only. Neither has an action beyond looking — the dashboard
-             * composes what other modules already permit, and an import writes
-             * through the permissions of the records it creates, not its own.
-             * Dashboard is declared FIRST because the registry's order is the
-             * sidebar's order, and it is the screen somebody opens the app to
-             * look at.
+             * ── There were two of these, and the other one is gone ──
+             *
+             * `data` — "Import & export" — was declared here beside it, for the
+             * same reason and with the same shape. It was removed on 2026-08-12:
+             * the owner's call was that per-resource transfer belongs in the tab
+             * that owns the records, so exporting customers is now a control in
+             * Customers and exporting jobs one in Jobs. The two §9 answers that
+             * are about the whole organization rather than one resource live in
+             * Settings. None of the three needs a module of its own, because
+             * each is now reached through the permission of the thing it acts
+             * on — `customers.view` exports customers, and always did. The
+             * routes did not move and were never gated on `data.view`; see the
+             * import/export block in routes/api.php.
+             *
+             * `view` only. The dashboard has no action beyond looking — it
+             * composes what other modules already permit. It is declared FIRST
+             * because the registry's order is the sidebar's order, and it is the
+             * screen somebody opens the app to look at.
              */
             new ModuleDefinition(
                 key:     'dashboard',
@@ -336,52 +346,233 @@ class ModuleServiceProvider extends ServiceProvider
              * abandoned, and the row is how "we invited them and changed our
              * mind" stays answerable.
              */
+            /*
+             * ── Its automation surface, and why it stopped being an
+             *    exemption ─────────────────────────────────────────
+             *
+             * This module used to state `automationExemptBecause`, and the
+             * reasoning was that everything HR does happens to a User —
+             * `user.invited`, `user.activated`, `user.deactivated`, all declared
+             * by the Users module, all raised from here. Those three are still
+             * declared there and still raised from here, and none of what
+             * follows replaces them.
+             *
+             * What the exemption missed is that HR shipped five tabs and four of
+             * them are about records that are not a user. An invitation is a
+             * thing with a week on it that is accepted or lapses or is
+             * withdrawn; an onboarding is a form two people fill in and sign;
+             * a contract version is what they signed. `user.activated` says a
+             * person got an account. It cannot say the paperwork is finished,
+             * which is the moment a payroll webhook is waiting for.
+             *
+             * ── This module declares NO SUBJECT, and that is a
+             *    limitation being stated rather than a decision ────
+             *
+             * A ModuleDefinition holds one AutomationSubject and refuses any
+             * declared key whose prefix disagrees with it, because the field
+             * picker resolves a trigger's subject through the module that
+             * declares it. HR's events are about THREE kinds of record — an
+             * invitation, an onboarding, a contract version — so there is no one
+             * answer to give, and naming any of the three would make the picker
+             * wrong about the other two.
+             *
+             * Null is the honest answer and it costs exactly one thing: the
+             * builder cannot grey out "Update a field" under an HR trigger the
+             * way it does under an organization trigger, so somebody can pick it
+             * and be refused at save. The refusal is a sentence and it says why.
+             * Nothing is lost beyond that, because no field on any of the three
+             * is writable by a rule in the first place — ActionRunner::WRITABLE
+             * holds Job and Customer and nothing else, deliberately: an
+             * invitation's role, an onboarding's answers and a published
+             * version's fields are each governed by an endpoint that checks
+             * something a bare field write would skip.
+             *
+             * The proper fix is a subject per TRIGGER rather than per module.
+             * That is a change to the registry AND to the wire shape the
+             * catalogue publishes — `subject` sits beside `label` on the module,
+             * and the client reads it from there — so it is a change to three
+             * files this task does not own. Recorded here rather than done
+             * quietly and badly.
+             */
             new ModuleDefinition(
                 key:     'hr',
                 label:   'Human Resources',
                 actions: ['view', 'create', 'edit'],
+                triggers: [
+                    /*
+                     * ── Invitations ─────────────────────────────
+                     *
+                     * `invitation.sent` and `user.invited` fire on the same act,
+                     * and both are wanted. The difference is what they carry:
+                     * `user.invited` is about a person who does not exist yet, so
+                     * it has no record at all and no scope, and a franchise-level
+                     * rule can never match it. This one carries the invitation,
+                     * which knows the franchise or company it was issued into —
+                     * so "when somebody is invited into MY branch" is a rule that
+                     * can be written here and could not be written there.
+                     *
+                     * There is no "resent". Resending is an administrative
+                     * gesture rather than something that happened to the
+                     * business, and a rule on it would fire every time an
+                     * administrator chased somebody.
+                     *
+                     * There is no "opened" either. The row records it and the
+                     * status list shows it, but the useful rule about opening is
+                     * about NOT opening — "nobody has looked at this in three
+                     * days" — and an event cannot express an absence.
+                     */
+                    new TriggerDefinition(
+                        key:   'invitation.sent',
+                        label: 'Invitation sent',
+                        description: 'Somebody was invited to join. It carries the address, the '
+                            .'role they were offered, the place they were offered it in and when '
+                            .'the link runs out.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'invitation.accepted',
+                        label: 'Invitation accepted',
+                        description: 'The person followed the link and created their account. '
+                            .'It carries the role and the place, and by this point there is a '
+                            .'real user behind it.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'invitation.revoked',
+                        label: 'Invitation withdrawn',
+                        description: 'The organization changed its mind and took an invitation '
+                            .'back before it was accepted. The link stops working immediately, '
+                            .'and this is a different fact from one that simply ran out.',
+                    ),
+                    /*
+                     * Real, and nothing observes it.
+                     *
+                     * Expiry is a fact about the CLOCK: `status()` derives
+                     * `abandoned` by comparing `expires_at` to now, and the
+                     * model argues at length against a scheduled job that writes
+                     * a column to agree with the clock. An outbox event is not
+                     * that column — it is a fact published once, which is a
+                     * different thing and would be legitimate.
+                     *
+                     * It is not built because the sweep that would raise it has
+                     * a first-run problem worth deciding deliberately rather
+                     * than shipping by accident: every invitation that has
+                     * already lapsed would fire the day it is deployed, so
+                     * whatever look-back window it uses is a decision about how
+                     * much history gets replayed into live rules. Marked, and
+                     * visible, which is the whole reason `isRaised` exists —
+                     * hiding it would let somebody build this rule, switch it on
+                     * and wait forever.
+                     */
+                    new TriggerDefinition(
+                        key:   'invitation.expired',
+                        label: 'Invitation ran out',
+                        description: 'A week passed and nobody accepted, so the link stopped '
+                            .'working on its own.',
+                        isRaised: false,
+                    ),
+
+                    /*
+                     * ── Onboarding ──────────────────────────────
+                     *
+                     * "Signed" and "Fully signed" are two events because they
+                     * are two moments, and the gap between them is where the
+                     * document has to hold still — see the amendment guard in
+                     * HrOnboardingsController. A rule that wants only the new
+                     * starter's signature puts a condition on the party rather
+                     * than getting an event of its own, because the party is a
+                     * property of the signature and not a different kind of act.
+                     */
+                    new TriggerDefinition(
+                        key:   'onboarding.started',
+                        label: 'Onboarding started',
+                        description: 'An employer picked a contract template for somebody who '
+                            .'has been invited, and the form is now open. It carries the '
+                            .'template’s name and the version it was pinned to.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'onboarding.signed',
+                        label: 'Somebody signed',
+                        description: 'One party signed one line of the contract. It carries '
+                            .'whether that was the employer or the employee, which line, and '
+                            .'whether every signature has now been given — so a rule about the '
+                            .'new starter specifically is a condition on the party. The first '
+                            .'signature is also what freezes the answers.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'onboarding.completed',
+                        label: 'Onboarding fully signed',
+                        description: 'Every signature the contract asks for has been given and '
+                            .'the paperwork is finished. This is the one a payroll or IT handover '
+                            .'should hang off, rather than the account being created.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'onboarding.amended',
+                        label: 'Signed contract amended',
+                        description: 'A correction was made after signing. The original document '
+                            .'stays and a new revision sits beside it; this carries the revision '
+                            .'number, which fields changed and the reason given.',
+                    ),
+
+                    /*
+                     * ── Contracts ───────────────────────────────
+                     *
+                     * Publishing is a change to the SCHEMA rather than to
+                     * anybody's record, and the old exemption used that to argue
+                     * it should raise nothing. Half of that argument was right
+                     * and it is kept below: no rule may PUBLISH a version,
+                     * because a rule that rewrites what every future employee is
+                     * asked would bypass the readable diff publishing exists to
+                     * put in front of a person.
+                     *
+                     * Reacting to one is a different thing entirely, and it is
+                     * the case the owner's rule is about: the terms of
+                     * employment changed, and somebody wants to be told.
+                     */
+                    new TriggerDefinition(
+                        key:   'contract.version_published',
+                        label: 'Contract version published',
+                        description: 'A new version of a contract template went live, so every '
+                            .'onboarding started from now on asks these questions. It carries the '
+                            .'template’s name, the version number and a count of what changed. '
+                            .'Forms already in flight keep the version they were pinned to.',
+                    ),
+                ],
                 /*
-                 * Outside automation as a DECLARER, not as a participant — the
-                 * distinction matters, so it is spelt out.
+                 * None of these run yet, and the catalogue says so on each row.
                  *
-                 * Everything HR does happens to a User: somebody is invited,
-                 * their account becomes usable, their access is switched off.
-                 * Those are `user.invited`, `user.activated` and
-                 * `user.deactivated`, and this module is what finally raises all
-                 * three. They are declared by the Users module because that is
-                 * the module whose subject is the User record, and the field
-                 * picker resolves a trigger's subject through the module that
-                 * declares it — so declaring them a second time here would give
-                 * the registry two answers for one key.
+                 * They are declared because the alternative is an HR category
+                 * offering triggers and nothing to do with them, and because a
+                 * module is where the intent belongs — ActionRunner decides what
+                 * executes and the catalogue marks the gap, so this list stating
+                 * a plan is exactly what it is for.
                  *
-                 * The invitation itself raises nothing of its own. A rule on
-                 * "invitation resent" would be a rule about an administrative
-                 * gesture rather than about the business, and the three events
-                 * above already cover every moment that changes what somebody
-                 * can do.
-                 *
-                 * ── And nor does publishing a contract template ──────
-                 *
-                 * Added when the Contracts tab landed, because until then this
-                 * exemption could truthfully say everything HR does happens to a
-                 * user, and publishing a template does not. It is a change to the
-                 * SCHEMA — what onboarding will ask the next person — rather than
-                 * an event about anybody. A rule triggered by it would be a rule
-                 * about the shape of the system, which is the same thing the
-                 * Roles module is held out of automation for, and a rule ACTING
-                 * on it could rewrite what every future employee is asked without
-                 * a person ever seeing the diff that publishing exists to show.
-                 * The moment a template affects a real person is the moment an
-                 * onboarding uses it, and that raises `user.activated`.
+                 * What is deliberately NOT here: anything that writes a contract
+                 * template, anything that signs, and anything that accepts an
+                 * invitation on somebody's behalf. The first bypasses the diff;
+                 * the second and third are the two acts in this module whose
+                 * entire value is that a person did them.
                  */
-                automationExemptBecause:
-                    'Everything HR does to a PERSON happens to a user — invited, activated, '
-                    .'deactivated — and those three events are declared by the Users module, '
-                    .'whose subject is the User record. HR is what raises them. What HR does '
-                    .'that is not about a person is publishing a contract template, which '
-                    .'changes the schema rather than any record, and automating a schema change '
-                    .'would bypass the readable diff that publishing exists to put in front of '
-                    .'somebody.',
+                automationActions: [
+                    new ActionDefinition(
+                        key:   'invitation.resend',
+                        label: 'Send the invitation again',
+                        description: 'Issues a fresh link with a fresh week on it, replacing the '
+                            .'old one. Chasing somebody who has not accepted is the obvious rule '
+                            .'to build, and the cascade guards are what stop it chasing forever.',
+                    ),
+                    new ActionDefinition(
+                        key:   'invitation.revoke',
+                        label: 'Withdraw the invitation',
+                        description: 'Takes an invitation back. The row stays and reports itself '
+                            .'as withdrawn, so the record still shows that somebody was asked.',
+                    ),
+                    new ActionDefinition(
+                        key:   'onboarding.start',
+                        label: 'Start the onboarding',
+                        description: 'Opens the form for somebody who has been invited, against '
+                            .'a contract template the rule names. It is the step an employer '
+                            .'takes by hand today, and the one most worth not forgetting.',
+                    ),
+                ],
             ),
 
             new ModuleDefinition(
@@ -527,15 +718,34 @@ class ModuleServiceProvider extends ServiceProvider
                     'An automation that could write automations would escape the loop guards.',
             ),
 
-
-            new ModuleDefinition(
-                key:     'data',
-                label:   'Import & export',
-                actions: ['view'],
-                automationExemptBecause:
-                    'Import and export act THROUGH other modules, and those raise '
-                    .'their own events — an imported customer fires customer.created.',
-            ),
+            /*
+             * `data` — "Import & export" — used to be declared here, last in the
+             * list. It was removed on 2026-08-12 and the reasoning is left
+             * behind, because "why is there no import module" is a question
+             * somebody will ask by proposing to add one back.
+             *
+             * The owner: "get rid of the import & export tab as well, erase it
+             * entirely, as the import exports will go inside each of the tabs,
+             * not a separate tab to do all of them, it's more intuitive that
+             * way." Exporting customers is a control in the Customers tab now,
+             * and exporting jobs one in Jobs.
+             *
+             * Nothing was lost with it. Its exemption said import and export act
+             * THROUGH other modules, and that is why removing it costs no
+             * automation: it declared no trigger and no action, so no rule could
+             * ever have been built on one, and none needed rehoming. It carried
+             * exactly one permission, `data.view`, and that permission never
+             * gated any of the routes — export has always required the view
+             * permission of the resource being exported, which is what makes the
+             * per-tab controls correct without a new grant. The stranded rows are
+             * dropped by the migration of the same date.
+             *
+             * The two §9 answers that are about the ORGANIZATION rather than a
+             * resource — export everything, and the record of what is held about
+             * people — had no tab to move into, so they are in Settings under the
+             * organization's own data. They are still gated as they always were:
+             * on holding the view permission of every exportable resource.
+             */
         ];
     }
 }

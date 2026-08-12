@@ -209,6 +209,33 @@ class SettingRegistry
                 notYetInEffect: 'Takes effect when jobs record distances and areas. Nothing in '
                     .'the app shows a measurement yet, in either system.',
             ),
+            /*
+             * Paper, for the PDF copy of a signed contract.
+             *
+             * It lived in `config/contracts.php`, whose own docblock conceded
+             * that was the wrong home: §2.1's test is "would a second
+             * INSTALLATION need a different value", and paper only half passes
+             * it, because two ORGANIZATIONS on one installation disagree the
+             * moment one of them is in North America. A deployment-level default
+             * meant a franchise in Ohio and its parent in Manchester printed on
+             * the same wrong sheet.
+             *
+             * Two options rather than dompdf's forty. The renderer accepts any
+             * size dompdf knows, and a dropdown offering `b7` and `folio` asks
+             * somebody to have an opinion about a sheet nobody prints a contract
+             * on. These are the two the world actually uses; the renderer still
+             * refuses an unknown value rather than substituting one, so nothing
+             * here has to be the enforcement.
+             *
+             * The signed document itself has no page size — it is HTML and it
+             * reflows. This is a property of the COPY, which is why it is
+             * settled here and not on the contract.
+             */
+            new SettingDefinition(
+                key: 'contract_pdf_paper', label: 'Contract paper size',
+                type: SettingDefinition::TYPE_ENUM, default: 'a4',
+                options: ['a4', 'letter'],
+            ),
         ];
     }
 

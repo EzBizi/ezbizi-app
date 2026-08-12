@@ -88,7 +88,13 @@ final class RetentionPolicy
      * constructor never sees them.
      *
      * RetentionTest::test_this_constructor_names_every_table_it_governs is what
-     * keeps the list above true, rather than the next reader's diligence.
+     * keeps the list above true, rather than the next reader's diligence. It cuts
+     * that ONE sentence out of this docblock and reads nothing else, and it wants
+     * each table in the shape the sentence already uses — the name, then the
+     * column in brackets. Keep that shape when the list changes: until the test
+     * was narrowed to it, it searched the whole docblock, and because the prose
+     * here names tables too, two of the four could have been dropped from the
+     * list without anything going red.
      */
     public static function window(int $months, string $column, string $because): self
     {

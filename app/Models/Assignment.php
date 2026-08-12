@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -22,7 +24,7 @@ use InvalidArgumentException;
  * everything beneath it. Assignment defines where you stand; the subtree below is
  * what you can reach.
  */
-class Assignment extends Model
+class Assignment extends Model implements StatesRetention
 {
     use HasFactory;
     use HasUuids;
@@ -31,6 +33,43 @@ class Assignment extends Model
     public const SCOPE_ORGANIZATION = 'organization';
     public const SCOPE_COMPANY      = 'company';
     public const SCOPE_FRANCHISE    = 'franchise';
+
+    /**
+     * Kept, because nothing here goes stale with age.
+     *
+     * The reason this replaces said the row is "deleted when the access is taken
+     * away, so there is no accumulation to sweep". Nothing takes it away.
+     * `Assignment::create` in InvitationAcceptanceController and in
+     * ProvisionOrganization are the only writes in the application and there is
+     * no delete anywhere — no revoke endpoint, no service, nothing. The foreign
+     * keys do cascade, but every parent (the user, the organization, the company,
+     * the franchise) is deactivated or soft-deleted rather than removed, so in
+     * practice the cascade does not fire either. A policy resting on a revoke
+     * path describes a feature that does not exist.
+     *
+     * The conclusion it was drawn for survives on its own: what bounds this table
+     * is the PEOPLE an organization has, not what they do. A row appears when
+     * somebody is given a place to stand and never when they use it, so it grows
+     * with headcount and stops when hiring does — which is why there is nothing
+     * for a nightly sweep to find here, and why an age-based window would be
+     * deleting live access rather than clutter.
+     *
+     * `forever()` rather than `withParent()` deliberately: the parent is a user,
+     * User states `forever()` too, and pointing at a row that never goes would
+     * dress up the same answer as a bound this table does not have.
+     */
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::forever(
+            'One row for each place a person may act — the organization, a company or a '
+            .'franchise — written when they are given that access (§4). It says where '
+            .'somebody stands rather than keeping a history of what they were granted, so '
+            .'it grows with the people an organization has and not with anything they do. '
+            .'Somebody who leaves is deactivated rather than deleted, and the row saying '
+            .'where they worked is kept with their account. Who reached what, and when, is '
+            .'the audit log, which does expire.'
+        );
+    }
 
     protected $fillable = [
         'organization_id', 'user_id',

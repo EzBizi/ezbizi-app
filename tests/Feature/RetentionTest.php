@@ -87,45 +87,76 @@ class RetentionTest extends TestCase
      * enumerates a set the code can produce EXACTLY, and enumerates it in order
      * to be relied on. Prose that merely explains is not testable and should not
      * be made to look as though it is.
+     *
+     * ── And it was reading the wrong thing ───────────────────────
+     *
+     * The check was `assertStringContainsString($table, $doc)` against the WHOLE
+     * docblock, which is prose that discusses tables as well as a list that
+     * enumerates them: `automation_events` is named up top as the reason the
+     * column is not assumed to be `created_at`, and `password_resets` in the
+     * paragraph explaining that the list once said three. Two of the four could
+     * therefore be deleted from the enumeration with the test still green —
+     * confirmed by deleting "`password_resets` (created_at)" from it, leaving the
+     * surrounding prose, and watching this file pass.
+     *
+     * So the sentence is cut out of the docblock first and every assertion is
+     * made against that alone, and each table is required in the form only the
+     * list produces: the name, then the column it is measured from, in brackets.
      */
     public function test_this_constructor_names_every_table_it_governs(): void
     {
         $swept = [];
 
         foreach (app(DeclaringModels::class)->statingRetention() as $class) {
-            if ($class::retention()->isSwept()) {
-                $swept[] = (new $class)->getTable();
+            $policy = $class::retention();
+
+            if ($policy->isSwept()) {
+                $swept[(new $class)->getTable()] = $policy->column;
             }
         }
 
-        sort($swept);
+        ksort($swept);
 
         $this->assertNotEmpty($swept, 'Nothing is swept at all, so this test is comparing '
             .'an empty list against a docblock and would pass whatever it said.');
 
         $doc = (string) (new ReflectionMethod(RetentionPolicy::class, 'window'))->getDocComment();
 
-        foreach ($swept as $table) {
-            $this->assertStringContainsString($table, $doc, sprintf(
-                'RetentionPolicy::window() is what deletes from `%s` every night, and its own '
-                .'docblock does not mention it. Somebody reading that class to find out what '
-                .'the sweep touches would not learn that this table is one of them.',
-                $table,
-            ));
-        }
+        // Flattened to one line, because the docblock is wrapped and a pair split
+        // across a line break says exactly what an unsplit one says. The ` * `
+        // that opens each line goes with the newline it follows.
+        $flat = trim((string) preg_replace(['/\s*\R\s*\*\s?/', '/\s+/'], ' ', $doc));
 
         $counted = [1 => 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 
-        $this->assertStringContainsString(
-            sprintf('The %s tables this governs today are', $counted[count($swept)] ?? count($swept)),
-            $doc,
-            sprintf(
-                'There are %d swept tables (%s) and the docblock on RetentionPolicy::window() '
-                .'counts a different number. Update the sentence — or, if the list has grown '
-                .'past what a sentence should carry, replace it with a pointer to this test.',
-                count($swept), implode(', ', $swept),
-            ),
-        );
+        $opening = sprintf('The %s tables this governs today are',
+            $counted[count($swept)] ?? count($swept));
+
+        $this->assertStringContainsString($opening, $flat, sprintf(
+            'There are %d swept tables (%s) and the docblock on RetentionPolicy::window() '
+            .'counts a different number. Update the sentence — or, if the list has grown '
+            .'past what a sentence should carry, replace it with a pointer to this test.',
+            count($swept), implode(', ', array_keys($swept)),
+        ));
+
+        $this->assertSame(1, preg_match('/'.preg_quote($opening, '/').'(.+?)\./', $flat, $found),
+            'The sentence enumerating the swept tables has gone from '
+            .'RetentionPolicy::window(). This test reads that one sentence and nothing else, '
+            .'so mentioning the tables in the prose around it will not do — put the list '
+            .'back, or change this test deliberately and say what now keeps it true.');
+
+        $enumerated = $found[1];
+
+        foreach ($swept as $table => $column) {
+            $this->assertStringContainsString(sprintf('`%s` (%s)', $table, $column), $enumerated, sprintf(
+                'RetentionPolicy::window() deletes from `%s` every night, measured from %s, '
+                .'and the sentence enumerating what it governs does not say so. Naming the '
+                .'table elsewhere in that docblock does not count: somebody reading the list '
+                .'to find out what the sweep touches would not learn that this table is one '
+                .'of them.',
+                $table, $column,
+            ));
+        }
     }
 
     /**
@@ -514,6 +545,19 @@ class RetentionTest extends TestCase
      * a model and no policy lands in the exception list or fails — and the
      * exception list is checked for staleness, which means the day somebody
      * declares a policy on one of these the entry excusing it starts failing.
+     *
+     * ── The second list is gone, because the decision arrived ────
+     *
+     * `staff_impersonations` had a list to itself here, excused as awaiting the
+     * owner while "retained 12 months (§10)" sat in the model's docblock enforced
+     * by nothing. The owner decided, and the answer is that it is kept: it is the
+     * trail of platform staff reaching into a client's records, so
+     * StaffImpersonation states `forever()` and the table is now covered by
+     * `$declared` like any other. `assignments` left the exception list the same
+     * way — see Assignment::retention(), which also records that the reason it
+     * used to be excused with, rows being "deleted when the access is taken
+     * away", matched no code in this repository. The staleness check below is
+     * what would have failed had either entry been left behind.
      */
     public function test_every_table_in_the_schema_has_been_decided_about(): void
     {
@@ -584,10 +628,6 @@ class RetentionTest extends TestCase
             'roles'      => 'the permission sets an organization composed for itself (§4). '
                 .'One row per role, edited in place; it names nobody, and it grows only when '
                 .'somebody creates a role',
-            'assignments' => 'where a user may act (§4). It records CURRENT access rather '
-                .'than a history of it — the row is deleted when the access is taken away, '
-                .'so there is no accumulation to sweep. Who reached what, and when, is '
-                .'`audit_events`, which has a window',
             'settings'   => 'one override per setting per scope (§6), overwritten when the '
                 .'value changes rather than appended to. Absence means inherit, so a stale '
                 .'row is a wrong answer rather than clutter, and it is corrected rather than '
@@ -653,39 +693,6 @@ class RetentionTest extends TestCase
                 .'than a log, so it does not accumulate',
         ];
 
-        /*
-         * ── ONE TABLE IS HERE BECAUSE THE DECISION IS NOT MINE ───
-         *
-         * `staff_impersonations` must not be moved into the list above and must
-         * not be given a window here to make this test quiet. It is one row
-         * every time platform staff reached into a customer's records, it
-         * carries `organization_id`, and it accumulates — the only write after
-         * insert is `end()` stamping `ended_at` once, which does not make it a
-         * table that gets tidied.
-         *
-         * A number already exists, twice, in prose: the model's own docblock
-         * says "retained 12 months (§10)", and AuditEvent's policy names "twelve
-         * of platform-staff access to client data (§4.2)" as one of the four
-         * windows ExpireAuditEvents enforces. Nothing enforces it HERE, and this
-         * is precisely what RetentionPolicy's docblock means by a number inside
-         * an English sentence being a number nothing can read.
-         *
-         * What is undecided is not the length but the MECHANISM, and that is an
-         * owner's call rather than a test's: `RetentionPolicy::window(12,
-         * 'started_at', …)` puts it under the nightly generic sweep, while
-         * `elsewhere('ezbizi:expire-audit', …)` puts staff-access evidence under
-         * the one command that already owns the twelve-month staff window and
-         * keeps the session and the audit rows about it expiring together.
-         * Choosing the first quietly would split one piece of evidence across
-         * two commands with two schedules.
-         */
-        $awaitingTheOwner = [
-            'staff_impersonations' => 'the record of EzBizi staff opening a client\'s data '
-                .'(§4.2). Twelve months is written down in two docblocks and enforced by '
-                .'nothing; which command should enforce it is an open question, not an '
-                .'oversight',
-        ];
-
         $undecided = [];
 
         $declared = [];
@@ -703,7 +710,7 @@ class RetentionTest extends TestCase
                 continue;   // another sandbox on the same server
             }
 
-            if (isset($declared[$name]) || isset($needsNoPolicy[$name]) || isset($awaitingTheOwner[$name])) {
+            if (isset($declared[$name]) || isset($needsNoPolicy[$name])) {
                 continue;
             }
 
@@ -713,7 +720,7 @@ class RetentionTest extends TestCase
         sort($undecided);
 
         /*
-         * Both lists have to stay true as well.
+         * The list has to stay true as well.
          *
          * An entry naming a table that has since stated a policy, or one that no
          * longer exists, is a sentence asserting something about this schema
@@ -723,13 +730,13 @@ class RetentionTest extends TestCase
          *
          * The staleness check is what makes narrowing `$declared` safe rather
          * than merely stricter. Put the app/Models top-up back and every entry
-         * added for a table that HAS a model — fourteen of them, plus the one
-         * below — is immediately excusing a table this test already counts as
-         * covered, and this assertion says so by name.
+         * added for a table that HAS a model — thirteen of them today — is
+         * immediately excusing a table this test already counts as covered, and
+         * this assertion says so by name.
          */
         $stale = [];
 
-        foreach ([...array_keys($needsNoPolicy), ...array_keys($awaitingTheOwner)] as $name) {
+        foreach (array_keys($needsNoPolicy) as $name) {
             if (isset($declared[$name])) {
                 $stale[] = "{$name} (states retention now: {$declared[$name]})";
             } elseif (! \Illuminate\Support\Facades\Schema::hasTable($name)) {

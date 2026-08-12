@@ -9,10 +9,12 @@ use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
+use App\Support\Modules\ModuleRegistry;
 use App\Support\Subscriptions\SubscriptionGuard;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
@@ -24,6 +26,11 @@ use Tests\TestCase;
  */
 class DataTest extends TestCase
 {
+    // Added when the "Import & export" tab was removed: the tests at the bottom
+    // of this file need somebody who is NOT an administrator, because an
+    // administrator holds the whole catalogue and so cannot demonstrate a
+    // refusal — or that a permission is genuinely gone.
+    use BuildsTenants;
     use RefreshDatabase;
 
     private array $alpha;
@@ -457,5 +464,186 @@ class DataTest extends TestCase
         $this->as($this->alpha)->postJson('/api/v1/imports/jobs', [
             'csv' => "title\nA job", 'franchise_id' => $this->alpha['franchise']->id,
         ])->assertStatus(422);
+    }
+
+    // ── after the "Import & export" tab was removed (§12, §9) ────
+    //
+    // The tab is gone. Per-resource export and import moved into the Customers
+    // and Jobs tabs; `bundle` and `inventory` moved into Settings, because
+    // neither is about a resource and neither had a tab to move into.
+    //
+    // Everything below fails if any part of that is undone — the catalogue
+    // losing the two fields the per-tab controls read, the §9 answers losing
+    // the sentences the Settings section shows, or somebody deciding the
+    // removed module's permission should gate an endpoint after all.
+
+    /**
+     * "Nobody can import this" and "YOU may not import this" are two facts.
+     *
+     * The catalogue answered `importable: false` to both, and the one screen
+     * reading it drew nothing either way. Once the controls moved into the tabs
+     * that difference became visible: jobs genuinely have no import, so the tab
+     * shows no control; a person without `customers.create` is missing a grant
+     * somebody can hand them in ten seconds, and is owed the control and the
+     * sentence (R8).
+     *
+     * So `importable` is now the RESOURCE's answer and `import_permission`
+     * names the grant. Collapse them back into one and this goes red.
+     */
+    public function test_the_catalogue_separates_what_cannot_be_imported_from_who_may_not(): void
+    {
+        $alpha  = $this->provisionTenant('Gamma');
+        $reader = $this->userWithRole($alpha, 'Reader', ['customers.view', 'jobs.view']);
+
+        $body = $this->signedInAs($reader)->getJson('/api/v1/exports')
+            ->assertOk()->json();
+
+        $customers = collect($body['resources'])->firstWhere('key', 'customers');
+        $jobs      = collect($body['resources'])->firstWhere('key', 'jobs');
+
+        // Customers CAN be imported. This reader may not, and the tab has to be
+        // able to say so rather than quietly omit the control.
+        $this->assertTrue($customers['importable']);
+        $this->assertSame('customers.create', $customers['import_permission']);
+
+        // Jobs cannot be imported by anybody, so there is no grant to name and
+        // nothing for a tab to offer.
+        $this->assertFalse($jobs['importable']);
+        $this->assertNull($jobs['import_permission']);
+
+        // And the columns are published whether or not this caller may use
+        // them: they are the names of fields, not anybody's data, and the panel
+        // that shows them is only ever opened by somebody who may import.
+        $this->assertContains('name', $customers['import_columns']);
+    }
+
+    /**
+     * The two §9 answers say, up front, whether they will work.
+     *
+     * They live in Settings now. That screen has no way to work the gate out
+     * for itself — both require the view permission of EVERY exportable
+     * resource, and that list is ResourceMap's — so the catalogue carries the
+     * answer as one nullable sentence each: null means the control works, a
+     * string is what to show instead.
+     */
+    public function test_the_catalogue_says_whether_the_whole_organization_answers_are_permitted(): void
+    {
+        $alpha = $this->provisionTenant('Delta');
+
+        $everything = $this->signedInAs($alpha['admin'])->getJson('/api/v1/exports')
+            ->assertOk()->json('organization');
+
+        $this->assertNull($everything['export_refusal']);
+        $this->assertNull($everything['inventory_refusal']);
+
+        // Half the resources is not enough for either, and the two acts are
+        // refused separately because they are two different acts.
+        $partial = $this->userWithRole($alpha, 'Partial', ['customers.view']);
+
+        $refused = $this->signedInAs($partial)->getJson('/api/v1/exports')
+            ->assertOk()->json('organization');
+
+        $this->assertStringContainsString(
+            'export everything this organization holds',
+            $refused['export_refusal'],
+        );
+        $this->assertStringContainsString(
+            'what this organization holds about people',
+            $refused['inventory_refusal'],
+        );
+    }
+
+    /**
+     * The sentence the disabled control shows is the sentence the 403 carries.
+     *
+     * The whole point of sending it from the server. A screen that composed its
+     * own would describe one refusal two ways, and the person reading them would
+     * reasonably conclude they were two problems.
+     */
+    public function test_the_refusal_the_catalogue_publishes_is_the_one_the_endpoint_gives(): void
+    {
+        $alpha   = $this->provisionTenant('Epsilon');
+        $partial = $this->userWithRole($alpha, 'Partial', ['customers.view']);
+
+        $published = $this->signedInAs($partial)->getJson('/api/v1/exports')
+            ->assertOk()->json('organization');
+
+        $this->assertSame(
+            $published['export_refusal'],
+            $this->signedInAs($partial)->getJson('/api/v1/exports/bundle')
+                ->assertForbidden()->json('message'),
+        );
+
+        $this->assertSame(
+            $published['inventory_refusal'],
+            $this->signedInAs($partial)->getJson('/api/v1/exports/inventory')
+                ->assertForbidden()->json('message'),
+        );
+    }
+
+    /**
+     * The module is gone and the two §9 obligations are not.
+     *
+     * This is the one that would have caught the whole job going wrong. "Erase
+     * the tab entirely" is easy to read as erasing what it did, and two of the
+     * three things it did are legal obligations rather than conveniences:
+     * portability, and the record of what is held about people. Both still
+     * answer, for somebody who never held `data.view` because it no longer
+     * exists to hold.
+     */
+    public function test_both_privacy_answers_survive_the_module_being_removed(): void
+    {
+        $this->assertNull(
+            app(ModuleRegistry::class)->get('data'),
+            'The Import & export module is supposed to be gone.',
+        );
+
+        $alpha = $this->provisionTenant('Zeta');
+
+        // Every exportable resource, and not one permission more — in
+        // particular not the module's, which cannot be granted any more.
+        $reader = $this->userWithRole($alpha, 'Reader', ['customers.view', 'jobs.view']);
+
+        $bundle = $this->signedInAs($reader)->getJson('/api/v1/exports/bundle')->assertOk();
+        $this->assertArrayHasKey('customers', $bundle->json());
+        $this->assertArrayHasKey('jobs', $bundle->json());
+
+        $this->signedInAs($reader)->getJson('/api/v1/exports/inventory')
+            ->assertOk()
+            ->assertJsonStructure(['holdings', 'caveats', 'generated_at']);
+
+        // And the per-resource half, which is what moved into the tabs.
+        $this->signedInAs($reader)->get('/api/v1/exports/customers')->assertOk();
+    }
+
+    /**
+     * A permission for a module that does not exist is not grantable.
+     *
+     * `data.view` was the module's only one. Nothing gates on it — the export
+     * routes have always required the view permission of the resource being
+     * exported — so its survival would be the quiet kind of wrong: a role
+     * listing "View import & export" on the roles screen, granting nothing, on
+     * the one screen whose job is to say what a role does.
+     */
+    public function test_the_removed_modules_permission_can_no_longer_be_granted(): void
+    {
+        $alpha = $this->provisionTenant('Eta');
+
+        $this->assertNotContains(
+            'data.view',
+            app(ModuleRegistry::class)->allPermissionKeys(),
+        );
+
+        // Offered nowhere in the roles editor, which builds its tree from the
+        // registry rather than from the table.
+        $modules = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/roles/catalogue')->assertOk()->json('modules');
+
+        $this->assertNotContains('data', collect($modules)->pluck('key')->all());
+
+        // And gone from the table, so no role can still be carrying it. The
+        // migration of 2026-08-12 is what does this; without it the row would
+        // survive and silently mean nothing.
+        $this->assertDatabaseMissing('permissions', ['key' => 'data.view']);
     }
 }

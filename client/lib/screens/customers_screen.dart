@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
+import '../widgets/data_transfer.dart';
 import '../widgets/error_note.dart';
 import '../widgets/franchise_field.dart';
 import '../widgets/refused.dart';
@@ -14,6 +15,11 @@ import '../widgets/tag.dart';
 /// stop somebody acting on another franchise's customer without realising, so it
 /// has to be visible BEFORE they act — not buried in a detail pane they may
 /// never open.
+///
+/// Importing and exporting customers is HERE rather than on a tab of its own
+/// (§12). It used to be one "Import & export" destination listing every
+/// resource, which meant somebody who wanted their customer list in a
+/// spreadsheet had to leave the customers. See [DataTransfer].
 class CustomersScreen extends StatefulWidget {
   const CustomersScreen({super.key, required this.api, required this.session});
 
@@ -169,16 +175,39 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     'organization. The $label tag shows who is accountable.'
               : '$_total shared across the organization. The $label tag shows who is '
                     'accountable for each relationship.',
-          action: Refused(
-            // The server decides in the end. This decides what is OFFERED, and
-            // a control that cannot be used stays on screen saying why rather
-            // than going dark or disappearing.
-            reason: refused,
-            child: FilledButton.icon(
-              onPressed: refused == null ? _create : null,
-              icon: const Icon(Icons.person_add_outlined, size: 18),
-              label: const Text('Add customer'),
-            ),
+          // A Wrap rather than a Row: on a narrow window — and on a phone, which
+          // is coming — three controls side by side either overflow or squeeze
+          // the labels out. They fall onto a second line instead, in the same
+          // order.
+          action: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // Transfer sits before the primary action rather than after it,
+              // so "Add customer" stays the last and most prominent thing in
+              // the header.
+              DataTransfer(
+                api: widget.api,
+                session: widget.session,
+                resource: 'customers',
+                // An import writes rows this list is showing, so it has to be
+                // read again — otherwise the count in the note above is a
+                // number the screen has already been told is wrong.
+                onImported: _load,
+              ),
+              Refused(
+                // The server decides in the end. This decides what is OFFERED,
+                // and a control that cannot be used stays on screen saying why
+                // rather than going dark or disappearing.
+                reason: refused,
+                child: FilledButton.icon(
+                  onPressed: refused == null ? _create : null,
+                  icon: const Icon(Icons.person_add_outlined, size: 18),
+                  label: const Text('Add customer'),
+                ),
+              ),
+            ],
           ),
         ),
         Padding(

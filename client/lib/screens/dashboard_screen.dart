@@ -4,6 +4,8 @@ import '../core/dashboard_panels.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
+import '../widgets/dashboard_card.dart';
+import '../widgets/dashboard_grid.dart';
 import '../widgets/side_panel.dart';
 
 /// The dashboard (plan §18 Phase 4).
@@ -102,64 +104,106 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _load();
   }
 
+  /// Put the panels in the order somebody just dragged them into, and remember
+  /// it.
+  ///
+  /// ── Where the order is kept, and why there ───────────────────────
+  ///
+  /// In the layout this screen already saves. `dashboard.widgets` is an ORDERED
+  /// list of `{key, options}` in the user's own preferences (§2.1 category 6),
+  /// and the server renders panels by walking it — so the order was already
+  /// stored, and the only thing missing was a way to change it and a client that
+  /// stopped throwing it away. A second preference holding "the order" would
+  /// have been the same fact written in two places, and the first disagreement
+  /// between them would be a dashboard that drew its panels in an order nobody
+  /// had chosen.
+  ///
+  /// ── Moved first, saved second ────────────────────────────────────
+  ///
+  /// The card moves on this frame. Waiting for a round trip would mean a card
+  /// that stays put for as long as the network takes, which reads as a control
+  /// that did not work — and invites a second drag. If the save fails the
+  /// message is shown and the screen is reloaded, which puts the panels back
+  /// where the server still has them rather than leaving a lie on screen.
+  Future<void> _reorder(List<String> keys) async {
+    final byKey = {for (final panel in _panels) panel['key'] as String: panel};
+
+    setState(() {
+      _panels = [
+        for (final key in keys)
+          if (byKey.containsKey(key)) byKey[key]!,
+      ];
+    });
+
+    final response = await widget.api.put('/dashboard/layout', {
+      'widgets': [for (final panel in _panels) _entryFor(panel)],
+    });
+
+    if (!mounted || response.ok) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(response.message)));
+
+    _load();
+  }
+
+  /// A panel as the layout stores it. Options travel with it, or saving a new
+  /// ORDER would quietly reset how every panel was configured.
+  Map<String, dynamic> _entryFor(Map<String, dynamic> panel) => {
+    'key': panel['key'],
+    'options': panel['options'] ?? <String, dynamic>{},
+  };
+
   @override
   Widget build(BuildContext context) {
     return AsyncBody(
       loading: _loading,
       error: _error,
       onRetry: _load,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // Two columns when there is room, one when there is not. Panels are
-          // self-contained, so this needs no breakpoint table.
-          final columns = constraints.maxWidth >= 900 ? 2 : 1;
-
-          return ListView(
-            padding: const EdgeInsets.all(24),
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Dashboard',
-                      style: Theme.of(context).textTheme.headlineSmall,
+              Expanded(
+                child: Text(
+                  'Dashboard',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+              ),
+              IconButton(
+                onPressed: _load,
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Refresh',
+              ),
+              IconButton(
+                onPressed: _choosePanels,
+                icon: const Icon(Icons.tune),
+                tooltip: 'Choose panels',
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_panels.isEmpty)
+            _EmptyState(onChoose: _choosePanels)
+          else
+            DashboardGrid(
+              onReorder: _reorder,
+              panels: [
+                for (final panel in _panels)
+                  DashboardPanel(
+                    key: panel['key'] as String,
+                    title: panel['label'] as String,
+                    icon: dashboardPanelIcon(panel['key'] as String),
+                    body: _PanelBody(
+                      panel: panel,
+                      formats: widget.session.me!.display,
                     ),
                   ),
-                  IconButton(
-                    onPressed: _load,
-                    icon: const Icon(Icons.refresh),
-                    tooltip: 'Refresh',
-                  ),
-                  IconButton(
-                    onPressed: _choosePanels,
-                    icon: const Icon(Icons.tune),
-                    tooltip: 'Choose panels',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (_panels.isEmpty)
-                _EmptyState(onChoose: _choosePanels)
-              else
-                Wrap(
-                  spacing: 16,
-                  runSpacing: 16,
-                  children: [
-                    for (final panel in _panels)
-                      SizedBox(
-                        width: columns == 1
-                            ? constraints.maxWidth - 48
-                            : (constraints.maxWidth - 64) / 2,
-                        child: _Panel(
-                          panel: panel,
-                          formats: widget.session.me!.display,
-                        ),
-                      ),
-                  ],
-                ),
-            ],
-          );
-        },
+              ],
+            ),
+        ],
       ),
     );
   }
@@ -180,23 +224,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onPressed: () {
               Navigator.of(panelContext).pop();
 
-              // Existing options are preserved for panels that stay — turning a
-              // panel off and on again should not silently reset how it was
-              // configured.
+              final already = {for (final p in _panels) p['key'] as String};
+
+              // The panels already on screen keep their PLACE as well as their
+              // options. Rebuilt from the catalogue's order, as this was, every
+              // save silently threw away the arrangement somebody had dragged
+              // their dashboard into — and ticking one extra panel is a very
+              // odd way to be told your layout is gone.
+              //
+              // Options are preserved for the same reason: turning a panel off
+              // and on again should not reset how it was configured.
               _setLayout([
+                for (final panel in _panels)
+                  if (shown.contains(panel['key'])) _entryFor(panel),
+
+                // Newly ticked panels go on the end, in the catalogue's order.
+                // Appending is the only placement that does not move something
+                // the user put where it is.
                 for (final entry in _catalogue)
-                  if (shown.contains(entry['key']))
-                    {
-                      'key': entry['key'],
-                      'options':
-                          _panels.firstWhere(
-                            (p) => p['key'] == entry['key'],
-                            orElse: () => const {
-                              'options': <String, dynamic>{},
-                            },
-                          )['options'] ??
-                          <String, dynamic>{},
-                    },
+                  if (shown.contains(entry['key']) &&
+                      !already.contains(entry['key']))
+                    {'key': entry['key'], 'options': <String, dynamic>{}},
               ]);
             },
             child: const Text('Save'),
@@ -262,13 +310,18 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// One panel, rendered from its shape rather than its name.
+/// What one panel says, rendered from its shape rather than its name.
 ///
 /// The server decides what a widget returns; this decides how a shape is drawn.
 /// A widget returning `rows` gets a list, one returning `total` gets a big
 /// number. A new widget that reuses a shape needs nothing here.
-class _Panel extends StatelessWidget {
-  const _Panel({required this.panel, required this.formats});
+///
+/// The BOX around it is not this class's business. Both dashboards draw their
+/// cards with DashboardCard, through DashboardGrid, so the padding, the border,
+/// the header and the minimum height are one decision made once — see that
+/// widget for what went wrong when they were two.
+class _PanelBody extends StatelessWidget {
+  const _PanelBody({required this.panel, required this.formats});
 
   final Map<String, dynamic> panel;
 
@@ -279,33 +332,16 @@ class _Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final data = panel['data'] as Map<String, dynamic>;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              panel['label'] as String,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            ..._body(context, data),
-          ],
-        ),
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: _body(context, panel['data'] as Map<String, dynamic>),
     );
   }
 
   List<Widget> _body(BuildContext context, Map<String, dynamic> data) {
     if (data['needs_configuring'] == true) {
       return [
-        Text(
-          data['message'] as String? ?? 'Needs configuring.',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
+        DashboardNote(data['message'] as String? ?? 'Needs configuring.'),
       ];
     }
 
@@ -318,19 +354,29 @@ class _Panel extends StatelessWidget {
     if (_isMoney(data)) {
       final rows = (data['rows'] as List<dynamic>).cast<Map<String, dynamic>>();
 
-      if (rows.isEmpty) return [const Text('No work in this period.')];
+      if (rows.isEmpty) {
+        return [const DashboardNote('No work in this period.')];
+      }
 
       return [
         for (final row in rows)
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  _money(row['amount_minor'] as int, row['currency'] as String),
-                  style: Theme.of(context).textTheme.headlineSmall,
+                // The amount takes the room and gives way when there is not
+                // enough of it. Two fixed Texts at either end of a
+                // space-between row overflowed a phone-width card by 19 pixels
+                // the moment a figure ran to six digits — and an amount of
+                // money with its end cut off is a number that is simply wrong.
+                Expanded(
+                  child: Text(
+                    _money(row['amount_minor'] as int, row['currency'] as String),
+                    style: Theme.of(context).textTheme.headlineSmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Text(
                   '${row['jobs']} jobs',
                   style: Theme.of(context).textTheme.bodySmall,
@@ -350,7 +396,7 @@ class _Panel extends StatelessWidget {
         // up is the exact signature of a stopped scheduler, and hiding it behind
         // "idle" would bury the one number that says so.
         return [
-          const Text('No automations have run in this period.'),
+          const DashboardNote('No automations have run in this period.'),
           if (waiting > 0)
             Text(
               '$waiting event${waiting == 1 ? '' : 's'} waiting to be delivered.',
@@ -376,7 +422,7 @@ class _Panel extends StatelessWidget {
     if (panel['key'] == 'jobs.upcoming') {
       final rows = (data['rows'] as List<dynamic>).cast<Map<String, dynamic>>();
 
-      if (rows.isEmpty) return [const Text('Nothing scheduled.')];
+      if (rows.isEmpty) return [const DashboardNote('Nothing scheduled.')];
 
       return [
         for (final row in rows)
@@ -406,7 +452,7 @@ class _Panel extends StatelessWidget {
     if (data.containsKey('rows')) {
       final rows = (data['rows'] as List<dynamic>).cast<Map<String, dynamic>>();
 
-      if (rows.isEmpty) return [const Text('Nothing to show yet.')];
+      if (rows.isEmpty) return [const DashboardNote('Nothing to show yet.')];
 
       return [
         for (final row in rows)
@@ -449,7 +495,7 @@ class _Panel extends StatelessWidget {
       ];
     }
 
-    return [const Text('Nothing to show yet.')];
+    return [const DashboardNote('Nothing to show yet.')];
   }
 
   /// Does this widget report amounts of money?

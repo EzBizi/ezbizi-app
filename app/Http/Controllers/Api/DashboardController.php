@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Support\Dashboard\Widget;
 use App\Support\Dashboard\WidgetRegistry;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -20,6 +21,38 @@ use Illuminate\Validation\ValidationException;
  */
 class DashboardController extends Controller
 {
+    /**
+     * This dashboard — the composed one, whose layout IS its list of panels.
+     *
+     * Named rather than assumed, so the one endpoint that saves a layout can say
+     * which dashboard it is saving without a second route.
+     */
+    public const MAIN = 'main';
+
+    /**
+     * The dashboards a user may keep an order for, besides the main one.
+     *
+     * A fixed list, and deliberately not "any name the client sends". This
+     * writes into `users.preferences`, which is a JSON column read on every
+     * request that returns /me — an unbounded set of surface names would let a
+     * client grow that blob without limit, and every entry naming a screen that
+     * does not exist would stay there forever with nothing to clean it up.
+     *
+     * Not something an organization configures: these are the app's own screens,
+     * so the list moves when a dashboard is built, not when a customer decides
+     * something.
+     */
+    public const ORDERABLE = ['hr'];
+
+    /**
+     * Where a per-surface order lives inside a user's preferences.
+     *
+     * One key holding a map of surfaces rather than a key per surface, so a
+     * third dashboard is an entry and not a migration of everybody's blob.
+     * The MAIN dashboard is not in here — see saveLayout().
+     */
+    public const ORDER_PREFERENCE = 'dashboard.order';
+
     public function __construct(private WidgetRegistry $registry) {}
 
     /**
@@ -95,16 +128,52 @@ class DashboardController extends Controller
      * same is true of the option VALUES; asDeclared() is where that is done, and
      * index() applies it again on the way out because a layout stored before it
      * existed is still user input nobody has checked.
+     *
+     * ── One endpoint, because the order is one kind of fact ──────
+     *
+     * On the MAIN dashboard, choosing a panel and placing it are the same act:
+     * the layout is an ordered list, index() renders it by walking that list, so
+     * the order has always been stored here and dragging a card is a save of the
+     * list somebody already had. A second preference holding "the order" would
+     * be that fact written twice, and the first time the two disagreed the
+     * dashboard would draw itself in an order nobody chose.
+     *
+     * Other dashboards fix their own panels — Human Resources draws the five
+     * the HR plan names — so there is no list to choose, only a sequence to
+     * remember. `surface` says which dashboard is being saved, and for those the
+     * KEYS are stored under ORDER_PREFERENCE. It is the same store, the same
+     * user preference (§2.1 category 6) and the same endpoint; what differs is
+     * that one of them is a layout and the rest are just an order.
+     *
+     * ── Why a surface order is not checked against the registry ──
+     *
+     * The main layout is, and must be: index() hands its keys to resolve(), so
+     * an unchecked key there is a widget resolved for somebody who may not see
+     * it. A surface order resolves nothing. The panels on those screens are
+     * decided by their own endpoint under its own policy, and this list only
+     * says what sequence to draw whatever survives that in — including panels
+     * that have no registry widget at all, such as HR's "Expiring
+     * certifications", which is on screen, has a place in the row, and would
+     * otherwise be the one card nobody could move.
      */
     public function saveLayout(Request $request): array
     {
         $user = $request->user();
 
         $input = $request->validate([
+            // Absent means the main dashboard, so every client written before
+            // there was more than one keeps working unchanged.
+            'surface'             => ['sometimes', 'string', Rule::in([self::MAIN, ...self::ORDERABLE])],
             'widgets'             => ['present', 'array', 'max:20'],
-            'widgets.*.key'       => ['required', 'string'],
+            'widgets.*.key'       => ['required', 'string', 'max:64'],
             'widgets.*.options'   => ['array'],
         ]);
+
+        $surface = $input['surface'] ?? self::MAIN;
+
+        if ($surface !== self::MAIN) {
+            return $this->saveOrder($request, $surface, array_column($input['widgets'], 'key'));
+        }
 
         $layout = [];
 
@@ -132,6 +201,56 @@ class DashboardController extends Controller
         ])->save();
 
         return ['widgets' => $layout];
+    }
+
+    /**
+     * The order somebody put a fixed dashboard's panels in.
+     *
+     * Cleaned rather than refused, throughout. This is one person's preference
+     * about one of their own screens, nothing downstream trusts it for anything
+     * but sequence, and there is no reading of a duplicate or an over-long name
+     * that makes it worth dead-ending a save with a 422 somebody cannot act on:
+     *
+     *   - a repeated key is honoured once, so a bad write cannot draw a panel
+     *     twice
+     *   - the list is capped by the same `max:20` the layout is
+     *
+     * A name for a panel that no longer exists is KEPT rather than dropped, and
+     * that is the deliberate one. A panel can be missing for the afternoon —
+     * somebody's role is being edited, a module is switched off and back on —
+     * and forgetting where it sat because it happened to be absent when they
+     * dragged something else would lose an arrangement they never changed. The
+     * client passes over a name it cannot place (see `panelsInSavedOrder`), so
+     * an unknown key costs a string and nothing else.
+     *
+     * @param  list<string>  $keys
+     * @return array{surface: string, widgets: list<array{key: string}>}
+     */
+    private function saveOrder(Request $request, string $surface, array $keys): array
+    {
+        $user  = $request->user();
+        $keys  = array_values(array_unique($keys));
+        $order = $user->preferences[self::ORDER_PREFERENCE] ?? [];
+
+        // A stored value written by an older version of this app, or by nothing
+        // at all. Anything that is not a map of surfaces is replaced rather than
+        // merged into, because merging into a string is a 500.
+        if (! is_array($order)) {
+            $order = [];
+        }
+
+        $order[$surface] = $keys;
+
+        // Not audited, for saveLayout's reason: §10 records what people do to
+        // the BUSINESS, and this is somebody rearranging their own screen.
+        $user->forceFill([
+            'preferences' => array_merge($user->preferences ?? [], [self::ORDER_PREFERENCE => $order]),
+        ])->save();
+
+        return [
+            'surface' => $surface,
+            'widgets' => array_map(fn (string $key) => ['key' => $key], $keys),
+        ];
     }
 
     /**

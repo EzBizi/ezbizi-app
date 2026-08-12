@@ -593,8 +593,19 @@ class ContractVocabulary {
       ];
     }
 
-    // `CommonCore::RESERVED` is a map of key to a sentence about where the fact
-    // lives, so a bare string is a note rather than a label.
+    // The map shape: key to entry, which is how `CommonCore::RESERVED` is
+    // actually held on the server — `{label, is}` per key — before the endpoint
+    // flattens it into the list above.
+    //
+    // So `is` is read here too, and read the same way it is read there: LAST,
+    // and only ever as a note. It is a phrase written to complete "it is …",
+    // and promoting it into a caption is what drew a locked chip reading "their
+    // middle name". Leaving it unread would have been worse than either — the
+    // one shape this branch exists for carries the sentence under that name, so
+    // a map-shaped catalogue would have lost every note without saying so.
+    //
+    // A bare string value is the shape RESERVED had before it carried a label
+    // of its own, and it lands in the same place: the note, never the label.
     if (node is Map) {
       return [
         for (final entry in node.entries)
@@ -604,7 +615,8 @@ class ContractVocabulary {
               label: (entry.value as Map)['label'] as String? ?? '${entry.key}',
               note:
                   (entry.value as Map)['note'] as String? ??
-                  (entry.value as Map)['description'] as String?,
+                  (entry.value as Map)['description'] as String? ??
+                  (entry.value as Map)['is'] as String?,
               type: (entry.value as Map)['type'] as String?,
               filledBy: (entry.value as Map)['filled_by'] as String?,
               required: (entry.value as Map)['required'] != false,

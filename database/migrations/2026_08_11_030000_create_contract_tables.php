@@ -147,15 +147,28 @@ return new class extends Migration
          * evidence is the part that has to be right and the part that cannot be
          * retrofitted onto signatures already collected.
          *
-         * ── Swapping in a vendor without a migration ─────────────
+         * ── The vendor columns, and the one that did not last ────
          *
-         * The plan asks for that explicitly. Three columns carry it: `provider`
-         * names who witnessed the act, `provider_reference` holds their id for
-         * it (DocuSign's envelope id, say), and `provider_evidence` takes their
-         * certificate or audit trail verbatim as JSON. A vendor's record is then
-         * stored beside a self-built one in the same table, answering the same
-         * five questions, and nothing downstream has to know which it is looking
-         * at. `provider` defaults to 'ezbizi' because that is what is built.
+         * The plan asked for a vendor to be swappable without a migration.
+         * `provider` names who witnessed the act, `provider_reference` holds an
+         * outside id for it, and both default or null to the self-built case —
+         * `provider` to 'ezbizi', because that is what is built.
+         *
+         * A third column below, `provider_evidence`, took a vendor's certificate
+         * or audit trail verbatim as JSON. It is created here and dropped again
+         * by 2026_08_12_014500_drop_provider_evidence_from_contract_signatures:
+         * the owner has confirmed there will BE no vendor, EzBizi is building
+         * its own e-sign, and the column was a JSON blob of somebody's identity
+         * evidence declared in the §9 inventory as kept forever and never
+         * erased — a published retention promise standing in for a product
+         * decision that will not be made. Evidence our own signing collects will
+         * be designed against what it actually captures.
+         *
+         * The line stays in this file because a migration that has run is
+         * history rather than a design document: editing it would make a fresh
+         * database disagree with the one in production, which is the single
+         * thing migrations exist to prevent. Read this section as what was built
+         * on 2026-08-11, and the drop for what is true now.
          *
          * ── Why it does not point at a signed DOCUMENT row ───────
          *

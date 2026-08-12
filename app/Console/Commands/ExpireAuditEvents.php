@@ -16,12 +16,24 @@ use Illuminate\Support\Facades\DB;
  * could reach.
  *
  * Retention differs by category because the categories answer different
- * questions:
+ * questions. This list is RETENTION below plus the default, and it is kept
+ * COMPLETE rather than illustrative: a prefix absent from it is one nobody
+ * decided about, and an undecided prefix is not refused anywhere — it is
+ * silently swept as business.
  *
- *   business    3 months  — "what happened in my account?"
+ *   business    3 months  — "what happened in my account?" (DEFAULT_MONTHS:
+ *                           everything not matched by a prefix below)
  *   developer   3 months  — debugging a report that arrives weeks later
  *   crash       1 month   — fix it or it isn't getting fixed
- *   staff       12 months — evidence of EzBizi access to client data (§4.2)
+ *   error       1 month   — the same window, and the prefix crashes are
+ *                           ACTUALLY written under: ExceptionAudit::ACTION is
+ *                           `error.unhandled`, which is the only action in the
+ *                           application carrying any of these three prefixes.
+ *                           `crash` and `developer` are decided-and-unused, so
+ *                           an action taking either inherits a settled window
+ *                           rather than falling into business by accident.
+ *   staff       12 months — evidence of EzBizi access to client data (§4.2),
+ *                           matched on actor_type rather than on a prefix
  *
  * Business audit was one month and is now three (owner decision, 2026-08-07).
  * One month meant a client asking "who changed this in the spring?" in June was

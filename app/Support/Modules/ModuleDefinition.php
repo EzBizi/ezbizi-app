@@ -42,10 +42,22 @@ final class ModuleDefinition
          * The record this module's events are about — the thing a rule built on
          * one of them can then change.
          *
-         * Null for a module whose events carry no record, and for an exempt
-         * module that raises none at all. Null is not "we didn't get round to
-         * it": it means an `update_field` action under such a trigger has
-         * nothing to write to, and the catalogue and the validator both say so.
+         * Null for a module whose events carry no record, for an exempt module
+         * that raises none at all, and — since Human Resources — for a module
+         * whose events are about SEVERAL kinds of record. One subject per module
+         * is what `assertKeysMatchSubject` below enforces, and HR's events are
+         * about an invitation, an onboarding and a contract version; naming any
+         * one of the three would make the field picker wrong about the other
+         * two, so it names none.
+         *
+         * Null is not "we didn't get round to it": it means an `update_field`
+         * action under such a trigger has nothing to write to, and the catalogue
+         * and the validator both say so. What it costs is that the builder
+         * cannot grey the action out in advance the way it can for a module that
+         * names an unwritable subject — it is refused at save instead, in a
+         * sentence. Closing that gap means a subject per TRIGGER, which is a
+         * change to the wire shape the catalogue publishes as well as to this
+         * class.
          */
         public readonly ?AutomationSubject $subject = null,
     ) {
@@ -105,10 +117,16 @@ final class ModuleDefinition
      * Only the declared KEYS, against the declared subject. A module that
      * declared `job.customer_notified` and then emitted it carrying a Customer
      * would pass this and still mislead the picker, because nothing here sees
-     * the emit. Every one of the sixteen `->emit()` call sites currently carries
-     * the model its key names, so the invariant holds today by discipline rather
-     * than by construction. The place that could enforce it properly is
-     * EventEmitter::emit, which has both the key and the subject in hand.
+     * the emit. No `->emit()` call site in the tree passes a model of a kind its
+     * key does not name — the one that passes NO model is `user.invited`, which
+     * fires before the user exists and says so where it is emitted — so the
+     * invariant holds today by discipline rather than by construction. The place
+     * that could enforce it properly is EventEmitter::emit, which has both the
+     * key and the subject in hand.
+     *
+     * Stated as a rule with its one exception rather than as a count of call
+     * sites: the count was "sixteen" and there are twenty, which is what a
+     * number nothing re-checks does the moment a controller gains an event.
      */
     private function assertKeysMatchSubject(): void
     {

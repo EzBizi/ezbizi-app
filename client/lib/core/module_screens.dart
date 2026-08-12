@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../screens/automations_screen.dart';
 import '../screens/customers_screen.dart';
 import '../screens/dashboard_screen.dart';
-import '../screens/data_screen.dart';
 import '../screens/hr_screen.dart';
 import '../screens/jobs_screen.dart';
 import 'api_client.dart';
@@ -58,10 +57,14 @@ final Map<String, ModuleScreen> moduleScreens = {
     Icons.bolt_outlined,
     (api, session) => AutomationsScreen(api: api, session: session),
   ),
-  'data': ModuleScreen(
-    Icons.import_export_outlined,
-    (api, session) => DataScreen(api: api, session: session),
-  ),
+  // There is no `data` entry, and its absence is the decision rather than an
+  // omission. "Import & export" was a destination of its own listing every
+  // resource; the owner's call was that transfer belongs in the tab that owns
+  // the records, so exporting customers is in Customers and exporting jobs is
+  // in Jobs (see the DataTransfer widget). The two §9 answers that are about
+  // the whole organization rather than one resource — export everything, and
+  // the record of what is held about people — are in Settings, under the
+  // organization's own data.
 };
 
 /// How to draw one module: its glyph, and the screen behind it.

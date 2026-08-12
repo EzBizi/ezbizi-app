@@ -14,23 +14,27 @@ use App\Services\Hr\OnboardingDocuments;
 use App\Services\Hr\OnboardingForm;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
+use App\Support\Automations\EventEmitter;
 use App\Support\Contracts\Ceremony;
 use App\Support\Contracts\CommonCore;
 use App\Support\Contracts\DocumentFingerprint;
 use App\Support\Contracts\DocumentRenderer;
 use App\Support\Contracts\FieldDefinition;
 use App\Support\Contracts\FieldType;
+use App\Support\Contracts\PdfRenderer;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Privacy\SensitiveValues;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -86,6 +90,7 @@ class HrOnboardingsController extends Controller
         private readonly SensitiveValues $sensitive,
         private readonly NotificationDispatcher $notifications,
         private readonly TenantContext $tenant,
+        private readonly EventEmitter $events,
     ) {}
 
     /**
@@ -255,6 +260,24 @@ class HrOnboardingsController extends Controller
                 'email'         => $invitation->email,
             ]);
 
+            /*
+             * Inside the transaction, which is what an outbox is for: the form
+             * and the fact that it opened commit together or neither does.
+             *
+             * The scope a rule matches on is not in this payload and does not
+             * need to be — Onboarding::automationScope() reads it off the
+             * invitation, so a rule scoped to one franchise sees this and a rule
+             * scoped to another does not.
+             */
+            $this->events->emit('onboarding.started', $onboarding, ['after' => [
+                'status'        => $onboarding->status,
+                'contract'      => $version->contract?->name,
+                'contract_id'   => $version->contract_id,
+                'version'       => $version->version,
+                'invitation_id' => $invitation->getKey(),
+                'email'         => $invitation->email,
+            ]], actor: $actor);
+
             return $onboarding;
         });
 
@@ -359,40 +382,9 @@ class HrOnboardingsController extends Controller
     {
         $this->authorize('view', $onboarding);
 
-        /*
-         * THE DOCUMENT CONTAINS EVERY SENSITIVE ANSWER IN THE CLEAR, so reading
-         * it is a reveal and is authorized and audited as one.
-         *
-         * This authorized `view` alone, and that made it a way around the whole
-         * mechanism. Measured, in sequence, for one reader holding only
-         * `hr.view`:
-         *
-         *     GET /hr/onboardings/{id}/answers/iban   -> 403, "every reveal is
-         *                                                recorded against the
-         *                                                person who asked"
-         *     GET /hr/onboardings/{id}                -> ••••••••
-         *     GET /hr/onboardings/{id}/document       -> 200, the clear IBAN
-         *     sensitive_value.revealed rows written   -> 0
-         *
-         * So the endpoint that says no was decoration, and MasksSensitiveValues'
-         * claim — "the ONLY way a sensitive value leaves this application in the
-         * clear is through the call that records that it did" — was false of the
-         * one screen built to display them.
-         *
-         * The document cannot be masked instead: it is the thing being signed,
-         * and a contract with the bank account starred out is not the contract.
-         * So the answer is that reading it requires what revealing requires, and
-         * writes the same audit entry. Somebody who may only look at the record
-         * sees the form, with the masks.
-         */
-        if ($onboarding->hasSensitiveAnswers()) {
-            $this->authorize('reveal', $onboarding);
-
-            $this->audit->log('sensitive_value.revealed', $onboarding, metadata: [
-                'via'    => 'contract document',
-                'fields' => $onboarding->sensitiveAnswerKeys(),
-            ]);
-        }
+        // Reading the document is a reveal, and is authorized and audited as one.
+        // See the method for what happened when it was not.
+        $this->assertMayReadTheDocument($onboarding, 'contract document');
 
         $revision = $request->query('revision');
 
@@ -442,6 +434,145 @@ class HrOnboardingsController extends Controller
              */
             'intact' => $document->stillMatches($content),
         ]]);
+    }
+
+    /**
+     * GET /api/v1/hr/onboardings/{onboarding}/document/pdf
+     *
+     * A PDF COPY of a stored revision — the bytes, as a download, not JSON.
+     *
+     * ── What this is not ─────────────────────────────────────────
+     *
+     * It is not a second contract. The signed instrument is the HTML document
+     * `document()` above answers with; this is converted from that document's
+     * stored bytes, says on its face that it is a copy, and is kept by nobody.
+     * DocumentRenderer and PdfRenderer both argue that at length, and the
+     * argument is the reason this endpoint has the shape it has:
+     *
+     *   - there is NO PDF OF A PREVIEW. Before the first signature nothing is
+     *     stored, so there are no bytes to convert, and converting a fresh
+     *     render instead would be exactly the second artefact the design
+     *     forbids. It refuses, in a sentence that says what to do.
+     *   - the copy is refused when the stored document does not match its own
+     *     fingerprint. `document()` reports `intact: false` and still answers,
+     *     because it is showing you the record along with the verdict on it. A
+     *     PDF is different in kind: it leaves the building, it asserts on its
+     *     face that it is a copy of a signed document, and it must not make
+     *     that claim about bytes this server can no longer vouch for.
+     *
+     * ── The same door, with the same lock and the same log ───────
+     *
+     * Reading somebody's signed contract is a reveal whichever format it comes
+     * out in — the answers are in the clear in both — so this goes through
+     * `assertMayReadTheDocument()`, the identical call `document()` makes, in the
+     * identical place. Adding a format must not add a way round the mechanism;
+     * that is precisely what `GET /attachments/{id}` was before it was closed.
+     *
+     * The `via` on the audit entry differs and only that, because which artefact
+     * left the building is worth being able to read back later.
+     */
+    public function documentPdf(Request $request, Onboarding $onboarding): HttpResponse
+    {
+        $this->authorize('view', $onboarding);
+
+        $this->assertMayReadTheDocument($onboarding, 'contract document (PDF copy)');
+
+        $revision = $request->query('revision');
+
+        $document = $revision === null
+            ? $onboarding->currentDocument()
+            : $onboarding->documents()->where('revision', (int) $revision)->first();
+
+        if ($document === null) {
+            abort(Response::HTTP_NOT_FOUND, $revision === null
+                ? 'There is no PDF yet, because nothing has been signed. A PDF here is a copy '
+                    .'of the signed document, and until somebody signs there is no document to '
+                    .'copy — only the form as it stands, which the onboarding screen shows.'
+                : sprintf(
+                    'This contract has no revision %d. Revision 1 is what was signed and each '
+                    .'later number is an amendment; the record lists the ones that exist.',
+                    (int) $revision,
+                ));
+        }
+
+        $content = $this->documents->contentsOf($document);
+
+        abort_if($content === null, Response::HTTP_NOT_FOUND,
+            'The stored contract document is missing from this server, so there is nothing to '
+            .'make a copy of. The record of it is intact — its fingerprint, its revision and '
+            .'the signatures against it are all still here — but the file itself is gone and '
+            .'this needs somebody to look at the backups.');
+
+        /*
+         * Checked BEFORE converting, and the bytes checked are the bytes
+         * converted — `pdfCopyOf` takes them as an argument rather than reading
+         * the file again for exactly this reason.
+         */
+        abort_if(! $document->stillMatches($content), Response::HTTP_CONFLICT,
+            'The stored copy of this contract is not the document that was recorded, so no '
+            .'copy of it can go out saying it is. A PDF handed to somebody outlives every '
+            .'screen that could have warned them, so this refuses rather than labelling it — '
+            .'the document is still readable on the onboarding record, where it is shown '
+            .'along with the fact that it no longer matches.');
+
+        $pdf = $this->documents->pdfCopyOf($onboarding, $document, $content);
+
+        /*
+         * THE COPY'S OWN FINGERPRINT, WRITTEN DOWN. This is what makes the PDF in
+         * somebody's inbox traceable to the document it derives from: the entry
+         * carries both hashes and the person who asked for it, so a file produced
+         * here can be matched against a row rather than against a claim.
+         *
+         * Recorded even when nothing on the form is sensitive, which is the one
+         * place this differs from the reveal above. A reveal is about a value; a
+         * copy leaving the building is about the artefact, and the whole contract
+         * walks out either way.
+         */
+        $copyHash = DocumentFingerprint::of($pdf);
+
+        $this->audit->log('onboarding.document_copied', $onboarding, metadata: [
+            'format'   => PdfRenderer::MIME,
+            'revision' => $document->revision,
+            'document' => [
+                'hash'      => $document->content_hash,
+                'algorithm' => $document->hash_algorithm,
+            ],
+            'copy' => [
+                'hash'      => $copyHash,
+                'algorithm' => DocumentFingerprint::ALGORITHM,
+                'length'    => strlen($pdf),
+            ],
+        ]);
+
+        $filename = $this->documents->filenameFor(
+            $onboarding, (int) $document->revision, PdfRenderer::EXTENSION,
+        );
+
+        return response($pdf, Response::HTTP_OK, [
+            'Content-Type'   => PdfRenderer::MIME,
+            'Content-Length' => (string) strlen($pdf),
+            'Content-Disposition' => HeaderUtils::makeDisposition(
+                // Never `inline`. The bytes are converted from a document a
+                // customer wrote, and this application's own origin is the last
+                // place to render one — the same reasoning FileStore gives for
+                // serving every attachment as a download.
+                HeaderUtils::DISPOSITION_ATTACHMENT, $filename, 'contract.pdf',
+            ),
+            'X-Content-Type-Options' => 'nosniff',
+            // Behind an authorization check, so a shared cache holding one would
+            // serve somebody's contract to the next person through the proxy.
+            'Cache-Control' => 'private, no-store',
+            /*
+             * Both fingerprints, for a client that wants to show them beside the
+             * download. The audit entry is the record; these are a convenience,
+             * which is why the wording above puts the tie-back on the log and not
+             * on a header a saved file does not keep.
+             */
+            'X-Document-Fingerprint'  => (string) $document->content_hash,
+            'X-Document-Algorithm'    => (string) $document->hash_algorithm,
+            'X-Copy-Fingerprint'      => $copyHash,
+            'X-Copy-Algorithm'        => DocumentFingerprint::ALGORITHM,
+        ]);
     }
 
     /**
@@ -592,7 +723,31 @@ class HrOnboardingsController extends Controller
                 'signature_id' => $signature->getKey(),
             ]);
 
-            $this->completeIfFullySigned($onboarding);
+            /*
+             * `party` is the condition that makes this event two events.
+             *
+             * "When the new starter signs" and "when the employer signs" are
+             * both rules people want, and they are one ACT with a property
+             * rather than two different things happening — so the party is in
+             * the payload and a rule tests it, instead of the module declaring
+             * two triggers that would then both have to be kept in step with
+             * whatever a signature turns out to mean.
+             *
+             * `fully_signed` is asked before completeIfFullySigned() runs and
+             * answers the same question it does, so a rule can distinguish the
+             * last signature from the earlier ones without waiting for the
+             * separate completion event.
+             */
+            $this->events->emit('onboarding.signed', $onboarding, ['after' => [
+                'status'       => $onboarding->status,
+                'party'        => $field->filledBy,
+                'field'        => $field->key,
+                'field_label'  => $field->label,
+                'revision'     => $document->revision,
+                'fully_signed' => $onboarding->isFullySigned(),
+            ]], actor: $actor);
+
+            $this->completeIfFullySigned($onboarding, $actor);
 
             return $signature;
         });
@@ -702,6 +857,24 @@ class HrOnboardingsController extends Controller
                 'party'    => $parties,
             ]);
 
+            /*
+             * The field KEYS, never the values — the same rule the audit entry
+             * above follows and for the same reason. An amendment is very often
+             * a correction to a bank account, and this payload is readable by a
+             * tenant-authored webhook.
+             *
+             * The reason IS carried. It is the employer's own sentence about why
+             * the contract changed, it already sits on the document forever, and
+             * a notification that cannot say why is the one nobody acts on.
+             */
+            $this->events->emit('onboarding.amended', $onboarding, ['after' => [
+                'status'   => $onboarding->status,
+                'revision' => $document->revision,
+                'fields'   => $keys,
+                'reason'   => $document->reason,
+                'party'    => $parties,
+            ]], actor: $actor);
+
             $this->notifyOtherSide($onboarding, $actor, $keys);
 
             return $document;
@@ -756,6 +929,58 @@ class HrOnboardingsController extends Controller
             'sensitive' => $read['sensitive'],
             'revealed'  => $read['revealed'],
         ]]);
+    }
+
+    /**
+     * May this person read the whole agreement, and the entry that says they did.
+     *
+     * ── THE DOCUMENT CONTAINS EVERY SENSITIVE ANSWER IN THE CLEAR ──
+     *
+     * so reading it is a reveal and is authorized and audited as one.
+     *
+     * The `/document` endpoint authorized `view` alone, and that made it a way
+     * around the whole mechanism. Measured, in sequence, for one reader holding
+     * only `hr.view`:
+     *
+     *     GET /hr/onboardings/{id}/answers/iban   -> 403, "every reveal is
+     *                                                recorded against the
+     *                                                person who asked"
+     *     GET /hr/onboardings/{id}                -> ••••••••
+     *     GET /hr/onboardings/{id}/document       -> 200, the clear IBAN
+     *     sensitive_value.revealed rows written   -> 0
+     *
+     * So the endpoint that says no was decoration, and MasksSensitiveValues'
+     * claim — "the ONLY way a sensitive value leaves this application in the
+     * clear is through the call that records that it did" — was false of the one
+     * screen built to display them.
+     *
+     * The document cannot be masked instead: it is the thing being signed, and a
+     * contract with the bank account starred out is not the contract. So the
+     * answer is that reading it requires what revealing requires, and writes the
+     * same audit entry. Somebody who may only look at the record sees the form,
+     * with the masks.
+     *
+     * ── One method, because a second format is a second door ─────
+     *
+     * This was written inline in `document()`, which was fine while there was
+     * one way to read the agreement. There are two now — the HTML and the PDF
+     * copy — and a copy of this check beside each of them is a copy that can
+     * drift. The `via` is the caller's, and it is the only thing that differs:
+     * both entries name the same fields for the same reason, and which artefact
+     * was handed over is the thing worth telling apart afterwards.
+     */
+    private function assertMayReadTheDocument(Onboarding $onboarding, string $via): void
+    {
+        if (! $onboarding->hasSensitiveAnswers()) {
+            return;
+        }
+
+        $this->authorize('reveal', $onboarding);
+
+        $this->audit->log('sensitive_value.revealed', $onboarding, metadata: [
+            'via'    => $via,
+            'fields' => $onboarding->sensitiveAnswerKeys(),
+        ]);
     }
 
     // ── the ceremony's moving parts ──────────────────────────────
@@ -827,7 +1052,7 @@ class HrOnboardingsController extends Controller
     }
 
     /** Every signature field signed — the onboarding is done. */
-    private function completeIfFullySigned(Onboarding $onboarding): void
+    private function completeIfFullySigned(Onboarding $onboarding, User $actor): void
     {
         if (! $onboarding->isFullySigned()) {
             return;
@@ -843,6 +1068,31 @@ class HrOnboardingsController extends Controller
         $this->audit->log('onboarding.completed', $onboarding, metadata: [
             'signatures' => count($signed),
         ]);
+
+        /*
+         * The event a payroll handover should hang off.
+         *
+         * `user.activated` fires when somebody creates their account, which is
+         * the beginning of the paperwork rather than the end of it — a rule
+         * built on that one tells an accounts department about a person whose
+         * contract nobody has signed. This is the moment everything the
+         * agreement asked for has been given.
+         *
+         * `before` carries the status it left, so a rule can be written with
+         * `changed_to` rather than having to assume this event only ever fires
+         * on the transition. It does only fire on the transition; the payload
+         * is what lets a reader of the rule see that without knowing it.
+         */
+        $this->events->emit('onboarding.completed', $onboarding, [
+            'before' => ['status' => Onboarding::SUBMITTED],
+            'after'  => [
+                'status'     => $onboarding->status,
+                'signatures' => count($signed),
+                'contract'   => $onboarding->contractVersion?->contract?->name,
+                'version'    => $onboarding->contractVersion?->version,
+                'user_id'    => $onboarding->user_id,
+            ],
+        ], actor: $actor);
     }
 
     /**

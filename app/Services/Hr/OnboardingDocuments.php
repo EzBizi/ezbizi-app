@@ -8,6 +8,7 @@ use App\Models\OnboardingDocument;
 use App\Models\User;
 use App\Support\Contracts\DocumentFingerprint;
 use App\Support\Contracts\DocumentRenderer;
+use App\Support\Contracts\PdfRenderer;
 use App\Support\Files\FileStore;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -45,11 +46,22 @@ use RuntimeException;
  * delete, the authorization that comes from the record the file hangs off, and
  * the delete hook that takes the bytes with the record. Every one of those would
  * have had to be rebuilt here.
+ *
+ * ── One document is stored. The PDF copy is not one of them ──────
+ *
+ * `pdfCopyOf()` converts a stored revision into a PDF and hands it straight to
+ * whoever asked. It is not written to the disk, has no attachment and has no
+ * row, and that is the design rather than a step left out: storing it would
+ * make a second artefact of the same agreement, and the moment there are two
+ * the question "which one did they sign" has an answer nobody can read off the
+ * records. The copy is reproducible from the stored document whenever it is
+ * wanted, and its own fingerprint is recorded where a download is recorded.
  */
 class OnboardingDocuments
 {
     public function __construct(
         private readonly DocumentRenderer $renderer,
+        private readonly PdfRenderer $pdf,
         private readonly OnboardingForm $form,
         private readonly FileStore $files,
     ) {}
@@ -155,6 +167,46 @@ class OnboardingDocuments
     }
 
     /**
+     * A PDF COPY of one stored revision, converted from bytes the caller has
+     * already read back off the disk.
+     *
+     * ── Why the bytes are a PARAMETER and not read in here ───────
+     *
+     * It looks like a method that should fetch its own input, and it must not.
+     * The caller reads the stored file, checks it still matches the fingerprint
+     * this revision recorded, and hands THOSE BYTES here. A second read inside
+     * this method would be a second answer from the disk between the check and
+     * the conversion — so the thing verified and the thing converted would be
+     * two reads, which is the same shape as the "two artefacts" failure the whole
+     * document design is built to avoid.
+     *
+     * It is also what keeps the copy honest about where it came from. Nothing in
+     * this method can reach DocumentRenderer; a PDF produced here is a conversion
+     * of stored bytes or it is nothing.
+     */
+    public function pdfCopyOf(
+        Onboarding $onboarding,
+        OnboardingDocument $document,
+        string $storedDocument,
+    ): string {
+        $version = $onboarding->contractVersion;
+
+        return $this->pdf->render(
+            storedDocument:     $storedDocument,
+            organizationName:   (string) $onboarding->organization->name,
+            contractName:       (string) $version->contract?->name,
+            version:            (int) $version->version,
+            revision:           (int) $document->revision,
+            sourceFingerprint:  (string) $document->content_hash,
+            sourceAlgorithm:    (string) $document->hash_algorithm,
+            // When the SOURCE was stored, so that two conversions of one document
+            // are one file — see PdfRenderer on why the copy is not dated now().
+            // `created_at` is written once and never updated on this model.
+            sourceStoredAt: $document->created_at ?? $onboarding->started_at ?? now(),
+        );
+    }
+
+    /**
      * What the file is called when somebody downloads it.
      *
      * Built from the contract's own name and the two numbers that identify the
@@ -162,18 +214,26 @@ class OnboardingDocuments
      * this person's paperwork it is. A folder of these has to be sortable and
      * readable by somebody who is not looking at the app.
      *
+     * The EXTENSION is a parameter because two files come out of one revision:
+     * the stored document, and the PDF copy of it. They are deliberately the same
+     * name apart from that, so a folder holding both shows at a glance which copy
+     * belongs to which document.
+     *
      * `Str::slug` because the name is tenant text and this ends up in a
      * Content-Disposition header. It is not the stored path — that is random,
      * and FileStore keeps it that way — so a collision here costs nothing.
      */
-    private function filenameFor(Onboarding $onboarding, int $revision): string
-    {
+    public function filenameFor(
+        Onboarding $onboarding,
+        int $revision,
+        string $extension = DocumentRenderer::EXTENSION,
+    ): string {
         $version = $onboarding->contractVersion;
         $slug    = Str::slug((string) $version->contract?->name) ?: 'contract';
 
         return sprintf(
             '%s-v%d-r%d.%s',
-            $slug, (int) $version->version, $revision, DocumentRenderer::EXTENSION,
+            $slug, (int) $version->version, $revision, $extension,
         );
     }
 }

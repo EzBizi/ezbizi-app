@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Console\Commands\ExpireAuditEvents;
 use App\Models\AuditEvent;
 use App\Models\Company;
 use App\Models\Organization;
@@ -10,6 +11,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use ReflectionClass;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -244,6 +246,52 @@ class AuditLogTest extends TestCase
     }
 
     // ── retention (§10) ──────────────────────────────────────────
+
+    /**
+     * The category table in ExpireAuditEvents' docblock, held to the constants
+     * underneath it.
+     *
+     * That table is where a reader finds out what the policy IS — the prefixes
+     * are explained nowhere else, and `artisan list` only carries two of the
+     * numbers. It went stale in the way that matters: `error` was added to
+     * RETENTION when crash auditing landed, the table went on naming four
+     * categories, and the one it left out was the prefix every crash is actually
+     * written under (ExceptionAudit::ACTION).
+     *
+     * Read off the constants rather than from a second list here, so a prefix
+     * added without a line saying what it is for fails at the moment it is
+     * added, instead of waiting for somebody to read the file.
+     */
+    public function test_the_retention_docblock_names_every_category_it_applies(): void
+    {
+        $command = new ReflectionClass(ExpireAuditEvents::class);
+
+        /** @var array<string, int> $months */
+        $months = $command->getConstant('RETENTION')
+            + ['business' => $command->getConstant('DEFAULT_MONTHS')];
+
+        $this->assertNotEmpty($months, 'No retention constants were read, so this test is '
+            .'comparing an empty list against a docblock and would pass whatever it said.');
+
+        // Flattened, because the table is wrapped: a row split across a line
+        // break says exactly what an unsplit one says, and the ` * ` opening
+        // each line goes with the newline it follows.
+        $flat = trim((string) preg_replace(
+            ['/\s*\R\s*\*\s?/', '/\s+/'], ' ', (string) $command->getDocComment(),
+        ));
+
+        foreach ($months as $category => $keptFor) {
+            $row = sprintf('%s %d month%s', $category, $keptFor, $keptFor === 1 ? '' : 's');
+
+            $this->assertStringContainsString($row, $flat, sprintf(
+                'ExpireAuditEvents keeps `%s` events for %d months and its own docblock does '
+                .'not say so. A category missing from that table is a retention decision '
+                .'nobody can read, and events under an unexplained prefix are swept on a '
+                .'window nobody chose deliberately.',
+                $category, $keptFor,
+            ));
+        }
+    }
 
     public function test_retention_keeps_staff_events_far_longer_than_business_events(): void
     {

@@ -86,6 +86,11 @@ class AutomationEngine
 
             $subject = $this->subjectOf($event);
 
+            // Resolved once. It was read twice — once for the scope and once to
+            // build the company chain — and the two calls have to agree, which
+            // is easier to guarantee than to remember.
+            [$scopeType, $scopeId] = $this->scopeOf($subject);
+
             $automations = Automation::query()
                 ->where('trigger_key', $event->event_key)
                 ->where('is_active', true)
@@ -94,8 +99,9 @@ class AutomationEngine
                 ->with('activeVersion')
                 ->get()
                 ->filter(fn (Automation $a) => $a->coversScope(
-                    ...$this->scopeOf($subject),
-                    companyChain: $this->companyChainFor($subject),
+                    $scopeType,
+                    $scopeId,
+                    companyChain: $this->companyChain($scopeType, $scopeId),
                 ));
 
             $acted = 0;
@@ -318,12 +324,23 @@ class AutomationEngine
      * automations. Read off the subject, because the event itself is deliberately
      * generic.
      *
+     * A record that KNOWS where it sits is asked first, and the column names
+     * below are the fallback rather than the rule. CarriesAutomationScope sets
+     * out why: HR's records carry their placement in shapes no attribute name
+     * finds, and a guess that misses answers "no scope", which reads to
+     * `coversScope` as "organization-wide only" — a franchise rule that silently
+     * never matches rather than an error anybody sees.
+     *
      * @return array{0: string|null, 1: string|null}
      */
     private function scopeOf($subject): array
     {
         if ($subject === null) {
             return [null, null];
+        }
+
+        if ($subject instanceof CarriesAutomationScope) {
+            return $subject->automationScope();
         }
 
         foreach (['franchise_id', 'owning_franchise_id'] as $attribute) {
@@ -336,26 +353,30 @@ class AutomationEngine
     }
 
     /**
-     * Every company a franchise sits beneath, nearest first.
+     * Every company the event's scope sits beneath, nearest first.
      *
      * Needed because a company-scoped automation has to fire on its Sub
      * Companies' franchises too — the same step §6 flags as the one most easily
      * missed in the settings cascade, and missing it here meant a company-scoped
      * rule could be saved through the API and then never match anything at all.
      *
+     * Takes the resolved scope rather than the subject, so it cannot disagree
+     * with the pair `coversScope` is given. It also has to start from a COMPANY
+     * as well as from a franchise: an invitation can be issued at company level,
+     * and until HR raised events nothing that reached here ever had a scope
+     * without a franchise underneath it.
+     *
      * @return string[] company ids
      */
-    private function companyChainFor($subject): array
+    private function companyChain(?string $scopeType, ?string $scopeId): array
     {
-        $franchiseId = $subject?->getAttribute('franchise_id')
-            ?? $subject?->getAttribute('owning_franchise_id');
+        $company = match ($scopeType) {
+            'company'   => \App\Models\Company::query()->find($scopeId),
+            'franchise' => \App\Models\Franchise::query()->find($scopeId)?->company,
+            default     => null,
+        };
 
-        if ($franchiseId === null) {
-            return [];
-        }
-
-        $company = \App\Models\Franchise::query()->find($franchiseId)?->company;
-        $chain   = [];
+        $chain = [];
 
         while ($company !== null) {
             $chain[] = $company->getKey();

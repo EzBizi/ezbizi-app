@@ -288,6 +288,23 @@ Route::prefix('v1')
         // next act is to sign and it has to send back the fingerprint of exactly
         // what it received.
         Route::get('hr/onboardings/{onboarding}/document', [HrOnboardingsController::class, 'document']);
+        /*
+         * A PDF COPY of a stored revision — bytes, not JSON, and not a second
+         * contract.
+         *
+         * Registered before the `{onboarding}` routes below would ever be reached
+         * for it, and deliberately a sub-path of `document` rather than a format
+         * suffix or an `?as=pdf` on the line above: it is a different act with a
+         * different response, a different audit entry and a refusal of its own
+         * before anything is signed. A query parameter that changed all three
+         * would hide that.
+         *
+         * The FILE endpoint (`GET attachments/{id}`) cannot serve this, because
+         * there is no attachment: the copy is converted from the stored document
+         * on demand and stored nowhere. See HrOnboardingsController::documentPdf.
+         */
+        Route::get('hr/onboardings/{onboarding}/document/pdf',
+            [HrOnboardingsController::class, 'documentPdf']);
         // Revealing one sensitive answer. Its own endpoint because ASKING is the
         // reveal: every other read of this record answers the mask, so each entry
         // in the log means somebody deliberately looked rather than that a screen
@@ -331,6 +348,21 @@ Route::prefix('v1')
         // `inventory` is the §9 data map — what personal data is held, in which
         // table, and why — and sits beside the other two §9 answers rather than
         // in a module of its own. Same rule about declaration order applies.
+        //
+        // ── The client reaches these from three places now ───────
+        //
+        // Not one. The "Import & export" tab was removed on 2026-08-12 and the
+        // ROUTES did not move: per-resource export and import are reached from
+        // the Customers and Jobs tabs, and `bundle` and `inventory` from the
+        // organization's data section in Settings.
+        //
+        // Worth stating because the obvious worry is misplaced. Removing the
+        // `data` module took its only permission, `data.view`, with it — and
+        // none of these routes ever consulted it. Each is gated on the view
+        // permission of the RESOURCE it touches (`customers.view` to export
+        // customers), on the resource's create permission to import one, and
+        // `bundle` and `inventory` on holding every resource's view. So nobody
+        // gained or lost reach here; only the screens in front changed.
         Route::get('exports', [DataController::class, 'catalogue']);
         Route::get('exports/bundle', [DataController::class, 'bundle']);
         Route::get('exports/inventory', [DataController::class, 'inventory']);

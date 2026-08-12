@@ -183,6 +183,31 @@ class HrInvitationsController extends Controller
                 'expires_at' => $invitation->expires_at->toIso8601String(),
             ]], actor: $actor);
 
+            /*
+             * And `invitation.sent`, which is the same act carrying the record.
+             *
+             * Not a duplicate of the line above, and the difference is the whole
+             * reason both exist: `user.invited` is about a person who has no
+             * account yet, so it has no subject, and an event with no subject has
+             * no scope — a franchise-scoped rule can never match one. This
+             * carries the invitation, and an invitation knows which franchise or
+             * company it was issued into. "Tell me when somebody is invited into
+             * my branch" is writable because of this event and not the other.
+             *
+             * A rule listening for both runs twice, which is the same bargain
+             * `job.updated` and `job.status_changed` already make.
+             */
+            $this->events->emit('invitation.sent', $invitation, ['after' => [
+                'status'     => $invitation->status(),
+                'email'      => $invitation->email,
+                'role_id'    => $invitation->role_id,
+                'role'       => $invitation->role?->name,
+                'scope_type' => $invitation->scopeType(),
+                'scope_id'   => $invitation->scopeId(),
+                'scope'      => $invitation->scopeLabel(),
+                'expires_at' => $invitation->expires_at->toIso8601String(),
+            ]], actor: $actor);
+
             return [$invitation, $issued['token']];
         });
 
@@ -283,11 +308,31 @@ class HrInvitationsController extends Controller
         }
 
         if ($invitation->revoked_at === null) {
-            DB::transaction(function () use ($invitation) {
+            // Read before the write, so the event can say what it was withdrawn
+            // FROM — an invitation somebody had already opened and one nobody
+            // ever looked at are different things to withdraw, and `changed_from`
+            // is how a rule tells them apart.
+            $before = $invitation->status();
+
+            DB::transaction(function () use ($invitation, $before) {
                 $invitation->forceFill(['revoked_at' => now()])->save();
 
                 $this->audit->log('invitation.revoked', $invitation, metadata: [
                     'email' => $invitation->email,
+                ]);
+
+                // Inside the transaction, like every emit: the outbox row and
+                // the withdrawal commit together or neither does.
+                $this->events->emit('invitation.revoked', $invitation, [
+                    'before' => ['status' => $before],
+                    'after'  => [
+                        'status'     => $invitation->status(),
+                        'email'      => $invitation->email,
+                        'role'       => $invitation->role?->name,
+                        'scope_type' => $invitation->scopeType(),
+                        'scope_id'   => $invitation->scopeId(),
+                        'revoked_at' => $invitation->revoked_at->toIso8601String(),
+                    ],
                 ]);
             });
         }

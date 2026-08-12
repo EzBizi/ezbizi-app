@@ -89,7 +89,17 @@ class ContractSignature extends Model implements HoldsPersonalData, RecordsConse
 
     public const UPDATED_AT = null;
 
-    /** What this system witnessed itself. A vendor's records carry their name. */
+    /**
+     * Who witnessed the act — and, as things stand, the only answer there is.
+     *
+     * This used to read "a vendor's records carry their name", which described a
+     * third-party e-signature integration as a settled future. It is not one:
+     * the owner has confirmed EzBizi builds its own signing, and the column that
+     * was shaped for a vendor's identity evidence has been dropped rather than
+     * kept waiting. `provider` stays because it makes the row say who witnessed
+     * it instead of leaving a reader to assume — which is the difference between
+     * evidence and a note — and 'ezbizi' is what this system records of its own.
+     */
     public const PROVIDER_SELF = 'ezbizi';
 
     /**
@@ -108,16 +118,15 @@ class ContractSignature extends Model implements HoldsPersonalData, RecordsConse
         'ip_address', 'user_agent',
         'content_hash', 'hash_algorithm', 'content_length',
         'consent_statement', 'consented_at', 'intent_statement', 'affirmation',
-        'signed_at', 'provider', 'provider_reference', 'provider_evidence',
+        'signed_at', 'provider', 'provider_reference',
     ];
 
     protected function casts(): array
     {
         return [
-            'signed_at'         => 'datetime',
-            'consented_at'      => 'datetime',
-            'content_length'    => 'integer',
-            'provider_evidence' => 'array',
+            'signed_at'      => 'datetime',
+            'consented_at'   => 'datetime',
+            'content_length' => 'integer',
         ];
     }
 
@@ -210,30 +219,6 @@ class ContractSignature extends Model implements HoldsPersonalData, RecordsConse
                     .'anonymised at their one home. Nulling them here would remove the link '
                     .'between a person\'s record and their own contract without removing any '
                     .'fact about them — the name behind the key is already gone.')),
-            /*
-             * The entry that was missing, and the reason it was missable.
-             *
-             * Every other column here has a name that says a person is in it.
-             * This one is called `provider_evidence` and holds whatever a
-             * signing vendor's certificate happens to contain — a name, an
-             * address, a photograph of an identity document, keystroke timings.
-             * A column whose contents are decided by somebody else is exactly
-             * the kind the derived checks cannot find, so it is declared by
-             * hand: `assertIsCoherentEvidence` already says out loud that a
-             * vendor record "may carry attribution in provider_evidence", which
-             * is a sentence about personal data in a column the inventory did
-             * not mention.
-             */
-            new PersonalDataEntry('provider_evidence', PersonalDataEntry::IDENTITY,
-                'A signing vendor\'s own certificate or audit trail, stored verbatim. '
-                .'Empty for a signature this system witnessed itself; where a vendor is '
-                .'used it is their record of who they checked and how, so its contents are '
-                .'theirs to define and may include anything they verified identity with.',
-                Erasure::keep('It is the vendor\'s half of the same attribution the rest '
-                    .'of this row carries, and a signature witnessed by somebody else is '
-                    .'evidenced by their certificate or by nothing. Editing a third party\'s '
-                    .'record of what they saw does not anonymise the signature; it forges '
-                    .'their statement. It expires with the signature it belongs to.')),
         ];
     }
 
@@ -416,10 +401,24 @@ class ContractSignature extends Model implements HoldsPersonalData, RecordsConse
                 .'the contract is for — and one without is a record nobody can be shown');
         }
 
-        if ($this->provider === self::PROVIDER_SELF && $this->signer_user_id === null) {
-            $this->refuse('this system witnessed it and cannot say who performed the act. '
-                .'A vendor record may carry attribution in provider_evidence instead; a '
-                .'self-witnessed one has nothing else to fall back on');
+        /*
+         * This check used to be conditional — `provider === PROVIDER_SELF &&
+         * signer_user_id === null` — and the exemption was real: a vendor's
+         * record was allowed to arrive without a signer key because its
+         * attribution was supposed to be inside `provider_evidence`.
+         *
+         * That column is gone (see the migration that drops it) and there is no
+         * vendor to bring one back — this product signs for itself. So the
+         * condition was left guarding the case it no longer had an answer for:
+         * any row with some other `provider` would have been accepted naming
+         * nobody, with nothing anywhere to say who acted. Requiring the key
+         * unconditionally is the same rule the removal already implies, stated
+         * where it is enforced.
+         */
+        if ($this->signer_user_id === null) {
+            $this->refuse('it cannot say who performed the act. Every signature this system '
+                .'records is one it witnessed itself, so the account that did the signing is '
+                .'the whole of the attribution — there is nothing else to fall back on');
         }
 
         /*

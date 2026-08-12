@@ -17,11 +17,20 @@
 ///
 /// ── Why it is hand-written and small ─────────────────────────────
 ///
-/// No HTML package is in pubspec, and adding one is a deploy decision rather
-/// than a code one — the same argument DocumentRenderer makes about a PDF
-/// writer. What has to be read is one server's own output: paragraphs,
-/// headings, a definition list, and the odd bit of emphasis. So this covers
-/// that and is explicit about the rest.
+/// What has to be read is not general HTML. It is one renderer's own output —
+/// paragraphs, headings, a definition list, and the odd bit of emphasis — and
+/// DocumentRenderer is where that shape is decided, so the reader below covers
+/// exactly it and is explicit about the rest. No HTML package is in pubspec,
+/// and none is needed for a shape that narrow.
+///
+/// This paragraph used to give a second reason, and it was borrowed rather than
+/// this end's own: that adding a package is a deploy decision rather than a code
+/// one, "the same argument DocumentRenderer makes about a PDF writer".
+/// DocumentRenderer no longer makes that argument — the PDF writer was added
+/// (`dompdf/dompdf`, see App\Support\Contracts\PdfRenderer) and that class now
+/// records the decision instead of deferring it, so the citation had turned into
+/// a pointer at a precedent for ADDING the dependency. The reason above stands
+/// on its own and does not depend on what the server decided about PDFs.
 ///
 /// What it does NOT do, deliberately: no attributes, no CSS, no tables laid
 /// out, no images, no scripts (`<script>` and `<style>` are dropped whole,

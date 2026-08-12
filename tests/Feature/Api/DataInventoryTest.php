@@ -154,11 +154,17 @@ class DataInventoryTest extends TestCase
 
         // It describes every resource, so reading it means being allowed to read
         // all of them — the same rule `exports/bundle` applies.
-        $partial = $this->userWithRole($alpha, 'Partial', ['data.view', 'customers.view']);
+        //
+        // Both roles used to be granted `data.view` as well, from when Import &
+        // export was a module with a tab of its own. That module was removed on
+        // 2026-08-12 and the key dropped silently on the way in, so the grant
+        // proved nothing and implied something untrue: this endpoint has never
+        // consulted it.
+        $partial = $this->userWithRole($alpha, 'Partial', ['customers.view']);
 
         $this->signedInAs($partial)->getJson('/api/v1/exports/inventory')->assertForbidden();
 
-        $full = $this->userWithRole($alpha, 'Full', ['data.view', 'customers.view', 'jobs.view']);
+        $full = $this->userWithRole($alpha, 'Full', ['customers.view', 'jobs.view']);
 
         $this->signedInAs($full)->getJson('/api/v1/exports/inventory')->assertOk();
     }
@@ -290,11 +296,18 @@ class DataInventoryTest extends TestCase
      *
      * ── What it cannot do, said plainly ──────────────────────────
      *
-     * It knows the columns whose NAME says a person is in them. `provider_evidence`
-     * — a signing vendor's certificate, contents decided by the vendor — was
-     * undeclared for exactly that reason and had to be found by reading. A
-     * heuristic that catches the common case and admits its edge is worth more
-     * than a docblock claiming a proof that does not exist.
+     * It knows the columns whose NAME says a person is in them, and nothing
+     * else. The example this paragraph used to give was `provider_evidence` — a
+     * signing vendor's certificate, contents decided by the vendor — undeclared
+     * for exactly that reason and found by reading rather than by a check. That
+     * column has since been dropped, because there is no vendor and EzBizi
+     * builds its own signing, so the example is gone. The limit is not:
+     * `attachments` declares "the file contents" and `onboarding_answers`
+     * declares `value`, both of them personal data whose shape a tenant decided
+     * and neither of them reachable by a column name. Both are declared by hand
+     * and flagged `tenantDefined`. A heuristic that catches the common case and
+     * admits its edge is worth more than a docblock claiming a proof that does
+     * not exist.
      */
     public function test_every_declared_table_names_its_person_shaped_columns(): void
     {
@@ -342,6 +355,103 @@ class DataInventoryTest extends TestCase
         ));
     }
 
+    /**
+     * The same claim in reverse: nothing declared has since disappeared.
+     *
+     * The test above runs SCHEMA → DECLARED — a person-shaped column must be
+     * named by an entry. This one runs DECLARED → SCHEMA, and the failure it
+     * catches is the opposite one: a column is dropped, its entry is left
+     * behind, and `/exports/inventory` goes on telling the people it describes
+     * that this system holds a thing about them — with a purpose, a category
+     * and, where the disposition is `keep`, a stated promise to retain it. An
+     * inventory that over-claims is not the smaller error. It is the document
+     * handed to somebody exercising a right, and it is false.
+     *
+     * `provider_evidence` is the case that prompted it: declared IDENTITY, kept
+     * forever, never erased, for a signing vendor that will not exist. When the
+     * column was dropped, nothing in the suite would have noticed the entry
+     * staying behind, and the answer to "what do you hold about me" would have
+     * kept naming a vendor's identity evidence that no table has room for.
+     *
+     * ── Why it is not the check PersonalDataPurgeTest already has ─
+     *
+     * That one — test_every_erasable_entry_names_columns_that_exist — asks the
+     * same question of ERASE entries only, because its concern is a purge
+     * issuing an UPDATE against nothing. `keep` and `drop` fell outside it, and
+     * `keep` is exactly where a permanent-retention promise lives. This asks it
+     * of every disposition, so the narrower one is now contained in it.
+     *
+     * Tenant-defined entries are skipped, and that is the documented meaning of
+     * the flag rather than a convenience: PersonalDataEntry defines `field` as
+     * the columns "or — for tenant-defined data — how the fields are named", and
+     * `attachments` declares "the file contents", which is prose on purpose
+     * because there is no column to name. The one tenant-defined entry that IS a
+     * real column, `onboarding_answers.value`, erases — so the purge test's
+     * narrower check still covers the case this one steps around.
+     *
+     * The other shape is a key inside a JSON column, and it is checked as far as
+     * a schema can be asked: see the comment on the loop.
+     */
+    public function test_no_declaration_names_a_column_that_has_been_dropped(): void
+    {
+        $vanished = [];
+
+        foreach (glob(app_path('Models').'/*.php') ?: [] as $file) {
+            $class = 'App\\Models\\'.basename($file, '.php');
+
+            if (! is_subclass_of($class, HoldsPersonalData::class)
+                || ! is_subclass_of($class, Model::class)) {
+                continue;
+            }
+
+            $table = (new $class)->getTable();
+
+            if (! \Illuminate\Support\Facades\Schema::hasTable($table)) {
+                continue;
+            }
+
+            $columns = \Illuminate\Support\Facades\Schema::getColumnListing($table);
+
+            foreach ($class::personalDataHeld() as $entry) {
+                if ($entry->tenantDefined) {
+                    continue;
+                }
+
+                foreach ($entry->columns() as $name) {
+                    /*
+                     * A dotted name is a key INSIDE a JSON column —
+                     * `audit_events.metadata.ip` is the ip inside `metadata`,
+                     * listed on its own because somebody asking "do you keep my
+                     * IP address" will not find it under "metadata". What has to
+                     * exist there is the column holding the JSON; the key inside
+                     * it is data, and a schema cannot be asked about it.
+                     *
+                     * PersonalDataEntry only permits this shape on an entry the
+                     * purge does not act on, and says so: for an erasable entry
+                     * `field` is "a comma-separated list of REAL columns and
+                     * nothing else", because that string is what the Anonymiser
+                     * issues an UPDATE against.
+                     */
+                    $column = strstr($name, '.', true) ?: $name;
+
+                    if (! in_array($column, $columns, true)) {
+                        $vanished[] = "{$table}.{$name}";
+                    }
+                }
+            }
+        }
+
+        sort($vanished);
+
+        $this->assertSame([], $vanished, sprintf(
+            "The §9 inventory declares these columns and the schema has no such column:\n"
+            ."  %s\nEach one is published to the person it is about — a purpose, a category, "
+            .'and where the disposition is `keep`, how long it is held for. Dropping a column '
+            .'without removing its entry leaves the answer to "what do you hold about me" '
+            .'naming something nobody holds.',
+            implode("\n  ", $vanished),
+        ));
+    }
 
     /** Every declared entry is usable — a category and a purpose, not a stub. */
     public function test_every_declaration_is_answerable_rather_than_a_placeholder(): void

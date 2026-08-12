@@ -73,12 +73,18 @@ void main() {
     await _pumpShell(tester, modules: [
       _module('dashboard', 'Dashboard'),
       // The tenant renames things (§8), and the registry's own words are not
-      // recoverable from the key: `data` is "Import & export".
-      _module('data', 'Import & export'),
+      // recoverable from the key: `hr` is "Human Resources".
+      //
+      // This used to be `data` / "Import & export", which made the same point
+      // and then stopped compiling as a test of anything: that module was
+      // removed when the tab was, so the sidebar would skip it for want of a
+      // screen and this would have passed for the wrong reason. A key the
+      // client CAN draw is what makes the label the thing under test.
+      _module('hr', 'Human Resources'),
     ]);
 
-    expect(_inSidebar('Import & export'), findsOneWidget);
-    expect(_inSidebar('Data'), findsNothing);
+    expect(_inSidebar('Human Resources'), findsOneWidget);
+    expect(_inSidebar('Hr'), findsNothing);
   });
 
   /// A module this build has no screen for is skipped rather than drawn.

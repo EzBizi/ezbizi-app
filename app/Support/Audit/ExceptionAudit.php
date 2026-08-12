@@ -46,12 +46,20 @@ use Throwable;
  * So the payload is composed only of values whose provenance is this codebase:
  *
  *   exception  the class name
+ *   previous   the wrapped exception's class name, when there is one, and only
+ *              the class — its message is free text for the same reasons the
+ *              outer one's is
  *   file:line  where it was raised, relative to the deploy root
  *   trace      frames as `Class::method (file:line)`, arguments DROPPED
  *   method     the HTTP verb, when there was a request
  *   route      the route's URI PATTERN — `hr/onboardings/{onboarding}` — never
  *              the filled-in path and never the query string, which is where a
  *              reset token or an invitation token would be
+ *
+ * Those six are the whole of it. The list is worth keeping complete rather than
+ * indicative: it is the only place a reader can check what a tenant admin can
+ * read out of an append-only table, and a key missing from it is a key nobody
+ * audits.
  *
  * The message is deliberately absent. Laravel's own reporting still writes it,
  * with the full trace, to the log channel — this callback returns null, which

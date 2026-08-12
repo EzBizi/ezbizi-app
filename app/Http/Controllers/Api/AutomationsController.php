@@ -6,13 +6,17 @@ use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
+use App\Models\User;
+use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\ActionRunner;
 use App\Support\Automations\AutomationEngine;
+use App\Support\Automations\CarriesAutomationScope;
 use App\Support\Automations\OutboundWebhook;
 use App\Support\Modules\ActionDefinition;
 use App\Support\Modules\ModuleDefinition;
 use App\Support\Modules\ModuleRegistry;
+use App\Support\Modules\PermissionCatalogue;
 use App\Support\Modules\TriggerDefinition;
 use App\Support\Privacy\SensitiveValues;
 use App\Support\Tenancy\TenantContext;
@@ -46,6 +50,8 @@ class AutomationsController extends Controller
         private readonly OutboundWebhook $webhook,
         private readonly AuditLogger $audit,
         private readonly TenantContext $tenant,
+        private readonly PermissionCatalogue $permissions,
+        private readonly ScopeReach $reach,
     ) {}
 
     /**
@@ -59,10 +65,37 @@ class AutomationsController extends Controller
     {
         $this->authorize('viewAny', Automation::class);
 
+        /*
+         * A MODULE IS ONLY IN THE CATALOGUE IF THIS PERSON CAN REACH ITS TAB.
+         *
+         * The tab is the view permission (§4), so "may build rules on Human
+         * Resources" is "may open Human Resources" — and this endpoint returns
+         * the wording modules write for themselves, which is real information
+         * about the business. An HR trigger list tells somebody with no HR
+         * permission that contracts are signed here, that invitations lapse
+         * after a week and that amendments carry a reason.
+         *
+         * `automations.view` alone used to be enough to see all of it. That was
+         * survivable while the catalogue held customers and jobs, which is the
+         * work of a business rather than its private administration; it stopped
+         * being survivable the moment HR declared anything.
+         *
+         * `heldBy` and not the role's raw keys: it drops modules the PLATFORM
+         * has switched off for this organization as well, which is the other way
+         * a module can be unreachable and the one nobody remembers.
+         */
+        $reachable = $this->modulesInReach($request);
+
         $modules = [];
 
         foreach ($this->registry->all() as $key => $module) {
             if ($module->triggers === [] && $module->automationActions === []) {
+                continue;
+            }
+
+            // The same rule the SAVE path applies — see assertTriggerExists for
+            // what happened while these were two separate checks.
+            if (! in_array($key, $reachable, true)) {
                 continue;
             }
 
@@ -401,7 +434,9 @@ class AutomationsController extends Controller
             ->latest('started_at')
             ->limit(100)
             ->get()
-            ->filter(fn (AutomationRun $r) => $this->maySeeSubjectOf($r, $reachable))
+            ->filter(fn (AutomationRun $r) => $this->maySeeSubjectOf(
+                $r, $request->user(), $reachable, $this->modulesInReach($request),
+            ))
             ->values()
             ->map(fn (AutomationRun $r) => [
                 'id'      => $r->id,
@@ -425,21 +460,80 @@ class AutomationsController extends Controller
     /**
      * Can this caller see the record a run acted on?
      *
-     * Customers are shared org-wide so they are always visible; jobs are not.
-     * A run whose subject has been deleted is shown — there is nothing left to
-     * leak, and hiding it would make the log lie about what happened.
+     * ── It used to name Job, and only Job ────────────────────────
+     *
+     * The guard read `if ($type !== Job::class) return true;` — everything that
+     * was not a job was visible to anybody who could open the rule. That was
+     * defensible while the only two subjects were jobs and customers, because a
+     * customer IS shared organization-wide. It stopped being defensible the
+     * moment Human Resources started emitting, and the failure is not subtle:
+     * `condition_trace` carries `actual`, the real value read off the payload,
+     * so a condition on `email` puts an invitee's address in the run log.
+     *
+     * Both halves were measured:
+     *
+     *   - a role with `automations.view` and NO HR permission, refused
+     *     `GET /hr/invitations` with 403, read an invitee's address out of
+     *     `/automations/{id}/runs`.
+     *   - a branch manager at F2, holding `hr.view` legitimately, read F1's new
+     *     starter out of an organization-wide rule's log.
+     *
+     * So the default is inverted. A subject is hidden unless something can say
+     * the caller may see it — the same fail-closed direction TenantScope takes,
+     * and for the same reason: the next subject type somebody adds inherits
+     * safety rather than exposure.
+     *
+     * The two questions are different and both are asked. MAY THEY OPEN THE
+     * MODULE at all, which is the permission; and DOES THEIR REACH COVER THIS
+     * RECORD, which is §4's authority and is what separates two branch managers
+     * holding identical permissions.
+     *
+     * A run whose subject has been DELETED is still shown. There is nothing
+     * left to leak, and hiding it would make the log lie about what happened —
+     * that reasoning was right before and is unchanged.
      */
-    private function maySeeSubjectOf(AutomationRun $run, array $reachable): bool
+    private function maySeeSubjectOf(
+        AutomationRun $run,
+        User $actor,
+        array $reachable,
+        array $modules,
+    ): bool
     {
         $type = $run->event?->subject_type;
 
-        if ($type !== \App\Models\Job::class) {
+        // No subject at all — an organization-level event like a setting
+        // changing. Nothing to leak and nothing to check.
+        if ($type === null) {
             return true;
         }
 
-        $job = \App\Models\Job::query()->find($run->event->subject_id);
+        if (! in_array($this->moduleOfTrigger((string) $run->event?->event_key), $modules, true)) {
+            return false;
+        }
 
-        return $job === null || in_array($job->franchise_id, $reachable, strict: true);
+        $subject = class_exists($type)
+            ? $type::query()->find($run->event->subject_id)
+            : null;
+
+        if ($subject === null) {
+            return true;
+        }
+
+        if ($subject instanceof CarriesAutomationScope) {
+            [$scopeType, $scopeId] = $subject->automationScope();
+
+            // Organization-wide, and they are in the organization by being here.
+            return $scopeType === null
+                || $this->reach->covers($actor, $scopeType, $scopeId);
+        }
+
+        $franchiseId = $subject->getAttribute('franchise_id')
+            ?? $subject->getAttribute('owning_franchise_id');
+
+        // Shared organization-wide — a customer. Visible to anybody who got
+        // this far, which is now anybody holding the module's view permission.
+        return $franchiseId === null
+            || in_array($franchiseId, $reachable, strict: true);
     }
 
     /** DELETE /api/v1/automations/{automation} */
@@ -524,7 +618,7 @@ class AutomationsController extends Controller
         }
 
         if (isset($input['trigger_key'])) {
-            $this->assertTriggerExists($input['trigger_key']);
+            $this->assertTriggerExists($request, $input['trigger_key']);
         }
 
         // The scope must be OURS. Nothing checked it, and the column has no
@@ -567,17 +661,97 @@ class AutomationsController extends Controller
      * A trigger no module declares would look configured and never fire — the
      * most confusing failure there is, because nothing reports an error.
      */
-    private function assertTriggerExists(string $trigger): void
+    /**
+     * The trigger exists AND this person may reach the module that emits it.
+     *
+     * ── Hiding a key from a picker is not gating ─────────────────
+     *
+     * `catalogue()` filters modules by `{key}.view`, and for a while that was
+     * the whole of it. It gated nothing. This method checked the REGISTRY, so a
+     * key omitted from somebody's catalogue was still perfectly saveable by
+     * anybody who knew it — and the keys are in the module declaration, which
+     * any other client reads.
+     *
+     * Measured, on a role holding `automations.create` and no HR permission at
+     * all, refused `GET /hr/invitations` with 403:
+     *
+     *     POST /automations {trigger_key: 'invitation.sent',
+     *                        actions: [{type: 'notify', message: '{{email}}'}]}
+     *     → 201, and the next invitation put the invitee's address in their
+     *       notifications.
+     *
+     * `ActionRunner::interpolate` reads attributes straight off the subject, so
+     * `{{email}}`, `{{first_name}}` and `{{last_name}}` all come out that way;
+     * `webhook` posts the entire payload to a URL the same person chose. The
+     * automation engine is a general-purpose reader of any record the system
+     * emits, which makes "may build a rule on this module" exactly as strong a
+     * permission as "may read this module", and it has to be checked where the
+     * rule is SAVED.
+     *
+     * Both the catalogue and this ask `modulesInReach()`, so the picker and the
+     * save path cannot drift — the bug was that they were two rules.
+     */
+    private function assertTriggerExists(Request $request, string $trigger): void
     {
-        if ($this->registry->findTrigger($trigger) !== null) {
+        $definition = $this->registry->findTrigger($trigger);
+
+        if ($definition === null) {
+            throw ValidationException::withMessages([
+                'trigger_key' => "Nothing in this system emits '{$trigger}'. Pick one from "
+                    .'the catalogue — a rule listening for something that never happens '
+                    .'looks configured and simply never runs.',
+            ]);
+        }
+
+        if (in_array($this->moduleOfTrigger($trigger), $this->modulesInReach($request), true)) {
             return;
         }
 
+        /*
+         * R8: what to do, not which permission is missing. Naming the module is
+         * the useful half — "ask for access to Human Resources" is actionable,
+         * and `hr.view` is not. It also does not confirm the trigger exists,
+         * which is why the wording is about reach rather than about the key.
+         */
         throw ValidationException::withMessages([
-            'trigger_key' => "Nothing in this system emits '{$trigger}'. Pick one from "
-                .'the catalogue — a rule listening for something that never happens '
-                .'looks configured and simply never runs.',
+            'trigger_key' => 'A rule can only watch a part of the app you can open yourself, '
+                .'because whatever it watches it can also send on. Ask for access to that '
+                .'part of the app, then build the rule.',
         ]);
+    }
+
+    /** Which module a trigger belongs to — `invitation.sent` is `hr`'s. */
+    private function moduleOfTrigger(string $trigger): ?string
+    {
+        foreach ($this->registry->all() as $key => $module) {
+            foreach ($module->triggers as $declared) {
+                if ($declared->key === $trigger) {
+                    return $key;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The modules whose tab this person can open — the one rule the catalogue
+     * and the save path both read.
+     *
+     * `heldBy` and not the role's raw keys: it drops modules the PLATFORM has
+     * switched off for this organization as well, which is the other way a
+     * module can be unreachable and the one nobody remembers.
+     *
+     * @return list<string>
+     */
+    private function modulesInReach(Request $request): array
+    {
+        $held = $this->permissions->heldBy($request->user());
+
+        return array_values(array_filter(
+            array_keys($this->registry->all()),
+            fn (string $key) => in_array("{$key}.view", $held, true),
+        ));
     }
 
     /**
@@ -654,13 +828,23 @@ class AutomationsController extends Controller
             return;
         }
 
+        /*
+         * A module may declare no subject at all, and Human Resources is the
+         * first that does — its events are about three different kinds of record
+         * and a ModuleDefinition holds one, so it holds none rather than the
+         * wrong one. The refusal has to work anyway, and it must not fall back
+         * to naming the trigger key: a wire key is not an explanation, and R8
+         * says a refusal is a sentence.
+         */
+        $record = $subject?->label ?? 'the record this rule reacts to';
+
         // Named, so nobody has to guess which of the twenty-five actions is
         // wrong or what they were supposed to put there.
         throw ValidationException::withMessages([$key => $writable === []
             ? sprintf(
                 "A rule cannot set any field on %s, so it cannot set '%s'. Only %s can be "
                 .'changed by a rule; anything else needs a different kind of action.',
-                $subject?->label ?? "whatever '{$triggerKey}' is about",
+                $record,
                 $field,
                 $this->subjectsWithWritableFields(),
             )

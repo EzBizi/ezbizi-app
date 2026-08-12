@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Models\Assignment;
+use App\Models\Company;
 use App\Models\Contract;
 use App\Models\ContractVersion;
 use App\Models\Franchise;
@@ -104,7 +105,62 @@ class HrDashboardTest extends TestCase
         $rows = $this->panels($this->alpha['admin'])['hr.headcount']['rows'];
 
         $this->assertContains(['title' => 'Co', 'total' => 0], $rows);
-        $this->assertContains(['title' => 'F1', 'total' => 0], $rows);
+
+        // A franchise carries the company that owns it — see below for why.
+        $this->assertContains(['title' => 'Co › F1', 'total' => 0], $rows);
+    }
+
+    /**
+     * The bug this panel actually shipped with, on the owner's own data.
+     *
+     * The headcount card listed **Connecticut** four times and **DMV** twice —
+     * six rows naming four different places, with nothing to tell them apart.
+     * A franchise name is unique within its company and nowhere else, and the
+     * panel was printing the bare name, so four franchises belonging to four
+     * different companies rendered as four identical rows.
+     *
+     * The answer matches the one ScopePickerPanel already made for the same
+     * collision: show the company that owns the place, because indentation is
+     * not there to say it.
+     *
+     * Two companies with a same-named branch each, which is the smallest shape
+     * that can reproduce it — one company cannot hold two franchises of one
+     * name, so this is only ever a cross-company failure.
+     */
+    public function test_same_named_branches_in_different_companies_are_told_apart(): void
+    {
+        $this->inTenant(function () {
+            foreach (['North', 'South'] as $companyName) {
+                $company = Company::create([
+                    'organization_id' => $this->alpha['org']->id,
+                    'name'            => $companyName,
+                    'is_active'       => true,
+                ]);
+
+                Franchise::create([
+                    'organization_id' => $this->alpha['org']->id,
+                    'company_id'      => $company->id,
+                    'name'            => 'Connecticut',
+                    'is_active'       => true,
+                ]);
+            }
+        });
+
+        $rows   = $this->panels($this->alpha['admin'])['hr.headcount']['rows'];
+        $titles = array_column($rows, 'title');
+
+        $this->assertContains('North › Connecticut', $titles);
+        $this->assertContains('South › Connecticut', $titles);
+
+        $this->assertNotContains('Connecticut', $titles,
+            'A branch is still listed by its bare name, so two places in different companies '
+            .'read as the same row and the count beside each says nothing.');
+
+        // The whole point is that they are distinguishable, so a duplicate
+        // title anywhere in the list is the bug coming back under a new name.
+        $this->assertSame(count($titles), count(array_unique($titles)),
+            'Two rows share a title. Whatever they are, somebody reading this card cannot '
+            .'tell which place each number belongs to.');
     }
 
     /**
@@ -142,7 +198,7 @@ class HrDashboardTest extends TestCase
         // Their own franchise, and only it. The administrator sitting at
         // organization level is above them and is not theirs to count.
         $this->assertSame(1, $panels['hr.headcount']['total']);
-        $this->assertContains(['title' => 'Second', 'total' => 1], $panels['hr.headcount']['rows']);
+        $this->assertContains(['title' => 'Co › Second', 'total' => 1], $panels['hr.headcount']['rows']);
 
         foreach ($panels['hr.headcount']['rows'] as $row) {
             $this->assertNotSame('Alpha', $row['title']);
@@ -185,8 +241,8 @@ class HrDashboardTest extends TestCase
         $headcount = $this->panels($this->alpha['admin'])['hr.headcount'];
 
         // In both rows: they genuinely are part of both franchises' headcount.
-        $this->assertContains(['title' => 'F1', 'total' => 1], $headcount['rows']);
-        $this->assertContains(['title' => 'Second', 'total' => 1], $headcount['rows']);
+        $this->assertContains(['title' => 'Co › F1', 'total' => 1], $headcount['rows']);
+        $this->assertContains(['title' => 'Co › Second', 'total' => 1], $headcount['rows']);
 
         // But two people, not three. Summing the rows would inflate every
         // organization that shares staff, quietly.

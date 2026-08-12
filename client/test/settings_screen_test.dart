@@ -598,6 +598,164 @@ void main() {
     expect(find.text('Minimum password length'), findsOneWidget);
     expect(find.text('Default tax rate (%)'), findsOneWidget);
   });
+
+  // ── the organization's own data (§9) ───────────────────────────
+
+  /// The two obligations that had nowhere else to go.
+  ///
+  /// "Import & export" was a tab of its own carrying three things: exporting
+  /// and importing customers, the same for jobs, and these two — everything
+  /// this organization holds, and the record of what it holds about people.
+  /// The first two moved into the Customers and Jobs tabs when the tab was
+  /// removed. These are not about a resource, so they had no tab to move into,
+  /// and dropping them would have deleted a §9 answer from the product.
+  ///
+  /// Which is why this group exists rather than a note in a commit message: the
+  /// failure mode of removing a screen is that the parts nobody was looking at
+  /// go with it, silently, and the people who need these two are the ones who
+  /// ask once a year.
+  group('the organization’s data section', () {
+    testWidgets('offers both §9 answers at organization scope', (tester) async {
+      _wide(tester);
+
+      await _pumpSettings(tester, _oneSetting, exports: _exports());
+
+      expect(find.text('This organization’s data'), findsOneWidget);
+      expect(find.text('Export everything'), findsWidgets);
+      expect(find.text('Open the record'), findsOneWidget);
+
+      // Live, not decoration.
+      expect(_enabled(tester, 'Export everything'), isTrue);
+      expect(_enabled(tester, 'Open the record'), isTrue);
+    });
+
+    /// R8: a control somebody may not use stays on screen and says why, in the
+    /// server's words. The alternative — omitting it — leaves an administrator
+    /// unable to tell "we do not offer this" from "my role is missing a grant",
+    /// and only one of those has a fix.
+    testWidgets('shows the server’s sentence when it is refused', (
+      tester,
+    ) async {
+      _wide(tester);
+
+      const refusal =
+          'You do not have permission to export everything this organization '
+          'holds. That is part of a role rather than of an account, so somebody '
+          'who can edit roles can add it to yours.';
+
+      await _pumpSettings(
+        tester,
+        _oneSetting,
+        exports: _exports(
+          exportRefusal: refusal,
+          inventoryRefusal: 'You do not have permission to read the record.',
+        ),
+      );
+
+      expect(find.text('This organization’s data'), findsOneWidget);
+      expect(_enabled(tester, 'Export everything'), isFalse);
+      expect(_enabled(tester, 'Open the record'), isFalse);
+
+      // The sentence itself is on the control, reachable by hover, long press
+      // and a screen reader alike — see Refused.
+      final tooltips = tester
+          .widgetList<Tooltip>(find.byType(Tooltip))
+          .map((t) => t.message)
+          .toList();
+
+      expect(tooltips, contains(refusal));
+    });
+
+    /// Both answers cover the whole business. There is no franchise-sized
+    /// version of "export everything this organization holds", and offering one
+    /// under a franchise's heading would claim there is.
+    testWidgets('is absent at franchise scope', (tester) async {
+      _wide(tester);
+
+      await _pumpSettings(tester, _oneSettingAtFranchise, exports: _exports());
+
+      expect(find.text('Minimum password length'), findsOneWidget);
+      expect(find.text('This organization’s data'), findsNothing);
+    });
+
+    /// Somebody typing "export" into the settings search is looking for exactly
+    /// this, and a section that vanished the moment they searched would be
+    /// findable only by scrolling past everything else.
+    testWidgets('survives a search for its own words', (tester) async {
+      _wide(tester);
+
+      await _pumpSettings(tester, _oneSetting, exports: _exports());
+
+      await tester.enterText(find.byType(TextField).first, 'export');
+      await tester.pumpAndSettle();
+
+      expect(find.text('This organization’s data'), findsOneWidget);
+      // And it is not claiming to be a setting: the settings themselves are
+      // filtered out by the same query.
+      expect(find.text('Minimum password length'), findsNothing);
+    });
+  });
+}
+
+/// Is the button carrying this label pressable?
+bool _enabled(WidgetTester tester, String label) => tester
+    .widget<ButtonStyleButton>(
+      find.ancestor(
+        of: find.text(label),
+        matching: find.byType(OutlinedButton),
+      ),
+    )
+    .onPressed !=
+    null;
+
+/// A server with one setting on it, at organization scope.
+Future<http.Response> _oneSetting(http.Request request) async {
+  if (request.url.path.endsWith('/me')) {
+    return _json({
+      'data': {
+        ..._me,
+        'scope': {
+          'type': 'organization',
+          'id': 'org-1',
+          'label': 'Everdoors',
+          'path': ['Everdoors'],
+        },
+      },
+    });
+  }
+
+  return _json({
+    'data': [
+      _row(
+        'security.password_min_length',
+        label: 'Minimum password length',
+        type: 'integer',
+        value: 12,
+        source: _source('organization', 'org-1', 'Everdoors', false),
+        group: 'security',
+        groupLabel: 'Security',
+      ),
+    ],
+  });
+}
+
+/// The same server, from a franchise.
+Future<http.Response> _oneSettingAtFranchise(http.Request request) async {
+  if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+  return _json({
+    'data': [
+      _row(
+        'security.password_min_length',
+        label: 'Minimum password length',
+        type: 'integer',
+        value: 12,
+        source: _source('organization', 'org-1', 'Everdoors', true),
+        group: 'security',
+        groupLabel: 'Security',
+      ),
+    ],
+  });
 }
 
 // ── harness ────────────────────────────────────────────────────────
@@ -620,11 +778,28 @@ final Finder _valueField = find.descendant(
 /// The session is adopted through /me exactly as the real app does, because the
 /// screen reads its scope off `session.me` and a hand-built one would let the
 /// test disagree with the client's own parsing.
+///
+/// `/exports` is answered HERE rather than being passed down to [handler].
+/// The screen asks it once, to decide whether this person may take the two
+/// whole-organization §9 answers at the bottom of the page — and every test
+/// above counts `GET /settings` to prove a write does not refetch the page. A
+/// second endpoint landing in the same counter would make those numbers about
+/// something else. [exports] overrides it for the tests that are about that
+/// section.
 Future<void> _pumpSettings(
   WidgetTester tester,
-  MockClientHandler handler,
-) async {
-  final api = ApiClient(client: MockClient(handler));
+  MockClientHandler handler, {
+  Map<String, dynamic>? exports,
+}) async {
+  final api = ApiClient(
+    client: MockClient((request) async {
+      if (request.url.path.endsWith('/exports')) {
+        return _json(exports ?? _exports());
+      }
+
+      return handler(request);
+    }),
+  );
   final session = Session(api);
 
   await tester.runAsync(() => session.adopt('tok'));
@@ -651,6 +826,22 @@ http.Response _json(Object body, [int status = 200]) => http.Response(
   status,
   headers: {'content-type': 'application/json'},
 );
+
+/// `GET /exports`, in the shape DataController::catalogue answers.
+///
+/// The `organization` block carries one nullable sentence per §9 answer rather
+/// than a flag beside a reason — null means the control works, a string is what
+/// the screen shows instead.
+Map<String, dynamic> _exports({
+  String? exportRefusal,
+  String? inventoryRefusal,
+}) => {
+  'resources': <dynamic>[],
+  'organization': {
+    'export_refusal': exportRefusal,
+    'inventory_refusal': inventoryRefusal,
+  },
+};
 
 /// One row in the shape SettingsController builds for every endpoint.
 Map<String, dynamic> _row(

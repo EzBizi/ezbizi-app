@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Data\Exporter;
@@ -36,8 +37,22 @@ class DataController extends Controller
     /**
      * What this organization can export and import.
      *
-     * The client builds its screen from this rather than from a list of its own,
-     * so a new resource appears in the UI without a client release.
+     * The client builds its controls from this rather than from a list of its
+     * own, so a new resource becomes exportable without a client release.
+     *
+     * ── Read by several screens now, not one ─────────────────────
+     *
+     * There used to be an "Import & export" tab that listed every resource in
+     * one place. The owner's call was that per-resource transfer belongs IN the
+     * tab that owns the records — export customers from Customers, jobs from
+     * Jobs — so this answer is now consumed by each of those screens, which
+     * picks out its own `key` and ignores the rest.
+     *
+     * The two ORGANIZATION-WIDE §9 answers, `bundle` and `inventory`, had no
+     * home in a per-tab model: "export everything this business holds" is not a
+     * Customers feature. They live in Settings, and `organization` below is what
+     * lets that screen offer them — or say why it cannot — without asking a
+     * second endpoint.
      */
     public function catalogue(Request $request): array
     {
@@ -49,21 +64,70 @@ class DataController extends Controller
                 continue;
             }
 
-            $importable = isset($definition['import'])
-                && $user->hasPermission($definition['import']['permission']);
-
             $out[] = [
                 'key'        => $key,
                 'label'      => $definition['label'],
                 'columns'    => $definition['columns'],
-                'importable' => $importable,
-                'import_columns' => $importable
+
+                /*
+                 * A property of the RESOURCE, not of the caller.
+                 *
+                 * This used to mean "this person may import", which folded two
+                 * different answers into one false-y value: jobs cannot be
+                 * imported by anybody (see ResourceMap), and somebody without
+                 * `customers.create` may not import customers. The screen could
+                 * not tell them apart, so it drew nothing in both cases — and
+                 * an absent control explains nothing (R8).
+                 *
+                 * Split in two: this says whether the resource supports import
+                 * at all, and `import_permission` says which grant it takes, so
+                 * the tab can render the control with the sentence rather than
+                 * silently omit it.
+                 */
+                'importable'        => isset($definition['import']),
+                'import_permission' => $definition['import']['permission'] ?? null,
+                'import_columns'    => isset($definition['import'])
                     ? array_keys($definition['import']['columns'])
                     : [],
             ];
         }
 
-        return ['resources' => $out];
+        return [
+            'resources'    => $out,
+            'organization' => $this->wholeOrganizationAnswers($user),
+        ];
+    }
+
+    /**
+     * Whether this caller may take the two whole-organization §9 answers.
+     *
+     * `bundle` and `inventory` are each gated on holding the view permission of
+     * EVERY resource — see their own loops — so both are decided by the same
+     * question, asked here once against the same map they walk.
+     *
+     * One nullable SENTENCE each rather than a flag beside a reason, which is
+     * the shape a setting's `not_yet_in_effect` already uses: null means the
+     * control works, a string is what to show instead, and the two halves cannot
+     * drift apart. The wording is `Refusal`'s, verbatim, so a disabled control
+     * and the 403 behind it cannot describe one refusal two ways (R8).
+     *
+     * Two sentences and not one, because they refuse two different acts and the
+     * person reading has to know which one they were denied.
+     */
+    private function wholeOrganizationAnswers(User $user): array
+    {
+        $mayReadEverything = collect(ResourceMap::all())->every(
+            fn (array $definition) => $user->hasPermission($definition['permission'])
+        );
+
+        return [
+            'export_refusal' => $mayReadEverything ? null : Refusal::permission(
+                'export everything this organization holds',
+            )->message(),
+            'inventory_refusal' => $mayReadEverything ? null : Refusal::permission(
+                'read the record of what this organization holds about people',
+            )->message(),
+        ];
     }
 
     public function export(Request $request, string $resource)

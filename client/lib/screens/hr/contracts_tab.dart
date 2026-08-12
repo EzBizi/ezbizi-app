@@ -60,7 +60,9 @@ class _ContractsTabState extends State<ContractsTab> {
   String? _cannotDesign;
 
   /// The template being designed, as `GET /hr/contracts/{contract}` returned
-  /// it, or [_newTemplate] for one that does not exist yet.
+  /// it. NULL for one that does not exist yet — there is nothing to fetch and
+  /// no sentinel is invented for it; [_creating] is what tells "designing a new
+  /// one" apart from "designing nothing".
   Map<String, dynamic>? _designing;
 
   /// Distinguishes "designing a new one" from "designing nothing", which a

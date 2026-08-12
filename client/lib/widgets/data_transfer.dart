@@ -1,155 +1,180 @@
 import 'package:flutter/material.dart';
+
 import '../core/api_client.dart';
 import '../core/files.dart';
 import '../core/session.dart';
-import '../widgets/async_body.dart';
-import '../widgets/error_note.dart';
-import '../widgets/franchise_field.dart';
-import '../widgets/side_panel.dart';
+import 'error_note.dart';
+import 'franchise_field.dart';
+import 'refused.dart';
+import 'side_panel.dart';
 
-/// Import and export (plan §12, §9).
+/// Getting records out of a tab, and back into it (plan §12, §9).
 ///
-/// The list of resources comes from the server, so a new one appears here
-/// without a client release — the same rule the settings and automation screens
-/// follow.
-class DataScreen extends StatefulWidget {
-  const DataScreen({super.key, required this.api, required this.session});
+/// ── Why this is a widget and not a screen ────────────────────────
+///
+/// It was a screen: an "Import & export" destination listing every resource in
+/// one place, with an Export button per row. The owner's call was that transfer
+/// belongs in the tab that owns the records — "the import exports will go inside
+/// each of the tabs, not a separate tab to do all of them, it's more intuitive
+/// that way" — so the same two controls now sit in the header of Customers and
+/// of Jobs, beside the button that adds one.
+///
+/// What did NOT move here is `exports/bundle` and `exports/inventory`. Those are
+/// about the whole organization rather than about one resource, and §9 is what
+/// requires them; they live in Settings, under the organization's own data
+/// section. Putting "export everything this business holds" behind the Customers
+/// tab would have been the same mistake in a smaller box.
+///
+/// ── What it asks the server, and what it decides itself ──────────
+///
+/// The catalogue at `/exports` says which resources this person may export, and
+/// which of them can be imported at all. This widget decides nothing about
+/// permissions beyond turning the server's answer into a control or a sentence:
+/// the import permission arrives WITH the resource, so no permission key is
+/// compiled into this file.
+///
+/// A resource the catalogue does not mention gets no controls, because the
+/// server has said this person may not read it in bulk. A resource that cannot
+/// be imported by anybody — jobs, deliberately — gets Export alone. A resource
+/// that can be, for somebody who lacks the grant, gets the control with the
+/// reason showing, because a control that quietly is not there teaches nobody
+/// anything (R8).
+class DataTransfer extends StatefulWidget {
+  const DataTransfer({
+    super.key,
+    required this.api,
+    required this.session,
+    required this.resource,
+    this.onImported,
+  });
 
   final ApiClient api;
   final Session session;
 
+  /// Which resource this tab is about — `customers`, `jobs`. The tab knows its
+  /// own name; everything else about it comes from the server.
+  final String resource;
+
+  /// Called after an import commits, so the list behind this can refetch.
+  /// Null for a resource that cannot be imported.
+  final VoidCallback? onImported;
+
   @override
-  State<DataScreen> createState() => _DataScreenState();
+  State<DataTransfer> createState() => _DataTransferState();
 }
 
-class _DataScreenState extends State<DataScreen> {
-  bool _loading = true;
-  String? _error;
-  List<Map<String, dynamic>> _resources = [];
+class _DataTransferState extends State<DataTransfer> {
+  /// The catalogue entry for this resource, once it arrives. Null while the
+  /// request is in flight, and null afterwards when the server did not list it.
+  Map<String, dynamic>? _resource;
+
+  /// Nothing is drawn until the answer lands.
+  ///
+  /// No spinner, deliberately: this sits in a header beside the primary action
+  /// of the screen, and a control that appears a beat later is calmer than a
+  /// placeholder that flickers and is replaced. Nor is a failure reported here
+  /// — the list below is making its own request against the same server and
+  /// will say so far more usefully than two words in a header.
+  bool _busy = false;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadCatalogue();
   }
 
-  Future<void> _load() async {
-    // A spinner only when there is nothing to keep — see AsyncBody. Nothing
-    // refetches this list today, so this changes no behaviour yet; it is here
-    // because the first thing that does — a reload after an import, most
-    // likely — would otherwise reintroduce the blank on the one screen that
-    // never had it.
-    setState(() => _loading = _resources.isEmpty);
-
+  Future<void> _loadCatalogue() async {
     final response = await widget.api.get('/exports');
 
-    if (!mounted) return;
+    if (!mounted || !response.ok) return;
 
-    setState(() {
-      _loading = false;
-      _error = response.ok ? null : response.message;
-      _resources = response.ok
-          ? (response.body['resources'] as List<dynamic>)
-                .cast<Map<String, dynamic>>()
-          : [];
-    });
+    final resources = (response.body['resources'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+
+    Map<String, dynamic>? mine;
+
+    for (final candidate in resources) {
+      if (candidate['key'] == widget.resource) mine = candidate;
+    }
+
+    setState(() => _resource = mine);
   }
 
-  Future<void> _export(String key, String label) async {
-    final bytes = await widget.api.getBytes('/exports/$key');
+  Future<void> _export() async {
+    final entry = _resource!;
+    final label = (entry['label'] as String).toLowerCase();
+
+    setState(() => _busy = true);
+
+    final bytes = await widget.api.getBytes('/exports/${widget.resource}');
 
     if (!mounted) return;
 
+    setState(() => _busy = false);
+
     if (bytes == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not export $label.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not export $label. Nothing was changed.')),
+      );
       return;
     }
 
-    Files.download('$key.csv', bytes);
+    Files.download('${widget.resource}.csv', bytes);
   }
 
   @override
   Widget build(BuildContext context) {
-    return AsyncBody(
-      loading: _loading,
-      error: _error,
-      onRetry: _load,
-      child: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          Text(
-            'Import & export',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Your data is yours. Exports are plain CSV and open in any '
-            'spreadsheet; an export can be edited and imported back.',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 20),
-          for (final resource in _resources) _card(resource),
-        ],
-      ),
-    );
-  }
+    final entry = _resource;
 
-  Widget _card(Map<String, dynamic> resource) {
-    final key = resource['key'] as String;
-    final label = resource['label'] as String;
-    final importable = resource['importable'] as bool? ?? false;
+    // Either the answer has not arrived, or this person may not read this
+    // resource in bulk. Both are "no controls", and neither is worth a sentence
+    // in a header — the second is the same answer the tab itself would give.
+    if (entry == null) return const SizedBox.shrink();
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label, style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 4),
-                  Text(
-                    (resource['columns'] as List<dynamic>).join(', '),
-                    style: Theme.of(context).textTheme.bodySmall,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
+    final label = (entry['label'] as String).toLowerCase();
+    final importable = entry['importable'] as bool? ?? false;
+    final importPermission = entry['import_permission'] as String?;
+
+    // The permission the SERVER named for this import, turned into the same
+    // sentence the 403 would carry. Nothing here knows what that key is.
+    final refusedImport = importable && importPermission != null
+        ? widget.session.me!.refusal(importPermission, 'import $label')
+        : null;
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (importable)
+          Refused(
+            reason: refusedImport,
+            child: OutlinedButton.icon(
+              onPressed: (_busy || refusedImport != null) ? null : _openImport,
+              icon: const Icon(Icons.upload_outlined, size: 18),
+              label: const Text('Import'),
             ),
-            const SizedBox(width: 12),
-            if (importable)
-              TextButton.icon(
-                onPressed: () => _openImport(resource),
-                icon: const Icon(Icons.upload_outlined),
-                label: const Text('Import'),
-              ),
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              onPressed: () => _export(key, label),
-              icon: const Icon(Icons.download_outlined),
-              label: const Text('Export'),
-            ),
-          ],
+          ),
+        OutlinedButton.icon(
+          onPressed: _busy ? null : _export,
+          icon: const Icon(Icons.download_outlined, size: 18),
+          label: Text(_busy ? 'Exporting…' : 'Export'),
         ),
-      ),
+      ],
     );
   }
 
-  void _openImport(Map<String, dynamic> resource) {
-    showSidePanel<bool>(
+  Future<void> _openImport() async {
+    final imported = await showSidePanel<bool>(
       context,
-      builder: (_) => _ImportPanel(
+      builder: (_) => ImportPanel(
         api: widget.api,
         session: widget.session,
-        resource: resource,
+        resource: _resource!,
       ),
     );
+
+    if (imported == true) widget.onImported?.call();
   }
 }
 
@@ -162,8 +187,9 @@ class _DataScreenState extends State<DataScreen> {
 /// Wider than a panel's default because the rows are the point — CSV in a
 /// monospace box, and a preview listing problems by row number, both of which
 /// wrap into noise at the width a form needs.
-class _ImportPanel extends StatefulWidget {
-  const _ImportPanel({
+class ImportPanel extends StatefulWidget {
+  const ImportPanel({
+    super.key,
     required this.api,
     required this.session,
     required this.resource,
@@ -174,10 +200,10 @@ class _ImportPanel extends StatefulWidget {
   final Map<String, dynamic> resource;
 
   @override
-  State<_ImportPanel> createState() => _ImportPanelState();
+  State<ImportPanel> createState() => _ImportPanelState();
 }
 
-class _ImportPanelState extends State<_ImportPanel> {
+class _ImportPanelState extends State<ImportPanel> {
   final _csv = TextEditingController();
 
   String? _franchiseId;

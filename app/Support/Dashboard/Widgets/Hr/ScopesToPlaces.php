@@ -151,7 +151,42 @@ trait ScopesToPlaces
         return $places['organization'] !== null;
     }
 
-    /** What the places in view are CALLED, for a row somebody reads. */
+    /**
+     * What the places in view are CALLED, for a row somebody reads.
+     *
+     * ── A name on its own is not an answer ───────────────────────
+     *
+     * This returned the bare `name` of each place, and on the first real
+     * organization that produced a headcount panel listing **Connecticut** four
+     * times and **DMV** twice — six rows naming four different places, with
+     * nothing to tell them apart. They are four distinct franchises belonging
+     * to A-1 Chimney, Everdoors, Premier Garage Repair and Speedy Garage Doors.
+     * A franchise name is unique within its company and nowhere else, and a
+     * flat list throws away the one thing that made it unique.
+     *
+     * The app had already answered this, which is why the answer here matches.
+     * ScopePickerPanel's docblock: *"two companies each operating a
+     * Connecticut. Typing 'conn' shows both, each under the company that owns
+     * it, which is exactly the question somebody has at that moment."* It shows
+     * the ancestry whenever the tree's indentation is not there to say it. On a
+     * dashboard row there is no indentation at all, so the ancestry is always
+     * shown.
+     *
+     * Every franchise carries its company, not only the ambiguous ones. Two
+     * rows formatted differently for a reason the reader cannot see is a worse
+     * list than two rows formatted the same — and "is this name unique" is a
+     * question whose answer changes the next time somebody opens a branch.
+     *
+     * A sub company gets the same treatment for the same reason: §3 allows one
+     * under another, so two can share a name under different parents.
+     *
+     * ── Sorted by the whole path, not the leaf ───────────────────
+     *
+     * A list ordered by franchise name interleaves the companies — Connecticut,
+     * Connecticut, Connecticut, DMV, DMV — which is precisely the reading that
+     * looked broken. Ordered by the qualified name, each company's places sit
+     * together.
+     */
     protected function placeNames(array $places, User $user): array
     {
         $names = [];
@@ -160,14 +195,35 @@ trait ScopesToPlaces
             $names[$places['organization']] = $user->organization->name;
         }
 
-        foreach (Company::query()->whereKey($places['companies'])->orderBy('name')->get() as $company) {
-            $names[$company->getKey()] = $company->name;
+        // Every company in the organization, not only the ones in view: a
+        // franchise in view needs its parent's NAME even when that parent holds
+        // nobody and has no row of its own.
+        $companies = Company::query()->get(['id', 'name', 'parent_company_id']);
+        $named     = $companies->keyBy('id');
+
+        $qualify = function (?string $companyId, string $leaf) use ($named): string {
+            $parent = $companyId === null ? null : $named->get($companyId);
+
+            return $parent === null ? $leaf : $parent->name.' › '.$leaf;
+        };
+
+        foreach ($companies->whereIn('id', $places['companies']) as $company) {
+            $names[$company->getKey()] = $qualify($company->parent_company_id, $company->name);
         }
 
-        foreach (Franchise::query()->whereKey($places['franchises'])->orderBy('name')->get() as $franchise) {
-            $names[$franchise->getKey()] = $franchise->name;
+        foreach (Franchise::query()->whereKey($places['franchises'])->get() as $franchise) {
+            $names[$franchise->getKey()] = $qualify($franchise->company_id, $franchise->name);
         }
 
-        return $names;
+        // The organization stays first — it is the whole of the business and
+        // reads as the total, not as one place among its own branches. The rest
+        // sort by the name a person actually sees.
+        $organization = $places['organization'];
+        $head         = $organization === null ? [] : [$organization => $names[$organization]];
+
+        unset($names[$organization]);
+        asort($names, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $head + $names;
     }
 }

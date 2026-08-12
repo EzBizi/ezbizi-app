@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -16,13 +18,41 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * and when, this table is the answer, and an answer with holes in it is worse
  * than no answer at all.
  *
- * Retained 12 months (§10) — longer than ordinary audit, because the question
- * it answers usually arrives late.
+ * Kept for good (§10), which is a decision rather than an omission — the reason
+ * is on retention() below.
  */
-class StaffImpersonation extends Model
+class StaffImpersonation extends Model implements StatesRetention
 {
     use HasFactory;
     use HasUuids;
+
+    /**
+     * Forever, and the owner decided it.
+     *
+     * "Retained 12 months (§10)" stood here and nothing enforced it. There is no
+     * deleter for this table at all; ExpireImpersonations only stamps `ended_at`
+     * on a session that ran past its expiry, and the twelve months AuditEvent's
+     * policy names is a window ezbizi:expire-audit applies to `audit_events` rows
+     * filtered by actor_type — a different table, so even that command would have
+     * left these rows standing. A number in prose that nothing reads is exactly
+     * what RetentionPolicy exists to stop, so the sentence is gone rather than
+     * reworded into a window.
+     *
+     * The answer is not a shorter number either, and that is the substance of it:
+     * this is the trail of platform staff reaching into a customer's records, so
+     * it is the one table you do not sweep. A trail that expires is a trail that
+     * has stopped answering the question it exists for, and that question — who
+     * opened my data, and when — is asked late almost by definition.
+     */
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::forever(
+            'The record of EzBizi staff opening your organization\'s data: who opened it, '
+            .'when, why, and whether you approved it (§4.2). Kept for as long as the '
+            .'organization is, because nobody asks this question at the time — it is asked '
+            .'months later, and by then an expiring record would have nothing to say.'
+        );
+    }
 
     protected $fillable = [
         'staff_id', 'organization_id', 'reason',

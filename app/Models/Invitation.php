@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Automations\CarriesAutomationScope;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
@@ -70,7 +71,7 @@ use InvalidArgumentException;
  * without re-deriving the rule. `revoked_at` stays on every representation: it
  * is when, and the status is what.
  */
-class Invitation extends Model implements HoldsPersonalData
+class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     use HasFactory;
     use HasUuids;
@@ -318,6 +319,26 @@ class Invitation extends Model implements HoldsPersonalData
         return $this->assigned_franchise_id
             ?? $this->assigned_company_id
             ?? $this->assigned_organization_id;
+    }
+
+    /**
+     * The same scope, in the two words the automation engine matches on.
+     *
+     * A separate method from `scopeType()`/`scopeId()` because it answers a
+     * different question and gives a different answer to one of the three cases:
+     * an invitation issued at ORGANIZATION level reports no scope here, which is
+     * how `Automation::coversScope` is told "only an organization-wide rule
+     * covers this". Returning `['organization', $id]` instead would be a
+     * franchise-shaped answer for something that is not a franchise, and the
+     * comparison it feeds only ever holds `company` or `franchise`.
+     */
+    public function automationScope(): array
+    {
+        return match ($this->scopeType()) {
+            self::SCOPE_FRANCHISE    => ['franchise', $this->assigned_franchise_id],
+            self::SCOPE_COMPANY      => ['company', $this->assigned_company_id],
+            self::SCOPE_ORGANIZATION => [null, null],
+        };
     }
 
     /** The columns an `assignments` row needs to reproduce this invitation's scope. */

@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 /// The label a dashboard row is drawn with.
 ///
 /// ── Why it is not just `row['title']` ────────────────────────────
@@ -41,4 +43,113 @@ String dashboardRowLabel(Map<String, dynamic> data, Map<String, dynamic> row) {
   return days == 1
       ? '$title in the last day'
       : '$title in the last $days days';
+}
+
+/// The glyph a panel is headed with.
+///
+/// ── Why this is not each screen's business ───────────────────────
+///
+/// The HR tab picked its own icons and the main dashboard picked none, so the
+/// same widget — headcount, say — was a card with a group of people on one
+/// screen and a card with nothing on the other. The card standard says every
+/// panel has an icon; this is where the icon comes from, so the two surfaces
+/// cannot disagree about which one.
+///
+/// ── Falling back twice, so a new widget is never bare ────────────
+///
+/// A widget is added to the SERVER's registry and appears on the dashboard
+/// without a client release — that is the point of the registry, and it means
+/// this list is always one step behind. So an unrecognised key falls back to its
+/// module's icon (`hr.something_new` gets HR's), and a key from a module this
+/// does not know falls back to a neutral one. A panel with no icon at all would
+/// leave a header a different shape from the cards beside it, which is the
+/// misalignment this was all written to fix.
+///
+/// Not a preference and not an organization setting: it is how a thing is drawn,
+/// the same for everybody, in the app's own visual language.
+IconData dashboardPanelIcon(String key) {
+  const byKey = <String, IconData>{
+    'hr.headcount': Icons.groups_outlined,
+    'hr.onboardings_in_flight': Icons.how_to_reg_outlined,
+    'hr.invitations_stalled': Icons.mail_outline,
+    'hr.starters_and_leavers': Icons.trending_up_outlined,
+    'hr.certifications': Icons.verified_outlined,
+    'jobs.by_status': Icons.work_outline,
+    'jobs.upcoming': Icons.event_outlined,
+    'jobs.revenue': Icons.payments_outlined,
+    'customers.added': Icons.person_add_outlined,
+    'automations.health': Icons.bolt_outlined,
+  };
+
+  const byModule = <String, IconData>{
+    'hr': Icons.groups_outlined,
+    'jobs': Icons.work_outline,
+    'customers': Icons.people_outline,
+    'automations': Icons.bolt_outlined,
+  };
+
+  final module = key.split('.').first;
+
+  return byKey[key] ?? byModule[module] ?? Icons.insights_outlined;
+}
+
+/// Where a user's panel order lives inside their preferences.
+///
+/// The main dashboard does not use this: its order IS the order of the list it
+/// already stores under `dashboard.widgets`, because on that screen choosing a
+/// panel and placing it are the same act. This is for the dashboards whose
+/// panels are fixed — Human Resources today — where there is an order to
+/// remember and no list to remember it in.
+///
+/// One key holding a map of surfaces, rather than a key per surface, so a third
+/// dashboard adds an entry rather than a preference.
+const String dashboardOrderPreference = 'dashboard.order';
+
+/// The order this user last put a surface's panels in.
+///
+/// Read defensively on purpose. This is JSON out of a preferences blob that was
+/// written by an older version of this app, so nothing about its shape is
+/// promised — and a dashboard that threw because somebody's stored order was a
+/// string would be a screen nobody could open and nobody could fix.
+List<String> savedPanelOrder(Map<String, dynamic> preferences, String surface) {
+  final all = preferences[dashboardOrderPreference];
+
+  if (all is! Map) return const [];
+
+  final order = all[surface];
+
+  if (order is! List) return const [];
+
+  return [
+    for (final key in order)
+      if (key is String) key,
+  ];
+}
+
+/// [available] arranged the way [saved] asks for.
+///
+/// ── What a saved order has to survive ────────────────────────────
+///
+/// It outlives the thing it names. A role loses the Human Resources tab, a
+/// module is switched off platform-wide, or a widget is renamed, and the order
+/// still names it. Meanwhile the app grows panels the saved order has never
+/// heard of.
+///
+/// So: a key naming a panel that is not here is ignored, a panel the order does
+/// not name is APPENDED rather than dropped, and neither is an error. Dropping
+/// the unnamed ones is the tempting mistake — it makes the saved order the whole
+/// truth, and then every new panel is invisible to everybody who has ever
+/// rearranged their dashboard.
+///
+/// A key repeated in the stored order is honoured once, so a bad write cannot
+/// draw one panel twice.
+List<String> panelsInSavedOrder(List<String> available, List<String> saved) {
+  final remaining = [...available];
+  final ordered = <String>[];
+
+  for (final key in saved) {
+    if (remaining.remove(key)) ordered.add(key);
+  }
+
+  return [...ordered, ...remaining];
 }

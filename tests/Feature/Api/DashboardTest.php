@@ -67,6 +67,20 @@ class DashboardTest extends TestCase
         return $this->withHeader('Authorization', "Bearer {$token}");
     }
 
+    /**
+     * Somebody's stored preferences.
+     *
+     * Read under the tenant, because User is tenant-scoped and reading one
+     * outside a context is refused on purpose (BelongsToTenant) — a test that
+     * reached for it directly would be exercising a path no request takes.
+     *
+     * @return array<string, mixed>
+     */
+    private function preferencesOf(User $user): array
+    {
+        return $this->inTenant(fn () => User::find($user->id)->preferences ?? []);
+    }
+
     /** A second franchise with its own user, reaching only that franchise. */
     private function secondBranch(): array
     {
@@ -413,6 +427,173 @@ class DashboardTest extends TestCase
         // whole dashboard because one saved widget is now off-limits punishes
         // somebody for an administrator's decision.
         $this->assertSame(['jobs.by_status'], array_column($panels, 'key'));
+    }
+
+    // ── the order of a dashboard that chooses nothing ────────────
+
+    /**
+     * The main dashboard's order is its layout — reordering it is a save of the
+     * list somebody already had, which the tests above already exercise. The
+     * dashboards whose panels are FIXED, Human Resources today, have an order
+     * and no list to keep it in, and that is what these are about.
+     */
+    public function test_a_fixed_dashboards_order_is_kept_without_touching_the_layout(): void
+    {
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'widgets' => [['key' => 'jobs.by_status', 'options' => []]],
+        ])->assertOk();
+
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'surface' => 'hr',
+            'widgets' => [
+                ['key' => 'hr.starters_and_leavers'],
+                ['key' => 'hr.headcount'],
+            ],
+        ])->assertOk()->assertJsonPath('surface', 'hr');
+
+        $preferences = $this->preferencesOf($this->alpha['admin']);
+
+        $this->assertSame(
+            ['hr.starters_and_leavers', 'hr.headcount'],
+            $preferences['dashboard.order']['hr'],
+        );
+
+        // The two are different facts about different screens. Folding the HR
+        // order into `dashboard.widgets` would have made arranging one tab
+        // rewrite the other tab's chosen panels.
+        $this->assertSame(
+            ['jobs.by_status'],
+            array_column($preferences['dashboard.widgets'], 'key'),
+        );
+    }
+
+    /**
+     * §2.1 category 6. Not a tenant setting and not an organization setting:
+     * nobody arranges somebody else's dashboard, and two people sharing a role
+     * must be able to disagree about where headcount sits.
+     */
+    public function test_one_persons_order_is_not_another_persons(): void
+    {
+        [, $other] = $this->secondBranch();
+
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'surface' => 'hr',
+            'widgets' => [['key' => 'hr.headcount']],
+        ])->assertOk();
+
+        $this->assertArrayNotHasKey('dashboard.order', $this->preferencesOf($other));
+
+        $this->as($other)->putJson('/api/v1/dashboard/layout', [
+            'surface' => 'hr',
+            'widgets' => [['key' => 'hr.invitations_stalled']],
+        ])->assertOk();
+
+        $this->assertSame(
+            ['hr.headcount'],
+            $this->preferencesOf($this->alpha['admin'])['dashboard.order']['hr'],
+        );
+    }
+
+    /**
+     * The main layout refuses a key nothing declares, because index() hands its
+     * keys to resolve() and an unchecked one is a widget computed for somebody
+     * who may not see it. A surface order resolves nothing — it says what
+     * sequence to draw whatever the surface's own endpoint allowed — so it may
+     * name a panel with no registry widget behind it at all.
+     *
+     * "Expiring certifications" is exactly that panel: the HR tab draws it,
+     * badged as not built, and it would otherwise be the one card nobody could
+     * move.
+     */
+    public function test_a_surface_order_may_name_a_panel_the_registry_has_no_widget_for(): void
+    {
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'widgets' => [['key' => 'hr.certifications', 'options' => []]],
+        ])->assertStatus(422);
+
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'surface' => 'hr',
+            'widgets' => [['key' => 'hr.certifications'], ['key' => 'hr.headcount']],
+        ])->assertOk();
+
+        $this->assertSame(
+            ['hr.certifications', 'hr.headcount'],
+            $this->preferencesOf($this->alpha['admin'])['dashboard.order']['hr'],
+        );
+    }
+
+    /**
+     * A surface name is a screen this app has, not anything a client cares to
+     * send. Every one of these lands in `users.preferences`, which travels with
+     * /me on every request; an open set would let a client grow that blob with
+     * entries naming screens that will never exist and nothing to clear them.
+     */
+    public function test_an_order_for_a_dashboard_that_does_not_exist_is_refused(): void
+    {
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'surface' => 'somewhere_else',
+            'widgets' => [['key' => 'hr.headcount']],
+        ])->assertStatus(422);
+    }
+
+    public function test_a_key_stored_twice_would_draw_one_card_not_two(): void
+    {
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'surface' => 'hr',
+            'widgets' => [
+                ['key' => 'hr.headcount'],
+                ['key' => 'hr.headcount'],
+                ['key' => 'hr.invitations_stalled'],
+            ],
+        ])->assertOk();
+
+        $this->assertSame(
+            ['hr.headcount', 'hr.invitations_stalled'],
+            $this->preferencesOf($this->alpha['admin'])['dashboard.order']['hr'],
+        );
+    }
+
+    /**
+     * `users.preferences` is one blob shared with everything else somebody has
+     * chosen. An order that overwrote it would take their theme with it.
+     */
+    public function test_saving_an_order_leaves_every_other_preference_alone(): void
+    {
+        $this->as($this->alpha['admin'])->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['appearance.theme' => 'dark'],
+        ])->assertOk();
+
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'surface' => 'hr',
+            'widgets' => [['key' => 'hr.headcount']],
+        ])->assertOk();
+
+        $this->assertSame(
+            'dark',
+            $this->preferencesOf($this->alpha['admin'])['appearance.theme'],
+        );
+    }
+
+    /**
+     * A stored preference is user input somebody saved earlier, and this one is
+     * merged INTO rather than replaced. A value of the wrong shape — written by
+     * an older version, or by hand — would otherwise be a 500 on a save nobody
+     * could get past.
+     */
+    public function test_an_order_stored_in_the_wrong_shape_is_replaced_rather_than_merged_into(): void
+    {
+        $this->inTenant(fn () => User::find($this->alpha['admin']->id)
+            ->forceFill(['preferences' => ['dashboard.order' => 'nonsense']])->save());
+
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'surface' => 'hr',
+            'widgets' => [['key' => 'hr.headcount']],
+        ])->assertOk();
+
+        $this->assertSame(
+            ['hr' => ['hr.headcount']],
+            $this->preferencesOf($this->alpha['admin'])['dashboard.order'],
+        );
     }
 
     public function test_somebody_who_has_never_configured_it_still_gets_a_dashboard(): void

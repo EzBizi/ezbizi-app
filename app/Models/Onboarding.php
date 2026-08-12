@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use App\Models\Concerns\HasAttachments;
+use App\Support\Automations\CarriesAutomationScope;
 use App\Support\Contracts\FieldDefinition;
 use App\Support\Contracts\FieldType;
 use App\Support\Contracts\FilledBy;
@@ -39,7 +40,7 @@ use Illuminate\Support\Collection;
  * and only the employer can be filling anything in. That is the ordinary shape
  * of an onboarding that has been started and pre-filled, not an incomplete one.
  */
-class Onboarding extends Model implements HoldsPersonalData
+class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     use BelongsToTenant;
     use HasAttachments;
@@ -428,5 +429,29 @@ class Onboarding extends Model implements HoldsPersonalData
         }
 
         return ['type' => Assignment::SCOPE_ORGANIZATION, 'id' => $this->organization_id];
+    }
+
+    /**
+     * The same place, in the two words the automation engine matches on.
+     *
+     * Derived from `scope()` rather than worked out again, because a rule that
+     * fires on somebody's onboarding and a person who can open it have to be
+     * answering the same question about the same record — two derivations would
+     * eventually disagree, and the disagreement would be one franchise's manager
+     * being told about another franchise's new starter.
+     *
+     * The organization fallback becomes no scope at all, which reads to
+     * `Automation::coversScope` as "only an organization-wide rule covers this"
+     * — the same conservative direction `scope()` takes for the same case.
+     */
+    public function automationScope(): array
+    {
+        $scope = $this->scope();
+
+        return match ($scope['type']) {
+            Assignment::SCOPE_FRANCHISE => ['franchise', $scope['id']],
+            Assignment::SCOPE_COMPANY   => ['company', $scope['id']],
+            default                     => [null, null],
+        };
     }
 }

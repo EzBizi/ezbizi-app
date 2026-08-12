@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Contract;
 use App\Models\ContractVersion;
 use App\Support\Audit\AuditLogger;
+use App\Support\Automations\EventEmitter;
 use App\Support\Contracts\CommonCore;
 use App\Support\Contracts\DocumentRenderer;
 use App\Support\Contracts\FieldSet;
@@ -82,6 +83,7 @@ class HrContractsController extends Controller
         private readonly TenantContext $tenant,
         // The same renderer the signed document goes through — see `preview`.
         private readonly DocumentRenderer $renderer,
+        private readonly EventEmitter $events,
     ) {}
 
     /**
@@ -506,6 +508,47 @@ class HrContractsController extends Controller
                 'notes'   => $version->notes,
                 'diff'    => $diff->toArray(),
             ]);
+
+            /*
+             * The event carries the VERSION, not the contract.
+             *
+             * A version is the thing that was published and the thing that is
+             * immutable — the contract row is a name and a pointer at whichever
+             * version is current, so an event whose subject were the contract
+             * would resolve, months later, to whatever had been published since
+             * and would describe the wrong document.
+             *
+             * The version has no franchise and needs none: a template reaches
+             * every franchise in the organization (ContractPolicy requires
+             * standing at the organization to write one), so it carries no
+             * automation scope and only an organization-wide rule covers it.
+             * That is the same answer AutomationEngine gives anything without a
+             * franchise, reached deliberately rather than by omission.
+             *
+             * COUNTS rather than the diff itself. The diff names every field
+             * that moved, which for a contract template is the tenant's own
+             * wording about pay and hours, and this payload is readable by any
+             * webhook a rule points at. The audit entry above holds the whole
+             * thing, where it is read by people rather than by rules.
+             *
+             * `wording_changed` and not a count, because the body is one field
+             * and what a rule wants to know about it is whether the terms were
+             * rewritten — "when the wording of a contract changes, tell the
+             * managers" being the obvious rule.
+             */
+            $changes = $diff->toArray();
+
+            $this->events->emit('contract.version_published', $version, ['after' => [
+                'contract'        => $contract->name,
+                'contract_id'     => $contract->getKey(),
+                'version'         => $version->version,
+                'field_count'     => count($version->liveFields()),
+                'has_body'        => $version->hasBody(),
+                'added'           => count($changes['added']),
+                'changed'         => count($changes['changed']),
+                'retired'         => count($changes['retired']),
+                'wording_changed' => $changes['body'] !== null,
+            ]], actor: $request->user());
 
             return $version;
         });

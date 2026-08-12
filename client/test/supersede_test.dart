@@ -140,8 +140,40 @@ void main() {
   });
 }
 
+/// `/exports` is answered HERE rather than being passed down to [handler].
+///
+/// The Customers tab asks it once, on the way to drawing its Export and Import
+/// controls — those moved into this tab when the "Import & export" destination
+/// was removed. Both tests below reason about the requests this screen makes
+/// for its ROWS: one records the search term of every GET, the other counts the
+/// page-two fetches. A second endpoint arriving in either counter would make
+/// those numbers about something else entirely, and the first test failed
+/// exactly that way when the controls landed.
 Future<void> _pump(WidgetTester tester, MockClientHandler handler) async {
-  final api = ApiClient(client: MockClient(handler));
+  final api = ApiClient(
+    client: MockClient((request) async {
+      if (request.url.path.endsWith('/exports')) {
+        return _json({
+          'resources': [
+            {
+              'key': 'customers',
+              'label': 'Customers',
+              'columns': ['number', 'name'],
+              'importable': true,
+              'import_permission': 'customers.create',
+              'import_columns': ['number', 'name'],
+            },
+          ],
+          'organization': {
+            'export_refusal': null,
+            'inventory_refusal': null,
+          },
+        });
+      }
+
+      return handler(request);
+    }),
+  );
   final session = Session(api);
 
   await tester.runAsync(() => session.adopt('tok'));

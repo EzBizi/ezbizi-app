@@ -4,6 +4,7 @@ import '../core/money.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
+import '../widgets/data_transfer.dart';
 import '../widgets/error_note.dart';
 import '../widgets/franchise_field.dart';
 import '../widgets/refused.dart';
@@ -16,6 +17,12 @@ import '../widgets/tag.dart';
 /// reach, because jobs are never shared. A company-level user sees every
 /// franchise beneath them — that is the roll-up, and it comes from the server so
 /// the client never has to work out who can see what.
+///
+/// Exporting jobs is HERE rather than on a tab of its own (§12), the same move
+/// Customers made. Only exporting: jobs are export-only on the server, because a
+/// CSV of customer names cannot say WHICH "J. Smith" a job belongs to — see
+/// ResourceMap. [DataTransfer] reads that from the catalogue and offers no
+/// Import control, so this screen does not repeat the reasoning.
 class JobsScreen extends StatefulWidget {
   const JobsScreen({super.key, required this.api, required this.session});
 
@@ -143,18 +150,34 @@ class _JobsScreenState extends State<JobsScreen> {
               ? 'Showing ${_jobs.length} of $_total across the '
                     '${me.organization.franchiseLabel.toLowerCase()}s you can reach.'
               : '$_total across the ${me.organization.franchiseLabel.toLowerCase()}s you can reach.',
-          action: Refused(
-            // §4 refuses in two places and they have different remedies. The
-            // screen used to test only the second, so somebody whose role
-            // lacks `jobs.create` was offered the button and got a 403; and the
-            // sentence it did have named "franchise" rather than whatever this
-            // organization calls one (§8).
-            reason: refused,
-            child: FilledButton.icon(
-              onPressed: refused == null ? _create : null,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add job'),
-            ),
+          // A Wrap rather than a Row, for the reason customers_screen gives:
+          // two controls side by side overflow a narrow window.
+          action: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // No `onImported`: jobs are export-only, so nothing this widget
+              // does can change the list behind it.
+              DataTransfer(
+                api: widget.api,
+                session: widget.session,
+                resource: 'jobs',
+              ),
+              Refused(
+                // §4 refuses in two places and they have different remedies. The
+                // screen used to test only the second, so somebody whose role
+                // lacks `jobs.create` was offered the button and got a 403; and
+                // the sentence it did have named "franchise" rather than
+                // whatever this organization calls one (§8).
+                reason: refused,
+                child: FilledButton.icon(
+                  onPressed: refused == null ? _create : null,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add job'),
+                ),
+              ),
+            ],
           ),
         ),
         Expanded(
