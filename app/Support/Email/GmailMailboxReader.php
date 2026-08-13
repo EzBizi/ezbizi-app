@@ -3,14 +3,17 @@
 namespace App\Support\Email;
 
 use App\Models\Mailbox;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 
 /**
  * Gmail, over OAuth — the provider a customer should be steered to.
  *
  * ═══════════════════════════════════════════════════════════════════
- *  WHAT IS BUILT HERE, AND WHAT CANNOT BE.
+ *  WHAT IS BUILT HERE, AND WHAT STILL CANNOT BE.
  *
  *  BUILT: the whole shape. The preflight (is there an OAuth client
  *  on this installation, is there a refresh token on this mailbox),
@@ -18,17 +21,32 @@ use Illuminate\Support\Facades\Http;
  *  mapping — {@see GmailMessageMapper}, which is pure and is tested —
  *  and the reply path.
  *
- *  NOT BUILT, AND NOT FAKED: a Google Cloud project with the Gmail
- *  API enabled, an OAuth client, a verified consent screen, and the
- *  browser flow that turns a person's consent into the refresh token
- *  this class spends. None of that is code; it is an account somebody
- *  has to create, and a verification Google has to grant.
+ *  ALSO BUILT NOW, AND IT WAS THE MISSING HALF: the browser flow that
+ *  turns a person's consent into the refresh token this class spends.
+ *  {@see GoogleOAuth}, {@see GoogleOAuthSignIns} and
+ *  App\Http\Controllers\Api\GoogleMailAuthController are the authorize
+ *  step, the single-use state that binds it to one person, one
+ *  organization and one mailbox, and the callback that checks the
+ *  account signed in with is actually this address before storing
+ *  anything. This paragraph used to say that flow was absent, and the
+ *  line about it not being code was the reason nobody expected it —
+ *  it is code, and only the account is not.
  *
- *  So on this installation `config('services.google_mail')` is empty
- *  and every method below refuses with
+ *  NOT BUILT, AND NOT FAKEABLE: a Google Cloud project with the Gmail
+ *  API enabled, an OAuth client id and secret, a consent screen, and
+ *  the redirect URI registered on that client. None of that is code;
+ *  it is an account somebody has to create in a console, and — for an
+ *  installation serving organizations outside one Google Workspace —
+ *  a verification Google has to grant.
+ *
+ *  So on an installation where `config('services.google_mail')` has
+ *  no client id and secret, every method below refuses with
  *  {@see CannotReadMailbox::notBuiltHere} — which says it is at our
  *  end, in a sentence, rather than sending an administrator to check
- *  a password that is not the problem.
+ *  a password that is not the problem. {@see notReadyBecause} is the
+ *  same fact for the screen that would otherwise offer the button,
+ *  and the moment those two values exist it answers null and the flow
+ *  works without another line changing.
  *
  *  IT DOES NOT RETURN AN EMPTY INBOX. That is the whole point and it
  *  is stated at length on CannotReadMailbox: "nothing to show" and
@@ -36,13 +54,21 @@ use Illuminate\Support\Facades\Http;
  *  them is a reason to ring somebody.
  * ═══════════════════════════════════════════════════════════════════
  *
- * ── The scope this asks for, when somebody wires the consent screen ─
+ * ── The scopes this spends, and where they are argued ────────────
  *
- * `gmail.modify` and not `mail.google.com`. The broad scope includes deleting
- * mail and administering the account; this module reads, replies and marks
- * nothing at Google at all. Asking for less is also what makes Google's own
- * verification survivable — a restricted-scope app faces a security assessment
- * whose cost is measured in thousands.
+ * `gmail.readonly` for the three read calls, `gmail.send` for the reply, and
+ * nothing else — named and justified one by one on {@see GoogleOAuth}, which is
+ * where they are actually requested. Two points belong here as well, because
+ * this is the class whose behaviour they decide:
+ *
+ * NOT `mail.google.com`, the full-account scope: it includes permanently
+ * deleting mail and administering the account, and nothing below deletes
+ * anything.
+ *
+ * NOT `gmail.modify` either, which is the tempting one-scope simplification —
+ * it permits labelling and binning, and this class marks NOTHING at Google.
+ * Read state is EzBizi's own `message_seen` table precisely so that opening a
+ * shared inbox here does not mark a message read in Gmail for everybody else.
  *
  * ── The failures it CAN tell apart, and the one it cannot ────────
  *
@@ -111,11 +137,26 @@ final class GmailMailboxReader implements MailboxReader
     /**
      * Does this installation have an OAuth client at all?
      *
-     * Read from config rather than hardcoded, and the key is absent from
-     * `config/services.php` today — which is not an oversight to correct here:
-     * an absent key reads as null, null means "no client", and "no client" is
-     * the true state of this installation. When somebody registers one, adding
-     * the block is the only change needed and this class starts working.
+     * `config/services.php` now carries the `google_mail` block, and the block
+     * existing changes NOTHING about the answer here — which is the point of
+     * reading it with `is_string()`. Both values come from environment
+     * variables, `env()` answers null for one nobody has set, and null is not a
+     * string. So a box with no Google registration still says so, in a sentence,
+     * everywhere it matters.
+     *
+     * What the block bought is that registering becomes two environment
+     * variables rather than an edit to a config file — and the day they are set,
+     * this returns true and the reader, the catalogue and the sign-in flow all
+     * start working without another line changing.
+     *
+     * ── The redirect URI is deliberately NOT checked here ────────
+     *
+     * It has a working default (this application's own callback path on
+     * APP_URL), so there is nothing for its absence to mean — and reading it
+     * here would make it a condition of READING MAIL, which does not use it. A
+     * refresh-token exchange has no redirect URI in it. Where it does matter is
+     * starting a sign-in, and {@see GoogleOAuth::redirectUri} checks it there,
+     * against this application's own callback path, and refuses in a sentence.
      */
     private function platformIsRegistered(): bool
     {
@@ -153,9 +194,7 @@ final class GmailMailboxReader implements MailboxReader
      */
     private function page(Mailbox $mailbox, array $parameters, ?string $cursor, int $limit): MessagePage
     {
-        $token = $this->accessToken($mailbox);
-
-        $listing = $this->get($mailbox, $token, self::API.'/messages', [
+        $listing = $this->get($mailbox, self::API.'/messages', [
             ...$parameters,
             // Clamped here rather than trusted from the caller: a controller
             // validates it too, and a page size of 5000 against a third party's
@@ -181,7 +220,7 @@ final class GmailMailboxReader implements MailboxReader
              * lines of text. Naming the headers also means Google returns
              * roughly a kilobyte per message rather than every Received: hop.
              */
-            $messages[] = $this->mapper->summary($this->get($mailbox, $token, self::API."/messages/{$id}", [
+            $messages[] = $this->mapper->summary($this->get($mailbox, self::API."/messages/{$id}", [
                 'format'         => 'metadata',
                 'metadataHeaders' => ['From', 'To', 'Subject', 'Date'],
             ]));
@@ -198,10 +237,8 @@ final class GmailMailboxReader implements MailboxReader
 
     public function open(Mailbox $mailbox, string $messageId): MessageDetail
     {
-        $token = $this->accessToken($mailbox);
-
         return $this->mapper->detail(
-            $this->get($mailbox, $token, self::API.'/messages/'.rawurlencode($messageId), ['format' => 'full'])
+            $this->get($mailbox, self::API.'/messages/'.rawurlencode($messageId), ['format' => 'full'])
         );
     }
 
@@ -226,15 +263,14 @@ final class GmailMailboxReader implements MailboxReader
      */
     public function reply(Mailbox $mailbox, string $messageId, string $body): void
     {
-        $token    = $this->accessToken($mailbox);
-        $original = $this->get($mailbox, $token, self::API.'/messages/'.rawurlencode($messageId), [
+        $original = $this->get($mailbox, self::API.'/messages/'.rawurlencode($messageId), [
             'format'          => 'metadata',
             'metadataHeaders' => ['From', 'Subject', 'Message-ID', 'References'],
         ]);
 
         $summary = $this->mapper->summary($original);
 
-        $this->post($mailbox, $token, self::API.'/messages/send', [
+        $this->post($mailbox, self::API.'/messages/send', [
             'threadId' => $summary->threadId,
 
             /*
@@ -284,18 +320,62 @@ final class GmailMailboxReader implements MailboxReader
     // ── the wire ─────────────────────────────────────────────────
 
     /**
-     * A refresh token spent for an access token.
+     * A refresh token spent for an access token — with nobody present.
      *
-     * The refresh token is the stored secret and never leaves this method; the
-     * access token it buys lives for an hour and is held for the length of one
-     * request. Nothing caches it across requests deliberately — a cached OAuth
-     * token is a copy of a credential in a second store with different rules
-     * about who can read it, and saving one HTTP round trip does not pay for
-     * that.
+     * ═══════════════════════════════════════════════════════════════
+     *  THIS IS THE PART THAT MAKES A SHARED INBOX UNATTENDED.
+     *
+     *  The refresh token is the stored secret and never leaves this
+     *  method. What it buys lives about an hour, and every read below
+     *  needs one — so the whole of "the sign-in keeps working after
+     *  the person who made it has gone home" is this method being able
+     *  to run with no browser, no consent screen and no interaction.
+     *  There is no path here that asks anybody for anything: it
+     *  either mints a token or produces a fault that says what went
+     *  wrong.
+     *
+     *  A refresh that comes back `invalid_grant` is the sign-in no
+     *  longer being accepted, and it goes to the fault this module
+     *  already has for exactly that — see {@see tokenFailure}, which
+     *  argues why `invalid_grant` and `invalid_client` must not share
+     *  a branch.
+     * ═══════════════════════════════════════════════════════════════
+     *
+     * ── It is cached now, and this paragraph used to say it was not ─
+     *
+     * The previous note said nothing cached the access token deliberately, on
+     * the grounds that a cached OAuth token is a copy of a credential in a
+     * second store. That reasoning was sound and the conclusion was wrong once
+     * a real sign-in existed: opening one page of an inbox makes a token request
+     * plus one call per message, so twenty-five messages meant twenty-six round
+     * trips to Google of which twenty-five were avoidable — and Google rate
+     * limits token minting separately from the API, so the cost lands as a quota
+     * failure that looks like a broken mailbox.
+     *
+     * What made the objection answerable is HOW it is cached:
+     *
+     *   ENCRYPTED. {@see Crypt} on the way in and out, so the value in the cache
+     *   store is not a bearer token anybody who can read that store may spend.
+     *   The refresh token gets the same treatment in the database, and an hour's
+     *   access to somebody's mail is not a small enough prize to treat casually.
+     *
+     *   FOR LESS THAN ITS LIFE. Three quarters of what Google says it has, so a
+     *   token is always replaced with a quarter of its life left — enough to
+     *   cover a slow request and a clock several minutes out. If Google does not
+     *   say how long it lives, NOTHING IS CACHED: a guessed lifetime is the one
+     *   version of this that produces expired tokens.
+     *
+     *   NEVER AUTHORITATIVE. {@see send} treats a 401 as ordinary, throws the
+     *   cached value away and mints a fresh one before deciding anything is
+     *   wrong. So the worst a stale entry can cost is one extra round trip.
      */
     private function accessToken(Mailbox $mailbox): string
     {
         $this->assertUsable($mailbox);
+
+        if (($cached = $this->cachedAccessToken($mailbox)) !== null) {
+            return $cached;
+        }
 
         try {
             $response = Http::asForm()
@@ -324,7 +404,85 @@ final class GmailMailboxReader implements MailboxReader
             );
         }
 
-        return (string) $response->json('access_token');
+        $token = (string) $response->json('access_token');
+
+        $this->cacheAccessToken($mailbox, $token, $response->json('expires_in'));
+
+        return $token;
+    }
+
+    /**
+     * Where an access token is parked between requests.
+     *
+     * Keyed on the MAILBOX id — a uuid — rather than on the organization or the
+     * address. A token opens exactly one mailbox, so anything broader would be a
+     * key two mailboxes could share, and the failure of sharing one here is one
+     * organization's inbox being read with another's credential. The uuid also
+     * means the key cannot be constructed by anybody who does not already hold
+     * the row.
+     */
+    private function cacheKey(Mailbox $mailbox): string
+    {
+        return 'email.google.access-token.'.$mailbox->getKey();
+    }
+
+    /**
+     * The parked token, or null — and null for anything that is not exactly
+     * right.
+     *
+     * A cache entry that cannot be decrypted is treated as absent rather than as
+     * an error. That is not defensive padding: rotating `APP_KEY` leaves entries
+     * behind that were written under the old one, and the alternative to
+     * shrugging is every shared inbox on the installation failing to open until
+     * the cache is flushed by hand.
+     */
+    private function cachedAccessToken(Mailbox $mailbox): ?string
+    {
+        $stored = Cache::get($this->cacheKey($mailbox));
+
+        if (! is_string($stored) || $stored === '') {
+            return null;
+        }
+
+        try {
+            $token = Crypt::decryptString($stored);
+        } catch (DecryptException) {
+            return null;
+        }
+
+        return $token === '' ? null : $token;
+    }
+
+    /**
+     * Park it, encrypted, for less time than it is good for.
+     *
+     * Three quarters of the lifetime Google states — so a token is always
+     * replaced with a quarter of its life in hand, which covers a slow request
+     * and a server clock several minutes out without ever needing to guess at
+     * either.
+     *
+     * NOTHING IS CACHED when Google does not say how long the token lives, and
+     * that is the important branch rather than an edge case. The alternative is
+     * assuming an hour, and an assumed lifetime that is too long produces
+     * expired tokens on every call until the entry ages out — the exact failure
+     * this is supposed to avoid, arriving as a mailbox that mysteriously works
+     * for a while after each reconnect.
+     */
+    private function cacheAccessToken(Mailbox $mailbox, string $token, mixed $expiresIn): void
+    {
+        $seconds = is_numeric($expiresIn) ? (int) floor(((int) $expiresIn) * 0.75) : 0;
+
+        if ($seconds < 30) {
+            return;
+        }
+
+        Cache::put($this->cacheKey($mailbox), Crypt::encryptString($token), $seconds);
+    }
+
+    /** Forget it, because the provider has just said it is no good. */
+    private function forgetAccessToken(Mailbox $mailbox): void
+    {
+        Cache::forget($this->cacheKey($mailbox));
     }
 
     /**
@@ -400,30 +558,85 @@ final class GmailMailboxReader implements MailboxReader
     }
 
     /** @param array<string, mixed> $query */
-    private function get(Mailbox $mailbox, string $token, string $url, array $query): array
+    private function get(Mailbox $mailbox, string $url, array $query): array
+    {
+        return $this->send($mailbox, fn (string $token) => Http::withToken($token)
+            ->timeout(self::TIMEOUT)
+            ->get($url, $query));
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function post(Mailbox $mailbox, string $url, array $payload): array
+    {
+        return $this->send($mailbox, fn (string $token) => Http::withToken($token)
+            ->timeout(self::TIMEOUT)
+            ->post($url, $payload));
+    }
+
+    /**
+     * One call to Gmail, with an expired access token treated as ORDINARY.
+     *
+     * ═══════════════════════════════════════════════════════════════
+     *  A 401 HERE USED TO BE A DIAGNOSIS. NOW IT IS A RETRY FIRST.
+     *
+     *  When every call minted its own token, a 401 could only mean the
+     *  grant behind a seconds-old token had gone away — so it was read
+     *  as the sign-in no longer being valid, and that was right.
+     *
+     *  Caching makes it ambiguous, and in the commonest direction. A
+     *  parked token can be a few seconds past its usefulness because
+     *  Google's clock and ours disagree, or because it was revoked and
+     *  reissued elsewhere. Reporting that as "somebody withdrew
+     *  EzBizi's access" would mark a perfectly healthy mailbox broken,
+     *  raise `email.mailbox_broken` to whoever asked to be told, and
+     *  send an administrator to reconnect an inbox that needed nothing
+     *  — and it would do it intermittently, which is the worst kind of
+     *  wrong to be told about.
+     *
+     *  So the first 401 throws the cached token away and mints a fresh
+     *  one, with nobody present. That refresh is where a genuinely
+     *  dead sign-in surfaces, as `invalid_grant` from the token
+     *  endpoint — {@see tokenFailure}, the fault this module already
+     *  had. If the SECOND call is refused too, the token is a minute
+     *  old and the grant really has gone: that is the existing
+     *  diagnosis, unchanged.
+     *
+     *  EXACTLY ONE RETRY. A loop would turn a revoked mailbox into a
+     *  request that hammers Google's token endpoint until something
+     *  times out, and the quota that follows would then be reported as
+     *  a rate limit — a second wrong answer sitting on top of the
+     *  first.
+     * ═══════════════════════════════════════════════════════════════
+     *
+     * @param  callable(string): \Illuminate\Http\Client\Response  $call
+     * @return array<string, mixed>
+     */
+    private function send(Mailbox $mailbox, callable $call): array
+    {
+        $response = $this->attempt($mailbox, $call, $this->accessToken($mailbox));
+
+        if ($response->status() === 401) {
+            $this->forgetAccessToken($mailbox);
+
+            $response = $this->attempt($mailbox, $call, $this->accessToken($mailbox));
+        }
+
+        return $this->body($mailbox, $response);
+    }
+
+    /**
+     * @param  callable(string): \Illuminate\Http\Client\Response  $call
+     */
+    private function attempt(Mailbox $mailbox, callable $call, string $token): \Illuminate\Http\Client\Response
     {
         try {
-            $response = Http::withToken($token)->timeout(self::TIMEOUT)->get($url, $query);
+            return $call($token);
         } catch (ConnectionException $e) {
             // No status code exists yet, which is itself the diagnosis: a
             // timeout, a refused connection and a name that will not resolve all
             // arrive here, and all three mean nothing answered.
             throw CannotReadMailbox::hostNotAnswering($mailbox, $e->getMessage());
         }
-
-        return $this->body($mailbox, $response);
-    }
-
-    /** @param array<string, mixed> $payload */
-    private function post(Mailbox $mailbox, string $token, string $url, array $payload): array
-    {
-        try {
-            $response = Http::withToken($token)->timeout(self::TIMEOUT)->post($url, $payload);
-        } catch (ConnectionException $e) {
-            throw CannotReadMailbox::hostNotAnswering($mailbox, $e->getMessage());
-        }
-
-        return $this->body($mailbox, $response);
     }
 
     private function body(Mailbox $mailbox, \Illuminate\Http\Client\Response $response): array
@@ -454,11 +667,13 @@ final class GmailMailboxReader implements MailboxReader
      *
      * ── What still cannot be told apart ──────────────────────────
      *
-     * A 401 here. The access token was minted seconds earlier, so a rejection now
-     * means the grant behind it went away in between — withdrawn, expired, or
-     * overtaken by a password change, and this response says no more about which
-     * than the token endpoint did. It goes to the same three-in-one sentence, and
-     * that sentence says so.
+     * A 401 that has ALREADY BEEN RETRIED. {@see send} treats the first one as an
+     * expired access token, discards it and mints a fresh one; only a rejection
+     * of that second, seconds-old token reaches here. So by this point the grant
+     * behind it has genuinely gone away — withdrawn, expired, or overtaken by a
+     * password change — and this response says no more about which than the token
+     * endpoint did. It goes to the same three-in-one sentence, and that sentence
+     * says so.
      */
     private function apiFailure(Mailbox $mailbox, \Illuminate\Http\Client\Response $response): CannotReadMailbox
     {

@@ -497,10 +497,37 @@ class MailboxesApiTest extends TestCase
     {
         $t = $this->provisionTenant('A1-Group');
 
-        $mailbox = $this->inbox($t, 'info@a-1chimney.com');
+        /*
+         * ── The fixture moved, and the reason is worth recording ─────
+         *
+         * This built an IMAP mailbox, because IMAP was the transport this
+         * installation could not speak: PHP 8.4 dropped `ext-imap`. That
+         * premise died the day the socket transport landed, and the test then
+         * failed — CORRECTLY. It was asserting that a working provider does
+         * not work.
+         *
+         * The property is unchanged and still worth holding, so the fixture
+         * moved to the provider that genuinely cannot open today: Google needs
+         * an OAuth client on this installation and there is none. A credential
+         * can still be stored against it — hence `connected` — and reading it
+         * remains impossible, for a reason at our end.
+         *
+         * The day somebody registers that client, this fails again, and that
+         * failure will also be correct. The state stays reachable — an
+         * unregistered provider, a revoked grant — so the fixture moves again
+         * rather than the assertion being softened.
+         */
+        $mailbox = $this->inTenant($t['org'], fn () => Mailbox::create([
+            'organization_id' => $t['org']->id,
+            'scope_type'      => 'organization',
+            'scope_id'        => $t['org']->id,
+            'address'         => 'info@a-1chimney.com',
+            'display_name'    => 'Info',
+            'provider'        => 'gmail_oauth',
+        ]));
 
         $this->signedInAs($t['admin'])
-            ->postJson(self::ENDPOINT."/{$mailbox->id}/connect", ['credential' => 'a-secret'])
+            ->postJson(self::ENDPOINT."/{$mailbox->id}/connect", ['credential' => 'a-refresh-token'])
             ->assertOk();
 
         $row = $this->signedInAs($t['admin'])->getJson(self::ENDPOINT)
@@ -509,8 +536,9 @@ class MailboxesApiTest extends TestCase
         // Connected as far as the record goes...
         $this->assertSame(Mailbox::STATUS_CONNECTED, $row['status']);
 
-        // ...and still not openable, because this installation cannot speak
-        // IMAP. The two are separate fields precisely so this state is sayable.
+        // ...and still not openable, because nothing has registered this
+        // installation with Google. The two are separate fields precisely so
+        // this state is sayable.
         $this->assertFalse($row['can_be_opened']);
         $this->assertStringContainsString('at EzBizi\'s end', $row['unavailable_reason']);
     }

@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/core/timestamps.dart';
+import 'package:ezbizi_client/screens/email/consent_window.dart';
 import 'package:ezbizi_client/screens/email/email_screen.dart';
 import 'package:ezbizi_client/screens/email/mailbox_settings.dart';
 import 'package:ezbizi_client/screens/email/settings_tab.dart';
@@ -35,9 +37,31 @@ import 'package:http/testing.dart';
 /// credential into the row anyway, as hostile input, and asserts it reaches no
 /// pixel and no controller.
 ///
-/// **A control that cannot finish is worse than none.** The Google sign-in flow
-/// does not exist in this application. A "Connect Google" button would be
-/// pressed, and typed into, before anybody found that out.
+/// **A control that cannot finish is worse than none.** A sign-in button on an
+/// installation with nothing behind it would be pressed, and waited on, before
+/// anybody found that out. The server answers `usable` per provider and the
+/// control exists exactly when that is true — never deduced from `needs_host`,
+/// which is the guess that once drew a live password box for a transport this
+/// server cannot speak.
+///
+/// **Coming back from the provider has to land somewhere.** A sign-in leaves
+/// this application and something has to be true when it returns. The panel that
+/// asked the question is the thing that answers it: it stays open on the
+/// Settings tab, says it is waiting, and turns into either a connected inbox or
+/// the server's own refusal. The refusal that matters most is deliberate — the
+/// account somebody signed in with is not the address being connected — and it
+/// names the account, which "something went wrong" does not.
+///
+/// **A button that appears to do nothing gets pressed twice.** For a password
+/// that is one wasted round trip; for a sign-in it is two flows in flight
+/// against one mailbox. Both roads say they are working, and both refuse the
+/// second press while they are.
+///
+/// **The host is corrected where it is refused.** `RemoteHostGuard` runs inside
+/// `connect`, not inside `store`, so the sentence about a mail server pointing
+/// at a private network arrives on the connect panel. That panel therefore has
+/// to hold the host, the port and the encryption — otherwise it is the one
+/// screen that explains the problem and offers no way to fix it.
 ///
 /// **Disconnecting takes an inbox away from everybody.** Not from the person
 /// pressing it: from every role that was granted it, and reconnecting does not
@@ -280,13 +304,15 @@ void main() {
     await _openSettings(tester);
     await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
 
-    final field = tester.widget<TextField>(find.byType(TextField));
-
     expect(
-      field.obscureText,
-      isTrue,
-      reason: 'A shared mailbox password is being typed in an open-plan office.',
+      _passwordBox,
+      findsOneWidget,
+      reason: 'A shared mailbox password is being typed in an open-plan office, '
+          'so exactly one box in this panel is obscured and it is this one.',
     );
+
+    final field = tester.widget<TextField>(_passwordBox);
+
     expect(
       field.controller?.text,
       isEmpty,
@@ -332,7 +358,7 @@ void main() {
     await _openSettings(tester);
     await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
 
-    await tester.enterText(find.byType(TextField), 'the-mailbox-password');
+    await tester.enterText(_passwordBox, 'the-mailbox-password');
     await _tap(tester, find.widgetWithText(FilledButton, 'Connect it'));
 
     expect(
@@ -340,7 +366,7 @@ void main() {
       contains('POST /api/v1/email/mailboxes/mb-1/connect'),
       reason: 'Sent: $requests',
     );
-    expect(bodies.last, {'credential': 'the-mailbox-password'});
+    expect(bodies.last['credential'], 'the-mailbox-password');
     expect(
       requests.where((r) => r == 'GET /api/v1/email/mailboxes').length,
       greaterThan(1),
@@ -376,9 +402,17 @@ void main() {
     await _openSettings(tester);
     await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
 
-    expect(find.text('Not built yet'), findsOneWidget);
     expect(
-      find.textContaining('sign-in step is not built yet'),
+      find.text('Not available here'),
+      findsOneWidget,
+      reason:
+          'The badge used to read "Not built yet". The sign-in IS built now, '
+          'and what is missing is this installation being registered with '
+          'Google — an account somebody creates, not code somebody writes. The '
+          'old badge sends an administrator to ask for a feature that exists.',
+    );
+    expect(
+      find.textContaining('sign-in cannot be completed on this installation'),
       findsOneWidget,
     );
     // Inside the panel specifically. The card behind it carries the same
@@ -408,13 +442,22 @@ void main() {
           'A control that cannot complete is worse than none: it gets pressed '
           'first and understood afterwards.',
     );
+    expect(
+      find.textContaining('Continue with'),
+      findsNothing,
+      reason:
+          'And the sign-in control is the same kind of control. It is offered '
+          'when the server says the provider is usable, and this one says the '
+          'opposite.',
+    );
   });
 
-  testWidgets('the same panel for an IMAP address does offer the field — the '
+  testWidgets('the same panel for an IMAP address does offer the fields — the '
       'control for the case above', (tester) async {
     await _pump(
       tester,
-      _handler(imapUsable: true, 
+      _handler(
+        imapUsable: true,
         mailboxes: [
           _row(
             id: 'mb-1',
@@ -429,9 +472,830 @@ void main() {
     await _openSettings(tester);
     await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
 
-    expect(find.byType(TextField), findsOneWidget);
+    expect(_passwordBox, findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Incoming server'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Connect it'), findsOneWidget);
-    expect(find.text('Not built yet'), findsNothing);
+    expect(find.text('Not available here'), findsNothing);
+  });
+
+  // ── connecting by signing in ───────────────────────────────────
+
+  /// The pair to "says what is missing instead of offering a button". Same
+  /// address, same provider, one flag flipped — so what is being asserted is
+  /// that the SERVER decides, not that a Google-shaped row is special.
+  testWidgets('the sign-in control appears when the server says the provider '
+      'is usable', (tester) async {
+    await _pumpSettings(
+      tester,
+      _handler(googleUsable: true, mailboxes: [_google()]),
+      window: _FakeConsentWindow(),
+    );
+
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+
+    expect(
+      find.widgetWithText(FilledButton, 'Continue with Google (recommended)'),
+      findsOneWidget,
+      reason:
+          'The label is the server\'s own word for the service. Nothing in the '
+          'client spells "Google", so a second provider finished by signing in '
+          'needs no edit here.',
+    );
+    expect(find.text('Not available here'), findsNothing);
+    expect(
+      _passwordBox,
+      findsNothing,
+      reason: 'This road has nothing to type. A password box beside a sign-in '
+          'button is an invitation to type the account password into EzBizi.',
+    );
+  });
+
+  testWidgets('pressing it opens the provider\'s own window at the address the '
+      'server minted, and claims the window before it asks', (tester) async {
+    final window = _FakeConsentWindow();
+    final requests = <String>[];
+
+    /// What happened, in order, across two things that are usually counted
+    /// separately. See the assertion at the bottom for why the order is the
+    /// point.
+    final order = <String>[];
+
+    await _pumpSettings(
+      tester,
+      _handler(
+        googleUsable: true,
+        mailboxes: [_google()],
+        onRequest: (method, path, _) {
+          requests.add('$method $path');
+
+          if (path.endsWith('/oauth/start')) order.add('asked the server');
+        },
+      ),
+      window: window,
+      onOpen: () => order.add('claimed the window'),
+    );
+
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+
+    expect(
+      window.sentTo,
+      isEmpty,
+      reason: 'Opening the panel is not consenting to anything.',
+    );
+
+    await _tap(
+      tester,
+      find.widgetWithText(FilledButton, 'Continue with Google (recommended)'),
+    );
+
+    expect(
+      requests,
+      contains('POST /api/v1/email/mailboxes/mb-1/oauth/start'),
+      reason: 'Sent: $requests',
+    );
+    expect(window.sentTo, [
+      'https://accounts.google.com/o/oauth2/v2/auth?client_id=ez&state=s1',
+    ]);
+    expect(
+      find.textContaining('read the mail in this mailbox'),
+      findsOneWidget,
+      reason:
+          'The server publishes the scopes it is actually going to ask for, so '
+          'that a client never describes a permission that is not the one being '
+          'requested. A paragraph written in Dart would go on saying "read and '
+          'reply" the day a third scope is added.',
+    );
+    expect(
+      find.textContaining('send replies from this address'),
+      findsOneWidget,
+    );
+
+    expect(
+      order,
+      ['claimed the window', 'asked the server'],
+      reason:
+          'This ordering is the whole flow working or not working, and it is '
+          'invisible in a fake browser. A browser allows window.open while it '
+          'is handling a click and refuses it afterwards — so a window opened '
+          'AFTER the request for the sign-in address is a window the pop-up '
+          'blocker eats, every time, for everybody. The empty window has to be '
+          'claimed inside the gesture and pointed at the address when it '
+          'arrives.',
+    );
+  });
+
+  testWidgets('which account to choose is the server\'s answer, not this '
+      'screen\'s guess', (tester) async {
+    await _pumpSettings(
+      tester,
+      _handler(
+        googleUsable: true,
+        mailboxes: [_google()],
+        // Deliberately NOT the address on the row. The endpoint that will judge
+        // the match is the one that sends this, so it is the one that decides
+        // what somebody is told to pick — and a screen repeating the row
+        // instead would be a second opinion able to disagree with the check.
+        startBody: const {
+          'data': {
+            'authorization_url': 'https://accounts.google.com/o/oauth2/v2/auth?x=1',
+            'sign_in_as': 'shared.info@a-1chimney.com',
+            'scopes': ['https://www.googleapis.com/auth/gmail.readonly'],
+          },
+        },
+      ),
+      window: _FakeConsentWindow(),
+    );
+
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+    await _tap(
+      tester,
+      find.widgetWithText(FilledButton, 'Continue with Google (recommended)'),
+    );
+
+    expect(
+      find.textContaining('Sign in as shared.info@a-1chimney.com'),
+      findsOneWidget,
+    );
+
+    await _tap(tester, find.widgetWithText(TextButton, 'Stop waiting'));
+  });
+
+  testWidgets('while it is waiting it says so, and cannot be started a second '
+      'time', (tester) async {
+    final window = _FakeConsentWindow();
+    final starts = <String>[];
+
+    await _pumpSettings(
+      tester,
+      _handler(
+        googleUsable: true,
+        mailboxes: [_google()],
+        onRequest: (method, path, _) {
+          if (path.endsWith('/oauth/start')) starts.add(path);
+        },
+      ),
+      window: window,
+    );
+
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+    await _tap(
+      tester,
+      find.widgetWithText(FilledButton, 'Continue with Google (recommended)'),
+    );
+
+    expect(
+      find.textContaining('Waiting for Google (recommended). Finish signing in'),
+      findsOneWidget,
+      reason:
+          'An OAuth round trip is a person leaving the app. A panel that looks '
+          'idle while it waits is a panel somebody presses again.',
+    );
+    expect(
+      find.widgetWithText(TextButton, 'Stop waiting'),
+      findsOneWidget,
+      reason:
+          'Cancel closes the panel, which would abandon a sign-in still running '
+          'in another window with nothing left watching for it. Giving up '
+          'waiting is a different act and needs its own control.',
+    );
+
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Waiting for Google (recommended)…'),
+    );
+
+    expect(
+      button.onPressed,
+      isNull,
+      reason: 'Two flows in flight against one mailbox is how the wrong one '
+          'wins.',
+    );
+
+    // And pressing it anyway changes nothing, which is the fact rather than the
+    // disabled flag being the fact.
+    await _tap(
+      tester,
+      find.widgetWithText(FilledButton, 'Waiting for Google (recommended)…'),
+    );
+
+    expect(starts, hasLength(1));
+
+    // Drain the wait, so the panel is not disposed with a poll outstanding.
+    await _tap(tester, find.widgetWithText(TextButton, 'Stop waiting'));
+  });
+
+  testWidgets('coming back signed in lands on the Settings tab with the inbox '
+      'connected', (tester) async {
+    final window = _FakeConsentWindow();
+    final rows = [_google()];
+    final requests = <String>[];
+    final asked = <Uri>[];
+
+    await _pumpSettings(
+      tester,
+      _handler(
+        googleUsable: true,
+        mailboxes: rows,
+        // Nothing, then the answer. Two rounds rather than one is what gives
+        // "it does not close on hope" a failing case to have.
+        statusBodies: const [
+          {
+            'data': {'state': 'waiting', 'message': null},
+          },
+          {
+            'data': {'state': 'connected', 'message': null},
+          },
+        ],
+        onRequest: (method, path, _) {
+          requests.add('$method $path');
+
+          // The callback has run by the time the server says "connected", and
+          // `Mailbox::connect()` has written `status = connected` on the row.
+          // This is the fixture standing in for that, so the list the tab
+          // refetches afterwards is a connected one.
+          if (path.endsWith('/oauth/status')) {
+            rows[0] = _google(status: 'connected', canBeOpened: true);
+          }
+        },
+        onUrl: (url) {
+          if (url.path.endsWith('/oauth/status')) asked.add(url);
+        },
+      ),
+      window: window,
+    );
+
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+    await _tap(
+      tester,
+      find.widgetWithText(FilledButton, 'Continue with Google (recommended)'),
+    );
+
+    // Nothing yet. The panel holds its place rather than closing on hope.
+    await _waitOneRound(tester);
+
+    // Settled, and not merely pumped three times. A Navigator.pop leaves the
+    // panel in the tree for the length of its dismissal, so a bare `findsOne`
+    // straight after a poll finds a panel that IS closing and calls it open —
+    // which is how this assertion passed with the guard on it deleted.
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byType(SidePanel),
+      findsOneWidget,
+      reason:
+          'One look that found nothing is not an answer. Closing on it would '
+          'send somebody back to a list that still says "waiting to be '
+          'connected" and leave them wondering which of the two screens to '
+          'believe.',
+    );
+
+    // And now the token has landed.
+    await _waitOneRound(tester);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byType(SidePanel),
+      findsNothing,
+      reason: 'The question has been answered, so the panel that asked it goes.',
+    );
+    expect(
+      find.text('Connected'),
+      findsOneWidget,
+      reason:
+          'This is the whole return journey. Somebody who has just come back '
+          'from Google is looking at the Settings tab, at the inbox they were '
+          'connecting, and it says it is connected.',
+    );
+    expect(
+      requests.where((r) => r == 'GET /api/v1/email/mailboxes').length,
+      greaterThan(1),
+      reason: 'The list still shows the state from before the sign-in landed.',
+    );
+    expect(
+      asked.map((u) => u.queryParameters['flow']).toSet(),
+      {'flow-1'},
+      reason:
+          'Every ask names WHICH attempt it is about. Without the flow the '
+          'server can only answer "does this inbox have a credential", which is '
+          'also true of the attempt somebody abandoned ten minutes ago — so a '
+          'second press would be told about the first one\'s success and close '
+          'on it.',
+    );
+    expect(
+      window.closes,
+      1,
+      reason:
+          'The consent window is left sitting on a finished callback page, and '
+          'tidying it up is the last thing this flow owes.',
+    );
+  });
+
+  /// ── The refusal this whole flow is shaped around ───────────────
+  ///
+  /// The server checks that the account somebody signed in with IS the address
+  /// being connected, and refuses when it is not — because connecting them would
+  /// hand everybody with a grant on this shared inbox the mail of somebody's
+  /// personal account. GoogleOAuthRefused::wrongAccount names both addresses and
+  /// says what to do, the callback records it against the flow, and the panel
+  /// that is polling prints it.
+  ///
+  /// It is written on the callback PAGE as well, which is deliberate and not a
+  /// duplicate: the consent screen opens beside the app, so the person may be
+  /// looking at either window when it happens. Both say the same sentence
+  /// because both come from the same exception.
+  testWidgets('signing in with the wrong account shows the server\'s sentence, '
+      'naming the account', (tester) async {
+    final window = _FakeConsentWindow();
+
+    await _pumpSettings(
+      tester,
+      _handler(
+        googleUsable: true,
+        mailboxes: [_google()],
+        statusBodies: const [
+          {
+            'data': {
+              'state': 'refused',
+              'message':
+                  'That sign-in was for jose.personal@gmail.com, but this '
+                  'inbox is info@a-1chimney.com, so nothing has been connected '
+                  'and the permission has already been handed back to Google. '
+                  'If you have more than one Google account, sign out of the '
+                  'others or use a private window, then connect the address '
+                  'again and choose info@a-1chimney.com.',
+            },
+          },
+        ],
+      ),
+      window: window,
+    );
+
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+    await _tap(
+      tester,
+      find.widgetWithText(FilledButton, 'Continue with Google (recommended)'),
+    );
+    await _waitOneRound(tester);
+
+    expect(
+      find.descendant(
+        of: find.byType(SidePanel),
+        matching: find.textContaining('jose.personal@gmail.com'),
+      ),
+      findsOneWidget,
+      reason:
+          'Somebody who picked the wrong account from Google\'s chooser needs '
+          'to be told WHICH account they picked. "Something went wrong" tells '
+          'them to do exactly the same thing again.',
+    );
+    expect(
+      find.byType(SidePanel),
+      findsOneWidget,
+      reason: 'A refusal is not a crash. The panel stays where it is.',
+    );
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(
+              FilledButton,
+              'Continue with Google (recommended)',
+            ),
+          )
+          .onPressed,
+      isNotNull,
+      reason: 'Trying again with the right account is the remedy, so the '
+          'control that does it has to be live.',
+    );
+    expect(
+      window.closes,
+      1,
+      reason:
+          'And the window it was refused in is closed, so the next attempt does '
+          'not reuse a page showing the last one\'s answer.',
+    );
+  });
+
+  testWidgets('closing the provider\'s window stops the wait, and says nothing '
+      'has changed', (tester) async {
+    final window = _FakeConsentWindow();
+
+    await _pumpSettings(
+      tester,
+      _handler(googleUsable: true, mailboxes: [_google()]),
+      window: window,
+    );
+
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+    await _tap(
+      tester,
+      find.widgetWithText(FilledButton, 'Continue with Google (recommended)'),
+    );
+
+    window.closedByHand();
+    await _waitOneRound(tester);
+
+    expect(
+      find.textContaining('was closed before the sign-in finished'),
+      findsOneWidget,
+      reason:
+          'Somebody who gave up should be told the inbox is unchanged, not left '
+          'looking at a panel still waiting on a window that has gone.',
+    );
+    expect(
+      find.textContaining('still waiting to be connected'),
+      findsOneWidget,
+      reason: 'And say plainly that nothing changed.',
+    );
+    expect(
+      find.textContaining('Waiting for Google (recommended). Finish signing in'),
+      findsNothing,
+      reason:
+          'The window has gone, so nothing is going to arrive. A panel still '
+          'saying it is waiting is a panel waiting on a window that does not '
+          'exist.',
+    );
+  });
+
+  testWidgets('a wait nothing ever answers stops on its own, rather than '
+      'asking forever', (tester) async {
+    final window = _FakeConsentWindow();
+    var asked = 0;
+
+    await _pumpSettings(
+      tester,
+      _handler(
+        googleUsable: true,
+        mailboxes: [_google()],
+        onRequest: (method, path, _) {
+          if (path.endsWith('/oauth/status')) asked += 1;
+        },
+      ),
+      window: window,
+    );
+
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+    await _tap(
+      tester,
+      find.widgetWithText(FilledButton, 'Continue with Google (recommended)'),
+    );
+
+    // The real numbers rather than an injected pair: five minutes of asking
+    // every two seconds. The window is left OPEN throughout and the server keeps
+    // answering "waiting", so the only thing that can end this is the cap.
+    for (var round = 0; round < 160; round++) {
+      await _waitOneRound(tester);
+    }
+
+    expect(
+      find.textContaining('nothing came back for 5 minutes'),
+      findsOneWidget,
+      reason:
+          'Somebody leaves this open at lunchtime. Without a cap that is a '
+          'request every two seconds until the tab is closed, and a panel still '
+          'claiming to be waiting hours later.',
+    );
+    expect(
+      asked,
+      lessThanOrEqualTo(150),
+      reason:
+          'And it really stops asking. Sent $asked status requests, where the '
+          'cap is five minutes of asking every two seconds.',
+    );
+    expect(
+      find.textContaining('press the button again'),
+      findsOneWidget,
+      reason: 'A dead end is not an answer (R8). Somebody who finished signing '
+          'in late needs to be told the way to pick that answer up.',
+    );
+  });
+
+  testWidgets('the authorize call\'s own refusal is printed as the server '
+      'wrote it', (tester) async {
+    final window = _FakeConsentWindow();
+
+    await _pumpSettings(
+      tester,
+      _handler(
+        googleUsable: true,
+        mailboxes: [_google()],
+        // What GoogleMailAuthController::start answers when this installation
+        // has no Google registration — the same sentence the catalogue
+        // publishes as `unusable_because`, from the same reader.
+        startBody: const {
+          'message':
+              'EzBizi has no Google connection set up on this installation '
+              'yet, so no Google mailbox can be opened and signing in would '
+              'not complete.',
+        },
+        startStatus: 501,
+      ),
+      window: window,
+    );
+
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+    await _tap(
+      tester,
+      find.widgetWithText(FilledButton, 'Continue with Google (recommended)'),
+    );
+
+    expect(
+      find.textContaining('no Google connection set up on this installation'),
+      findsOneWidget,
+    );
+    expect(
+      window.closes,
+      1,
+      reason:
+          'The empty window was claimed inside the click and there is now '
+          'nowhere to send it. Leaving a blank window open on a refusal is a '
+          'second thing for somebody to tidy up.',
+    );
+    expect(window.sentTo, isEmpty);
+  });
+
+  testWidgets('a window that will not open is said out loud, and no sign-in is '
+      'started behind it', (tester) async {
+    final requests = <String>[];
+
+    await _pumpSettings(
+      tester,
+      _handler(
+        googleUsable: true,
+        mailboxes: [_google()],
+        onRequest: (method, path, _) => requests.add('$method $path'),
+      ),
+      // What consent_window_io.dart answers: the desktop and mobile builds have
+      // no window to open, and a browser blocking it looks the same from here.
+      window: null,
+    );
+
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+    await _tap(
+      tester,
+      find.widgetWithText(FilledButton, 'Continue with Google (recommended)'),
+    );
+
+    expect(find.textContaining('could not open the Google (recommended) sign-in window'), findsOneWidget);
+    expect(
+      requests.where((r) => r.endsWith('/oauth/start')),
+      isEmpty,
+      reason:
+          'A sign-in nobody can reach should not be started at the server '
+          'either — it would sit there pending, and the next attempt would be '
+          'the second flow this panel refuses to have.',
+    );
+  });
+
+  // ── connecting with a password ─────────────────────────────────
+
+  testWidgets('the connect panel takes the server details and posts them with '
+      'the password', (tester) async {
+    final bodies = <Map<String, dynamic>>[];
+
+    await _pump(
+      tester,
+      _handler(
+        imapUsable: true,
+        mailboxes: [
+          _row(
+            id: 'mb-1',
+            address: 'info@a-1chimney.com',
+            status: 'unconfigured',
+            canBeOpened: false,
+            // Nothing stored yet — the address was added and never finished.
+            mailServer: const {},
+          ),
+        ],
+        onRequest: (method, path, body) {
+          if (path.endsWith('/connect') && body != null) bodies.add(body);
+        },
+      ),
+    );
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+
+    await tester.enterText(_passwordBox, 'the-mailbox-password');
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Incoming server'),
+      'imap.a-1chimney.com',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Outgoing server'),
+      'smtp.a-1chimney.com',
+    );
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Connect it'));
+
+    expect(bodies, hasLength(1));
+    expect(bodies.single['credential'], 'the-mailbox-password');
+    expect(bodies.single['mail_server'], {
+      'imap_host': 'imap.a-1chimney.com',
+      // The defaults, and they are the ones a mail provider actually publishes:
+      // 993 is IMAP over TLS, 587 is SMTP submission over STARTTLS. Both come
+      // from the list the SERVER published in `meta`, so a guard that changes
+      // its mind changes this form with it.
+      'imap_port': 993,
+      'imap_encryption': 'tls',
+      'smtp_host': 'smtp.a-1chimney.com',
+      'smtp_port': 587,
+      'smtp_encryption': 'starttls',
+    });
+  });
+
+  testWidgets('server details already stored are filled in, and are what goes '
+      'back', (tester) async {
+    final bodies = <Map<String, dynamic>>[];
+
+    await _pump(
+      tester,
+      _handler(
+        imapUsable: true,
+        mailboxes: [
+          _row(
+            id: 'mb-1',
+            address: 'info@a-1chimney.com',
+            status: 'broken',
+            statusReason: 'The password for this address was refused.',
+            canBeOpened: false,
+            mailServer: const {
+              'imap_host': 'mail.a-1chimney.com',
+              'imap_port': 143,
+              'imap_encryption': 'starttls',
+              'imap_username': 'info',
+            },
+          ),
+        ],
+        onRequest: (method, path, body) {
+          if (path.endsWith('/connect') && body != null) bodies.add(body);
+        },
+      ),
+    );
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Reconnect'));
+
+    expect(find.text('mail.a-1chimney.com'), findsOneWidget);
+    expect(find.text('143'), findsOneWidget);
+    expect(
+      find.text('info'),
+      findsOneWidget,
+      reason:
+          'The username travels with the rest of the block. If it were not '
+          'drawn it would not be posted either, and reconnecting would quietly '
+          'wipe it.',
+    );
+
+    await tester.enterText(_passwordBox, 'the-new-password');
+    await _tap(tester, find.widgetWithText(FilledButton, 'Connect it'));
+
+    expect(bodies.single['mail_server'], containsPair('imap_port', 143));
+    expect(
+      bodies.single['mail_server'],
+      containsPair('imap_encryption', 'starttls'),
+    );
+    expect(bodies.single['mail_server'], containsPair('imap_username', 'info'));
+  });
+
+  testWidgets('the port can be changed to the other one the server allows', (
+    tester,
+  ) async {
+    final bodies = <Map<String, dynamic>>[];
+
+    await _pump(
+      tester,
+      _handler(
+        imapUsable: true,
+        mailboxes: [
+          _row(
+            id: 'mb-1',
+            address: 'info@a-1chimney.com',
+            status: 'unconfigured',
+            canBeOpened: false,
+            mailServer: const {'imap_host': 'imap.a-1chimney.com'},
+          ),
+        ],
+        onRequest: (method, path, body) {
+          if (path.endsWith('/connect') && body != null) bodies.add(body);
+        },
+      ),
+    );
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+
+    await _tap(tester, find.text('993'));
+    await _tap(tester, find.text('143').last);
+
+    await tester.enterText(_passwordBox, 'the-mailbox-password');
+    await _tap(tester, find.widgetWithText(FilledButton, 'Connect it'));
+
+    expect(bodies.single['mail_server'], containsPair('imap_port', 143));
+  });
+
+  testWidgets('a host the guard refuses shows the server\'s own sentence, on '
+      'the screen that can correct it', (tester) async {
+    await _pump(
+      tester,
+      _handler(
+        imapUsable: true,
+        mailboxes: [
+          _row(
+            id: 'mb-1',
+            address: 'info@a-1chimney.com',
+            status: 'unconfigured',
+            canBeOpened: false,
+            mailServer: const {'imap_host': 'mail.internal'},
+          ),
+        ],
+        // What MailboxesController::connect answers when RemoteHostGuard says
+        // no: a 422, because it is a fact about the value they typed.
+        connect: () async => _json(const {
+          'message':
+              'EzBizi will not connect to "mail.internal". It points at a '
+              'private network rather than at a mail server on the internet, '
+              'and a mail setting that could reach inside the network EzBizi '
+              'runs in would be a way of reading things that are nothing to do '
+              'with your email. Use the mail server name your provider gave '
+              'you — something like imap.example.com.',
+        }, 422),
+      ),
+    );
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+
+    await tester.enterText(_passwordBox, 'the-mailbox-password');
+    await _tap(tester, find.widgetWithText(FilledButton, 'Connect it'));
+
+    expect(
+      find.textContaining('It points at a private network'),
+      findsOneWidget,
+      reason:
+          'The guard\'s sentence, verbatim. It names the category and not the '
+          'address, which is deliberate at the server end, and rewording it '
+          'here would throw away the part that says what to type instead.',
+    );
+    expect(
+      find.widgetWithText(TextFormField, 'Incoming server'),
+      findsOneWidget,
+      reason:
+          'This is the point of putting the host on this panel. Without it, the '
+          'screen that explains what is wrong with the mail server name is the '
+          'one screen with no way to change it.',
+    );
+    expect(find.byType(SidePanel), findsOneWidget);
+  });
+
+  testWidgets('while the password is in flight the panel says so, and takes '
+      'nothing else', (tester) async {
+    final held = Completer<http.Response>();
+
+    await _pump(
+      tester,
+      _handler(
+        imapUsable: true,
+        mailboxes: [
+          _row(
+            id: 'mb-1',
+            address: 'info@a-1chimney.com',
+            status: 'unconfigured',
+            canBeOpened: false,
+            mailServer: const {'imap_host': 'imap.a-1chimney.com'},
+          ),
+        ],
+        connect: () => held.future,
+      ),
+    );
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+
+    await tester.enterText(_passwordBox, 'the-mailbox-password');
+    await _tap(tester, find.widgetWithText(FilledButton, 'Connect it'));
+
+    expect(
+      find.textContaining('Signing in to imap.a-1chimney.com'),
+      findsOneWidget,
+      reason:
+          'An IMAP login against a slow server takes seconds. A button that '
+          'appears to do nothing gets pressed twice, and the second press is a '
+          'second password on the wire.',
+    );
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Connecting…'))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester.widget<TextField>(_passwordBox).enabled,
+      isFalse,
+      reason: 'The value being sent is the value that was in the box. Editing '
+          'it underneath the request makes the screen disagree with the wire.',
+    );
+
+    held.complete(_json({'data': _row(id: 'mb-1', address: 'info@a-1chimney.com')}));
+    await tester.pumpAndSettle();
   });
 
   // ── disconnecting ──────────────────────────────────────────────
@@ -665,11 +1529,12 @@ void main() {
       expect(find.textContaining('Last reached 5 hours ago'), findsOneWidget);
     });
 
-    testWidgets('at ${width.toInt()}px the connect panel fits and still asks '
-        'for one thing', (tester) async {
+    testWidgets('at ${width.toInt()}px the password panel fits, and the server '
+        'details fit under it', (tester) async {
       await _pump(
         tester,
-        _handler(imapUsable: true, 
+        _handler(
+          imapUsable: true,
           mailboxes: [
             _row(
               id: 'mb-1',
@@ -686,8 +1551,61 @@ void main() {
       await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
 
       expect(tester.takeException(), isNull);
-      expect(find.byType(TextField), findsOneWidget);
+      expect(_passwordBox, findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Connect it'), findsOneWidget);
+
+      // At 375 the panel IS the window, which leaves about 327 for a port and
+      // an encryption side by side — and "STARTTLS" in a Material label does
+      // not fit half of that. A Row answered that with an overflow stripe
+      // across the encryption box.
+      await tester.dragUntilVisible(
+        find.widgetWithText(TextFormField, 'Outgoing server'),
+        find.byType(SingleChildScrollView).first,
+        const Offset(0, -80),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('STARTTLS'), findsWidgets);
+    });
+
+    testWidgets('at ${width.toInt()}px the sign-in panel fits and offers the '
+        'one control it has', (tester) async {
+      final window = _FakeConsentWindow();
+
+      await _pumpSettings(
+        tester,
+        _handler(
+          googleUsable: true,
+          mailboxes: [
+            _row(
+              id: 'mb-1',
+              address: 'info@a-1chimney.com',
+              provider: 'gmail_oauth',
+              providerLabel: 'Google (recommended)',
+              status: 'unconfigured',
+              canBeOpened: false,
+            ),
+          ],
+        ),
+        window: window,
+        size: Size(width, 900),
+      );
+
+      await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.widgetWithText(FilledButton, 'Continue with Google (recommended)'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('never reaches EzBizi'),
+        findsOneWidget,
+        reason:
+            'The one thing somebody has to understand before pressing it: the '
+            'password is typed on their page, not on ours.',
+      );
     });
   }
 
@@ -822,6 +1740,18 @@ void main() {
 
 // ── driving the screen ─────────────────────────────────────────────
 
+/// The one obscured box in the connect panel — the mailbox's password.
+///
+/// Deliberately not `find.byType(TextField)`. The server-detail fields are
+/// `TextFormField`s and each of those builds a `TextField` of its own, so the
+/// bare type finder counts five boxes in this panel and calls whichever comes
+/// first the password. It did, and the assertion "the box is empty" then passed
+/// by looking at the incoming server name.
+final _passwordBox = find.byWidgetPredicate(
+  (widget) => widget is TextField && widget.obscureText,
+  description: 'the obscured password box',
+);
+
 Future<void> _pump(
   WidgetTester tester,
   MockClientHandler handler, {
@@ -851,6 +1781,96 @@ Future<void> _pump(
 Future<void> _openSettings(WidgetTester tester) =>
     _tap(tester, find.widgetWithText(ChoiceChip, 'Settings'));
 
+/// The Settings tab on its own, with a fake window in place of the browser's.
+///
+/// ── Why this one skips the Email screen around it ────────────────
+///
+/// Because the sign-in road cannot be walked in `flutter test` otherwise. The
+/// suite runs on the VM, where consent_window.dart's stub correctly answers "no
+/// window here" — so without somewhere to hand a fake in, the one flow somebody
+/// cannot recover from unaided is the one flow nothing asserts.
+///
+/// It is still the real tab, the real panel and the real API client; only the
+/// browser is stood in for. The two-sub-tab wiring around it is [_pump]'s
+/// business and is asserted there.
+Future<void> _pumpSettings(
+  WidgetTester tester,
+  MockClientHandler handler, {
+  required _FakeConsentWindow? window,
+  VoidCallback? onOpen,
+  Size size = const Size(1500, 1000),
+  List<String> permissions = const ['email.view', 'email.create', 'email.edit'],
+}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  final api = ApiClient(client: MockClient(_withMe(handler, permissions)));
+  final session = Session(api);
+
+  await tester.runAsync(() => session.adopt('tok'));
+
+  expect(session.signedIn, isTrue, reason: 'The /me stub did not sign in.');
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        body: MailboxSettingsTab(
+          api: api,
+          session: session,
+          openConsent: () {
+            onOpen?.call();
+
+            return window;
+          },
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// Let one poll of `oauth/status` happen, and let the panel rebuild on it.
+///
+/// Two pumps, and both are needed. The first moves the fake clock past the
+/// interval so the timer fires; the timer's body then awaits an HTTP call, and
+/// the second pump is what lets that resolve and the frame that follows be
+/// built.
+Future<void> _waitOneRound(WidgetTester tester, {Duration every = const Duration(seconds: 2)}) async {
+  await tester.pump(every);
+  await tester.pump();
+  await tester.pump();
+}
+
+/// The browser window this suite has instead of a browser.
+///
+/// Only the three things ConsentWindow actually exposes, because that is all the
+/// panel is allowed to know: an opener may not read anything else about a window
+/// that has navigated to somebody else's origin.
+class _FakeConsentWindow implements ConsentWindow {
+  /// Every address it was pointed at. One, in a flow that behaved.
+  final sentTo = <String>[];
+
+  bool _closed = false;
+  int closes = 0;
+
+  /// The person closed it themselves, halfway through.
+  void closedByHand() => _closed = true;
+
+  @override
+  void goTo(String url) => sentTo.add(url);
+
+  @override
+  bool get closed => _closed;
+
+  @override
+  void close() {
+    closes += 1;
+    _closed = true;
+  }
+}
+
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   final scrollable = find.ancestor(
     of: finder,
@@ -874,24 +1894,69 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 typedef _Watcher =
     void Function(String method, String path, Map<String, dynamic>? body);
 
-/// [imapUsable] pretends this installation CAN speak IMAP.
+/// [imapUsable] and [googleUsable] pretend this installation can speak each
+/// transport.
 ///
-/// It cannot — PHP 8.4 dropped the extension — and the default here says so,
+/// Neither can today — PHP 8.4 dropped the imap extension, and there is no
+/// Google registration on this installation — and the defaults here say so,
 /// because that is what the real server publishes and it is what stops a live
-/// password form being drawn for a connection that could never be attempted.
+/// form being drawn for a connection that could never be attempted.
 ///
-/// The tests that exercise the password panel pass true. They are about the
-/// PANEL's behaviour — write-only, posted to the connect endpoint, laid out at
-/// three widths — and that code becomes reachable the day the extension is
-/// installed or a hosted provider lands. Deleting them because today's box
-/// cannot reach the panel would leave that behaviour unpinned for the day it
-/// can.
+/// The tests that exercise either road pass true. They are about the PANEL's
+/// behaviour — write-only, posted to the right endpoint, laid out at three
+/// widths, honest while it waits — and that code becomes reachable the day the
+/// extension is installed or the registration is done. Deleting them because
+/// today's box cannot reach the panel would leave that behaviour unpinned for
+/// the day it can.
+///
+/// [startBody] / [startStatus] are what `POST …/{mailbox}/oauth/start` answers —
+/// the shape GoogleMailAuthController::start returns.
+///
+/// [statusBodies] are what `GET …/{mailbox}/oauth/status` answers, one per ask,
+/// the last repeating. That is what a real wait looks like: nothing, nothing,
+/// then an answer. `state` is one of the three
+/// App\Support\Email\GoogleOAuthSignIns publishes — `waiting`, `connected`,
+/// `refused` — and on a refusal `message` carries the server's own sentence.
+///
+/// [connect] replaces the ordinary success from `POST …/connect`, so a test can
+/// hold that response open and look at the panel while it is in flight.
 MockClientHandler _handler({
   List<Map<String, Object?>>? mailboxes,
   _Watcher? onRequest,
+
+  /// The whole URL, query and all. Separate from [onRequest] because that one
+  /// takes a bare path and eight call sites read it that way — and the query is
+  /// exactly what one assertion here is about.
+  void Function(Uri url)? onUrl,
   bool imapUsable = false,
+  bool googleUsable = false,
+  Object startBody = const {
+    'data': {
+      'authorization_url':
+          'https://accounts.google.com/o/oauth2/v2/auth?client_id=ez&state=s1',
+      'flow': 'flow-1',
+      'expires_at': '2026-08-13T14:10:00+00:00',
+      'sign_in_as': 'info@a-1chimney.com',
+      'scopes': [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.send',
+      ],
+    },
+  },
+  int startStatus = 200,
+  List<Object> statusBodies = const [
+    {
+      'data': {'state': 'waiting', 'message': null},
+    },
+  ],
+  Future<http.Response> Function()? connect,
 }) {
   final rows = mailboxes ?? [_row(id: 'mb-1', address: 'info@a-1chimney.com')];
+
+  // Asked repeatedly, and the answers are consumed in order — the last one
+  // repeats. That is what a real wait looks like: nothing, nothing, then an
+  // answer.
+  var asked = 0;
 
   return (request) async {
     final path = request.url.path;
@@ -900,6 +1965,23 @@ MockClientHandler _handler({
         : jsonDecode(request.body) as Map<String, dynamic>;
 
     onRequest?.call(request.method, path, body);
+    onUrl?.call(request.url);
+
+    if (path.endsWith('/oauth/start')) {
+      return _json(startBody, startStatus);
+    }
+
+    if (path.endsWith('/oauth/status')) {
+      final at = asked < statusBodies.length ? asked : statusBodies.length - 1;
+
+      asked += 1;
+
+      return _json(statusBodies[at]);
+    }
+
+    if (path.endsWith('/connect') && connect != null) {
+      return connect();
+    }
 
     if (request.method == 'DELETE') {
       return _json({
@@ -940,11 +2022,12 @@ MockClientHandler _handler({
               'label': 'Google (recommended)',
               'needs_host': false,
               'caution': null,
-              'usable': false,
-              'unusable_because':
-                  'EzBizi has no Google connection set up on this installation '
-                  'yet, so no Google mailbox can be opened and signing in would '
-                  'not complete.',
+              'usable': googleUsable,
+              'unusable_because': googleUsable
+                  ? null
+                  : 'EzBizi has no Google connection set up on this '
+                        'installation yet, so no Google mailbox can be opened '
+                        'and signing in would not complete.',
             },
             {
               'value': 'imap',
@@ -1017,6 +2100,10 @@ Map<String, Object?> _row({
   String? lastReachedAt,
   bool lastReachedKnown = true,
   bool mayManage = true,
+  Map<String, Object?> mailServer = const {
+    'imap_host': 'imap.example.com',
+    'imap_port': 993,
+  },
   Map<String, Object?> extra = const {},
 }) => {
   'id': id,
@@ -1031,7 +2118,7 @@ Map<String, Object?> _row({
   'can_be_opened': canBeOpened,
   'unavailable_reason': unavailableReason,
   if (lastReachedKnown) 'last_reached_at': lastReachedAt,
-  'mail_server': const {'imap_host': 'imap.example.com', 'imap_port': 993},
+  'mail_server': mailServer,
   'may_read': true,
   'may_read_reason': null,
   'may_manage': mayManage,
@@ -1039,6 +2126,24 @@ Map<String, Object?> _row({
   'read_state_note': null,
   ...extra,
 };
+
+/// One address set up on the provider that is finished by signing in.
+Map<String, Object?> _google({
+  String status = 'unconfigured',
+  bool canBeOpened = false,
+  String? statusReason,
+}) => _row(
+  id: 'mb-1',
+  address: 'info@a-1chimney.com',
+  provider: 'gmail_oauth',
+  providerLabel: 'Google (recommended)',
+  status: status,
+  statusReason: statusReason,
+  canBeOpened: canBeOpened,
+  // A mailbox finished by signing in has no mail server, and the controller
+  // nulls the block for a provider that needs no host.
+  mailServer: const {},
+);
 
 /// A stamp that will still read as [ago] by the time the widget builds.
 String _agoIso(Duration ago) =>

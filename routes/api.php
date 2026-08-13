@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\FranchisesController;
+use App\Http\Controllers\Api\GoogleMailAuthController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\HrContractsController;
 use App\Http\Controllers\Api\HrDashboardController;
@@ -134,6 +135,53 @@ Route::prefix('v1/invitations')->middleware('throttle:invitation')->group(functi
     Route::post('lookup', [InvitationAcceptanceController::class, 'show']);
     Route::post('accept', [InvitationAcceptanceController::class, 'accept']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Finishing a Google sign-in — public, because a browser redirect has no token
+|--------------------------------------------------------------------------
+|
+| Google ends the OAuth flow by redirecting a BROWSER to this URL. A redirect
+| sends no Authorization header, so `auth:sanctum` here would refuse every
+| legitimate callback there will ever be. There is nothing to fix with
+| middleware, and adding it would only make the feature impossible.
+|
+| WHAT AUTHENTICATES IT INSTEAD is the `state` parameter, which names a row in
+| `google_mail_sign_ins` binding the organization, the person and the mailbox
+| together — issued by the authorized POST further down, expiring in ten
+| minutes, and deleted the moment it is read. See App\Support\Email\
+| GoogleOAuthSignIns for why the burn is a DELETE with an affected-row count
+| rather than a flag, and GoogleMailAuthController for the order the callback
+| does things in.
+|
+| THE PATH IS ALSO A REGISTERED VALUE AT GOOGLE. It is the redirect URI on the
+| OAuth client, matched character for character, so it cannot be renamed here
+| alone — App\Support\Email\GoogleOAuth::CALLBACK_PATH holds the same literal
+| and GoogleMailOAuthTest asserts the two agree.
+|
+| `state` and `code` ARE IN THE QUERY STRING, unlike every other credential in
+| this file — invitations moved theirs into a body precisely because nginx logs
+| request lines. That is not a choice available here: OAuth 2.0 defines the
+| callback as a redirect with query parameters, and Google will not send them
+| any other way. What answers it is the design of the two values rather than
+| their position. `state` is single-use and dead within ten minutes, so a copy
+| in a log is a copy of something already spent. `code` is single-use at Google
+| AND useless without the PKCE verifier, which never leaves this server and is
+| encrypted where it rests.
+|
+| No `tenant` middleware either: the state row is what names an organization, so
+| the organization cannot already be known when it is read. The controller
+| enters it with TenantContext::run, the way InvitationAcceptanceController
+| does.
+|
+| Throttled, because it is public and every hit does a database lookup. The
+| numbers are inline rather than a named limiter — AppServiceProvider owns those
+| and this needs nothing bespoke.
+|
+*/
+Route::get('v1/email/google/callback', [GoogleMailAuthController::class, 'callback'])
+    ->middleware('throttle:30,1')
+    ->name('email.google.callback');
 
 // ── Authenticated ────────────────────────────────────────────────
 Route::prefix('v1')
@@ -393,6 +441,40 @@ Route::prefix('v1')
         Route::patch('email/mailboxes/{mailbox}', [MailboxesController::class, 'update']);
         Route::delete('email/mailboxes/{mailbox}', [MailboxesController::class, 'destroy']);
         Route::post('email/mailboxes/{mailbox}/connect', [MailboxesController::class, 'connect']);
+
+        // ── Connecting a mailbox by signing in, rather than by password ──
+        //
+        // The other half of `connect` above, for a provider where the credential
+        // cannot be typed. `start` only BEGINS the flow: it answers a URL at the
+        // mail service for the client to open, and the credential arrives later
+        // at the public callback registered further up this file.
+        //
+        // `status` exists because the client cannot see that callback happen.
+        // The consent window stops belonging to it the moment it navigates, and
+        // a browser will not let an opener read across origins — so the screen
+        // polls the only party that saw the token arrive.
+        //
+        // NAMED `oauth/...` AND NOT `google/...`, deliberately. "Send somebody
+        // to their mail service and wait" is the same shape for every provider
+        // that will ever have a sign-in, and the screen that calls these never
+        // spells "Google" — it prints the provider label the server publishes.
+        // A mailbox whose provider has no sign-in flow is refused by `start` in
+        // a sentence naming the address. The Google-specific part is the
+        // CALLBACK, which has to be Google-specific: a redirect URI is
+        // registered at one provider, character for character.
+        //
+        // Same authority as `connect` — `email.edit` plus §4 reach, asked of
+        // App\Support\Email\MailboxAccess — because pressing a button and
+        // typing a password attach the same kind of key to the same inbox. A
+        // looser rule on the easier path is how the strict one becomes the one
+        // nobody uses.
+        //
+        // `start` is a POST because it WRITES a pending sign-in row. A GET that
+        // writes is a GET something eventually prefetches.
+        Route::post('email/mailboxes/{mailbox}/oauth/start',
+            [GoogleMailAuthController::class, 'start']);
+        Route::get('email/mailboxes/{mailbox}/oauth/status',
+            [GoogleMailAuthController::class, 'status']);
 
         Route::get('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'index']);
         Route::get('email/mailboxes/{mailbox}/messages/{message}', [MailboxMessagesController::class, 'show']);

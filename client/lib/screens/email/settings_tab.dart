@@ -6,6 +6,7 @@ import '../../widgets/async_body.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
+import 'consent_window.dart';
 import 'mailbox_panels.dart';
 import 'mailbox_settings.dart';
 
@@ -46,10 +47,22 @@ class MailboxSettingsTab extends StatefulWidget {
     super.key,
     required this.api,
     required this.session,
+    this.openConsent = openConsentWindow,
   });
 
   final ApiClient api;
   final Session session;
+
+  /// How a window is opened at the mail service, handed down to the connect
+  /// panel.
+  ///
+  /// A seam rather than a hack: the real implementation is chosen by
+  /// consent_window.dart's conditional import, and the reason it is a parameter
+  /// at all is that the sign-in road cannot otherwise be exercised anywhere
+  /// except a browser — `flutter test` runs on the VM, where the stub correctly
+  /// answers "no window here". Without this the one flow in this tab that a
+  /// person cannot recover from unaided would be the one flow nothing asserts.
+  final OpenConsentWindow openConsent;
 
   @override
   State<MailboxSettingsTab> createState() => _MailboxSettingsTabState();
@@ -178,6 +191,14 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
         api: widget.api,
         mailbox: mailbox,
         provider: _providerFor(mailbox),
+        // The same lists the add form offers, because this panel now asks the
+        // same question. Connecting is where RemoteHostGuard actually runs, so
+        // it is where a refused host has to be correctable — and a port list
+        // that differed between the two forms would be a refusal from the far
+        // end rather than anything visible on either screen.
+        imapPorts: _imapPorts,
+        smtpPorts: _smtpPorts,
+        openConsent: widget.openConsent,
       ),
     );
 

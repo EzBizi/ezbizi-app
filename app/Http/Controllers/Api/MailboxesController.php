@@ -320,13 +320,18 @@ class MailboxesController extends Controller
      *
      * ── What this endpoint is NOT ────────────────────────────────
      *
-     * It is not an OAuth callback. A Google mailbox is finished by somebody
-     * consenting in a browser and the resulting refresh token arriving here, and
-     * the browser flow that produces it is not built — see GmailMailboxReader
-     * for exactly what is missing and why it is an account somebody has to
-     * create rather than code. Accepting a token directly is what lets the
-     * mailbox be connected the day that flow exists, without this endpoint
-     * changing.
+     * It is not an OAuth callback, and there IS one now — see
+     * GoogleMailAuthController. This paragraph used to say the browser flow did
+     * not exist; it does, and the only thing still missing for Google is the
+     * OAuth client an owner registers in a console.
+     *
+     * The two stay separate on purpose. That callback checks a single-use state
+     * bound to one person, one organization and one mailbox, and refuses when
+     * the Google account signed into is not the address being connected. None
+     * of that applies here: this endpoint takes a credential from somebody
+     * already authenticated and already authorised to manage the inbox, which
+     * is how an IMAP password arrives and how a token could be pasted by
+     * somebody who obtained one another way.
      */
     public function connect(Request $request, Mailbox $mailbox): JsonResponse
     {
