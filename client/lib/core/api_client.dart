@@ -26,6 +26,28 @@ class ApiClient {
   void setToken(String? token) => _token = token;
   bool get hasToken => _token != null;
 
+  /// Called when the server refuses a request from a token we were holding.
+  ///
+  /// ── Why this exists at all ───────────────────────────────────
+  ///
+  /// The owner left a tab open overnight and came back to it:
+  ///
+  ///   *"today when i tried clicking on a tab it said not authenticated … if
+  ///    that is the case it should log me out to the login screen instead of
+  ///    letting me still click through the app."*
+  ///
+  /// `Session.refresh()` already handled a 401 from `/me` — but that runs when
+  /// the app STARTS. Every other request just returned an error to whichever
+  /// screen asked, so the shell stayed up, the sidebar kept working, and each
+  /// tab reported its own failure in its own words. The session was over and
+  /// the app was the last to know.
+  ///
+  /// A token that has expired does not un-expire, so the first refusal is
+  /// enough to act on. It is noticed HERE because this is the one place every
+  /// request passes through; a check in each screen is a check somebody will
+  /// leave out of the next screen.
+  void Function()? onUnauthorized;
+
   Map<String, String> get _headers => {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
@@ -136,6 +158,23 @@ class ApiClient {
       final body = response.body.isEmpty
           ? <String, dynamic>{}
           : jsonDecode(response.body) as Map<String, dynamic>;
+
+      /*
+       * ONLY WHEN WE WERE HOLDING A TOKEN, and that is the whole condition.
+       *
+       * Signing in with the wrong password also answers 401, and it arrives
+       * before any token is set. Without this check, a mistyped password would
+       * fire the session-ended path — throwing away nothing, but announcing
+       * "your session expired" to somebody who never had one.
+       *
+       * So `_token != null` is the discriminator: it separates "the credential
+       * we were using has stopped working" from "the credential you just typed
+       * is wrong", which are the same status code and completely different
+       * events.
+       */
+      if (response.statusCode == 401 && _token != null) {
+        onUnauthorized?.call();
+      }
 
       return ApiResponse(
         statusCode: response.statusCode,

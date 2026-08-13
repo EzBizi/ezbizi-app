@@ -11,7 +11,11 @@ import 'token_store.dart';
 /// client-side counterpart of the server's TenantContext. Nothing else stores
 /// it, so there is one place to clear on sign-out.
 class Session extends ChangeNotifier {
-  Session(this._api);
+  Session(this._api) {
+    // Every request goes through one client, so the session ends from one
+    // place. See ApiClient.onUnauthorized for why it is noticed there.
+    _api.onUnauthorized = sessionExpired;
+  }
 
   final ApiClient _api;
 
@@ -105,6 +109,9 @@ class Session extends ChangeNotifier {
     if (response.ok) {
       _me = Me.fromJson(response.data as Map<String, dynamic>);
       _unreachable = false;
+      // Whatever brought them back, they are in now — so the sentence about a
+      // session that ended stops being true here rather than lingering.
+      expired = false;
       notifyListeners();
       return;
     }
@@ -191,6 +198,52 @@ class Session extends ChangeNotifier {
     _me = null;
     readOnlyNotice = null;
     staffToken = null;
+    expired = false;
+    _api.setToken(null);
+    TokenStore.clear();
+    notifyListeners();
+  }
+
+  /// The session ended on its own rather than because somebody pressed Sign out.
+  ///
+  /// Kept apart from simply being signed out because the sign-in screen owes
+  /// two different people two different things: somebody who signed out meant
+  /// to, and needs no explanation; somebody whose token expired overnight is
+  /// looking at a login screen they did not ask for, and "why am I here" is the
+  /// first thing they will wonder.
+  ///
+  /// Cleared by [signOut] and by a successful sign-in, so the sentence never
+  /// outlives the event it describes.
+  bool expired = false;
+
+  /// The server refused a token we were holding: it expired, a password change
+  /// revoked it, or the account was switched off.
+  ///
+  /// ── Why this ends the session rather than reporting a failure ─
+  ///
+  /// The owner left a tab open overnight:
+  ///
+  ///   *"today when i tried clicking on a tab it said not authenticated … it
+  ///    should log me out to the login screen instead of letting me still click
+  ///    through the app."*
+  ///
+  /// They were right, and the old behaviour was worse than untidy. The shell
+  /// stayed up with a sidebar that still looked live, so every tab was a
+  /// separate small failure in its own wording, and nothing anywhere said the
+  /// one true thing — that the session was over. An app that looks signed in
+  /// and cannot do anything invites somebody to keep trying.
+  ///
+  /// Idempotent, because several requests can be in flight when a token lapses
+  /// and each will come back 401. The first one ends the session; the rest find
+  /// it already ended and do nothing, rather than each firing a rebuild.
+  void sessionExpired() {
+    if (_me == null && !_api.hasToken) return;
+
+    _me = null;
+    readOnlyNotice = null;
+    staffToken = null;
+    _unreachable = false;
+    expired = true;
     _api.setToken(null);
     TokenStore.clear();
     notifyListeners();

@@ -236,7 +236,16 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Sign in to your workspace.',
+            // Two different people arrive at this screen and they are owed
+            // different sentences. Somebody who pressed Sign out meant to be
+            // here. Somebody whose session lapsed overnight did not, and "why
+            // am I looking at a login screen" is their first thought — so the
+            // subtitle answers it rather than making them wonder whether
+            // something is broken.
+            widget.session.expired
+                ? 'Your session ended, so you have been signed out. Sign in '
+                      'again to pick up where you were.'
+                : 'Sign in to your workspace.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 28),
