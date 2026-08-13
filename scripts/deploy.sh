@@ -47,7 +47,21 @@ BACKEND_OUT=$(git archive main | ssh "$REMOTE" '
   # back to production and wipe it. There is no .env here at all.
   cd /opt/ezbizi-test
   # Removed files must disappear too, or a deleted class keeps passing.
-  rm -rf app tests routes config database bootstrap resources
+  #
+  # `client` is on this list, and was not until a test went looking. The
+  # reasoning above always applied to it — `tar -x` overwrites what it carries
+  # and deletes nothing — but the list was written when nothing server-side read
+  # the Dart source. Two tests do now (ClientModuleScreensTest and
+  # ClientCallsRealRoutesTest), and the first run of the second one failed here
+  # while passing everywhere else: it had found seven dead API calls in
+  # `client/lib/screens/workflows_screen.dart`, a file deleted from the repo in
+  # the workflows-to-automations rename and still sitting in this directory from
+  # an extraction on 10 August.
+  #
+  # A ghost that only exists in the gate is the worst place for one. It fails
+  # honest work and passes nothing useful, and the failure reads as "your change
+  # is broken" rather than "this directory is stale".
+  rm -rf app tests routes config database bootstrap resources client
   tar -x
   # Releases install --no-dev and have no phpunit; this sandbox keeps dev deps,
   # its own .env and its own test database.
