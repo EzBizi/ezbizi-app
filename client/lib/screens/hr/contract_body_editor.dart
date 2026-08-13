@@ -637,10 +637,32 @@ class ContractWriting extends StatelessWidget {
     final facts = offered.isNotEmpty ? from(mergeSourceFact) : syntax.facts;
 
     return ConstrainedBox(
-      // Capped and scrolling. A contract with thirty questions would otherwise
-      // push the writing surface off the bottom of the region.
-      constraints: const BoxConstraints(maxHeight: 152),
-      child: SingleChildScrollView(
+      // ── Not capped any more, and the cap is why it looked broken ──
+      //
+      // It was `maxHeight: 152` with a scroll view, and the owner reported the
+      // result as an overlay: the palette cut off part-way through "THE
+      // BUSINESS AND THE DATE", so a heading was sliced in half and the writing
+      // surface below looked like it was sitting on top of it. Nothing overlaid
+      // anything — a clip with no scrollbar, no fade and no room to show a
+      // second row of a group simply reads as damage.
+      //
+      // The cap's own reason had also stopped being true. It said a contract
+      // with thirty questions "would otherwise push the writing surface off the
+      // bottom of the REGION" — true when this was step 4 with two steps
+      // beneath it and a fixed-height box. The step is last now and the surface
+      // grows, so there is nothing underneath to push.
+      //
+      // `double.infinity` rather than deleting the ConstrainedBox: the palette
+      // stays the one thing that decides its own height, so a future cap is a
+      // number here rather than a new widget. If thirty questions ever does
+      // become unpleasant, the answer is a scrollbar somebody can see — not a
+      // silent clip.
+      constraints: const BoxConstraints(maxHeight: double.infinity),
+      // A plain Padding, and the scroll view it replaced had to go with the
+      // cap. This sits inside the designer's own vertical scroll view, so
+      // height arrives unbounded — which the cap used to bound. A nested
+      // vertical viewport with no bound does not degrade, it throws.
+      child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

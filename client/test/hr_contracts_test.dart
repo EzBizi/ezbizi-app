@@ -1112,6 +1112,56 @@ void main() {
   /// nothing sits under it. Both halves of that are asserted here: a box that
   /// stopped growing would silently cap the document, and a box that grew with
   /// steps beneath it would walk them off the bottom of the page.
+  /// The chip palette must not be clipped part-way through a group.
+  ///
+  /// It was capped at 152px with a scroll view inside, and the owner reported
+  /// the result as an overlay: the last group's heading was sliced in half and
+  /// the writing surface below looked like it was sitting on top of it. Nothing
+  /// overlaid anything — a clip with no scrollbar and no fade simply reads as
+  /// damage.
+  ///
+  /// This asserts the LAST group is fully inside the palette, because the first
+  /// two fitted inside the old cap and a test that only looked at those would
+  /// have passed against the bug.
+  testWidgets('every group of insertable fields is drawn in full', (
+    tester,
+  ) async {
+    await _pumpDesign(tester);
+
+    final heading = find.text('THE BUSINESS AND THE DATE');
+
+    expect(
+      heading,
+      findsOneWidget,
+      reason: 'The last group is missing entirely, so the assertion below '
+          'would pass by having nothing to measure.',
+    );
+
+    // Measured against the WRITING SURFACE, not against ContractWriting: that
+    // widget is the whole bordered box — palette, divider and text field — so
+    // its bottom sits far below a clipped palette and the comparison would
+    // pass against the bug. It did, on the first draft of this test.
+    final writing = tester.getRect(_writingBox);
+    final last = tester.getRect(heading);
+
+    expect(
+      last.bottom,
+      lessThanOrEqualTo(writing.top),
+      reason:
+          'The last group runs past the top of the writing surface, so it is '
+          'cut off — which is what the owner saw and reported as the writing '
+          'field overlaying the section above it.',
+    );
+
+    // And the chips under that heading, not just the heading itself — a cap
+    // one line lower would still slice the row of fields off.
+    final chip = tester.getRect(
+      find.widgetWithText(ActionChip, 'What the business trades as'),
+    );
+
+    expect(chip.bottom, lessThanOrEqualTo(writing.top));
+  });
+
   testWidgets('the writing surface is the last step and grows with the text', (
     tester,
   ) async {
