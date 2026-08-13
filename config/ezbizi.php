@@ -120,4 +120,136 @@ return [
         // than nothing and worse than an email.
         'alert_to' => env('EZBIZI_BACKUP_ALERT_TO'),
     ],
+
+    /*
+     * ─────────────────────────────────────────────────────────────
+     *  WATCHING THE SHARED INBOXES (§5.5's `email.received`)
+     * ─────────────────────────────────────────────────────────────
+     *
+     * ── WHY THIS IS CATEGORY 2 AND NOT AN ORGANIZATION SETTING ───
+     *
+     * §2.1's test is "would a second installation need a different value", and
+     * for `enabled` the answer is not merely yes — a wrong answer is dangerous.
+     *
+     * A sandbox is built by `scripts/sandbox.sh` from a COPY of the production
+     * database, mailbox rows and encrypted credentials included. If watching
+     * were a tenant setting it would be copied in that dump, switched on, and
+     * the sandbox would start opening real customers' mail on a timer — raising
+     * events in a database nobody reads, spending the customer's API quota, and
+     * hammering their mail server from a second address. That is the exact shape
+     * of the two incidents that script's header records, and a deployment
+     * setting is immune to it: it comes from env, and a sandbox has its own.
+     *
+     * The person who needs to switch it OFF is also not a tenant administrator.
+     * It is whoever is on call when a mail provider starts rate-limiting the
+     * whole installation, and they need one lever that stops all of it at once
+     * without touching anybody's data.
+     *
+     * ── THE TENANT'S OWN OFF SWITCH ALREADY EXISTS ───────────────
+     *
+     * And it is a better one than a checkbox in settings would be: an
+     * organization with no live automation on `email.received` is not polled at
+     * all. Switching the rule off stops the polling, switching it on starts it,
+     * and there is no second control that can disagree with the first about
+     * whether anything is happening. See App\Console\Commands\WatchMailboxes.
+     */
+    'mail_watch' => [
+        /*
+         * On by default, because a feature that has to be discovered before it
+         * works is one most installations never turn on — and this is the
+         * trigger the Email module exists for. A sandbox switches it off; see
+         * above for why that is where the decision belongs.
+         */
+        'enabled' => filter_var(env('EZBIZI_MAIL_WATCH', true), FILTER_VALIDATE_BOOL),
+
+        /*
+         * How often ONE mailbox is looked at. Five minutes.
+         *
+         * The arithmetic that decides it is the IMAP side, not the Gmail one. A
+         * Gmail poll is one HTTPS request to a service built for it. An IMAP
+         * poll is a TCP connection, a TLS handshake, a LOGIN, an EXAMINE and a
+         * LOGOUT against a mail server that is very often a small box run by
+         * somebody's hosting provider, and connection churn is what those
+         * rate-limit first — Dovecot ships with a per-IP connection limit in
+         * single figures.
+         *
+         * At a hundred mailboxes: every minute would be a hundred sign-ins a
+         * minute, 1.7 a second, for ever, from one address. Five minutes makes
+         * it twenty a minute — one every three seconds — spread across whichever
+         * mailboxes happen to be due, because the sweep runs every minute and
+         * polls only what has come round. Nothing arrives as a five-minute
+         * spike.
+         *
+         * What it costs is latency: a message is announced up to five minutes
+         * after it lands, plus up to a minute in the outbox. Against the rules
+         * anybody actually writes — tell the branch a customer has written in,
+         * chase a thread nobody has answered in two days — six minutes is
+         * invisible. Against the alternative it is cheap: being TOLD instead of
+         * asking means a public webhook endpoint and a subscription that expires
+         * and has to be renewed, which is infrastructure rather than a setting.
+         */
+        'interval_seconds' => (int) env('EZBIZI_MAIL_WATCH_INTERVAL', 300),
+
+        /*
+         * How many mailboxes one sweep will take, and for how long.
+         *
+         * The limit bounds the work; the deadline bounds the WAIT, which is the
+         * one that matters — twenty-five mailboxes are quick unless one of them
+         * is a mail server that answers slowly, and twenty-five slow ones in
+         * series would run past the next minute's tick and into the overlap
+         * lock. So a sweep stops STARTING mailboxes after this many seconds and
+         * leaves the rest to the next run, which loses nothing: they are still
+         * due, and they are ordered by how overdue they are.
+         *
+         * Twenty-five per minute drains a hundred due mailboxes in four minutes,
+         * which is inside one cadence — so a hundred is comfortably within what
+         * this configuration serves without any mailbox slipping behind.
+         */
+        'per_sweep' => (int) env('EZBIZI_MAIL_WATCH_PER_SWEEP', 25),
+
+        'sweep_seconds' => (int) env('EZBIZI_MAIL_WATCH_SWEEP_SECONDS', 45),
+
+        /*
+         * How many arrivals one poll of one mailbox will announce.
+         *
+         * A ceiling on the batch rather than on the day: what is not announced
+         * now is announced by the next poll, because the mark advances only past
+         * what was announced. Fifty means a mailbox that has taken a two hundred
+         * message mailshot is caught up within four cadences rather than
+         * inserting two hundred outbox rows in one transaction.
+         *
+         * Gmail honours this loosely — its position can only be taken where its
+         * history paging stops, and App\Support\Email\GmailMailboxReader says why.
+         */
+        'per_poll' => (int) env('EZBIZI_MAIL_WATCH_PER_POLL', 50),
+
+        /*
+         * How long a position may go unconfirmed before it is abandoned.
+         *
+         * Twenty-four hours. Below that, a gap is an outage — a box rebooted, a
+         * deploy, a scheduler that stopped for an afternoon — and the mail that
+         * arrived meanwhile really did arrive and is worth announcing late.
+         * Beyond it, the position is describing a day nobody was watching, and
+         * announcing a day of mail at once as "just arrived" would be false in
+         * the one way this feature cannot afford: every rule would fire on
+         * everything at once, hours after anybody could act on it.
+         *
+         * So a stale mark is dropped and a new one taken in silence — the same
+         * thing that happens on the first sight of a mailbox, for the same
+         * reason. It is stated in the log so a gap is never invisible.
+         */
+        'stale_after_seconds' => (int) env('EZBIZI_MAIL_WATCH_STALE_AFTER', 86400),
+
+        /*
+         * The longest the backoff will wait after repeated failures.
+         *
+         * Six hours. The failures that reach the backoff are the ones that do
+         * NOT mean the mailbox is broken — a rate limit, a mail server having a
+         * bad afternoon — so waiting is exactly the right response and there is
+         * no person to tell. A failure that DOES mean broken takes the mailbox
+         * out of the sweep entirely and raises `email.mailbox_broken`, which is
+         * the path that reaches somebody.
+         */
+        'max_backoff_seconds' => (int) env('EZBIZI_MAIL_WATCH_MAX_BACKOFF', 21600),
+    ],
 ];

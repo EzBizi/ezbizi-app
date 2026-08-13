@@ -922,12 +922,20 @@ class ModuleServiceProvider extends ServiceProvider
              *
              * HR declares none because its events are about three kinds of
              * record; Marketing because its record does not exist yet. This one
-             * declares none because the record CANNOT exist: the events below
-             * are about a MESSAGE, and there is deliberately no Message model —
-             * the owner's decision was *"we don't want to store thousands and
+             * declares none because the record CANNOT exist: what these events
+             * are ABOUT is a MESSAGE, and there is deliberately no Message model
+             * — the owner's decision was *"we don't want to store thousands and
              * thousands of emails on our database"*, so a message is fetched
              * live and never written down. AutomationSubject takes a class-
              * string of an Eloquent model, and there is no honest one to name.
+             *
+             * The MAILBOX is what each event carries as its subject, which is a
+             * different thing and worth not confusing with this: it is what
+             * gives the engine a scope, so a branch manager's rule fires on
+             * their branch's inbox and nobody else's (App\Models\Mailbox::
+             * automationScope). It does not make a mailbox something a
+             * condition can read fields off, which is what declaring a subject
+             * here would offer.
              *
              * It costs what it costs HR: the builder cannot grey out "Update a
              * field" under one of these triggers in advance, so somebody can
@@ -938,7 +946,7 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Email',
                 triggers: [
                     /*
-                     * THE ONE THIS MODULE EXISTS FOR, AND NOTHING RAISES IT.
+                     * THE ONE THIS MODULE EXISTS FOR, AND IT FIRES.
                      *
                      * "An email arrived at a shared inbox" is the most valuable
                      * trigger in this application — it is the front door of a
@@ -946,42 +954,56 @@ class ModuleServiceProvider extends ServiceProvider
                      * hangs off it: tell the branch, raise a task, chase it if
                      * nobody has opened it by the afternoon.
                      *
-                     * It is declared `isRaised: false` because that is the
-                     * truth, and the truth has a specific shape worth stating so
-                     * that whoever wires it knows exactly what is missing.
-                     * Reading is LIVE and pull-based: mail is fetched when
-                     * somebody opens the screen and at no other time. NOTHING
-                     * POLLS. So no code anywhere learns that a message exists
-                     * until a human being looks, and an event raised at that
-                     * moment would fire hours late and only for mail somebody
-                     * had already read — which is worse than not firing, because
-                     * a rule that says "tell the branch about new mail" would
-                     * tell them about mail that had just been dealt with.
+                     * ── What this said before, and why it was true ──
                      *
-                     * What has to exist first is a way to be TOLD by the
-                     * provider rather than asking: a Gmail push subscription
-                     * delivering to a webhook, or an IMAP IDLE connection held
-                     * open by a worker. Either is a real piece of infrastructure
-                     * — an endpoint the outside world can reach, and a
-                     * subscription that has to be renewed — and neither is
-                     * something this module can quietly grow.
+                     * It was declared `isRaised: false`, and the reason ran to a
+                     * paragraph: reading was live and pull-based, mail was
+                     * fetched when somebody opened the screen and at no other
+                     * time, NOTHING POLLED — so no code anywhere learned that a
+                     * message existed until a human being looked. It also said
+                     * what would have to exist first: a Gmail push subscription
+                     * on a public webhook, or an IMAP IDLE connection held open
+                     * by a worker.
                      *
-                     * Declared and marked rather than hidden, which is the call
-                     * TriggerDefinition::NOT_RAISED_YET exists to make: a hidden
-                     * trigger is one a tenant cannot build a rule on; a listed
-                     * one with no warning is one they build a rule on, switch
-                     * on, and never hear from again.
+                     * It turned out the third option was the right one and the
+                     * paragraph had not considered it. Both readers work now, so
+                     * there is something to ask — and ASKING, on a timer, needs
+                     * no public endpoint and no subscription to renew.
+                     * App\Console\Commands\WatchMailboxes polls each connected
+                     * inbox every few minutes and inserts an outbox row per new
+                     * message, which is the same write path every other event in
+                     * the application uses.
+                     *
+                     * ── The two things the wording below must not hide ──
+                     *
+                     * IT IS MINUTES LATE, NOT INSTANT. Said plainly, because a
+                     * rule that pages somebody the second a message lands is one
+                     * this cannot honour, and finding that out afterwards is
+                     * worse than knowing.
+                     *
+                     * A NEWLY CONNECTED INBOX ANNOUNCES NOTHING. The first look
+                     * takes a position and stays silent, deliberately: an inbox
+                     * with four thousand messages already in it must not raise
+                     * four thousand events, none of which describes anything
+                     * that happened. Somebody who connects an address and sees
+                     * no rule fire for the mail already sitting in it has met a
+                     * decision, not a bug, and this is where they can read it.
                      */
                     new TriggerDefinition(
                         key:   'email.received',
                         label: 'An email arrived',
-                        description: 'A message reached one of the shared inboxes. It would '
-                            .'carry which inbox, who it is from and the subject — never the '
-                            .'contents, which are not stored anywhere. Nothing watches the '
-                            .'inboxes yet: mail is fetched from the mail service only while '
-                            .'somebody has the screen open, so until EzBizi is told about new '
-                            .'mail as it lands, there is no moment at which this could fire.',
-                        isRaised: false,
+                        description: 'A new message reached one of the shared inboxes. It '
+                            .'carries which inbox it arrived at, who it is from, the subject, '
+                            .'when it was sent and whether anything is attached — never the '
+                            .'contents, which are not stored anywhere. EzBizi checks each '
+                            .'connected inbox every few minutes rather than the instant mail '
+                            .'lands, so a rule on this runs within about five minutes rather '
+                            .'than immediately. Connecting an inbox for the first time raises '
+                            .'nothing for the mail already in it: EzBizi notes where the '
+                            .'mailbox has got to and announces what arrives after that. The '
+                            .'same applies after a long gap — if nothing has looked at an inbox '
+                            .'for over a day, EzBizi starts again from the present rather than '
+                            .'announcing a day of mail at once.',
                     ),
 
                     /*
@@ -1005,7 +1027,7 @@ class ModuleServiceProvider extends ServiceProvider
 
                     /*
                      * AN INBOX STOPPING IS A BUSINESS EVENT, not a technical
-                     * one — and unlike `email.received` above, this one fires.
+                     * one.
                      *
                      * A shared inbox that quietly stops working is the worst
                      * failure this module has: customer mail goes on arriving at
@@ -1016,26 +1038,32 @@ class ModuleServiceProvider extends ServiceProvider
                      * moment a read fails for a reason that means the connection
                      * is broken.
                      *
-                     * ── WHEN IT DOES NOT FIRE, SAID PLAINLY ─────
+                     * ── WHEN IT FIRES, AND WHAT CHANGED ─────────
                      *
-                     * The description below tells the tenant that this fires
-                     * when somebody OPENS the inbox and it fails, not at the
-                     * moment it breaks — because nothing polls, for the reasons
-                     * `email.received` sets out at length. An inbox nobody opens
-                     * for a fortnight raises nothing for a fortnight.
+                     * This used to say that it fired only when somebody OPENED
+                     * a broken inbox, not at the moment it broke, because
+                     * nothing watched the inboxes — so an inbox nobody looked at
+                     * for a fortnight raised nothing for a fortnight. That was
+                     * the honest description of the module as it stood, and it
+                     * was the worst kind of alert: the inboxes least likely to
+                     * be opened are precisely the ones whose silence nobody
+                     * notices.
                      *
-                     * That is a real limitation and it is stated rather than
-                     * hidden, which is the same call TriggerDefinition::
-                     * NOT_RAISED_YET makes for a trigger nothing raises at all.
-                     * The difference is that `isRaised: false` would be a LIE
-                     * here — a rule built on this does run — and would tell
-                     * somebody not to bother with the one alert in this module
-                     * that works today.
+                     * `ezbizi:watch-mailboxes` polls every connected inbox now,
+                     * and it goes through the same reader wrapper every screen
+                     * does — so a mailbox that stops working is found within
+                     * minutes by the timer rather than whenever somebody
+                     * happens to click. Nothing about the emission changed to
+                     * make that true; the polling simply arrives at the same
+                     * funnel.
                      *
-                     * It fires ONCE per break, not once per attempt. See that
-                     * class: a mailbox already recorded as broken is refused
-                     * every time anybody opens it, and a rule that sent a
-                     * message on each of those would be switched off by lunchtime.
+                     * It still fires ONCE per break, not once per attempt, and
+                     * that rule matters far more now than it did. A mailbox
+                     * already recorded as broken is refused on every attempt,
+                     * and a timer attempting it every five minutes would have
+                     * sent somebody a message every five minutes until they
+                     * switched the rule off. See RecordingMailboxReader, which
+                     * raises this only on the TRANSITION.
                      */
                     new TriggerDefinition(
                         key:   'email.mailbox_broken',
@@ -1045,10 +1073,11 @@ class ModuleServiceProvider extends ServiceProvider
                             .'service stopped answering. It carries which inbox, which of those '
                             .'causes it was, and the same sentence the Email settings screen '
                             .'shows. Mail keeps arriving at the address; what has stopped is '
-                            .'EzBizi being able to show it. Because nothing watches the inboxes '
-                            .'in the background, this fires when somebody opens the inbox and it '
-                            .'fails rather than at the moment it broke, and only once per break '
-                            .'rather than on every attempt afterwards.',
+                            .'EzBizi being able to show it. EzBizi checks each connected inbox '
+                            .'every few minutes, so this fires shortly after an inbox stops '
+                            .'working rather than waiting for somebody to open it — and only '
+                            .'once per break, not every time it is tried again afterwards. '
+                            .'Reconnecting the inbox clears it.',
                     ),
                 ],
                 /*

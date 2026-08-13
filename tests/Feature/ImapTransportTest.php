@@ -150,7 +150,61 @@ class ImapTransportTest extends TestCase
 
         $imap->login('info@ezbizi.test', 'hunter2');
 
-        $this->assertSame(['exists' => 1, 'uidvalidity' => 4242], $imap->examineInbox());
+        $this->assertSame(
+            ['exists' => 1, 'uidvalidity' => 4242, 'uidnext' => 0],
+            $imap->examineInbox(),
+        );
+
+        $imap->logout();
+    }
+
+    // ── the watcher's position ───────────────────────────────────
+
+    /**
+     * UIDNEXT is read off EXAMINE, because it IS the watcher's mark.
+     *
+     * "The UID the next message will get" is the mailbox's own statement of
+     * where new mail begins, volunteered in a command the reader was sending
+     * anyway. Everything above it is an arrival and everything below it was
+     * already there — which is the whole of requirement 1 expressed as one
+     * number, by the only party entitled to state it.
+     */
+    public function test_the_inbox_reports_the_uid_the_next_message_will_get(): void
+    {
+        $approved = $this->serve('uidnext');
+
+        $imap = ImapConnection::open($approved, 'starttls', patience: 10);
+
+        $imap->login('info@ezbizi.test', 'hunter2');
+
+        $this->assertSame(
+            ['exists' => 1, 'uidvalidity' => 4242, 'uidnext' => 4393],
+            $imap->examineInbox(),
+        );
+
+        $imap->logout();
+    }
+
+    /**
+     * A server that does not volunteer it answers ZERO, and never a guess.
+     *
+     * UIDNEXT is a SHOULD in the protocol rather than a MUST, and the polite
+     * server above deliberately omits it. Zero is what tells
+     * {@see \App\Support\Email\ImapMailboxReader} to work the frontier out from
+     * the highest UID instead. Defaulting to 1 here would look harmless and
+     * would announce the entire mailbox on the first poll; defaulting to
+     * `exists + 1` would confuse a sequence number with a UID, which are the
+     * same only in a mailbox nothing has ever been deleted from.
+     */
+    public function test_a_server_that_omits_uidnext_says_so_rather_than_guessing(): void
+    {
+        $approved = $this->serve();
+
+        $imap = ImapConnection::open($approved, 'starttls', patience: 10);
+
+        $imap->login('info@ezbizi.test', 'hunter2');
+
+        $this->assertSame(0, $imap->examineInbox()['uidnext']);
 
         $imap->logout();
     }

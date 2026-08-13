@@ -199,7 +199,20 @@ final class ImapConnection
      * `unreadAtProvider` meaning what it says: reading a message here does not
      * mark it read in the customer's own mail program.
      *
-     * @return array{exists: int, uidvalidity: int}
+     * ── UIDNEXT is read here because it is the WATCHER'S MARK ────
+     *
+     * The server volunteers it on EXAMINE: the UID it will give the next message
+     * to arrive. That is exactly "everything from here on is new", said by the
+     * only party entitled to say it, and reading it costs nothing because the
+     * command is being sent anyway. See {@see ImapMailboxReader::currentMark}.
+     *
+     * ZERO when the server did not say. It is a SHOULD in the protocol rather
+     * than a MUST, and a server that omits it must not be papered over with a
+     * guess — a wrong "next" is either a message announced twice or one never
+     * announced at all. The reader derives it from the highest UID instead, and
+     * zero is what tells it to.
+     *
+     * @return array{exists: int, uidvalidity: int, uidnext: int}
      *
      * @throws ImapFailure
      */
@@ -213,6 +226,7 @@ final class ImapConnection
 
         $exists      = 0;
         $uidvalidity = 0;
+        $uidnext     = 0;
 
         foreach ($result['raw'] as $line) {
             if (preg_match('/^\*\s+(\d+)\s+EXISTS/i', $line, $m)) {
@@ -222,9 +236,13 @@ final class ImapConnection
             if (preg_match('/UIDVALIDITY\s+(\d+)/i', $line, $m)) {
                 $uidvalidity = (int) $m[1];
             }
+
+            if (preg_match('/UIDNEXT\s+(\d+)/i', $line, $m)) {
+                $uidnext = (int) $m[1];
+            }
         }
 
-        return ['exists' => $exists, 'uidvalidity' => $uidvalidity];
+        return ['exists' => $exists, 'uidvalidity' => $uidvalidity, 'uidnext' => $uidnext];
     }
 
     /**

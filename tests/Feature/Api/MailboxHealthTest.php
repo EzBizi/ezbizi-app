@@ -6,6 +6,7 @@ use App\Models\AutomationEvent;
 use App\Models\Mailbox;
 use App\Models\MailboxGrant;
 use App\Models\Role;
+use App\Support\Email\Arrivals;
 use App\Support\Email\Block;
 use App\Support\Email\CannotReachHost;
 use App\Support\Email\CannotReadMailbox;
@@ -822,6 +823,29 @@ class ScriptedMailboxReader implements MailboxReader
     public function reply(Mailbox $mailbox, string $messageId, string $body): void
     {
         $this->answerOrFail();
+    }
+
+    /**
+     * The two watch calls, and they fail exactly like the other four.
+     *
+     * That is the whole point of them being here: this file's subject is that
+     * every completed round trip stamps `last_reached_at` and every failed one
+     * writes the sentence, and the background watcher must be no exception. A
+     * fake that answered these unconditionally would let a poll bypass the
+     * health path without a single test noticing.
+     */
+    public function currentMark(Mailbox $mailbox): string
+    {
+        $this->answerOrFail();
+
+        return 'mark-1';
+    }
+
+    public function arrivalsSince(Mailbox $mailbox, string $mark, int $limit): Arrivals
+    {
+        $this->answerOrFail();
+
+        return new Arrivals([$this->summary()], 'mark-2');
     }
 
     public function isConfigured(Mailbox $mailbox): bool

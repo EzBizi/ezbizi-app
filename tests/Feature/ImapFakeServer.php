@@ -447,7 +447,11 @@ while (true) {
         }
 
         if ($command === 'EXAMINE') {
-            fwrite($client, "* 1 EXISTS\r\n* OK [UIDVALIDITY 4242] valid\r\n$tag OK [READ-ONLY] done\r\n");
+            // The default deliberately omits UIDNEXT: it is a SHOULD in the
+            // protocol, plenty of servers leave it out, and the reader has to
+            // cope rather than guess. 'uidnext' is the well-behaved server.
+            $next = $mode === 'uidnext' ? "* OK [UIDNEXT 4393] predicted\r\n" : '';
+            fwrite($client, "* 1 EXISTS\r\n* OK [UIDVALIDITY 4242] valid\r\n{$next}$tag OK [READ-ONLY] done\r\n");
             continue;
         }
 

@@ -68,6 +68,16 @@ ln -sfn /var/www/ezbizi-releases/<stamp> /var/www/ezbizi-current
 sudo systemctl reload php8.4-fpm
 ```
 
+## Connecting mail providers
+
+Account work in Google's console, not deploy work — so it lives on its own in
+**[MAIL-SETUP.md](MAIL-SETUP.md)**, along with what IMAP needs (nothing) and the
+two refusals that look like bugs and are not.
+
+Read it before setting `GOOGLE_MAIL_*` in `.env`. One decision in there —
+Internal versus External on the consent screen — is the difference between
+working this afternoon and waiting weeks for a Google security assessment.
+
 ## Where things are
 
 | | |

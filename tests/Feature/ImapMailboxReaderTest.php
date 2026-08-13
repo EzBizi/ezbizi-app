@@ -285,4 +285,73 @@ class ImapMailboxReaderTest extends TestCase
             $this->assertStringContainsString('143', $e->getMessage());
         }
     }
+
+    // ═════════════════════════════════════════════════════════════
+    //  The watcher's position — the arithmetic, with no socket
+    // ═════════════════════════════════════════════════════════════
+    //
+    //  Reached by reflection, and that is the honest arrangement rather
+    //  than a shortcut. The socket half is covered by ImapTransportTest
+    //  against a real server, and the reader cannot be driven end to end
+    //  here because RemoteHostGuard refuses to dial a loopback address —
+    //  correctly, and it is not going to be weakened so a test can run.
+    //  What is left is two pieces of arithmetic that decide whether a
+    //  quiet mailbox stays quiet, and both are worth pinning exactly.
+
+    /** @param mixed ...$arguments */
+    private function invoke(string $method, ...$arguments): mixed
+    {
+        $reflected = new \ReflectionMethod($this->reader, $method);
+
+        return $reflected->invoke($this->reader, ...$arguments);
+    }
+
+    /**
+     * THE `n:*` TRAP — the one that would re-announce the same message for ever.
+     *
+     * An IMAP range is normalised, so `100:50` means `50:100`, and `*` is the
+     * highest UID present. On a mailbox whose newest message is UID 50, asking
+     * for `UID SEARCH UID 51:*` is asking for `50:51` — and the server honestly
+     * answers 50, a message that arrived before the mark and has not arrived at
+     * all since.
+     *
+     * Left unfiltered, a mailbox that nobody writes to announces its newest
+     * message every five minutes until somebody switches the rule off. The
+     * mark being ABOVE every UID is the ordinary state of a quiet inbox, which
+     * is why the case is set up that way here — a test that only ever ran with
+     * new mail waiting would pass with the filter deleted.
+     */
+    public function test_a_search_that_answers_below_the_mark_yields_nothing(): void
+    {
+        $this->assertSame([], $this->invoke('arrivedAtOrAfter', [50], 51));
+
+        // And the boundary is AT the mark, not above it: the frontier is "the
+        // lowest UID not yet seen", so a message with exactly that UID is new.
+        $this->assertSame([51], $this->invoke('arrivedAtOrAfter', [50, 51], 51));
+    }
+
+    /** What did arrive comes back oldest first, whatever order it came in. */
+    public function test_arrivals_are_ordered_oldest_first(): void
+    {
+        $this->assertSame([10, 11, 12], $this->invoke('arrivedAtOrAfter', [12, 10, 11], 10));
+    }
+
+    /**
+     * A mark from a DIFFERENT incarnation of the mailbox is refused.
+     *
+     * UIDVALIDITY changes when a mailbox is deleted and recreated, and the
+     * server then issues UIDs from 1 again. A mark of `4242:4000` read against
+     * a mailbox now claiming 9999 names messages that no longer exist: honoured,
+     * it would either announce nothing for ever or announce the whole new
+     * mailbox. Null is the answer, and the reader turns that into a fresh
+     * position and silence.
+     */
+    public function test_a_mark_from_another_incarnation_of_the_mailbox_is_refused(): void
+    {
+        $this->assertSame(4000, $this->invoke('frontierFrom', '4242:4000', 4242));
+
+        $this->assertNull($this->invoke('frontierFrom', '4242:4000', 9999));
+        $this->assertNull($this->invoke('frontierFrom', 'not-a-mark', 4242));
+        $this->assertNull($this->invoke('frontierFrom', '4242:0', 4242));
+    }
 }

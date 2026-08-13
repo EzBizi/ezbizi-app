@@ -87,6 +87,76 @@ interface MailboxReader
     public function reply(Mailbox $mailbox, string $messageId, string $body): void;
 
     /**
+     * Where this mailbox is RIGHT NOW, without looking at a single message.
+     *
+     * ═══════════════════════════════════════════════════════════════
+     *  THIS IS THE METHOD THAT STOPS A NEW MAILBOX SHOUTING.
+     *
+     *  Connect an inbox with four thousand messages in it and the
+     *  obvious watcher announces four thousand arrivals, every one of
+     *  them a lie: those messages did not arrive, they were already
+     *  there. The fix is not a filter or a date cutoff — both of
+     *  those are guesses — it is that the FIRST look asks the
+     *  provider for its position and nothing else, writes it down,
+     *  and says nothing at all.
+     *
+     *  So this exists separately from {@see arrivalsSince} rather
+     *  than being "arrivals since the beginning". It cannot return a
+     *  message, because it has no field to put one in.
+     * ═══════════════════════════════════════════════════════════════
+     *
+     * It IS a round trip — Gmail is asked for the account's history id, an IMAP
+     * server is asked to open the INBOX — so it is proof the credential still
+     * works, and {@see RecordingMailboxReader} records it as such.
+     *
+     * @return string opaque here; only the reader that issued it may read it
+     *
+     * @throws CannotReadMailbox
+     */
+    public function currentMark(Mailbox $mailbox): string;
+
+    /**
+     * What has reached this mailbox since `$mark`.
+     *
+     * ── `$limit` is a promise about the WORST case, not the usual one ──
+     *
+     * A mailbox is normally polled every few minutes and nothing or almost
+     * nothing has arrived. The batch matters for the other case: a watcher that
+     * has been stopped for an hour, or a mailbox that has just taken a mailshot.
+     * Announcing nine hundred messages in one sweep is a queue nobody asked for
+     * and a rule firing nine hundred times in one second.
+     *
+     * So a reader returns a BATCH, OLDEST FIRST, and the invariant every
+     * implementation owes is this one:
+     *
+     *   THE MARK RETURNED SITS IMMEDIATELY AFTER THE LAST MESSAGE RETURNED.
+     *
+     * That is what makes a short batch resumable — the next poll starts exactly
+     * where this one stopped, so nothing is lost and nothing is announced twice.
+     *
+     * `$limit` is how many the caller would like, and how precisely it can be
+     * honoured depends on how finely the provider lets a position be taken.
+     * {@see ImapMailboxReader} can stop after any message, because a UID is a
+     * position. {@see GmailMailboxReader} can only stop where Google's history
+     * paging stops, so it treats this as a page size and may return more; its
+     * own note says so. Neither may return a message it cannot then mark past.
+     *
+     * ── A mark that is no longer usable is NOT an error ──────────
+     *
+     * It is a fact about mailboxes: UIDVALIDITY changes when one is recreated,
+     * a Gmail history id ages out. The reader answers with an empty
+     * {@see Arrivals} carrying a fresh mark and `markWasStale`, and does NOT
+     * throw — see that class for why announcing the inbox instead would be the
+     * same disaster as a first poll that shouted.
+     *
+     * @param  string  $mark  a value this same reader returned earlier
+     *
+     * @throws CannotReadMailbox when the mailbox cannot be opened at all —
+     *                           which a stale mark is not
+     */
+    public function arrivalsSince(Mailbox $mailbox, string $mark, int $limit): Arrivals;
+
+    /**
      * Is this reader actually able to do any of the above?
      *
      * Asked so that a screen can say "not connected" without provoking an

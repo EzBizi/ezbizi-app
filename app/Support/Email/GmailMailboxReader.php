@@ -99,6 +99,20 @@ final class GmailMailboxReader implements MailboxReader
     /** Seconds. A mail list is somebody waiting at a screen. */
     private const TIMEOUT = 10;
 
+    /**
+     * How many pages of history one poll will follow before giving up.
+     *
+     * Ten pages of five hundred records is five thousand things happening to one
+     * mailbox between two polls minutes apart. Nothing a business does produces
+     * that; a migration, a mass import or a rule gone wrong does. Reaching this
+     * is treated as an unreadable position rather than as five thousand
+     * arrivals — see {@see arrivalsSince}.
+     */
+    private const MAX_HISTORY_PAGES = 10;
+
+    /** Google's own ceiling for `maxResults` on the history endpoint. */
+    private const MAX_HISTORY_PAGE_SIZE = 500;
+
     public function __construct(
         private readonly GmailMessageMapper $mapper,
         private readonly ReplyComposer $composer,
@@ -240,6 +254,212 @@ final class GmailMailboxReader implements MailboxReader
         return $this->mapper->detail(
             $this->get($mailbox, self::API.'/messages/'.rawurlencode($messageId), ['format' => 'full'])
         );
+    }
+
+    // ── watching ─────────────────────────────────────────────────
+
+    /**
+     * The account's own history id — one call, and it reads no mail at all.
+     *
+     * `users.getProfile` answers with the address, the message count and the
+     * history id, which is Gmail's sequence number for the mailbox as a whole.
+     * That is precisely what a first poll needs: a position, taken without
+     * listing anything, so an inbox with four thousand messages in it can be
+     * marked and then stay silent until something actually arrives.
+     *
+     * It is also the cheapest call in the API. Listing one message to read its
+     * history id would cost a list and a get, and would still be the position of
+     * a MESSAGE rather than of the mailbox — so a label change with no new mail
+     * would leave the mark behind the truth.
+     */
+    public function currentMark(Mailbox $mailbox): string
+    {
+        $profile = $this->get($mailbox, self::API.'/profile', []);
+
+        $historyId = (string) ($profile['historyId'] ?? '');
+
+        if ($historyId === '') {
+            /*
+             * A 2xx with no position in it. Not a refusal and not the tenant's
+             * fault — the service answered and answered uselessly — so it is
+             * reported as the provider's fault rather than written onto the
+             * mailbox as a broken sign-in.
+             */
+            throw CannotReadMailbox::providerFaulty(
+                $mailbox,
+                'the mail service did not say where the mailbox is up to',
+            );
+        }
+
+        return $historyId;
+    }
+
+    /**
+     * Everything added to the INBOX since a history id.
+     *
+     * ═══════════════════════════════════════════════════════════════
+     *  GMAIL'S POSITION CAN ONLY BE TAKEN AT A PAGE BOUNDARY, AND
+     *  THAT DECIDES THE SHAPE OF THIS METHOD.
+     *
+     *  The response carries a top-level `historyId` meaning "where
+     *  the mailbox is now" — not "where the records I just gave you
+     *  end". So stopping half way through a paged history and storing
+     *  that value would skip every message on the pages not read: the
+     *  worst possible failure here, because it is silent and
+     *  permanent.
+     *
+     *  There is no safe half-way mark to store instead. Individual
+     *  history records have ids, but Google does not promise that
+     *  re-supplying one excludes the record it names, and a mark that
+     *  MIGHT re-deliver breaks the one rule this whole feature has.
+     *
+     *  So the pages are followed to the end and only then is the mark
+     *  advanced. `$limit` becomes the page size rather than a cap on
+     *  the batch, and {@see MailboxReader::arrivalsSince} says so.
+     *  The thundering herd that a cap would otherwise prevent is
+     *  already handled a layer down: these become outbox ROWS, and
+     *  `ezbizi:dispatch-automation-events` is what meters them onto
+     *  the queue.
+     * ═══════════════════════════════════════════════════════════════
+     *
+     * ── What happens when the history is longer than the cap ─────
+     *
+     * The same thing as an expired history id, and for the same reason: at that
+     * point EzBizi cannot tell which of those messages are genuinely new
+     * arrivals rather than a mailbox being reorganised, so it re-marks and
+     * announces NOTHING. A gap in the announcements is a disappointment; a
+     * thousand wrong events is an automation nobody trusts again.
+     */
+    public function arrivalsSince(Mailbox $mailbox, string $mark, int $limit): Arrivals
+    {
+        $ids       = [];
+        $pageToken = null;
+        $historyId = null;
+
+        for ($page = 0; $page < self::MAX_HISTORY_PAGES; $page++) {
+            $response = $this->sendRaw($mailbox, fn (string $token) => Http::withToken($token)
+                ->timeout(self::TIMEOUT)
+                ->get(self::API.'/history', [
+                    'startHistoryId' => $mark,
+                    // Only mail ARRIVING. Without this the history also carries
+                    // labels added and removed and messages deleted, and a rule
+                    // saying "an email arrived" would fire when somebody
+                    // archived one.
+                    'historyTypes'   => 'messageAdded',
+                    // And only in the inbox: a reply this application sends
+                    // through `messages.send` is added to the mailbox too, and
+                    // announcing our own outgoing mail as an arrival would make
+                    // every auto-reply rule a loop.
+                    'labelId'        => 'INBOX',
+                    'maxResults'     => max(1, min($limit, self::MAX_HISTORY_PAGE_SIZE)),
+                    ...($pageToken === null ? [] : ['pageToken' => $pageToken]),
+                ]));
+
+            /*
+             * 404 means the history id is older than Google keeps. It is not a
+             * fault — mailboxes go quiet for a week — so it is not thrown, and
+             * it must NOT be recovered from by listing the inbox. See
+             * {@see Arrivals}.
+             */
+            if ($response->status() === 404) {
+                return new Arrivals([], $this->currentMark($mailbox), markWasStale: true);
+            }
+
+            $body = $this->body($mailbox, $response);
+
+            foreach ((array) ($body['history'] ?? []) as $record) {
+                foreach ((array) (is_array($record) ? ($record['messagesAdded'] ?? []) : []) as $added) {
+                    $id = $this->arrival(is_array($added) ? $added : []);
+
+                    if ($id !== null) {
+                        // Keyed, not appended. One message can appear in more
+                        // than one history record, and Google's own guidance is
+                        // that records may repeat across a resumed listing —
+                        // both of which would otherwise be a duplicate event.
+                        $ids[$id] = true;
+                    }
+                }
+            }
+
+            $historyId = (string) ($body['historyId'] ?? $mark);
+            $pageToken = isset($body['nextPageToken']) ? (string) $body['nextPageToken'] : null;
+
+            if ($pageToken === null) {
+                return new Arrivals($this->summariesFor($mailbox, array_keys($ids)), $historyId);
+            }
+        }
+
+        // The cap, reached. See the note above: re-mark, announce nothing.
+        return new Arrivals([], $this->currentMark($mailbox), markWasStale: true);
+    }
+
+    /**
+     * The id of one `messagesAdded` entry, or null when it is not an arrival.
+     *
+     * The `labelId=INBOX` parameter filters the RECORDS; this checks the message
+     * itself, because a record can carry more than one message and because a
+     * draft being saved is an addition to the mailbox that nobody would call an
+     * email arriving. Absent labels are accepted — the parameter already did the
+     * filtering, and refusing what we cannot see would silently drop real mail.
+     *
+     * @param  array<string, mixed>  $added
+     */
+    private function arrival(array $added): ?string
+    {
+        $message = is_array($added['message'] ?? null) ? $added['message'] : [];
+        $id      = (string) ($message['id'] ?? '');
+
+        if ($id === '') {
+            return null;
+        }
+
+        $labels = array_map('strval', (array) ($message['labelIds'] ?? []));
+
+        if ($labels === []) {
+            return $id;
+        }
+
+        if (! in_array('INBOX', $labels, true)) {
+            return null;
+        }
+
+        return in_array('DRAFT', $labels, true) || in_array('SENT', $labels, true) ? null : $id;
+    }
+
+    /**
+     * Headers for each new message, oldest first.
+     *
+     * ── One call per new message, and why that is the right price ──
+     *
+     * The history gives ids and nothing else, so the sender and the subject have
+     * to be asked for. `format=metadata` with the four headers named is the same
+     * request the list screen makes, and it is roughly a kilobyte rather than the
+     * whole message — no body is fetched, which matters here beyond the bandwidth:
+     * this module holds no message content, and a watcher that downloaded bodies
+     * to throw them away would be one refactor from caching them.
+     *
+     * Gmail ids sort lexicographically in the order the messages arrived, because
+     * they are fixed-width hex of an increasing internal id. That is what puts
+     * the batch oldest-first without a second round trip to read the dates —
+     * and {@see Arrivals} explains why oldest-first is the order that matters.
+     *
+     * @param  string[]  $ids
+     * @return MessageSummary[]
+     */
+    private function summariesFor(Mailbox $mailbox, array $ids): array
+    {
+        sort($ids);
+
+        $summaries = [];
+
+        foreach ($ids as $id) {
+            $summaries[] = $this->mapper->summary($this->get($mailbox, self::API."/messages/{$id}", [
+                'format'          => 'metadata',
+                'metadataHeaders' => ['From', 'To', 'Subject', 'Date'],
+            ]));
+        }
+
+        return $summaries;
     }
 
     // ── replying ─────────────────────────────────────────────────
@@ -613,6 +833,25 @@ final class GmailMailboxReader implements MailboxReader
      */
     private function send(Mailbox $mailbox, callable $call): array
     {
+        return $this->body($mailbox, $this->sendRaw($mailbox, $call));
+    }
+
+    /**
+     * The same call, with the response handed back unjudged.
+     *
+     * For the one caller that has to read a status code before deciding anything
+     * is wrong: {@see arrivalsSince} treats a 404 as an expired position rather
+     * than as a failure, and {@see body} would have turned it into a refusal
+     * before that could be seen.
+     *
+     * Split out rather than duplicated, so the 401-retry above stays the one
+     * implementation. A second copy of it is how the two paths come to disagree
+     * about whether an expired access token is news.
+     *
+     * @param  callable(string): \Illuminate\Http\Client\Response  $call
+     */
+    private function sendRaw(Mailbox $mailbox, callable $call): \Illuminate\Http\Client\Response
+    {
         $response = $this->attempt($mailbox, $call, $this->accessToken($mailbox));
 
         if ($response->status() === 401) {
@@ -621,7 +860,7 @@ final class GmailMailboxReader implements MailboxReader
             $response = $this->attempt($mailbox, $call, $this->accessToken($mailbox));
         }
 
-        return $this->body($mailbox, $response);
+        return $response;
     }
 
     /**

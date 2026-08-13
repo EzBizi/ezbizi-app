@@ -231,6 +231,221 @@ final class ImapMailboxReader implements MailboxReader
         });
     }
 
+    // ── watching ─────────────────────────────────────────────────
+
+    /**
+     * Where the INBOX is now: `UIDVALIDITY:the UID the next message will get`.
+     *
+     * ── Both halves are load bearing ─────────────────────────────
+     *
+     * A UID alone is meaningless across the deletion and recreation of a
+     * mailbox: the server starts issuing UIDs from 1 again, so a stored mark of
+     * 4,000 would sit above every message in the new mailbox and the watcher
+     * would go permanently silent — or, read the other way round, a mark of 1
+     * would announce the lot. UIDVALIDITY is the server's own answer to *"is
+     * this the same mailbox you were reading?"*, and carrying it is what lets
+     * {@see arrivalsSince} notice and start again rather than guess.
+     *
+     * ── Why the frontier and not the highest UID ─────────────────
+     *
+     * "Everything above the highest UID I have seen" needs a `>` at every use;
+     * "the lowest UID I have not seen" needs a `>=`, which is the same fact
+     * stated so that an off-by-one is a syntax the code does not contain. It is
+     * also literally what the server volunteers as UIDNEXT.
+     */
+    public function currentMark(Mailbox $mailbox): string
+    {
+        return $this->withConnection($mailbox, function (ImapConnection $imap) use ($mailbox) {
+            $box = $imap->examineInbox();
+
+            return $box['uidvalidity'].':'.$this->frontier($imap, $box, $mailbox);
+        });
+    }
+
+    /**
+     * Everything with a UID at or above the mark, oldest first.
+     *
+     * ═══════════════════════════════════════════════════════════════
+     *  THE `n:*` TRAP, WHICH IS WHY THE FILTER BELOW IS NOT
+     *  DEFENSIVE PROGRAMMING.
+     *
+     *  A UID range in IMAP is normalised: `100:50` means `50:100`.
+     *  And `*` means "the highest UID present". So on a mailbox whose
+     *  highest UID is 50, `UID SEARCH UID 100:*` is `UID SEARCH UID
+     *  50:100` — and it MATCHES MESSAGE 50, which is the newest
+     *  message already there and has not arrived at all.
+     *
+     *  That is the exact bug the whole design exists to prevent,
+     *  arriving through the front door: a quiet mailbox would
+     *  re-announce its newest message on every single poll, for ever.
+     *  The filter is the fix, and no test that only ever runs against
+     *  a mailbox with new mail in it can catch its removal — which is
+     *  why one of the tests puts the mark above every UID on purpose.
+     * ═══════════════════════════════════════════════════════════════
+     */
+    public function arrivalsSince(Mailbox $mailbox, string $mark, int $limit): Arrivals
+    {
+        $limit = max(1, min($limit, self::MAX_PAGE));
+
+        return $this->withConnection($mailbox, function (ImapConnection $imap) use ($mark, $limit) {
+            $box  = $imap->examineInbox();
+            $from = $this->frontierFrom($mark, $box['uidvalidity']);
+
+            if ($from === null) {
+                /*
+                 * A different incarnation of the mailbox, or a mark this build
+                 * cannot read. Either way the UIDs in it name messages that no
+                 * longer exist, so it is abandoned and a new one taken — and
+                 * NOTHING is announced. See {@see Arrivals}: starting again from
+                 * the beginning would announce the whole inbox.
+                 */
+                return new Arrivals([], $box['uidvalidity'].':'.$this->frontier($imap, $box, $mailbox), markWasStale: true);
+            }
+
+            if ($box['exists'] === 0) {
+                // Nothing to search, and the mark stays exactly where it was: an
+                // empty mailbox has had nothing arrive, and the next message
+                // will still get a UID at or above the frontier.
+                return new Arrivals([], $mark);
+            }
+
+            $uids = $this->arrivedAtOrAfter($imap->searchUids('UID '.$from.':*'), $from);
+
+            if ($uids === []) {
+                return new Arrivals([], $mark);
+            }
+
+            $batch   = array_slice($uids, 0, $limit);
+            $fetched = $imap->fetchHeaders(implode(',', $batch), byUid: true);
+
+            /*
+             * Headers ONLY — no {@see snippets} call, unlike the list path.
+             *
+             * That method fetches the first bytes of each message's text part to
+             * draw a preview line. Nothing here draws anything: the arrivals go
+             * into an automation event, which carries who it is from and the
+             * subject and never one character of the message. Fetching a preview
+             * to throw it away would be a round trip per message spent on
+             * content this module has decided not to hold.
+             */
+            $messages = [];
+
+            foreach ($batch as $uid) {
+                if (isset($fetched[$uid])) {
+                    $messages[] = $this->mapper->summary($uid, $fetched[$uid]);
+                }
+            }
+
+            /*
+             * The frontier moves past the batch we ASKED for, not past the ones
+             * the server answered with. A UID that vanished between the search
+             * and the fetch — somebody deleted it a second ago — must still be
+             * stepped over, or every later poll would re-search from a hole that
+             * never fills.
+             */
+            return new Arrivals($messages, $box['uidvalidity'].':'.(max($batch) + 1));
+        });
+    }
+
+    /**
+     * The UIDs at or above the frontier, oldest first — and NOTHING below it.
+     *
+     * The filter is the fix for the `n:*` trap set out above {@see arrivalsSince},
+     * and it is not defensive: on a mailbox where nothing has arrived, the
+     * server's honest answer to `UID SEARCH UID 51:*` is UID 50, because 51:*
+     * normalises to 50:51. Without this line a quiet inbox re-announces its
+     * newest message every five minutes for ever.
+     *
+     * Sorted here rather than trusted from the server. `searchUids` sorts what
+     * it parses, but the ordering is what makes the batch a resumable PREFIX,
+     * and a property the whole design rests on should be asserted where it is
+     * relied on rather than inherited from a method that could stop doing it.
+     *
+     * @param  int[]  $uids
+     * @return int[]
+     */
+    private function arrivedAtOrAfter(array $uids, int $from): array
+    {
+        $arrived = array_values(array_filter($uids, fn (int $uid) => $uid >= $from));
+
+        sort($arrived);
+
+        return $arrived;
+    }
+
+    /**
+     * The lowest UID that has not been issued yet.
+     *
+     * UIDNEXT when the server said it, which is almost always. When it did not,
+     * the highest UID present plus one — reached by fetching the message at the
+     * highest SEQUENCE number, because UIDs are issued in arrival order and never
+     * reused, so the last message in the mailbox holds the largest UID.
+     *
+     * That fallback fetches an envelope it does not need, which is one message's
+     * worth of waste on the uncommon path. The alternative is a second fetch
+     * command on {@see ImapConnection} that exists only for this, and a command
+     * nothing else uses is one nothing else tests.
+     *
+     * @param  array{exists: int, uidvalidity: int, uidnext: int}  $box
+     */
+    private function frontier(ImapConnection $imap, array $box, Mailbox $mailbox): int
+    {
+        $highestUid = null;
+
+        if ($box['uidnext'] === 0 && $box['exists'] > 0) {
+            // One envelope this does not need, on the uncommon path. The
+            // alternative is a command on ImapConnection that exists only for
+            // this, and a command nothing else uses is one nothing else tests.
+            $uids = array_keys($imap->fetchHeaders($box['exists'].':'.$box['exists'], byUid: false));
+
+            $highestUid = $uids === [] ? null : max($uids);
+        }
+
+        $frontier = ImapFrontier::from($box['uidnext'], $box['exists'], $highestUid);
+
+        if ($frontier === null) {
+            /*
+             * Nothing is known about where this mailbox is, so nothing is
+             * claimed. See ImapFrontier for why the old answer here — 1 — was
+             * the most expensive value available, and why one skipped poll is
+             * the cheap direction to fail in.
+             */
+            throw CannotReadMailbox::providerFaulty(
+                $mailbox,
+                'The mail server did not say which message identifier comes next, and the '
+                .'newest message in the mailbox could not be read to work it out. Nothing is '
+                .'wrong with the address or its password; EzBizi will look again shortly.',
+            );
+        }
+
+        return $frontier;
+    }
+
+    /**
+     * A watch mark, back into the UID it starts at — or null when it is stale.
+     *
+     * Deliberately NOT {@see positionFrom}, which parses the same shape for the
+     * paging cursor. The two differ in what a failure MEANS, and that is the
+     * whole reason they are separate: a cursor that does not match is somebody
+     * clicking an old "next page" link and the honest answer is an empty page,
+     * so it returns 0. A watch mark that does not match means the mailbox has
+     * been recreated underneath us and the correct answer is to start again
+     * silently. Sharing one function would make one of those two right and the
+     * other a very quiet bug.
+     */
+    private function frontierFrom(string $mark, int $uidvalidity): ?int
+    {
+        if (preg_match('/^(\d+):(\d+)$/', $mark, $m) !== 1) {
+            return null;
+        }
+
+        if ((int) $m[1] !== $uidvalidity || (int) $m[2] < 1) {
+            return null;
+        }
+
+        return (int) $m[2];
+    }
+
     /**
      * One message, opened — body already through {@see BodySanitiser}.
      */

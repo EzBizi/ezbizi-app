@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Automations\CarriesAutomationScope;
 use App\Support\Email\MailboxProvider;
 use App\Support\Privacy\HoldsSensitiveValues;
 use App\Support\Privacy\MasksSensitiveValues;
@@ -24,9 +25,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * ── What this row IS and what it is NOT ──────────────────────────
  *
  * It is a CONNECTION: an address, a name for the screen, which provider it
- * lives on, how to reach it, and the secret that opens it. It is not a
- * mailbox in the sense of holding mail — there is no messages table and there
- * must not be one, because reading is live (see App\Support\Email\MailboxReader).
+ * lives on, how to reach it, the secret that opens it, whether it last worked,
+ * and where the background watcher has read up to. It is not a mailbox in the
+ * sense of holding mail — there is no messages table and there must not be one,
+ * because reading is live (see App\Support\Email\MailboxReader).
+ *
+ * The watcher's mark is the one field that could look like the beginning of
+ * such a table and is not: it is a POSITION the mail service issued — a Gmail
+ * history id, an IMAP UID — carrying no subject, no sender and no text, and
+ * meaningless without the provider that minted it. See the migration of
+ * 2026-08-13, which makes that argument in full.
  *
  * It is also NOT a sending identity. SendingIdentity is the address a business's
  * OUTBOUND mail goes out as — the From line on a newsletter — and it cascades
@@ -54,7 +62,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  *      that hands out a clear value refuses. See its own note: this is not a
  *      placeholder.
  */
-class Mailbox extends Model implements HoldsSensitiveValues, StatesRetention
+class Mailbox extends Model implements CarriesAutomationScope, HoldsSensitiveValues, StatesRetention
 {
     use BelongsToTenant;
     use HasFactory;
@@ -109,9 +117,11 @@ class Mailbox extends Model implements HoldsSensitiveValues, StatesRetention
             .'the key that opens it. One row per address the organization has connected, held '
             .'for as long as it is connected and deleted when somebody disconnects it. No '
             .'message, no attachment and no message content is stored anywhere: mail is read '
-            .'from the mail service while somebody is looking at it and is never written down '
-            .'here. Who connected or changed a mailbox, and when, is in the audit log, which '
-            .'does expire.'
+            .'from the mail service as it is shown, and is never written down here. The row '
+            .'also keeps a bookmark saying how far EzBizi has read, so that a new message can '
+            .'set off an automation without the same one setting it off twice; the bookmark is '
+            .'a number the mail service issues and holds no subject, sender or text. Who '
+            .'connected or changed a mailbox, and when, is in the audit log, which does expire.'
         );
     }
 
@@ -153,6 +163,16 @@ class Mailbox extends Model implements HoldsSensitiveValues, StatesRetention
              * Written in one place — see {@see markReached}.
              */
             'last_reached_at' => 'datetime',
+
+            /*
+             * The watcher's bookkeeping — see the migration of 2026-08-13 for
+             * what each one means and why there are two timestamps rather than
+             * one. Cast so that "is this mark stale" and "is this mailbox due"
+             * are comparisons between instants rather than between strings.
+             */
+            'watch_marked_at'    => 'datetime',
+            'watch_next_poll_at' => 'datetime',
+            'watch_failures'     => 'integer',
         ];
     }
 
@@ -288,6 +308,81 @@ class Mailbox extends Model implements HoldsSensitiveValues, StatesRetention
         return $this->last_reached_at !== null;
     }
 
+    // ── the watcher's position (see the 2026-08-13 migration) ────
+
+    /**
+     * Stand on a position the mail service just gave us.
+     *
+     * ═══════════════════════════════════════════════════════════════
+     *  THE THREE FIELDS MOVE TOGETHER OR THE MARK IS A LIE.
+     *
+     *  The position, the moment it was confirmed, and the failure
+     *  streak are one fact about one poll. Written separately, the
+     *  first thing to go wrong is a mark advanced while
+     *  `watch_marked_at` stays behind — which reads as stale on the
+     *  next sweep, so the position is thrown away and re-taken, and
+     *  everything between the two is never announced. Silently, and
+     *  only under load.
+     *
+     *  Same argument {@see connect} makes for moving `status` with
+     *  the credential, and {@see markReached} for healing the row: two
+     *  fields describing one event must be written in one place.
+     * ═══════════════════════════════════════════════════════════════
+     *
+     * The failure streak is cleared because a poll that answered ends it. It is
+     * a count of CONSECUTIVE failures — a mailbox that fails, works, then fails
+     * again has had one bad poll twice, not two in a row, and backing off for an
+     * hour because of that would be punishing an inbox that is working.
+     */
+    public function standOn(string $mark): void
+    {
+        $this->forceFill([
+            'watch_mark'      => $mark,
+            'watch_marked_at' => now(),
+            'watch_failures'  => 0,
+        ]);
+    }
+
+    /**
+     * Do not look at this mailbox again before `$when`.
+     *
+     * Said as an instant rather than as "in five minutes" because the caller is
+     * the only thing that knows WHY it is waiting — the ordinary cadence, a
+     * doubling backoff, or a mailbox that is skipped altogether — and a method
+     * that computed the interval here would have to be told the reason anyway.
+     */
+    public function deferWatchUntil(\DateTimeInterface $when): void
+    {
+        $this->forceFill(['watch_next_poll_at' => $when]);
+    }
+
+    /** One more consecutive failure. Cleared by {@see standOn}. */
+    public function noteWatchFailure(): void
+    {
+        $this->forceFill(['watch_failures' => (int) $this->watch_failures + 1]);
+    }
+
+    /**
+     * Is the stored position too old to be believed?
+     *
+     * True when nothing has confirmed it for longer than `$seconds` — which
+     * means the watcher was stopped, or this mailbox was skipped for that long.
+     * Everything that arrived meanwhile is unaccounted for, and the only two
+     * ways to handle unaccounted-for mail are to announce it all or none of it.
+     * It is none of it: see App\Support\Email\Arrivals.
+     *
+     * A mailbox with no mark at all is NOT stale — it has never been marked, and
+     * that is a different case with the same outcome. Kept separate so the log
+     * can say which of the two happened, because "first sight of this inbox" and
+     * "this inbox went unwatched for a day" want very different reactions from
+     * whoever is reading it.
+     */
+    public function watchMarkHasGoneStale(int $seconds): bool
+    {
+        return $this->watch_mark !== null
+            && ($this->watch_marked_at === null || $this->watch_marked_at->lt(now()->subSeconds($seconds)));
+    }
+
     /**
      * Where the IMAP server is, or null for a provider that has no host.
      *
@@ -347,6 +442,46 @@ class Mailbox extends Model implements HoldsSensitiveValues, StatesRetention
             // encrypted sends the password across the network in the clear.
             'encryption' => (string) ($settings["{$which}_encryption"] ?? 'tls'),
         ];
+    }
+
+    // ── CarriesAutomationScope ───────────────────────────────────
+
+    /**
+     * A branch's own inbox belongs to that branch, and its mail with it.
+     *
+     * ── Why the engine could not have guessed this ───────────────
+     *
+     * `AutomationEngine::scopeOf` sniffs for `franchise_id` and
+     * `owning_franchise_id`, and this row has neither: a mailbox carries §3's
+     * `scope_type`/`scope_id` pair, exactly as a sending identity does, because
+     * an inbox can hang off any of the three levels. So every event about a
+     * mailbox reached the engine claiming to belong to the whole organization,
+     * and a branch manager's rule — *"tell me when mail arrives at MY branch's
+     * address"* — matched nothing at all, for the life of the rule, with nothing
+     * anywhere saying why.
+     *
+     * This is stated rather than inferred for the same reason
+     * {@see CarriesAutomationScope} was written: the model is the only thing
+     * that knows.
+     *
+     * ── It is deliberately NOT the settings cascade ──────────────
+     *
+     * An organization-scoped inbox answers `[null, null]` — the whole
+     * organization — so only an organization-wide rule covers it. It does NOT
+     * claim to belong to every franchise beneath, which is the shape a cascade
+     * would give it. That matters more here than almost anywhere: this row is
+     * documented as the one thing in §3 that does not cascade, precisely so that
+     * a branch cannot read the company's customer mail, and a rule at branch
+     * level firing on company mail would hand them the sender and the subject of
+     * every message in it.
+     */
+    public function automationScope(): array
+    {
+        return match ($this->scope_type) {
+            self::SCOPE_COMPANY   => ['company', $this->scope_id],
+            self::SCOPE_FRANCHISE => ['franchise', $this->scope_id],
+            default               => [null, null],
+        };
     }
 
     // ── HoldsSensitiveValues ─────────────────────────────────────

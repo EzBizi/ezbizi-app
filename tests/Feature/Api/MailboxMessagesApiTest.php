@@ -9,6 +9,7 @@ use App\Models\MailboxGrant;
 use App\Models\MessageSeen;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\Email\Arrivals;
 use App\Support\Email\Block;
 use App\Support\Email\BlockKind;
 use App\Support\Email\BodySanitiser;
@@ -724,11 +725,12 @@ class MailboxMessagesApiTest extends TestCase
     /**
      * Every feature wires into automations.
      *
-     * `email.replied` is the one event in this module the application itself
-     * causes, so it is emitted rather than declared and left. Its sibling,
-     * "an email arrived", is declared `isRaised: false` — see
-     * ModuleServiceProvider — because nothing polls, and ModuleRegistryTest
-     * checks that claim against the source on every run.
+     * `email.replied` is the event this module raises when a PERSON acts: it is
+     * emitted from the controller, in the request that sent the reply. Its
+     * sibling, "an email arrived", is raised by nobody in a request at all —
+     * `ezbizi:watch-mailboxes` finds it on a timer — and is covered by
+     * MailboxWatchTest. This one stays here because the thing being asserted is
+     * that sending recorded WHO typed it, which only a request can answer.
      */
     public function test_sending_a_reply_raises_the_automation_event(): void
     {
@@ -954,6 +956,22 @@ class FakeMailboxReader implements MailboxReader
     public function reply(Mailbox $mailbox, string $messageId, string $body): void
     {
         self::$replies[] = ['message' => $messageId, 'body' => $body];
+    }
+
+    /**
+     * Nothing in this file watches, so these two answer the emptiest truthful
+     * thing rather than a scripted one. MailboxWatchTest has a reader that
+     * actually models arrivals; a second scripted one here would be a fixture
+     * two tests could disagree about.
+     */
+    public function currentMark(Mailbox $mailbox): string
+    {
+        return 'mark-0';
+    }
+
+    public function arrivalsSince(Mailbox $mailbox, string $mark, int $limit): Arrivals
+    {
+        return new Arrivals([], $mark);
     }
 
     public function isConfigured(Mailbox $mailbox): bool

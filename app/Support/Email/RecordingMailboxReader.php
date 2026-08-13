@@ -47,13 +47,19 @@ use App\Support\Tenancy\TenantContext;
  *   {@see unavailableBecause} pass straight through and record NOTHING — they
  *   make no call to the provider and therefore learn nothing about it.
  *
- * What does move it: `list`, `search`, `open` and `reply` RETURNING. Each is a
- * completed round trip to the mail service in which the stored credential was
- * accepted, which is exactly what the column claims.
+ * What does move it: `list`, `search`, `open`, `reply`, `currentMark` and
+ * `arrivalsSince` RETURNING. Each is a completed round trip to the mail service
+ * in which the stored credential was accepted, which is exactly what the column
+ * claims.
  *
  * `reply` is included on purpose. It is not a read, but it is proof of the same
  * fact — the mail service accepted our key and did what we asked — and an inbox
  * somebody has just answered from is not one to draw as "last worked in March".
+ *
+ * The last two are the background watcher's, and they are the reason the column
+ * finally means something on an inbox nobody has opened: `last_reached_at` used
+ * to move only when a person looked, so a mailbox that had worked perfectly for
+ * a month unattended read as never having worked at all.
  *
  * ── WHAT WRITES THE SENTENCE ────────────────────────────────────
  *
@@ -91,6 +97,40 @@ final class RecordingMailboxReader implements MailboxReader
     public function reply(Mailbox $mailbox, string $messageId, string $body): void
     {
         $this->recording($mailbox, fn () => $this->inner->reply($mailbox, $messageId, $body));
+    }
+
+    /**
+     * Both watch calls, recorded exactly like the four above.
+     *
+     * ── The background poller gets the health path for free ──────
+     *
+     * This is the reason the watcher asks {@see MailboxReaders::for} for its
+     * reader instead of building one. Every poll is a completed round trip to
+     * the mail service in which the stored credential was accepted, which is
+     * what `last_reached_at` claims — and every FAILED poll is the earliest
+     * possible warning that an inbox has stopped working, which is exactly what
+     * `email.mailbox_broken` is for.
+     *
+     * A second health path inside the poller would have been the obvious thing
+     * to write and would have drifted from this one within a release: two
+     * definitions of "broken", two decisions about when to announce it, and the
+     * settings screen agreeing with neither.
+     *
+     * It also quietly changes what that alert is worth. Until now the module
+     * could only notice a dead inbox when somebody opened it — which the
+     * trigger's own description had to admit — so an inbox nobody looked at for
+     * a fortnight raised nothing for a fortnight. Now the timer notices, and the
+     * "once per break, not once per attempt" rule in {@see faulted} is what
+     * stops that becoming a message every five minutes.
+     */
+    public function currentMark(Mailbox $mailbox): string
+    {
+        return $this->recording($mailbox, fn () => $this->inner->currentMark($mailbox));
+    }
+
+    public function arrivalsSince(Mailbox $mailbox, string $mark, int $limit): Arrivals
+    {
+        return $this->recording($mailbox, fn () => $this->inner->arrivalsSince($mailbox, $mark, $limit));
     }
 
     // ── the two that ask nothing of anybody ──────────────────────

@@ -36,6 +36,31 @@ Schedule::command('ezbizi:expire-impersonations')->everyFiveMinutes()->withoutOv
 // header warns about. Five minutes means a stale lock costs one skipped sweep.
 Schedule::command('ezbizi:dispatch-automation-events')->everyMinute()->withoutOverlapping(5);
 
+// Watching the shared inboxes, so `email.received` can fire (§5.5).
+//
+// Every minute, and that is NOT the cadence. A mailbox is looked at every five
+// minutes; this sweep runs every minute and polls only the ones that have come
+// round, so a hundred inboxes are spread across the five rather than arriving as
+// one spike of a hundred sign-ins. config/ezbizi.php carries the arithmetic and
+// the argument for five — in one line, it is the IMAP side that decides it,
+// because a poll there is a TCP connection and a TLS handshake against somebody
+// else's mail server and connection churn is what those rate-limit first.
+//
+// The sweep itself is bounded twice, by mailboxes and by seconds, because one
+// slow mail server must not be able to push a run past the next minute's tick.
+//
+// withoutOverlapping(5), not the default. Same reasoning as the outbox above and
+// worth repeating for the reason that unit's own header gives: the default lock
+// lasts 24 HOURS, so one non-graceful death would silently stop every inbox
+// being watched for a day and the only symptom would be automations that stopped
+// firing. Five minutes means a stranded lock costs one cycle per mailbox — which
+// is exactly what a mailbox's own claim costs when a sweep dies mid-poll, so the
+// two failure modes are the same size on purpose.
+//
+// It inserts outbox rows and dispatches nothing itself, for the reason set out
+// above the sweep it feeds.
+Schedule::command('ezbizi:watch-mailboxes')->everyMinute()->withoutOverlapping(5);
+
 // Backup health (§18 Phase 0 item 5). At 05:00, well after the 03:17 timer, so a
 // slow night is not reported as a missing one.
 //
