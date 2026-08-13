@@ -1,13 +1,16 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/files.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/hr/contract_body_editor.dart';
+import 'package:ezbizi_client/screens/hr/contract_cover_panel.dart';
 import 'package:ezbizi_client/screens/hr/contract_document_page.dart';
 import 'package:ezbizi_client/screens/hr/contract_form_preview.dart';
 import 'package:ezbizi_client/screens/hr/contracts_tab.dart';
 import 'package:ezbizi_client/widgets/numbered_step.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -283,6 +286,11 @@ void main() {
       // description gets, rather than an empty string that would be a second
       // spelling of the same emptiness.
       'body': null,
+      // No cover, sent as a value rather than left out. A cover is part of the
+      // version, so version 1 states what its front page is even when the
+      // answer is "none" — an absent key would leave the server deciding
+      // between "no cover" and "the client is too old to have an opinion".
+      'cover': null,
       'fields': [
         {
           'key': 'shoe_size_2',
@@ -1338,6 +1346,337 @@ void main() {
     );
     expect(find.textContaining('could not be loaded'), findsOneWidget);
   });
+
+  // ══ Step 2 asks what onboarding asks ═══════════════════════════════
+  //
+  // *"remove gender from the always asked questions, and make middle name
+  //  optional, as some people dont have a middle name."*
+  //
+  // The owner was reading a step headed "Always asked" that listed the EIGHT
+  // keys a template may not declare. Onboarding asks six. Two of the eight —
+  // the display name and the middle name — are reserved precisely so that no
+  // template can store a second copy of them, and are never asked of anybody.
+  // Nothing was demanding a middle name of people who do not have one. This
+  // screen was saying it would.
+  //
+  // The fixture below labels the same key DIFFERENTLY in the two lists, which
+  // no real server does, so the words on screen say which list was read.
+
+  testWidgets('the always-asked step draws what onboarding asks, not the keys '
+      'a template may not declare', (tester) async {
+    await _pump(tester, _handler(catalogue: _askedCatalogue));
+    await _tap(tester, find.text('Design'));
+
+    // The asked list, in the asked list's own wording.
+    expect(_inCoreStep('The first name on their record'), findsOneWidget);
+    expect(_inCoreStep('The name of their dog'), findsOneWidget);
+
+    // Reserved and NOT asked. A key a template may not use is a different fact
+    // from a question everybody answers, and it belongs to the collision check
+    // two steps down rather than to a list headed "always asked".
+    expect(_inCoreStep('Work email address'), findsNothing);
+    expect(_inCoreStep('Shoe size'), findsNothing);
+
+    // Nor the reserved list's own wording for a key that IS asked — which is
+    // what separates "reads the right list" from "filters the wrong one".
+    expect(_inCoreStep('RESERVED given name'), findsNothing);
+
+    // CONTROL. The reserved list is still published, still parsed, and still
+    // drawn elsewhere on this screen — so the assertions above are about which
+    // list step 2 chose and not about a catalogue that failed to arrive.
+    expect(find.text('Work email address'), findsWidgets);
+  });
+
+  /// The other half of the owner's third request: a question that will not be
+  /// demanded should look like one before somebody wonders whether the platform
+  /// is about to insist on a fact a person does not have.
+  testWidgets('an asked question the server calls optional is marked, and the '
+      'ones it does not are left alone', (tester) async {
+    await _pump(tester, _handler(catalogue: _askedCatalogue));
+    await _tap(tester, find.text('Design'));
+
+    expect(
+      find.descendant(
+        of: _coreChip('The name of their dog'),
+        matching: find.text('Optional'),
+      ),
+      findsOneWidget,
+    );
+
+    // CONTROL, and the one that matters: a step that marked everything, or
+    // that read the flag off the wrong entry, would put a second one here.
+    expect(
+      find.descendant(
+        of: _coreChip('The first name on their record'),
+        matching: find.text('Optional'),
+      ),
+      findsNothing,
+    );
+  });
+
+  /// A catalogue that says nothing about requiredness is the one shipping
+  /// today. It must draw the list plainly rather than inventing a default in
+  /// either direction — a chip claiming a question is optional when nobody
+  /// said so is a promise this end has no business making.
+  testWidgets('a server that has not said what is optional gets no marks, not '
+      'a guess', (tester) async {
+    await _pump(tester, _handler(catalogue: _silentCatalogue));
+    await _tap(tester, find.text('Design'));
+
+    expect(_inCoreStep('The first name on their record'), findsOneWidget);
+    expect(_inCoreStep('The name of their dog'), findsOneWidget);
+    expect(_inCoreStep('Optional'), findsNothing);
+  });
+
+  // ══ The cover ══════════════════════════════════════════════════════
+  //
+  // *"we also need the ability to create a cover for the contract as well,
+  //  which means being able to use either the company logo that's already been
+  //  uploaded or a new file altogether."*
+
+  testWidgets('a contract with no cover says so, as an answer rather than a '
+      'gap', (tester) async {
+    await _pump(tester, _withCoverEndpoints(_handler()));
+    await _tap(tester, find.text('Design'));
+
+    expect(find.text('Give it a cover'), findsOneWidget);
+
+    // Not an empty space where a picture would be. "No cover" is what nearly
+    // every contract answers, and it is drawn as an answer.
+    expect(_inCoverStep('No cover'), findsOneWidget);
+    expect(
+      _inCoverStep('starts on the first page of the agreement'),
+      findsOneWidget,
+    );
+
+    // CONTROL: the step really is on screen and really is empty-handed, rather
+    // than these two lines coming from a step that failed to build.
+    expect(_inCoverStep('Choose a cover'), findsOneWidget);
+  });
+
+  testWidgets('the cover step says a cover is part of the version before '
+      'anybody presses anything', (tester) async {
+    await _pump(tester, _withCoverEndpoints(_handler()));
+    await _tap(tester, find.text('Design'));
+
+    expect(_inCoverStep('part of the version'), findsOneWidget);
+    expect(_inCoverStep('publishes a new one'), findsOneWidget);
+  });
+
+  testWidgets('the picker offers the logo already uploaded and a file of your '
+      'own', (tester) async {
+    await _pump(tester, _withCoverEndpoints(_handler(), logo: _pixel));
+    await _tap(tester, find.text('Design'));
+    await _tap(tester, find.text('Choose a cover'));
+
+    expect(find.text('The logo you have already uploaded'), findsOneWidget);
+    expect(find.text('A file of your own'), findsOneWidget);
+
+    // The one press. The mark is REFERENCED, not copied — so there is nothing
+    // to upload for it and a rebrand reaches every contract using it.
+    expect(find.textContaining('It is not copied'), findsOneWidget);
+
+    // And the consequence, in the panel as well as on the step, because this
+    // is the sentence that has to arrive before the press.
+    expect(find.textContaining('writes a new version'), findsOneWidget);
+  });
+
+  /// An organization with no mark must not be handed a one-press option that
+  /// would publish a blank first page — nor a dead control. R8: a sentence
+  /// saying what to do.
+  testWidgets('with no logo uploaded the easy option says where to get one, '
+      'and cannot be chosen', (tester) async {
+    await _pump(tester, _withCoverEndpoints(_handler()));
+    await _tap(tester, find.text('Design'));
+    await _tap(tester, find.text('Choose a cover'));
+
+    expect(
+      find.textContaining('Add one on the Organization screen'),
+      findsOneWidget,
+    );
+
+    await _tap(tester, find.text('The logo you have already uploaded'));
+
+    // Still nothing chosen: the button is the one it was, and the option did
+    // not select itself.
+    expect(find.text('Leave it with no cover'), findsOneWidget);
+    expect(find.text('Use this cover'), findsNothing);
+  });
+
+  testWidgets('choosing the logo becomes the cover, and the cover travels with '
+      'the version', (tester) async {
+    Map<String, dynamic>? published;
+
+    await _pump(
+      tester,
+      _watchPublish(
+        _withCoverEndpoints(_handler(), logo: _pixel),
+        (body) => published = body,
+      ),
+    );
+
+    await _tap(tester, find.text('Design'));
+    await _tap(tester, find.text('Choose a cover'));
+    await _tap(tester, find.text('The logo you have already uploaded'));
+    await _tap(tester, find.text('Use this cover'));
+
+    expect(_inCoverStep('Your organization’s logo'), findsOneWidget);
+
+    // It is a draft until it is published, and the step says so rather than
+    // letting somebody believe the picture is already on the document.
+    expect(_inCoverStep('not on the published version yet'), findsOneWidget);
+
+    await _tap(tester, find.text('Review and publish'));
+    await _tap(tester, find.text('Publish it'));
+
+    expect(published?['cover'], {'source': 'logo'});
+  });
+
+  testWidgets('a file of your own is uploaded and becomes the cover, by the id '
+      'the server answered with', (tester) async {
+    ContractCover? chosen;
+
+    await _pumpPicker(
+      tester,
+      onDone: (cover) => chosen = cover,
+      // Real PNG bytes, because the panel draws what was picked and an
+      // undecodable handful would fail as an image rather than as a cover.
+      pickImage: () async => PickedBytes('front-page.png', _pixel),
+      upload: (_) async => _uploaded('up-7', 'front-page.png'),
+    );
+
+    await _tap(tester, find.text('Choose an image'));
+
+    expect(find.text('front-page.png'), findsOneWidget);
+
+    await _tap(tester, find.text('Use this cover'));
+
+    expect(chosen?.source, CoverSource.file);
+
+    // The server's id, and only what the version needs — never the filename or
+    // the path, which are the server's own answers to different questions.
+    expect(chosen?.toJson(), {'source': 'file', 'upload_id': 'up-7'});
+  });
+
+  /// A refused upload must not leave a cover that looks chosen. The first
+  /// anybody would know is a signed contract with a blank first page.
+  testWidgets('an upload the server refuses is said out loud, and nothing '
+      'becomes the cover', (tester) async {
+    ContractCover? chosen;
+
+    await _pumpPicker(
+      tester,
+      onDone: (cover) => chosen = cover,
+      pickImage: () async => PickedBytes('huge.png', _pixel),
+      upload: (_) async => _refused('That image is larger than 8 MB.'),
+    );
+
+    await _tap(tester, find.text('Choose an image'));
+
+    // The server's own words, kept on screen rather than flashed in a snackbar
+    // over a panel somebody is still reading.
+    expect(find.text('That image is larger than 8 MB.'), findsOneWidget);
+
+    await _tap(tester, find.text('Leave it with no cover'));
+
+    expect(chosen, ContractCover.none);
+  });
+
+  /// "None" is a state, not an omission — so it comes back as an answer and
+  /// closing the panel does not.
+  testWidgets('leaving it with no cover is an answer, and cancelling is not', (
+    tester,
+  ) async {
+    ContractCover? chosen;
+    var answered = false;
+
+    await _pumpPicker(
+      tester,
+      cover: ContractCover.logo,
+      onDone: (cover) {
+        answered = true;
+        chosen = cover;
+      },
+    );
+
+    await _tap(tester, find.text('No cover'));
+    await _tap(tester, find.text('Leave it with no cover'));
+
+    expect(answered, isTrue);
+    expect(chosen, ContractCover.none);
+
+    // CONTROL. Cancelling answers nothing, which is what makes the line above
+    // a decision rather than the absence of one.
+    answered = false;
+    chosen = null;
+
+    await _pumpPicker(
+      tester,
+      cover: ContractCover.logo,
+      onDone: (cover) {
+        answered = true;
+        chosen = cover;
+      },
+    );
+
+    await _tap(tester, find.text('Cancel'));
+
+    expect(answered, isTrue);
+    expect(chosen, isNull);
+  });
+
+  /// The cover is part of the version, which has to mean a cover ON ITS OWN is
+  /// a version. The server answers that beside the diff rather than inside it,
+  /// so a screen reading only the diff would show "nothing has changed" and no
+  /// button — for the exact act the owner asked for.
+  testWidgets('a cover changed on its own is a version, and the publish is '
+      'offered for it', (tester) async {
+    Map<String, dynamic>? published;
+
+    await _pump(
+      tester,
+      _coverOnlyPublish(
+        _withCoverEndpoints(_handler(), logo: _pixel),
+        (body) => published = body,
+      ),
+    );
+
+    await _tap(tester, find.text('Design'));
+    await _tap(tester, find.text('Choose a cover'));
+    await _tap(tester, find.text('The logo you have already uploaded'));
+    await _tap(tester, find.text('Use this cover'));
+    await _tap(tester, find.text('Review and publish'));
+
+    expect(find.text('Publish it'), findsOneWidget);
+
+    // And it does not contradict itself while offering the button. The diff
+    // says the questions and the wording are the same, which is true; "there
+    // is no new version to publish" is not.
+    expect(find.textContaining('Nothing has changed'), findsNothing);
+
+    await _tap(tester, find.text('Publish it'));
+
+    expect(published?['cover'], {'source': 'logo'});
+  });
+
+  /// R7. Desktop today, phones next, and a picker that only works at 1500px is
+  /// a picker that works on one of them.
+  testWidgets('the cover picker fits a phone', (tester) async {
+    await _pump(
+      tester,
+      _withCoverEndpoints(_handler(), logo: _pixel),
+      size: const Size(375, 2400),
+    );
+
+    await _tap(tester, find.text('Design'));
+    await _tap(tester, find.text('Choose a cover'));
+
+    // An overflow throws in a widget test, so reaching these lines at 375px is
+    // half the assertion; all three answers still being readable is the rest.
+    expect(find.text('No cover'), findsWidgets);
+    expect(find.text('The logo you have already uploaded'), findsOneWidget);
+    expect(find.text('A file of your own'), findsOneWidget);
+  });
 }
 
 // ── driving the screen ─────────────────────────────────────────────
@@ -2161,3 +2500,294 @@ const _me = {
   'companies': <Map<String, Object?>>[],
   'franchises': <Map<String, Object?>>[],
 };
+
+// ══ Step 2, and the cover ═══════════════════════════════════════════
+//
+// Everything below belongs to two changes: the always-asked step reading the
+// list of what onboarding ASKS instead of the list of keys a template may not
+// DECLARE, and the cover picker. The fixtures are their own rather than edits
+// to `_catalogue`, which forty other tests share — and the question here needs
+// the two lists to OVERLAP the way a real catalogue's do.
+
+/// Step 2, and nothing else on the screen.
+///
+/// It has to be scoped. The form preview two steps down draws the reserved
+/// keys under a heading of its own, so an unscoped `find.text` cannot tell
+/// "step 2 lists this" from "this exists somewhere on the designer" — and that
+/// is exactly the distinction every assertion here is about.
+final Finder _coreStep = find.ancestor(
+  of: find.text('Always asked'),
+  matching: find.byType(NumberedStep),
+);
+
+Finder _inCoreStep(String text) =>
+    find.descendant(of: _coreStep, matching: find.textContaining(text));
+
+/// One locked chip in step 2 — the whole chip, so a mark can be pinned to the
+/// question it belongs to rather than merely to the step it sits in.
+Finder _coreChip(String label) => find.ancestor(
+  of: find.descendant(of: _coreStep, matching: find.text(label)),
+  matching: find.byType(Tooltip),
+);
+
+final Finder _coverStep = find.ancestor(
+  of: find.text('Give it a cover'),
+  matching: find.byType(NumberedStep),
+);
+
+Finder _inCoverStep(String text) =>
+    find.descendant(of: _coverStep, matching: find.textContaining(text));
+
+/// A catalogue whose asked list and reserved list overlap, as a real one's do.
+///
+/// `_catalogue` makes them disjoint deliberately, to prove the body editor does
+/// not offer reserved keys as insertable tags. That is the right fixture for
+/// that question and the wrong one for this: `CommonCore::ASKED` is a SUBSET of
+/// `CommonCore::RESERVED` on the real server, and requiredness is published on
+/// the reserved entry.
+///
+/// The two lists label the same key differently, which no server does. That is
+/// the point — the words on screen say which list was read.
+///
+/// `asked` on every reserved entry and a pre-filtered `core` beside them are
+/// the endpoint's own shape. Neither is read by this build — `ContractVocabulary`
+/// takes `reserved_keys` and stops — and they are in the fixture anyway, so that
+/// the payload these tests run against is the payload the server sends rather
+/// than a trimmed one that could hide a misreading.
+final List<Map<String, Object?>> _askedReserved = [
+  for (final entry in _catalogue['reserved_keys'] as List)
+    {...(entry as Map).cast<String, Object?>(), 'asked': false, 'required': false},
+  // Asked, and required by saying nothing about it — which is what a server
+  // too old to publish requiredness sends for every key it has.
+  {
+    'key': 'given_name',
+    'label': 'RESERVED given name',
+    'is': 'the first name they gave us',
+    'reason': 'Invented for this fixture.',
+    'asked': true,
+  },
+  // Asked, and explicitly optional. This is the entry the owner's third
+  // request is about: a question nobody will be made to answer.
+  {
+    'key': 'pet_name',
+    'label': 'RESERVED pet name',
+    'is': 'the name of their dog',
+    'reason': 'Also invented.',
+    'asked': true,
+    'required': false,
+  },
+];
+
+final Map<String, Object?> _askedCatalogue = {
+  for (final entry in _catalogue.entries)
+    if (entry.key != 'reserved_keys' && entry.key != 'merge_tags')
+      entry.key: entry.value,
+  'reserved_keys': _askedReserved,
+  // The endpoint's pre-filtered asked list, filtered from the same array the
+  // way the endpoint filters it. Shadowed by `reserved_keys` in
+  // `ContractVocabulary.fromJson`'s fallback chain and therefore read by
+  // nothing — it is here so the payload is the real one.
+  'core': [
+    for (final entry in _askedReserved)
+      if (entry['asked'] == true) entry,
+  ],
+  'merge_tags': {
+    ...(_catalogue['merge_tags'] as Map).cast<String, Object?>(),
+    'core': [
+      {
+        'key': 'given_name',
+        'tag': '<<given_name>>',
+        'label': 'The first name on their record',
+        'is': 'the first name they gave us',
+      },
+      {
+        'key': 'pet_name',
+        'tag': '<<pet_name>>',
+        'label': 'The name of their dog',
+        'is': 'the name of their dog',
+      },
+    ],
+  },
+};
+
+/// The same catalogue with every `required` stripped — the one shipping today.
+final Map<String, Object?> _silentCatalogue = {
+  ..._askedCatalogue,
+  'reserved_keys': [
+    for (final entry in _askedReserved)
+      {
+        for (final property in entry.entries)
+          if (property.key != 'required') property.key: property.value,
+      },
+  ],
+};
+
+/// A 1x1 PNG — a real one, because the picker decodes what it fetches and a
+/// handful of arbitrary bytes is a decode failure rather than a logo.
+final List<int> _pixel = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAE'
+  'hQGAhKmMIQAAAABJRU5ErkJggg==',
+);
+
+/// The two endpoints the cover picker reaches that `_handler` knows nothing
+/// about: the organization's mark, and where a cover file is stored.
+///
+/// A wrapper rather than more branches inside `_handler`, which every other
+/// test in this file shares.
+MockClientHandler _withCoverEndpoints(
+  MockClientHandler inner, {
+  List<int>? logo,
+}) {
+  return (request) async {
+    final path = request.url.path;
+
+    if (path.endsWith('/branding/organization')) {
+      // 404 rather than an empty 200: `getBytes` answers null on any non-200,
+      // and "there is no logo" has to be tellable from "here is an empty one".
+      return logo == null
+          ? http.Response('', 404)
+          : http.Response.bytes(
+              logo,
+              200,
+              headers: {'content-type': 'image/png'},
+            );
+    }
+
+    // Ahead of `_handler`'s `/hr/contracts/` catch-all, which would answer a
+    // whole template here and hand the panel a body with no upload id in it.
+    if (path.endsWith('/hr/contracts/covers')) {
+      return _json({
+        'data': {'upload_id': 'up-1', 'filename': 'cover.png'},
+      }, 201);
+    }
+
+    return inner(request);
+  };
+}
+
+/// Captures the body of a real publish, which `_handler`'s own `onPublish` hook
+/// does not carry.
+MockClientHandler _watchPublish(
+  MockClientHandler inner,
+  void Function(Map<String, dynamic> body) onBody,
+) {
+  return (request) async {
+    if (request.method == 'POST' && request.url.path.endsWith('/versions')) {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+
+      if (body['preview'] != true) onBody(body);
+    }
+
+    return inner(request);
+  };
+}
+
+/// The preview a cover-only publish gets back, in the shape the endpoint sends
+/// it: `cover` BESIDE `diff`, never inside it.
+///
+/// The server keeps them apart on purpose — `VersionDiff` compares field lists
+/// and bodies and is also what the version-history screen renders — so
+/// `is_empty` here is TRUE while there is genuinely a version to publish. A
+/// client reading only the diff offers no button for the one act the owner
+/// asked for.
+MockClientHandler _coverOnlyPublish(
+  MockClientHandler inner,
+  void Function(Map<String, dynamic> body) onBody,
+) {
+  return (request) async {
+    if (request.method == 'POST' && request.url.path.endsWith('/versions')) {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+
+      if (body['preview'] == true) {
+        return _json({
+          'data': {
+            'diff': {
+              'added': <Object?>[],
+              'retired': <Object?>[],
+              'unretired': <Object?>[],
+              'changed': <Object?>[],
+              'reordered': false,
+              'body': null,
+              'is_empty': true,
+            },
+            'cover': {'changed': true, 'from': null, 'to': 'logo'},
+            'version': 4,
+          },
+        });
+      }
+
+      onBody(body);
+    }
+
+    return inner(request);
+  };
+}
+
+ApiResponse _uploaded(String id, String filename) => ApiResponse(
+  statusCode: 201,
+  body: {
+    'data': {'upload_id': id, 'filename': filename},
+  },
+);
+
+ApiResponse _refused(String sentence) => ApiResponse(
+  statusCode: 422,
+  body: {
+    'message': 'The given data was invalid.',
+    'errors': {
+      'cover': [sentence],
+    },
+  },
+);
+
+/// The cover picker on its own, opened the way the designer opens it.
+///
+/// Through `showSidePanel` rather than mounted bare, because the panel answers
+/// by popping a route — and what it pops, or does not, is half of what these
+/// tests are about.
+///
+/// The upload is handed in rather than left to the real one. `postFile` builds
+/// an `http.MultipartRequest` and `BaseRequest.send()` makes a `Client()` of
+/// its own, so the MockClient below never sees an upload — see
+/// [ContractCoverPanel.upload].
+Future<void> _pumpPicker(
+  WidgetTester tester, {
+  required void Function(ContractCover? cover) onDone,
+  ContractCover cover = ContractCover.none,
+  Future<PickedBytes?> Function()? pickImage,
+  Future<ApiResponse> Function(PickedBytes picked)? upload,
+}) async {
+  tester.view.physicalSize = const Size(900, 1400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  final api = ApiClient(
+    client: MockClient((request) async => http.Response('', 404)),
+  );
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () async => onDone(
+              await showSidePanel<ContractCover>(
+                context,
+                builder: (_) => ContractCoverPanel(
+                  api: api,
+                  cover: cover,
+                  pickImage: pickImage ?? () async => null,
+                  upload: upload,
+                ),
+              ),
+            ),
+            child: const Text('open the picker'),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  await _tap(tester, find.text('open the picker'));
+}

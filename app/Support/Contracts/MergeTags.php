@@ -330,9 +330,12 @@ final class MergeTags
 
         /*
          * A key the common core RESERVES but does not ASK is a real trap and gets
-         * its own sentence. `middle_name` and `name` are reserved — a template
-         * cannot declare either — but onboarding never asks for them, so there is
-         * no home this document can read them from. Left to the generic "names
+         * its own sentence. `gender` and `name` are reserved — a template cannot
+         * declare either — but onboarding never asks for them, so there is no
+         * home this document can read them from. (`middle_name` was the example
+         * here until it became asked-but-optional; `gender` took its place when
+         * the owner had it removed from the questions. The rule is unchanged —
+         * only which keys sit in the gap.) Left to the generic "names
          * nothing" refusal, somebody would spend an afternoon convinced the tag
          * was right, because the designer greys those keys out with a message
          * saying the contract can merge them in.
@@ -663,7 +666,7 @@ final class MergeTags
      * of THOSE taught people a rule by refusing them after they had typed it. A
      * client that built this list itself would have to know that fields are
      * offered only while live, that signature fields are not merged, that the
-     * common core is asked but `middle_name` is not, and that facts are dotted —
+     * common core is asked but `gender` is not, and that facts are dotted —
      * four server rules, restated, in a language that cannot see them change.
      *
      * `tag` is the exact text to insert: the key already wrapped, so a caller has

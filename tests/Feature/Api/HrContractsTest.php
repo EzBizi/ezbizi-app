@@ -150,7 +150,20 @@ class HrContractsTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
 
-        foreach (['email', 'first_name', 'last_name', 'phone', 'date_of_birth', 'gender'] as $key) {
+        /*
+         * ALL EIGHT, spelt out rather than read from CommonCore::keys().
+         *
+         * A test that asks the class under test what it claims cannot fail
+         * when the class stops claiming something. The two that matter most are
+         * at the end: `gender` is no longer ASKED and `name` never was, and
+         * both must still be refused to a template — the columns exist, people
+         * have already answered them, and a template field of either name would
+         * be a second value beside the one on the profile.
+         */
+        foreach ([
+            'email', 'first_name', 'middle_name', 'last_name',
+            'phone', 'date_of_birth', 'gender', 'name',
+        ] as $key) {
             $this->signedInAs($alpha['admin'])
                 ->postJson('/api/v1/hr/contracts', [
                     'name'   => "Uses {$key}",

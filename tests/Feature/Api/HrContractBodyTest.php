@@ -716,10 +716,16 @@ class HrContractBodyTest extends TestCase
      *
      * A client compiling its own would have to know four server rules — that
      * retired fields are out, that signatures are out, that the common core is
-     * asked but `middle_name` is not, and that facts are dotted — restated in a
-     * language that cannot see them change. The exact text to insert comes back
-     * too, so a client has a ready-made string for anything the server has
-     * named.
+     * asked but `gender` is reserved without being asked, and that facts are
+     * dotted — restated in a language that cannot see them change. The exact
+     * text to insert comes back too, so a client has a ready-made string for
+     * anything the server has named.
+     *
+     * The third of those used to be spelt `middle_name`, and the swap is the
+     * point rather than an edit: `middle_name` is now ASKED, optionally, so it
+     * has a value to merge and is offered; `gender` is no longer asked, so it
+     * has none and is not. A client carrying its own list would still be
+     * offering the one that resolves to nothing.
      *
      * What this asserts is the RESPONSE, and only the response. It used to end
      * "so the client does not even concatenate the delimiters" — a claim about a
@@ -752,7 +758,13 @@ class HrContractBodyTest extends TestCase
         $this->assertContains('contract.name', $keys);
         $this->assertNotContains('gone', $keys, 'A retired field was offered as a tag.');
         $this->assertNotContains('employer_sign', $keys, 'A signature was offered as a tag.');
-        $this->assertNotContains('middle_name', $keys, 'A reserved key onboarding never asks was offered.');
+        // Asked now, and optional — so it resolves and is offered. The control
+        // for the assertion below: without it, "reserved keys are not offered"
+        // would pass just as well on a build that offered nothing from the core
+        // at all.
+        $this->assertContains('middle_name', $keys, 'An asked core key was not offered as a tag.');
+        $this->assertNotContains('gender', $keys, 'A reserved key onboarding never asks was offered.');
+        $this->assertNotContains('name', $keys, 'A reserved key onboarding never asks was offered.');
 
         $wage = $tags[array_search('wage', $keys, true)];
 

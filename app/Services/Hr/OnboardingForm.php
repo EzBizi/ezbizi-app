@@ -67,6 +67,19 @@ class OnboardingForm
     /**
      * The six, read from their one home.
      *
+     * The keys are exactly `CommonCore::asked()` and deliberately not a superset
+     * of it. Everything that reads this — the form, the document, the
+     * completeness check — walks the asked list and looks the key up here, so an
+     * extra entry would be a value this method goes to the trouble of fetching
+     * and nothing ever prints. `gender` was one, until the question was
+     * withdrawn; the column still holds every answer already given, and "Your
+     * account" is where it is read and edited now.
+     *
+     * `middle_name` has no home on an INVITATION, which is why the second branch
+     * has none. The invitations table carries a first and last name for the
+     * envelope and nothing else — see `coreAuthority`, which refuses to write it
+     * before there is an account and says so in the same words.
+     *
      * @return array<string, string|null>
      */
     public function identity(Onboarding $onboarding): array
@@ -78,20 +91,20 @@ class OnboardingForm
             return [
                 'email'         => $user->email,
                 'first_name'    => $user->first_name,
+                'middle_name'   => $user->middle_name,
                 'last_name'     => $user->last_name,
                 'phone'         => $user->phone,
                 'date_of_birth' => $user->date_of_birth?->toDateString(),
-                'gender'        => $user->gender,
             ];
         }
 
         return [
             'email'         => $invitation?->email,
             'first_name'    => $invitation?->first_name,
+            'middle_name'   => null,
             'last_name'     => $invitation?->last_name,
             'phone'         => null,
             'date_of_birth' => null,
-            'gender'        => null,
         ];
     }
 
@@ -194,6 +207,28 @@ class OnboardingForm
                 if (! array_key_exists($at, $errors)) {
                     $identity[$key] = $value;
                 }
+
+                continue;
+            }
+
+            /*
+             * A key the common core RESERVES but no longer ASKS.
+             *
+             * `gender` is the one this exists for. It used to be asked, so a
+             * client built against an older server still sends it — and without
+             * this branch it fell through to "not a question on this contract",
+             * which sends somebody looking at their template for a field that was
+             * never theirs and cannot be added, because the key is still refused
+             * to a template. The honest sentence names the profile.
+             */
+            if (CommonCore::claims($key)) {
+                $errors[$at] = sprintf(
+                    "'%s' is not asked during onboarding. It is %s, so it is theirs to fill in "
+                    .'under "Your account" — and it stays reserved here, which is why no '
+                    .'template can add a question of its own by that name.',
+                    CommonCore::labelFor($key),
+                    CommonCore::describe($key),
+                );
 
                 continue;
             }
@@ -433,9 +468,14 @@ class OnboardingForm
         }
 
         $value = trim((string) $raw);
-        $max   = match ($key) {
-            'first_name', 'last_name' => 60,
-            default                   => 40,
+        // The COLUMN's width, per key, so this refuses before MySQL does. All
+        // three name parts are `string(60)` on `users` — see the migration that
+        // added them — and ProfileController holds them to the same 60, which is
+        // the point: one fact, one home, one limit, whichever door it comes in
+        // through.
+        $max = match ($key) {
+            'first_name', 'middle_name', 'last_name' => 60,
+            default                                  => 40,
         };
 
         if ($key === 'date_of_birth') {

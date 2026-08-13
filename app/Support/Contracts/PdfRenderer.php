@@ -41,11 +41,18 @@ use RuntimeException;
  *
  *  Point 3, retrievability, stands and is what makes this safe. The
  *  document is self-contained by design — inline styles, no script, no
- *  external stylesheet, no font, no image, nothing fetched from
- *  anywhere — so converting it needs no network, no assets and no
- *  resolution of anything. That is why the converter below is allowed
- *  to fetch precisely nothing (see the options), and why that
- *  restriction costs the document not one glyph.
+ *  external stylesheet, no font, and nothing FETCHED from anywhere — so
+ *  converting it needs no network, no assets and no resolution of
+ *  anything outside the bytes it already is.
+ *
+ *  It is no longer true that it carries no image: a version may have a
+ *  cover, and DocumentRenderer embeds that PNG as `data:image/png;base64`
+ *  INSIDE the document. That is the same property stated more precisely
+ *  rather than a weakening of it — the bytes travel with the file, so a
+ *  copy opened in twenty years still has its cover and still fetches
+ *  nothing. The converter's protocol rules permit exactly that one
+ *  prefix and refuse every other scheme; see `options()` for why an
+ *  inert container of bytes is not the hazard the other schemes are.
  *
  *  POINT 4 IS THE ONE THAT CHANGED, and it is rewritten in that class
  *  rather than contradicted here: the dependency is now installed and
@@ -264,6 +271,37 @@ final class PdfRenderer
     {
         $refuse = static fn (string $uri): array => [false, self::FETCHES_NOTHING];
 
+        /*
+         * The one exception, and it is narrow on purpose.
+         *
+         * `data:` refused everything, which was right until the document grew a
+         * cover: DocumentRenderer embeds the cover PNG as
+         * `data:image/png;base64,…`, so the copy came out with the cover PAGE
+         * and no cover IMAGE. Measured, not inferred — two pages, no image
+         * XObject.
+         *
+         * Permitting this is not a hole in the argument the rest of these rules
+         * make. Every other scheme is refused because it makes the converter GO
+         * SOMEWHERE — the network, the disk, a phar archive — on the strength of
+         * text a customer wrote. A `data:` URI goes nowhere: it carries its own
+         * bytes, already inside the document being converted, and resolving it
+         * reaches nothing this server can see.
+         *
+         * The prefix is matched exactly rather than by scheme, because `data:`
+         * is a container for anything. `data:text/html` and `data:image/svg+xml`
+         * are the ones that matter — SVG is a document format with scripts and
+         * external references of its own, and admitting it would hand back the
+         * whole surface this class exists to close. The cover is PNG-only at
+         * every other layer, so nothing legitimate needs more than this.
+         *
+         * The fail-closed self-check below still holds: its probe is
+         * `data://ezbizi.invalid/probe`, which is not this prefix and is still
+         * refused, so `data://` is still proved to reject something.
+         */
+        $inlinePng = static fn (string $uri): array => str_starts_with($uri, 'data:image/png;base64,')
+            ? [true, null]
+            : [false, self::FETCHES_NOTHING];
+
         $options = new Options();
 
         $options->setIsRemoteEnabled(false);
@@ -273,7 +311,7 @@ final class PdfRenderer
             'file://'  => ['rules' => [$refuse]],
             'http://'  => ['rules' => [$refuse]],
             'https://' => ['rules' => [$refuse]],
-            'data://'  => ['rules' => [$refuse]],
+            'data://'  => ['rules' => [$inlinePng]],
             'phar://'  => ['rules' => [$refuse]],
         ]);
 

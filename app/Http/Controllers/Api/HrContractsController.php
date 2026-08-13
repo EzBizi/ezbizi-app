@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Contract;
+use App\Models\ContractCoverUpload;
 use App\Models\ContractVersion;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Branding\Branding;
 use App\Support\Contracts\CommonCore;
 use App\Support\Contracts\DocumentRenderer;
 use App\Support\Contracts\FieldSet;
@@ -13,6 +15,7 @@ use App\Support\Contracts\FieldType;
 use App\Support\Contracts\FilledBy;
 use App\Support\Contracts\MergeTags;
 use App\Support\Contracts\VersionDiff;
+use App\Support\Files\FileStore;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -78,19 +81,346 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class HrContractsController extends Controller
 {
+    /**
+     * The most a cover PNG may weigh, matching BrandingController's limit on a
+     * logo.
+     *
+     * The same number, and the argument lands harder here: a cover is base64'd
+     * into EVERY document this template renders, which is a third again in
+     * size, on a file that is stored per revision and kept forever. So one
+     * heavy image is a heavy one thousands of times over.
+     *
+     * A megabyte is generous for the flat artwork a front page is made of.
+     * Unlike a logo it is NOT cropped to a fixed size first (see `storeCover`),
+     * so this cap is the only thing standing between a document and somebody's
+     * 12-megapixel photograph — which is why it is a refusal with a sentence
+     * rather than a silent resize.
+     */
+    private const MAX_COVER_KILOBYTES = 1024;
+
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly TenantContext $tenant,
         // The same renderer the signed document goes through — see `preview`.
         private readonly DocumentRenderer $renderer,
         private readonly EventEmitter $events,
+        // For the cover's bytes. Never `Storage::disk()` — see FileStore for
+        // what naming a disk by hand cost the branding endpoints.
+        private readonly FileStore $files,
     ) {}
+
+    // ── the cover page ───────────────────────────────────────────
+
+    /**
+     * The validation rules for a cover, wherever one arrives.
+     *
+     * One array rather than three copies, because a cover may be sent to
+     * `store`, to `publishVersion` and to `preview` — and a preview that
+     * accepted something publishing refuses would show somebody a document
+     * they cannot publish, which is the exact failure `preview`'s docblock
+     * spends a paragraph on.
+     *
+     * `cover` is `nullable` and `sometimes` is deliberately absent from
+     * `cover.source`: if a cover object is sent at all it has to say where the
+     * mark comes from.
+     */
+    private static function coverRules(): array
+    {
+        return [
+            'cover'        => ['nullable', 'array'],
+            'cover.source' => ['required_with:cover', Rule::in(array_keys(ContractVersion::COVER_SOURCES))],
+            // The staged upload, for a cover of the tenant's own. Required
+            // WITH the file source rather than always: a `logo` cover carries
+            // no file, which is the whole of what makes it one press.
+            'cover.upload_id' => ['nullable', 'string', 'uuid'],
+        ];
+    }
+
+    /**
+     * The cover a request is asking for, resolved to the bytes that will be
+     * pinned — or null for no cover.
+     *
+     * ═══════════════════════════════════════════════════════════════
+     *  TWO SOURCES, AND THE FIRST ONE IS THE POINT.
+     *
+     *  `logo` CARRIES NO FILE. The mark is already on the platform: it
+     *  was uploaded under branding, it is what every badge in the
+     *  application draws, and asking somebody to find it again and
+     *  upload a second copy would be asking them to make a second home
+     *  for one picture. So this reads it and pins a snapshot.
+     *
+     *  `file` names a staged upload — see ContractCoverUpload for why
+     *  the bytes went up separately rather than inside this request:
+     *  a contract being CREATED has no id to hang a file off, and a
+     *  cover you could only add on the second visit is not the feature
+     *  that was asked for.
+     *
+     *  EITHER WAY THE BYTES ARE COPIED, and that is the decision this
+     *  method exists to make true rather than to explain. A version
+     *  that pointed at `organizations.logo_path`, or that read the
+     *  staged row at render time, would have a first page that changes
+     *  after somebody signed it.
+     * ═══════════════════════════════════════════════════════════════
+     *
+     * @return array{source: string, png: string, upload_id: string|null, filename: string|null}|null
+     *
+     * @throws ValidationException
+     */
+    private function resolveCover(Request $request): ?array
+    {
+        $cover = $request->input('cover');
+
+        if (! is_array($cover) || $cover === []) {
+            return null;
+        }
+
+        if ((string) ($cover['source'] ?? '') === ContractVersion::COVER_LOGO) {
+            return [
+                'source'    => ContractVersion::COVER_LOGO,
+                'png'       => $this->organizationLogo($request),
+                'upload_id' => null,
+                'filename'  => null,
+            ];
+        }
+
+        $upload = $this->stagedCover($cover['upload_id'] ?? null);
+        $png    = $upload->png();
+
+        if ($png === null) {
+            throw ValidationException::withMessages(['cover.upload_id' =>
+                'The cover that was uploaded is no longer on the disk, so there is nothing to '
+                .'put on the front page. Choose the image again — publishing a version whose '
+                .'cover is missing would produce a contract with a blank first page and '
+                .'nothing saying why.',
+            ]);
+        }
+
+        return [
+            'source'    => ContractVersion::COVER_FILE,
+            'png'       => $png,
+            'upload_id' => $upload->getKey(),
+            'filename'  => $upload->original_name,
+        ];
+    }
+
+    /**
+     * The staged upload this request names, or a refusal.
+     *
+     * Scoped to the tenant by `ContractCoverUpload`'s own global scope, so an
+     * id from another organization is simply not found — the same answer
+     * `assertMine` gives for a contract, and for the same reason: a 403 would
+     * confirm that the id is real somewhere on the platform.
+     */
+    private function stagedCover(mixed $id): ContractCoverUpload
+    {
+        $upload = is_string($id) && $id !== ''
+            ? ContractCoverUpload::query()->find($id)
+            : null;
+
+        if ($upload === null) {
+            throw ValidationException::withMessages(['cover.upload_id' =>
+                'That cover was not found, so this version has nothing to put on its front '
+                .'page. Upload the image again and publish with the id that comes back — a '
+                .'cover is part of the version, so it has to be a file this organization '
+                .'actually has.',
+            ]);
+        }
+
+        return $upload;
+    }
+
+    /**
+     * The mark already uploaded for this business, as bytes.
+     *
+     * Read through the ORGANIZATION rather than through a company: a contract
+     * template reaches every franchise in the organization (ContractPolicy
+     * requires standing at the organization to write one), so there is no one
+     * company whose logo it would be. A company with none already falls back to
+     * the organization's — see BrandingController::company — so this is the
+     * mark that badge is showing anyway.
+     *
+     * Off the signed-in user's organization, which is how BrandingController
+     * reaches the same row. `assertMine` has already established that the
+     * contract belongs to it, so there is no second organization in play.
+     */
+    private function organizationLogo(Request $request): string
+    {
+        $organization = $request->user()->organization;
+        $bytes = $organization?->logo_path === null
+            ? null
+            : $this->files->contents($organization->logo_path);
+
+        if ($bytes === null) {
+            throw ValidationException::withMessages(['cover.source' =>
+                'This business has no logo uploaded yet, so there is nothing to put on the '
+                .'cover. Upload one under the organization’s branding and it will be offered '
+                .'here — or attach a file to this contract instead, which is the other way to '
+                .'make a cover.',
+            ]);
+        }
+
+        return $bytes;
+    }
+
+    /**
+     * POST /api/v1/hr/contracts/covers — stage a cover image.
+     *
+     * ── Not hung off a contract, deliberately ────────────────────
+     *
+     * A contract being CREATED has no id, so an upload bound to `{contract}`
+     * would be a cover you could add on the second visit and not the first.
+     * The row this writes is the id a publish then names.
+     *
+     * ── PNG only, and NOT cropped to a logo's shape ──────────────
+     *
+     * The format rule is Branding's and is the same decision for the same
+     * reason: a mark on a page somebody prints is line art and flat colour,
+     * which is what PNG is for and what JPEG is worst at, and PNG is the only
+     * one of the two that can sit on a page without a white box behind it. SVG
+     * is absent because it is a document that can carry script and this is
+     * served from our own origin.
+     *
+     * The SHAPE rule is deliberately not inherited. Branding fixes a logo at
+     * 512x512 or 1024x256 so that a row of company marks lines up; a cover is a
+     * PAGE, and a page cropped to a 4:1 lockup is not a cover. So any
+     * dimensions are accepted and the size cap is what keeps it sane.
+     *
+     * ── `update` on the contract policy, not `create` ────────────
+     *
+     * There is no contract to authorize against, so this is gated on the
+     * ability to author templates at all — the same permission `preview` uses
+     * and for the same reason: staging a cover is part of the authoring act.
+     */
+    public function storeCover(Request $request): JsonResponse
+    {
+        $this->authorize('create', Contract::class);
+
+        $request->validate([
+            'cover' => ['required', 'file', 'mimes:'.Branding::MIME, 'max:'.self::MAX_COVER_KILOBYTES],
+        ], [
+            'cover.mimes' => 'A cover has to be a PNG. It is artwork on a page somebody prints '
+                .'— PNG keeps hard edges clean and can sit on the page without a white box '
+                .'behind it, which is exactly what a JPEG cannot do.',
+            'cover.max' => sprintf(
+                'A cover has to be under %s KB. It is copied into every document this template '
+                .'ever produces and kept with each one, so a heavy image is a heavy one '
+                .'thousands of times over.',
+                number_format(self::MAX_COVER_KILOBYTES),
+            ),
+        ]);
+
+        $file = $request->file('cover');
+
+        // Read out of the BYTES, never off the header the browser sent. The
+        // `mimes:` rule above checks the extension and the guessed type; this
+        // is the one that establishes the file actually decodes as a PNG, and
+        // it is the same check BrandingController makes for the same reason.
+        $size = @getimagesize($file->getRealPath());
+
+        abort_if(
+            $size === false || ($size[2] ?? null) !== IMAGETYPE_PNG,
+            422,
+            'That file is named like a PNG and does not read as one, so nothing would appear '
+            .'on the cover. Export it again as a PNG and upload that.',
+        );
+
+        $organizationId = $request->user()->organization_id;
+        $disk           = $this->files->defaultDisk();
+
+        $upload = new ContractCoverUpload([
+            'organization_id' => $organizationId,
+            'path'            => $this->files->put(
+                $file,
+                $this->files->directoryFor('contract-covers', $organizationId),
+            ),
+            'disk'            => $disk,
+            'original_name'   => (string) $file->getClientOriginalName(),
+            'size_bytes'      => (int) $file->getSize(),
+            'uploaded_by_user_id' => $request->user()->getKey(),
+        ]);
+
+        $upload->save();
+
+        // §10: a file arriving on the platform is an act, and this one becomes
+        // the front page of an agreement.
+        $this->audit->log('contract.cover_uploaded', $upload, metadata: [
+            'filename' => $upload->original_name,
+            'bytes'    => $upload->size_bytes,
+        ]);
+
+        return response()->json(['data' => [
+            'upload_id' => $upload->getKey(),
+            'filename'  => $upload->original_name,
+            // Where it can be read back. Answered by the server rather than
+            // assembled by the client, so the route is decided in one place.
+            'image_path' => '/hr/contracts/covers/'.$upload->getKey(),
+        ]], Response::HTTP_CREATED);
+    }
+
+    /**
+     * GET /api/v1/hr/contracts/covers/{upload} — the staged image itself.
+     *
+     * `inline`, which is the safe half of that decision and the same one
+     * BrandingController makes: the upload has already been established as a
+     * PNG by reading its bytes, so rendering it in the page is what it is for.
+     *
+     * No permission beyond being able to author a template. The tenant scope on
+     * ContractCoverUpload is what keeps another organization's cover out of
+     * reach, and a 404 rather than a 403 is what stops this confirming that an
+     * id is real somewhere on the platform.
+     */
+    public function showCover(ContractCoverUpload $upload)
+    {
+        $this->authorize('create', Contract::class);
+
+        abort_unless($upload->organization_id === $this->tenant->idOrFail(), 404);
+
+        return $this->files->serve(
+            $upload->path,
+            mime: Branding::contentType(),
+            disposition: 'inline',
+            disk: $upload->disk,
+        );
+    }
+
+    /**
+     * What a publish would do to the cover, in the words the diff screen shows.
+     *
+     * Not folded into VersionDiff, which compares field lists and bodies and is
+     * shared with the version-history screen. This is computed here and sent
+     * beside the diff — and it is reported at all for the reason VersionDiff
+     * reports a removed body: SENDING NO COVER REMOVES ONE, because a version
+     * is the whole template and never a patch of one, and nobody should
+     * discover that after publishing.
+     *
+     * ── It compares the BYTES, not only the source ───────────────
+     *
+     * Two publishes can both say `upload` and carry different files, and two
+     * can both say `logo` across a rebrand — the version pins a
+     * copy, so the second one is genuinely a different first page. Comparing
+     * only the label would call both of those "no change", and the no-op guard
+     * below would then refuse the publish that was the entire point.
+     *
+     * @param  array{source: string, png: string}|null  $cover
+     * @return array{changed: bool, from: string|null, to: string|null}
+     */
+    private function coverChange(?ContractVersion $current, ?array $cover): array
+    {
+        $from = $current?->cover_source;
+        $to   = $cover['source'] ?? null;
+
+        $changed = $from !== $to
+            || ($to !== null && $current?->coverPng() !== $cover['png']);
+
+        return ['changed' => $changed, 'from' => $from, 'to' => $to];
+    }
 
     /**
      * GET /api/v1/hr/contracts/catalogue
      *
      * What a template may be built out of: the field types, who can fill a
-     * field, and the keys the common core has already claimed.
+     * field, the keys the common core has already claimed, which of those are
+     * actually asked, and where a cover page's mark may come from.
      *
      * It exists for the same reason `automations/catalogue` and
      * `roles/catalogue` do. The alternative is the client carrying its own copy
@@ -98,10 +428,49 @@ class HrContractsController extends Controller
      * server rule is a second place to forget: the day a type is added, the
      * picker does not offer it, and the day a reserved key changes, the form
      * accepts a key the server then refuses with an error nobody expected.
+     *
+     * ── RESERVED AND ASKED ARE TWO LISTS, AND THEY WERE ONE ──────
+     *
+     * Eight keys are refused to a template; six are asked of a person. That
+     * difference had no spelling on the wire, so a client had one list and used
+     * it for both jobs — which is why the designer showed "Display name" and
+     * "Gender" under "Always asked". `asked` and `required` on every entry, and
+     * a pre-filtered `core`, are that difference published.
      */
     public function catalogue(): JsonResponse
     {
         $this->authorize('viewAny', Contract::class);
+
+        /*
+         * The common core, published rather than merely enforced, ONCE.
+         *
+         * A form that lets somebody type `date_of_birth`, submit, and read a
+         * refusal has taught them a rule the hard way. The client can grey
+         * these out with the sentence explaining why — and the sentence is the
+         * server's, so the two cannot drift.
+         *
+         * `label` and `is` are both sent and they are not interchangeable.
+         * `is` completes "it is …" inside `reason`; `label` is what goes on the
+         * chip and above the box. Sending only `is` is what had the designer
+         * captioning a locked field "their middle name".
+         *
+         * `asked` and `required` are the two that were missing, and their
+         * absence is fact B: nothing on the wire distinguished "a template may
+         * not declare this" from "onboarding asks this", so a screen showing
+         * the first list under a heading meaning the second was not misreading
+         * the payload — the payload did not say.
+         */
+        $reserved = array_map(
+            fn (string $key) => [
+                'key'      => $key,
+                'label'    => CommonCore::labelFor($key),
+                'is'       => CommonCore::describe($key),
+                'reason'   => CommonCore::refusalFor($key),
+                'asked'    => CommonCore::isAsked($key),
+                'required' => CommonCore::isRequired($key),
+            ],
+            CommonCore::keys(),
+        );
 
         return response()->json(['data' => [
             /*
@@ -135,28 +504,53 @@ class HrContractsController extends Controller
                 FieldType::keys(),
             ),
             'filled_by' => self::pairs(FilledBy::ALL),
+            // EVERY key a template may not declare — asked or not. Built above,
+            // where the reasoning for each property is.
+            'reserved_keys' => $reserved,
             /*
-             * The common core, published rather than merely enforced.
+             * WHAT ONBOARDING ACTUALLY ASKS — the list a screen may put under
+             * a heading like "Always asked", and the reason this key exists.
              *
-             * A form that lets somebody type `date_of_birth`, submit, and read a
-             * refusal has taught them a rule the hard way. The client can grey
-             * these out with the sentence explaining why — and the sentence is
-             * the server's, so the two cannot drift.
+             * `reserved_keys` above is the longer list and has to be: it is
+             * every key a template may not declare, which is what a designer
+             * needs to grey one out WHILE somebody is typing it. Two of the
+             * eight are reserved without being asked (`name`, `gender`), so a
+             * screen that drew the refusal list under "Always asked" was
+             * naming two questions nobody is ever asked — and the owner read
+             * that as onboarding demanding a middle name of people who have
+             * none, which was the one thing on that screen that WAS true and
+             * is now fixed a different way (CommonCore::ASKED).
              *
-             * `label` and `is` are both sent and they are not interchangeable.
-             * `is` completes "it is …" inside `reason`; `label` is what goes on
-             * the chip and above the box. Sending only `is` is what had the
-             * designer captioning a locked field "their middle name".
+             * FILTERED FROM THE SAME ARRAY, not built beside it. Two loops
+             * producing overlapping lists is R6's trap and this module has
+             * already paid for it once — `resolvable()` grew a `source` and
+             * the catalogue's hand-rolled copy did not. These entries are
+             * identical objects, and a test asserts it.
+             *
+             * `required` is the half a client cannot infer. Middle name is
+             * asked and optional; drawn identically to "Last name" it reads as
+             * a demand, which is exactly the complaint this came from.
              */
-            'reserved_keys' => array_map(
-                fn (string $key) => [
-                    'key'    => $key,
-                    'label'  => CommonCore::labelFor($key),
-                    'is'     => CommonCore::describe($key),
-                    'reason' => CommonCore::refusalFor($key),
-                ],
-                CommonCore::keys(),
-            ),
+            'core' => array_values(array_filter($reserved, fn (array $e) => $e['asked'])),
+            /*
+             * WHERE A COVER PAGE'S MARK MAY COME FROM.
+             *
+             * Published for the same reason the field types are: the
+             * alternative is a picker with two hardcoded Dart strings that
+             * have to match two PHP constants forever. The shape rules come
+             * from Branding, which is the one place the cropper and the
+             * validator already agree on, so a cover is held to exactly what a
+             * logo is held to and neither list is restated here.
+             */
+            'cover' => [
+                'sources'       => self::pairs(ContractVersion::COVER_SOURCES),
+                'format'        => Branding::MIME,
+                'max_kilobytes' => self::MAX_COVER_KILOBYTES,
+                // Branding's SHAPES are deliberately absent. A logo is cropped
+                // to one of two exact sizes so a row of marks lines up; a cover
+                // is a page, and a page cropped to a 4:1 lockup is not one. See
+                // `storeCover`.
+            ],
             /*
              * How a merge tag is written, and the half of the vocabulary that
              * does not depend on which contract is open.
@@ -301,7 +695,7 @@ class HrContractsController extends Controller
             // rule as well would be a second copy of the number, and the two
             // would answer with different words.
             'body'        => ['nullable', 'string'],
-        ]);
+        ] + self::coverRules());
 
         // Validated before anything is written, and by the same class that will
         // validate every later version — so the first field list is held to
@@ -311,21 +705,25 @@ class HrContractsController extends Controller
 
         // The wording is checked against the field list it is published WITH,
         // never against the one already stored: they arrive together and they
-        // become one immutable version together.
+        // become one immutable version together. The cover is resolved in the
+        // same breath and for the same reason.
         MergeTags::validate($body, $fields);
 
-        $contract = DB::transaction(function () use ($input, $fields, $body, $request) {
+        $cover = $this->resolveCover($request);
+
+        $contract = DB::transaction(function () use ($input, $fields, $body, $cover, $request) {
             $contract = Contract::create([
                 'name'        => $input['name'],
                 'description' => $input['description'] ?? null,
                 'created_by'  => $request->user()->getKey(),
             ]);
 
-            $this->publish($contract, $fields, $body, $input['notes'] ?? null, $request);
+            $this->publish($contract, $fields, $body, $cover, $input['notes'] ?? null, $request);
 
             $this->audit->log('contract.created', $contract, metadata: [
                 'fields'   => count($fields->fields),
                 'has_body' => $body !== null,
+                'cover'    => $cover['source'] ?? null,
             ]);
 
             return $contract;
@@ -365,6 +763,14 @@ class HrContractsController extends Controller
              * history saying the terms had moved.
              */
             'body'        => ['missing'],
+            /*
+             * And the cover, which is the newest member of the same family and
+             * belongs here for the strongest version of the argument. The cover
+             * is the FIRST PAGE of the document — see ContractVersion::hasCover
+             * — so a cover this endpoint could change would be a signed
+             * document whose front page is not the one that was signed.
+             */
+            'cover'       => ['missing'],
         ], [
             'fields.missing' => 'Changing the fields publishes a new version of the template, '
                 .'which is a separate, deliberate act — POST to this contract’s /versions '
@@ -375,6 +781,11 @@ class HrContractsController extends Controller
                 .'field. POST to this contract’s /versions with the wording and the field list '
                 .'together, and /preview first if you want to see it rendered. The description '
                 .'here is the note about the template, not the agreement.',
+            'cover.missing' => 'Changing the cover publishes a new version too. It is the first '
+                .'page of the document, so replacing it changes what the person signing is '
+                .'handed — POST to this contract’s /versions with the cover, the wording and '
+                .'the field list together. A cover that could be swapped without a version '
+                .'would mean a signed contract whose front page is not the one that was signed.',
         ]);
 
         DB::transaction(function () use ($contract, $input) {
@@ -446,7 +857,7 @@ class HrContractsController extends Controller
              * sees it named before they click.
              */
             'body'    => ['nullable', 'string'],
-        ]);
+        ] + self::coverRules());
 
         $fields = FieldSet::fromInput(
             $request->input('fields'),
@@ -459,13 +870,29 @@ class HrContractsController extends Controller
 
         MergeTags::validate($body, $fields);
 
-        $current = $contract->currentVersion;
-        $diff    = VersionDiff::between($current?->fieldSet(), $fields, $current?->body, $body);
+        /*
+         * The cover reads exactly like `body` above, including the dangerous
+         * part: ABSENT MEANS NO COVER. A version is the whole template, so a
+         * publish that omits the cover publishes a template without one — and
+         * that is why `coverChange` below reports it as a change the person
+         * clicking publish is shown before they click.
+         */
+        $cover = $this->resolveCover($request);
+
+        $current     = $contract->currentVersion;
+        $diff        = VersionDiff::between($current?->fieldSet(), $fields, $current?->body, $body);
+        $coverChange = $this->coverChange($current, $cover);
 
         if ($request->boolean('preview')) {
             return response()->json(['data' => [
                 'preview' => true,
                 'diff'    => $diff->toArray(),
+                // Beside the diff rather than inside it: VersionDiff compares
+                // field lists and bodies and is also what the version-history
+                // screen renders, so growing it is a change to a shared shape.
+                // Reported here because a publish that silently dropped a cover
+                // is exactly what "a diff a person can read" exists to prevent.
+                'cover'   => $coverChange,
                 // The version number this WOULD take, so the screen can name it.
                 'version' => (int) ($contract->versions()->max('version') ?? 0) + 1,
             ]]);
@@ -481,17 +908,17 @@ class HrContractsController extends Controller
          * intent was to record a note against the current version, that is not
          * something a new version should be minted for.
          */
-        if ($diff->isEmpty() && $current !== null) {
+        if ($diff->isEmpty() && ! $coverChange['changed'] && $current !== null) {
             throw ValidationException::withMessages(['fields' =>
-                'That is the field list this contract already has, so there is nothing to '
-                .'publish. A version that changes nothing still splits the records that follow '
-                .'it away from the ones before, and the version list stops being a record of '
-                .'what actually changed.',
+                'That is the field list, the wording and the cover this contract already has, '
+                .'so there is nothing to publish. A version that changes nothing still splits '
+                .'the records that follow it away from the ones before, and the version list '
+                .'stops being a record of what actually changed.',
             ]);
         }
 
-        $version = DB::transaction(function () use ($contract, $fields, $body, $input, $request, $diff) {
-            $version = $this->publish($contract, $fields, $body, $input['notes'] ?? null, $request);
+        $version = DB::transaction(function () use ($contract, $fields, $body, $cover, $coverChange, $input, $request, $diff) {
+            $version = $this->publish($contract, $fields, $body, $cover, $input['notes'] ?? null, $request);
 
             /*
              * The diff goes in the audit metadata, not in a column.
@@ -507,6 +934,9 @@ class HrContractsController extends Controller
                 'version' => $version->version,
                 'notes'   => $version->notes,
                 'diff'    => $diff->toArray(),
+                // §10 wants the record of the ACT, and swapping the front page
+                // of the agreement is one. The two labels, never the bytes.
+                'cover'   => $coverChange,
             ]);
 
             /*
@@ -548,6 +978,21 @@ class HrContractsController extends Controller
                 'changed'         => count($changes['changed']),
                 'retired'         => count($changes['retired']),
                 'wording_changed' => $changes['body'] !== null,
+                /*
+                 * And the cover, for the same reason `wording_changed` is here
+                 * rather than a count: a rule wants to know whether the front
+                 * page moved, and "when the cover of a contract changes, tell
+                 * the managers" is as obvious a rule as the wording one.
+                 *
+                 * `has_cover` beside it because a rule may want the state
+                 * rather than the transition — "warn me if a template is
+                 * published without a cover" is a house-style check somebody
+                 * will write, and it cannot be derived from `cover_changed`
+                 * alone. Labels only; no bytes reach a webhook.
+                 */
+                'cover_changed'   => $coverChange['changed'],
+                'has_cover'       => $version->hasCover(),
+                'cover_source'    => $version->cover_source,
             ]], actor: $request->user());
 
             return $version;
@@ -557,6 +1002,7 @@ class HrContractsController extends Controller
             'data' => [
                 'contract' => $this->present($contract->fresh(), detailed: true),
                 'diff'     => $diff->toArray(),
+                'cover'    => $coverChange,
                 'version'  => $version->version,
             ],
         ], Response::HTTP_CREATED);
@@ -617,12 +1063,17 @@ class HrContractsController extends Controller
         $input = $request->validate([
             'fields' => ['required', 'array'],
             'body'   => ['nullable', 'string'],
-        ]);
+        ] + self::coverRules());
 
         $fields = FieldSet::fromInput($request->input('fields'), $contract->pinnedKeyProperties());
         $body   = MergeTags::normalise($input['body'] ?? null);
 
         MergeTags::validate($body, $fields);
+
+        // Held to the publish rules, and refused here for the reason the
+        // docblock gives about tags: a preview that accepted a cover publishing
+        // would refuse is a preview of a document nobody can publish.
+        $cover = $this->resolveCover($request);
 
         // The number this draft WOULD take. A preview is of the next version by
         // definition — it is a draft of something not yet published — so
@@ -638,10 +1089,14 @@ class HrContractsController extends Controller
                 // has already established those are the same one.
                 organizationName: (string) $contract->organization->name,
                 contractName:     (string) $contract->name,
-                description:      $contract->description,
                 version:          $version,
                 fields:           $fields,
                 body:             $body,
+                // The DRAFT's cover, from this request. Nothing is stored: a
+                // preview writes nothing, and a cover that had to be saved
+                // before it could be looked at would be a file belonging to a
+                // version that may never exist.
+                coverPng:         $cover['png'] ?? null,
             ),
             'mime' => DocumentRenderer::MIME,
             /*
@@ -669,10 +1124,32 @@ class HrContractsController extends Controller
         Contract $contract,
         FieldSet $fields,
         ?string $body,
+        ?array $cover,
         ?string $notes,
         Request $request,
     ): ContractVersion {
         $next = (int) ($contract->versions()->max('version') ?? 0) + 1;
+
+        /*
+         * THE COVER'S BYTES ARE COPIED, not pointed at, and this line is where
+         * the version stops being able to change underneath a signature.
+         *
+         * `logo` means the tenant chose the mark already uploaded
+         * for the business — they do not upload it twice, which is what the
+         * owner asked for. What they get is a SNAPSHOT of it: a version holding
+         * `organizations.logo_path` would render a different first page the day
+         * somebody rebranded, on contracts that were signed years earlier.
+         *
+         * The file is never deleted. Nothing deletes a version (see
+         * ContractVersion), so nothing may delete the page it renders; the
+         * per-organization prefix means erasing an organization still takes it
+         * with everything else.
+         */
+        $coverPath = $cover === null ? null : $this->files->putContents(
+            $cover['png'],
+            $this->files->directoryFor('contract-covers', $contract->organization_id),
+            Branding::MIME,
+        );
 
         $version = ContractVersion::create([
             'contract_id' => $contract->getKey(),
@@ -682,8 +1159,13 @@ class HrContractsController extends Controller
             // write-once row. That is what makes "the wording is versioned with
             // the questions" a property of the schema rather than a convention.
             'body'        => $body,
-            'notes'       => $notes,
-            'created_by'  => $request->user()->getKey(),
+            // And the cover, in that same statement, for that same reason.
+            'cover_source'   => $cover['source'] ?? null,
+            'cover_path'     => $coverPath,
+            'cover_upload_id' => $cover['upload_id'] ?? null,
+            'cover_filename' => $cover['filename'] ?? null,
+            'notes'          => $notes,
+            'created_by'     => $request->user()->getKey(),
         ]);
 
         $contract->forceFill(['current_version_id' => $version->getKey()])->save();
@@ -734,6 +1216,33 @@ class HrContractsController extends Controller
              * the organization and the text is pages.
              */
             'has_body'   => $current?->hasBody() ?? false,
+            /*
+             * Whether the document opens on a cover page, and where its mark
+             * came from.
+             *
+             * On the LIST as well as the detail, beside `has_body`, and for the
+             * same reason that one is: it is a property of the template
+             * somebody wants to see across all of them at once — "which of our
+             * contracts still go out with no front page" is the question, and
+             * opening eleven templates to answer it is not an answer.
+             *
+             * The source is the LABEL of a source, never a path. The bytes are
+             * in the document; nothing about where they sit on the disk belongs
+             * on a list screen.
+             */
+            'has_cover' => $current?->hasCover() ?? false,
+            /*
+             * The cover itself, in the shape the designer holds it: a source,
+             * and for a file the id and name of the upload plus where the
+             * bytes can be read. NULL for the ordinary contract, which is one
+             * spelling for one state — the same rule the body follows.
+             *
+             * On the LIST as well as the detail, beside `has_body`, for the
+             * same reason that flag is there: "which of our contracts still go
+             * out with no front page" is a question about all of them at once,
+             * and opening eleven templates is not an answer.
+             */
+            'cover'      => $current?->coverPayload(),
             'updated_at' => $contract->updated_at?->toIso8601String(),
         ];
 
@@ -787,6 +1296,11 @@ class HrContractsController extends Controller
             'version'    => $version->version,
             'is_current' => $version->id === $contract->current_version_id,
             'notes'      => $version->notes,
+            // Per version, because that is the whole point of the cover living
+            // here: "what did version 3 look like" has an answer, and it is not
+            // "whatever the logo is today".
+            'has_cover' => $version->hasCover(),
+            'cover'     => $version->coverPayload(),
             'created_at' => $version->created_at?->toIso8601String(),
             'created_by' => $version->createdBy?->name,
             'fields'     => $version->fieldSet()->toArray(),

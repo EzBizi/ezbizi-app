@@ -36,6 +36,16 @@ namespace App\Support\Contracts;
  * else's name asks for it under its own key (`emergency_contact_name`), which
  * this does not touch.
  *
+ * ── RESERVED IS THE LONGER LIST, AND IT STAYS LONGER ─────────────
+ *
+ * A key can be reserved without being asked, and `gender` is now one of them.
+ * The question is gone from onboarding (see ASKED), and the key is still refused
+ * to a template — because `users.gender` exists, people have already answered
+ * it, and a tenant declaring a field of their own called `gender` would be
+ * writing a second value beside the one already on the profile. Withdrawing a
+ * QUESTION and releasing a COLUMN NAME are different acts, and only the first
+ * one happened.
+ *
  * ── Not a permanent ban on the CONCEPT ───────────────────────────
  *
  * A tenant who needs the date of birth on the printed contract gets it: the
@@ -84,15 +94,44 @@ final class CommonCore
      *
      * `RESERVED` is the larger list — every identity column the profile owns, so
      * that a template cannot declare a second home for any of them. This is the
-     * subset the plan names as the common core: "email, first name, last name,
-     * phone, date of birth, and gender (optional)".
+     * subset onboarding puts on screen, and it is the ONLY list that may be
+     * described as "always asked": a screen drawing RESERVED under that heading
+     * is naming questions nobody is ever asked.
      *
-     * The two that are reserved but not asked are `name` and `middle_name`.
-     * `name` is DERIVED — ProfileController recomposes it from the parts on
-     * every save, so a form that asked for it separately would be asking
-     * somebody to maintain a value the application overwrites. `middle_name` is
-     * simply not part of the core the plan describes; somebody who has one adds
-     * it in "Your account", and a contract that needs it merges it from there.
+     * The two that are reserved but not asked are `name` and `gender`. `name` is
+     * DERIVED — ProfileController recomposes it from the parts on every save, so
+     * a form that asked for it separately would be asking somebody to maintain a
+     * value the application overwrites. `gender` is a question this software has
+     * stopped asking; see below.
+     *
+     * ── GENDER IS NOT ASKED, and the column is untouched ─────────
+     *
+     * The owner's instruction, and it is the same judgement the migration that
+     * created the column already recorded about software that "refuses to work
+     * until somebody states their gender": nothing in employment onboarding
+     * turns on the answer, so the form has no business demanding a place to put
+     * it. Taking it out of here removes the QUESTION from onboarding, from the
+     * document's list of the person, and from the merge vocabulary.
+     *
+     * IT DOES NOT REMOVE ANYBODY'S ANSWER. `users.gender` still exists and still
+     * holds what people typed under the old behaviour; "Your account" still
+     * shows and edits it, ProfileController still accepts it, and the §9
+     * inventory still declares it. Deleting collected data is a decision for
+     * whoever runs the organization, taken through erasure, and never a side
+     * effect of a form losing a box.
+     *
+     * ── MIDDLE NAME IS ASKED, AND IT IS OPTIONAL ─────────────────
+     *
+     * It was reserved-but-never-asked, which is the worst of both: a template
+     * could not declare it, onboarding never collected it, and a body naming
+     * `{{middle_name}}` was refused with a paragraph explaining there was
+     * nothing to merge. So a contract that wanted somebody's full legal name
+     * could not have one.
+     *
+     * `false` is the whole point of asking it. Plenty of people have no middle
+     * name, and a required box is a form that cannot be submitted honestly —
+     * which is answered by leaving it blank rather than by typing something
+     * untrue to get past it.
      *
      * ── Requiredness is the PLATFORM's here, and it has to be ────
      *
@@ -100,8 +139,10 @@ final class CommonCore
      * module they do. Not these: a template is refused these keys entirely
      * (see RESERVED above), so if the platform does not say a date of birth is
      * required then no tenant can ever make it so. That is the trade the
-     * one-home rule costs, and the plan settles it by bolding five and calling
-     * gender optional — which is exactly what this array says.
+     * one-home rule costs, and it is settled here — which is why the flag is
+     * PUBLISHED beside each key on the contracts catalogue rather than left for
+     * a screen to guess at. A form that draws "Middle name" identically to
+     * "Last name" is a form that reads as demanding one.
      *
      * @var array<string, bool> key => required at submit
      */
@@ -112,11 +153,16 @@ final class CommonCore
         // it without proving control of the new mailbox turns a session hijack
         // into a permanent takeover.
         'email'         => true,
+        // Name order, because this is the order a form asks a name in and
+        // `asked()` promises the order onboarding uses. Splitting the middle
+        // name away from the two it sits between would put an optional box at
+        // the bottom of the form, under the date of birth, where nobody reading
+        // it would connect it to the name above.
         'first_name'    => true,
+        'middle_name'   => false,
         'last_name'     => true,
         'phone'         => true,
         'date_of_birth' => true,
-        'gender'        => false,
     ];
 
     /** @return string[] */
@@ -134,6 +180,19 @@ final class CommonCore
     public static function isAsked(string $key): bool
     {
         return array_key_exists($key, self::ASKED);
+    }
+
+    /**
+     * Whether onboarding refuses to be submitted without this one.
+     *
+     * A key nobody asks is not required, which is the only sensible answer for
+     * a caller that hands this an arbitrary reserved key — but it is `false`
+     * here for the reason `isAsked` exists rather than as a shrug: requiredness
+     * is a property of a QUESTION, and a key that is not asked has none.
+     */
+    public static function isRequired(string $key): bool
+    {
+        return self::ASKED[$key] ?? false;
     }
 
     public static function claims(string $key): bool

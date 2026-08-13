@@ -39,10 +39,18 @@ use Illuminate\Support\Collection;
  *  3. RETRIEVABILITY IS THE ONE PROPERTY THAT MATTERS IN TWENTY YEARS,
  *     and it argues for the simpler format. This file is self-
  *     contained: its handful of style rules are inline, and there is no
- *     script, no external stylesheet, no font, no image and nothing
- *     fetched from anywhere. It opens in any browser, on any platform,
- *     with no software that has to still exist — and it is legible as
- *     plain text even without one.
+ *     script, no external stylesheet, no font and NOTHING FETCHED FROM
+ *     ANYWHERE. It opens in any browser, on any platform, with no
+ *     software that has to still exist — and it is legible as plain
+ *     text even without one.
+ *
+ *     A cover page carries one image, and it does not weaken any of
+ *     that: the PNG is base64 inside a `data:` URI, so it is part of
+ *     the file's own bytes and part of what the fingerprint covers.
+ *     There is still nothing to fetch and still nothing that has to
+ *     exist elsewhere. See `cover()` for why a `<img src="/branding/…">`
+ *     was refused — it would have broken this point AND made the first
+ *     page of a signed document change when somebody rebranded.
  *
  *  4. THE DEPENDENCY IS INSTALLED, AND IT DOES NOT WRITE THE
  *     INSTRUMENT. This point used to say that adding a PDF writer was
@@ -135,14 +143,38 @@ use Illuminate\Support\Collection;
  *  FORM DUMP — no body. THE FALLBACK, AND ONLY THAT.
  *      Headings and a definition list: the person, then every question
  *      with its answer. It is what this class produced before a body
- *      existed, it is what every version published before then still
- *      produces, and it is byte-for-byte what it was — so a document
- *      re-rendered from an old version is the same document.
+ *      existed, and it is what every version published before then
+ *      still produces.
  *
  *      It is a record of what was collected rather than a contract,
  *      and it is kept because a template with no wording yet must
  *      still produce something a person can read and sign, not an
  *      empty page.
+ *
+ *  ── "BYTE-FOR-BYTE WHAT IT WAS" IS NO LONGER CLAIMED ────────
+ *
+ *  This section used to promise that a form dump was byte-identical
+ *  to the one this class produced before bodies existed. That promise
+ *  is withdrawn, deliberately and on the owner's instruction: the
+ *  header no longer prints `Version N` or the template's description
+ *  (see `document()`), which changes the bytes of every document this
+ *  class renders, of both kinds.
+ *
+ *  IT COSTS NOTHING THAT WAS BEING RELIED ON, and it is worth saying
+ *  exactly why rather than asserting it. Nothing re-renders a stored
+ *  document and compares: the instrument is the bytes on the disk,
+ *  `onboarding_documents.content_hash` is the hash OF THOSE BYTES
+ *  (OnboardingDocuments writes the file and fingerprints what it
+ *  reads back), and every signature points at that recorded hash. A
+ *  document signed last week is unchanged, still verifiable against
+ *  the file, and still convertible to a PDF copy — because all three
+ *  read the stored artefact and none of them runs this class again.
+ *
+ *  What determinism is FOR is narrower and is untouched: the same
+ *  onboarding, rendered twice by the SAME build, produces the same
+ *  bytes — which is what lets the signing endpoint tell "the document
+ *  changed" from "the renderer is non-deterministic" between showing
+ *  somebody a document and recording their signature on it.
  *
  *  ── Why the body does not also print the leftover answers ───
  *
@@ -183,10 +215,12 @@ final class DocumentRenderer
         return $this->document(
             organizationName: $organization,
             contractName:     $name,
-            description:      $contract->description,
-            version:          (int) $version->version,
             fields:           $fields,
             body:             MergeTags::normalise($version->body),
+            // Off the VERSION, which is the only place a cover may come from —
+            // see ContractVersion::hasCover. Null when there is none, which is
+            // the ordinary contract.
+            coverPng:         $version->coverPng(),
             values: array_replace(
                 $this->answerValues($fields, $identity, $answers),
                 ContractFacts::values(
@@ -236,18 +270,20 @@ final class DocumentRenderer
     public function sample(
         string $organizationName,
         string $contractName,
-        ?string $description,
         int $version,
         FieldSet $fields,
         ?string $body,
+        ?string $coverPng = null,
     ): string {
         return $this->document(
             organizationName: $organizationName,
             contractName:     $contractName,
-            description:      $description,
-            version:          $version,
             fields:           $fields,
             body:             MergeTags::normalise($body),
+            // The DRAFT's cover, resolved by the caller from the same request
+            // that carries the draft — a preview is of a version that does not
+            // exist yet, so there is nothing stored to read it off.
+            coverPng:         $coverPng,
             values: MergeTags::samples($fields, ContractFacts::values(
                 organizationName: $organizationName,
                 contractName:     $contractName,
@@ -270,31 +306,75 @@ final class DocumentRenderer
     private function document(
         string $organizationName,
         string $contractName,
-        ?string $description,
-        int $version,
         FieldSet $fields,
         ?string $body,
+        ?string $coverPng,
         array $values,
     ): string {
         $out = [];
         $out[] = '<!doctype html>';
         $out[] = '<html lang="en"><head><meta charset="utf-8">';
         $out[] = '<title>'.$this->e($contractName).'</title>';
-        // Inline, minimal, and no external anything — see point 3 above. The
-        // agreement's rules are appended only when there is an agreement, so a
-        // document with no body is byte-for-byte the one it always was.
-        $out[] = '<style>'.self::STYLE.($body === null ? '' : "\n".self::AGREEMENT_STYLE).'</style>';
+        /*
+         * Inline, minimal, and no external anything — see point 3 above.
+         *
+         * Each optional block of rules is appended only when the thing it
+         * styles is present, so a document never carries a rule for something
+         * it does not contain. That used to be justified as keeping a
+         * body-less document byte-identical to the one rendered before bodies
+         * existed; that claim is retired rather than quietly left standing,
+         * because removing the version line and the description from the
+         * header (see below) changed every document's bytes on purpose. What
+         * the discipline is worth now is smaller and still worth three lines:
+         * a stylesheet that describes exactly what is in the file.
+         */
+        $out[] = '<style>'.self::STYLE
+            .($coverPng === null ? '' : "\n".self::COVER_STYLE)
+            .($body === null ? '' : "\n".self::AGREEMENT_STYLE)
+            .'</style>';
         $out[] = '</head><body>';
 
+        if ($coverPng !== null) {
+            $this->cover($out, $organizationName, $contractName, $coverPng);
+        }
+
+        /*
+         * ── WHAT THE HEADER DOES NOT SAY, AND WHY ────────────────
+         *
+         * Two lines used to sit here and both have been taken out. The
+         * owner's words: *"a contract should not say version 4 or anyone,
+         * those 2 fields should not show in the contract"*.
+         *
+         * `Version N` is a fact about the TEMPLATE, not a term of the
+         * agreement. Nobody agrees to a version number, and printing one at
+         * the top of an employment contract makes the document read like a
+         * release of software.
+         *
+         * The DESCRIPTION is worse, because it is not even about the
+         * document: `contracts.description` is the note that tells whoever is
+         * starting an onboarding which template to pick — "Anyone", "Drivers
+         * only", "use this one for seasonal staff". It is addressed to the
+         * employer, and it was being printed above the terms as though it
+         * were addressed to the person signing.
+         *
+         * ── NOTHING IS LOST EVIDENTIALLY, and nothing is added back ─
+         *
+         * The version is still recorded everywhere it is EVIDENCE rather
+         * than decoration: `contract_signatures.contract_version_id` names it
+         * on every signature, `onboardings` pins it, PdfRenderer's canvas
+         * footer prints it — with the fingerprint — on every page of every
+         * copy, and a body may still merge `{{contract.version}}` if a tenant
+         * genuinely wants it in their own wording. So this is a change to
+         * what the document SAYS, not to what the record PROVES, and neither
+         * line is to be reintroduced somewhere quieter.
+         *
+         * The description is still shown where it belongs: on the contracts
+         * list and the detail payload, which is how somebody picks the right
+         * template. It is only the document it leaves.
+         */
         $out[] = '<header>';
         $out[] = '<p class="org">'.$this->e($organizationName).'</p>';
         $out[] = '<h1>'.$this->e($contractName).'</h1>';
-        $out[] = '<p class="version">Version '.$version.'</p>';
-
-        if (($description ?? '') !== '') {
-            $out[] = '<p class="description">'.$this->e($description).'</p>';
-        }
-
         $out[] = '</header>';
 
         // Retired fields are out of both paths for the same reason they are out
@@ -354,6 +434,54 @@ final class DocumentRenderer
         // bytes, and PHP_EOL differs between the box that renders and a box that
         // might one day re-render to verify.
         return implode("\n", $out)."\n";
+    }
+
+    /**
+     * The cover page — the business's mark, the business, the agreement.
+     *
+     * ── The bytes are IN the file, and they have to be ───────────
+     *
+     * A `<img src="/branding/organization">` would be shorter and it would
+     * break the one property this document is built on: point 3 above says the
+     * file is self-contained — "no script, no external stylesheet, no font, no
+     * image and nothing fetched from anywhere" — because it has to open in
+     * twenty years with no server to ask. A cover fetched at render time is
+     * also a cover that changes when the logo changes, which is the failure
+     * ContractVersion::hasCover describes at length.
+     *
+     * So the PNG is base64 in a `data:` URI, inside the bytes that get
+     * fingerprinted. The signer's copy contains the mark they were shown.
+     *
+     * ── `alt` is empty ON PURPOSE ────────────────────────────────
+     *
+     * The business's name is the very next line, in text. An `alt` repeating
+     * it makes a screen reader say it twice, which is the standard failure of
+     * captioning a logo that sits beside its own name. The image is decorative
+     * HERE because the text carries the meaning — and if the image fails to
+     * load, the cover still says whose agreement this is.
+     *
+     * ── It is a real page, not a big heading ─────────────────────
+     *
+     * `page-break-after` in COVER_STYLE, which dompdf honours, so the PDF copy
+     * starts the agreement on page two. In a browser it is a full viewport
+     * height, so scrolling past it feels like turning a page rather than
+     * scrolling past a picture.
+     *
+     * @param  string[]  $out
+     * @param  string  $png  raw PNG bytes, already established as a PNG of one of
+     *         Branding's two shapes when the version was published
+     */
+    private function cover(array &$out, string $organizationName, string $contractName, string $png): void
+    {
+        $out[] = '<section class="cover">';
+        $out[] = '<img class="cover-mark" src="data:image/png;base64,'
+            .base64_encode($png).'" alt="">';
+        $out[] = '<p class="cover-org">'.$this->e($organizationName).'</p>';
+        // A paragraph rather than a second <h1>: the header below carries the
+        // document's one heading, and an outline with two top-level headings is
+        // a document a screen reader cannot summarise.
+        $out[] = '<p class="cover-title">'.$this->e($contractName).'</p>';
+        $out[] = '</section>';
     }
 
     /**
@@ -526,8 +654,6 @@ final class DocumentRenderer
     header{border-bottom:2px solid #111;padding-bottom:1em;margin-bottom:2em}
     .org{text-transform:uppercase;letter-spacing:.12em;font-size:11px;margin:0 0 .4em}
     h1{font-size:24px;margin:0}
-    .version{color:#555;font-size:12px;margin:.3em 0 0}
-    .description{margin:1em 0 0}
     h2{font-size:13px;text-transform:uppercase;letter-spacing:.1em;margin:2.4em 0 .8em}
     dl{margin:0;display:grid;grid-template-columns:14em 1fr;gap:.5em 1.5em}
     dt{font-weight:bold}
@@ -536,12 +662,36 @@ final class DocumentRenderer
     CSS;
 
     /**
+     * The cover page's rules, appended ONLY to a document that has one.
+     *
+     * `max-width:60%` on the mark rather than a pixel size, because Branding
+     * publishes two shapes — 512x512 and 1024x256 — and a width that suited one
+     * would make the other either postage-stamp small or wider than the sheet.
+     * `height:auto` keeps whichever one it is undistorted.
+     *
+     * `page-break-after:always` is what makes this a PAGE. dompdf reads it, so
+     * the PDF copy opens on the cover and starts the agreement on the next
+     * sheet; a browser ignores it on screen and honours it when somebody prints.
+     * `min-height:100vh` is the screen half of the same idea — dompdf does not
+     * support viewport units and ignores it, which is the right way round: the
+     * rule that matters on paper is the one the converter understands.
+     */
+    private const COVER_STYLE = <<<'CSS'
+    .cover{page-break-after:always;min-height:100vh;display:flex;flex-direction:column;
+    justify-content:center;align-items:center;text-align:center;margin:0 0 3em}
+    .cover-mark{max-width:60%;height:auto;margin:0 0 2.5em}
+    .cover-org{text-transform:uppercase;letter-spacing:.14em;font-size:12px;margin:0 0 1em}
+    .cover-title{font-size:30px;line-height:1.3;margin:0}
+    CSS;
+
+    /**
      * The wording's own rules, appended ONLY to a body-driven document.
      *
-     * Kept apart from STYLE rather than merged into it so that a version with no
-     * body still renders the exact bytes it rendered before bodies existed — see
-     * formDump. A stylesheet grown by one rule is a different file, and "the same
-     * record produces the same document" is a promise worth three lines to keep.
+     * Kept apart from STYLE rather than merged into it so a document carries no
+     * rule for something it does not contain — see the note in `document()`,
+     * which also records that the older and stronger claim this made (that a
+     * body-less document was byte-identical to the one rendered before bodies
+     * existed) no longer holds and why.
      *
      * No colour on the two markers. A contract is read on a screen, printed,
      * photocopied and faxed, and a gap that is only visible in colour is one that

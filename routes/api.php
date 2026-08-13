@@ -243,6 +243,18 @@ Route::prefix('v1')
         // nothing can reproduce. Fields are retired rather than deleted, and a
         // template that is no longer used is simply not chosen.
         Route::get('hr/contracts/catalogue', [HrContractsController::class, 'catalogue']);
+        /*
+         * A cover image, staged before any version names it.
+         *
+         * Above `hr/contracts/{contract}` and NOT bound to one, both
+         * deliberately. A contract being created has no id yet, so a cover that
+         * could only be uploaded against an existing contract would be one you
+         * could add on the second visit and not the first — see
+         * App\Models\ContractCoverUpload. Publishing then names the id this
+         * answers with, and the version pins its own copy of the bytes.
+         */
+        Route::post('hr/contracts/covers', [HrContractsController::class, 'storeCover']);
+        Route::get('hr/contracts/covers/{upload}', [HrContractsController::class, 'showCover']);
         Route::get('hr/contracts', [HrContractsController::class, 'index']);
         Route::post('hr/contracts', [HrContractsController::class, 'store']);
         Route::get('hr/contracts/{contract}/versions', [HrContractsController::class, 'versions']);

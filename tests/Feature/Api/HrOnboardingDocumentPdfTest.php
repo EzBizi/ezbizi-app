@@ -550,6 +550,87 @@ class HrOnboardingDocumentPdfTest extends TestCase
             .'</body></html>';
     }
 
+    /**
+     * `data:` is the ONE permitted scheme, and only in one exact shape.
+     *
+     * It used to be refused outright, which was right until a version could
+     * carry a cover: DocumentRenderer embeds that PNG as
+     * `data:image/png;base64,` INSIDE the document, so a blanket refusal meant
+     * a copy opened on a cover page with nothing on it.
+     *
+     * Permitting it is safe for a reason that does not extend to the other
+     * schemes: a `data:` URI goes NOWHERE. It carries its own bytes, already in
+     * the document being converted, so resolving it reaches nothing this server
+     * can see. Every other scheme is refused precisely because it sends the
+     * converter somewhere on the strength of text a customer wrote.
+     *
+     * But `data:` is a container for anything, which is what this test is
+     * about. `data:image/svg+xml` is the one that matters — SVG is a document
+     * format with scripts and external references of its own, so admitting it
+     * would hand back the whole surface PdfRenderer exists to close. The rule
+     * matches the PNG prefix rather than the scheme, and this holds it to that.
+     */
+    public function test_only_an_inline_png_is_permitted_and_no_other_data_uri(): void
+    {
+        $renderer = app(PdfRenderer::class);
+
+        // A real 1x1 PNG, so the permitted case is genuinely permitted rather
+        // than passing because nothing decoded.
+        $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+        $svg = base64_encode(
+            '<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>'
+        );
+
+        $inlinePng = '<p><img src="data:image/png;base64,'.$png.'" alt="ok"></p>';
+
+        $legitimate = $renderer->render(...$this->conversionOf(
+            '<html><body><p>Terms.</p>'.$inlinePng.'</body></html>'
+        ));
+
+        $this->assertStringContainsString('/Subtype /Image', $legitimate,
+            'The inline PNG was refused, so a cover would never reach the copy — which is '
+            .'the whole reason data: is permitted at all.');
+
+        /*
+         * The comparison, and why it is a comparison rather than a count.
+         *
+         * dompdf draws a BROKEN-IMAGE PLACEHOLDER where it refuses to load
+         * something, and a placeholder is itself an image in the PDF. So
+         * counting images cannot tell "the SVG was drawn" from "the SVG was
+         * refused and a placeholder took its place" — the first draft of this
+         * test asserted a count of one, got two, and the two was the
+         * placeholder doing its job.
+         *
+         * What settles it is treating the hostile data: URIs exactly like a URL
+         * that is definitely refused. If a document carrying `data:image/svg+xml`
+         * and `data:text/html` converts to the same number of images as one
+         * carrying two refused `http://` images, then those schemes were refused
+         * too — whatever dompdf chose to paint in their place.
+         */
+        $withHostileData = $renderer->render(...$this->conversionOf(
+            '<html><body><p>Terms.</p>'.$inlinePng
+            .'<p><img src="data:image/svg+xml;base64,'.$svg.'" alt="a"></p>'
+            .'<p><img src="data:text/html;base64,'.base64_encode('<b>no</b>').'" alt="b"></p>'
+            .'</body></html>'
+        ));
+
+        $withRefusedHttp = $renderer->render(...$this->conversionOf(
+            '<html><body><p>Terms.</p>'.$inlinePng
+            .'<p><img src="http://169.254.169.254/one.png" alt="a"></p>'
+            .'<p><img src="http://169.254.169.254/two.png" alt="b"></p>'
+            .'</body></html>'
+        ));
+
+        $this->assertSame(
+            substr_count($withRefusedHttp, '/Subtype /Image'),
+            substr_count($withHostileData, '/Subtype /Image'),
+            'A data: URI that is not an inline PNG was treated differently from a refused '
+            .'http:// image, so the rule is matching the SCHEME rather than the exact '
+            .'prefix — and an SVG carries scripts and external references of its own.',
+        );
+    }
+
     /** The arguments a conversion takes, with everything but the document fixed. */
     private function conversionOf(string $document): array
     {

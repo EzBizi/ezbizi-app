@@ -4,11 +4,13 @@ import '../../core/api_client.dart';
 import '../../core/contracts.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/logo_badge.dart';
 import '../../widgets/numbered_step.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
 import 'contract_body_editor.dart';
+import 'contract_cover_panel.dart';
 import 'contract_diff_panel.dart';
 import 'contract_form_preview.dart';
 
@@ -251,6 +253,25 @@ class _ContractDesignerState extends State<ContractDesigner> {
   /// `GET /hr/contracts/{contract}/versions`, fetched once when editing.
   List<Map<String, dynamic>> _history = const [];
 
+  /// The front page of the document, as it stands on screen.
+  ///
+  /// Held here rather than inside the panel for the same reason the wording is:
+  /// it is part of what gets saved. The create request carries it, the publish
+  /// preview carries it so the server can diff it, and the publish carries it.
+  ///
+  /// [ContractCover.none] rather than null — a contract with no cover is the
+  /// ordinary case and it is an answer somebody gave, not a missing one.
+  ContractCover _cover = ContractCover.none;
+
+  /// What the cover was when this screen opened.
+  ///
+  /// Kept for the same job [_originalName] does: so that a change can be named
+  /// rather than guessed at. It is deliberately NOT used to decide whether
+  /// there is a version to publish — that is the server's answer, previewed
+  /// through the same code path that writes it, and a second opinion computed
+  /// here is exactly the divergence the diff panel exists to avoid.
+  ContractCover _originalCover = ContractCover.none;
+
   bool _busy = false;
   String? _error;
 
@@ -280,8 +301,10 @@ class _ContractDesignerState extends State<ContractDesigner> {
       _name.text = template['name'] as String? ?? '';
       _description.text = template['description'] as String? ?? '';
       _body.text = _bodyOf(template);
+      _cover = ContractCover.fromJson(template['cover']);
       _originalName = _name.text;
       _originalDescription = _description.text;
+      _originalCover = _cover;
 
       for (final field in ContractField.listFrom(template['fields'])) {
         _adopt(field);
@@ -622,6 +645,11 @@ class _ContractDesignerState extends State<ContractDesigner> {
           ? null
           : _description.text.trim(),
       'body': _sentBody,
+      // The cover is part of the version, so it travels in the request that
+      // makes version 1 — never as a second write afterwards, which would be a
+      // contract that briefly existed without the front page it was designed
+      // with.
+      'cover': _cover.toJson(),
       'fields': _payload,
     });
 
@@ -648,6 +676,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
         templateId: _id!,
         fields: _payload,
         body: _sentBody,
+        cover: _cover.toJson(),
         renamedFrom: _renamed ? _originalName : null,
         commit: _commit,
       ),
@@ -688,7 +717,13 @@ class _ContractDesignerState extends State<ContractDesigner> {
       // Publishing a field list without the body it was written against would
       // pin a document to answers it does not mention.
       'body': _sentBody,
+      // And the cover with both, for the same reason: it is the first page of
+      // the document this version produces, so a version that did not carry it
+      // would be a document whose front page came from somewhere else.
+      'cover': _cover.toJson(),
     });
+
+    if (published.ok) _originalCover = _cover;
 
     return published.ok ? null : published.reason;
   }
@@ -800,7 +835,10 @@ class _ContractDesignerState extends State<ContractDesigner> {
               //
               // Nothing below it now, so it can be as long as the contract is.
               // The order still reads: decide what is asked, check who is asked
-              // it, then write the wording that uses the answers.
+              // it, then make the document — its front page, then the wording
+              // that uses the answers.
+              const SizedBox(height: 26),
+              _coverStep(context),
               const SizedBox(height: 26),
               _bodyStep(context),
               if (_error != null) ...[
@@ -877,22 +915,62 @@ class _ContractDesignerState extends State<ContractDesigner> {
     );
   }
 
-  /// The common core, drawn and locked.
+  /// What onboarding asks whatever the contract says, drawn and locked.
   ///
   /// Shown rather than left implicit, for a reason the plan names: without it
   /// somebody adds "First name" of their own and wonders why the form asks
   /// twice. Not editable, because these live on the person's own profile and a
   /// second copy here would be a second home for one fact — the one-home rule.
+  ///
+  /// ── This step used to be wrong, about a person ───────────────
+  ///
+  /// It drew `reserved_keys`, which is the list of keys a template may NOT
+  /// declare — eight of them — under a heading saying they are always asked.
+  /// Onboarding asks six. Two of the eight are reserved without ever being
+  /// asked: the display name, which the application recomposes from the parts
+  /// on every save, and the middle name, which somebody adds in their own
+  /// account if they have one.
+  ///
+  /// So this step told whoever configures onboarding that every new starter
+  /// would be asked for a middle name, and the owner objected on behalf of the
+  /// people who do not have one. Nothing was demanding it. This screen was.
+  ///
+  /// ── Which list is drawn, and why that one ────────────────────
+  ///
+  /// `merge_tags.core` from the catalogue — the server's published answer to
+  /// "what does every onboarding collect", assembled from `CommonCore::asked()`
+  /// and documented as the six on [MergeTagSyntax.core]. `reserved_keys`
+  /// answers a different question and keeps its own job in [_blocker], where a
+  /// key somebody is typing is checked against it. Two questions, two lists,
+  /// and this step had been reading the wrong one.
+  ///
+  /// ── And there is now a BETTER list, which this cannot reach ───
+  ///
+  /// The catalogue grew `asked` on every reserved entry and a pre-filtered
+  /// `core` beside them, which is the same six with `required` on each — the
+  /// declaration this step actually wants. It does not arrive:
+  /// `ContractVocabulary.fromJson` reads `reserved_keys ?? core`, so the new
+  /// list is shadowed by the old one and `CoreField` has no `asked` to parse.
+  /// That is core/contracts.dart, which belongs to another agent this round.
+  ///
+  /// What is drawn is identical either way — `merge_tags.core` IS
+  /// `CommonCore::asked()`, published by the same `resolvable()` call — so this
+  /// is the right list reached the long way round rather than a different
+  /// answer. The one seam: that list exists to be INSERTED into the wording, so
+  /// an entry sent without a tag is dropped before it gets here. Nothing sends
+  /// one, because `resolvable()` writes a tag for every entry it publishes; an
+  /// asked question that could not be merged would go missing from this step,
+  /// and reading the catalogue's own `core` is what closes it for good.
   Widget _coreStep(BuildContext context) {
     final theme = Theme.of(context);
-    final core = widget.vocabulary.core;
+    final asked = widget.vocabulary.mergeTags.core;
 
     return NumberedStep(
       number: 2,
       title: 'Always asked',
-      note: core.isEmpty
-          ? 'The questions every contract asks could not be loaded, so this list '
-                'is empty rather than short. They are still asked.'
+      note: asked.isEmpty
+          ? 'The questions every onboarding asks could not be loaded, so this '
+                'list is empty rather than short. They are still asked.'
           : 'Asked on every onboarding whatever this contract says, because an '
                 'invitation cannot be addressed without them. They live on the '
                 'person’s own profile, so this template does not get a second '
@@ -901,7 +979,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
         spacing: 8,
         runSpacing: 8,
         children: [
-          for (final field in core)
+          for (final field in asked)
             Tooltip(
               // The server's sentence about where the fact lives, or the key,
               // which is at least true. An empty tooltip is a control that
@@ -929,7 +1007,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
                         style: theme.textTheme.bodyMedium,
                       ),
                     ),
-                    if (!field.required) const Tag('Optional'),
+                    if (_mayBeLeftBlank(field.key)) const Tag('Optional'),
                   ],
                 ),
               ),
@@ -937,6 +1015,35 @@ class _ContractDesignerState extends State<ContractDesigner> {
         ],
       ),
     );
+  }
+
+  /// Whether the server has SAID this question may be left blank.
+  ///
+  /// The owner's third request was about the middle name, and half of the
+  /// answer is that it is not asked at all — that is the list above. The other
+  /// half is that some of the six genuinely are optional, and somebody looking
+  /// at this step should be able to see which before they wonder whether the
+  /// platform is about to demand a fact a person does not have.
+  ///
+  /// Read off the matching reserved entry, where `CoreField.required` already
+  /// parses the flag the catalogue now publishes (`CommonCore::isRequired`),
+  /// because the asked entries carry none — they are tag definitions, and a tag
+  /// has no opinion about whether the question behind it has to be answered.
+  ///
+  /// ── Only "optional" is ever drawn, and that is on purpose ────
+  ///
+  /// `CoreField.required` defaults TRUE when the server sends nothing, so this
+  /// cannot tell "required" from "nobody said". It does not try. The mark is
+  /// the exception rather than the rule, so a server that has not yet published
+  /// requiredness marks nothing at all and the list is simply drawn — which is
+  /// the honest degrade. Inventing "Required" on every chip would be this end
+  /// stating a platform rule nobody sent it.
+  bool _mayBeLeftBlank(String key) {
+    for (final reserved in widget.vocabulary.core) {
+      if (reserved.key == key) return !reserved.required;
+    }
+
+    return false;
   }
 
   Widget _questionsStep(BuildContext context) {
@@ -1354,12 +1461,203 @@ class _ContractDesignerState extends State<ContractDesigner> {
     );
   }
 
+  /// The front page — the owner's *"ability to create a cover for the contract
+  /// as well"*.
+  ///
+  /// ── Where it sits, and why it is not inside the wording ──────
+  ///
+  /// Immediately before the wording, so the two steps that make the DOCUMENT
+  /// are next to each other and are reached after the questions are settled.
+  /// Not inside the writing step: the wording is one long text box that grows
+  /// with the contract, and a picture picker halfway down it would be a control
+  /// somebody has to scroll a five-page agreement to find.
+  ///
+  /// ── It says what pressing it costs, before the press ─────────
+  ///
+  /// A cover is part of the version. Somebody who thinks they are swapping a
+  /// picture is publishing a new version of an agreement, and that sentence has
+  /// to be on the step and in the panel rather than discovered on the publish
+  /// screen. The designer already talks this way about the wording; this is the
+  /// same fact about the same document.
+  ///
+  /// ── Automations ──────────────────────────────────────────────
+  ///
+  /// It emits nothing of its own, deliberately. The cover is not an event —
+  /// publishing a version is, and the server already emits
+  /// `contract.version_published` carrying `wording_changed` beside the field
+  /// counts. A cover change rides that, and the flag naming it belongs beside
+  /// `wording_changed` in the same payload rather than in a second event that
+  /// fires for the same act.
+  Widget _coverStep(BuildContext context) {
+    return NumberedStep(
+      // Before the wording, which stays last. History only exists while
+      // editing, so both numbers move with it rather than being hardcoded.
+      number: _isEdit ? 6 : 5,
+      title: 'Give it a cover',
+      note:
+          'A front page before the agreement starts — the logo your '
+          'organization has already uploaded, or a file of your own. Most '
+          'contracts have none. The cover is part of the version, the same as '
+          'the wording, so changing it publishes a new one.',
+      action: widget.canEdit
+          ? TextButton.icon(
+              onPressed: _busy ? null : _chooseCover,
+              icon: const Icon(Icons.image_outlined, size: 16),
+              label: Text(_cover.isNone ? 'Choose a cover' : 'Change it'),
+            )
+          : null,
+      child: _coverState(context),
+    );
+  }
+
+  /// What the cover IS right now, drawn rather than left to be inferred.
+  ///
+  /// "None" gets the same box as the other two. An empty space where a picture
+  /// would go reads as something that failed to load; a stated "No cover" reads
+  /// as a decision, which is what it is for nearly every contract anybody
+  /// writes.
+  Widget _coverState(BuildContext context) {
+    final theme = Theme.of(context);
+    final unpublished = _isEdit && _cover != _originalCover;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.35,
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      // R7. A thumbnail beside a paragraph is two columns, and two columns
+      // inside a step that is already indented is a squeezed picture beside a
+      // squeezed sentence on a phone. Below the threshold the picture goes
+      // above the words instead.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final thumbnail = _coverThumbnail(context);
+          final words = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(_coverTitle, style: theme.textTheme.titleSmall),
+              const SizedBox(height: 4),
+              Text(_coverNote, style: theme.textTheme.bodySmall),
+              if (unpublished) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'This is not on the published version yet. It arrives when '
+                  'you publish, with everything else on this screen.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ],
+          );
+
+          if (constraints.maxWidth < 340) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [thumbnail, const SizedBox(height: 12), words],
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              thumbnail,
+              const SizedBox(width: 14),
+              Expanded(child: words),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// A picture of the cover, using the widget that already draws a mark.
+  ///
+  /// [LogoBadge] fetches bytes through the API rather than pointing an `<img>`
+  /// at a guessable path, falls back to an icon when there is nothing there,
+  /// and refuses to crop artwork to fill its box — three rules a second
+  /// implementation here would have had to get right again.
+  Widget _coverThumbnail(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    final path = switch (_cover.source) {
+      CoverSource.logo => '/branding/organization',
+      // Null until the server says where the upload can be read, which is
+      // ordinary — an icon then, never a URL invented at this end.
+      CoverSource.file => _cover.imagePath,
+      CoverSource.none => null,
+    };
+
+    if (path == null) {
+      return Container(
+        width: 48,
+        height: 60,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Icon(
+          _cover.isNone ? Icons.crop_portrait : Icons.image_outlined,
+          size: 20,
+          color: scheme.onSurfaceVariant,
+        ),
+      );
+    }
+
+    return LogoBadge(
+      api: widget.api,
+      path: path,
+      // Read-only here: this is a picture OF the choice, and the choice is made
+      // in the panel. A badge that could change the organization's mark from
+      // inside a contract designer would be editing branding from the wrong
+      // screen entirely.
+      hasOwn: false,
+      mayEdit: false,
+      size: 56,
+      fallbackIcon: Icons.image_outlined,
+    );
+  }
+
+  String get _coverTitle => switch (_cover.source) {
+    CoverSource.none => 'No cover',
+    CoverSource.logo => 'Your organization’s logo',
+    CoverSource.file => 'A file of your own',
+  };
+
+  String get _coverNote => switch (_cover.source) {
+    CoverSource.none =>
+      'The document starts on the first page of the agreement. Most contracts '
+          'do, and nothing about one is missing.',
+    CoverSource.logo =>
+      'The mark uploaded under branding, on a page of its own. It is not copied '
+          'here — change the logo there and every contract using it follows.',
+    CoverSource.file =>
+      _cover.filename ?? 'An image uploaded for this contract.',
+  };
+
+  Future<void> _chooseCover() async {
+    final chosen = await showSidePanel<ContractCover>(
+      context,
+      builder: (_) =>
+          ContractCoverPanel(api: widget.api, cover: _cover),
+    );
+
+    // Null is a cancelled panel and never "no cover" — that answer arrives as
+    // ContractCover.none, which is why it is a value rather than a null.
+    if (chosen == null || !mounted) return;
+
+    setState(() => _cover = chosen);
+  }
+
   /// The contract itself — the wording, and the page it makes.
   Widget _bodyStep(BuildContext context) {
     return NumberedStep(
       // Last, and History only exists while editing — so the number depends on
-      // whether it is there. Hardcoding 6 would misnumber every new contract.
-      number: _isEdit ? 6 : 5,
+      // whether it is there. Hardcoding 7 would misnumber every new contract.
+      number: _isEdit ? 7 : 6,
       title: 'Write the contract',
       note:
           'The agreement itself, in your words. Anything in double braces is '
@@ -1567,6 +1865,7 @@ class _PublishFlow extends StatefulWidget {
     required this.templateId,
     required this.fields,
     required this.body,
+    required this.cover,
     required this.renamedFrom,
     required this.commit,
   });
@@ -1579,6 +1878,18 @@ class _PublishFlow extends StatefulWidget {
   /// The wording, sent with the preview so the server can diff it. Without it
   /// the panel would show every change except the one to the contract.
   final String? body;
+
+  /// The cover, sent with the preview for exactly the same reason.
+  ///
+  /// Null is a real value here — it is a contract with no front page — so this
+  /// goes on the wire either way rather than being omitted when it is null.
+  ///
+  /// The diff that comes back is the SERVER's, and this end does not add a
+  /// cover line to it from what it knows. Two implementations of "did the
+  /// version change" is the divergence [ContractDiffPanel] documents at length,
+  /// and a client that answered yes while the server wrote no would publish a
+  /// version identical to the one before it.
+  final Map<String, dynamic>? cover;
 
   final String? renamedFrom;
 
@@ -1604,7 +1915,12 @@ class _PublishFlowState extends State<_PublishFlow> {
   Future<void> _preview() async {
     final response = await widget.api.post(
       '/hr/contracts/${widget.templateId}/versions',
-      {'fields': widget.fields, 'body': widget.body, 'preview': true},
+      {
+        'fields': widget.fields,
+        'body': widget.body,
+        'cover': widget.cover,
+        'preview': true,
+      },
     );
 
     if (!mounted) return;
@@ -1623,8 +1939,27 @@ class _PublishFlowState extends State<_PublishFlow> {
     // a panel that renders nothing and says nothing about why.
     final node = body['diff'] is Map ? body['diff'] : body;
 
+    // ── The cover is answered BESIDE the diff, not inside it ─────
+    //
+    // The endpoint sends `cover: {changed, from, to}` alongside `diff`, and
+    // says why: `VersionDiff` compares field lists and bodies and is also what
+    // the version-history screen renders, so growing it would change a shape
+    // two screens share. `diff.is_empty` is therefore about the questions and
+    // the wording, and this is about the front page.
+    //
+    // READ, and not worked out here. The server's own no-op guard is
+    // `$diff->isEmpty() && ! $coverChange['changed']`, and the line below is
+    // that same composition of the same two answers rather than a second
+    // opinion about either — which matters, because a cover-only change is a
+    // real version and without this the panel would offer no button for the
+    // one act the owner asked for.
+    final cover = body['cover'];
+
     setState(() {
-      _diff = ContractDiff.fromJson(Map<String, dynamic>.from(node as Map));
+      _diff = ContractDiff.fromJson({
+        ...Map<String, dynamic>.from(node as Map),
+        if (cover is Map && cover['changed'] == true) 'is_empty': false,
+      });
       _version = (body['version'] as num?)?.toInt();
     });
   }
