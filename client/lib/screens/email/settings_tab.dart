@@ -1,0 +1,561 @@
+import 'package:flutter/material.dart';
+
+import '../../core/api_client.dart';
+import '../../core/session.dart';
+import '../../widgets/async_body.dart';
+import '../../widgets/refused.dart';
+import '../../widgets/side_panel.dart';
+import '../../widgets/tag.dart';
+import 'mailbox_panels.dart';
+import 'mailbox_settings.dart';
+
+/// Email › Settings — where an inbox is set up, and where you find out why one
+/// stopped working.
+///
+/// ── The owner's ask, and the two halves of it ───────────────────
+///
+/// *"it should definitely display the message of revoked or expired, perhaps
+/// an interface within the email module that shows the status of each connected
+/// email box."*
+///
+/// The visible half is the STATUS of each connection: which address, which part
+/// of the business owns it, which service it lives on, whether it works, and
+/// when it last did. The larger half is that nothing in this client called the
+/// connect endpoints at all — they existed, they were tested, and no screen
+/// reached them. So this tab is also the only place an address is added, handed
+/// its key, and taken away again.
+///
+/// ── State is a word and a sentence, never a colour ──────────────
+///
+/// A dot tells somebody who can see it that something is wrong and nothing
+/// about what to do; it tells somebody who cannot see it nothing at all. Every
+/// row carries the word — "Connected", "Waiting to be connected", "Not working"
+/// — and, under it, the server's own sentence. That sentence is what tells a
+/// withdrawn consent apart from an expired password, which is the fact the
+/// owner asked for and the one this screen exists to print.
+///
+/// ── Why a stack of cards and not a table ────────────────────────
+///
+/// R7. A status table with six columns is exactly the shape that dies on a
+/// phone: the columns become unreadable slivers, or the row scrolls sideways
+/// and the state — the one column somebody came for — is off the edge. A card
+/// per inbox reads the same at 375, 700 and 1400; only the two facts inside it
+/// go from side by side to stacked.
+class MailboxSettingsTab extends StatefulWidget {
+  const MailboxSettingsTab({
+    super.key,
+    required this.api,
+    required this.session,
+  });
+
+  final ApiClient api;
+  final Session session;
+
+  @override
+  State<MailboxSettingsTab> createState() => _MailboxSettingsTabState();
+}
+
+class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
+  bool _loading = true;
+  String? _error;
+  List<MailboxConnection> _mailboxes = const [];
+  List<ProviderOption> _providers = const [];
+  List<int> _imapPorts = const [];
+  List<int> _smtpPorts = const [];
+
+  /// The server's last word about something that just happened — what
+  /// disconnecting took away, in its own sentence.
+  ///
+  /// Kept on screen rather than flashed in a snack bar. The disconnect message
+  /// is a paragraph about access four people have just lost, and a bar that
+  /// slides away after three seconds is where a paragraph goes to be unread.
+  String? _notice;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      // A spinner only when there is nothing to keep — AsyncBody's rule. A
+      // refetch after connecting keeps the list on screen and swaps it.
+      _loading = _mailboxes.isEmpty;
+      _error = null;
+    });
+
+    final response = await widget.api.get('/email/mailboxes');
+
+    if (!mounted) return;
+
+    setState(() {
+      _loading = false;
+
+      if (!response.ok) {
+        _error = response.message;
+
+        return;
+      }
+
+      _mailboxes = MailboxConnection.listFrom(response.data);
+
+      final meta = response.body['meta'];
+
+      _providers = ProviderOption.listFrom(meta);
+      _imapPorts = _ports(meta, 'imap_ports');
+      _smtpPorts = _ports(meta, 'smtp_ports');
+    });
+  }
+
+  static List<int> _ports(Object? meta, String key) => [
+    for (final port in ((meta is Map<String, dynamic> ? meta[key] : null)
+            as List? ??
+        const []))
+      if (port is int) port,
+  ];
+
+  // ── what this person may do ──────────────────────────────────
+
+  Me get _me => widget.session.me!;
+
+  /// Why adding is refused, or null when it is not.
+  ///
+  /// `email.create` is what MailboxesController::store asks for, and
+  /// [Me.refusal] writes the same sentence Refusal::permission does — the same
+  /// words in the tooltip as in the 403 behind it, rather than two phrasings of
+  /// one fact that read as two different problems.
+  String? get _addRefusal => _me.refusal('email.create', 'add a shared inbox');
+
+  /// Why managing THIS inbox is refused, or null when it is not.
+  ///
+  /// The server's own `may_manage` is the answer, and this only supplies the
+  /// words. `email.edit` is the permission behind connecting, changing and
+  /// disconnecting alike — MailboxAccess::MANAGE — so a row the server will not
+  /// let this person manage is one whose role does not hold it.
+  ///
+  /// The last branch is unreachable through this API and is written all the
+  /// same. A listed mailbox is one this person either reads or manages, and
+  /// both sets are already filtered by whether their assignment covers the
+  /// level it hangs off — so a row that arrives with `may_manage` false has
+  /// failed on the permission and nothing else. If that ever stops being true,
+  /// this says so instead of inventing a cause.
+  String? _manageRefusal(MailboxConnection mailbox, String act) {
+    if (mailbox.mayManage) return null;
+
+    return _me.refusal('email.edit', act) ??
+        'EzBizi will not let you $act and did not say which of the two reasons '
+            'applies — the permissions on your role, or the part of the '
+            'business you are assigned to. Whoever looks after roles here can '
+            'tell you.';
+  }
+
+  // ── the three acts ───────────────────────────────────────────
+
+  Future<void> _add() async {
+    final added = await showSidePanel<bool>(
+      context,
+      builder: (_) => AddMailboxPanel(
+        api: widget.api,
+        session: widget.session,
+        providers: _providers,
+        imapPorts: _imapPorts,
+        smtpPorts: _smtpPorts,
+      ),
+    );
+
+    if (added != true || !mounted) return;
+
+    setState(() => _notice = null);
+
+    await _load();
+  }
+
+  Future<void> _connect(MailboxConnection mailbox) async {
+    final connected = await showSidePanel<bool>(
+      context,
+      builder: (_) => ConnectMailboxPanel(
+        api: widget.api,
+        mailbox: mailbox,
+        provider: _providerFor(mailbox),
+      ),
+    );
+
+    if (connected != true || !mounted) return;
+
+    setState(() => _notice = null);
+
+    await _load();
+  }
+
+  Future<void> _disconnect(MailboxConnection mailbox) async {
+    final message = await showSidePanel<String>(
+      context,
+      builder: (_) => DisconnectMailboxPanel(
+        api: widget.api,
+        mailbox: mailbox,
+        scope: scopeLabel(_me, mailbox),
+      ),
+    );
+
+    if (message == null || !mounted) return;
+
+    setState(() => _notice = message);
+
+    await _load();
+  }
+
+  /// How this address is set up, as the server described the service. Null when
+  /// the server named a provider this build's `meta` block does not describe —
+  /// a newer server than this bundle, which the connect panel says out loud
+  /// rather than offering a form it cannot fill in.
+  ProviderOption? _providerFor(MailboxConnection mailbox) => _providers
+      .where((option) => option.value == mailbox.provider)
+      .firstOrNull;
+
+  // ── the screen ───────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final refusal = _addRefusal;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PanelHeader(
+          title: 'Connected inboxes',
+          note:
+              'A shared address is connected once for the whole organization, '
+              'and each role is then given the ones it should be able to read. '
+              'This is where one is added, handed its password, and where an '
+              'inbox that has stopped working says so.',
+          action: Refused(
+            reason: refusal,
+            child: FilledButton.icon(
+              onPressed: refusal == null ? _add : null,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add an inbox'),
+            ),
+          ),
+        ),
+        if (_notice != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: _Notice(_notice!, onDismiss: () => setState(() => _notice = null)),
+          ),
+        Expanded(
+          child: AsyncBody(
+            loading: _loading,
+            error: _error,
+            onRetry: _load,
+            child: _mailboxes.isEmpty ? _nothingConnected() : _list(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// No inbox at all — a setup step rather than an empty list.
+  Widget _nothingConnected() => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.mark_email_unread_outlined,
+              size: 34,
+              color: Theme.of(context).colorScheme.outline,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'No shared inbox is connected here yet.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _addRefusal ??
+                  'Add the address people already write to — info@, bookings@ '
+                      '— and then give the roles that answer it access under '
+                      'Roles & permissions.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _list() => ListView.builder(
+    padding: const EdgeInsets.fromLTRB(24, 4, 24, 28),
+    itemCount: _mailboxes.length,
+    itemBuilder: (context, index) {
+      final mailbox = _mailboxes[index];
+
+      return _MailboxCard(
+        mailbox: mailbox,
+        me: _me,
+        provider: _providerFor(mailbox),
+        connectRefusal: _manageRefusal(mailbox, 'connect this inbox'),
+        disconnectRefusal: _manageRefusal(mailbox, 'disconnect this inbox'),
+        onConnect: () => _connect(mailbox),
+        onDisconnect: () => _disconnect(mailbox),
+      );
+    },
+  );
+}
+
+/// One connection, everything about it on one card.
+class _MailboxCard extends StatelessWidget {
+  const _MailboxCard({
+    required this.mailbox,
+    required this.me,
+    required this.provider,
+    required this.connectRefusal,
+    required this.disconnectRefusal,
+    required this.onConnect,
+    required this.onDisconnect,
+  });
+
+  final MailboxConnection mailbox;
+  final Me me;
+  final ProviderOption? provider;
+  final String? connectRefusal;
+  final String? disconnectRefusal;
+  final VoidCallback onConnect;
+  final VoidCallback onDisconnect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final state = stateOf(mailbox);
+    final reached = lastReachedSentence(mailbox, formats: me.display);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Wrap rather than Row: at 375 the state word drops under the
+            // address instead of squeezing it into two characters, which is
+            // what a Row does to the one thing on the card nobody can afford
+            // to misread.
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  mailbox.address,
+                  style: theme.textTheme.titleMedium,
+                ),
+                Tag(state.word, warn: state.trouble),
+              ],
+            ),
+            if (mailbox.named) ...[
+              const SizedBox(height: 2),
+              Text(mailbox.displayName, style: theme.textTheme.bodySmall),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 32,
+              runSpacing: 12,
+              children: [
+                _Fact(
+                  label: 'BELONGS TO',
+                  // The level and the name together. "Everdoors" alone does not
+                  // say whether that is the whole organization or one company
+                  // inside it, and two inboxes called info@ at two levels is
+                  // the case this app has already met.
+                  value:
+                      '${scopeLevelLabel(me, mailbox.scopeType)} · '
+                      '${scopeLabel(me, mailbox)}',
+                ),
+                _Fact(
+                  label: 'MAIL SERVICE',
+                  // The server's label where it sent one. Where it did not, the
+                  // wire value is not shown — it is a name for a database
+                  // column, not for a person — and the gap is stated instead.
+                  value: mailbox.providerLabel.isNotEmpty
+                      ? mailbox.providerLabel
+                      : provider?.label ??
+                            'A service this version of the app cannot name',
+                ),
+              ],
+            ),
+            if (state.sentence != null) ...[
+              const SizedBox(height: 12),
+              _StateSentence(sentence: state.sentence!, trouble: state.trouble),
+            ],
+            if (reached != null) ...[
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.schedule,
+                    size: 15,
+                    color: theme.textTheme.bodySmall?.color,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(reached, style: theme.textTheme.bodySmall),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
+            // Wrap again, for the same reason as the heading. At 375 the list
+            // takes 48 for its own padding and the card 32 for its own, which
+            // leaves 295 for a "Reconnect" and a "Disconnect" sitting side by
+            // side. That fits, and stops fitting the moment either label grows
+            // or somebody's text is scaled up — which a Row would answer with
+            // an overflow stripe rather than a second line.
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                Refused(
+                  reason: connectRefusal,
+                  child: OutlinedButton(
+                    onPressed: connectRefusal == null ? onConnect : null,
+                    child: Text(_connectLabel),
+                  ),
+                ),
+                Refused(
+                  reason: disconnectRefusal,
+                  child: TextButton(
+                    onPressed: disconnectRefusal == null ? onDisconnect : null,
+                    child: const Text('Disconnect'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// "Connect" for an address nobody has finished setting up, "Reconnect" for
+  /// one that has a key already — including a working one, where replacing a
+  /// changed password is a perfectly ordinary thing to want.
+  String get _connectLabel =>
+      mailbox.status == statusUnconfigured ? 'Connect' : 'Reconnect';
+}
+
+/// A labelled fact on a card — stacked at any width, so nothing has to be a
+/// column that collapses.
+class _Fact extends StatelessWidget {
+  const _Fact({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return ConstrainedBox(
+      // Bounded so a long company path wraps inside the card instead of
+      // pushing the Wrap wider than the row it sits in.
+      constraints: const BoxConstraints(maxWidth: 320),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: theme.textTheme.labelSmall),
+          const SizedBox(height: 2),
+          Text(value, style: theme.textTheme.bodyMedium),
+        ],
+      ),
+    );
+  }
+}
+
+/// The state's sentence — what happened, and what to do about it.
+///
+/// It sits in a block of its own rather than as another line of body text so it
+/// is not skimmed past, and it carries an icon with a label of its own: the
+/// colour behind it says "trouble" to somebody who can see it and the icon's
+/// label says the same thing to a screen reader.
+class _StateSentence extends StatelessWidget {
+  const _StateSentence({required this.sentence, required this.trouble});
+
+  final String sentence;
+  final bool trouble;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: (trouble ? scheme.errorContainer : scheme.surfaceContainerHighest)
+            .withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            label: trouble ? 'Needs attention' : 'For information',
+            child: Icon(
+              trouble ? Icons.error_outline : Icons.info_outline,
+              size: 17,
+              color: trouble ? scheme.error : theme.textTheme.bodySmall?.color,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              sentence,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: trouble ? scheme.error : null,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the server said just happened, until the reader has had it.
+class _Notice extends StatelessWidget {
+  const _Notice(this.message, {required this.onDismiss});
+
+  final String message;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: Text(message, style: theme.textTheme.bodySmall)),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            tooltip: 'Dismiss this message',
+            onPressed: onDismiss,
+          ),
+        ],
+      ),
+    );
+  }
+}

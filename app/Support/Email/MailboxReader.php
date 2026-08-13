@@ -102,4 +102,29 @@ interface MailboxReader
      * screen — R8.
      */
     public function unavailableBecause(Mailbox $mailbox): ?string;
+
+    /**
+     * Why this provider cannot work on this INSTALLATION at all — null when it
+     * can. Nothing to do with any one mailbox.
+     *
+     * ── Why this is separate from unavailableBecause ─────────────
+     *
+     * That method answers "why can I not open THIS address", which needs a
+     * mailbox, so it can only be asked about an inbox that already exists. The
+     * screen where somebody ADDS one has no mailbox to ask about, and it was
+     * guessing instead: it keyed the password form on `needs_host`, on the
+     * reasoning that a provider needing a host must want a password.
+     *
+     * That guess was wrong in the direction that costs the most. `imap` was
+     * removed from PHP core in 8.4 and this box runs 8.4.24, so IMAP cannot
+     * open a socket here — and the form still asked for the password to
+     * somebody's real mailbox and stored it, for a connection that could never
+     * be attempted. Gmail, which is equally unbuilt, was correctly marked as
+     * such, purely because it happens not to need a host.
+     *
+     * So the installation's own answer is published rather than inferred. A
+     * provider that cannot work says so in a sentence, and no client has to
+     * deduce it from a property that means something else.
+     */
+    public function notReadyBecause(): ?string;
 }

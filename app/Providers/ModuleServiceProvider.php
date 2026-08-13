@@ -1002,6 +1002,54 @@ class ModuleServiceProvider extends ServiceProvider
                             .'individual, so this is the only place that records which of them '
                             .'it was.',
                     ),
+
+                    /*
+                     * AN INBOX STOPPING IS A BUSINESS EVENT, not a technical
+                     * one — and unlike `email.received` above, this one fires.
+                     *
+                     * A shared inbox that quietly stops working is the worst
+                     * failure this module has: customer mail goes on arriving at
+                     * an address nobody can see, and the first anybody hears of
+                     * it is a customer asking why they were ignored. So it is
+                     * worth a rule — tell the branch manager, raise a task —
+                     * and App\Support\Email\RecordingMailboxReader emits it the
+                     * moment a read fails for a reason that means the connection
+                     * is broken.
+                     *
+                     * ── WHEN IT DOES NOT FIRE, SAID PLAINLY ─────
+                     *
+                     * The description below tells the tenant that this fires
+                     * when somebody OPENS the inbox and it fails, not at the
+                     * moment it breaks — because nothing polls, for the reasons
+                     * `email.received` sets out at length. An inbox nobody opens
+                     * for a fortnight raises nothing for a fortnight.
+                     *
+                     * That is a real limitation and it is stated rather than
+                     * hidden, which is the same call TriggerDefinition::
+                     * NOT_RAISED_YET makes for a trigger nothing raises at all.
+                     * The difference is that `isRaised: false` would be a LIE
+                     * here — a rule built on this does run — and would tell
+                     * somebody not to bother with the one alert in this module
+                     * that works today.
+                     *
+                     * It fires ONCE per break, not once per attempt. See that
+                     * class: a mailbox already recorded as broken is refused
+                     * every time anybody opens it, and a rule that sent a
+                     * message on each of those would be switched off by lunchtime.
+                     */
+                    new TriggerDefinition(
+                        key:   'email.mailbox_broken',
+                        label: 'A shared inbox stopped working',
+                        description: 'EzBizi could no longer open one of the shared inboxes — '
+                            .'the sign-in was refused, the permission was narrowed, or the mail '
+                            .'service stopped answering. It carries which inbox, which of those '
+                            .'causes it was, and the same sentence the Email settings screen '
+                            .'shows. Mail keeps arriving at the address; what has stopped is '
+                            .'EzBizi being able to show it. Because nothing watches the inboxes '
+                            .'in the background, this fires when somebody opens the inbox and it '
+                            .'fails rather than at the moment it broke, and only once per break '
+                            .'rather than on every attempt afterwards.',
+                    ),
                 ],
                 /*
                  * Deliberately no action that SENDS. A rule that could compose

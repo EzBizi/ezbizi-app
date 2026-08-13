@@ -130,10 +130,35 @@ class MailboxesController extends Controller
                 ->all(),
 
             'meta' => [
+                /*
+                 * ── `usable` is published, not inferred ──────────────
+                 *
+                 * The connect form used to decide whether to ask for a password
+                 * by reading `needs_host`, on the reasoning that a provider
+                 * needing a server address must want credentials typed in. That
+                 * guess broke in the direction that costs most.
+                 *
+                 * `imap` was removed from PHP core in 8.4 and this box runs
+                 * 8.4.24, so ImapMailboxReader cannot open a socket here at all.
+                 * But IMAP has `needs_host: true`, so it was given a live
+                 * password form — asking somebody for the password to their real
+                 * mailbox, and storing it, for a connection that could never be
+                 * attempted. Gmail is equally unbuilt on this installation and
+                 * was correctly marked so, purely because it happens not to need
+                 * a host. The screen was right by accident about one and wrong
+                 * about the other.
+                 *
+                 * So the reader answers for itself. `notReadyBecause()` is the
+                 * installation's own sentence, and a client shows the provider
+                 * as unavailable rather than deducing it from a property that
+                 * means something else.
+                 */
                 'providers' => array_map(fn (MailboxProvider $p) => [
                     'value'    => $p->value,
                     'label'    => $p->label(),
                     'needs_host' => $p->needsHost(),
+                    'usable'   => $this->readers->forProvider($p)->notReadyBecause() === null,
+                    'unusable_because' => $this->readers->forProvider($p)->notReadyBecause(),
                     // The IMAP warning, published by the server so every client
                     // shows the same words. See MailboxProvider::caution.
                     'caution'  => $p->caution(),
@@ -431,11 +456,53 @@ class MailboxesController extends Controller
             'display_name' => $mailbox->display_name,
             'provider'     => $mailbox->provider,
             'provider_label' => $mailbox->providerEnum()?->label(),
+
+            /*
+             * The scope as a LEVEL and an ID, and deliberately without a name.
+             *
+             * A status screen does need to say which part of the business an
+             * inbox belongs to — two companies in this organization both have an
+             * info@, which is the case that decides it. The name is not sent
+             * because the client already holds it: every mailbox in this list is
+             * at a level the caller reaches (the list is the union of readable
+             * and manageable, both filtered by reach), so `/me` already names it,
+             * and a second copy here would be a copy that can go stale.
+             *
+             * It would also be the WRONG name. §8 lets an organization rename the
+             * franchise level — "Branch", "Territory" — and lets four companies
+             * each run a "Connecticut", so the label a person should read is a
+             * path built from their own vocabulary rather than a string this
+             * controller could compose.
+             */
             'scope_type'   => $mailbox->scope_type,
             'scope_id'     => $mailbox->scope_id,
 
+            /*
+             * ── THE THREE FIELDS THE STATUS SCREEN IS FOR ────────
+             *
+             * `status` is the state, `status_reason` is the sentence that names
+             * the cause and says what to do, and `last_reached_at` is the one
+             * that makes the other two worth reading: "broken" means something
+             * different when it last worked four minutes ago than when it last
+             * worked in March, and until this column existed that difference
+             * could not be shown at all.
+             *
+             * The sentence is written by App\Support\Email\RecordingMailboxReader
+             * from App\Support\Email\MailboxFault — plain words, never a driver
+             * message or an exception class (R8). Published verbatim: this
+             * controller does not reword it, and no client should either.
+             *
+             * ── Null vs absent, which a client must not confuse ──
+             *
+             * The key is ALWAYS present. `null` means "EzBizi has never
+             * successfully opened this", which is a real, sayable state; a
+             * missing key would mean "this server is older than your screen",
+             * which is a different thing entirely and must not be drawn as
+             * "never worked" on an inbox somebody is reading mail in.
+             */
             'status'        => $mailbox->status,
             'status_reason' => $mailbox->status_reason,
+            'last_reached_at' => $mailbox->last_reached_at?->toIso8601String(),
 
             /*
              * Whether this can actually be opened, asked of the READER.

@@ -43,6 +43,26 @@ use Illuminate\Support\Facades\Http;
  * nothing at Google at all. Asking for less is also what makes Google's own
  * verification survivable — a restricted-scope app faces a security assessment
  * whose cost is measured in thousands.
+ *
+ * ── The failures it CAN tell apart, and the one it cannot ────────
+ *
+ * This is the only reader on the installation that talks to a real service, so
+ * it is the only one that can classify a refusal at all. It separates: the
+ * tenant's sign-in being rejected, EZBIZI'S OWN registration being rejected, the
+ * consent no longer covering mail, a quota, a service fault, and nothing
+ * answering — see {@see tokenFailure} and {@see apiFailure}, which say how each
+ * is recognised.
+ *
+ * What it cannot separate, and does not pretend to: WHY the sign-in stopped
+ * being accepted. Withdrawn, expired, and invalidated by a password change all
+ * come back as `invalid_grant` with nothing to tell them apart. That is the
+ * owner's "revoked or expired", and the honest answer is one sentence naming all
+ * three — {@see MailboxFault::SignInNoLongerValid}.
+ *
+ * None of these can be produced here without a Google account, which is exactly
+ * why the mapping is built from the SHAPE of the responses Google documents
+ * rather than from invented error bodies: a fake `invalid_grant` proves the
+ * `match` arm reads the string it was handed and nothing more.
  */
 final class GmailMailboxReader implements MailboxReader
 {
@@ -65,12 +85,19 @@ final class GmailMailboxReader implements MailboxReader
         return $this->unavailableBecause($mailbox) === null;
     }
 
+    /** The installation's answer, said once and asked from two places. */
+    public function notReadyBecause(): ?string
+    {
+        return $this->platformIsRegistered() ? null
+            : 'EzBizi has no Google connection set up on this installation yet, so no '
+                .'Google mailbox can be opened and signing in would not complete. Nothing '
+                .'is wrong with this address — the missing piece is at EzBizi\'s end.';
+    }
+
     public function unavailableBecause(Mailbox $mailbox): ?string
     {
-        if (! $this->platformIsRegistered()) {
-            return 'EzBizi has no Google connection set up on this installation yet, so no '
-                .'Google mailbox can be opened. Nothing is wrong with this address — the '
-                .'missing piece is at EzBizi\'s end.';
+        if (($notReady = $this->notReadyBecause()) !== null) {
+            return $notReady;
         }
 
         if (! $mailbox->hasCredential()) {
@@ -280,27 +307,96 @@ final class GmailMailboxReader implements MailboxReader
                     'grant_type'    => 'refresh_token',
                 ]);
         } catch (ConnectionException $e) {
-            throw CannotReadMailbox::providerUnavailable($mailbox->address, $e->getMessage());
+            throw CannotReadMailbox::hostNotAnswering($mailbox, $e->getMessage());
         }
 
-        if ($response->status() === 400 || $response->status() === 401) {
-            // Google says 400 `invalid_grant` for a revoked or expired refresh
-            // token, which is the commonest real failure here: somebody removed
-            // EzBizi from their Google account's connected apps.
-            throw CannotReadMailbox::credentialRejected(
-                $mailbox->address,
-                (string) ($response->json('error_description') ?? $response->json('error') ?? ''),
-            );
+        if ($response->failed()) {
+            throw $this->tokenFailure($mailbox, $response);
         }
 
-        if ($response->failed() || ! is_string($response->json('access_token'))) {
-            throw CannotReadMailbox::providerUnavailable(
-                $mailbox->address,
-                'the sign-in service answered '.$response->status(),
+        if (! is_string($response->json('access_token'))) {
+            // A 2xx with nothing usable in it. Not a refusal — the service
+            // answered and answered wrongly — so it is the provider's fault and
+            // must not be written onto the mailbox as "your sign-in is bad".
+            throw CannotReadMailbox::providerFaulty(
+                $mailbox,
+                'the sign-in service answered '.$response->status().' with no sign-in in it',
             );
         }
 
         return (string) $response->json('access_token');
+    }
+
+    /**
+     * WHOSE sign-in the token endpoint just rejected — the tenant's, or ours.
+     *
+     * ═══════════════════════════════════════════════════════════════
+     *  THIS IS THE DISTINCTION THAT WAS MISSING, AND IT MATTERED.
+     *
+     *  400 and 401 were caught by one branch and both reported as the
+     *  mailbox's credential being rejected. They are not the same
+     *  thing at all. OAuth2 gives the token endpoint two failures that
+     *  look alike and blame opposite parties:
+     *
+     *    `invalid_grant`     — the REFRESH TOKEN on this mailbox is no
+     *                          longer good. The tenant's problem, and
+     *                          reconnecting fixes it.
+     *    `invalid_client` /
+     *    `unauthorized_client` — the CLIENT ID AND SECRET are no
+     *                          longer good. That is EzBizi's own
+     *                          registration with Google, identical for
+     *                          every tenant on this installation, and
+     *                          nothing a customer can do touches it.
+     *
+     *  Lumped together, an installation whose Google registration had
+     *  lapsed would have told every organization, individually and
+     *  confidently, that somebody had changed their password — and a
+     *  conscientious administrator would have gone and changed it.
+     * ═══════════════════════════════════════════════════════════════
+     *
+     * Classified on the `error` field rather than on the status code, because
+     * Google is not consistent about which of 400 and 401 carries
+     * `invalid_client`. The code is the fallback for a body that says nothing.
+     */
+    private function tokenFailure(Mailbox $mailbox, \Illuminate\Http\Client\Response $response): CannotReadMailbox
+    {
+        $error  = strtolower((string) ($response->json('error') ?? ''));
+        $detail = (string) ($response->json('error_description') ?? $response->json('error') ?? '');
+
+        if ($error === 'invalid_client' || $error === 'unauthorized_client') {
+            return CannotReadMailbox::platformRejected($mailbox, $detail);
+        }
+
+        /*
+         * The one the owner asked about, and all three of its meanings.
+         *
+         * `invalid_grant` is what Google says when the refresh token has been
+         * withdrawn from the account's connected apps, when it has aged out
+         * unused, and when the account password was changed. The reply is
+         * identical in all three cases and there is nothing else in it to go on,
+         * which is why the sentence names all three rather than picking one — see
+         * MailboxFault::SignInNoLongerValid.
+         */
+        if ($error === 'invalid_grant') {
+            return CannotReadMailbox::credentialRejected($mailbox, $detail);
+        }
+
+        return match (true) {
+            $response->status() === 429 => CannotReadMailbox::tooManyRequests($mailbox, $detail),
+            $response->serverError()    => CannotReadMailbox::providerFaulty(
+                $mailbox,
+                'the sign-in service answered '.$response->status(),
+            ),
+            // A 401 with no `error` we recognise is still the endpoint refusing
+            // to believe who WE are — nothing about a refresh token reaches an
+            // unauthenticated client.
+            $response->status() === 401 => CannotReadMailbox::platformRejected($mailbox, $detail),
+
+            // Refused, and Google did not say enough to name a cause. Left
+            // honest rather than folded into "your sign-in was revoked", which
+            // is a guess wearing a diagnosis's clothes.
+            default => CannotReadMailbox::providerRefused($mailbox, $detail),
+        };
     }
 
     /** @param array<string, mixed> $query */
@@ -309,7 +405,10 @@ final class GmailMailboxReader implements MailboxReader
         try {
             $response = Http::withToken($token)->timeout(self::TIMEOUT)->get($url, $query);
         } catch (ConnectionException $e) {
-            throw CannotReadMailbox::providerUnavailable($mailbox->address, $e->getMessage());
+            // No status code exists yet, which is itself the diagnosis: a
+            // timeout, a refused connection and a name that will not resolve all
+            // arrive here, and all three mean nothing answered.
+            throw CannotReadMailbox::hostNotAnswering($mailbox, $e->getMessage());
         }
 
         return $this->body($mailbox, $response);
@@ -321,7 +420,7 @@ final class GmailMailboxReader implements MailboxReader
         try {
             $response = Http::withToken($token)->timeout(self::TIMEOUT)->post($url, $payload);
         } catch (ConnectionException $e) {
-            throw CannotReadMailbox::providerUnavailable($mailbox->address, $e->getMessage());
+            throw CannotReadMailbox::hostNotAnswering($mailbox, $e->getMessage());
         }
 
         return $this->body($mailbox, $response);
@@ -329,21 +428,83 @@ final class GmailMailboxReader implements MailboxReader
 
     private function body(Mailbox $mailbox, \Illuminate\Http\Client\Response $response): array
     {
-        if ($response->status() === 401 || $response->status() === 403) {
-            throw CannotReadMailbox::credentialRejected(
-                $mailbox->address,
-                (string) ($response->json('error.message') ?? ''),
-            );
-        }
-
         if ($response->failed()) {
-            throw CannotReadMailbox::providerUnavailable(
-                $mailbox->address,
-                'the mail service answered '.$response->status(),
-            );
+            throw $this->apiFailure($mailbox, $response);
         }
 
         return (array) $response->json();
+    }
+
+    /**
+     * What the Gmail API's refusal actually means.
+     *
+     * ── 403 is two completely different things ───────────────────
+     *
+     * It was being read as "your credential was rejected", and for one of its two
+     * common meanings that is wrong in the most expensive direction. Gmail
+     * answers 403 both for a consent that no longer covers reading mail
+     * (`insufficientPermissions` — a real fault, fixed by reconnecting) and for
+     * ASKING TOO OFTEN (`rateLimitExceeded`, `userRateLimitExceeded`,
+     * `quotaExceeded` — nothing wrong at all, fixed by waiting a minute).
+     *
+     * Reported as one, the busy afternoon that trips a quota marks a perfectly
+     * healthy inbox broken and sends somebody to reconnect it — which is real
+     * work, done for nothing, ending in the same quota. Google names which it is
+     * in `error.errors[].reason`, so this reads it instead of guessing.
+     *
+     * ── What still cannot be told apart ──────────────────────────
+     *
+     * A 401 here. The access token was minted seconds earlier, so a rejection now
+     * means the grant behind it went away in between — withdrawn, expired, or
+     * overtaken by a password change, and this response says no more about which
+     * than the token endpoint did. It goes to the same three-in-one sentence, and
+     * that sentence says so.
+     */
+    private function apiFailure(Mailbox $mailbox, \Illuminate\Http\Client\Response $response): CannotReadMailbox
+    {
+        $detail = (string) ($response->json('error.message') ?? '');
+
+        if ($response->status() === 403) {
+            return $this->throttled($response)
+                ? CannotReadMailbox::tooManyRequests($mailbox, $detail)
+                : CannotReadMailbox::permissionNarrowed($mailbox, $detail);
+        }
+
+        return match (true) {
+            $response->status() === 401 => CannotReadMailbox::credentialRejected($mailbox, $detail),
+            $response->status() === 429 => CannotReadMailbox::tooManyRequests($mailbox, $detail),
+            $response->serverError()    => CannotReadMailbox::providerFaulty(
+                $mailbox,
+                'the mail service answered '.$response->status(),
+            ),
+            default => CannotReadMailbox::providerRefused(
+                $mailbox,
+                $detail !== '' ? $detail : 'the mail service answered '.$response->status(),
+            ),
+        };
+    }
+
+    /**
+     * Is this 403 a quota rather than a permission?
+     *
+     * Google's own reason strings, matched as a list rather than as a substring
+     * search for "rate": `quotaExceeded` contains no such word and is the same
+     * kind of answer. A reason this build has never heard of falls through to
+     * "permission", which is the safer wrong answer of the two — it puts a
+     * sentence in front of somebody, where treating a real permission failure as
+     * a rate limit would quietly show a working-looking inbox that never loads.
+     */
+    private function throttled(\Illuminate\Http\Client\Response $response): bool
+    {
+        foreach ((array) ($response->json('error.errors') ?? []) as $error) {
+            $reason = is_array($error) ? (string) ($error['reason'] ?? '') : '';
+
+            if (in_array($reason, ['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded'], true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

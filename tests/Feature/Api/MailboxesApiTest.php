@@ -78,6 +78,56 @@ class MailboxesApiTest extends TestCase
         });
     }
 
+    /**
+     * A provider that cannot work here says so, and does not wait to be guessed.
+     *
+     * The connect screen decided whether to ask for a password by reading
+     * `needs_host`. IMAP needs a host, so it got a live password form - on a box
+     * whose PHP has no `imap` extension at all (removed from core in 8.4; this
+     * runs 8.4.24). Somebody would have typed the password to their real mailbox
+     * into a form for a connection that could never be attempted, and it would
+     * have been stored. Gmail, equally unbuilt here, was correctly marked so
+     * only because it happens not to need a host.
+     *
+     * So the reader answers for itself and the catalogue publishes it. This
+     * asserts the SHAPE rather than today's answer: every provider carries the
+     * flag and, when it is false, a sentence saying what is missing (R8). A box
+     * with the extension present would see `usable: true` and still pass.
+     */
+    public function test_every_provider_says_whether_it_can_work_on_this_installation(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+
+        $providers = $this->signedInAs($t['admin'])->getJson(self::ENDPOINT)
+            ->assertOk()->json('meta.providers');
+
+        $this->assertNotEmpty($providers,
+            'No providers were published, so the assertions below have nothing to check.');
+
+        foreach ($providers as $provider) {
+            $this->assertArrayHasKey('usable', $provider,
+                "Provider '{$provider['value']}' does not say whether it can work here, so a "
+                .'screen has to guess - which is how a password form appeared for a protocol '
+                .'this installation cannot speak.');
+
+            if ($provider['usable'] === true) {
+                continue;
+            }
+
+            $because = $provider['unusable_because'] ?? '';
+
+            $this->assertNotEmpty($because,
+                "Provider '{$provider['value']}' is unusable and does not say why.");
+
+            // R8: a sentence somebody can act on, not an identifier.
+            $this->assertStringNotContainsString('Exception', $because);
+            $this->assertStringNotContainsString('::', $because);
+            $this->assertStringContainsString('EzBizi', $because,
+                'The sentence does not say the missing piece is at our end, so it reads as '
+                .'though the customer has done something wrong.');
+        }
+    }
+
     // ── the credential ───────────────────────────────────────────
 
     /**
@@ -476,11 +526,18 @@ class MailboxesApiTest extends TestCase
 
         $this->assertSame([
             'id', 'address', 'display_name', 'provider', 'provider_label',
-            'scope_type', 'scope_id', 'status', 'status_reason',
+            'scope_type', 'scope_id', 'status', 'status_reason', 'last_reached_at',
             'can_be_opened', 'unavailable_reason', 'mail_server',
             'may_read', 'may_read_reason', 'may_manage',
             'read_state_shared', 'read_state_note',
         ], array_keys($row));
+
+        // Present and null, which is not the same as absent: null says "this has
+        // never been opened successfully", and a missing key would say "this
+        // server is older than your screen". The settings tab draws those two
+        // states differently and must be able to tell them apart.
+        $this->assertArrayHasKey('last_reached_at', $row);
+        $this->assertNull($row['last_reached_at']);
 
         // `credentials` is not among them, and never can be — an allowlist is
         // what makes that a property of the code rather than of a habit.

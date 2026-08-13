@@ -61,11 +61,8 @@ final class ImapMailboxReader implements MailboxReader
 
     public function unavailableBecause(Mailbox $mailbox): ?string
     {
-        if (! $this->protocolIsAvailable()) {
-            return 'EzBizi cannot speak to IMAP mail servers on this installation yet. '
-                .'Nothing is wrong with this address or its password — the missing piece is '
-                .'at EzBizi\'s end. If this address is on Google, connecting it with Google '
-                .'works today and is the better option anyway.';
+        if (($notReady = $this->notReadyBecause()) !== null) {
+            return $notReady;
         }
 
         if (! $mailbox->hasCredential() || $mailbox->host() === null) {
@@ -83,6 +80,28 @@ final class ImapMailboxReader implements MailboxReader
      * and any polyfill both answer the function check and only one of them
      * answers the extension name. What matters is whether the call exists.
      */
+    /**
+     * The installation's answer, said once and asked from two places.
+     *
+     * The sentence used to end "If this address is on Google, connecting it
+     * with Google works today and is the better option anyway." It does not
+     * work today: services.google_mail is unset on this installation and the
+     * sign-in flow that would fill it is not built, so that line sent somebody
+     * from one dead end straight to another. Removed rather than softened -- a
+     * suggestion that cannot be acted on is worse than no suggestion.
+     */
+    public function notReadyBecause(): ?string
+    {
+        if ($this->protocolIsAvailable()) {
+            return null;
+        }
+
+        return 'EzBizi cannot speak to IMAP mail servers on this installation yet - the '
+            .'PHP extension it needs is not present. Nothing is wrong with this address '
+            .'or its password, and entering one here would not connect anything. The '
+            .'missing piece is at EzBizi\'s end.';
+    }
+
     private function protocolIsAvailable(): bool
     {
         return function_exists('imap_open');

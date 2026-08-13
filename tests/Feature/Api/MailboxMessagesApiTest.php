@@ -965,12 +965,26 @@ class FakeMailboxReader implements MailboxReader
     {
         return null;
     }
+
+    /** A scripted reader stands in for a provider that IS ready. */
+    public function notReadyBecause(): ?string
+    {
+        return null;
+    }
 }
 
-/** Routes every mailbox to the fake, whatever provider it names. */
+/**
+ * Routes every mailbox to the fake, whatever provider it names.
+ *
+ * `readerFor` and not `for`: the latter is `final`, because it also wraps the
+ * reader in App\Support\Email\RecordingMailboxReader. Overriding it would have
+ * substituted away the health recording as well as the mail service, and these
+ * tests would then have been proving the controller's behaviour against a
+ * reader arrangement that never runs in production.
+ */
 class FakeMailboxReaders extends MailboxReaders
 {
-    public function for(Mailbox $mailbox): MailboxReader
+    protected function readerFor(Mailbox $mailbox): MailboxReader
     {
         return new FakeMailboxReader;
     }

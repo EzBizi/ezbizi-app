@@ -6,11 +6,13 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/tab_bar_like.dart';
 import 'mail_data.dart';
 import 'mailbox_rail.dart';
 import 'message_body.dart';
 import 'message_list.dart';
 import 'reply_panel.dart';
+import 'settings_tab.dart';
 
 /// Email — a window onto the addresses an organization shares.
 ///
@@ -33,6 +35,24 @@ import 'reply_panel.dart';
 /// message is opened. Nothing here syncs, nothing mirrors a folder, and the
 /// state below is a screen's worth of what is on screen — it goes when the tab
 /// does.
+///
+/// ── Two faces: Inbox, and Settings ──────────────────────────────
+///
+/// *"we should have 2 sub tabs on the email module, one on the inbox itself
+/// and one for it's settings."* The strip is TabBarLike, which is what HrScreen
+/// draws its five with and what settings_shell and automations_screen use —
+/// one destination with two faces rather than a second application inside the
+/// application.
+///
+/// Inbox is everything below in this file and is unchanged by the split.
+/// Settings is where a connection is made, replaced and taken away, and where
+/// an inbox that has stopped working says why — see settings_tab.dart, which is
+/// also the only place in this client that reaches the connect endpoints.
+///
+/// The Settings tab is not built until somebody opens it, and then it keeps its
+/// State: opening Email should not cost a second request for a page most
+/// readers never look at, and glancing back at the mail should not throw the
+/// list of connections away. Same arrangement, and the same reasons, as HR's.
 ///
 /// ── Why there is no "Email" heading above this ──────────────────
 ///
@@ -104,6 +124,20 @@ class _EmailScreenState extends State<EmailScreen> {
   int _messageRequest = 0;
 
   _Pane _pane = _Pane.messages;
+
+  /// Inbox's place in the strip below, and where this module opens.
+  ///
+  /// The mail is what somebody came for; the connections behind it are what
+  /// they come for once, or on the day one breaks.
+  static const _inboxTab = 0;
+
+  int _tab = _inboxTab;
+
+  /// Which sub-tabs have been shown at least once — HrScreen's set, for the
+  /// two reasons its own note gives: a tab nobody has opened must not fetch,
+  /// and a tab they have opened must not fetch again every time they glance at
+  /// the other one.
+  final Set<int> _shown = {_inboxTab};
 
   @override
   void initState() {
@@ -346,6 +380,53 @@ class _EmailScreenState extends State<EmailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Material(
+          color: Theme.of(context).colorScheme.surface,
+          child: TabBarLike(
+            labels: const [
+              ('Inbox', Icons.inbox_outlined),
+              ('Settings', Icons.settings_outlined),
+            ],
+            selected: _tab,
+            onSelected: (tab) => setState(() {
+              _tab = tab;
+              _shown.add(tab);
+            }),
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          // Offstage rather than IndexedStack, for the reason HrScreen and
+          // automations_screen both give: IndexedStack leaves its hidden child
+          // in the semantics tree, so a screen reader would read out the
+          // settings page while somebody is looking at their mail. Offstage
+          // takes it out of layout, painting and semantics and leaves its State
+          // exactly where it was.
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Offstage(offstage: _tab != _inboxTab, child: _inbox()),
+              Offstage(
+                offstage: _tab == _inboxTab,
+                child: _shown.contains(1)
+                    ? MailboxSettingsTab(
+                        api: widget.api,
+                        session: widget.session,
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The mail itself — the tab that existed before there were two of them.
+  Widget _inbox() {
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= _splitAbove;

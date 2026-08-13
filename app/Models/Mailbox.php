@@ -143,6 +143,16 @@ class Mailbox extends Model implements HoldsSensitiveValues, StatesRetention
              */
             'credentials' => 'encrypted',
             'mail_server' => 'array',
+
+            /*
+             * When the mail service last actually answered.
+             *
+             * Cast so that the API publishes an ISO instant rather than whatever
+             * string MySQL handed back, and so "has this ever worked" is
+             * `!== null` rather than a comparison against the empty string.
+             * Written in one place — see {@see markReached}.
+             */
+            'last_reached_at' => 'datetime',
         ];
     }
 
@@ -213,6 +223,13 @@ class Mailbox extends Model implements HoldsSensitiveValues, StatesRetention
      * migration is real — so four people would silently lose access to an
      * address that is still receiving customer mail, and reconnecting would mean
      * granting them all again.
+     *
+     * `$reason` is a SENTENCE somebody reads, and the only caller —
+     * {@see \App\Support\Email\RecordingMailboxReader} — takes it from
+     * {@see \App\Support\Email\MailboxFault::sentence}. Never a driver message,
+     * an OAuth error string or an exception class: those are written in somebody
+     * else's vocabulary, they change without notice, and none of them says what
+     * to do (R8).
      */
     public function markBroken(string $reason): void
     {
@@ -220,6 +237,55 @@ class Mailbox extends Model implements HoldsSensitiveValues, StatesRetention
             'status'        => self::STATUS_BROKEN,
             'status_reason' => $reason,
         ]);
+    }
+
+    /**
+     * The mail service just answered. Record when, and clear any old complaint.
+     *
+     * ═══════════════════════════════════════════════════════════════
+     *  THE ONE CALLER IS RecordingMailboxReader, AND THAT IS THE
+     *  WHOLE DESIGN.
+     *
+     *  This must be reachable from exactly one place, because the
+     *  question `last_reached_at` answers — "when did this inbox last
+     *  work?" — is destroyed by any second caller that is even
+     *  slightly wrong. Stamp it when a read is ATTEMPTED and it says
+     *  an inbox was reached at the moment it failed. Stamp it while
+     *  DRAWING the settings screen — which asks every mailbox whether
+     *  it can be opened — and every row reads "just now" for ever,
+     *  because opening the tab is what refreshed them.
+     *
+     *  So it is not called from a controller, from a request, or from
+     *  either reader. It is called by the wrapper that sits around
+     *  every reader App\Support\Email\MailboxReaders hands out, after
+     *  a call to the provider has RETURNED. A third provider added
+     *  next year is wrapped by the same object and cannot forget,
+     *  because it never has to remember.
+     * ═══════════════════════════════════════════════════════════════
+     *
+     * ── It also HEALS the row, and that is not scope creep ───────
+     *
+     * A mailbox that answers is connected, whatever the last attempt concluded.
+     * Leaving `status` at broken after a successful read would leave the settings
+     * screen telling somebody to reconnect an inbox they are reading at that
+     * moment — and `status_reason` would go on naming a cause that has passed. It
+     * is the same argument {@see connect} makes for moving status with the
+     * credential: two fields describing one fact must be written together, or one
+     * of them becomes a stale opinion.
+     */
+    public function markReached(): void
+    {
+        $this->forceFill([
+            'last_reached_at' => now(),
+            'status'          => self::STATUS_CONNECTED,
+            'status_reason'   => null,
+        ]);
+    }
+
+    /** Has EzBizi ever actually opened this mailbox? */
+    public function hasEverBeenReached(): bool
+    {
+        return $this->last_reached_at !== null;
     }
 
     /**
