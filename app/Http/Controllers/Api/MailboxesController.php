@@ -75,7 +75,7 @@ class MailboxesController extends Controller
     ) {}
 
     /**
-     * GET /api/v1/mailboxes — every inbox this person may see, and their state.
+     * GET /api/v1/email/mailboxes — every inbox this person may see, and their state.
      *
      * Two lists in one response rather than two endpoints, because the screen
      * shows one table: an administrator who may manage an inbox but has not been
@@ -146,7 +146,7 @@ class MailboxesController extends Controller
     }
 
     /**
-     * POST /api/v1/mailboxes — add an address.
+     * POST /api/v1/email/mailboxes — add an address.
      *
      * It arrives DISCONNECTED. Adding the address and handing over the key are
      * two acts, and separating them is what lets the second one be a different
@@ -206,7 +206,7 @@ class MailboxesController extends Controller
     }
 
     /**
-     * PATCH /api/v1/mailboxes/{mailbox} — rename it, or correct the server details.
+     * PATCH /api/v1/email/mailboxes/{mailbox} — rename it, or correct the server details.
      *
      * The ADDRESS is not editable. Changing it would silently repoint every
      * grant and every read mark at a different mailbox: four people who were
@@ -280,7 +280,7 @@ class MailboxesController extends Controller
     }
 
     /**
-     * POST /api/v1/mailboxes/{mailbox}/connect — hand over the key.
+     * POST /api/v1/email/mailboxes/{mailbox}/connect — hand over the key.
      *
      * ── Why the secret is accepted here and nowhere else ─────────
      *
@@ -355,7 +355,7 @@ class MailboxesController extends Controller
     }
 
     /**
-     * DELETE /api/v1/mailboxes/{mailbox} — disconnect it.
+     * DELETE /api/v1/email/mailboxes/{mailbox} — disconnect it.
      *
      * The row goes, and the foreign keys take the grants and the read marks with
      * it. Nothing about the mail itself is affected: the address goes on

@@ -37,7 +37,7 @@ class MailboxesApiTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
-    private const ENDPOINT = '/api/v1/mailboxes';
+    private const ENDPOINT = '/api/v1/email/mailboxes';
 
     /**
      * A public address on the internet, as a LITERAL rather than a name.

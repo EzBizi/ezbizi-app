@@ -139,7 +139,7 @@ class MailboxMessagesApiTest extends TestCase
         ]));
 
         $response = $this->signedInAs($t['admin'])
-            ->getJson("/api/v1/mailboxes/{$mailbox->id}/messages");
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages");
 
         // NOT 200. Nothing in the 2xx range may be returned for a mailbox that
         // could not be opened.
@@ -184,7 +184,7 @@ class MailboxMessagesApiTest extends TestCase
             });
 
             $response = $this->signedInAs($t['admin'])
-                ->getJson("/api/v1/mailboxes/{$mailbox->id}/messages");
+                ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages");
 
             $this->assertGreaterThanOrEqual(400, $response->status(), "{$provider} answered 2xx");
             $this->assertArrayNotHasKey('data', $response->json(), "{$provider} returned a page");
@@ -223,7 +223,7 @@ class MailboxMessagesApiTest extends TestCase
         FakeMailboxReader::$page = new MessagePage([$this->summary()]);
 
         $refused = $this->signedInAs($jenny)
-            ->getJson("/api/v1/mailboxes/{$company->id}/messages")
+            ->getJson("/api/v1/email/mailboxes/{$company->id}/messages")
             ->assertForbidden();
 
         $message = $refused->json('message');
@@ -236,7 +236,7 @@ class MailboxMessagesApiTest extends TestCase
 
         // THE CONTROL.
         $this->signedInAs($jenny)
-            ->getJson("/api/v1/mailboxes/{$ownBranch->id}/messages")
+            ->getJson("/api/v1/email/mailboxes/{$ownBranch->id}/messages")
             ->assertOk()
             ->assertJsonPath('data.messages.0.subject', 'Quote for a sweep');
     }
@@ -264,7 +264,7 @@ class MailboxMessagesApiTest extends TestCase
         FakeMailboxReader::$page = new MessagePage([$this->summary()]);
 
         $message = $this->signedInAs($clerk)
-            ->getJson("/api/v1/mailboxes/{$payroll->id}/messages")
+            ->getJson("/api/v1/email/mailboxes/{$payroll->id}/messages")
             ->assertForbidden()
             ->json('message');
 
@@ -278,7 +278,7 @@ class MailboxMessagesApiTest extends TestCase
 
         // THE CONTROL — the inbox they WERE given opens.
         $this->signedInAs($clerk)
-            ->getJson("/api/v1/mailboxes/{$info->id}/messages")
+            ->getJson("/api/v1/email/mailboxes/{$info->id}/messages")
             ->assertOk();
     }
 
@@ -307,10 +307,10 @@ class MailboxMessagesApiTest extends TestCase
         FakeMailboxReader::$page = new MessagePage([$this->summary()]);
 
         $this->signedInAs($t['admin'])
-            ->getJson("/api/v1/mailboxes/{$mailbox->id}/messages")
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")
             ->assertOk();
 
-        $row = $this->signedInAs($t['admin'])->getJson('/api/v1/mailboxes')
+        $row = $this->signedInAs($t['admin'])->getJson('/api/v1/email/mailboxes')
             ->assertOk()->json('data.0');
 
         $this->assertTrue($row['may_read']);
@@ -372,7 +372,7 @@ class MailboxMessagesApiTest extends TestCase
         FakeMailboxReader::$page = new MessagePage([$this->summary()]);
 
         $message = $this->signedInAs($branchAdmin)
-            ->getJson("/api/v1/mailboxes/{$companyInbox->id}/messages")
+            ->getJson("/api/v1/email/mailboxes/{$companyInbox->id}/messages")
             ->assertForbidden()
             ->json('message');
 
@@ -383,7 +383,7 @@ class MailboxMessagesApiTest extends TestCase
         // THE CONTROL — the organization-wide administrator gets in, so this is
         // an assignment rule and not a broken module.
         $this->signedInAs($t['admin'])
-            ->getJson("/api/v1/mailboxes/{$companyInbox->id}/messages")
+            ->getJson("/api/v1/email/mailboxes/{$companyInbox->id}/messages")
             ->assertOk();
     }
 
@@ -403,7 +403,7 @@ class MailboxMessagesApiTest extends TestCase
         FakeMailboxReader::$page = new MessagePage([$this->summary()]);
 
         $this->signedInAs($viewer)
-            ->getJson("/api/v1/mailboxes/{$mailbox->id}/messages")
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")
             ->assertForbidden()
             ->assertJsonPath('message', fn (string $m) => str_contains($m, 'do not have permission'));
     }
@@ -427,21 +427,21 @@ class MailboxMessagesApiTest extends TestCase
         FakeMailboxReader::$page = new MessagePage([$this->summary()]);
 
         $this->signedInAs($jenny)
-            ->getJson("/api/v1/mailboxes/{$mailbox->id}/messages/m-1")
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1")
             ->assertOk();
 
         $this->inTenant($t['org'], fn () => $this->assertSame(1, MessageSeen::count()));
 
         // Sam sees that somebody has picked it up — by NAME, because "has
         // anybody dealt with this" is answered by who and not by how many.
-        $row = $this->signedInAs($sam)->getJson("/api/v1/mailboxes/{$mailbox->id}/messages")
+        $row = $this->signedInAs($sam)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")
             ->assertOk()->json('data.messages.0');
 
         $this->assertSame(['Front desk'], $row['seen_by']);
 
         // And Jenny sees herself as "You" rather than working out that Front
         // desk is her.
-        $mine = $this->signedInAs($jenny)->getJson("/api/v1/mailboxes/{$mailbox->id}/messages")
+        $mine = $this->signedInAs($jenny)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")
             ->assertOk()->json('data.messages.0');
 
         $this->assertSame(['You'], $mine['seen_by']);
@@ -472,17 +472,17 @@ class MailboxMessagesApiTest extends TestCase
         FakeMailboxReader::$page = new MessagePage([$this->summary()]);
 
         $this->signedInAs($jenny)
-            ->getJson("/api/v1/mailboxes/{$mailbox->id}/messages/m-1")->assertOk();
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1")->assertOk();
 
         // Shared is the default, and the control for everything below.
         $this->assertSame(['Front desk'], $this->signedInAs($sam)
-            ->getJson("/api/v1/mailboxes/{$mailbox->id}/messages")
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")
             ->assertOk()->json('data.messages.0.seen_by'));
 
         $this->inTenant($t['org'], fn () => app(SettingsResolver::class)
             ->set('email.read_state', $t['org'], 'private'));
 
-        $body = $this->signedInAs($sam)->getJson("/api/v1/mailboxes/{$mailbox->id}/messages")
+        $body = $this->signedInAs($sam)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")
             ->assertOk()->json('data.messages.0');
 
         $this->assertSame([], $body['seen_by']);
@@ -490,7 +490,7 @@ class MailboxMessagesApiTest extends TestCase
         // Jenny still sees her own — private means private to each person, not
         // switched off.
         $this->assertSame(['You'], $this->signedInAs($jenny)
-            ->getJson("/api/v1/mailboxes/{$mailbox->id}/messages")
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")
             ->assertOk()->json('data.messages.0.seen_by'));
 
         // The row was never deleted, so switching back restores the view.
@@ -501,7 +501,7 @@ class MailboxMessagesApiTest extends TestCase
         });
 
         $this->assertSame(['Front desk'], $this->signedInAs($sam)
-            ->getJson("/api/v1/mailboxes/{$mailbox->id}/messages")
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")
             ->assertOk()->json('data.messages.0.seen_by'));
     }
 
@@ -518,7 +518,7 @@ class MailboxMessagesApiTest extends TestCase
 
         foreach (range(1, 3) as $_) {
             $this->signedInAs($clerk)
-                ->postJson("/api/v1/mailboxes/{$mailbox->id}/messages/m-1/seen")
+                ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/seen")
                 ->assertOk();
         }
 
@@ -540,7 +540,7 @@ class MailboxMessagesApiTest extends TestCase
         FakeMailboxReader::$page = new MessagePage([$this->summary()]);
 
         $this->signedInAs($clerk)
-            ->getJson("/api/v1/mailboxes/{$mailbox->id}/messages/m-1")->assertOk();
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1")->assertOk();
 
         $row = \Illuminate\Support\Facades\DB::table('message_seen')->first();
 
@@ -705,7 +705,7 @@ class MailboxMessagesApiTest extends TestCase
         $reply = 'Yes, we can do Tuesday. Our price is 180.';
 
         $this->signedInAs($jenny)
-            ->postJson("/api/v1/mailboxes/{$mailbox->id}/messages/m-1/reply", ['body' => $reply])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/reply", ['body' => $reply])
             ->assertOk()
             ->assertJsonPath('message', fn (string $m) => str_contains($m, 'info@a-1chimney.com'));
 
@@ -742,7 +742,7 @@ class MailboxMessagesApiTest extends TestCase
         $this->grant($t, $mailbox, 'Front desk');
 
         $this->signedInAs($jenny)
-            ->postJson("/api/v1/mailboxes/{$mailbox->id}/messages/m-1/reply", ['body' => 'On our way.'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/reply", ['body' => 'On our way.'])
             ->assertOk();
 
         // Read inside the tenant: `automation_events` is tenant-owned, and its
@@ -766,7 +766,7 @@ class MailboxMessagesApiTest extends TestCase
         $clerk   = $this->userWithRole($t, 'Clerk', ['email.view']);
 
         $this->signedInAs($clerk)
-            ->postJson("/api/v1/mailboxes/{$mailbox->id}/messages/m-1/reply", ['body' => 'Hello'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/reply", ['body' => 'Hello'])
             ->assertForbidden();
 
         $this->assertSame([], FakeMailboxReader::$replies);
@@ -803,7 +803,7 @@ class MailboxMessagesApiTest extends TestCase
         );
 
         $body = $this->signedInAs($clerk)
-            ->getJson("/api/v1/mailboxes/{$mailbox->id}/messages/m-1")
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1")
             ->assertOk()->json('data');
 
         // The control — the message really is there.
@@ -845,12 +845,12 @@ class MailboxMessagesApiTest extends TestCase
 
         FakeMailboxReader::$page = new MessagePage([$this->summary()]);
 
-        $first = $this->signedInAs($clerk)->getJson("/api/v1/mailboxes/{$mailbox->id}/messages")
+        $first = $this->signedInAs($clerk)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")
             ->assertOk()->json('data');
 
         $this->assertFalse($first['from_cache']);
 
-        $second = $this->signedInAs($clerk)->getJson("/api/v1/mailboxes/{$mailbox->id}/messages")
+        $second = $this->signedInAs($clerk)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")
             ->assertOk()->json('data');
 
         // Said out loud, so a screen can be honest about it and so somebody
@@ -858,7 +858,7 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertTrue($second['from_cache']);
 
         $searched = $this->signedInAs($clerk)
-            ->getJson("/api/v1/mailboxes/{$mailbox->id}/messages?search=invoice")
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages?search=invoice")
             ->assertOk()->json('data');
 
         $this->assertFalse($searched['from_cache']);
@@ -883,8 +883,8 @@ class MailboxMessagesApiTest extends TestCase
             blocks: [Block::of(BlockKind::Paragraph, 'The quote is 180 pounds.')],
         );
 
-        $this->signedInAs($clerk)->getJson("/api/v1/mailboxes/{$mailbox->id}/messages")->assertOk();
-        $this->signedInAs($clerk)->getJson("/api/v1/mailboxes/{$mailbox->id}/messages/m-1")->assertOk();
+        $this->signedInAs($clerk)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")->assertOk();
+        $this->signedInAs($clerk)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1")->assertOk();
 
         /*
          * Every table in the schema is searched for the message's own words,

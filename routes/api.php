@@ -375,18 +375,18 @@ Route::prefix('v1')
         // question is never about the Mailbox model alone: it is permission AND
         // grant AND reach, and App\Support\Email\MailboxAccess is the one place
         // all three are asked.
-        Route::get('mailboxes', [MailboxesController::class, 'index']);
-        Route::post('mailboxes', [MailboxesController::class, 'store']);
+        Route::get('email/mailboxes', [MailboxesController::class, 'index']);
+        Route::post('email/mailboxes', [MailboxesController::class, 'store']);
 
-        Route::patch('mailboxes/{mailbox}', [MailboxesController::class, 'update']);
-        Route::delete('mailboxes/{mailbox}', [MailboxesController::class, 'destroy']);
-        Route::post('mailboxes/{mailbox}/connect', [MailboxesController::class, 'connect']);
+        Route::patch('email/mailboxes/{mailbox}', [MailboxesController::class, 'update']);
+        Route::delete('email/mailboxes/{mailbox}', [MailboxesController::class, 'destroy']);
+        Route::post('email/mailboxes/{mailbox}/connect', [MailboxesController::class, 'connect']);
 
-        Route::get('mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'index']);
-        Route::get('mailboxes/{mailbox}/messages/{message}', [MailboxMessagesController::class, 'show']);
-        Route::post('mailboxes/{mailbox}/messages/{message}/reply',
+        Route::get('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'index']);
+        Route::get('email/mailboxes/{mailbox}/messages/{message}', [MailboxMessagesController::class, 'show']);
+        Route::post('email/mailboxes/{mailbox}/messages/{message}/reply',
             [MailboxMessagesController::class, 'reply']);
-        Route::post('mailboxes/{mailbox}/messages/{message}/seen',
+        Route::post('email/mailboxes/{mailbox}/messages/{message}/seen',
             [MailboxMessagesController::class, 'markSeen']);
 
         // ── Attachments (§9, §11) ────────────────────────────────

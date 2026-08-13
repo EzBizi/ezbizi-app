@@ -57,7 +57,7 @@ class MailboxMessagesController extends Controller
     ) {}
 
     /**
-     * GET /api/v1/mailboxes/{mailbox}/messages — a page of headers.
+     * GET /api/v1/email/mailboxes/{mailbox}/messages — a page of headers.
      *
      * `?search=` runs the PROVIDER'S search over the whole mailbox rather than
      * filtering what is on this page. There is no local index to filter and
@@ -119,7 +119,7 @@ class MailboxMessagesController extends Controller
     }
 
     /**
-     * GET /api/v1/mailboxes/{mailbox}/messages/{message} — open one.
+     * GET /api/v1/email/mailboxes/{mailbox}/messages/{message} — open one.
      *
      * The body arrives as BLOCKS. There is no route in this application that
      * returns email HTML, because there is no shape in the response that could
@@ -157,7 +157,7 @@ class MailboxMessagesController extends Controller
     }
 
     /**
-     * POST /api/v1/mailboxes/{mailbox}/messages/{message}/reply
+     * POST /api/v1/email/mailboxes/{mailbox}/messages/{message}/reply
      *
      * ═══════════════════════════════════════════════════════════════
      *  THE REPLY GOES OUT AS THE INBOX. *"info replies as info."*
@@ -230,7 +230,7 @@ class MailboxMessagesController extends Controller
     }
 
     /**
-     * POST /api/v1/mailboxes/{mailbox}/messages/{message}/seen
+     * POST /api/v1/email/mailboxes/{mailbox}/messages/{message}/seen
      *
      * For the case opening does not cover: somebody who has read a message in
      * the list and dealt with it without opening it, and wants their colleagues
