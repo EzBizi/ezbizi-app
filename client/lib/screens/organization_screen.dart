@@ -5,7 +5,11 @@ import '../widgets/async_body.dart';
 import '../widgets/logo_badge.dart';
 import '../widgets/refused.dart';
 import '../widgets/side_panel.dart';
+import '../widgets/structure_canvas.dart';
+import '../widgets/structure_menu.dart';
+import '../widgets/tab_bar_like.dart';
 import 'company_form_panel.dart';
+import 'organization/structure_tab.dart';
 
 /// The shape of the business (plan §3).
 ///
@@ -17,6 +21,20 @@ import 'company_form_panel.dart';
 /// Rendered as a tree rather than a list, for the reason §3 exists at all: a
 /// Sub Company inherits from its parent before the organization, and a flat
 /// list says the opposite.
+///
+/// ── Two views of one thing ───────────────────────────────────────
+///
+/// List is where the structure is CHANGED; Structure is where its shape is
+/// looked at. They are two pictures of one payload — `GET /companies`, fetched
+/// once by this screen and handed to both — so they cannot come to disagree
+/// about what exists, and every act on a node is offered by the same menu in
+/// both (see `structure_menu.dart`).
+///
+/// The selected tab is deliberately not remembered. Landing on the canvas after
+/// a reload would put somebody one click further from every control that does
+/// something, and switching back costs nothing. Anything the Structure tab DOES
+/// remember — where the boxes were put — is per user and lives in
+/// `users.preferences`, written by the tab itself.
 class OrganizationScreen extends StatefulWidget {
   const OrganizationScreen({
     super.key,
@@ -45,11 +63,31 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   String? _error;
   Map<String, dynamic>? _tree;
 
+  /// List is 0 and Structure is 1, and List is where this screen opens.
+  static const int _list = 0;
+  static const int _structure = 1;
+
+  int _tab = _list;
+
+  /// Which tabs have been shown at least once — hr_screen's idiom, and its two
+  /// reasons hold identically. A tab nobody has opened must not build: the
+  /// canvas lays out every box in the business and reads a preference to do it,
+  /// and somebody who only ever looks at the list should pay for none of that.
+  /// A tab they HAVE opened must not be rebuilt from scratch every time they
+  /// glance at the other one, because the canvas's State is where an
+  /// arrangement, a viewport and a pending save are being held.
+  final Set<int> _shown = {_list};
+
   @override
   void initState() {
     super.initState();
     _load();
   }
+
+  void _select(int tab) => setState(() {
+    _tab = tab;
+    _shown.add(tab);
+  });
 
   Future<void> _load() async {
     final request = ++_request;
@@ -124,67 +162,162 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       onRetry: _load,
       child: tree == null
           ? const SizedBox.shrink()
-          : ListView(
-              padding: const EdgeInsets.all(24),
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Organization',
-                            style: Theme.of(context).textTheme.headlineSmall,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Companies, sub companies and the places work happens. '
-                            'Settings cascade down this tree, and nothing here can '
-                            'be moved to a different parent once it exists.',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ],
-                      ),
+                // The heading sits ABOVE the strip, unlike hr_screen and
+                // email_screen which have none at all. Those screens have no
+                // header ACTION; this one does, and "Add company" belongs to
+                // the organization rather than to either view of it — a button
+                // that vanished on switching tabs would read as having
+                // navigated somewhere else rather than as two pictures of one
+                // page. Only the note changes, because only the note is about
+                // which picture you are looking at.
+                //
+                // PanelHeader rather than the hand-rolled Row that used to be
+                // here. That Row put a button and a paragraph in one line with
+                // no breakpoint, which is the exact shape PanelHeader's
+                // docblock exists to replace: at 375 the paragraph was laid out
+                // into a column a few characters wide and took the page with
+                // it.
+                PanelHeader(
+                  title: 'Organization',
+                  note: _tab == _structure
+                      ? 'The same companies, sub companies and places, drawn '
+                            'rather than listed. Arranging the picture changes '
+                            'nothing about the business — nothing here can be '
+                            'moved to a different parent once it exists.'
+                      : 'Companies, sub companies and the places work happens. '
+                            'Settings cascade down this tree, and nothing here '
+                            'can be moved to a different parent once it exists.',
+                  // Shown either way. It used to vanish for anybody who could
+                  // not use it, which reads as a missing feature rather than as
+                  // a refusal — and this is the refusal least likely to be
+                  // guessed, because it is about POSITION rather than
+                  // permission (§4): somebody holding `companies.create` at a
+                  // branch has earned the button and still cannot press it.
+                  action: Refused(
+                    reason: tree['organization']['may_add_company'] == true
+                        ? null
+                        : tree['organization']['may_add_company_reason']
+                                  as String? ??
+                              'Adding a company is the whole business’s to do.',
+                    child: FilledButton.icon(
+                      onPressed: tree['organization']['may_add_company'] == true
+                          ? () => _createCompany(parent: null)
+                          : null,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add company'),
                     ),
-                    // Shown either way now. It used to vanish for anybody who
-                    // could not use it, which reads as a missing feature rather
-                    // than as a refusal — and this is the refusal least likely
-                    // to be guessed, because it is about POSITION rather than
-                    // permission (§4): somebody holding `companies.create` at a
-                    // branch has earned the button and still cannot press it.
-                    Refused(
-                      reason: tree['organization']['may_add_company'] == true
-                          ? null
-                          : tree['organization']['may_add_company_reason']
-                                    as String? ??
-                                'Adding a company is the whole business’s to do.',
-                      child: FilledButton.icon(
-                        onPressed:
-                            tree['organization']['may_add_company'] == true
-                            ? () => _createCompany(parent: null)
-                            : null,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Add company'),
+                  ),
+                ),
+                Material(
+                  color: Theme.of(context).colorScheme.surface,
+                  child: TabBarLike(
+                    labels: const [
+                      ('List', Icons.list_alt_outlined),
+                      ('Structure', Icons.account_tree_outlined),
+                    ],
+                    selected: _tab,
+                    onSelected: _select,
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  // Offstage rather than IndexedStack, for the reason
+                  // automations_screen gives: IndexedStack leaves its hidden
+                  // children in the semantics tree, so a screen reader would
+                  // read out the whole canvas while somebody is looking at the
+                  // list. Offstage takes the hidden half out of layout,
+                  // painting and semantics and leaves its State exactly where
+                  // it was — which here is an arrangement, a viewport and a
+                  // pending save on one side, and a fetched tree on the other.
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Offstage(
+                        offstage: _tab != _list,
+                        child: _shown.contains(_list)
+                            ? _listView(tree)
+                            : const SizedBox.shrink(),
                       ),
-                    ),
-                  ],
+                      Offstage(
+                        offstage: _tab != _structure,
+                        child: _shown.contains(_structure)
+                            ? StructureTab(
+                                api: widget.api,
+                                session: widget.session,
+                                tree: tree,
+                                actions: _actionsFor,
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 24),
-
-                _OrganizationRow(
-                  api: widget.api,
-                  organization: tree['organization'] as Map<String, dynamic>,
-                  onChanged: _load,
-                ),
-
-                for (final company
-                    in (tree['companies'] as List<dynamic>)
-                        .cast<Map<String, dynamic>>())
-                  _companyBlock(company, isSub: false),
               ],
             ),
     );
+  }
+
+  Widget _listView(Map<String, dynamic> tree) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+      children: [
+        _OrganizationRow(
+          api: widget.api,
+          organization: tree['organization'] as Map<String, dynamic>,
+          onChanged: _load,
+        ),
+
+        for (final company
+            in (tree['companies'] as List<dynamic>).cast<Map<String, dynamic>>())
+          _companyBlock(company, isSub: false),
+      ],
+    );
+  }
+
+  /// The same acts the list offers, for a box on the canvas or a row in the
+  /// outline.
+  ///
+  /// Takes the kind and the server's own map rather than either drawing
+  /// widget's node class, so this screen never has to know which of the two is
+  /// on screen — and so the §4 booleans are read from the payload at the point
+  /// of use, which is the whole reason both of those widgets carry `raw`.
+  ///
+  /// The organization gets nothing. Its one act is "Add company", and that is in
+  /// the header above both tabs rather than hidden inside a box.
+  Widget? _actionsFor(
+    BuildContext context,
+    String kind,
+    Map<String, dynamic> node,
+  ) {
+    if (kind == structureCompany) {
+      return CompanyActionsMenu(
+        company: node,
+        onEdit: () => _editCompany(node),
+        onToggleActive: () => _toggleCompany(node),
+        onAddFranchise: () => _createFranchise(node),
+        // §3 fixes the depth: only a top-level company may hold one. Asked of
+        // the server's own field rather than of a flag this screen carried
+        // down, because the canvas and the outline reach a node by a different
+        // route than the list's walk does and `parent_company_id` is the one
+        // answer all three can read.
+        onAddSubCompany: node['parent_company_id'] == null
+            ? () => _createCompany(parent: node)
+            : null,
+      );
+    }
+
+    if (kind == structureFranchise) {
+      return FranchiseActionsMenu(
+        franchise: node,
+        onRename: () => _renameFranchise(node),
+        onToggle: () => _toggleFranchise(node),
+      );
+    }
+
+    return null;
   }
 
   Widget _companyBlock(Map<String, dynamic> company, {required bool isSub}) {
@@ -205,40 +338,51 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
             company: company,
             isSub: isSub,
             onEdit: () => _editCompany(company),
-            onToggleActive: () => _send(
-              () => widget.api.patch('/companies/${company['id']}', {
-                'is_active': !(company['is_active'] as bool),
-              }),
-              company['is_active'] as bool
-                  ? 'Switched off'
-                  : 'Switched back on',
-            ),
+            onToggleActive: () => _toggleCompany(company),
             onAddFranchise: () => _createFranchise(company),
             // §3: depth is fixed. Only a top-level company may hold one.
             onAddSubCompany: isSub
                 ? null
                 : () => _createCompany(parent: company),
-            onRenameFranchise: (f) => _rename(
-              title: 'Rename',
-              current: f['name'] as String,
-              onSubmit: (name) => _send(
-                () =>
-                    widget.api.patch('/franchises/${f['id']}', {'name': name}),
-                'Renamed',
-              ),
-            ),
-            onToggleFranchise: (f) => _send(
-              () => widget.api.patch('/franchises/${f['id']}', {
-                'is_active': !(f['is_active'] as bool),
-              }),
-              f['is_active'] as bool ? 'Switched off' : 'Switched back on',
-            ),
+            onRenameFranchise: _renameFranchise,
+            onToggleFranchise: _toggleFranchise,
           ),
           for (final sub in subs) _companyBlock(sub, isSub: true),
         ],
       ),
     );
   }
+
+  // ── the acts, each written once ──────────────────────────────
+  //
+  // Named methods rather than lambdas built inside the list's tree walk,
+  // because the canvas and the outline reach the same acts by a different route
+  // and there must not be a second copy of "what switching a company off
+  // means". Every one of them ends in _send, which shows the server's own
+  // sentence on a refusal and refetches on success.
+
+  Future<void> _toggleCompany(Map<String, dynamic> company) => _send(
+    () => widget.api.patch('/companies/${company['id']}', {
+      'is_active': !(company['is_active'] as bool),
+    }),
+    company['is_active'] as bool ? 'Switched off' : 'Switched back on',
+  );
+
+  Future<void> _renameFranchise(Map<String, dynamic> franchise) => _rename(
+    title: 'Rename',
+    current: franchise['name'] as String,
+    onSubmit: (name) => _send(
+      () => widget.api.patch('/franchises/${franchise['id']}', {'name': name}),
+      'Renamed',
+    ),
+  );
+
+  Future<void> _toggleFranchise(Map<String, dynamic> franchise) => _send(
+    () => widget.api.patch('/franchises/${franchise['id']}', {
+      'is_active': !(franchise['is_active'] as bool),
+    }),
+    franchise['is_active'] as bool ? 'Switched off' : 'Switched back on',
+  );
 
   // ── the two creation flows ───────────────────────────────────
 
@@ -396,20 +540,33 @@ class _OrganizationRow extends StatelessWidget {
           fallbackIcon: Icons.hub_outlined,
         ),
         const SizedBox(width: 14),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              organization['name'] as String,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            Text(
-              'the whole business — every company inherits this mark',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
+        // Bounded, for the reason the company card's own row is (R7). A Column
+        // of Texts in a Row keeps the intrinsic width of its widest line, so
+        // this sentence laid itself out at full length beside a 52pt badge and
+        // ran off the right of a 375-point window — measured on this fixture,
+        // and silently clipped rather than reported in a release build.
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                organization['name'] as String,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              // Deliberately uncapped. It is one sentence and it is the only
+              // thing on the screen that says what the organization row IS, so
+              // truncating it would remove the explanation rather than shorten
+              // it — it wraps to as many lines as the width needs.
+              Text(
+                'the whole business — every company inherits this mark',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -447,22 +604,17 @@ class _CompanyCard extends StatelessWidget {
     final active = company['is_active'] as bool;
     final mayEdit = company['may_edit'] as bool? ?? false;
 
-    // Three acts, three answers, all of them the server's (§4 has one home).
-    // "Add a place" used to be drawn from `may_edit` — `companies.edit` — which
-    // is not the permission it needs: `franchises.create`, asked against this
-    // company. So it was taken away from people who held it and offered to
-    // people who did not, and either way it said nothing.
+    // The answer for the "Add a place" chip below, which is the same answer the
+    // menu asks the same map for — §4 has one home and it is the server. This
+    // one used to be drawn from `may_edit` — `companies.edit`, which is not the
+    // permission it needs: `franchises.create`, asked against this company. So
+    // it was taken away from people who held it and offered to people who did
+    // not, and either way it said nothing.
     final mayAddFranchise = company['may_add_franchise'] as bool? ?? false;
     final noAddFranchise = mayAddFranchise
         ? null
         : company['may_add_franchise_reason'] as String? ??
               'Adding a place to ${company['name']} is not yours to do.';
-
-    final mayAddSub = company['may_add_sub_company'] as bool? ?? false;
-    final noAddSub = mayAddSub
-        ? null
-        : company['may_add_sub_company_reason'] as String? ??
-              'Adding a sub company to ${company['name']} is not yours to do.';
 
     final franchises = (company['franchises'] as List<dynamic>)
         .cast<Map<String, dynamic>>();
@@ -487,82 +639,65 @@ class _CompanyCard extends StatelessWidget {
                   size: 36,
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  company['name'] as String,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                    color: active ? null : scheme.onSurfaceVariant,
+                // ── Bounded and wrapping, because R7 is not a wide desktop ──
+                //
+                // These were four unbounded children and a Spacer, which is a
+                // Row that only fits by luck: a Text takes its intrinsic width
+                // in a Row, so a company called anything longer than a word
+                // overflowed the card the moment the window narrowed. Measured
+                // on this fixture at 375: over by 129 points on a top-level
+                // company and by more on a sub company, which pays the indent
+                // as well. Nothing on screen said so — an overflow is a stripe
+                // in debug and silently clipped content in release.
+                //
+                // Expanded gives the run the space the menu does not need, and
+                // takes the Spacer's job with it. A Wrap inside it so the two
+                // badges drop to a second line rather than squeezing the name
+                // they are about, and the name ellipsizes rather than growing
+                // the card without limit — the whole name is on the row's own
+                // semantics either way.
+                Expanded(
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 2,
+                    children: [
+                      Text(
+                        company['name'] as String,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          color: active ? null : scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (isSub)
+                        Text(
+                          'sub company',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      if (!active)
+                        Text(
+                          'switched off',
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodySmall?.copyWith(color: scheme.error),
+                        ),
+                    ],
                   ),
                 ),
-                if (isSub) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    'sub company',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-                if (!active) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    'switched off',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: scheme.error),
-                  ),
-                ],
-                const Spacer(),
-                // Shown whenever ANY entry in it is reachable. Hiding the
-                // whole menu from somebody who may add a place but not rename
-                // the company is how a control that exists becomes one nobody
-                // can find.
-                if (mayEdit || mayAddFranchise || mayAddSub)
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_horiz, size: 20),
-                    tooltip: 'What to do with ${company['name']}',
-                    itemBuilder: (context) => [
-                      refusedMenuItem(
-                        context,
-                        value: 'edit',
-                        label: 'Edit details',
-                        reason: mayEdit
-                            ? null
-                            : 'Your role does not include changing a company.',
-                      ),
-                      refusedMenuItem(
-                        context,
-                        value: 'franchise',
-                        label: 'Add a place',
-                        reason: noAddFranchise,
-                      ),
-                      // §3 fixes the depth: only a top-level company may hold
-                      // one. For a sub company the entry is absent rather than
-                      // refused — there is no rule to explain, the thing does
-                      // not exist.
-                      if (onAddSubCompany != null)
-                        refusedMenuItem(
-                          context,
-                          value: 'sub',
-                          label: 'Add a sub company',
-                          reason: noAddSub,
-                        ),
-                      refusedMenuItem(
-                        context,
-                        value: 'active',
-                        label: active ? 'Switch off' : 'Switch back on',
-                        reason: mayEdit
-                            ? null
-                            : 'Your role does not include switching a company '
-                                  'off or back on.',
-                      ),
-                    ],
-                    onSelected: (v) => switch (v) {
-                      'edit' => onEdit(),
-                      'franchise' => onAddFranchise(),
-                      'sub' => onAddSubCompany?.call(),
-                      _ => onToggleActive(),
-                    },
-                  ),
+                // The same menu the canvas box and the outline row draw, so the
+                // three views cannot come to offer different acts under
+                // different answers. It decides for itself whether there is
+                // anything in it worth drawing.
+                CompanyActionsMenu(
+                  company: company,
+                  onEdit: onEdit,
+                  onToggleActive: onToggleActive,
+                  onAddFranchise: onAddFranchise,
+                  onAddSubCompany: onAddSubCompany,
+                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -607,28 +742,17 @@ class _FranchiseChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = franchise['is_active'] as bool;
-    final mayEdit = franchise['may_edit'] as bool? ?? false;
     final scheme = Theme.of(context).colorScheme;
     final name = franchise['name'] as String;
-    final facts = '${franchise['timezone']} · ${franchise['currency']}';
 
-    return PopupMenuButton<String>(
-      enabled: mayEdit,
-      // A menu that will not open, over a chip that looks like every other
-      // chip, is indistinguishable from a bug. The server's own sentence says
-      // which half of §4 is missing.
-      tooltip: mayEdit
-          ? facts
-          : '$facts — '
-                '${franchise['may_edit_reason'] as String? ?? 'This one is not yours to change.'}',
-      itemBuilder: (_) => [
-        const PopupMenuItem(value: 'rename', child: Text('Rename')),
-        PopupMenuItem(
-          value: 'active',
-          child: Text(active ? 'Switch off' : 'Switch back on'),
-        ),
-      ],
-      onSelected: (v) => v == 'rename' ? onRename() : onToggle(),
+    // The chip itself is the menu's anchor, so the place and the way to act on
+    // it are one target. The canvas box and the outline row hand it no child
+    // and get the plain handle instead — same menu, same answers, different
+    // thing to hang off.
+    return FranchiseActionsMenu(
+      franchise: franchise,
+      onRename: onRename,
+      onToggle: onToggle,
       child: Semantics(
         // Being switched off was carried by grey text and a line through it.
         // The line is not colour, so it survives a reader who cannot see the

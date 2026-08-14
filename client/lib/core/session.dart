@@ -161,6 +161,35 @@ class Session extends ChangeNotifier {
     }
   }
 
+  /// Record a preference this app has already saved by another route.
+  ///
+  /// Not [setPreference], which WRITES — through `PATCH /me/preferences` and
+  /// `PreferenceRegistry`, the registry for the controls the Settings screen
+  /// renders. Some preferences are not one of those and have an endpoint of
+  /// their own: `dashboard.widgets` and `dashboard.order` go through
+  /// `DashboardController::saveLayout`, and `organization.canvas` goes through
+  /// `OrganizationCanvasController::save`, because a layout is not a setting
+  /// somebody picks from a list and the registry's casts have nothing to say
+  /// about it.
+  ///
+  /// Those writes still have to land in the copy of `preferences` this session
+  /// is holding. Without that, leaving the screen and coming back reads the
+  /// value that was there BEFORE the change — a save that succeeded, undone on
+  /// screen by a stale local copy.
+  ///
+  /// No request, because there is nothing to ask: the server has already
+  /// confirmed this value and this is only the client agreeing with it. And a
+  /// stale local blob could never clobber anything server-side even if it were
+  /// wrong, because every writer merges per key rather than assigning the whole
+  /// column.
+  void rememberPreference(String key, Object value) {
+    final me = _me;
+    if (me == null) return;
+
+    _me = me.withPreference(key, value);
+    notifyListeners();
+  }
+
   /// Change which part of the business you are looking at (§3 roll-ups).
   ///
   /// Not `setPreference`. That applies the value locally first, which works for

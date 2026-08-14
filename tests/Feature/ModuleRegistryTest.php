@@ -126,11 +126,19 @@ class ModuleRegistryTest extends TestCase
      */
     public function test_a_trigger_that_nothing_raises_says_so_and_one_that_fires_does_not(): void
     {
-        $source = $this->applicationSourceOutsideTheDeclarations();
+        $quoted = [];
+
+        foreach (app(ModuleRegistry::class)->all() as $module) {
+            foreach ($module->triggers as $trigger) {
+                $quoted[] = "'{$trigger->key}'";
+            }
+        }
+
+        $mentions = $this->mentionedInApplicationCode(array_unique($quoted));
 
         foreach (app(ModuleRegistry::class)->all() as $key => $module) {
             foreach ($module->triggers as $trigger) {
-                $mentioned = str_contains($source, "'{$trigger->key}'");
+                $mentioned = $mentions["'{$trigger->key}'"];
 
                 $this->assertSame(
                     $mentioned,
@@ -147,15 +155,44 @@ class ModuleRegistryTest extends TestCase
         }
     }
 
-    /** Every PHP file under app/ except the ones where the keys are declared. */
-    private function applicationSourceOutsideTheDeclarations(): string
+    /**
+     * Which of these strings appear anywhere under app/, outside the files where
+     * the keys are declared.
+     *
+     * ── Why this asks a question instead of returning the source ──
+     *
+     * It used to concatenate every PHP file under app/ into one string and hand
+     * that back to be searched. That worked until it did not: the tree passed
+     * two megabytes, PHP grows a string by DOUBLING its buffer, and the
+     * reallocation asked for more headroom than was left — so adding an
+     * ordinary file to app/ turned this into a fatal that took the whole suite
+     * down with it, at a line that had nothing to do with whatever was added.
+     * A test that fails on the SIZE of the codebase rather than on anything it
+     * claims to check is worse than no test, because the failure points
+     * somewhere innocent.
+     *
+     * Raising the memory limit was the tempting fix and is the wrong one: it
+     * moves the cliff without removing it, and the next person meets it with no
+     * idea why a test about trigger wording ran out of memory.
+     *
+     * So nothing is accumulated. One pass, one file held at a time, every needle
+     * checked against it — peak memory is the largest single file rather than
+     * the whole tree, and the answer is identical. Every needle is asked for in
+     * ONE pass rather than one pass per needle, because there are a couple of
+     * dozen of them and re-reading the tree for each would trade the memory
+     * problem for a time one.
+     *
+     * @param  list<string>  $needles
+     * @return array<string, bool>
+     */
+    private function mentionedInApplicationCode(array $needles): array
     {
         $declarations = [
             app_path('Support'.DIRECTORY_SEPARATOR.'Modules'),
             app_path('Providers'.DIRECTORY_SEPARATOR.'ModuleServiceProvider.php'),
         ];
 
-        $source = '';
+        $found = array_fill_keys($needles, false);
 
         foreach (File::allFiles(app_path()) as $file) {
             if ($file->getExtension() !== 'php') {
@@ -168,10 +205,16 @@ class ModuleRegistryTest extends TestCase
                 }
             }
 
-            $source .= $file->getContents();
+            $contents = $file->getContents();
+
+            foreach ($needles as $needle) {
+                if (! $found[$needle] && str_contains($contents, $needle)) {
+                    $found[$needle] = true;
+                }
+            }
         }
 
-        return $source;
+        return $found;
     }
 
     public function test_a_trigger_declared_without_wording_is_refused(): void

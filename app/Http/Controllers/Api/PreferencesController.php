@@ -75,9 +75,36 @@ class PreferencesController extends Controller
      * Always complete, so the client never has to know a default. A preference
      * added later starts appearing with its default the moment it is defined,
      * without touching a single stored row.
+     *
+     * ── Why the canvas cleaner is called here ─────────────────────
+     *
+     * Because this is a way OUT, and it was not being treated as one. The
+     * out-clean was written on OrganizationCanvasController and called from the
+     * /me payload alone, under a comment saying /me was the only place a stored
+     * arrangement leaves the server. It was not: this method is the body of both
+     * GET /me/preferences and the 200 of PATCH /me/preferences, and array_merge
+     * passes every stored key through untouched — including keys the registry
+     * has never heard of, which `organization.canvas` deliberately is. A blob
+     * restored from a backup taken before that feature clamped, or hand-edited,
+     * therefore reached the client with its coordinates unchecked through the
+     * endpoint literally named for preferences, while the same values came back
+     * clamped through /me.
+     *
+     * Nothing shipped is broken by that today — the Flutter client never reads
+     * the body of either call — which is exactly the argument the cleaner was
+     * written against: the check must not sit on the far side of the wire, and
+     * the desktop and mobile clients the house rules require would reach for
+     * this endpoint first.
+     *
+     * The write side is already closed and stays that way: update() casts every
+     * key through the registry, which has no `organization.canvas` definition and
+     * throws, so a 422 — not this method — is what refuses a canvas PATCHed at
+     * this endpoint.
      */
     private function resolved($user): array
     {
-        return array_merge($this->registry->defaults(), $user->preferences ?? []);
+        return OrganizationCanvasController::cleanedInto(
+            array_merge($this->registry->defaults(), $user->preferences ?? []),
+        );
     }
 }
