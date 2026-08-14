@@ -91,7 +91,53 @@ class OrganizationCanvasTest extends TestCase
      */
     private function preferencesOf(User $user): array
     {
-        return $this->inTenant(fn () => User::find($user->id)->preferences ?? []);
+        $stored = $this->inTenant(fn () => User::find($user->id)->preferences ?? []);
+
+        if (is_array($stored[Canvas::PREFERENCE] ?? null)) {
+            $stored[Canvas::PREFERENCE] = self::inAuthoredKeyOrder($stored[Canvas::PREFERENCE]);
+        }
+
+        return $stored;
+    }
+
+    /**
+     * The stored boxes with each one's keys back in the order this file writes
+     * them, so an assertion can be read as it was written.
+     *
+     * ── Why this is needed at all ─────────────────────────────────
+     *
+     * MySQL does not store a JSON object's keys in the order they arrived. It
+     * sorts them by length and then lexicographically, so `{kind, id, x, y}`
+     * comes back as `{x, y, id, kind}` — while sqlite keeps insertion order.
+     * `assertSame` compares key order, so without this every assertion below
+     * passes on one engine and fails on the other with nothing about the stored
+     * data different. That is not a difference any of these tests mean to make.
+     *
+     * It matters here and nowhere else because these assertions read the raw
+     * column. Everything the CLIENT sees goes through
+     * OrganizationCanvasController::normalised(), which rebuilds each box in a
+     * fixed order, so a response is deterministic whatever the engine did.
+     *
+     * ── Why a template rather than ksort ──────────────────────────
+     *
+     * Because the ordering must not become a way to hide things. array_replace
+     * fills from a four-key template, so a key that should not be stored at all
+     * is still present — appended after the four — and the test that exists to
+     * catch a stray key still catches it. A missing key arrives as null rather
+     * than vanishing. Sorting both sides instead would have been shorter and
+     * would have quietly accepted a box with a fifth key in it.
+     *
+     * @param  list<mixed>  $boxes
+     * @return list<mixed>
+     */
+    private static function inAuthoredKeyOrder(array $boxes): array
+    {
+        return array_map(
+            fn (mixed $box) => is_array($box)
+                ? array_replace(['kind' => null, 'id' => null, 'x' => null, 'y' => null], $box)
+                : $box,
+            $boxes,
+        );
     }
 
     /** Put a blob into somebody's preferences the way an older build might have. */
