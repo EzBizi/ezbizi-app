@@ -673,6 +673,11 @@ class RetentionTest extends TestCase
                 .'roles and cannot invent one',
             'platform_module_flags' => 'one row per module, holding EzBizi\'s own '
                 .'availability switch (§2.1 layer 3), changed in place',
+            'platform_minimum_client_versions' => 'one row per platform, holding the oldest '
+                .'installed client EzBizi will answer, changed in place. `platform` is unique, '
+                .'so it is bounded by the number of platforms that exist rather than by time. '
+                .'`changed_by` is a PlatformStaff label overwritten by the next change, not a '
+                .'history — the audit log carries that, and is swept on its own schedule',
             'platform_subscription_defaults' => 'one row, holding the platform\'s default '
                 .'trial and subscription numbers (§13), changed in place. The expiry that '
                 .'binds a client is `organizations.trial_ends_at`, not this',
