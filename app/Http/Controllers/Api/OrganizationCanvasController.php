@@ -2,31 +2,44 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Organization;
+use App\Models\User;
+use App\Support\Access\Refusal;
+use App\Support\Audit\AuditLogger;
+use App\Support\Settings\SettingsResolver;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use InvalidArgumentException;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Where one person put the boxes on the Organization tab's structure canvas
- * (§2.1 category 6).
+ * Where the boxes sit on the Organization tab's structure canvas — for
+ * everybody in the organization (§2.1 category 5).
  *
  * The Organization tab draws the business — organization, companies, sub
- * companies, franchises — as boxes the user drags into an arrangement that
- * suits them. This endpoint stores that arrangement, and nothing else. It is a
- * picture of the structure, never the structure: see "What this is NOT" below,
- * which is the whole reason the file exists rather than a method somewhere.
+ * companies, franchises — as boxes somebody drags into an arrangement. This
+ * endpoint stores that arrangement, and nothing else. It is a picture of the
+ * structure, never the structure: see "What this is NOT" below, which is the
+ * whole reason the file exists rather than a method somewhere.
  *
  * ── Why a controller of its own ──────────────────────────────────
  *
  * CompaniesController was the obvious home and is the wrong one twice over.
  * Every method in that class calls $this->authorize() against a Company policy,
- * writes a business record, logs an audit entry and emits an automation event;
- * this method does none of the four, and it would be the only one in a class
- * whose docblock opens "Every rule in §3 is enforced here". Worse, that file is
- * where §3's write-once-parent rule lives — `'parent_company_id' => ['missing']`
- * in update() — and a second method there accepting `{id, x, y}` for companies
- * is exactly the thing a future reader mistakes for the move endpoint §3
- * forbids.
+ * writes a business record and emits an automation event; this method does none
+ * of those three. It would be the only one in a class whose docblock opens
+ * "Every rule in §3 is enforced here". Worse, that file is where §3's
+ * write-once-parent rule lives — `'parent_company_id' => ['missing']` in
+ * update() — and a second method there accepting `{id, x, y}` for companies is
+ * exactly the thing a future reader mistakes for the move endpoint §3 forbids.
+ *
+ * (That sentence used to say "none of the four", the fourth being an audit
+ * entry. It is four minus one now — this DOES audit, for the reason set out
+ * below — and the clause was corrected rather than carried forward, because a
+ * paragraph that lists a property the code no longer has is worse than no
+ * paragraph at all.)
  *
  * DashboardController was the other candidate. Its ORDERABLE constant is a
  * fixed list of DASHBOARD SURFACES and saveLayout's `surface` field says which
@@ -35,11 +48,11 @@ use Illuminate\Validation\Rule;
  * adding 'organization' to that list would leave `widgets.*.key` validating a
  * company id, which is a rule lying about what it checks.
  *
- * What DOES carry over from DashboardController is its discipline, and all of
- * it does: written straight into `users.preferences` rather than through the
- * PreferenceRegistry, merged into the blob rather than replacing it, cleaned on
- * the way in AND on the way out, echoing what was stored rather than what was
- * sent, and no audit and no emit for reasons stated rather than assumed.
+ * What DOES carry over from DashboardController is its defensive discipline,
+ * and all of it still does: cleaned on the way in AND on the way out by one
+ * function, coordinates clamped rather than refused, the count capped at both
+ * ends, ids the caller cannot resolve kept rather than swept up, and the
+ * response echoing what was STORED rather than what was sent.
  *
  * ── What this is NOT ─────────────────────────────────────────────
  *
@@ -51,74 +64,83 @@ use Illuminate\Validation\Rule;
  * two numbers, so there is no field here a re-parent could arrive in even by
  * accident, and no reader of this file can mistake it for one.
  *
- * ── Not through the PreferenceRegistry ───────────────────────────
+ * ── One picture, held in the settings system ─────────────────────
  *
- * PATCH /me/preferences and PreferenceRegistry::cast exist for the controls the
- * Settings screen renders — each one a named, described, individually castable
- * value that screen draws a widget for. A canvas arrangement is not one of
- * those: it is a variable-length list of coordinates nobody would ever set from
- * a settings form. `dashboard.widgets` and `dashboard.order` are written the
- * same way, directly, for the same reason. Said here so nobody later "tidies"
- * this into the registry and gives the Settings screen a control it cannot draw.
+ * This used to be one person's preference, written straight into
+ * `users.preferences['organization.canvas']` (§2.1 category 6). The owner's
+ * answer to "should this be shared" was "should be shared obviously", so it is
+ * a tenant setting now: ONE arrangement per organization that everybody in that
+ * organization sees.
  *
- * ── No audit, no policy, no automation event ─────────────────────
+ * It lives in the settings system rather than in a store of its own because
+ * that system holds it with no strain. Its unique (scope_type, scope_id, key)
+ * IS the "exactly one row per organization" invariant this value needs, and the
+ * `json` column has about two thousand times the headroom the cap allows. The
+ * definition is declared in SettingRegistry, organization-scope only, and
+ * carries `editedOn` so the Settings screen does not draw a box of raw
+ * coordinates for a picture that has its own screen.
  *
- * All three omissions are deliberate, and each is written down because a write
- * path with no audit call is otherwise indistinguishable from one where
- * somebody forgot — DashboardController's own words, and the same is true of a
- * write path with no emit.
+ * WRITTEN HERE rather than through PATCH /settings/{key}, and that is a
+ * deliberate choice with one reason: that route audits the entire before-blob
+ * and the entire after-blob unconditionally. See the audit paragraph in save().
  *
- * No POLICY, for PreferencesController's reason: every query here is bound to
- * $request->user(), so there is nothing to authorize beyond being signed in,
- * and a permission would imply one user might arrange another's canvas, which
- * is never true. Nor is there an `organizations.canvas` permission to invent —
- * §4 gates acts on the BUSINESS, and looking at a picture of a tree you already
- * fetched from GET /companies (which authorizes viewAny) is not one. A
- * permission that nothing ever refuses is a dead row in every role editor.
+ * READ on GET /companies, beside the tree it describes. Not on /me, which is
+ * answered once at launch and cached in the client's session — a colleague's
+ * arrangement would not have appeared until the next sign-in.
  *
- * No AUDIT, for the same controller's reason: §10 records what people do to the
- * business. Where somebody parked a box is not an action anyone will ever need
- * to reconstruct, and writing it would dilute a log whose whole value is that
- * everything in it matters.
+ * ── Gated, because a save now changes what everybody sees ────────
  *
- * No TRIGGER — no `organization.canvas_arranged` — and this one is worth all
- * four reasons, because it is the omission most likely to be "fixed":
+ * §4: `organizations.edit`, plus an assignment at the whole organization. Both
+ * halves are asked from one method, {@see self::refusalToArrange()}, which is
+ * also what CompaniesController::index publishes on the tree as
+ * `may_arrange_reason` — so the live control and the 403 behind it cannot come
+ * to disagree, because they are the same string.
  *
- *   1. ModuleDefinition::assertKeysMatchSubject forces a trigger's key prefix
- *      to match its module's declared subject, and `organizations` declares
- *      Organization. The key would therefore claim to be about the Organization
- *      record while describing a row in `users`, and the field picker would
- *      offer Organization fields for an event that has none. Moved under a
- *      `users` module instead, the subject is one nothing can write to —
- *      ActionRunner::WRITABLE holds Job and Customer and nothing else. When an
- *      event has no honest home, it is not an event.
- *   2. AutomationEngine::scopeOf would answer [null, null]: a preferences blob
- *      is not a model, and User neither implements CarriesAutomationScope nor
- *      carries franchise_id. That is precisely the failure CarriesAutomationScope
- *      was written about — a franchise-level rule that matches nothing for the
- *      life of the rule, with nothing on screen saying why.
- *   3. EventEmitter::emit writes the per-organization outbox and
- *      AutomationEngine::deliver queues against every active rule in the tenant.
- *      One person nudging a box in their own browser would become tenant-wide
- *      queued work, once per debounced save.
- *   4. ModuleRegistryTest fails the build either way. `isRaised: true` with no
- *      emit behind it fails its grep; `isRaised: false` puts a permanently dead
- *      row in every tenant's rule builder. TriggerDefinition::NOT_RAISED_YET
- *      exists to keep a real, planned gap honest — not to make a fabricated
- *      trigger cheap.
+ * Somebody WITHOUT it still sees the arrangement, still pans, still zooms,
+ * still re-centres. What is refused is the SAVE.
  *
- * No automation ACTION that rearranges somebody's canvas either. It would write
- * ANOTHER user's category-6 preferences, which would make PreferencesController's
- * absolute — nobody sets somebody else's — false for the first time, in exchange
- * for a cosmetic payoff. Same class of refusal as `roles` and `automations`.
+ * ── Automations: nothing new, and the reason has CHANGED ─────────
  *
- * The positive half, so the omission is not mistaken for a gap: every fact this
- * canvas draws already raises its own event. CompaniesController emits
- * company.created, company.updated and company.deactivated; FranchisesController
- * emits franchise.created, franchise.updated and franchise.deactivated. The
- * drift that "Arrange for me" exists to fix — new companies appearing since
- * somebody last tidied their picture — is therefore already something a tenant
- * can build a rule on today, on triggers this feature did not have to add.
+ * The old argument here does not survive this change and is not repeated. It
+ * said a `canvas_arranged` trigger would have to live under a subject nothing
+ * could write to, and that AutomationEngine::scopeOf would answer [null, null]
+ * for a preferences blob that is not a model. Both were true of a row in
+ * `users`. Neither is true now: this writes an organization-scoped setting, the
+ * `organizations` module already declares Organization as its subject, and the
+ * target handed to the audit logger is a real Organization.
+ *
+ * The honest reason a trigger is still not added is simpler, and it is that one
+ * already exists and already covers this:
+ *
+ *     organization.settings_changed — "Somebody saved a different value for a
+ *     setting, at whichever level they set it."  (isRaised: false)
+ *
+ * The arrangement IS a setting saved at organization level, so that sentence is
+ * already true of it. Adding `organization.structure_arranged` beside it would
+ * be a second, narrower trigger for a case the first one names, and it would be
+ * dead in exactly the same way — settings are saved without going through the
+ * outbox, which is still true of this write.
+ *
+ * It stays isRaised: false rather than being wired up here. Making it fire for
+ * THIS setting alone would be the worst of both: a trigger a tenant builds a
+ * rule on because the label says "Setting changed", which then fires for the
+ * org chart and stays silent for the tax rate and the password policy. Either
+ * every setting write goes through the outbox or none does, and that is a
+ * decision about SettingsController, not about a canvas.
+ *
+ * No automation ACTION that rearranges the picture, either. The old reason — it
+ * would write another user's preferences, which nothing may do — is also void,
+ * and the new one is stronger: ActionRunner::WRITABLE holds Job and Customer
+ * and nothing else, and an action here would be a rule firing on "a job was
+ * completed" and silently moving everybody's furniture, with an audit row that
+ * can name no person. Same class of refusal as `roles` and `automations`.
+ *
+ * The positive half is unchanged and is the reason none of this is a gap: every
+ * fact this canvas draws already raises its own event. CompaniesController
+ * emits company.created, company.updated and company.deactivated;
+ * FranchisesController emits the three franchise equivalents. The drift that
+ * "Arrange for me" exists to fix is already something a tenant can build a rule
+ * on today.
  *
  * And the alarm, stated where somebody will trip over it: there is no
  * `company.reparented` trigger because no code path can reparent a company. That
@@ -129,21 +151,28 @@ use Illuminate\Validation\Rule;
 class OrganizationCanvasController extends Controller
 {
     /**
-     * Where one person's arrangement lives inside their preferences.
+     * The organization-wide setting this arrangement is stored as.
      *
-     * A public const so tests and any future reader name it rather than spell
-     * it — the same reason DashboardController::ORDER_PREFERENCE is public.
+     * Was `organization.canvas` in `users.preferences`. A public const so tests
+     * and any future reader name it rather than spell it — the same reason
+     * DashboardController::ORDER_PREFERENCE is public.
+     *
+     * The old key is not merely unused: it is stripped from every user by
+     * {@see \App\Support\Structure\PromoteCanvasArrangements}, which runs once at
+     * the migration that retires it. Nothing reads it and nothing may.
      */
-    public const PREFERENCE = 'organization.canvas';
+    public const SETTING = 'organization.structure_canvas';
 
     /**
      * The kinds of box the canvas can hold.
      *
      * A closed list, deliberately, and not "whatever the client sends". This
-     * lands in `users.preferences`, a JSON column read on every request that
-     * returns /me; an open vocabulary would let a client grow that blob with
-     * entries naming shapes that will never exist, and nothing would ever clear
-     * them.
+     * lands in a JSON column that rides out on the tree payload every time
+     * anybody opens the Organization screen; an open vocabulary would let a
+     * client grow that blob with entries naming shapes that will never exist,
+     * and nothing would ever clear them. It is one row for the whole
+     * organization now, so the junk would be everybody's rather than one
+     * person's.
      *
      * A SUB COMPANY IS A 'company'. A sub company is a company row that happens
      * to have a parent — CompaniesController nests them for drawing, but the
@@ -161,10 +190,11 @@ class OrganizationCanvasController extends Controller
     /**
      * How many boxes one arrangement may name.
      *
-     * ORDERABLE's reason again: this is a JSON column read on every /me. 500 is
-     * chosen so it reads as a defence rather than as a limit — 500 entries of
-     * roughly sixty bytes is about 30KB, and it is far above any structure a
-     * person arranges by hand.
+     * ORDERABLE's reason again: this is a JSON column served on a payload the
+     * Organization screen fetches every time it opens. 500 is chosen so it
+     * reads as a defence rather than as a limit — 500 entries of roughly sixty
+     * bytes is about 30KB, and it is far above any structure a person arranges
+     * by hand.
      *
      * REFUSED above the cap rather than truncated, and that is the one place
      * this endpoint refuses where it otherwise cleans. The difference is
@@ -189,7 +219,8 @@ class OrganizationCanvasController extends Controller
      * its job is to turn a corrupt write into a clamp rather than into a screen
      * nobody can open. A stored 1e300 handed to a Flutter Transform throws, and
      * the throw lands on the person who happened to open the tab rather than on
-     * whatever produced the number.
+     * whatever produced the number — and now on EVERY person who opens the tab,
+     * because there is one arrangement rather than one each.
      *
      * Zero is the floor for the matching reason: the origin is the top-left of
      * the viewport's extent, so a negative coordinate is a box nobody can scroll
@@ -197,8 +228,13 @@ class OrganizationCanvasController extends Controller
      */
     public const MAX_COORDINATE = 20000;
 
+    public function __construct(
+        private readonly SettingsResolver $settings,
+        private readonly AuditLogger $audit,
+    ) {}
+
     /**
-     * Save an arrangement.
+     * Save an arrangement, for everybody.
      *
      * ── Clean, don't refuse — with the one exception above ────────
      *
@@ -220,7 +256,9 @@ class OrganizationCanvasController extends Controller
      * company can be missing for the afternoon — somebody's role is being
      * edited, a module is switched off and back on, a scope is narrowed — and
      * forgetting where it sat because it happened to be absent when they nudged
-     * a different box would lose an arrangement they never changed.
+     * a different box would lose an arrangement they never changed. It would now
+     * lose it for the whole office rather than for one person, which makes the
+     * case stronger and not weaker.
      *
      * And unlike `dashboard.widgets`, nothing downstream ever resolves one of
      * these. saveLayout must re-check its keys because index() hands them to
@@ -232,11 +270,11 @@ class OrganizationCanvasController extends Controller
      *
      * `uuid` rather than `string|max:n` is what bounds the length without a cap
      * that would look arbitrary, and it is also what stops prose being written
-     * into a column read on every /me.
+     * into a column the whole organization reads.
      *
      * `present` rather than `required` on the list itself, for saveLayout's
      * reason: an empty array is a legal save. "I put everything back" is a real
-     * answer, and refusing it would leave somebody unable to undo their own
+     * answer, and refusing it would leave somebody unable to undo an
      * arrangement.
      */
     public function save(Request $request): array
@@ -256,19 +294,59 @@ class OrganizationCanvasController extends Controller
                 .'view lists all of it.',
         ]);
 
-        $boxes = self::normalised($input['boxes']);
+        $boxes = self::clean($input['boxes']);
 
-        // Merged into the existing blob, never assigned over it. `preferences`
-        // also holds the theme, the sidebar width and the saved scope, and an
-        // arrangement that took somebody's theme with it would be a bug found
-        // days later by somebody who never connected the two.
-        //
-        // forceFill because `preferences` is deliberately not mass-assignable.
-        $user = $request->user();
+        $user         = $request->user();
+        $organization = $user->organization;
 
-        $user->forceFill([
-            'preferences' => array_merge($user->preferences ?? [], [self::PREFERENCE => $boxes]),
-        ])->save();
+        // Asked here and asked identically on the tree payload, from ONE
+        // method, so the disabled canvas and the 403 behind it cannot come to
+        // disagree — they are the same string. SettingsController::refusalFor
+        // states the rule; this is the same rule for a write that does not go
+        // through that controller.
+        $refusal = self::refusalToArrange($user);
+
+        abort_if($refusal !== null, Response::HTTP_FORBIDDEN, $refusal);
+
+        DB::transaction(function () use ($boxes, $organization) {
+            $before = self::arrangementFor($this->settings, $organization);
+
+            $this->settings->set(self::SETTING, $organization, $boxes);
+
+            /*
+             * ── Audited, and audited THIN ────────────────────────
+             *
+             * The old per-user save wrote nothing, and PreferencesController's
+             * reason was right for what it was: §10 records what people do to
+             * the BUSINESS, and where somebody parked a box in their own
+             * browser was not that. It is that now. One person's drag changes
+             * what every colleague opens tomorrow, so "who rearranged the
+             * chart, and when" is a question somebody will actually ask — and
+             * it is the only question about this that anybody will ever ask.
+             *
+             * Which is why the coordinates are NOT here. Routing this through
+             * PATCH /settings/{key} would have written the entire before-blob
+             * and the entire after-blob into `changes` on every debounced save
+             * — up to sixty kilobytes of x and y, twice, for a diff no human
+             * will ever read and no code will ever replay. That is exactly the
+             * dilution DashboardController warns about, arriving from the other
+             * direction: a log whose value is that everything in it matters
+             * does not want a hundred rows of somebody tidying.
+             *
+             * One row per accepted save rather than per drag: the client
+             * settles for 700ms first, so tidying a chart is a handful of rows.
+             *
+             * PreferencesController's and DashboardController::saveLayout's
+             * no-audit paragraphs are both untouched by this. They are still
+             * right about what they cover — values only their own author can
+             * observe — and this is no longer one of those.
+             */
+            $this->audit->log(
+                action:  'organization.structure_arranged',
+                target:  $organization,
+                changes: ['boxes_before' => count($before), 'boxes_after' => count($boxes)],
+            );
+        });
 
         // What was STORED, not what was sent. A clamped coordinate or a
         // deduplicated entry is then visible to the client rather than corrected
@@ -278,68 +356,113 @@ class OrganizationCanvasController extends Controller
     }
 
     /**
-     * A resolved preference map with any stored arrangement cleaned.
+     * Why this person may not rearrange the picture, or null when they may.
      *
-     * ── Cleaning on the way OUT, and where it had to live ─────────
+     * ── Two questions, both required, and one string ─────────────
      *
-     * DashboardController::index re-runs asDeclared on a layout its own
-     * saveLayout already checked, because "a layout stored before it existed is
-     * still user input nobody has checked". The same is true here and more so:
-     * this blob is a JSON column, it can be edited by hand, it can have been
-     * written by an older build of this app, and the client hands its numbers
-     * straight to a Transform that throws on a value it cannot use.
+     * The same pair SettingsController::refusalFor asks of every other
+     * organization-scoped setting, because this IS one: does the role grant the
+     * permission, and does the person stand at the whole organization?
      *
-     * The awkward part, stated rather than hidden: nothing on the SERVER ever
-     * reads this back. The layout only ever leaves as part of a preferences
-     * blob, so the out-clean has to be called from every place one of those is
-     * served — which is a real cost, and the reason the alternative was
-     * considered at all.
+     * The second half is the one that would have been forgotten, and
+     * SettingsController records what it cost last time — a plain role holding
+     * only `organizations.edit`, assigned to a single franchise, was measured
+     * lowering the tenant's password minimum from 12 to 4, 200 OK. The same
+     * shape here is somebody who runs one branch rearranging the chart of the
+     * whole business for everybody in it.
      *
-     * There are three such places and all three call this: the /me payload, and
-     * PreferencesController::resolved(), which is the body of GET
-     * /me/preferences and of PATCH /me/preferences' answer. That last pair was
-     * missed at first, under a comment here claiming /me was the only exit —
-     * worth recording, because the mistake is the obvious one. /me is where the
-     * client READS this preference, so it looked like the only door; it is not
-     * the only door out of the column.
+     * `organizations.edit` rather than a permission of its own. It is already,
+     * by construction, the key every organization-level write of configuration
+     * uses — SettingDefinition::permissionRequired() returns it for all thirty
+     * settings and no definition has ever overridden it. A bespoke
+     * `organizations.arrange` would be the system's first override, spent on its
+     * most cosmetic value, and it would be a permanent extra row in every
+     * tenant's role editor that refuses nothing except box-dragging. The honest
+     * cost, stated: to let an office manager tidy the chart you must also trust
+     * them with the password policy. That is the trade, and it is the right way
+     * round for a picture everybody sees.
      *
-     * The rejected alternative was to leave the out-clean entirely to the
-     * client's own defensive reader. That reader exists and must keep existing:
-     * a client talking to an older server, or to this one before this method
-     * was written, still has to survive a blob it cannot use. But leaving it
-     * THERE alone puts the only check on the far side of the wire, which is the
-     * one place the server cannot vouch for — and it means the day a second
-     * client exists (desktop, mobile) the check has to be written again, and
-     * correctly, from the same reasoning nobody wrote down. One cleaner, on the
-     * side that owns the column, called from both directions.
-     *
-     * Note what this does NOT do: it does not check whether an id is one the
-     * caller can see. That is save()'s decision and it holds identically here —
-     * a position for a company that is away for the afternoon is an arrangement
-     * to be preserved, not junk to be swept up.
-     *
-     * @param  array<string, mixed>  $preferences
-     * @return array<string, mixed>
+     * PUBLIC and static because CompaniesController::index publishes the same
+     * answer on the tree as `may_arrange_reason`, and a second computation of it
+     * is how a live control and a 403 come to say different things.
      */
-    public static function cleanedInto(array $preferences): array
+    public static function refusalToArrange(User $user): ?string
     {
-        // Absent stays absent. "Never arranged anything" and "arranged nothing"
-        // are different sentences, and inventing an empty list for the first
-        // would tell the client somebody made a choice they never made.
-        if (! array_key_exists(self::PREFERENCE, $preferences)) {
-            return $preferences;
+        // Named as the act, in the words somebody would use for it.
+        $act = 'rearrange the structure everyone sees';
+
+        if (! $user->hasPermission('organizations.edit')) {
+            return Refusal::permission($act)->message();
         }
 
-        $stored = $preferences[self::PREFERENCE];
+        // An assignment covering the organization itself — CompanyPolicy::create's
+        // test, deliberately the same one. "Reaches every company that happens to
+        // exist today" is a set that changes when somebody adds a branch, and the
+        // organization is not.
+        $reaches = $user->assignments->contains(
+            fn ($a) => $a->assigned_organization_id === $user->organization_id
+        );
 
-        // A value of the wrong shape entirely — a string, a number, whatever an
-        // older build or a hand edit left — reads as no arrangement rather than
-        // as an error. saveOrder makes the same call for the same reason: a
-        // screen that refused to open because of somebody's stored preference
-        // would be a screen nobody could open and nobody could fix.
-        $preferences[self::PREFERENCE] = is_array($stored) ? self::normalised($stored) : [];
+        // Refused by POSITION rather than by place: there is no other
+        // organization they could have arranged instead, so "somebody assigned
+        // there can" would be nonsense.
+        return $reaches ? null : Refusal::abovePosition($act)->message();
+    }
 
-        return $preferences;
+    /**
+     * The organization's stored arrangement, cleaned, and never a 500.
+     *
+     * ── Why this is not one expression at the call site ───────────
+     *
+     * Because `$resolver->get()` can THROW on this key, and the thing it throws
+     * on is precisely the case the out-clean exists for. `value` is a JSON
+     * column: it can have been hand-edited, restored from an older backup, or
+     * written by a build before a rule existed. SettingDefinition::castJson
+     * refuses anything that is not an array or valid JSON, so a column holding
+     * `"nonsense"` does not arrive here as junk to be swept up — it arrives as
+     * an exception, on GET /companies, which is the endpoint the whole
+     * Organization screen is drawn from.
+     *
+     * So a wrong-shaped value reads as NO ARRANGEMENT rather than as an error,
+     * which is the call the old per-user cleaner made for the same reason: a
+     * screen that refused to open because of a stored value would be a screen
+     * nobody could open and nobody could fix. Every box goes to its automatic
+     * place, and one press of "Arrange for me" writes a good value over the bad
+     * one.
+     *
+     * ── And why the guard is not simply wrapped round everything ──
+     *
+     * Because `get()` throws for two quite different reasons, and only one of
+     * them is a tenant's bad data. The other is `getOrFail` refusing a key the
+     * registry has never heard of, which would be a programming error — this
+     * constant is this file's own — and swallowing it would turn a typo into
+     * every organization silently losing its arrangement on every request, with
+     * nothing anywhere saying so.
+     *
+     * So the registry is asked first, through sourceOf, which resolves the
+     * definition and casts nothing. An unknown key throws there, outside the
+     * guard, loudly. A null answer means nobody has set one, which is the
+     * common case and needs no cast at all. Only the remaining path — there IS
+     * a stored value — can throw for the reason this method is defending
+     * against, and that is the only path inside the try.
+     *
+     * The resolver is passed in rather than pulled out of the container so this
+     * says what it depends on. Both callers already hold one, and it memoises
+     * the scope's overrides, so asking twice is one query.
+     */
+    public static function arrangementFor(SettingsResolver $settings, Organization $organization): array
+    {
+        if ($settings->sourceOf(self::SETTING, $organization) === null) {
+            return [];
+        }
+
+        try {
+            $stored = $settings->get(self::SETTING, $organization);
+        } catch (InvalidArgumentException) {
+            return [];
+        }
+
+        return self::clean(is_array($stored) ? $stored : []);
     }
 
     /**
@@ -353,7 +476,15 @@ class OrganizationCanvasController extends Controller
      * read, so nothing reaches here to be dropped. On the way out there is
      * nobody to tell, so a bad entry is skipped and the rest survive: losing one
      * box is a box in the wrong place, losing the arrangement is somebody's
-     * afternoon.
+     * afternoon — and now the whole office's.
+     *
+     * ── And it is what makes a response engine-independent ────────
+     *
+     * MySQL does not preserve a JSON object's key order — it sorts keys by
+     * length then lexicographically — so a box stored as {kind,id,x,y} comes
+     * back from the column as {x,y,id,kind}. Every box this rebuilds is written
+     * in one fixed order, so what a client is told never depends on which engine
+     * the tenant is on. Nothing that reads this column may skip it.
      *
      * The cap is applied here rather than only in validate() for the same
      * reason. Above 500 the way in is a 422 with a sentence, because somebody is
@@ -368,10 +499,21 @@ class OrganizationCanvasController extends Controller
      * hundred rows that are five hundred duplicates is a small arrangement
      * written badly, not an oversized one.
      *
+     * PUBLIC, because the read side is now in another controller. It was
+     * private when the only way out was a cleaner in this file; the read now
+     * rides on the tree payload CompaniesController assembles, and a second
+     * copy of these rules over there is exactly the drift this one function
+     * exists to prevent.
+     *
+     * Note what this does NOT do: it does not check whether an id is one the
+     * caller can see. That is save()'s decision and it holds identically here —
+     * a position for a company that is away for the afternoon is an arrangement
+     * to be preserved, not junk to be swept up.
+     *
      * @param  array<mixed>  $boxes
      * @return list<array{kind: string, id: string, x: int, y: int}>
      */
-    private static function normalised(array $boxes): array
+    public static function clean(array $boxes): array
     {
         $kept = [];
 
@@ -428,7 +570,7 @@ class OrganizationCanvasController extends Controller
      * rather than where it was asked to go.
      *
      * Rounded rather than kept as a float. Sub-pixel precision buys nothing on
-     * screen and costs bytes in a column read on every /me.
+     * screen and costs bytes in a column every colleague reads.
      *
      * Infinity clamps like any other out-of-range number, because min() and
      * max() do the right thing with it. NaN is the one value that cannot be

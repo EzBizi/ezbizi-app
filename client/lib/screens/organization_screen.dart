@@ -33,8 +33,11 @@ import 'organization/structure_tab.dart';
 /// The selected tab is deliberately not remembered. Landing on the canvas after
 /// a reload would put somebody one click further from every control that does
 /// something, and switching back costs nothing. Anything the Structure tab DOES
-/// remember — where the boxes were put — is per user and lives in
-/// `users.preferences`, written by the tab itself.
+/// remember — where the boxes were put — belongs to the ORGANIZATION rather
+/// than to the person: one arrangement everybody sees, held as a tenant setting
+/// and written by the tab itself. It rides in on the same `GET /companies` this
+/// screen already fetches, which is what makes a colleague's tidy-up arrive the
+/// next time anybody opens the page.
 class OrganizationScreen extends StatefulWidget {
   const OrganizationScreen({
     super.key,
@@ -71,8 +74,8 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
 
   /// Which tabs have been shown at least once — hr_screen's idiom, and its two
   /// reasons hold identically. A tab nobody has opened must not build: the
-  /// canvas lays out every box in the business and reads a preference to do it,
-  /// and somebody who only ever looks at the list should pay for none of that.
+  /// canvas lays out every box in the business to do it, and somebody who only
+  /// ever looks at the list should pay for none of that.
   /// A tab they HAVE opened must not be rebuilt from scratch every time they
   /// glance at the other one, because the canvas's State is where an
   /// arrangement, a viewport and a pending save are being held.
@@ -182,14 +185,31 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                 // it.
                 PanelHeader(
                   title: 'Organization',
+                  // ── Two sentences, and the second is the rule ──
+                  //
+                  // Said for a business owner rather than for a developer. It
+                  // used to end "nothing here can be moved to a different
+                  // parent once it exists", which is the model's vocabulary
+                  // and not anybody's: "parent" is a column name. What it says
+                  // now is the fact that vocabulary was standing in for — who
+                  // owns what is settled when a thing is created and stays
+                  // that way — which is the same rule `CompaniesController`
+                  // enforces and the same one the canvas explains at length
+                  // the moment somebody drops one box onto another.
                   note: _tab == _structure
                       ? 'The same companies, sub companies and places, drawn '
-                            'rather than listed. Arranging the picture changes '
-                            'nothing about the business — nothing here can be '
-                            'moved to a different parent once it exists.'
+                            'rather than listed. Moving a box moves the picture '
+                            'only — who owns what is decided when something is '
+                            'created and stays that way afterwards.'
+                      // The same rule in the same words, because it is the same
+                      // rule. Two tabs of one screen phrasing it differently is
+                      // how somebody comes to believe there are two rules, and
+                      // this is the one they are most likely to test by trying
+                      // it on the other tab.
                       : 'Companies, sub companies and the places work happens. '
-                            'Settings cascade down this tree, and nothing here '
-                            'can be moved to a different parent once it exists.',
+                            'Settings cascade down this tree, and who owns what '
+                            'is decided when something is created and stays '
+                            'that way afterwards.',
                   // Shown either way. It used to vanish for anybody who could
                   // not use it, which reads as a missing feature rather than as
                   // a refusal — and this is the refusal least likely to be
@@ -248,6 +268,22 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                                 api: widget.api,
                                 session: widget.session,
                                 tree: tree,
+                                // Straight off the payload, both of them, and
+                                // never worked out here. Saving an arrangement
+                                // changes what every colleague sees, so it
+                                // needs `organizations.edit` AND an assignment
+                                // at the whole organization — and a client
+                                // that asked only the permission would offer a
+                                // live canvas to a branch manager and answer
+                                // 403. The reason beside it is the same string
+                                // the endpoint aborts with, which is what stops
+                                // a disabled control and the refusal behind it
+                                // explaining one rule two ways.
+                                mayArrange:
+                                    tree['organization']['may_arrange'] == true,
+                                arrangeRefusal:
+                                    tree['organization']['may_arrange_reason']
+                                        as String?,
                                 actions: _actionsFor,
                               )
                             : const SizedBox.shrink(),

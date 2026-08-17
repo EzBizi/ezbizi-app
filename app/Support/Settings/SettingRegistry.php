@@ -278,6 +278,58 @@ class SettingRegistry
                 notYetInEffect: 'Takes effect when scheduling ships. A job can already hold a '
                     .'length, but nothing fills one in, so this number is never reached for.',
             ),
+
+            /*
+             * Where the boxes sit on the Organization tab's structure canvas.
+             *
+             * ── Why it is a setting at all ───────────────────────
+             *
+             * It used to be one person's preference, in
+             * `users.preferences['organization.canvas']` (§2.1 category 6). The
+             * owner's answer to "should this be shared" was "should be shared
+             * obviously", so it is a tenant setting now (§2.1 category 5): one
+             * picture of the business that everybody in the business sees.
+             *
+             * Held here rather than in a store of its own because the settings
+             * system holds it with no strain at all. The unique
+             * (scope_type, scope_id, key) is exactly one row per organization,
+             * which is the invariant this value needs and would otherwise have
+             * had to be enforced by hand; and the `json` column has roughly two
+             * thousand times the headroom the cap allows (30KB against a 4GB
+             * type).
+             *
+             * ── In `operations` rather than a group of its own ───
+             *
+             * A new group whose only member is filtered out of the settings
+             * screen is a heading that can never render. `operations` is where
+             * "how this organization runs day to day" already lives, and
+             * SettingRegistryTest::test_every_setting_declares_a_named_group is
+             * satisfied without inventing one.
+             *
+             * Dotted key, deliberately: SettingReaders' own docblock records
+             * that an undotted key collides with column names and can score a
+             * false reader.
+             */
+            new SettingDefinition(
+                key:   'organization.structure_canvas',
+                label: 'Structure arrangement',
+                type:  SettingDefinition::TYPE_JSON,
+                // [] rather than null: castJson([]) returns [], which is what
+                // test_every_default_survives_its_own_cast needs, and "nobody
+                // has arranged it" and "the arrangement is empty" mean the same
+                // thing to the canvas — every box goes to its automatic place.
+                default: [],
+                // One arrangement for the whole business, which is the entire
+                // point of it now. A company-scoped or franchise-scoped
+                // override would be a second picture of one structure, and the
+                // first time the two disagreed somebody would be looking at a
+                // chart of a business that does not exist.
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Where the boxes sit on the Organization tab. Everyone in the '
+                    .'organization sees the same arrangement, so moving one moves it for '
+                    .'everybody.',
+                editedOn: 'Organization → Structure',
+            ),
         ];
     }
 

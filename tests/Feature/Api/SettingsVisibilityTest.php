@@ -187,6 +187,74 @@ class SettingsVisibilityTest extends TestCase
         );
     }
 
+    /**
+     * A setting authored on another screen is not a row here.
+     *
+     * `organization.structure_canvas` is a list of box coordinates dragged into
+     * place on the Organization tab. The Settings screen has no shape to draw
+     * for a plain `json` value, so it would fall back to a box of raw JSON —
+     * a control whose every use is a mistake — and it would ship ~30KB of
+     * coordinates on every settings-screen load, at every scope, for a value
+     * nobody reads here.
+     */
+    public function test_a_setting_edited_on_another_screen_is_not_on_the_settings_screen(): void
+    {
+        $settings = $this->withHeader('Authorization', 'Bearer '.$this->tokenFor('a@alpha.test'))
+            ->getJson('/api/v1/settings?scope_type=organization&scope_id='.$this->alpha['org']->id)
+            ->assertOk()->json('data');
+
+        $keys = array_column($settings, 'key');
+
+        $this->assertNotContains('organization.structure_canvas', $keys);
+
+        // The control: the rest of the catalogue is still here, so the
+        // assertion above is about one row being left out rather than about a
+        // payload that returned nothing.
+        $this->assertContains('timezone', $keys);
+        $this->assertContains('security.password_min_length', $keys);
+        $this->assertGreaterThan(20, count($keys));
+    }
+
+    /**
+     * The FORM moved. The setting did not.
+     *
+     * `editedOn` must never become a way to make a definition unreachable — a
+     * definition that wanted that is one that should not exist. So PATCH still
+     * works, still checks the same permission, still audits, and the value
+     * still resolves. This is what stops a future implementer "hiding" a
+     * setting by refusing the route.
+     */
+    public function test_a_setting_edited_elsewhere_can_still_be_read_and_written_through_the_api(): void
+    {
+        $token = $this->tokenFor('a@alpha.test');
+        $org   = $this->alpha['org']->id;
+
+        $boxes = [[
+            'kind' => 'company', 'id' => $this->alpha['company']->id, 'x' => 12, 'y' => 34,
+        ]];
+
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->patchJson(
+                "/api/v1/settings/organization.structure_canvas?scope_type=organization&scope_id={$org}",
+                ['value' => $boxes],
+            )->assertOk();
+
+        // Read back through the resolver rather than through index(), which is
+        // the one place the row is deliberately absent.
+        $resolved = app(TenantContext::class)->run(
+            $this->alpha['org'],
+            fn () => app(\App\Support\Settings\SettingsResolver::class)
+                ->get('organization.structure_canvas', $this->alpha['org']),
+        );
+
+        // Field by field: MySQL sorts a JSON object's keys by length then
+        // lexicographically, so comparing the box as a whole would compare
+        // something the engine does not guarantee.
+        $this->assertCount(1, $resolved);
+        $this->assertSame($this->alpha['company']->id, $resolved[0]['id']);
+        $this->assertSame(12, $resolved[0]['x']);
+    }
+
     public function test_every_setting_carries_its_help_text_or_nothing(): void
     {
         $settings = $this->withHeader('Authorization', 'Bearer '.$this->tokenFor('a@alpha.test'))

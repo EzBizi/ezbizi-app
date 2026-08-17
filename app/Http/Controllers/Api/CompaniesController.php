@@ -128,6 +128,11 @@ class CompaniesController extends Controller
 
         $addCompany = Gate::inspect('create', Company::class);
 
+        // Computed once and published twice — as a flag and as the sentence
+        // behind it. Two calls would be two chances for them to disagree about
+        // the same person.
+        $arrangeRefusal = OrganizationCanvasController::refusalToArrange($user);
+
         return [
             'organization' => [
                 'id'   => $request->user()->organization->id,
@@ -147,6 +152,25 @@ class CompaniesController extends Controller
                     null, $request->user()->organization,
                 ),
                 'may_edit'        => $user->hasPermission('organizations.edit'),
+
+                // Whether this person may change the arrangement EVERYBODY
+                // sees, and why not when they may not.
+                //
+                // Not `may_edit` above, which is `organizations.edit` and
+                // nothing else. This act needs the permission AND an assignment
+                // at the whole organization, because it changes one shared
+                // picture rather than one person's own view of it — so a branch
+                // manager holding the permission would otherwise have been
+                // handed a live canvas and a 403 (§4).
+                //
+                // The sentence is the SAME STRING the save endpoint aborts
+                // with, computed once in
+                // OrganizationCanvasController::refusalToArrange. A client that
+                // worded its own refusal is how a dead control and the server
+                // come to disagree, and `may_add_company_reason` beside it
+                // exists for exactly that reason.
+                'may_arrange'        => $arrangeRefusal === null,
+                'may_arrange_reason' => $arrangeRefusal,
             ],
 
             // Nested rather than flat, so the client cannot render a Sub Company
@@ -162,6 +186,41 @@ class CompaniesController extends Controller
                         ->map($present)
                         ->all(),
                 ])->all(),
+
+            /*
+             * Where the boxes sit on the Structure tab, for everybody in this
+             * organization.
+             *
+             * ── Why it rides on the tree rather than on /me ──────
+             *
+             * Because it describes the tree. It used to be one person's
+             * preference and travelled with the theme on /me, which was right
+             * when it was theirs; it is one organization's setting now, and /me
+             * is answered once at launch and cached in the client's session —
+             * so a colleague's arrangement would not have appeared until the
+             * next sign-in. This payload is refetched every time the
+             * Organization screen opens, so everybody converges on the same
+             * picture without a second endpoint for it.
+             *
+             * Cleaned on the way out through the same function that cleans it
+             * on the way in. This is a JSON column: it can have been
+             * hand-edited, restored from an older backup, or written by a build
+             * before a rule existed, and the client hands these numbers
+             * straight to a Transform that throws on a value it cannot use.
+             * DashboardController::index re-checks a layout its own saveLayout
+             * already checked, for this reason.
+             *
+             * Always present, always a list — `[]` when nobody has arranged
+             * anything. The old per-user blob distinguished "never arranged"
+             * from "arranged nothing" because a preferences map either has a
+             * key or does not; here the two mean the same thing to the only
+             * reader there is (every box goes to its automatic place), and a
+             * key that comes and goes is one more shape for a second client to
+             * get wrong.
+             */
+            'canvas' => OrganizationCanvasController::arrangementFor(
+                $this->settings, $user->organization,
+            ),
         ];
     }
 

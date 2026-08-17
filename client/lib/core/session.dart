@@ -167,10 +167,17 @@ class Session extends ChangeNotifier {
   /// `PreferenceRegistry`, the registry for the controls the Settings screen
   /// renders. Some preferences are not one of those and have an endpoint of
   /// their own: `dashboard.widgets` and `dashboard.order` go through
-  /// `DashboardController::saveLayout`, and `organization.canvas` goes through
-  /// `OrganizationCanvasController::save`, because a layout is not a setting
+  /// `DashboardController::saveLayout`, because a layout is not a setting
   /// somebody picks from a list and the registry's casts have nothing to say
   /// about it.
+  ///
+  /// The Organization tab's canvas arrangement USED to be the second example
+  /// here, and it is deliberately not listed any more. That arrangement is one
+  /// organization's setting now rather than one person's preference: it rides
+  /// on the tree payload `GET /companies` answers with, which is refetched
+  /// every time the screen opens, so a copy held here would be a stale second
+  /// copy of a value whose whole point is that everybody sees the same one.
+  /// Nothing in the app calls this for it, and nothing may.
   ///
   /// Those writes still have to land in the copy of `preferences` this session
   /// is holding. Without that, leaving the screen and coming back reads the

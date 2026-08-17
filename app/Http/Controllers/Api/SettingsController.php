@@ -51,6 +51,15 @@ class SettingsController extends Controller
         $settings = [];
 
         foreach ($this->registry->all() as $key => $definition) {
+            // A setting authored on another screen is not drawn here. The row
+            // would be a raw-JSON box for a value nobody types, and its weight
+            // would be paid on every settings-screen load at every scope. The
+            // API is untouched — update() and destroy() below still answer for
+            // it — so this is the FORM moving, not the setting hiding.
+            if (! $definition->isEditedOnSettingsScreen()) {
+                continue;
+            }
+
             $settings[] = $this->row($request, $key, $definition, $scope);
         }
 

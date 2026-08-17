@@ -43,6 +43,16 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'structure_levels.dart';
+
+/// The vocabulary and the four levels, shared with the canvas.
+///
+/// Re-exported for the same reason the canvas re-exports them: a caller that
+/// imported this file to name a `kind` should not have to learn where the word
+/// went. What it does NOT mean is a second definition — both exports point at
+/// the one file, which is the whole reason it exists.
+export 'structure_levels.dart';
+
 // ── the shape of the outline ───────────────────────────────────────
 
 /// Below this width the structure is an outline rather than a canvas.
@@ -89,6 +99,14 @@ const double kStructureOutlineBelow = 760;
 /// scroll rather than a picture you cannot see. What this number exists to catch
 /// is the case where not one box fits at all, and that is the same case at every
 /// text size.
+///
+/// With a level skipped — a company whose places sit on the fourth line with the
+/// third line empty beneath it — a parent and its child can now be two pitches
+/// apart rather than one, so 340 no longer guarantees you can see a company and
+/// its place together. Deliberately left alone, for the reason directly above:
+/// this number's job is to catch the case where NOT ONE BOX FITS, and raising it
+/// would push a working device onto the outline for a picture it could simply
+/// scroll.
 const double kStructureOutlineShorterThan = 340;
 
 /// What the header says when the outline is on screen because it is too NARROW.
@@ -126,16 +144,29 @@ const String kStructureOutlineShortNote =
     'hand. A taller window gives it the room — turning a phone upright is the '
     'same thing.';
 
-/// The three kinds of thing in the tree, spelled once.
+/// The rule about who owns what, for the view that has no boxes to drag.
 ///
-/// A sub company is a `company` — a sub company IS a company row, and the model
-/// says so with `parent_company_id` rather than with a type. A fourth kind here
-/// would be this file inventing a distinction the business does not make, and
-/// it would be the first thing to disagree with the canvas, which stores the
-/// same three words in the saved arrangement.
-const String structureOrganizationKind = 'organization';
-const String structureCompanyKind = 'company';
-const String structureFranchiseKind = 'franchise';
+/// ── Why the outline needs this and needs nothing else ────────────
+///
+/// Nothing here can be dragged, so there is no gesture to be misread and no
+/// answer to raise at the moment somebody makes one — the canvas's own
+/// explanation appears when a box is dropped squarely onto another, and
+/// explaining a refusal to somebody who never attempted the thing would be
+/// noise.
+///
+/// But this is the ONLY view on a phone, and the rule is the most important
+/// thing about this whole tab: nothing in the business moves between parents,
+/// ever. Somebody who only ever sees the outline is owed it in the same words
+/// as somebody who sees the canvas, which is why it is a constant beside the
+/// other two rather than a sentence typed into a widget.
+///
+/// Written for a business owner. No "re-parent", no "hierarchy": what it says
+/// is that the answer is settled when a thing is created, and that nothing on
+/// the list can be put under a different company.
+const String kStructureOutlineOwnershipNote =
+    'This is the shape of the business. Who owns what is decided when '
+    'something is created and stays that way afterwards, so nothing on this '
+    'list can be moved under a different company.';
 
 /// One line of the outline.
 ///
@@ -149,7 +180,6 @@ class StructureOutlineRow {
     required this.kind,
     required this.id,
     required this.name,
-    required this.depth,
     required this.isActive,
     required this.ancestry,
     required this.raw,
@@ -164,9 +194,6 @@ class StructureOutlineRow {
   final String id;
   final String name;
 
-  /// 0 organization, 1 company, 2 a company's places and its sub companies,
-  /// 3 a sub company's places. §3 fixes the depth, so this is bounded at 3.
-  final int depth;
   final bool isActive;
 
   /// The companies above it, outermost first — ["Everdoors", "Sunward"].
@@ -202,7 +229,23 @@ class StructureOutlineRow {
   final Map<String, dynamic> raw;
 
   /// A company with something above it. There is no separate kind for it (§3).
-  bool get isSubCompany => kind == structureCompanyKind && ancestry.isNotEmpty;
+  bool get isSubCompany => kind == structureCompany && ancestry.isNotEmpty;
+
+  /// Which line this row is on — 0 organization, 1 company, 2 sub company,
+  /// 3 every place.
+  ///
+  /// Derived rather than passed, from the same [structureLevelOf] the canvas
+  /// lays its boxes out with, so the two views cannot come to disagree about
+  /// the hierarchy.
+  ///
+  /// It used to be typed in at four call sites in [outlineRows], and two of
+  /// them said 2 — a top-level company's places, and a sub company. That is the
+  /// same bug the canvas had, written a different way, and it is precisely why
+  /// the answer now comes from one function instead of from whoever was writing
+  /// the walk. A top-level company's place is three levels in, one step further
+  /// than the sub company above it, because a place is a place wherever it
+  /// hangs.
+  int get depth => structureLevelOf(kind: kind, isSub: isSubCompany);
 
   /// What this row is, and which one of it — "Territory in Everdoors › Sunward".
   ///
@@ -215,8 +258,8 @@ class StructureOutlineRow {
     final where = ancestry.isEmpty ? '' : ' in ${ancestry.join(' › ')}';
 
     return switch (kind) {
-      structureOrganizationKind => 'The whole business',
-      structureFranchiseKind => '$franchiseLabel$where',
+      structureOrganization => 'The whole business',
+      structureFranchise => '$franchiseLabel$where',
       _ => ancestry.isEmpty ? 'Company' : 'Sub company$where',
     };
   }
@@ -263,7 +306,6 @@ List<StructureOutlineRow> outlineRows(Map<String, dynamic> tree) {
   StructureOutlineRow row(
     Map<String, dynamic> raw, {
     required String kind,
-    required int depth,
     required List<String> ancestry,
   }) {
     final name = raw['name'];
@@ -278,7 +320,6 @@ List<StructureOutlineRow> outlineRows(Map<String, dynamic> tree) {
       kind: kind,
       id: id is String ? id : '',
       name: name is String && name.isNotEmpty ? name : '(unnamed)',
-      depth: depth,
       // Absent means on. Only a company or a place that says `false` is
       // switched off; the organization has no such flag and is never drawn
       // as off.
@@ -288,19 +329,18 @@ List<StructureOutlineRow> outlineRows(Map<String, dynamic> tree) {
     );
   }
 
+  // No depth argument, and that absence is the fix. This closure used to be
+  // called with 2 for a top-level company's places and 3 for a sub company's,
+  // which is the walk deciding what a place IS from how far it had got — and it
+  // put a company's own places level with a sub company. A place is a place;
+  // [StructureOutlineRow.depth] answers from the kind now.
   void addFranchises(
     Map<String, dynamic> company, {
-    required int depth,
     required List<String> ancestry,
   }) {
     for (final franchise in _mapsIn(company['franchises'])) {
       rows.add(
-        row(
-          franchise,
-          kind: structureFranchiseKind,
-          depth: depth,
-          ancestry: ancestry,
-        ),
+        row(franchise, kind: structureFranchise, ancestry: ancestry),
       );
     }
   }
@@ -311,8 +351,7 @@ List<StructureOutlineRow> outlineRows(Map<String, dynamic> tree) {
     rows.add(
       row(
         organization.cast<String, dynamic>(),
-        kind: structureOrganizationKind,
-        depth: 0,
+        kind: structureOrganization,
         ancestry: const [],
       ),
     );
@@ -321,8 +360,7 @@ List<StructureOutlineRow> outlineRows(Map<String, dynamic> tree) {
   for (final company in _mapsIn(tree['companies'])) {
     final companyRow = row(
       company,
-      kind: structureCompanyKind,
-      depth: 1,
+      kind: structureCompany,
       ancestry: const [],
     );
 
@@ -332,13 +370,21 @@ List<StructureOutlineRow> outlineRows(Map<String, dynamic> tree) {
     // order the List tab draws — the card holds its place chips and the sub
     // companies hang underneath it — so somebody switching views is reading the
     // same sequence rather than relearning it.
-    addFranchises(company, depth: 2, ancestry: [companyRow.name]);
+    //
+    // ORDER, not level. These rows are listed before the sub company below them
+    // and indented one step FURTHER than it, which is the two facts an outline
+    // has to keep apart: where a thing is read, and what it is.
+    addFranchises(company, ancestry: [companyRow.name]);
 
     for (final sub in _mapsIn(company['sub_companies'])) {
       final subRow = row(
         sub,
-        kind: structureCompanyKind,
-        depth: 2,
+        kind: structureCompany,
+        // What makes this row a SUB company, and the only thing that does: it
+        // is a `company` with something above it, which is the same question
+        // the server answers with `parent_company_id`. Its level is read back
+        // off this, so an empty ancestry here would draw it as a top-level
+        // company rather than merely mis-caption it.
         ancestry: [companyRow.name],
       );
 
@@ -347,7 +393,7 @@ List<StructureOutlineRow> outlineRows(Map<String, dynamic> tree) {
       // §3 fixes the depth: a sub company cannot hold a sub company, so this
       // does not recurse. A general tree walk here would be code encoding a
       // shape the model forbids, with nothing to call it.
-      addFranchises(sub, depth: 3, ancestry: [companyRow.name, subRow.name]);
+      addFranchises(sub, ancestry: [companyRow.name, subRow.name]);
     }
   }
 
@@ -380,6 +426,7 @@ class StructureOutline extends StatefulWidget {
     required this.tree,
     required this.franchiseLabel,
     this.trailing,
+    this.header,
     this.padding = const EdgeInsets.fromLTRB(16, 8, 16, 24),
   });
 
@@ -397,6 +444,29 @@ class StructureOutline extends StatefulWidget {
   /// at all, which is the right answer for a row whose every act is refused: a
   /// disabled control invites somebody to work out why it does nothing.
   final Widget? Function(BuildContext, StructureOutlineRow)? trailing;
+
+  /// What goes above the first row, INSIDE the scroll rather than above it.
+  ///
+  /// ── Why a header slot rather than a Column around this widget ────
+  ///
+  /// Because the caller's notes and this list have to share one viewport, and
+  /// on the device this view exists for there is barely one to share. A phone
+  /// held sideways is 812 by 375, and by the time the page header and the tab
+  /// strip have had their share this widget's column is about 108 points tall.
+  /// Two paragraphs of explanation is more than that on their own — stacked
+  /// ABOVE a scroll view they overflow it, which in a release build is content
+  /// silently clipped, and the content being clipped is the structure.
+  ///
+  /// Inside the scroll, the same two paragraphs cost nothing they do not use:
+  /// they are read first, scrolled past, and the whole list is reachable behind
+  /// them. That is also the honest reading of what they are — context for the
+  /// list rather than chrome around it.
+  ///
+  /// Drawn OUTSIDE [padding] so a caller's full-width strip stays full width,
+  /// which is why the padding below moved from the scroll view onto the rows.
+  /// A note inset by sixteen points on each side is a note that looks like a
+  /// row and reads like one.
+  final Widget? header;
 
   final EdgeInsets padding;
 
@@ -541,15 +611,24 @@ class _StructureOutlineState extends State<StructureOutline> {
   @override
   Widget build(BuildContext context) {
     if (_rows.isEmpty) {
-      return _Note(
-        'The structure has not loaded. Try again from the top of the page.',
-        padding: widget.padding,
+      // The header comes too, and it is not decoration here. It is what the
+      // caller uses to say why this view is on screen at all, and a structure
+      // that failed to load is exactly when somebody most needs the sentence
+      // that explains what they are looking at.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ?widget.header,
+          _Note(
+            'The structure has not loaded. Try again from the top of the page.',
+            padding: widget.padding,
+          ),
+        ],
       );
     }
 
     return Scrollbar(
       child: SingleChildScrollView(
-        padding: widget.padding,
         // ── Why every row is built, and not a ListView ──────────────
         //
         // A `ListView` builds what is on screen and a little either side.
@@ -567,33 +646,48 @@ class _StructureOutlineState extends State<StructureOutline> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (var i = 0; i < _rows.length; i++)
-              _OutlineTile(
-                row: _rows[i],
-                franchiseLabel: widget.franchiseLabel,
-                node: _nodeFor(_rows[i]),
-                isCursor: _rows[i].key == _cursor,
-                onKey: (event) => _onKey(i, event),
-                onFocused: () {
-                  // Tab or a click landed here rather than an arrow key. The
-                  // cursor follows, so the next arrow press continues from
-                  // where the person actually is.
-                  if (_cursor != _rows[i].key) {
-                    setState(() => _cursor = _rows[i].key);
-                  }
-                },
-                trailing: widget.trailing?.call(context, _rows[i]),
+            // Outside the padding, so a full-width strip stays full width.
+            ?widget.header,
+            Padding(
+              padding: widget.padding,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: _tiles(context),
               ),
-            if (!_rows.any((row) => row.kind == structureCompanyKind))
-              const _Note(
-                'No companies yet. The List view is where one is added.',
-                padding: EdgeInsets.only(top: 12, left: 4),
-              ),
+            ),
           ],
         ),
       ),
     );
   }
+
+  /// Every row, built. Lifted out of [build] only so the header and the padded
+  /// rows could become two children of one Column without the list itself
+  /// moving two levels of indentation to the right.
+  List<Widget> _tiles(BuildContext context) => [
+    for (var i = 0; i < _rows.length; i++)
+      _OutlineTile(
+        row: _rows[i],
+        franchiseLabel: widget.franchiseLabel,
+        node: _nodeFor(_rows[i]),
+        isCursor: _rows[i].key == _cursor,
+        onKey: (event) => _onKey(i, event),
+        onFocused: () {
+          // Tab or a click landed here rather than an arrow key. The cursor
+          // follows, so the next arrow press continues from where the person
+          // actually is.
+          if (_cursor != _rows[i].key) {
+            setState(() => _cursor = _rows[i].key);
+          }
+        },
+        trailing: widget.trailing?.call(context, _rows[i]),
+      ),
+    if (!_rows.any((row) => row.kind == structureCompany))
+      const _Note(
+        'No companies yet. The List view is where one is added.',
+        padding: EdgeInsets.only(top: 12, left: 4),
+      ),
+  ];
 }
 
 class _Note extends StatelessWidget {
@@ -726,8 +820,8 @@ class _OutlineTile extends StatelessWidget {
           // there are three. What makes it a sub company is the indent and the
           // caption, which are also the two things a reader can hear.
           switch (row.kind) {
-            structureOrganizationKind => Icons.hub_outlined,
-            structureFranchiseKind => Icons.storefront_outlined,
+            structureOrganization => Icons.hub_outlined,
+            structureFranchise => Icons.storefront_outlined,
             _ => Icons.apartment_outlined,
           },
           size: 18,
@@ -837,6 +931,13 @@ class _IndentRailPainter extends CustomPainter {
       ..color = colour
       ..strokeWidth = 1;
 
+    // One guide per level above this row, including a level with no row on it —
+    // a company with no sub companies still HAS a sub-company level, this
+    // branch simply does not use it, and its places are genuinely three levels
+    // in. The rail is marking LEVELS, not the rows that happen to exist, and
+    // that is the same fact the canvas states by leaving a line empty. The
+    // row's own caption ("Territory in Everdoors") says which company it
+    // belongs to, so nothing is ambiguous about the empty step.
     for (var level = 0; level < depth; level++) {
       final x = level * _step + _step / 2;
 

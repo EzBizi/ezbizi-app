@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/organization/structure_tab.dart';
 import 'package:ezbizi_client/screens/organization_screen.dart';
 import 'package:ezbizi_client/widgets/structure_canvas.dart';
 import 'package:ezbizi_client/widgets/structure_outline.dart';
@@ -218,10 +219,10 @@ void main() {
     });
   });
 
-  group('the saved arrangement', () {
+  group('the shared arrangement', () {
     testWidgets('is where the boxes are when the tab opens', (tester) async {
       // The control, first and in the same test. Without it this passes
-      // against a canvas that never reads the preference at all and happens to
+      // against a canvas that never reads the arrangement at all and happens to
       // put these two boxes roughly here on its own.
       await _pump(tester, _server());
       await _openStructure(tester);
@@ -240,10 +241,48 @@ void main() {
       await _pump(
         tester,
         _server(
+          canvas: [
+            _box('company', _sun, 0, 0),
+            _box('organization', _org, 600, 300),
+          ],
+        ),
+      );
+      await _openStructure(tester);
+
+      expect(
+        _delta(tester),
+        const Offset(600, 300),
+        reason:
+            'The arrangement rides in on the tree payload, beside the '
+            'structure it describes. Nothing here waits on a second request '
+            'before the boxes can be drawn where they belong.',
+      );
+    });
+
+    /// The half of change (1) that a test reading only the tree cannot see. The
+    /// old store was `users.preferences['organization.canvas']`, cached in the
+    /// session at launch — so a client that still reads it would draw one
+    /// person's stale private picture and never show a colleague's at all, and
+    /// would look perfectly correct until two people opened the tab.
+    testWidgets('comes from the tree, and the old private copy is ignored', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _server(
+          // What the tree says: the organization's arrangement, everybody's.
+          canvas: [
+            _box('company', _sun, 0, 0),
+            _box('organization', _org, 600, 300),
+          ],
+          // What this person's own account still happens to carry from before
+          // the arrangement was shared. It names the same two boxes and puts
+          // them somewhere else entirely, so a client reading it cannot pass
+          // by coincidence.
           preferences: {
             'organization.canvas': [
-              {'kind': 'company', 'id': _sun, 'x': 0, 'y': 0},
-              {'kind': 'organization', 'id': _org, 'x': 600, 'y': 300},
+              _box('company', _sun, 0, 0),
+              _box('organization', _org, 120, 40),
             ],
           },
         ),
@@ -254,22 +293,17 @@ void main() {
         _delta(tester),
         const Offset(600, 300),
         reason:
-            'The arrangement rides in on /me with the theme. Nothing here '
-            'waits on a second request before the boxes can be drawn where '
-            'they belong.',
+            'The arrangement is one organization\'s setting now, not one '
+            'person\'s preference. /me is answered once at launch and cached, '
+            'so a colleague\'s save read from there would not appear until the '
+            'next sign-in.',
       );
     });
 
     testWidgets('a box it has never heard of is still drawn', (tester) async {
       await _pump(
         tester,
-        _server(
-          preferences: {
-            'organization.canvas': [
-              {'kind': 'organization', 'id': _org, 'x': 0, 'y': 0},
-            ],
-          },
-        ),
+        _server(canvas: [_box('organization', _org, 0, 0)]),
       );
       await _openStructure(tester);
 
@@ -536,14 +570,7 @@ void main() {
 
       await _pump(
         tester,
-        _server(
-          saves: saves,
-          preferences: {
-            'organization.canvas': [
-              {'kind': 'company', 'id': _away, 'x': 40, 'y': 80},
-            ],
-          },
-        ),
+        _server(saves: saves, canvas: [_box('company', _away, 40, 80)]),
       );
       await _openStructure(tester);
 
@@ -618,17 +645,22 @@ void main() {
       );
     });
 
-    testWidgets('a successful save lands in the session’s own preferences', (
-      tester,
-    ) async {
+    /// The mirror image of the test that used to be here.
+    ///
+    /// While the arrangement was one person's, a successful save HAD to be
+    /// written into the session's cached copy of `/me` — nothing in this app
+    /// refetches that on navigation, so without it the boxes went back to their
+    /// automatic places the next time the tab opened, and the next save wrote
+    /// that emptiness over the column.
+    ///
+    /// None of it survives the arrangement becoming the organization's. The
+    /// tree is refetched every time this screen opens, so the server is the
+    /// only copy there is — and a second copy cached here would be the one that
+    /// gets drawn first, which is exactly how a colleague's arrangement would
+    /// stop arriving.
+    testWidgets('a successful save caches nothing on this side', (tester) async {
       final session = await _pump(tester, _server());
       await _openStructure(tester);
-
-      expect(
-        session.me!.preferences['organization.canvas'],
-        isNull,
-        reason: 'The premise: nothing was stored before the drag.',
-      );
 
       await tester.drag(
         find.byKey(structureBoxKey('company:$_sun')),
@@ -636,19 +668,19 @@ void main() {
       );
       await _settle(tester);
 
-      final stored = session.me!.preferences['organization.canvas'];
-
       expect(
-        stored,
-        isA<List<dynamic>>(),
+        session.me!.preferences['organization.canvas'],
+        isNull,
         reason:
-            'The session is holding its own copy of the preferences, and '
-            'leaving this tab and coming back reads that copy. Without this, a '
-            'save that succeeded is undone on screen by a stale local blob.',
+            'A copy kept here is a copy that can be stale, on a screen whose '
+            'whole point is that everybody converges on one picture.',
       );
       expect(
-        (stored as List).any((b) => (b as Map)['id'] == _sun),
-        isTrue,
+        session.me!.preferences.keys.where(
+          (key) => key.contains('canvas') || key.contains('structure'),
+        ),
+        isEmpty,
+        reason: 'Nor under a new name for the same mistake.',
       );
     });
 
@@ -657,7 +689,7 @@ void main() {
     ) async {
       final saves = <Map<String, dynamic>>[];
 
-      final session = await _pump(tester, _server(saves: saves));
+      await _pump(tester, _server(saves: saves));
       await _openStructure(tester);
 
       await tester.drag(
@@ -689,18 +721,17 @@ void main() {
             'anybody did.',
       );
 
-      // And the session was told, which is the half that decides whether the
-      // flush was worth making. Nothing in this app refetches /me on
-      // navigation, so the session's own copy of the preferences IS what the
-      // tab reads next time it is opened: left stale, the boxes go back to
-      // their automatic places on a save that succeeded, and the next save —
-      // built from that empty copy — replaces the arrangement the server is
-      // holding. The drag survived the trip and was destroyed by the drag
-      // after it.
-      final stored = session.me!.preferences['organization.canvas'];
+      // And what it carried is the drag, not an empty list. The flush fires
+      // from `dispose`, after the State has been told it is going away, so the
+      // one thing it must not do is build its payload from something it has
+      // already torn down.
+      final sun = (saves.single['boxes'] as List)
+          .cast<Map<String, dynamic>>()
+          .firstWhere((box) => box['id'] == _sun);
+      final from = arrangeStructure(flattenStructure(_tree()))['company:$_sun']!;
 
-      expect(stored, isA<List<dynamic>>());
-      expect((stored as List).any((box) => (box as Map)['id'] == _sun), isTrue);
+      expect(sun['x'], (from.dx + 100).round());
+      expect(sun['y'], (from.dy + 40).round());
     });
 
     testWidgets('a narrow visit never writes an arrangement', (tester) async {
@@ -742,8 +773,14 @@ void main() {
       // deliberately stored NOWHERE, so a canvas rebuilt from scratch cannot
       // recover it, while an arrangement would simply be re-read from the
       // preference that was just saved and land in the same place either way.
+      // Measured rather than typed in. This was `Offset(60, 900)`, which was
+      // empty canvas until places moved down to the fourth line — a place is a
+      // place wherever it hangs, so a company with no sub companies leaves the
+      // third line clear. A hardcoded point that quietly lands ON a box does
+      // not fail loudly: it starts dragging the box and the test goes on
+      // measuring a "viewport pan" that is nothing of the kind.
       await tester.dragFrom(
-        const Offset(60, 900),
+        _emptyPatch(tester),
         const Offset(-140, -80),
         kind: PointerDeviceKind.touch,
       );
@@ -774,6 +811,521 @@ void main() {
       );
     });
   });
+
+  group('arranging it is a permission now', () {
+    /// The whole of §4 for this feature, in one test: the picture is not
+    /// hidden, the refusal is the SERVER's sentence rather than a guess made
+    /// here, there is no dead control anywhere, and everything that was never
+    /// written down still works.
+    testWidgets('somebody who may not arrange sees the boxes, is told why, and '
+        'can still pan', (tester) async {
+      // Word for word what `Refusal::permission` produces for this act. A test
+      // that asserted "some sentence appeared" would pass against a client that
+      // wrote its own, which is the failure this whole pair of fields exists to
+      // prevent.
+      const refusal =
+          'You do not have permission to rearrange the structure everyone '
+          'sees. That is part of a role rather than of an account, so somebody '
+          'who can edit roles can add it to yours.';
+
+      final saves = <Map<String, dynamic>>[];
+
+      await _pump(
+        tester,
+        _server(
+          saves: saves,
+          mayArrange: false,
+          arrangeRefusal: refusal,
+          canvas: [
+            _box('company', _sun, 0, 0),
+            _box('organization', _org, 600, 300),
+          ],
+        ),
+      );
+      await _openStructure(tester);
+
+      expect(
+        find.byKey(structureBoxKey('company:$_sun')),
+        findsOneWidget,
+        reason:
+            'Not a hidden tab. The picture is the same picture everybody else '
+            'is looking at, and reading it needs no permission at all.',
+      );
+      expect(
+        _delta(tester),
+        const Offset(600, 300),
+        reason:
+            'And it is the ARRANGEMENT everybody else is looking at, not the '
+            'automatic layout. Somebody refused the save is not thereby '
+            'refused the picture their colleagues made.',
+      );
+
+      expect(
+        find.text(refusal),
+        findsOneWidget,
+        reason:
+            'The server\'s own sentence, in the same words its 403 would have '
+            'used. A client that worded its own is how a dead control and the '
+            'refusal behind it come to explain one rule two different ways.',
+      );
+
+      expect(
+        find.text('Arrange for me'),
+        findsNothing,
+        reason:
+            'Absent, not disabled. A disabled button invites somebody to work '
+            'out why it does nothing, and a live one answering 403 is worse.',
+      );
+      expect(
+        find.byTooltip('Move “Sunward Overhead Doors” with the arrow keys'),
+        findsNothing,
+        reason: 'And the keyboard route to the same write is gone with it.',
+      );
+
+      // A box cannot be picked up either, which is the third way in.
+      Offset apart() =>
+          _rectOf(tester, 'organization:$_org').topLeft -
+          _rectOf(tester, 'company:$_sun').topLeft;
+
+      await tester.drag(
+        find.byKey(structureBoxKey('company:$_sun')),
+        const Offset(120, 60),
+      );
+      await _land(tester);
+
+      expect(apart(), const Offset(600, 300), reason: 'A box moved anyway.');
+
+      // The viewport, though, is not part of the arrangement and never was.
+      // It is stored nowhere, so there is nothing here to refuse.
+      final looking = _rectOf(tester, 'company:$_sun');
+
+      await tester.dragFrom(
+        _emptyPatch(tester),
+        const Offset(-140, -80),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        _rectOf(tester, 'company:$_sun'),
+        isNot(looking),
+        reason:
+            'Panning is how you get around a free canvas, and a canvas nobody '
+            'can pan is a dead end made out of a permission.',
+      );
+
+      await _settle(tester);
+
+      expect(
+        saves,
+        isEmpty,
+        reason:
+            'And none of it wrote anything. A gate that only hides controls is '
+            'a gate the first stray callback walks through.',
+      );
+    });
+
+    /// A role edited while somebody had the tab open. The gate above is the
+    /// ordinary path; this is the one the server has to catch, and the client's
+    /// job is to print what it says rather than to invent a story about it.
+    testWidgets('a save refused after the fact says the server\'s own sentence '
+        'and puts the boxes back', (tester) async {
+      const sentence =
+          'Only somebody assigned at the whole organization can rearrange the '
+          'structure everyone sees — it affects the entire business rather '
+          'than one part of it.';
+
+      await _pump(
+        tester,
+        _server(saveStatus: 403, saveMessage: sentence),
+      );
+      await _openStructure(tester);
+
+      final before = _rectOf(tester, 'company:$_sun');
+
+      await tester.drag(
+        find.byKey(structureBoxKey('company:$_sun')),
+        const Offset(140, 70),
+      );
+      await _land(tester);
+
+      expect(
+        _rectOf(tester, 'company:$_sun'),
+        isNot(before),
+        reason: 'The premise: it moved, so there is something to put back.',
+      );
+
+      await _settle(tester);
+
+      expect(_rectOf(tester, 'company:$_sun'), before);
+      expect(
+        find.text(sentence),
+        findsOneWidget,
+        reason:
+            'A 403 explains itself at the top level and carries no field '
+            'errors, so a client that only ever reads `errors` would show '
+            '"Something went wrong" for the one refusal that explains itself '
+            'best.',
+      );
+    });
+  });
+
+  group('two people, one arrangement', () {
+    testWidgets('a colleague\'s arrangement arrives on the next fetch', (
+      tester,
+    ) async {
+      final (api, session) = await _signIn(tester, _server());
+
+      await _pumpTab(
+        tester,
+        api: api,
+        session: session,
+        tree: _tree(
+          canvas: [
+            _box('organization', _org, 40, 40),
+            _box('company', _sun, 640, 340),
+          ],
+        ),
+      );
+
+      expect(
+        _delta(tester),
+        const Offset(-600, -300),
+        reason: 'The premise: this is where the arrangement put them.',
+      );
+
+      // The same State, handed the payload a refetch brought back.
+      await _pumpTab(
+        tester,
+        api: api,
+        session: session,
+        tree: _tree(
+          canvas: [
+            _box('organization', _org, 40, 40),
+            _box('company', _sun, 240, 140),
+          ],
+        ),
+      );
+
+      expect(
+        _delta(tester),
+        const Offset(-200, -100),
+        reason:
+            'There is one arrangement for the organization, so a fetch that '
+            'brings back a different one is somebody else having moved a box. '
+            'A tab that kept drawing its own copy would leave two people '
+            'looking at two pictures of one business, and the next drag from '
+            'here would write the old one back over theirs.',
+      );
+    });
+
+    /// The honest half of a shared row: it is taken, it is SAID, and it does
+    /// not reach over somebody mid-gesture.
+    testWidgets('a colleague\'s arrangement is taken, said out loud, and does '
+        'not undo an unsaved move', (tester) async {
+      final saves = <Map<String, dynamic>>[];
+      final (api, session) = await _signIn(tester, _server(saves: saves));
+
+      Map<String, dynamic> tree(int everX, int everY, int sunX) => _tree(
+        canvas: [
+          _box('organization', _org, 40, 40),
+          _box('company', _ever, everX, everY),
+          _box('company', _sun, sunX, 340),
+        ],
+      );
+
+      await _pumpTab(
+        tester,
+        api: api,
+        session: session,
+        tree: tree(340, 240, 640),
+      );
+
+      // Measured between boxes rather than against the window, because the
+      // sentence about to appear is a strip above the canvas and it pushes the
+      // whole picture down — which is a change of layout, not of arrangement.
+      Offset apart(String key) =>
+          _rectOf(tester, key).topLeft -
+          _rectOf(tester, 'organization:$_org').topLeft;
+
+      // This person moves a box, and has not saved it yet.
+      await tester.drag(
+        find.byKey(structureBoxKey('company:$_ever')),
+        const Offset(60, 30),
+      );
+      await _land(tester);
+
+      expect(saves, isEmpty, reason: 'The premise: the debounce is counting.');
+      expect(apart('company:$_ever'), const Offset(360, 230));
+
+      // Meanwhile somebody else saved a different picture, and a refetch
+      // brings it back. It moves the box this person is holding, and one they
+      // are not.
+      await _pumpTab(
+        tester,
+        api: api,
+        session: session,
+        tree: tree(900, 700, 240),
+      );
+
+      expect(
+        apart('company:$_sun'),
+        const Offset(200, 300),
+        reason:
+            'A box nobody here has touched takes the colleague\'s place. That '
+            'is how an office converges on one picture instead of two.',
+      );
+      expect(
+        apart('company:$_ever'),
+        const Offset(360, 230),
+        reason:
+            'And a box this person moved two seconds ago and has not saved '
+            'stays where they put it. Taking the server\'s answer wholesale '
+            'would yank it out from under a hand that is still on it.',
+      );
+
+      expect(
+        find.textContaining('Somebody else has arranged these boxes'),
+        findsOneWidget,
+        reason:
+            'Said, rather than done quietly. Only one arrangement is kept, so '
+            'silently winning and silently losing are both available here and '
+            'both are lies about what just happened.',
+      );
+      expect(
+        find.textContaining('the last person to move a box'),
+        findsOneWidget,
+        reason:
+            'And it states the RULE as well as the event, because "somebody '
+            'else moved these" leaves the next question — what happens if we '
+            'both keep going — unanswered.',
+      );
+      expect(
+        find.byType(Dialog),
+        findsNothing,
+        reason: 'A note, never a pop-up. It interrupts nothing.',
+      );
+
+      // And the save that follows carries the merge that is on screen: their
+      // place for the box nobody here touched, this person's for the one they
+      // did. A client that sent only what it had before the fetch would put
+      // the colleague's whole arrangement back the way it was.
+      await _settle(tester);
+
+      final boxes = (saves.single['boxes'] as List).cast<Map<String, dynamic>>();
+
+      expect(
+        boxes.firstWhere((box) => box['id'] == _sun),
+        {'kind': 'company', 'id': _sun, 'x': 240, 'y': 340},
+      );
+      expect(
+        boxes.firstWhere((box) => box['id'] == _ever),
+        {'kind': 'company', 'id': _ever, 'x': 400, 'y': 270},
+      );
+
+      // The sentence is about an event rather than a condition, so it can be
+      // got rid of. The refusal and drift notes deliberately cannot: their
+      // remedy is on screen, and hiding those would hide why a control is
+      // missing while the control stayed missing.
+      await tester.tap(find.text('Got it'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Somebody else has arranged these boxes'),
+        findsNothing,
+      );
+    });
+
+    /// The window where this is easiest to get wrong, and it is not a rare
+    /// one: somebody drags a box, and while that PUT is still in the air they
+    /// rename a company on the List tab. The server has already stored the
+    /// drag, so the refetch carries it back — an arrangement this tab has not
+    /// been told about yet, because its own answer has not landed.
+    ///
+    /// Compared against what is ON THE WIRE as well as against what was last
+    /// confirmed, for exactly this. Without it, a save followed by any other
+    /// edit would announce a colleague and name this person's own drag, and the
+    /// one sentence that matters here becomes the sentence everybody learns to
+    /// ignore.
+    testWidgets('this tab\'s own save coming back mid-flight is not somebody '
+        'else', (tester) async {
+      final saves = <Map<String, dynamic>>[];
+      final gate = Completer<void>();
+
+      final (api, session) = await _signIn(
+        tester,
+        _server(saves: saves, held: gate.future),
+      );
+
+      await _pumpTab(
+        tester,
+        api: api,
+        session: session,
+        tree: _tree(
+          canvas: [
+            _box('organization', _org, 40, 40),
+            _box('company', _sun, 640, 340),
+          ],
+        ),
+      );
+
+      await tester.drag(
+        find.byKey(structureBoxKey('company:$_sun')),
+        const Offset(50, 20),
+      );
+      await _settle(tester);
+
+      expect(
+        saves,
+        hasLength(1),
+        reason: 'The premise: the save is on the wire and held there.',
+      );
+
+      // The refetch that follows an edit on the other tab, carrying exactly
+      // what this tab has just sent and has not been answered about yet.
+      await _pumpTab(
+        tester,
+        api: api,
+        session: session,
+        tree: _tree(
+          canvas: (saves.single['boxes'] as List).cast<Map<String, dynamic>>(),
+        ),
+      );
+
+      expect(
+        find.textContaining('Somebody else has arranged these boxes'),
+        findsNothing,
+        reason:
+            'This is the arrangement this tab is in the middle of writing. '
+            'Announcing it as a colleague\'s would be the feature crying wolf '
+            'about the person using it.',
+      );
+
+      gate.complete();
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Somebody else has arranged these boxes'),
+        findsNothing,
+        reason: 'And still not, once the answer to it lands.',
+      );
+    });
+  });
+
+  group('the explanations', () {
+    testWidgets('the canvas says what its lines mean, including the empty one', (
+      tester,
+    ) async {
+      await _pump(tester, _server());
+      await _openStructure(tester);
+
+      expect(
+        find.textContaining('Nothing you do here changes the business'),
+        findsOneWidget,
+        reason:
+            'The rule, stated before anybody tries it. This note used to be '
+            'passed null because the header above said something close enough '
+            'to it, and close enough is how one screen comes to say two things '
+            'about the rule that matters most here.',
+      );
+      expect(
+        find.textContaining(
+          'A line with nothing on it means that branch has no sub companies.',
+        ),
+        findsOneWidget,
+        reason:
+            'A place\'s line is what a place IS, so a company with no sub '
+            'companies leaves the third line empty. Unexplained, a gap in a '
+            'chart reads as something that failed to draw.',
+      );
+    });
+
+    /// The rule above BOTH views, in one wording.
+    ///
+    /// It used to end "nothing here can be moved to a different parent once it
+    /// exists", which is the model's vocabulary rather than anybody's —
+    /// "parent" is a column name. And the two tabs said it differently enough
+    /// that somebody switching between them could reasonably conclude there
+    /// were two rules, this being the one they are most likely to test by
+    /// trying it on the other tab.
+    testWidgets('the header states the rule for both views, in the same words', (
+      tester,
+    ) async {
+      await _pump(tester, _server());
+
+      expect(
+        find.textContaining(
+          'who owns what is decided when something is created',
+        ),
+        findsOneWidget,
+        reason: 'The list says it.',
+      );
+
+      await _openStructure(tester);
+
+      expect(
+        find.textContaining(
+          'Moving a box moves the picture only — who owns what is decided when '
+          'something is created and stays that way afterwards.',
+        ),
+        findsOneWidget,
+        reason:
+            'And the structure says the same thing, with the sentence about '
+            'the gesture in front of it.',
+      );
+      expect(
+        find.textContaining('a different parent'),
+        findsNothing,
+        reason:
+            'In nobody\'s words but a developer\'s. R8: a wire name is not a '
+            'thing to put on screen.',
+      );
+    });
+
+    testWidgets('the outline says who owns what, because on a phone it is the '
+        'only view there is', (tester) async {
+      await _pump(tester, _server(), size: const Size(375, 900));
+      await _openStructure(tester);
+
+      expect(find.byType(StructureOutline), findsOneWidget);
+      expect(
+        find.textContaining(
+          'nothing on this list can be moved under a different company',
+        ),
+        findsOneWidget,
+        reason:
+            'Nothing here can be dragged, so there is no gesture to misread — '
+            'and somebody whose whole experience of the structure is this list '
+            'is still owed the one rule that matters most about it.',
+      );
+    });
+
+    testWidgets('and it fits the phone held sideways, which is where it is '
+        'tightest', (tester) async {
+      // 812 by 375 leaves this tab about a hundred points. Two paragraphs of
+      // explanation is more than that before a single row is drawn, so stacked
+      // above a scroll view they overflow it — a striped bar in debug and
+      // silently clipped structure in release. They ride inside the scroll for
+      // exactly this reason.
+      await _pump(tester, _server(), size: const Size(812, 375));
+      await _openStructure(tester);
+
+      expect(find.textContaining('too short'), findsOneWidget);
+      expect(
+        find.textContaining(
+          'nothing on this list can be moved under a different company',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Everdoors'),
+        findsWidgets,
+        reason:
+            'And the structure is still reachable behind them, which is the '
+            'half an overflow takes away.',
+      );
+    });
+  });
 }
 
 // ── the fixture ────────────────────────────────────────────────────
@@ -794,7 +1346,23 @@ const _quiet = '00000000-0000-4000-8000-000000000006';
 /// somebody's stored arrangement.
 const _away = '00000000-0000-4000-8000-0000000000ff';
 
-Map<String, dynamic> _tree() => {
+/// The payload `GET /companies` answers with — the structure AND the
+/// arrangement, because one describes the other and they travel together.
+///
+/// [canvas] is the organization's own arrangement, shared by everybody in it.
+/// It is on the tree rather than in anybody's preferences, which is the whole
+/// of change (1) from this side: `/me` is answered once at launch and cached,
+/// so a colleague's save read from there would not appear until the next
+/// sign-in.
+///
+/// [mayArrange] and [arrangeRefusal] are the server's §4 answer, published as a
+/// flag and as the sentence behind it — the same pair `may_add_company` beside
+/// them already is.
+Map<String, dynamic> _tree({
+  List<Map<String, dynamic>> canvas = const [],
+  bool mayArrange = true,
+  String? arrangeRefusal,
+}) => {
   'organization': {
     'id': _org,
     'name': 'Everdoors Group',
@@ -802,6 +1370,8 @@ Map<String, dynamic> _tree() => {
     'may_add_company_reason': null,
     'has_logo': false,
     'may_edit': false,
+    'may_arrange': mayArrange,
+    'may_arrange_reason': arrangeRefusal,
   },
   'companies': [
     _company(
@@ -819,6 +1389,15 @@ Map<String, dynamic> _tree() => {
     ),
     _company(_sun, 'Sunward Overhead Doors'),
   ],
+  'canvas': canvas,
+};
+
+/// One box of an arrangement, in the shape the endpoint stores and echoes.
+Map<String, dynamic> _box(String kind, String id, int x, int y) => {
+  'kind': kind,
+  'id': id,
+  'x': x,
+  'y': y,
 };
 
 Map<String, dynamic> _company(
@@ -859,10 +1438,14 @@ typedef MockClientHandler = Future<http.Response> Function(http.Request);
 /// think about fails a test rather than quietly returning an empty list.
 MockClientHandler _server({
   Map<String, dynamic> preferences = const {},
+  List<Map<String, dynamic>> canvas = const [],
+  bool mayArrange = true,
+  String? arrangeRefusal,
   List<Map<String, dynamic>>? saves,
   List<String>? calls,
   int saveStatus = 200,
   String saveError = 'No.',
+  String? saveMessage,
   Future<void>? held,
 }) {
   return (request) async {
@@ -907,12 +1490,21 @@ MockClientHandler _server({
       if (held != null) await held;
 
       if (saveStatus != 200) {
-        return _json({
-          'message': 'The given data was invalid.',
-          'errors': {
-            'boxes': [saveError],
-          },
-        }, saveStatus);
+        // A 403 explains itself at the top level and carries no `errors` — the
+        // shape `abort_if` produces — and a 422 puts the sentence worth reading
+        // under the field. Both are answered here, because the client has to
+        // print whichever one it is given rather than the generic top line.
+        return _json(
+          saveMessage != null
+              ? {'message': saveMessage}
+              : {
+                  'message': 'The given data was invalid.',
+                  'errors': {
+                    'boxes': [saveError],
+                  },
+                },
+          saveStatus,
+        );
       }
 
       // Echoes what was STORED, the way the endpoint does — the client applies
@@ -923,7 +1515,13 @@ MockClientHandler _server({
     }
 
     if (request.url.path.endsWith('/companies')) {
-      return _json(_tree());
+      return _json(
+        _tree(
+          canvas: canvas,
+          mayArrange: mayArrange,
+          arrangeRefusal: arrangeRefusal,
+        ),
+      );
     }
 
     // The logo badges on the list fetch bytes. Answering with JSON hands the
@@ -945,6 +1543,27 @@ http.Response _json(Object body, [int status = 200]) => http.Response(
 
 // ── driving the screen ─────────────────────────────────────────────
 
+/// Signs in against [handler], and hands back the two things every screen here
+/// is built from.
+///
+/// Its own step because two harnesses need it: the whole Organization screen,
+/// and the Structure tab on its own — which is the only way to hand the same
+/// State a SECOND tree and watch what it does with it, and a refetch carrying
+/// somebody else's arrangement is exactly that.
+Future<(ApiClient, Session)> _signIn(
+  WidgetTester tester,
+  MockClientHandler handler,
+) async {
+  final api = ApiClient(client: MockClient(handler));
+  final session = Session(api);
+
+  await tester.runAsync(() => session.adopt('tok'));
+
+  expect(session.signedIn, isTrue, reason: 'The /me stub did not sign in.');
+
+  return (api, session);
+}
+
 Future<Session> _pump(
   WidgetTester tester,
   MockClientHandler handler, {
@@ -954,12 +1573,7 @@ Future<Session> _pump(
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  final api = ApiClient(client: MockClient(handler));
-  final session = Session(api);
-
-  await tester.runAsync(() => session.adopt('tok'));
-
-  expect(session.signedIn, isTrue, reason: 'The /me stub did not sign in.');
+  final (api, session) = await _signIn(tester, handler);
 
   await tester.pumpWidget(
     MaterialApp(
@@ -984,6 +1598,50 @@ Future<Session> _pump(
 
 Future<void> _openStructure(WidgetTester tester) async {
   await tester.tap(find.text('Structure'));
+  await tester.pumpAndSettle();
+}
+
+/// The Structure tab on its own, so a SECOND tree can be handed to the same
+/// State.
+///
+/// The screen above refetches `GET /companies` and swaps the payload in, which
+/// is how a colleague's arrangement reaches anybody — and driving that through
+/// the whole screen would mean performing an unrelated write just to provoke
+/// the reload. The tab is what reads the arrangement, so the tab is what is
+/// handed the two trees.
+///
+/// Keyed, and the key never changes. That is the whole point: a fresh key would
+/// build a new State, which would read the new tree in `initState` and pass a
+/// test that says nothing about `didUpdateWidget` — the one place a refetch is
+/// actually noticed.
+Future<void> _pumpTab(
+  WidgetTester tester, {
+  required ApiClient api,
+  required Session session,
+  required Map<String, dynamic> tree,
+  bool mayArrange = true,
+  String? arrangeRefusal,
+  Size size = const Size(1400, 1000),
+}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        body: StructureTab(
+          key: const ValueKey('the tab under test'),
+          api: api,
+          session: session,
+          tree: tree,
+          mayArrange: mayArrange,
+          arrangeRefusal: arrangeRefusal,
+        ),
+      ),
+    ),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -1015,6 +1673,59 @@ Future<void> _settle(WidgetTester tester) async {
 
 Rect _rectOf(WidgetTester tester, String key) =>
     tester.getRect(find.byKey(structureBoxKey(key)));
+
+/// A point ON the drawing surface with no box under it.
+///
+/// Found rather than typed, and both halves of that matter.
+///
+/// It used to be `Offset(60, lowest + 40)` — below every box. That was right
+/// until it was not: a box moves onto a fixed point the first time the layout
+/// changes, and a background pan that has quietly become a box drag reports a
+/// move, saves it, and leaves every assertion above it measuring the wrong
+/// thing. Then "below every box" stopped being on screen at all. The picture
+/// grew a line when a place became level four, and this tab grew a note strip
+/// above the canvas whenever there is a permission or an arrangement to speak
+/// about, and between them the lowest box's bottom is now past the window on a
+/// thousand-point screen. A pointer put down there lands on nothing, the view
+/// does not move, and the test fails with no clue as to why.
+///
+/// So it searches the surface itself, from the bottom up, and returns the first
+/// point no box covers — which is inside the canvas by construction whatever
+/// the levels and the notes do next.
+Offset _emptyPatch(WidgetTester tester) {
+  // The drawing surface, found by the painter only this canvas uses. A
+  // MaterialApp is full of CustomPaints and one that happens to be right today
+  // is a test that starts asserting things about an ink splash tomorrow.
+  final surface = tester.getRect(
+    find.byWidgetPredicate(
+      (widget) =>
+          widget is CustomPaint && widget.painter is StructureConnectorPainter,
+    ),
+  );
+
+  final boxes = tester
+      .widgetList<Positioned>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Positioned && widget.key.toString().contains('slot:'),
+        ),
+      )
+      .map((positioned) => tester.getRect(find.byKey(positioned.key!)))
+      .toList();
+
+  for (var y = surface.bottom - 24; y > surface.top + 24; y -= 24) {
+    for (var x = surface.left + 24; x < surface.right - 24; x += 24) {
+      final at = Offset(x, y);
+
+      if (boxes.every((box) => !box.contains(at))) return at;
+    }
+  }
+
+  fail(
+    'Every point on the drawing surface has a box on it, so this test is '
+    'about to measure a box drag and call it a viewport pan.',
+  );
+}
 
 /// Where the organization box sits relative to a company box.
 ///

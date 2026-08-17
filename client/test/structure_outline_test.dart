@@ -1,4 +1,9 @@
 import 'package:ezbizi_client/core/theme.dart';
+// The canvas, in a test about the outline, for exactly one assertion: that the
+// two views put every node on the same line. That test is the reason
+// `structure_levels.dart` exists, and it can only be written somewhere both
+// views are in scope.
+import 'package:ezbizi_client/widgets/structure_canvas.dart';
 import 'package:ezbizi_client/widgets/structure_outline.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -70,6 +75,79 @@ void main() {
             'switched off',
           ),
         ),
+      );
+    });
+
+    /// The bug this release fixes, in outline form.
+    ///
+    /// A company's own place used to be typed in at depth 2 and a sub company
+    /// at depth 2 as well, so the two drew at the SAME indent — the outline
+    /// saying a place and a sub company are the same size of thing. They are
+    /// not: a sub company holds places of its own. Nothing in this file
+    /// compared those two indents before, which is how two views managed to
+    /// carry one bug in two spellings.
+    testWidgets('a company’s own place is indented one step further than a sub '
+        'company of the same company', (tester) async {
+      await _pump(tester);
+
+      final place = _indentOf(tester, 'DMV — Territory in Everdoors');
+      final sub = _indentOf(
+        tester,
+        'Premier Garage Repair — Sub company in Everdoors, switched off',
+      );
+
+      expect(
+        place,
+        greaterThan(sub),
+        reason: 'A place of the company sits level with a sub company of the '
+            'same company, which says the two are the same kind of thing.',
+      );
+
+      // Exactly one step, so this is a LEVEL rather than a nudge — and the same
+      // one step the sub company itself is indented past its company.
+      expect(place - sub, moreOrLessEquals(_stepInTest, epsilon: 0.5));
+      expect(
+        sub - _indentOf(tester, 'Everdoors — Company'),
+        moreOrLessEquals(_stepInTest, epsilon: 0.5),
+      );
+    });
+
+    /// The claim the whole of `structure_levels.dart` exists to make true: there
+    /// is ONE hierarchy, and the two views read it from one function rather than
+    /// each keeping a copy. Both copies used to carry the same bug, and both had
+    /// to be found separately.
+    testWidgets('the outline and the canvas agree about every level', (
+      tester,
+    ) async {
+      await _pump(tester);
+
+      final rows = outlineRows(_tree);
+      final nodes = flattenStructure(_tree);
+
+      // Control: the two views really are describing the same set of things, so
+      // an agreement below is not an agreement about an empty intersection.
+      expect(rows, hasLength(nodes.length));
+
+      final canvasLevels = {
+        for (final node in nodes)
+          node.key: structureLevelOf(kind: node.kind, isSub: node.isSub),
+      };
+
+      for (final row in rows) {
+        expect(
+          row.depth,
+          canvasLevels[row.key],
+          reason: '${row.name} is on line ${row.depth} of the outline and line '
+              '${canvasLevels[row.key]} of the canvas. One business, two '
+              'pictures, and they disagree about its shape.',
+        );
+      }
+
+      // And the levels really are spread across the four, so the loop above is
+      // not comparing a column of zeroes with a column of zeroes.
+      expect(
+        {for (final row in rows) row.depth},
+        {0, 1, 2, 3},
       );
     });
 
@@ -435,7 +513,7 @@ void main() {
         tester,
         before: before,
         after: after,
-        trailing: (context, row) => row.kind == structureCompanyKind
+        trailing: (context, row) => row.kind == structureCompany
             ? IconButton(
                 focusNode: FocusNode(debugLabel: 'menu:${row.id}'),
                 icon: const Icon(Icons.more_horiz),
@@ -582,6 +660,14 @@ Future<void> _press(WidgetTester tester, LogicalKeyboardKey key) async {
 
 /// Which row the keyboard is on, by the key the outline gives its focus nodes.
 String? _focused() => FocusManager.instance.primaryFocus?.debugLabel;
+
+/// One level of indent, as the outline draws it.
+///
+/// Spelled here rather than imported because `_step` is private to the widget —
+/// deliberately, it is a drawing decision — and a test that asserted "one step"
+/// by reading the widget's own number could not tell one step from none. This is
+/// the number a person would measure off the screen with a ruler.
+const double _stepInTest = 18;
 
 /// Where a row's leading glyph starts — the indent, measured.
 double _indentOf(WidgetTester tester, String label) => tester

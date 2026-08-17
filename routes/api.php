@@ -218,38 +218,42 @@ Route::prefix('v1')
         Route::patch('companies/{company}', [CompaniesController::class, 'update']);
 
         /*
-        | ── How one person arranged the PICTURE of that structure ──
+        | ── How the business arranged the PICTURE of that structure ──
         |
         | The Organization tab draws the three lines above as boxes on a canvas
-        | somebody drags into an arrangement that suits them. This stores that
-        | arrangement, per user (§2.1 category 6), in `users.preferences`.
+        | somebody drags into an arrangement. This stores that arrangement — ONE
+        | per organization, which everybody in the organization sees (§2.1
+        | category 5), in the `settings` table under
+        | `organization.structure_canvas`.
         |
         | HERE, beside the tree it draws, rather than beside `dashboard/layout`
-        | further down — which is the other honest place, because the two writes
-        | are the same KIND of write: a per-user preference, no policy, no audit,
-        | no emit, straight into the same JSON column. The grouping in this file
-        | is by what a route serves rather than by how it is implemented, though,
-        | and a reader who arrives here asking "what can the Organization tab
-        | do?" has to find all of it in one place. Whereas a reader who arrives
-        | at the dashboard block asking "what else writes preferences?" is asking
-        | a question the route file was never the answer to.
+        | further down. The two used to be the same KIND of write and are not
+        | any more: that one is still one person's preference and this one is a
+        | tenant setting with a permission in front of it. The grouping in this
+        | file is by what a route serves anyway, and a reader who arrives here
+        | asking "what can the Organization tab do?" has to find all of it in
+        | one place.
         |
         | THERE IS NO MATCHING GET, and that is decided rather than missing. The
-        | arrangement already reaches the client on /me, which sends the whole
-        | `preferences` blob so the app can paint the right theme on the first
-        | frame. A read endpoint here would be the same value in two places, and
-        | the first time they disagreed the canvas would draw itself somewhere
-        | nobody chose. There is no read of the TREE here either, for the reason
-        | the companies block gives above: assembling that shape twice is a
-        | second place for it to be decided, and to be decided differently.
+        | arrangement reaches the client on GET /companies, riding with the tree
+        | it describes — that payload is refetched every time the Organization
+        | screen opens, so a colleague's save is seen without a second endpoint.
+        | (It used to ride on /me with the theme, which was right while it was a
+        | preference and is wrong now: /me is answered once at launch and cached
+        | in the client's session, so a shared arrangement would not have
+        | appeared until the next sign-in.) A read endpoint here would still be
+        | the same value in two places, and the first time they disagreed the
+        | canvas would draw itself somewhere nobody chose.
         |
-        | NO `can:` MIDDLEWARE AND NO POLICY, for `dashboard/layout`'s reason:
-        | the write is bound to $request->user() and there is nothing to
-        | authorize beyond being signed in. Said out loud because a route with no
-        | gate, sitting directly beneath three that have policies, otherwise
-        | looks like the one somebody forgot. The controller's docblock carries
-        | why an `organizations.canvas` permission would be wrong rather than
-        | merely unnecessary.
+        | NO `can:` MIDDLEWARE — not because there is no gate, but because the
+        | gate is two questions and `can:` can only ask the first. Saving this
+        | needs `organizations.edit` AND an assignment at the whole
+        | organization, since one drag changes what every colleague opens
+        | tomorrow. Both are asked from
+        | OrganizationCanvasController::refusalToArrange, which is also what
+        | answers `may_arrange_reason` on the tree — so the sentence a dead
+        | control shows and the sentence the 403 carries are the same string
+        | rather than two spellings of one rule.
         |
         | `subscription` IS INHERITED, deliberately. §13 makes a lapsed tenant
         | read-only and none of the exemptions above cover this path, so a lapsed
@@ -768,35 +772,18 @@ Route::prefix('v1')
                     // can paint the right theme on the first frame instead of
                     // flashing the wrong one while a second request lands.
                     //
-                    // Wrapped in cleanedInto() because a stored canvas
-                    // arrangement leaves the server here, and a
-                    // preference is user input that happens to have been saved
-                    // earlier — DashboardController::index re-checks a layout
-                    // its own saveLayout already checked, for exactly this
-                    // reason. Here the stakes are a little higher: the client
-                    // hands these numbers to a transform that throws on a value
-                    // it cannot use, so an unchecked blob is a screen that will
-                    // not open for the one person whose column holds it.
-                    //
-                    // This IS one endpoint knowing about one feature, which is
-                    // the cost and is why it is one call and not a filter. The
-                    // rejected alternative was to leave the check entirely to
-                    // the client's own defensive reader: that reader has to
-                    // exist regardless — it also talks to older servers — but it
-                    // sits on the far side of the wire, where this server cannot
-                    // vouch for it, and it would have to be written again for
-                    // each additional client from reasoning nobody recorded.
-                    //
-                    // This is not the ONLY way out, and it once claimed to be.
-                    // PreferencesController::resolved() serves the same blob to
-                    // GET /me/preferences and to the answer of a PATCH, and it
-                    // calls the same cleaner for the same reason. /me is where
-                    // the client reads this preference, which is what made it
-                    // look like the only door.
-                    'preferences' => OrganizationCanvasController::cleanedInto(array_merge(
+                    // This used to be wrapped in
+                    // OrganizationCanvasController::cleanedInto, because the
+                    // structure canvas was a per-user preference and this was
+                    // one of the doors it left through. It is an organization
+                    // setting now — it rides on GET /companies with the tree it
+                    // describes, and it is cleaned there — and the old key is
+                    // stripped from every user by the migration that retired
+                    // it, so there is nothing here left to clean.
+                    'preferences' => array_merge(
                         app(\App\Support\Preferences\PreferenceRegistry::class)->defaults(),
                         $user->preferences ?? [],
-                    )),
+                    ),
                     // Whether this person is also platform staff (§4.2, revised).
                     // The client renders the Development section from this, so it
                     // cannot appear for somebody with no staff account behind them.

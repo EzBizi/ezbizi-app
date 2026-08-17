@@ -82,6 +82,58 @@ class SettingRegistryTest extends TestCase
         }
     }
 
+    /**
+     * A setting whose form lives on another screen says WHICH screen.
+     *
+     * `editedOn` exists so the Settings screen does not draw a box of raw JSON
+     * for `organization.structure_canvas` — five hundred `{kind,id,x,y}`
+     * objects to hand-edit, for a picture that has its own screen and a button
+     * that rebuilds it correctly in one press.
+     *
+     * The name is what makes that a redirection rather than a hiding place, and
+     * it is the same argument `notYetInEffect` makes: a flag says "not here"
+     * and leaves the next question — "then where?" — unanswered. So a blank one
+     * is refused at construction, and this asserts both halves: the guard bites,
+     * and no definition in the catalogue has slipped past it.
+     */
+    public function test_a_setting_edited_on_another_screen_names_the_screen(): void
+    {
+        $named = 0;
+
+        foreach ($this->registry->all() as $key => $definition) {
+            if ($definition->isEditedOnSettingsScreen()) {
+                $this->assertNull(
+                    $definition->editedOn,
+                    "Setting '{$key}' disagrees with itself about where it is edited.",
+                );
+
+                continue;
+            }
+
+            $named++;
+
+            $this->assertNotSame(
+                '', trim((string) $definition->editedOn),
+                "Setting '{$key}' says it is edited elsewhere and names nowhere.",
+            );
+        }
+
+        // The control: at least one setting actually uses this, so the loop
+        // above is not passing by never entering its second branch.
+        $this->assertSame(1, $named, 'Expected exactly the structure canvas to be edited elsewhere.');
+
+        // And the guard refuses a definition that names nowhere, rather than
+        // leaving the check to a test nobody runs before deploying.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/does not name one/');
+
+        new SettingDefinition(
+            key: 'example.nowhere', label: 'Nowhere',
+            type: SettingDefinition::TYPE_STRING, default: '',
+            editedOn: '   ',
+        );
+    }
+
     // ── the new types ────────────────────────────────────────────
 
     public function test_json_settings_round_trip(): void

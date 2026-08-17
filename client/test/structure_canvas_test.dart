@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/widgets/structure_canvas.dart';
 import 'package:ezbizi_client/widgets/structure_menu.dart';
@@ -268,6 +270,142 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    /// The third failure available here, and the one the owner asked for: a
+    /// gesture that is refused and says nothing reads as a control that broke.
+    ///
+    /// Dropping one box squarely onto another is what a person does when they
+    /// mean "put this inside that", so it is the one moment we can be confident
+    /// somebody has asked the question. The canvas answers in words — and
+    /// nothing else about it changes, which is the half this test has to prove
+    /// as hard as the words themselves. An explanation that arrived with a
+    /// snap, a reorder or a re-aimed connector would have taught exactly the
+    /// thing the whole widget is shaped to refuse.
+    testWidgets('dropping a box on another explains itself, and is not a '
+        'dialog', (tester) async {
+      final state = _State();
+
+      await _pump(tester, state: state);
+
+      // Control: the canvas says nothing about it before anybody asks.
+      expect(find.textContaining('has not been moved into'), findsNothing);
+
+      final from = tester.getCenter(
+        find.byKey(structureBoxKey('franchise:f-north')),
+      );
+      final onto = tester.getCenter(
+        find.byKey(structureBoxKey('company:c-sun')),
+      );
+
+      await tester.drag(
+        find.byKey(structureBoxKey('franchise:f-north')),
+        onto - from,
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('“North Shore” has not been moved into “Sunward”'),
+        findsOneWidget,
+        reason:
+            'Both names, so it is about the two boxes on screen rather than a '
+            'general notice somebody has to work out the relevance of.',
+      );
+      expect(
+        find.textContaining(
+          'moving it now would make the past look like it happened somewhere '
+          'else',
+        ),
+        findsOneWidget,
+        reason:
+            'The actual reason, in a business owner\'s words. "You cannot '
+            're-parent an entity" is the model\'s vocabulary and answers '
+            'nothing.',
+      );
+
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(
+        find.byType(SnackBar),
+        findsNothing,
+        reason:
+            'A note above the picture, never a pop-up and never something that '
+            'slides away while it is being read. It interrupts nothing and it '
+            'covers neither of the two boxes it is about.',
+      );
+
+      // And not one thing about the picture is different because of it.
+      expect(
+        _semanticsOf(tester, 'franchise:f-north'),
+        'North Shore — $_franchiseLabel, under Everdoors',
+        reason: 'The box changed what it says it hangs off.',
+      );
+      expect(state.moved.map((move) => move.$1).toSet(), {'franchise:f-north'});
+      expect(
+        _painter(tester).links,
+        hasLength(_allKeys.length - 1),
+        reason: 'A connector was dropped, or a second one invented.',
+      );
+
+      await tester.tap(find.text('Got it'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('has not been moved into'),
+        findsNothing,
+        reason:
+            'Clearable, because it is about a gesture that has finished. A '
+            'paragraph that cannot be got rid of becomes furniture, and then '
+            'it is not read at all.',
+      );
+    });
+
+    /// The same answer for somebody who never touches a pointer.
+    ///
+    /// The move handle exists so a box can be placed with the arrow keys, and
+    /// an explanation raised only by a drag would be the one part of this
+    /// feature a keyboard user simply does not get — while being the part that
+    /// says why the thing they just did did not do what it looked like.
+    testWidgets('the same explanation follows a keyboard nudge onto a box', (
+      tester,
+    ) async {
+      final said = _recordAnnouncements(tester);
+
+      // Starting just clear of Sunward: overlapping by a third of its own
+      // height, which is deliberately UNDER the half this raises at. So the
+      // note below is about the press rather than about where the box began.
+      final state = _State(
+        layout: {
+          'franchise:f-north': _auto['company:c-sun']! - const Offset(0, 48),
+        },
+      );
+
+      await _pump(tester, state: state);
+
+      expect(find.textContaining('has not been moved into'), findsNothing);
+
+      await tester.tap(find.byTooltip('Move “North Shore” with the arrow keys'));
+      await tester.pumpAndSettle();
+
+      // One press of 16 takes the overlap past half.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('“North Shore” has not been moved into “Sunward”'),
+        findsOneWidget,
+      );
+      expect(
+        said.last,
+        contains('has not been moved into'),
+        reason:
+            'And said out loud. A sentence that only exists as a strip on a '
+            'canvas is an explanation for people who can see the canvas, which '
+            'is not who most needs one.',
+      );
+    });
+
     testWidgets('the box says move, not grab', (tester) async {
       await _pump(tester);
 
@@ -328,6 +466,48 @@ void main() {
         isNot(EzBiziTheme.dark().colorScheme.outlineVariant),
         reason: 'The two themes share this token, so the test above cannot '
             'tell a theme-derived colour from a literal.',
+      );
+    });
+
+    /// A company with no sub companies has its places two lines below it, and
+    /// the line between them has to read as a line rather than as a fault.
+    ///
+    /// Tidewater in the fixture is that company: one place, no sub companies.
+    /// The painter needs no case for it — the run is out of the bottom, down to
+    /// the midpoint, across, and into the top, which is the same route it draws
+    /// for every other pair — and this exists so that nobody adds one.
+    testWidgets('a connector across a skipped line still joins the two boxes', (
+      tester,
+    ) async {
+      await _pump(tester);
+
+      final company = _paintedRectOf(tester, 'company:c-tide');
+      final place = _paintedRectOf(tester, 'franchise:f-harbour');
+
+      expect(
+        _painter(tester).links.any(
+          (link) => link.$1 == company && link.$2 == place,
+        ),
+        isTrue,
+        reason: 'The place two lines below its company has no line to it, so '
+            'the gap reads as something that failed to draw.',
+      );
+
+      // Two pitches apart rather than one, measured edge to edge: the run is a
+      // whole empty line longer than the ones beside it, and that length is the
+      // picture saying this branch has no sub companies.
+      expect(
+        place.top - company.bottom,
+        moreOrLessEquals(2 * _pitch - kStructureBoxHeight, epsilon: 0.5),
+      );
+
+      // Control, and it is the half that makes the number above mean something:
+      // a place hanging off a SUB company is one pitch below it, so the
+      // measurement is about the skipped line rather than about the geometry.
+      expect(
+        _paintedRectOf(tester, 'franchise:f-deep').top -
+            _paintedRectOf(tester, 'company:c-sun').bottom,
+        moreOrLessEquals(_pitch - kStructureBoxHeight, epsilon: 0.5),
       );
     });
 
@@ -696,9 +876,8 @@ void main() {
 
       final before = _rectOf(tester, 'company:c-ever');
 
-      // An empty patch of canvas, well below the last row of boxes.
       await tester.dragFrom(
-        const Offset(60, 660),
+        _emptyPatch(tester),
         const Offset(-90, -40),
         kind: PointerDeviceKind.touch,
       );
@@ -720,7 +899,7 @@ void main() {
       final home = _rectOf(tester, 'organization:org-1');
 
       await tester.dragFrom(
-        const Offset(60, 660),
+        _emptyPatch(tester),
         const Offset(-4000, -3000),
         kind: PointerDeviceKind.touch,
       );
@@ -1087,18 +1266,92 @@ void main() {
   });
 
   group('arranging it automatically', () {
-    test('rows come from where a node hangs, not from a fixed grid', () {
+    /// This assertion used to say the opposite, and the opposite was the bug.
+    ///
+    /// A row was passed down the recursion, so a company's own place came out
+    /// on the same line as a sub company of the same company — the picture
+    /// saying the two are peers. They are not: a sub company holds places of
+    /// its own. A row is what a box IS.
+    test('a row is what a box IS, not how deep the walk went', () {
       final nodes = flattenStructure(_tree());
       final places = arrangeStructure(nodes);
 
       double rowOf(String key) => places[key]!.dy;
 
-      // A place under a top-level company shares a row with a sub company,
-      // because both hang off the same company. A fixed four-row grid would put
-      // every place on the bottom line, a whole row away from its owner.
-      expect(rowOf('franchise:f-north'), rowOf('company:c-sun'));
-      expect(rowOf('franchise:f-deep'), greaterThan(rowOf('company:c-sun')));
-      expect(rowOf('company:c-ever'), greaterThan(rowOf('organization:org-1')));
+      expect(
+        rowOf('franchise:f-north'),
+        greaterThan(rowOf('company:c-sun')),
+        reason: 'A place of the company is level with a sub company of the '
+            'same company, which draws them as the same size of thing.',
+      );
+
+      // Every place on one line, whichever kind of company owns it. That is the
+      // owner's fourth line, and it is the half a walk-derived row cannot say.
+      expect(rowOf('franchise:f-north'), rowOf('franchise:f-deep'));
+      expect(rowOf('franchise:f-north'), rowOf('franchise:f-harbour'));
+
+      // And the three lines above it, in order.
+      expect(rowOf('organization:org-1'), lessThan(rowOf('company:c-ever')));
+      expect(rowOf('company:c-ever'), lessThan(rowOf('company:c-sun')));
+      expect(rowOf('company:c-sun'), lessThan(rowOf('franchise:f-deep')));
+    });
+
+    /// The real customer, at the shape that exposed it: a company with places
+    /// of its OWN and sub companies with places of theirs, all hanging off one
+    /// company. Everything before this passed on a fixture where no company had
+    /// both.
+    test('Everdoors: a place of the company and a place of a sub company share '
+        'the fourth line, and a sub company sits on the line above both', () {
+      final places = arrangeStructure(flattenStructure(_everdoors()));
+
+      final companyPlace = places['franchise:f-everdoors-north']!.dy;
+      final subPlace = places['franchise:f-sunward-east']!.dy;
+      final sub = places['company:c-sunward']!.dy;
+      final company = places['company:c-everdoors']!.dy;
+
+      expect(companyPlace, subPlace);
+      expect(sub, lessThan(companyPlace));
+      expect(company, lessThan(sub));
+
+      // Exactly one pitch between each, so "above" is a LINE rather than a
+      // nudge — and so a picture that merely sorted the boxes vertically
+      // without putting them on lines cannot pass this.
+      expect(sub - company, _pitch);
+      expect(companyPlace - sub, _pitch);
+
+      // The second sub company's place lands on the same line as the first's,
+      // which is what makes the claim about the level rather than about one
+      // branch of the tree.
+      expect(places['franchise:f-premier-west']!.dy, companyPlace);
+    });
+
+    /// The consequence, and it is intended rather than tolerated. A-1 Chimney
+    /// has nine places and no sub companies at all, so the sub-company line is
+    /// empty beneath its company and every place is on one line — which is
+    /// exactly what somebody reading an org chart expects, and why the canvas's
+    /// standing note names the empty line in words.
+    test('A-1: nine places on one line, with the sub-company line left empty',
+        () {
+      final places = arrangeStructure(flattenStructure(_aOneChimney()));
+
+      final lines = {
+        for (final entry in places.entries)
+          if (entry.key.startsWith('franchise:')) entry.value.dy,
+      };
+
+      expect(lines, hasLength(1), reason: 'Nine places on more than one line.');
+
+      // The FOURTH line, counted from the top of the picture — which is the
+      // half that says the third was skipped rather than simply unused. The
+      // margin is where the whole picture starts; three pitches below it is
+      // where a place belongs.
+      expect(lines.single, kStructureMargin + 3 * _pitch);
+
+      // And nothing at all is drawn on the line above it.
+      expect(
+        places.values.where((at) => at.dy == kStructureMargin + 2 * _pitch),
+        isEmpty,
+      );
     });
 
     test('no two boxes are given the same point', () {
@@ -1153,6 +1406,14 @@ void main() {
 /// could not tell the difference between a lookup and a literal.
 const String _franchiseLabel = 'Territory';
 
+/// One line to the next: a box and the gap under it.
+///
+/// Built from the widget's own two constants rather than typed as 156, because
+/// what these assertions are about is boxes sitting exactly ONE line apart —
+/// not about the line being any particular number of points. Somebody who
+/// changes the gap should not have to edit a test that has no opinion about it.
+const double _pitch = kStructureBoxHeight + kStructureGapY;
+
 /// Every box the fixture draws, in tree order — which is also the order Tab has
 /// to walk them in.
 const List<String> _allKeys = [
@@ -1175,6 +1436,34 @@ Finder _byTypeName(String name) => find.byWidgetPredicate((widget) {
 
 Rect _rectOf(WidgetTester tester, String key) =>
     tester.getRect(find.byKey(structureBoxKey(key)));
+
+/// A point on the drawing surface with no box under it.
+///
+/// ── Why this is measured rather than typed in ────────────────────
+///
+/// It used to be `Offset(60, 660)`, which was empty canvas until a place moved
+/// down to the fourth line and landed on it. A test that pans the BACKGROUND
+/// and silently starts panning a box does not fail loudly — it fails by
+/// asserting the opposite of what it says, which is how "panning never carries
+/// a box with it" would have gone green while carrying one.
+///
+/// So it is found: below every box that is actually on screen, at an x no box
+/// occupies, with the assertion below to say so. Somebody rearranging the
+/// levels again gets a working test rather than a puzzle.
+Offset _emptyPatch(WidgetTester tester) {
+  final boxes = [for (final key in _allKeys) _rectOf(tester, key)];
+  final lowest = boxes.map((box) => box.bottom).reduce(math.max);
+  final patch = Offset(60, lowest + 40);
+
+  expect(
+    boxes.where((box) => box.contains(patch)),
+    isEmpty,
+    reason: 'The patch this test pans from has a box on it, so it is about to '
+        'measure a box drag and call it a viewport pan.',
+  );
+
+  return patch;
+}
 
 /// A box's rectangle in the canvas's own coordinates rather than the window's.
 ///
@@ -1585,6 +1874,73 @@ Map<String, dynamic> _tree() => {
           'may_edit': true,
           'may_edit_reason': null,
         },
+      ],
+      'sub_companies': <Map<String, dynamic>>[],
+    },
+  ],
+};
+
+/// Everdoors, at the shape that exposed the bug.
+///
+/// One company holding TWO of its own places AND two sub companies that each
+/// hold a place of their own. That combination is the whole point: the fixture
+/// above has a company with places and a company with a sub company, and a walk
+/// that derives a row from its own depth is only wrong when one company has
+/// both. It shipped, and the owner found it: "the everdoors franchises and sub
+/// company sit at the same level, when they should not".
+///
+/// Trimmed to what the layout reads — id, name and the two child lists. The §4
+/// booleans the other fixture carries are for the action menus, and nothing
+/// here draws one.
+Map<String, dynamic> _everdoors() => {
+  'organization': {'id': 'org-ever', 'name': 'Everdoors Group'},
+  'companies': [
+    {
+      'id': 'c-everdoors',
+      'name': 'Everdoors',
+      'is_active': true,
+      'franchises': [
+        {'id': 'f-everdoors-north', 'name': 'Everdoors North'},
+        {'id': 'f-everdoors-south', 'name': 'Everdoors South'},
+      ],
+      'sub_companies': [
+        {
+          'id': 'c-sunward',
+          'name': 'Sunward Overhead Doors',
+          'is_active': true,
+          'franchises': [
+            {'id': 'f-sunward-east', 'name': 'Sunward East'},
+          ],
+        },
+        {
+          'id': 'c-premier',
+          'name': 'Premier Garage Repair',
+          'is_active': true,
+          'franchises': [
+            {'id': 'f-premier-west', 'name': 'Premier West'},
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+/// A-1 Chimney: nine places, no sub companies anywhere.
+///
+/// The other real customer, and the one the level rule has a visible
+/// consequence for — its sub-company line is empty and all nine places sit on
+/// the fourth. That is the intended picture rather than a rendering fault, and
+/// it is worth a fixture of its own because nine of one thing is where a layout
+/// that quietly wraps or collapses a level shows itself.
+Map<String, dynamic> _aOneChimney() => {
+  'organization': {'id': 'org-a1', 'name': 'A-1 Chimney'},
+  'companies': [
+    {
+      'id': 'c-a1',
+      'name': 'A-1 Chimney',
+      'is_active': true,
+      'franchises': [
+        for (var i = 1; i <= 9; i++) {'id': 'f-a1-$i', 'name': 'Branch $i'},
       ],
       'sub_companies': <Map<String, dynamic>>[],
     },

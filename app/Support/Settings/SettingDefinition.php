@@ -103,6 +103,43 @@ final class SettingDefinition
          * reads. Declaring this is the honest option, never the cheap one.
          */
         public readonly ?string $notYetInEffect = null,
+
+        /**
+         * The screen that actually authors this value, when it is not the
+         * Settings screen.
+         *
+         * Null — every setting but one — means the Settings screen draws the
+         * control and is where somebody changes it. A string names the screen
+         * that owns the value instead, and {@see \App\Http\Controllers\Api\SettingsController::index()}
+         * then leaves the row out of the Settings screen's payload altogether.
+         *
+         * ── Why a row can need leaving out ───────────────────────
+         *
+         * `organization.structure_canvas` is a list of box coordinates authored
+         * by dragging boxes on the Organization tab. The Settings screen has no
+         * shape to draw for a plain `json` value, so it falls back to a box of
+         * raw JSON. Handing somebody five hundred `{kind,id,x,y}` objects to
+         * hand-edit is a control whose every use is a mistake: the picture it
+         * describes has its own screen, and that screen has a button that
+         * rebuilds the whole thing correctly in one press. It would also ship
+         * ~30KB of coordinates on every settings-screen load, at every scope,
+         * for a value nobody reads there — the weight {@see DisplaySettings}'
+         * docblock already argues about for a much smaller payload.
+         *
+         * ── What it does NOT do ─────────────────────────────────
+         *
+         * It is not a permission and it is not a hiding place. PATCH and DELETE
+         * on /settings/{key} still work, still check the same permission and
+         * still audit; the value is still resolved, still cascades, and still
+         * appears in the setting's own tests. Only the FORM is elsewhere. A
+         * definition that wanted to be unreachable would be a definition that
+         * should not exist.
+         *
+         * Named as a place rather than as a boolean for the reason
+         * `notYetInEffect` gives: a flag says "not here" and leaves the next
+         * question unanswered, and the next question is always "then where?".
+         */
+        public readonly ?string $editedOn = null,
     ) {
         if (! preg_match('/^[a-z][a-z0-9_.]*$/', $key)) {
             throw new InvalidArgumentException("Setting key '{$key}' must be lower_snake_case.");
@@ -135,6 +172,18 @@ final class SettingDefinition
                 ."ships.' A flag would only move the silence up one level."
             );
         }
+
+        // No "more than one word" requirement here, unlike the guard above: a
+        // screen can legitimately be called one word. The empty string is what
+        // is refused, because `editedOn: ''` is a definition claiming to send
+        // somebody somewhere and naming nowhere — which is the hiding place the
+        // field's docblock says this must never become.
+        if ($editedOn !== null && trim($editedOn) === '') {
+            throw new InvalidArgumentException(
+                "Setting '{$key}' says it is edited on another screen but does not name "
+                .'one. The name is what makes this a redirection rather than a hiding place.'
+            );
+        }
     }
 
     public function allowsScope(string $scope): bool
@@ -146,6 +195,18 @@ final class SettingDefinition
     public function isInEffect(): bool
     {
         return $this->notYetInEffect === null;
+    }
+
+    /**
+     * Does the Settings screen draw this one?
+     *
+     * Asked by index() and by nothing else. Deliberately phrased as a question
+     * about the SCREEN rather than as `isHidden()`: what the answer decides is
+     * which form somebody edits the value on, not whether they may.
+     */
+    public function isEditedOnSettingsScreen(): bool
+    {
+        return $this->editedOn === null;
     }
 
     public function permissionRequired(): string

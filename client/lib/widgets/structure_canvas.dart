@@ -34,7 +34,10 @@
 ///   4. **Overlap is allowed and means nothing.** Dropping a box exactly on
 ///      another leaves two overlapping boxes and two unchanged connectors. No
 ///      snapping, no sibling reordering, no promotion in z-order that would
-///      read as "it went inside".
+///      read as "it went inside". What it DOES do is raise a paragraph saying
+///      so in plain words ([_noticeLanding]) — noticed, not obeyed: the gesture
+///      is read as a question and answered in text, and not one thing about
+///      what was stored or drawn is different because of it.
 ///   5. **The connector never detaches.** It is derived from the TREE, never
 ///      from the positions, so during and after a drag the line keeps pointing
 ///      at the same parent and simply follows the box. That is the picture
@@ -57,6 +60,11 @@
 /// back on release, which is the honest reading of a move that was not
 /// accepted — and it is the same thing the screen does deliberately when a save
 /// is refused.
+///
+/// That "which preference" is now "which setting": the arrangement belongs to
+/// the organization rather than to one person. This widget is untouched by
+/// that, which is the point of it holding no opinion — but the sentence above
+/// would otherwise name a store that no longer exists.
 library;
 
 import 'dart:math' as math;
@@ -65,6 +73,34 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
+
+import 'structure_levels.dart';
+
+/// The vocabulary and the four levels, which used to be declared here.
+///
+/// They moved to a file with no Flutter in it so that [StructureOutline] can
+/// read the same answer without importing a widget, and so that there is one
+/// definition of the hierarchy rather than one per view — see
+/// [structureLevelOf], whose docblock is where the reason lives.
+///
+/// Re-exported rather than left behind an import, so every existing importer of
+/// this file — `structure_layout.dart`, `organization_screen.dart`, this file's
+/// own tests — is untouched by the move. A shared fact changing address should
+/// not be a diff in six places.
+export 'structure_levels.dart';
+
+/// The largest share of the tab the words above the picture may ever occupy.
+///
+/// A fraction rather than a pixel count, because what is being protected is the
+/// picture's share of the screen — and a pixel figure would mean one thing on a
+/// phone and something quite different on a desktop. Beyond this the toolbar,
+/// the note and any landing sentence scroll inside their own strip instead of
+/// pushing the canvas off the bottom, which is what they did at large text
+/// sizes on a short viewport.
+///
+/// Nearer a half than a third on purpose: the sentences are worth reading, and
+/// a canvas with a little over half the height is still a canvas.
+const double _mostOfTheHeightTheWordsMayTake = 0.45;
 
 /// One box's size, in one place.
 ///
@@ -129,17 +165,6 @@ const double kStructureGapY = 84;
 /// How far the top-left box sits from the corner of the viewport, so nothing
 /// is drawn flush against the edge it can be dragged past.
 const double kStructureMargin = 32;
-
-/// The three kinds a box can be, and they are the SERVER's three.
-///
-/// A sub company is `company` — a sub company IS a company row, and the client
-/// inventing a fourth kind would be describing a distinction the model does not
-/// make. Which of the two it is is [StructureNode.isSub], derived from whether
-/// its parent is a company, which is the same question the server answers with
-/// `parent_company_id`.
-const String structureOrganization = 'organization';
-const String structureCompany = 'company';
-const String structureFranchise = 'franchise';
 
 /// The widget key a box is drawn with.
 ///
@@ -366,19 +391,31 @@ void _addFranchises(
 
 /// A place for every box, laid out as an org chart.
 ///
-/// ── What "sensible" means here, precisely ────────────────────────
+/// ── A row is what a thing IS ─────────────────────────────────────
 ///
-/// A row is where a node actually HANGS, not a fixed table of four. The
-/// organization is row 0 and top-level companies row 1; a company's own
-/// franchises AND its sub companies share row 2, because a franchise hangs off
-/// whichever of company-or-sub-company owns it; a sub company's franchises are
-/// row 3. A fixed four-row grid would put every franchise on one line and leave
-/// a top-level company's places floating a row away from the company they
-/// belong to.
+/// The organization on the top line, companies on the second, sub companies on
+/// the third, every place on the fourth — see [structureLevelOf], which both
+/// this and the outline read so there is one answer rather than two.
 ///
-/// Horizontally it is one tidy pass: a subtree is as wide as its children laid
-/// side by side, or one box, whichever is more; a parent is centred over the
-/// span its children occupy; siblings run left to right in tree order.
+/// This used to pass a row down the recursion, so a row was how deep the walk
+/// had gone. That put a company's own franchise on the same line as a sub
+/// company of the same company, which says the two are peers. They are not: a
+/// sub company holds franchises of its own, and the customer this was found on
+/// has both kinds of thing hanging off one company.
+///
+/// A branch with no sub companies therefore leaves the third line empty, and
+/// that is the intended picture rather than a gap: every place in the business
+/// is on one line, which is what makes the chart readable at a glance.
+/// [StructureCanvas.defaultNote] says so in words above the canvas, so nobody
+/// reads the blank line as something that failed to draw. The connector across
+/// it is a longer vertical run with its jog at the midpoint — see
+/// [StructureConnectorPainter._route], which needs no case for it.
+///
+/// Horizontally it is one tidy pass, unchanged: a subtree is as wide as its
+/// children laid side by side, or one box, whichever is more; a parent is
+/// centred over the span its children occupy; siblings run left to right in
+/// tree order. A company's franchises and its sub companies still share a
+/// horizontal span — they simply no longer share a line.
 ///
 /// Deliberately NOT a general tree-layout algorithm. §3 fixes the depth at four,
 /// so a general one would be code with no second caller, encoding a depth the
@@ -409,9 +446,16 @@ Map<String, Offset> arrangeStructure(
   for (final node in nodes) {
     final parent = node.parentKey;
 
-    // A node whose parent is not in the list is laid out as a root rather than
-    // dropped. It should not happen — the payload is nested — but a box nobody
-    // can find is worse than a box in an odd place.
+    // A node whose parent is not in the list is laid out as a root HORIZONTALLY
+    // rather than dropped — it gets a column of its own. It should not happen —
+    // the payload is nested — but a box nobody can find is worse than a box in
+    // an odd place.
+    //
+    // It no longer gets the top LINE, though: its line is its kind, like
+    // everything else's. A stray franchise now appears on the places line
+    // instead of beside the organization, which is more honest about what it
+    // is, and it is a behaviour change worth naming because the old answer was
+    // row 0 by accident of the recursion rather than by anybody's decision.
     if (parent == null || !byKey.containsKey(parent)) {
       roots.add(node);
     } else {
@@ -437,13 +481,19 @@ Map<String, Offset> arrangeStructure(
 
   final places = <String, Offset>{};
 
-  void place(StructureNode node, double left, int row) {
+  void place(StructureNode node, double left) {
     final span = widths[node.key]!;
     final kids = children[node.key] ?? const <StructureNode>[];
 
     places[node.key] = Offset(
       left + (span - kStructureBoxWidth) / 2,
-      row * (boxHeight + kStructureGapY),
+      // The level, not the depth of the recursion. A row used to be passed down
+      // this walk and incremented at each step, which is the same number only
+      // while every branch of the business is the same shape — and the first
+      // customer whose company held both a franchise and a sub company was the
+      // one it was wrong about.
+      structureLevelOf(kind: node.kind, isSub: node.isSub) *
+          (boxHeight + kStructureGapY),
     );
 
     if (kids.isEmpty) return;
@@ -459,7 +509,7 @@ Map<String, Offset> arrangeStructure(
     var x = left + (span - run) / 2;
 
     for (final kid in kids) {
-      place(kid, x, row + 1);
+      place(kid, x);
       x += widths[kid.key]! + kStructureGapX;
     }
   }
@@ -468,13 +518,20 @@ Map<String, Offset> arrangeStructure(
 
   for (final root in roots) {
     measure(root);
-    place(root, cursor, 0);
+    place(root, cursor);
     cursor += widths[root.key]! + kStructureGapX;
   }
 
   // Shifted so the whole picture starts at the margin. The origin is the top
   // left of the viewport and nothing scrolls above or left of it, so a box at a
   // negative coordinate is a box nobody can reach.
+  //
+  // An empty MIDDLE level keeps its band, and that is the point rather than an
+  // oversight: a company with no sub companies still leaves the sub-company
+  // line clear, so every place in the business lines up with every other place.
+  // Only a missing TOP level moves anything — an organization the payload could
+  // not be read for leaves the companies as the highest thing on the canvas,
+  // and they are then drawn at the margin rather than a band below it.
   var minX = double.infinity;
   var minY = double.infinity;
 
@@ -567,11 +624,35 @@ class StructureCanvas extends StatefulWidget {
   final String? note;
 
   /// Said in words as well as in behaviour, because the behaviour is an absence
-  /// and an absence is hard to notice. The same sentence the list tab uses, so
-  /// the two views cannot drift apart on the one rule that matters most.
+  /// and an absence is hard to notice.
+  ///
+  /// ── Four sentences, and each of them is doing a job ───────────
+  ///
+  /// The first says what the gesture is for. The second is the rule §3 makes
+  /// absolute, written for somebody who runs a business rather than for
+  /// somebody who reads code: not "you cannot re-parent an entity" but "nothing
+  /// you do here changes the business". A canvas of draggable boxes is exactly
+  /// the interface that normally means moving a company from one parent to
+  /// another, so the refusal is stated before anybody tries it — and
+  /// [_landedNote] says it again, at length, at the moment they do.
+  ///
+  /// The third and fourth are about the LINES, and they are here because change
+  /// (3) made a blank line ordinary. A row is what a thing IS (see
+  /// [structureLevelOf]), so a company with no sub companies leaves the third
+  /// line empty and its places sit on the fourth with everybody else's. Without
+  /// this sentence that gap is a picture with a hole in it, and the first
+  /// reading of a hole is that something failed to draw.
+  ///
+  /// Not a caption on the empty line itself. A label painted at a fixed height
+  /// would be a lie the moment somebody parked a box there, which free
+  /// positioning allows and this file's own painter already handles.
   static const String defaultNote =
-      'Drag the boxes to arrange them. This changes the picture only — nothing '
-      'here can be moved to a different parent once it exists.';
+      'Drag the boxes to lay the picture out the way you like it. Nothing you '
+      'do here changes the business — where a box sits on screen is just where '
+      'you put it. Each kind of thing keeps its own line: the whole business at '
+      'the top, then companies, then sub companies, then the places work '
+      'happens. A line with nothing on it means that branch has no sub '
+      'companies.';
 
   @override
   State<StructureCanvas> createState() => _StructureCanvasState();
@@ -638,6 +719,18 @@ class _StructureCanvasState extends State<StructureCanvas>
 
   /// The box currently being moved with the arrow keys, if any.
   String? _nudging;
+
+  /// Where it stood when that started, so a nudge session nobody actually
+  /// nudged does not read as a move — see [_noticeLanding].
+  Offset _nudgeFrom = Offset.zero;
+
+  /// The two names in the last move that finished squarely on top of another
+  /// box, or null when there is nothing to explain.
+  ///
+  /// Names rather than keys, because the only thing this is ever used for is a
+  /// sentence with two names in it, and a key would have to be resolved back to
+  /// a node that may have been refetched away in the meantime.
+  ({String moved, String onto})? _landedOn;
 
   /// Which box has focus, so its border can say so. Kept as a key rather than
   /// read from the nodes because focus survives the tree being refetched.
@@ -816,6 +909,9 @@ class _StructureCanvasState extends State<StructureCanvas>
       _dragTo = from;
       _pointerAnchor = details.globalPosition;
       _boxAnchor = from;
+      // The explanation is about the move that just finished, so the next move
+      // starting is the moment it stops being about anything.
+      _landedOn = null;
     });
 
     // The finger holding the box is also covering it, so "it is in hand now"
@@ -845,12 +941,104 @@ class _StructureCanvasState extends State<StructureCanvas>
     _report(key, _dragTo);
   }
 
-  void _panEnd() {
+  void _panEnd(StructureNode node) {
+    // Read BEFORE the box is let go, because [_positionOf] answers with
+    // [_dragTo] only while [_dragKey] names it, and the position it would
+    // otherwise fall back to is the one the CALLER has applied — which on a
+    // caller that refused the move is where the box came from.
+    //
+    // A drag that ended where it began is not a move and raises nothing. A tap
+    // on a box that already happens to overlap another one would otherwise
+    // explain a gesture nobody made.
+    if (_dragKey == node.key && _dragTo != _boxAnchor) _noticeLanding(node);
+
     // Reported on every update rather than only here, because the caller is the
     // one that debounces. A canvas that only spoke on release would make a
     // dropped pointer — a browser tab losing focus mid-drag — a move that never
     // happened at all.
     setState(() => _dragKey = null);
+  }
+
+  /// ── Noticing the question, without answering it differently ──
+  ///
+  /// Mechanism 4 at the top of this file says overlap is allowed and MEANS
+  /// NOTHING, and that is still exactly true: nothing is saved differently,
+  /// nothing snaps, no connector moves, no order changes, and this box stays
+  /// precisely where the pointer left it. What is read here is not a drop —
+  /// there is nothing to drop onto, there is no [DragTarget] in this file and
+  /// there must never be one. It is the one moment we can be confident somebody
+  /// has just asked a question, because dropping one box squarely onto another
+  /// is what a person does when they mean "put this inside that". So the
+  /// picture answers them in words instead of leaving the gesture to read as a
+  /// control that broke.
+  ///
+  /// Also called at the end of a keyboard nudge, so the explanation is not a
+  /// mouse-only affordance — the same reason the move handle exists at all.
+  ///
+  /// A box landing on its own parent or on one of its own children raises
+  /// nothing. Those two are the only pairs where "put this inside that" is
+  /// already true, so the sentence would be correcting a belief nobody holds,
+  /// and it is also the overlap somebody makes on purpose when they are
+  /// tucking a branch up tight.
+  ///
+  /// More than half of the moved box's own area, rather than any overlap at
+  /// all. Boxes brush each other constantly on a hand-arranged canvas — that is
+  /// what the drift note and "Arrange for me" are about — and a paragraph that
+  /// appeared every time two corners touched would be noise somebody learns to
+  /// look past, which is the one thing an explanation cannot afford to become.
+  void _noticeLanding(StructureNode node) {
+    final size = Size(kStructureBoxWidth, _boxHeight);
+    final mine = _positionOf(node.key) & size;
+    final half = mine.width * mine.height / 2;
+
+    for (final other in _nodes) {
+      if (other.key == node.key) continue;
+      if (other.key == node.parentKey || other.parentKey == node.key) continue;
+
+      final overlap = mine.intersect(_positionOf(other.key) & size);
+
+      if (overlap.width <= 0 || overlap.height <= 0) continue;
+      if (overlap.width * overlap.height <= half) continue;
+
+      setState(() => _landedOn = (moved: node.name, onto: other.name));
+
+      // The same words, for somebody who cannot see the strip. This is the one
+      // announcement in this widget that is longer than a clause, and it earns
+      // it: it is the only thing said anywhere that explains why the gesture
+      // did not do what it looks like it should have.
+      _say(_landedNote!);
+
+      return;
+    }
+  }
+
+  /// The explanation, written for somebody who runs a business.
+  ///
+  /// No "re-parent", no "hierarchy", no "immutable", and no section number.
+  /// What it says instead is the actual reason: the numbers already counted
+  /// under a thing were counted there at the time, so moving it now would make
+  /// the past look like it happened somewhere else. That is `CompaniesController`'s
+  /// own argument — "a franchise's numbers would appear to have always belonged
+  /// to its new parent" — in the words the owner of the business would use.
+  ///
+  /// It ends with the way out, because a rule with no remedy is a dead end: add
+  /// the thing where it should be and switch the old one off. That is a real
+  /// path through this product, it keeps the history where it was made, and it
+  /// is the answer support would give anyway.
+  String? get _landedNote {
+    final landed = _landedOn;
+
+    if (landed == null) return null;
+
+    return '“${landed.moved}” has not been moved into “${landed.onto}”. It is '
+        'still where it has always been — you have only moved its box on '
+        'screen. Where something sits in the business is settled when it is '
+        'created and does not change afterwards, because everything already '
+        'counted under it — its work, its money, its settings — was counted '
+        'there at the time, and moving it now would make the past look like it '
+        'happened somewhere else. If something really needs to sit somewhere '
+        'else, add it there and switch the old one off; the history stays where '
+        'it was made.';
   }
 
   // ── moving a box without a mouse ─────────────────────────────
@@ -863,7 +1051,12 @@ class _StructureCanvasState extends State<StructureCanvas>
   static const double _nudgeStride = 64;
 
   void _startNudge(StructureNode node) {
-    setState(() => _nudging = node.key);
+    _nudgeFrom = _positionOf(node.key);
+
+    setState(() {
+      _nudging = node.key;
+      _landedOn = null;
+    });
     _focusNode(node.key).requestFocus();
 
     _say(
@@ -874,8 +1067,15 @@ class _StructureCanvasState extends State<StructureCanvas>
   void _endNudge(StructureNode node) {
     if (_nudging != node.key) return;
 
+    final moved = _positionOf(node.key) != _nudgeFrom;
+
     setState(() => _nudging = null);
     _say('${node.name} placed.');
+
+    // After the confirmation rather than instead of it: finishing the move and
+    // what the move did or did not mean are two different facts, and somebody
+    // listening is owed both.
+    if (moved) _noticeLanding(node);
   }
 
   /// ── Why nothing here ever says a number ──────────────────────
@@ -952,6 +1152,11 @@ class _StructureCanvasState extends State<StructureCanvas>
 
     setState(() {
       _nudging = null;
+      // And the landing sentence with it. It names two boxes and the overlap
+      // between them, and this button has just moved every box — so leaving it
+      // up describes a picture that is no longer on screen, which is worse than
+      // saying nothing at all.
+      _landedOn = null;
       // Arranged and then looked at. Leaving the viewport where it was would
       // tidy the whole picture somewhere off screen, which reads as a button
       // that did nothing.
@@ -1040,26 +1245,72 @@ class _StructureCanvasState extends State<StructureCanvas>
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _toolbar(theme),
-        const Divider(height: 1),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) => SizedBox(
-              // A canvas needs a bounded height to be a canvas at all. A caller
-              // that puts one inside a scroll view gets a workable slab rather
-              // than an assertion, because a screen that throws on layout is a
-              // screen nobody can get back out of.
-              height: constraints.maxHeight.isFinite
-                  ? constraints.maxHeight
-                  : 520,
-              child: _surface(theme),
+    return LayoutBuilder(
+      builder: (context, box) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── the words are capped, the picture is not ──────────────
+          //
+          // Everything above the surface is explanation, and explanation must
+          // never become the whole screen. These children have no flex, so in a
+          // plain Column they take whatever height they ask for and the canvas
+          // gets the remainder — which is fine until somebody reads at twice
+          // the normal text size on a short viewport, where the toolbar, the
+          // note and a landing sentence together ask for more than there is.
+          // Then the surface is squeezed to nothing and the Column overflows:
+          // an explanation of a picture, with no picture.
+          //
+          // So they are given a ceiling and their own scrollbar instead. The
+          // canvas keeps the majority of the height whatever the text does, and
+          // a sentence that will not fit becomes a short scroll rather than a
+          // drawing surface nobody can use. Capped as a FRACTION rather than in
+          // pixels because the thing being protected is the picture's share of
+          // the screen, and a pixel figure would mean something different on a
+          // phone than on a desktop.
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: box.maxHeight.isFinite
+                  ? box.maxHeight * _mostOfTheHeightTheWordsMayTake
+                  : double.infinity,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _toolbar(theme),
+                  const Divider(height: 1),
+                  // Above the surface rather than over it. A strip pushes the
+                  // picture down by its own height and covers nothing; anything
+                  // drawn on top of the canvas would hide the two boxes the
+                  // sentence is about, which are the two things somebody is
+                  // looking at while they read it.
+                  //
+                  // And emphatically not a dialog. This is an explanation of
+                  // something that just happened, offered to somebody who is
+                  // mid-task — the house rule is a screen or a panel, never a
+                  // pop-up, and a modal here would stop the very gesture it is
+                  // explaining.
+                  if (_landedOn != null) _explanation(theme),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) => SizedBox(
+                // A canvas needs a bounded height to be a canvas at all. A
+                // caller that puts one inside a scroll view gets a workable
+                // slab rather than an assertion, because a screen that throws
+                // on layout is a screen nobody can get back out of.
+                height: constraints.maxHeight.isFinite
+                    ? constraints.maxHeight
+                    : 520,
+                child: _surface(theme),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1098,6 +1349,43 @@ class _StructureCanvasState extends State<StructureCanvas>
             const SizedBox(height: 10),
             Text(note, style: theme.textTheme.bodyMedium),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// The strip that answers "why did that not work", in the palette's own
+  /// tokens.
+  ///
+  /// The same recipe the tab's own status notes use — `surfaceContainerHighest`
+  /// and `bodySmall` — so a sentence about the structure looks the same
+  /// wherever on this tab it appears. Never a literal colour and never an
+  /// error colour: nothing went wrong here, and painting an explanation red
+  /// would tell somebody they had broken something when they had not.
+  ///
+  /// "Got it" rather than a bare ✕, and it never times out. Somebody reading a
+  /// paragraph must not be racing a timer, and a control whose only label is a
+  /// glyph is a control a screen reader announces as "close" without saying
+  /// what it closes.
+  ///
+  /// Wrapped, because the button and a paragraph do not share a line at 375
+  /// points — the width this whole product is built to work at.
+  Widget _explanation(ThemeData theme) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(_landedNote!, style: theme.textTheme.bodySmall),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: TextButton(
+              onPressed: () => setState(() => _landedOn = null),
+              child: const Text('Got it'),
+            ),
+          ),
         ],
       ),
     );
@@ -1257,7 +1545,7 @@ class _StructureCanvasState extends State<StructureCanvas>
                 supportedDevices: _dragPointers,
                 onPanStart: movable ? (d) => _panStart(node, d) : null,
                 onPanUpdate: movable ? _panUpdate : null,
-                onPanEnd: movable ? (_) => _panEnd() : null,
+                onPanEnd: movable ? (_) => _panEnd(node) : null,
                 child: _face(theme, node),
               ),
             ),
@@ -1504,6 +1792,21 @@ class StructureConnectorPainter extends CustomPainter {
   /// by which is the parent, so a child dragged above or beside its parent gets
   /// a line that still reads as a connection rather than one that doubles back
   /// through both boxes.
+  ///
+  /// ── A run across a skipped line needs no case, and must not get one ──
+  ///
+  /// A company with no sub companies has its places two lines below it rather
+  /// than one, because a place's line is what a place IS (see
+  /// [arrangeStructure]). The first branch below already draws that correctly:
+  /// out of the bottom, down to the midpoint between the two boxes, across, and
+  /// into the top. At the default text size that is a 240-point run with its
+  /// horizontal jog halfway down instead of a 84-point one, which is the same
+  /// line the reader has already seen twenty of, drawn longer.
+  ///
+  /// Written down because the tempting "fix" for a gap that looks unusual is a
+  /// special case that shortens it, and shortening it would put the jog
+  /// somewhere other than between the two lines it actually crosses — which is
+  /// the one thing about this run that tells a reader it spans two levels.
   static List<Offset> _route(Rect from, Rect to) {
     if (to.top >= from.bottom) {
       final mid = (from.bottom + to.top) / 2;
