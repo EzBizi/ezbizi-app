@@ -64,6 +64,43 @@ use Symfony\Component\HttpFoundation\Response;
  * two numbers, so there is no field here a re-parent could arrive in even by
  * accident, and no reader of this file can mistake it for one.
  *
+ * ── An arrangement is boxes AND the direction they flow ──────────
+ *
+ * It used to be a bare list of boxes, and that was the whole of it. The owner
+ * asked for the chart to run left to right — depth rightward, siblings stacked
+ * downward — with "up to down" kept as a second view, so which way the picture
+ * flows is now part of what is stored.
+ *
+ * It belongs HERE rather than in anybody's own settings for the same reason the
+ * coordinates do: it is a fact about the picture everyone is looking at, not
+ * about where one person happens to be looking. Two colleagues describing the
+ * same chart over the phone need to be describing the same chart. The zoom level
+ * is the opposite case and is deliberately not here — that is where somebody is
+ * looking, it is never sent, and the client says so where it holds it.
+ *
+ * So the stored value grew from a list into `{orientation, boxes}`. A bare list
+ * is still read — see clean(), which has to keep accepting one for as long as
+ * any tenant has an arrangement written before today, including every row
+ * PromoteCanvasArrangements wrote at the migration.
+ *
+ * ── And a place is no longer a box ───────────────────────────────
+ *
+ * A franchise has no children and never can (§3), so on the chart it stopped
+ * being a box and became a row in a compact list attached to the company or sub
+ * company that owns it. The real customer this was built for has thirteen places
+ * under four companies, and thirteen boxes on one line is wider than any window.
+ *
+ * The consequence for this file is small and worth stating rather than
+ * discovering: a stored `{kind: franchise, x, y}` names a coordinate for
+ * something that no longer HAS one. It is dropped, in both directions, by the
+ * one clean() both directions run through.
+ *
+ * `franchise` is still an accepted WORD in the payload, and that is the
+ * difference between refusing and cleaning. A browser tab left open on the build
+ * that shipped this morning still sends place coordinates; a 422 would dead-end
+ * every save it made, over entries this endpoint is perfectly able to ignore.
+ * See KINDS and POSITIONED_KINDS, which are two different questions.
+ *
  * ── One picture, held in the settings system ─────────────────────
  *
  * This used to be one person's preference, written straight into
@@ -164,7 +201,7 @@ class OrganizationCanvasController extends Controller
     public const SETTING = 'organization.structure_canvas';
 
     /**
-     * The kinds of box the canvas can hold.
+     * The kinds a saved entry may NAME.
      *
      * A closed list, deliberately, and not "whatever the client sends". This
      * lands in a JSON column that rides out on the tree payload every time
@@ -184,8 +221,78 @@ class OrganizationCanvasController extends Controller
      * Not something an organization configures: these are §3's fixed depth
      * (Organization → Company → Sub Company → Franchise), so this list moves
      * when the model does and not when a customer decides something.
+     *
+     * `franchise` is still in it although a place no longer has a position —
+     * see POSITIONED_KINDS, which is the question this one is not.
      */
     public const KINDS = ['organization', 'company', 'franchise'];
+
+    /**
+     * The kinds that actually HOLD a position, which is now fewer than the
+     * kinds a payload may name.
+     *
+     * A franchise has no children and never can, so the chart stopped drawing
+     * one as a box: a place is a row in a list attached to the company or sub
+     * company above it, and a row in a list has no coordinate of its own. An
+     * entry saying where a place sits therefore describes something that does
+     * not exist, and every one of them counts against MAX_BOXES and rides out on
+     * the tree payload forever.
+     *
+     * ── Why this is not simply KINDS with `franchise` taken out ───
+     *
+     * Because the two lists answer two questions, and merging them would turn a
+     * cleaning into a refusal. Rule::in(KINDS) is what the REQUEST is validated
+     * against; a client that still sends place coordinates — a browser tab open
+     * since this morning, a save queued behind a slow connection — would then
+     * get a 422 for its whole arrangement, including the company positions that
+     * are perfectly good, and nothing it could do about it. Cleaning drops the
+     * three useless entries, stores the rest, and echoes back what was stored,
+     * so that client's next read simply no longer has them. That is this file's
+     * standing rule ("clean, don't refuse") applied to a vocabulary change
+     * instead of to a coordinate.
+     *
+     * Fixed by §3 like KINDS is, and for the same reason: it moves when the
+     * model does, never when a customer decides something.
+     */
+    public const POSITIONED_KINDS = ['organization', 'company'];
+
+    /**
+     * Which way the chart flows, as a closed list.
+     *
+     * `left_to_right` is depth rightward — organization, then companies, then
+     * sub companies — with siblings stacked downward. `top_to_bottom` is the
+     * same chart turned ninety degrees: depth downward, siblings side by side,
+     * which is what shipped first and what the owner asked to keep.
+     *
+     * Closed, and validated as such, for KINDS' reason exactly: it is a word
+     * that lands in a shared JSON column and comes back out on every tree
+     * payload. An open one would let a client store `diagonal` in a value every
+     * colleague reads, which nothing would ever draw and nothing would ever
+     * clear.
+     *
+     * Two, and NOT a tenant setting. This is a view of one picture rather than a
+     * preference about how the product behaves — somebody flips it, looks, and
+     * flips back — so it lives in the arrangement it describes rather than
+     * becoming a thirty-first row in the settings screen.
+     */
+    public const ORIENTATIONS = ['left_to_right', 'top_to_bottom'];
+
+    /**
+     * What an arrangement flows as when nobody has said.
+     *
+     * The owner picked left to right from the mockups, and the reason is the
+     * real data: one customer has nine places under a single company and four
+     * more under three others. Down is the direction a screen scrolls, so
+     * stacking siblings downward costs nothing, while thirteen of anything
+     * across is wider than any window.
+     *
+     * It is also what every arrangement written before today reads as, which is
+     * the honest answer for a blob that says nothing: the old layout ran top to
+     * bottom, but the old layout also drew places as boxes, so no stored
+     * arrangement can be carried forward unchanged anyway. The one thing that
+     * would be worse is a default that varies with what happens to be stored.
+     */
+    public const DEFAULT_ORIENTATION = 'left_to_right';
 
     /**
      * How many boxes one arrangement may name.
@@ -276,10 +383,26 @@ class OrganizationCanvasController extends Controller
      * reason: an empty array is a legal save. "I put everything back" is a real
      * answer, and refusing it would leave somebody unable to undo an
      * arrangement.
+     *
+     * ── The orientation is `sometimes`, and that is not laziness ──
+     *
+     * An unknown orientation is REFUSED — it is the one field here that cannot
+     * be cleaned into something sensible, because every possible reading of
+     * `diagonal` is a guess about what somebody meant, and the value came from a
+     * two-item control rather than from a finger on a trackpad.
+     *
+     * An ABSENT one is a different thing entirely and must not be read as the
+     * default. A client that predates this field — the build that shipped this
+     * morning, still open in somebody's tab — sends boxes and nothing else, and
+     * defaulting would have that save quietly turn everybody's chart back to
+     * left to right the moment one box moved. So an absent orientation means
+     * "keep the one that is stored", which is the only reading that cannot
+     * change something nobody touched.
      */
     public function save(Request $request): array
     {
         $input = $request->validate([
+            'orientation'  => ['sometimes', 'string', Rule::in(self::ORIENTATIONS)],
             'boxes'        => ['present', 'array', 'max:'.self::MAX_BOXES],
             'boxes.*.kind' => ['required', 'string', Rule::in(self::KINDS)],
             'boxes.*.id'   => ['required', 'uuid'],
@@ -292,9 +415,14 @@ class OrganizationCanvasController extends Controller
             'boxes.max' => 'A canvas can hold '.self::MAX_BOXES.' boxes. This structure has more '
                 .'than that, which is past what a free canvas can usefully show — the outline '
                 .'view lists all of it.',
+            // Says what the two answers ARE. "The selected orientation is
+            // invalid" tells a developer that something was refused without
+            // telling them what would be accepted, and this is a refusal no
+            // customer can act on — so the sentence has to be for whoever is
+            // reading the response.
+            'orientation.in' => 'A structure chart flows left to right or top to bottom, and '
+                .'nothing else.',
         ]);
-
-        $boxes = self::clean($input['boxes']);
 
         $user         = $request->user();
         $organization = $user->organization;
@@ -308,10 +436,18 @@ class OrganizationCanvasController extends Controller
 
         abort_if($refusal !== null, Response::HTTP_FORBIDDEN, $refusal);
 
-        DB::transaction(function () use ($boxes, $organization) {
+        return DB::transaction(function () use ($input, $organization) {
             $before = self::arrangementFor($this->settings, $organization);
 
-            $this->settings->set(self::SETTING, $organization, $boxes);
+            // Inside the transaction because the orientation this save keeps
+            // when it names none is the one that is stored RIGHT NOW, and a read
+            // outside would be a read of what was stored a moment ago.
+            $arrangement = self::clean([
+                'orientation' => $input['orientation'] ?? $before['orientation'],
+                'boxes'       => $input['boxes'],
+            ]);
+
+            $this->settings->set(self::SETTING, $organization, $arrangement);
 
             /*
              * ── Audited, and audited THIN ────────────────────────
@@ -344,15 +480,28 @@ class OrganizationCanvasController extends Controller
             $this->audit->log(
                 action:  'organization.structure_arranged',
                 target:  $organization,
-                changes: ['boxes_before' => count($before), 'boxes_after' => count($boxes)],
+                changes: [
+                    'boxes_before' => count($before['boxes']),
+                    'boxes_after'  => count($arrangement['boxes']),
+                    // Two short words rather than sixty kilobytes of x and y,
+                    // and they earn their place: turning the whole chart round
+                    // is the one thing anybody does here that a colleague
+                    // notices immediately and cannot undo by dragging. Without
+                    // them the row for that save reads "3 boxes before, 3 boxes
+                    // after", which is an audit entry saying nothing happened
+                    // about the most visible change this endpoint can make.
+                    'orientation_before' => $before['orientation'],
+                    'orientation_after'  => $arrangement['orientation'],
+                ],
             );
-        });
 
-        // What was STORED, not what was sent. A clamped coordinate or a
-        // deduplicated entry is then visible to the client rather than corrected
-        // silently, and the client applies this answer rather than its own — the
-        // echo is doing work rather than decorating the response.
-        return ['boxes' => $boxes];
+            // What was STORED, not what was sent. A clamped coordinate, a
+            // deduplicated entry or a dropped place is then visible to the
+            // client rather than corrected silently, and the client applies this
+            // answer rather than its own — the echo is doing work rather than
+            // decorating the response.
+            return $arrangement;
+        });
     }
 
     /**
@@ -449,24 +598,34 @@ class OrganizationCanvasController extends Controller
      * The resolver is passed in rather than pulled out of the container so this
      * says what it depends on. Both callers already hold one, and it memoises
      * the scope's overrides, so asking twice is one query.
+     *
+     * ALWAYS the full shape — `{orientation, boxes}` — including for an
+     * organization nobody has arranged. The alternative was answering `null` or
+     * an empty list for "never arranged" and the map otherwise, which is two
+     * shapes for one thing and would put the branch in every reader instead of
+     * here. "Nobody has arranged it" and "the arrangement is empty" mean the
+     * same thing to the only reader there is: every box goes to its automatic
+     * place, flowing whichever way DEFAULT_ORIENTATION says.
+     *
+     * @return array{orientation: string, boxes: list<array{kind: string, id: string, x: int, y: int}>}
      */
     public static function arrangementFor(SettingsResolver $settings, Organization $organization): array
     {
         if ($settings->sourceOf(self::SETTING, $organization) === null) {
-            return [];
+            return self::clean([]);
         }
 
         try {
             $stored = $settings->get(self::SETTING, $organization);
         } catch (InvalidArgumentException) {
-            return [];
+            return self::clean([]);
         }
 
         return self::clean(is_array($stored) ? $stored : []);
     }
 
     /**
-     * A list of boxes reduced to what this canvas can actually draw.
+     * An arrangement reduced to what this canvas can actually draw.
      *
      * One function for both directions, which is asDeclared's shape and the
      * point of it: the rules cannot drift between the write and the read,
@@ -478,6 +637,36 @@ class OrganizationCanvasController extends Controller
      * box is a box in the wrong place, losing the arrangement is somebody's
      * afternoon — and now the whole office's.
      *
+     * ── A PLACE HAS NO POSITION, in both directions, from here ────
+     *
+     * A franchise is drawn as a row in a list attached to its company now, not
+     * as a box, so `{kind: franchise, x, y}` is a coordinate for something with
+     * nowhere to put one. Every such entry counts against MAX_BOXES and rides
+     * out on the tree payload to every colleague, forever, describing nothing.
+     *
+     * Dropping them HERE is what makes that one change rather than two. The way
+     * in is a client that has not been updated yet, or a save that was already
+     * queued; the way out is every arrangement written before today, and there
+     * are real ones — this feature shipped this morning. Both go through this
+     * function, so neither can be the direction somebody forgot. A filter
+     * written next to the storage call instead would have left the stored blobs
+     * to be cleaned by whoever noticed them next.
+     *
+     * The alternative was refusing a place coordinate on the way in, and it is
+     * worse: see POSITIONED_KINDS, which is where the choice between cleaning
+     * and refusing is argued out.
+     *
+     * ── And a bare LIST is still an arrangement ───────────────────
+     *
+     * The stored value is `{orientation, boxes}` now and used to be the boxes
+     * alone. A list is therefore read as "these boxes, flowing the default way",
+     * and that is not a courtesy: every arrangement in every tenant is one today
+     * — including every row PromoteCanvasArrangements wrote at the migration,
+     * which reimplements this reduction as it stood and writes a bare list on
+     * purpose. Refusing the old shape would mean an arrangement that survived
+     * being promoted out of one person's preferences and then vanished at the
+     * next deploy.
+     *
      * ── And it is what makes a response engine-independent ────────
      *
      * MySQL does not preserve a JSON object's key order — it sorts keys by
@@ -485,6 +674,12 @@ class OrganizationCanvasController extends Controller
      * back from the column as {x,y,id,kind}. Every box this rebuilds is written
      * in one fixed order, so what a client is told never depends on which engine
      * the tenant is on. Nothing that reads this column may skip it.
+     *
+     * That now covers the arrangement AROUND the boxes as well: `{orientation,
+     * boxes}` is rebuilt in that order however the engine happened to hold it,
+     * so the outer object is as engine-independent as the inner ones. It is
+     * read by key rather than by position on the way in, which is what makes
+     * that true rather than lucky.
      *
      * The cap is applied here rather than only in validate() for the same
      * reason. Above 500 the way in is a 422 with a sentence, because somebody is
@@ -510,11 +705,31 @@ class OrganizationCanvasController extends Controller
      * a position for a company that is away for the afternoon is an arrangement
      * to be preserved, not junk to be swept up.
      *
-     * @param  array<mixed>  $boxes
-     * @return list<array{kind: string, id: string, x: int, y: int}>
+     * @param  array<mixed>  $arrangement
+     * @return array{orientation: string, boxes: list<array{kind: string, id: string, x: int, y: int}>}
      */
-    public static function clean(array $boxes): array
+    public static function clean(array $arrangement): array
     {
+        // A list is the old shape and is read as the boxes themselves. An empty
+        // array is a list too, which is the right answer for it: no boxes, and
+        // the default orientation.
+        $boxes = array_is_list($arrangement) ? $arrangement : ($arrangement['boxes'] ?? null);
+
+        if (! is_array($boxes)) {
+            $boxes = [];
+        }
+
+        $orientation = $arrangement['orientation'] ?? null;
+
+        // Cleaned rather than refused, which is the out-clean's whole argument
+        // applied to a word instead of to a number: an unreadable orientation in
+        // a stored blob must draw the chart the default way, not fail to draw
+        // it. validate() is what refuses an unknown one on the way in, where
+        // there is somebody to tell.
+        if (! is_string($orientation) || ! in_array($orientation, self::ORIENTATIONS, strict: true)) {
+            $orientation = self::DEFAULT_ORIENTATION;
+        }
+
         $kept = [];
 
         foreach ($boxes as $box) {
@@ -525,7 +740,11 @@ class OrganizationCanvasController extends Controller
             $kind = $box['kind'] ?? null;
             $id   = $box['id'] ?? null;
 
-            if (! is_string($kind) || ! in_array($kind, self::KINDS, strict: true)) {
+            // POSITIONED_KINDS rather than KINDS, which is what drops a place's
+            // coordinate in both directions. The two lists are two questions —
+            // what a payload may say, and what may hold a position — and this is
+            // the second one.
+            if (! is_string($kind) || ! in_array($kind, self::POSITIONED_KINDS, strict: true)) {
                 continue;
             }
 
@@ -554,7 +773,10 @@ class OrganizationCanvasController extends Controller
             $kept["{$kind}:{$id}"] = ['kind' => $kind, 'id' => $id, 'x' => $x, 'y' => $y];
         }
 
-        return array_slice(array_values($kept), 0, self::MAX_BOXES);
+        return [
+            'orientation' => $orientation,
+            'boxes'       => array_slice(array_values($kept), 0, self::MAX_BOXES),
+        ];
     }
 
     /**

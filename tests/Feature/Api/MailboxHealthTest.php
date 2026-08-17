@@ -598,7 +598,11 @@ class MailboxHealthTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $this->inTenant($t['org'], function () use ($t) {
-            foreach (['gmail_oauth' => 'GmailMailboxReader', 'imap' => 'ImapMailboxReader'] as $provider => $expected) {
+            foreach ([
+                'gmail_oauth' => 'GmailMailboxReader',
+                'gmail_workspace' => 'WorkspaceMailboxReader',
+                'imap' => 'ImapMailboxReader',
+            ] as $provider => $expected) {
                 $mailbox = Mailbox::create([
                     'organization_id' => $t['org']->id,
                     'scope_type'      => 'organization',

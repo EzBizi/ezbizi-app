@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\GoogleMailAuthController;
+use App\Http\Controllers\Api\GoogleWorkspaceAuthController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\HrContractsController;
 use App\Http\Controllers\Api\HrDashboardController;
@@ -32,6 +33,7 @@ use App\Http\Controllers\Api\SendingIdentitiesController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
+use App\Http\Controllers\Api\StaffClientVersionsController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\Api\TwoFactorController;
 use Illuminate\Support\Facades\Route;
@@ -524,6 +526,19 @@ Route::prefix('v1')
         Route::get('email/mailboxes/{mailbox}/oauth/status',
             [GoogleMailAuthController::class, 'status']);
 
+        // ── Connecting a Google Workspace domain, then picking inboxes ──
+        //
+        // A Workspace administrator proves they run the domain. Shared
+        // addresses are then picked from the Directory. The callback is the
+        // same public Google redirect as per-inbox sign-in — one registered
+        // URI — and GoogleMailAuthController tries the Workspace sign-in row
+        // first.
+        Route::get('email/workspace', [GoogleWorkspaceAuthController::class, 'show']);
+        Route::get('email/workspace/directory', [GoogleWorkspaceAuthController::class, 'directory']);
+        Route::delete('email/workspace', [GoogleWorkspaceAuthController::class, 'destroy']);
+        Route::post('email/workspace/oauth/start', [GoogleWorkspaceAuthController::class, 'start']);
+        Route::get('email/workspace/oauth/status', [GoogleWorkspaceAuthController::class, 'status']);
+
         Route::get('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'index']);
         Route::get('email/mailboxes/{mailbox}/messages/{message}', [MailboxMessagesController::class, 'show']);
         Route::post('email/mailboxes/{mailbox}/messages/{message}/reply',
@@ -935,6 +950,28 @@ Route::prefix('v1/staff')
         // every organization's own permissions (§2.1, layer 3).
         Route::get('modules', [StaffController::class, 'modules']);
         Route::patch('modules/{key}', [StaffController::class, 'setModuleState']);
+
+        /*
+         * The oldest client build each platform may still talk to.
+         *
+         * Sits beside `modules` because it is the same KIND of control: a
+         * platform-wide switch owned by EzBizi staff, invisible to customers,
+         * that changes what every organization experiences at the same moment.
+         * The difference is that this one can stop a customer's software from
+         * starting at all, which is why the write is audited and why the read
+         * lists every platform rather than only the configured ones.
+         *
+         * PUT rather than PATCH: one save replaces a platform's whole
+         * configuration, so clearing the download link is expressible. See
+         * StaffClientVersionsController::update.
+         *
+         * BOTH ROUTES ARE EXEMPT FROM THE GATE THEY CONFIGURE — listed in
+         * EnforceMinimumClientVersion::ALWAYS_PERMITTED. A minimum set too high
+         * would otherwise refuse the request that lowers it again, and the only
+         * remaining fix would be a shell on the production box.
+         */
+        Route::get('client-versions', [StaffClientVersionsController::class, 'index']);
+        Route::put('client-versions/{platform}', [StaffClientVersionsController::class, 'update']);
 
         Route::get('impersonations', [StaffController::class, 'impersonations']);
         Route::post('impersonations', [StaffController::class, 'impersonate']);

@@ -9,6 +9,7 @@ import 'core/module_screens.dart';
 import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
+import 'core/version_gate.dart';
 import 'screens/development_screen.dart';
 import 'screens/hr/onboarding_form.dart';
 import 'screens/invitation_screen.dart';
@@ -20,6 +21,7 @@ import 'screens/signup_screen.dart';
 import 'screens/settings_shell.dart';
 import 'screens/staff/staff_login_screen.dart';
 import 'screens/staff/staff_shell.dart';
+import 'screens/update_required_screen.dart';
 import 'widgets/build_stamp.dart';
 import 'widgets/notification_bell.dart';
 import 'widgets/scope_switcher.dart';
@@ -49,11 +51,25 @@ class _EzBiziAppState extends State<EzBiziApp> {
   /// form to reach and the control-plane host has no customer app behind it.
   final AppFace _face = Deployment.face();
 
+  /// Whether the server has refused this build for being too old.
+  ///
+  /// One gate across BOTH clients. Being out of date is a fact about the binary,
+  /// not about a session, so a customer and a staff member running the same
+  /// stale build must both be told — see core/version_gate.dart.
+  final VersionGate _versionGate = VersionGate();
+
   @override
   void initState() {
     super.initState();
     _session.addListener(() => setState(() {}));
     _staffSession.addListener(() => setState(() {}));
+
+    _versionGate
+      ..addListener(() => setState(() {}))
+      // Once, for every ApiClient in the process — including the ones the
+      // Development section and staff enrolment build for themselves, which a
+      // per-client registration here silently missed.
+      ..install();
 
     // A refresh used to sign people out, because the token lived only in
     // memory. It is picked back up here and verified before it is trusted.
@@ -105,6 +121,41 @@ class _EzBiziAppState extends State<EzBiziApp> {
   bool _signingUp = false;
 
   Widget _home() {
+    /*
+     * FIRST, above even the reset link, and it is the only thing that belongs
+     * above it.
+     *
+     * Everything below this line assumes the app can talk to the server. Once
+     * the server has said this build is too old, none of it can: the reset form
+     * would submit into a 426, the invitation screen could not fetch what the
+     * invitation is for, and the sign-in form would refuse a correct password
+     * with no visible reason. Each of those is a worse version of the same
+     * message, delivered later and less clearly.
+     *
+     * Note that this cannot delay anybody who is fine. Nothing is checked in
+     * advance and no request is made to find out — the gate only ever holds a
+     * refusal the server has already sent, so on the overwhelmingly common path
+     * this is one null check.
+     */
+    final blocked = _versionGate.notice;
+
+    if (blocked != null) {
+      return UpdateRequiredScreen(
+        notice: blocked,
+        onTryAgain: _versionGate.clear,
+        // Offered only when there is a session to end. A sign-out button on a
+        // sign-in screen is a control that does nothing to somebody who is
+        // already out, which reads as the app being confused about who they are.
+        //
+        // Local, and it must be: signing out asks the server to revoke a token,
+        // and that request would come straight back 426 like every other. So the
+        // token is dropped on this side regardless. A stale token on a server
+        // that will not accept this client anyway is not a risk worth trapping
+        // somebody on this screen over.
+        onSignOut: _signedInSomewhere ? _signOutEverywhere : null,
+      );
+    }
+
     // Before anything else, including the restore gate: somebody following a
     // reset link is by definition not signed in, and making them wait on a
     // session check to see a form that does not need one is the kind of delay
@@ -205,6 +256,21 @@ class _EzBiziAppState extends State<EzBiziApp> {
       session: _session,
       onCreateAccount: () => setState(() => _signingUp = true),
     );
+  }
+
+  /// Either face has somebody signed in.
+  ///
+  /// Asked rather than assumed from [_face], because the update screen is shown
+  /// above the branch that picks a face and therefore has no business knowing
+  /// which one it is standing in front of.
+  bool get _signedInSomewhere => _session.signedIn || _staffSession.signedIn;
+
+  /// End whichever session exists. Both, without checking, because signing out
+  /// of one while the other lingers is how somebody ends up believing they have
+  /// left — the same reasoning as TokenStore.clear, which both of these call.
+  void _signOutEverywhere() {
+    _session.signOut();
+    _staffSession.signOut();
   }
 }
 

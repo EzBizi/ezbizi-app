@@ -87,12 +87,9 @@ void main() {
         'fill', (tester) async {
       await _pump(tester);
 
-      // Control first. If every box drew the same glyph this test would still
-      // find four boxes, and the assertion below would be about nothing.
-      final glyphs = {
-        for (final key in _allKeys)
-          key: _iconIn(tester, key),
-      };
+      // Control first. If every level drew the same glyph this test would still
+      // find four things, and the assertion below would be about nothing.
+      final glyphs = {for (final key in _allKeys) key: _iconIn(tester, key)};
 
       expect(
         glyphs.values.toSet(),
@@ -102,18 +99,101 @@ void main() {
       );
 
       final frames = {
-        for (final key in _allKeys) key: _decorationOf(tester, key),
+        for (final key in _boxKeys) key: _decorationOf(tester, key),
       };
 
-      // The whole business is the heaviest and squarest thing on the canvas; a
-      // place is round like the chip it is drawn as on the list tab.
+      // The whole business is the heaviest and squarest thing on the canvas.
       expect(_radiusOf(frames['organization:org-1']!), 16);
       expect(_radiusOf(frames['company:c-ever']!), 12);
-      expect(_radiusOf(frames['franchise:f-north']!), 26);
 
       expect(_borderOf(frames['organization:org-1']!).width, 2);
       expect(_borderOf(frames['company:c-ever']!).width, 1.5);
       expect(_borderOf(frames['company:c-sun']!).width, 1);
+    });
+
+    /// The strongest of the four channels, and the one the change added: a
+    /// place is not a box at all.
+    ///
+    /// A frame is what everything on this canvas that can be DRAGGED wears, and
+    /// a place has no position for a drag to change. Drawing one round its rows
+    /// would be an affordance for a gesture that does not exist, which is the
+    /// same class of mistake as a drop target on a canvas that cannot re-parent.
+    testWidgets('a place is drawn as a row in its company’s list, not as a box '
+        'of its own', (tester) async {
+      await _pump(tester);
+
+      for (final key in _placeKeys) {
+        // The premise, per key: the row is actually on screen. Without it the
+        // two assertions below are both `findsNothing` against a finder that
+        // resolves to nothing, which is the shape of an assertion that passes
+        // hardest exactly when the thing it is about has been deleted.
+        expect(find.byKey(structureBoxKey(key)), findsOneWidget);
+
+        expect(
+          find.descendant(
+            of: find.byKey(structureBoxKey(key)),
+            matching: find.byType(Container),
+          ),
+          findsNothing,
+          reason: '$key is drawn with a frame of its own, so it reads as one '
+              'more thing that can be picked up and moved.',
+        );
+        expect(
+          find.byKey(structureCardKey(key)),
+          findsNothing,
+          reason: '$key occupies the canvas in its own right, so it has a '
+              'position — and a place has nowhere to put one.',
+        );
+      }
+
+      // And it is inside the card belonging to the company that owns it, which
+      // is the whole of what "attached" means on screen.
+      expect(
+        _cardOf(
+          tester,
+          'company:c-ever',
+        ).contains(_rectOf(tester, 'franchise:f-north').center),
+        isTrue,
+      );
+      expect(
+        _cardOf(
+          tester,
+          'company:c-sun',
+        ).contains(_rectOf(tester, 'franchise:f-deep').center),
+        isTrue,
+      );
+    });
+
+    /// The sentence a caller with no opinion gets, which is still part of the
+    /// product even though the tab that ships passes its own.
+    ///
+    /// It used to describe a line per kind and a blank line for a branch with no
+    /// sub companies. Both halves died with the change: a place is not on a line
+    /// at all, and nothing sits below a sub company, so a blank line is not
+    /// something this chart has. A note that describes the previous picture is
+    /// worse than no note, because it is read as an instruction for finding
+    /// something that is not there.
+    testWidgets('the note a caller gets by default describes the picture that '
+        'is actually drawn', (tester) async {
+      await _pumpRaw(
+        tester,
+        StructureCanvas(tree: _tree(), franchiseLabel: _franchiseLabel),
+      );
+
+      expect(
+        find.textContaining('listed under the company or sub company that runs '
+            'them'),
+        findsOneWidget,
+        reason: 'Somebody looking for four place boxes and finding four '
+            'companies is owed the reason in words.',
+      );
+      expect(
+        find.textContaining('Nothing you do here changes the business'),
+        findsOneWidget,
+        reason: 'The rule, stated before anybody tries it.',
+      );
+      expect(find.textContaining('keeps its own line'), findsNothing);
+      expect(find.textContaining('A line with nothing on it'), findsNothing);
     });
 
     testWidgets('a switched-off place says so in words and with a line, not '
@@ -181,11 +261,15 @@ void main() {
 
       await _pump(tester, state: state);
 
-      final from = tester.getCenter(find.byKey(structureBoxKey('franchise:f-north')));
-      final onto = tester.getCenter(find.byKey(structureBoxKey('company:c-sun')));
+      final from = tester.getCenter(
+        find.byKey(structureBoxKey('company:c-tide')),
+      );
+      final onto = tester.getCenter(
+        find.byKey(structureBoxKey('company:c-sun')),
+      );
 
       await tester.drag(
-        find.byKey(structureBoxKey('franchise:f-north')),
+        find.byKey(structureBoxKey('company:c-tide')),
         onto - from,
       );
       await tester.pumpAndSettle();
@@ -193,30 +277,40 @@ void main() {
       // Everything the canvas said, said about one box's position and nothing
       // else. There is no second callback and no payload with a parent in it,
       // because there is nowhere for one to go.
-      expect(state.moved.map((move) => move.$1).toSet(), {'franchise:f-north'});
+      expect(state.moved.map((move) => move.$1).toSet(), {'company:c-tide'});
 
-      // And the picture still says the same thing it did before: the place is
-      // under Everdoors, and the line drawn to it comes from Everdoors.
+      // And the picture still says the same thing it did before: the company is
+      // under the whole business, and the line drawn to it comes from there.
       expect(
-        _semanticsOf(tester, 'franchise:f-north'),
-        'North Shore — $_franchiseLabel, under Everdoors',
+        _semanticsOf(tester, 'company:c-tide'),
+        'Tidewater — company, under Ravenhill Services',
       );
 
-      final links = _painter(tester).links;
-
-      expect(links, hasLength(_allKeys.length - 1), reason: 'A connector was '
-          'dropped when two boxes overlapped.');
-
-      // The connector for the dragged place now runs from Everdoors' box to a
-      // rectangle sitting on top of Sunward's — which is the point. It did not
-      // detach, and it did not re-aim.
-      final everdoors = _paintedRectOf(tester, 'company:c-ever');
-      final moved = _paintedRectOf(tester, 'franchise:f-north');
-
       expect(
-        links.any((link) => link.$1 == everdoors && link.$2 == moved),
+        _painter(tester).links,
+        hasLength(_boxKeys.length - 1),
+        reason: 'A connector was dropped when two boxes overlapped.',
+      );
+
+      // The connector for the dragged company still runs from the organization
+      // to a card sitting on top of Sunward's — which is the point. It did not
+      // detach, and it did not re-aim.
+      expect(
+        _isLinked(tester, 'organization:org-1', 'company:c-tide'),
         isTrue,
         reason: 'The line stopped pointing at the parent it belongs to.',
+      );
+
+      // And the place it owns went with it, because a place has no position of
+      // its own — it is a row in this company's card and it moves when the card
+      // does. A place left behind at the old coordinate is the picture claiming
+      // Harbour Point stopped belonging to Tidewater.
+      expect(
+        _cardOf(
+          tester,
+          'company:c-tide',
+        ).contains(_rectOf(tester, 'franchise:f-harbour').center),
+        isTrue,
       );
     });
 
@@ -249,7 +343,7 @@ void main() {
       expect(_highlighted(tester, scheme.primary), isEmpty);
 
       final finger = await tester.startGesture(
-        tester.getCenter(find.byKey(structureBoxKey('franchise:f-north'))),
+        tester.getCenter(find.byKey(structureBoxKey('company:c-tide'))),
       );
 
       await finger.moveTo(
@@ -260,8 +354,10 @@ void main() {
       // The box in hand may show that it is in hand. Nothing it is passing OVER
       // may show anything at all.
       expect(
-        _highlighted(tester, scheme.primary)
-            .where((key) => key != 'franchise:f-north'),
+        _highlighted(
+          tester,
+          scheme.primary,
+        ).where((key) => key != 'company:c-tide'),
         isEmpty,
         reason: 'A box lit up underneath the one being dragged.',
       );
@@ -290,23 +386,22 @@ void main() {
       expect(find.textContaining('has not been moved into'), findsNothing);
 
       final from = tester.getCenter(
-        find.byKey(structureBoxKey('franchise:f-north')),
+        find.byKey(structureBoxKey('company:c-tide')),
       );
       final onto = tester.getCenter(
         find.byKey(structureBoxKey('company:c-sun')),
       );
 
       await tester.drag(
-        find.byKey(structureBoxKey('franchise:f-north')),
+        find.byKey(structureBoxKey('company:c-tide')),
         onto - from,
       );
       await tester.pumpAndSettle();
 
       expect(
-        find.textContaining('“North Shore” has not been moved into “Sunward”'),
+        find.textContaining('“Tidewater” has not been moved into “Sunward”'),
         findsOneWidget,
-        reason:
-            'Both names, so it is about the two boxes on screen rather than a '
+        reason: 'Both names, so it is about the two boxes on screen rather than a '
             'general notice somebody has to work out the relevance of.',
       );
       expect(
@@ -315,8 +410,7 @@ void main() {
           'else',
         ),
         findsOneWidget,
-        reason:
-            'The actual reason, in a business owner\'s words. "You cannot '
+        reason: 'The actual reason, in a business owner\'s words. "You cannot '
             're-parent an entity" is the model\'s vocabulary and answers '
             'nothing.',
       );
@@ -326,22 +420,21 @@ void main() {
       expect(
         find.byType(SnackBar),
         findsNothing,
-        reason:
-            'A note above the picture, never a pop-up and never something that '
+        reason: 'A note above the picture, never a pop-up and never something that '
             'slides away while it is being read. It interrupts nothing and it '
             'covers neither of the two boxes it is about.',
       );
 
       // And not one thing about the picture is different because of it.
       expect(
-        _semanticsOf(tester, 'franchise:f-north'),
-        'North Shore — $_franchiseLabel, under Everdoors',
+        _semanticsOf(tester, 'company:c-tide'),
+        'Tidewater — company, under Ravenhill Services',
         reason: 'The box changed what it says it hangs off.',
       );
-      expect(state.moved.map((move) => move.$1).toSet(), {'franchise:f-north'});
+      expect(state.moved.map((move) => move.$1).toSet(), {'company:c-tide'});
       expect(
         _painter(tester).links,
-        hasLength(_allKeys.length - 1),
+        hasLength(_boxKeys.length - 1),
         reason: 'A connector was dropped, or a second one invented.',
       );
 
@@ -351,8 +444,7 @@ void main() {
       expect(
         find.textContaining('has not been moved into'),
         findsNothing,
-        reason:
-            'Clearable, because it is about a gesture that has finished. A '
+        reason: 'Clearable, because it is about a gesture that has finished. A '
             'paragraph that cannot be got rid of becomes furniture, and then '
             'it is not read at all.',
       );
@@ -369,12 +461,13 @@ void main() {
     ) async {
       final said = _recordAnnouncements(tester);
 
-      // Starting just clear of Sunward: overlapping by a third of its own
-      // height, which is deliberately UNDER the half this raises at. So the
-      // note below is about the press rather than about where the box began.
+      // Starting just clear of Sunward: the two cards are the same height — a
+      // box and one place each — and this leaves them overlapping by a little
+      // under half, which is deliberately UNDER what this raises at. So the note
+      // below is about the press rather than about where the box began.
       final state = _State(
         layout: {
-          'franchise:f-north': _auto['company:c-sun']! - const Offset(0, 48),
+          'company:c-tide': _auto['company:c-sun']! - const Offset(0, 70),
         },
       );
 
@@ -382,7 +475,7 @@ void main() {
 
       expect(find.textContaining('has not been moved into'), findsNothing);
 
-      await tester.tap(find.byTooltip('Move “North Shore” with the arrow keys'));
+      await tester.tap(find.byTooltip('Move “Tidewater” with the arrow keys'));
       await tester.pumpAndSettle();
 
       // One press of 16 takes the overlap past half.
@@ -393,14 +486,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.textContaining('“North Shore” has not been moved into “Sunward”'),
+        find.textContaining('“Tidewater” has not been moved into “Sunward”'),
         findsOneWidget,
       );
       expect(
         said.last,
         contains('has not been moved into'),
-        reason:
-            'And said out loud. A sentence that only exists as a strip on a '
+        reason: 'And said out loud. A sentence that only exists as a strip on a '
             'canvas is an explanation for people who can see the canvas, which '
             'is not who most needs one.',
       );
@@ -409,15 +501,31 @@ void main() {
     testWidgets('the box says move, not grab', (tester) async {
       await _pump(tester);
 
+      // Found on the CARD rather than inside the box, because the whole card is
+      // what a pointer picks up — the list of places belongs to the box and
+      // moves with it, so the cursor has to say so over the list too.
       final region = tester.widget<MouseRegion>(
-        find.descendant(
-          of: find.byKey(structureBoxKey('company:c-ever')),
-          matching: find.byType(MouseRegion),
-        ).first,
+        find
+            .descendant(
+              of: find.byKey(structureCardKey('company:c-ever')),
+              matching: find.byType(MouseRegion),
+            )
+            .first,
       );
 
       // "grab" is pick this up and carry it somewhere. "move" is reposition it.
       expect(region.cursor, SystemMouseCursors.move);
+
+      // And the list under it really is inside that card, so the assertion
+      // above is about a rectangle that covers the places rather than about the
+      // box alone.
+      expect(
+        _cardOf(
+          tester,
+          'company:c-ever',
+        ).contains(_rectOf(tester, 'franchise:f-quiet').center),
+        isTrue,
+      );
     });
 
     testWidgets('a canvas nobody may rearrange draws no move controls at all', (
@@ -434,7 +542,10 @@ void main() {
 
       // Absent, not disabled. A disabled control invites somebody to work out
       // why it does nothing.
-      expect(find.byTooltip('Move “Everdoors” with the arrow keys'), findsNothing);
+      expect(
+        find.byTooltip('Move “Everdoors” with the arrow keys'),
+        findsNothing,
+      );
       expect(find.text('Arrange for me'), findsNothing);
 
       // And the boxes are still all there to be read.
@@ -469,46 +580,93 @@ void main() {
       );
     });
 
-    /// A company with no sub companies has its places two lines below it, and
-    /// the line between them has to read as a line rather than as a fault.
+    /// A place has no connector at all, because it is inside the card the line
+    /// would have been drawn to.
     ///
-    /// Tidewater in the fixture is that company: one place, no sub companies.
-    /// The painter needs no case for it — the run is out of the bottom, down to
-    /// the midpoint, across, and into the top, which is the same route it draws
-    /// for every other pair — and this exists so that nobody adds one.
-    testWidgets('a connector across a skipped line still joins the two boxes', (
+    /// Thirteen lines went with the thirteen boxes, and that is the picture
+    /// getting simpler rather than losing information: a row sitting in a
+    /// company's own list says "these are that company's places" more plainly
+    /// than a line to a box a screen away ever did.
+    testWidgets('a place has no line drawn to it, because it is inside one', (
       tester,
     ) async {
       await _pump(tester);
 
-      final company = _paintedRectOf(tester, 'company:c-tide');
-      final place = _paintedRectOf(tester, 'franchise:f-harbour');
+      final links = _painter(tester).links;
+
+      // Three: each box except the organization, which hangs off nothing. Four
+      // places, four fewer lines.
+      expect(links, hasLength(_boxKeys.length - 1));
+
+      for (final key in _placeKeys) {
+        final row = _rectOf(tester, key).shift(-_canvasOrigin(tester));
+
+        expect(
+          _touchesALink(tester, row),
+          isFalse,
+          reason: 'A connector was drawn to $key, which is a row inside its '
+              'company’s own card — so the line starts and ends in the same '
+              'rectangle.',
+        );
+      }
+    });
+
+    /// The line arrives at the BOX, not at the middle of the card.
+    ///
+    /// A card is a box plus however many places hang off it, so its vertical
+    /// centre is somewhere in the list — on the real customer, beside the fifth
+    /// of A-1 Chimney's nine branches. A sideways run anchored there would read
+    /// as a connector to a place, which is the one thing a connector on this
+    /// canvas may never appear to be.
+    ///
+    /// Measured off the PATH the painter actually draws rather than off any
+    /// number it reports about itself, because "was handed the box's height" and
+    /// "used it" are two different claims and only the second one is the
+    /// picture.
+    testWidgets('a sideways run leaves and arrives at the box, not the middle '
+        'of the list', (tester) async {
+      await _pumpA1(tester);
 
       expect(
-        _painter(tester).links.any(
-          (link) => link.$1 == company && link.$2 == place,
-        ),
-        isTrue,
-        reason: 'The place two lines below its company has no line to it, so '
-            'the gap reads as something that failed to draw.',
+        _painter(tester).links,
+        hasLength(1),
+        reason: 'premise: one company, one line',
       );
 
-      // Two pitches apart rather than one, measured edge to edge: the run is a
-      // whole empty line longer than the ones beside it, and that length is the
-      // picture saying this branch has no sub companies.
+      final business = _paintedRectOf(tester, 'organization:org-a1');
+      final chimney = _paintedRectOf(tester, 'company:c-a1');
+      final box = _rectOf(tester, 'company:c-a1').shift(-_canvasOrigin(tester));
+
+      // The premise, and the reason this test exists: with nine places attached
+      // the card is far taller than the box, so the two anchors are nowhere
+      // near each other and only one of them can be right.
       expect(
-        place.top - company.bottom,
-        moreOrLessEquals(2 * _pitch - kStructureBoxHeight, epsilon: 0.5),
+        chimney.height,
+        greaterThan(box.height * 3),
+        reason: 'The card is not taller than the box, so anchoring on either '
+            'gives the same answer and this asserts nothing.',
       );
 
-      // Control, and it is the half that makes the number above mean something:
-      // a place hanging off a SUB company is one pitch below it, so the
-      // measurement is about the skipped line rather than about the geometry.
+      final (leaves, arrives) = _linesDrawn(tester).single;
+
       expect(
-        _paintedRectOf(tester, 'franchise:f-deep').top -
-            _paintedRectOf(tester, 'company:c-sun').bottom,
-        moreOrLessEquals(_pitch - kStructureBoxHeight, epsilon: 0.5),
+        arrives.dx,
+        moreOrLessEquals(chimney.left, epsilon: 0.5),
+        reason: 'The run does not arrive at the card’s left edge at all, so it '
+            'is not the sideways route this is about.',
       );
+      expect(
+        arrives.dy,
+        moreOrLessEquals(box.center.dy, epsilon: 0.5),
+        reason: 'The line arrives half a CARD down rather than half a box, '
+            'which on A-1 Chimney is beside its fifth branch instead of at its '
+            'name — a connector pointing at a place.',
+      );
+
+      // And it leaves the organization at ITS box for the same reason, which on
+      // a card with no places is the same point either way and is asserted so
+      // the rule is stated rather than half applied.
+      expect(leaves.dy, moreOrLessEquals(business.center.dy, epsilon: 0.5));
     });
 
     testWidgets('a switched-off company keeps its connector', (tester) async {
@@ -516,28 +674,21 @@ void main() {
 
       final links = _painter(tester).links;
 
-      // One per node except the organization, which hangs off nothing. Sunward
+      // One per box except the organization, which hangs off nothing. Sunward
       // is switched off in the fixture and its line is still counted.
-      expect(links, hasLength(_allKeys.length - 1));
-
-      final everdoors = _paintedRectOf(tester, 'company:c-ever');
-      final sunward = _paintedRectOf(tester, 'company:c-sun');
-      final deepwater = _paintedRectOf(tester, 'franchise:f-deep');
+      expect(links, hasLength(_boxKeys.length - 1));
 
       // The line INTO the switched-off company, at full strength...
       expect(
-        links.any((link) => link.$1 == everdoors && link.$2 == sunward),
+        _isLinked(tester, 'company:c-ever', 'company:c-sun'),
         isTrue,
         reason: 'The relationship is not switched off; the company is.',
       );
 
-      // ...and the line out of it to the place it still owns. Greying or
-      // dropping either would say the structure changed when a switch was
-      // flipped, and it did not.
-      expect(
-        links.any((link) => link.$1 == sunward && link.$2 == deepwater),
-        isTrue,
-      );
+      // ...and the line into the company that owns it. Greying or dropping
+      // either would say the structure changed when a switch was flipped, and
+      // it did not.
+      expect(_isLinked(tester, 'organization:org-1', 'company:c-ever'), isTrue);
     });
   });
 
@@ -548,29 +699,42 @@ void main() {
       final state = _State(
         // Everything piled at the origin, which is what a layout looks like
         // after a bad write and what the button exists to rescue.
-        layout: {for (final key in _allKeys) key: Offset.zero},
+        layout: {for (final key in _boxKeys) key: Offset.zero},
       );
 
       await _pump(tester, state: state);
 
       // Control: they really are piled up to begin with, otherwise the
       // assertion after the press is about a canvas that was already tidy.
-      expect(_rectOf(tester, 'company:c-ever'), _rectOf(tester, 'company:c-sun'));
+      expect(
+        _rectOf(tester, 'company:c-ever'),
+        _rectOf(tester, 'company:c-sun'),
+      );
 
       await tester.tap(find.text('Arrange for me'));
       await tester.pumpAndSettle();
 
       expect(state.arranged, hasLength(1));
-      expect(state.arranged.single.keys.toSet(), _allKeys.toSet());
+      expect(
+        state.arranged.single.keys.toSet(),
+        _boxKeys.toSet(),
+        reason: 'The arrangement named a place, which has nowhere to sit — and '
+            'the tab would send that coordinate to an endpoint that drops it, '
+            'on every press, for ever.',
+      );
 
-      final rects = [for (final key in _allKeys) _rectOf(tester, key)];
+      // The CARDS, because a place row is part of the ground its company
+      // occupies. Two boxes that clear each other while Everdoors’ places are
+      // drawn through Sunward is a chart nobody can read passing a test that
+      // says it is tidy.
+      final cards = [for (final key in _boxKeys) _cardOf(tester, key)];
 
-      for (var i = 0; i < rects.length; i++) {
-        for (var j = i + 1; j < rects.length; j++) {
+      for (var i = 0; i < cards.length; i++) {
+        for (var j = i + 1; j < cards.length; j++) {
           expect(
-            rects[i].overlaps(rects[j]),
+            cards[i].overlaps(cards[j]),
             isFalse,
-            reason: '${_allKeys[i]} and ${_allKeys[j]} were laid on top of '
+            reason: '${_boxKeys[i]} and ${_boxKeys[j]} were laid on top of '
                 'each other.',
           );
         }
@@ -611,6 +775,691 @@ void main() {
         expect(at.dx, greaterThanOrEqualTo(0));
         expect(at.dy, greaterThanOrEqualTo(0));
       }
+    });
+  });
+
+  /// ── What these assertions are protecting, and why they are separate ──
+  ///
+  /// A zoom control has two defects available to it, and both of them are the
+  /// kind somebody works around rather than reports.
+  ///
+  /// The first is a zoom that flings the picture off screen. If the scale is
+  /// applied and the viewport is left alone, the fixed point is the top-left
+  /// corner of the surface, so zooming in on the box you are actually looking
+  /// at throws it off the bottom right and you have to go and find it again.
+  /// Two presses of that and people stop touching the control.
+  ///
+  /// The second is a drag that no longer tracks the pointer. A pointer moves in
+  /// screen points and a box's position is in canvas points, and the two are
+  /// the same number at exactly one scale. Left undivided, at 200% the box
+  /// travels twice as far as the finger holding it. That is the defect that
+  /// makes a zoomable canvas feel broken, and it is invisible in every test
+  /// written at 100%.
+  ///
+  /// So neither is asserted through the zoom number this widget reports about
+  /// itself. Both are measured off what is actually DRAWN — a box's rectangle
+  /// on screen, divided by the width a box is meant to be — which is the only
+  /// reading that cannot agree with a bug.
+  group('zoom is where somebody is looking', () {
+    testWidgets('the point under the pointer is the point that stays put', (
+      tester,
+    ) async {
+      await _pump(tester);
+
+      final before = _rectOf(tester, 'company:c-sun');
+
+      // Deliberately NOT the middle of the box and not the middle of the
+      // window: a zoom anchored on either of those would pass an assertion
+      // written about that one point while being wrong everywhere else.
+      final under = before.topLeft + const Offset(37, 11);
+
+      await _ctrlWheel(tester, at: under, by: -240);
+
+      final after = _rectOf(tester, 'company:c-sun');
+
+      expect(
+        after.width,
+        greaterThan(before.width),
+        reason: 'The premise: the wheel with control held did not zoom at all, '
+            'so what follows is about a picture that never changed.',
+      );
+
+      // The same canvas point, expressed as an offset from the box's own corner
+      // in the box's own units, before and after. If the pointer is still over
+      // the same part of the same box then the picture grew about the pointer;
+      // if it is not, the picture slid.
+      expect(
+        _canvasPointUnder(tester, under, 'company:c-sun'),
+        offsetMoreOrLessEquals(
+          (under - before.topLeft) / (before.width / kStructureBoxWidth),
+          epsilon: 0.5,
+        ),
+        reason: 'The picture slid out from under the pointer while it was '
+            'being zoomed, which is what happens when the scale changes and '
+            'the viewport is left where it was.',
+      );
+
+      // And out again, because a fixed point that only holds in one direction
+      // is an accident rather than the arithmetic being right.
+      await _ctrlWheel(tester, at: under, by: 480);
+
+      expect(_drawnScale(tester), lessThan(1), reason: 'premise');
+      expect(
+        _canvasPointUnder(tester, under, 'company:c-sun'),
+        offsetMoreOrLessEquals(
+          (under - before.topLeft) / (before.width / kStructureBoxWidth),
+          epsilon: 0.5,
+        ),
+      );
+    });
+
+    /// A button has no pointer to keep still, so the thing it has to hold is
+    /// the middle of what somebody is looking at. Anchoring on the corner —
+    /// which is what falls out of doing nothing — walks the picture off the
+    /// bottom right a little further with every press.
+    testWidgets('the buttons grow the picture about the middle of the window', (
+      tester,
+    ) async {
+      await _pump(tester);
+
+      final middle = _surfaceRect(tester).center;
+      final was = _canvasPointUnder(tester, middle, 'company:c-ever');
+
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pump();
+
+      expect(_drawnScale(tester), greaterThan(1), reason: 'premise');
+      expect(
+        _canvasPointUnder(tester, middle, 'company:c-ever'),
+        offsetMoreOrLessEquals(was, epsilon: 0.5),
+        reason: 'Two presses of the zoom button moved what was in the middle '
+            'of the window, so somebody zooming in on the thing they are '
+            'reading has to go looking for it afterwards.',
+      );
+    });
+
+    /// The classic defect, asserted from both ends: the box has to keep up with
+    /// the pointer on SCREEN, and the coordinate it reports has to be the
+    /// canvas coordinate — which is the screen distance divided by the scale.
+    ///
+    /// Both halves are needed. Reporting the screen distance would look right
+    /// on screen for as long as the drag lasted and then spring back on
+    /// release; dividing when it should not would track wrong while reporting
+    /// right. Only measuring the drawn box and the reported number together
+    /// tells the two apart.
+    ///
+    /// Run in BOTH orientations, and not because the arithmetic differs — it
+    /// cannot, being a pointer delta divided by one scale — but because the
+    /// picture does. Left to right and top to bottom put a box in a different
+    /// part of the surface and give the chart a different shape, and a drag that
+    /// tracked in one and not in the other would be a hit-testing or clipping
+    /// fault rather than an arithmetic one. Those are exactly the faults a
+    /// single-orientation test cannot see.
+    testWidgets('a box drag tracks the pointer exactly, at any zoom, either '
+        'way round', (tester) async {
+      for (final orientation in kStructureOrientations) {
+        for (final wheel in const [-360.0, 420.0]) {
+          final state = _State();
+
+          await _pump(tester, state: state, orientation: orientation);
+
+          // Zoomed about the box that is about to be dragged, which is both the
+          // gesture somebody actually makes — you zoom in on the thing you are
+          // looking at — and what keeps the box on screen at every scale. Zooming
+          // about the middle of the WINDOW takes whatever is not near the middle
+          // off the edge, and a box outside the surface is clipped out of the hit
+          // test, so the drag below would land on nothing and this would fail
+          // saying the delta was wrong when nothing had been dragged at all.
+          await _ctrlWheel(
+            tester,
+            at: _rectOf(tester, 'company:c-ever').center,
+            by: wheel,
+          );
+
+          final scale = _drawnScale(tester);
+
+          expect(
+            (scale - 1).abs(),
+            greaterThan(0.1),
+            reason: 'The premise: this drag is happening at about 100%, so it '
+                'cannot tell a delta that is divided by the scale from one that '
+                'is not.',
+          );
+
+          final before = _rectOf(tester, 'company:c-ever');
+          final from = arrangeStructure(
+            flattenStructure(_tree()),
+            orientation: orientation,
+          )['company:c-ever']!;
+
+          const by = Offset(120, 60);
+
+          await tester.drag(find.byKey(structureBoxKey('company:c-ever')), by);
+          await tester.pumpAndSettle();
+
+          expect(
+            _rectOf(tester, 'company:c-ever').topLeft - before.topLeft,
+            offsetMoreOrLessEquals(by, epsilon: 0.5),
+            reason: 'Flowing $orientation at ${(scale * 100).round()}% the box '
+                'did not go where the pointer went. That is the delta being '
+                'applied in the wrong units, and it is worst exactly where zoom '
+                'is most useful.',
+          );
+
+          expect(
+            state.layout['company:c-ever']! - from,
+            offsetMoreOrLessEquals(by / scale, epsilon: 0.5),
+            reason: 'The arrangement was written in the points of one screen at '
+                'one zoom, so every colleague opening it finds the box '
+                'somewhere else.',
+          );
+        }
+      }
+    });
+
+    /// The business this whole change exists for: nine places on one line is
+    /// wider than any window, and the tab opens on a fragment of it.
+    testWidgets('Fit puts the whole chart in the window, from any zoom', (
+      tester,
+    ) async {
+      await _pumpA1(tester);
+
+      // Control, and it is the reason the feature exists: this chart does not
+      // fit. Without it the assertion after the press is about a picture that
+      // was already in view.
+      expect(_allInView(tester, _a1BoxKeys), isFalse);
+
+      await tester.tap(find.text('Fit'));
+      await tester.pump();
+
+      expect(_allInView(tester, _a1BoxKeys), isTrue);
+
+      // And again from a long way in, which is the half that fails when Fit
+      // measures the boxes as DRAWN rather than the arrangement they are drawn
+      // from: at 300% the drawn chart is three times the size of the one that
+      // needs fitting, so the window is divided by the wrong number and the
+      // answer converges on nothing.
+      await _ctrlWheel(tester, at: _surfaceRect(tester).center, by: -1400);
+
+      expect(_drawnScale(tester, 'company:c-a1'), greaterThan(2));
+      expect(_allInView(tester, _a1BoxKeys), isFalse, reason: 'premise');
+
+      await tester.tap(find.text('Fit'));
+      await tester.pump();
+
+      expect(_allInView(tester, _a1BoxKeys), isTrue);
+
+      // And still filling the window, which is the assertion that actually
+      // catches a Fit measuring the boxes as drawn. That mistake does not put
+      // anything out of view — it computes a third of the right answer at 300%,
+      // lands on the floor of the range and shows a chart that is in view and a
+      // quarter of the size it should be, which reads as a button that works.
+      expect(
+        _roomLeftOver(tester, _a1BoxKeys),
+        lessThan(1),
+        reason: 'Fit measured the drawn boxes rather than the arrangement they '
+            'are drawn from, so pressing it while zoomed in shrinks the chart '
+            'far further than the window needs.',
+      );
+    });
+
+    /// The whole of A1-Group, in both orientations — thirteen places under four
+    /// companies, which is the business every part of this change was made for.
+    ///
+    /// ── Why the real one and not the fixture above ───────────────
+    ///
+    /// Because the fixture has four places and one sub company, and every
+    /// arithmetic mistake this can make is proportional to how much the places
+    /// add. On A1-Group one company's list is 438 points on its own — six times
+    /// a box — so a Fit that measured boxes and forgot the lists would cut the
+    /// bottom off the chart by more than the height of the window, in the one
+    /// orientation where the lists stack against the siblings and in the other
+    /// where they stack against the levels.
+    for (final orientation in kStructureOrientations) {
+      testWidgets('Fit holds the whole of the real business, flowing '
+          '$orientation', (tester) async {
+        await _pumpRaw(
+          tester,
+          StructureCanvas(
+            tree: _a1Group(),
+            franchiseLabel: _franchiseLabel,
+            orientation: orientation,
+          ),
+          size: const Size(900, 700),
+        );
+
+        // Control, and the reason the feature exists: this chart does not fit
+        // the window it is opened in.
+        expect(_allInView(tester, _realBoxKeys), isFalse);
+
+        await tester.tap(find.text('Fit'));
+        await tester.pump();
+
+        expect(
+          _allInView(tester, _realBoxKeys),
+          isTrue,
+          reason: 'Part of the real business is outside the surface after Fit, '
+              'which on this data is a company’s list of places hanging off '
+              'the bottom of a chart the button said was in view.',
+        );
+
+        // Inside the window WITH the margin kept, which is the assertion that
+        // actually bites. A chart fitted to an extent that forgot the place
+        // lists is drawn about seven per cent too large — enough to eat the
+        // margin and not quite enough to leave the surface, so "is it on the
+        // surface" answers yes while the outermost card is pressed against the
+        // edge and the bottom one is a place row short of being cut off.
+        final surface = _surfaceRect(tester);
+        final drawn = _unionOf(tester, _realBoxKeys);
+
+        expect(
+          drawn.width,
+          lessThanOrEqualTo(surface.width - 2 * kStructureMargin + 0.5),
+        );
+        expect(
+          drawn.height,
+          lessThanOrEqualTo(surface.height - 2 * kStructureMargin + 0.5),
+          reason: 'The chart is taller than the room Fit had for it, which is '
+              'what measuring the boxes and forgetting their places does.',
+        );
+
+        expect(
+          _roomLeftOver(tester, _realBoxKeys),
+          lessThan(1),
+          reason: 'The chart was shrunk further than the window required.',
+        );
+
+        // And the picture it fitted is a legible one: nothing is drawn through
+        // anything else, at the scale it was fitted to.
+        final cards = [for (final key in _realBoxKeys) _cardOf(tester, key)];
+
+        for (var i = 0; i < cards.length; i++) {
+          for (var j = i + 1; j < cards.length; j++) {
+            expect(
+              cards[i].overlaps(cards[j]),
+              isFalse,
+              reason: '${_realBoxKeys[i]} and ${_realBoxKeys[j]} are drawn '
+                  'through each other.',
+            );
+          }
+        }
+
+        // Every one of the thirteen places is on screen too, inside the card of
+        // the company that owns it — which is the half a test that only
+        // measured boxes would miss entirely.
+        for (final place in _realPlaceKeys) {
+          expect(
+            surface.contains(_rectOf(tester, place).center),
+            isTrue,
+            reason: '$place is outside the drawing surface after Fit.',
+          );
+        }
+      });
+    }
+
+    /// "Scales the whole chart to the window" is two claims, and the second one
+    /// is the one a guess passes: it has to be the LARGEST scale that holds the
+    /// chart, not merely one that does. A Fit that halves whatever it is given
+    /// puts everything in view and wastes most of the window doing it.
+    testWidgets('Fit is the largest scale the chart fits at, and it is '
+        'centred', (tester) async {
+      await _pumpA1(tester);
+
+      await tester.tap(find.text('Fit'));
+      await tester.pump();
+
+      final surface = _surfaceRect(tester);
+      final drawn = _unionOf(tester, _a1BoxKeys);
+
+      final room = Size(
+        surface.width - 2 * kStructureMargin,
+        surface.height - 2 * kStructureMargin,
+      );
+
+      // Inside the window, with the margin kept on every side so the outermost
+      // boxes do not read as cut off.
+      expect(drawn.width, lessThanOrEqualTo(room.width + 0.5));
+      expect(drawn.height, lessThanOrEqualTo(room.height + 0.5));
+
+      // And filling it in whichever direction ran out first. This is what a
+      // guess cannot do: a scale picked from anything other than the chart's
+      // real extent leaves a gap here.
+      expect(
+        _roomLeftOver(tester, _a1BoxKeys),
+        lessThan(1),
+        reason: 'The chart was shrunk further than the window required, so '
+            'most of the surface is empty and every name is smaller than it '
+            'needed to be.',
+      );
+
+      // Centred rather than parked in the corner. A wide, short chart fits on
+      // width and leaves a band of empty surface, and hanging all of it below
+      // the picture reads as the bottom having failed to draw.
+      expect(drawn.center.dx, moreOrLessEquals(surface.center.dx, epsilon: 1));
+      expect(drawn.center.dy, moreOrLessEquals(surface.center.dy, epsilon: 1));
+    });
+
+    /// The rule the whole feature is built on, asserted rather than asserted
+    /// about. The arrangement is ONE setting for the organization now, so a
+    /// colleague leaning in to read a name must not move everybody's picture —
+    /// and the only way this widget could do that is by reporting something.
+    testWidgets('nothing about the zoom is ever reported, by any route', (
+      tester,
+    ) async {
+      final state = _State();
+
+      await _pump(tester, state: state);
+
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Zoom out'));
+      await tester.pump();
+      await _ctrlWheel(tester, at: _surfaceRect(tester).center, by: -300);
+      await tester.tap(find.text('Fit'));
+      await tester.pump();
+
+      final pad = await tester.createGesture(kind: PointerDeviceKind.trackpad);
+      final over = tester.getCenter(
+        find.byKey(structureBoxKey('company:c-ever')),
+      );
+
+      await pad.panZoomStart(over);
+      await pad.panZoomUpdate(over, scale: 1.4);
+      await tester.pump();
+      await pad.panZoomEnd();
+      await tester.pumpAndSettle();
+
+      // The premise: every one of those did something, so an empty report is
+      // about the report rather than about a control that never fired.
+      expect(_drawnScale(tester), isNot(moreOrLessEquals(1, epsilon: 0.01)));
+
+      expect(
+        state.moved,
+        isEmpty,
+        reason: 'A zoom was written into the shared arrangement, so one '
+            'person\'s eyes moved every colleague\'s boxes.',
+      );
+      expect(state.arranged, isEmpty);
+      expect(
+        state.layout,
+        isEmpty,
+        reason: 'There is no coordinate in the arrangement that a zoom could '
+            'have changed, and there must not be a place to put one.',
+      );
+    });
+
+    /// A control a mouse can reach and a keyboard cannot is half a control, and
+    /// this one is on the toolbar of a view whose whole job is to be read.
+    testWidgets('the zoom cluster is reachable and announced without a mouse', (
+      tester,
+    ) async {
+      final said = _recordAnnouncements(tester);
+
+      await _pump(tester);
+
+      expect(find.text('100%'), findsOneWidget);
+
+      var reached = false;
+
+      for (var press = 0; press < 24 && !reached; press++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+
+        reached = _focusIsInside(tester, find.byTooltip('Zoom in'));
+      }
+
+      expect(
+        reached,
+        isTrue,
+        reason: 'Tab never arrives at the zoom control, so the only way to '
+            'change the scale is with a pointer.',
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+
+      expect(
+        _drawnScale(tester),
+        greaterThan(1),
+        reason: 'The focused button did nothing when it was activated from the '
+            'keyboard.',
+      );
+
+      // And said out loud, because the percentage is the only feedback the two
+      // buttons give and somebody who cannot see it has none at all. A
+      // coordinate is never read out on this canvas — that argument is about a
+      // fact nobody listening can see, and the setting of the instrument they
+      // are looking through is not one of those.
+      expect(said.last, 'Zoom ${(_drawnScale(tester) * 100).round()} percent.');
+    });
+
+    /// The readout is not decoration: it is the one thing on screen that says
+    /// how far from normal size somebody has wandered, and a figure that drifts
+    /// from what is drawn is worse than no figure at all.
+    testWidgets('the percentage says what the picture is actually drawn at', (
+      tester,
+    ) async {
+      await _pump(tester);
+
+      await _ctrlWheel(tester, at: _surfaceRect(tester).center, by: -260);
+
+      final drawn = (_drawnScale(tester) * 100).round();
+
+      expect(drawn, isNot(100), reason: 'premise');
+      expect(
+        find.text('$drawn%'),
+        findsOneWidget,
+        reason: 'The number beside the buttons and the size the boxes are drawn '
+            'at are two different answers to one question.',
+      );
+    });
+
+    /// The gesture a trackpad user makes without thinking, over the thing they
+    /// happen to be pointing at — which on a chart of boxes is usually a box.
+    testWidgets('a trackpad pinch over a box zooms about the fingers, and '
+        'moves no box', (tester) async {
+      final state = _State();
+
+      await _pump(tester, state: state);
+
+      final pad = await tester.createGesture(kind: PointerDeviceKind.trackpad);
+      final at = tester.getCenter(
+        find.byKey(structureBoxKey('company:c-ever')),
+      );
+
+      await pad.panZoomStart(at);
+      await pad.panZoomUpdate(at, scale: 1.6);
+      await tester.pump();
+      await pad.panZoomEnd();
+      await tester.pumpAndSettle();
+
+      expect(_drawnScale(tester), moreOrLessEquals(1.6, epsilon: 0.01));
+
+      // The fingers were on the middle of this box, so the middle of this box
+      // is where they still are.
+      expect(
+        _rectOf(tester, 'company:c-ever').center,
+        offsetMoreOrLessEquals(at, epsilon: 0.5),
+        reason: 'The picture jumped by the box\'s own offset, which is what '
+            'anchoring the zoom in the box\'s coordinates rather than the '
+            'surface\'s does.',
+      );
+
+      expect(
+        state.moved,
+        isEmpty,
+        reason: 'Two fingers on a trackpad rearranged the picture of the '
+            'business.',
+      );
+    });
+
+    /// The same act on the device the house rules care most about. This is not
+    /// a mouse-only affordance and it must not become one.
+    testWidgets('two fingers on the surface pinch it', (tester) async {
+      await _pump(tester);
+
+      final patch = _emptyPatch(tester);
+
+      final left = await tester.startGesture(
+        patch - const Offset(40, 0),
+        kind: PointerDeviceKind.touch,
+      );
+      final right = await tester.startGesture(
+        patch + const Offset(40, 0),
+        kind: PointerDeviceKind.touch,
+      );
+
+      // Eighty points apart becomes a hundred and sixty, which is twice.
+      await left.moveBy(const Offset(-40, 0));
+      await right.moveBy(const Offset(40, 0));
+      await tester.pump();
+
+      await left.up();
+      await right.up();
+      await tester.pumpAndSettle();
+
+      expect(_drawnScale(tester), moreOrLessEquals(2, epsilon: 0.05));
+    });
+
+    /// Both ends, and both of the two ways of reaching them. A wheel that can
+    /// take the picture somewhere the buttons cannot is a state only one input
+    /// can produce and only one input can get out of.
+    testWidgets('the picture stops at both ends, and the control says so', (
+      tester,
+    ) async {
+      await _pump(tester);
+
+      for (var press = 0; press < 24; press++) {
+        if (_zoomButton(tester, 'Zoom out').onPressed == null) break;
+
+        await tester.tap(find.byTooltip('Zoom out'));
+        await tester.pump();
+      }
+
+      expect(
+        _drawnScale(tester),
+        moreOrLessEquals(kStructureZoomMin, epsilon: 0.005),
+      );
+      expect(
+        _zoomButton(tester, 'Zoom out').onPressed,
+        isNull,
+        reason: 'A live button at the floor is the one control on this toolbar '
+            'that lies about what it can do.',
+      );
+
+      // And the wheel cannot go under it either.
+      await _ctrlWheel(tester, at: _surfaceRect(tester).center, by: 4000);
+
+      expect(
+        _drawnScale(tester),
+        moreOrLessEquals(kStructureZoomMin, epsilon: 0.005),
+      );
+
+      for (var press = 0; press < 24; press++) {
+        if (_zoomButton(tester, 'Zoom in').onPressed == null) break;
+
+        await tester.tap(find.byTooltip('Zoom in'));
+        await tester.pump();
+      }
+
+      expect(
+        _drawnScale(tester),
+        moreOrLessEquals(kStructureZoomMax, epsilon: 0.005),
+      );
+      expect(_zoomButton(tester, 'Zoom in').onPressed, isNull);
+
+      await _ctrlWheel(tester, at: _surfaceRect(tester).center, by: -4000);
+
+      expect(
+        _drawnScale(tester),
+        moreOrLessEquals(kStructureZoomMax, epsilon: 0.005),
+      );
+    });
+
+    /// A plain wheel still scrolls, which is the convention every browser and
+    /// map has taught people. If holding control were not consulted, the one
+    /// gesture somebody makes without looking would do the wrong thing.
+    testWidgets('a wheel with nothing held still scrolls rather than zooming', (
+      tester,
+    ) async {
+      await _pump(tester);
+
+      final before = _rectOf(tester, 'company:c-ever');
+      final wheel = TestPointer(4, PointerDeviceKind.mouse);
+      final over = _surfaceRect(tester).center;
+
+      await tester.sendEventToBinding(wheel.hover(over));
+      await tester.sendEventToBinding(wheel.scroll(const Offset(0, 120)));
+      await tester.pump();
+
+      final after = _rectOf(tester, 'company:c-ever');
+
+      expect(
+        after.size,
+        before.size,
+        reason: 'A plain wheel changed the size '
+            'of the picture, so scrolling and zooming are the same gesture.',
+      );
+      expect(after.topLeft, isNot(before.topLeft));
+    });
+
+    /// The arrangement controls leave the scale alone, and they have to: the
+    /// magnification somebody chose in order to read what they were tidying is
+    /// not something a tidy-up gets to take away.
+    testWidgets('arranging and re-centring do not undo somebody’s zoom', (
+      tester,
+    ) async {
+      await _pump(tester);
+
+      await _ctrlWheel(tester, at: _surfaceRect(tester).center, by: -300);
+
+      final scale = _drawnScale(tester);
+
+      expect(scale, greaterThan(1), reason: 'premise');
+
+      await tester.tap(find.text('Arrange for me'));
+      await tester.pumpAndSettle();
+
+      expect(_drawnScale(tester), moreOrLessEquals(scale, epsilon: 0.005));
+
+      // And the boxes were actually brought into view at that scale, rather
+      // than tidied somewhere off screen — which is what aiming the viewport
+      // with an unscaled coordinate does.
+      expect(
+        _surfaceRect(
+          tester,
+        ).contains(_rectOf(tester, 'organization:org-1').topLeft),
+        isTrue,
+      );
+
+      await tester.dragFrom(
+        _emptyPatch(tester),
+        const Offset(-3000, -2000),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Bring the boxes into view'));
+      await tester.pump();
+
+      expect(_drawnScale(tester), moreOrLessEquals(scale, epsilon: 0.005));
+
+      // The whole picture back at the corner, measured on the picture rather
+      // than on any one box: the organization is centred over its children, so
+      // the box at the margin is whichever one is furthest left.
+      expect(
+        _unionOf(tester, _boxKeys).topLeft,
+        offsetMoreOrLessEquals(
+          _surfaceRect(tester).topLeft +
+              const Offset(kStructureMargin, kStructureMargin),
+          epsilon: 0.5,
+        ),
+        reason: '"Bring the boxes into view" aimed at an unscaled coordinate, '
+            'so the control that exists to rescue somebody who is lost leaves '
+            'them lost at every zoom but 100%.',
+      );
     });
   });
 
@@ -686,8 +1535,10 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.byType(StructureCanvas), findsOneWidget);
-      expect(_allKeys.map((key) => find.byKey(structureBoxKey(key))),
-          everyElement(findsOneWidget));
+      expect(
+        _allKeys.map((key) => find.byKey(structureBoxKey(key))),
+        everyElement(findsOneWidget),
+      );
     });
   });
 
@@ -725,14 +1576,18 @@ void main() {
       final state = _State(
         // The last box in tree order is dragged to the top left, so the two
         // orders disagree and only one of them can be the answer.
-        layout: const {'franchise:f-deep': Offset(0, 0)},
+        layout: const {'company:c-tide': Offset(0, 0)},
       );
 
       await _pump(tester, state: state);
 
       final walked = <String>[];
 
-      for (var press = 0; press < 24 && walked.length < _allKeys.length; press++) {
+      for (
+        var press = 0;
+        press < 24 && walked.length < _boxKeys.length;
+        press++
+      ) {
         await tester.sendKeyEvent(LogicalKeyboardKey.tab);
         await tester.pump();
 
@@ -743,7 +1598,7 @@ void main() {
         }
       }
 
-      expect(walked, _allKeys);
+      expect(walked, _boxKeys);
     });
 
     testWidgets('a keyboard user can move a box', (tester) async {
@@ -860,6 +1715,70 @@ void main() {
       // because the window was small.
       expect(find.text('Arrange for me'), findsOneWidget);
       expect(find.text('Bring the boxes into view'), findsOneWidget);
+
+      // Including the zoom cluster, which is the control a small window needs
+      // most. Its parts wrap onto their own line rather than being cut down to
+      // fit — a stepper that loses a button at 375 points is a stepper that
+      // only works on a desk.
+      expect(find.byTooltip('Zoom out'), findsOneWidget);
+      expect(find.text('100%'), findsOneWidget);
+      expect(find.byTooltip('Zoom in'), findsOneWidget);
+      expect(find.text('Fit'), findsOneWidget);
+    });
+
+    /// The toolbar has to hold the CALLER's control too, and that is the one
+    /// this widget cannot see the size of.
+    ///
+    /// The screen above hands it a label and two chips — "The chart flows: Left
+    /// to right / Top to bottom" — which is wider than everything else on the
+    /// row put together. A slot that laid its child out in a Row rather than the
+    /// Wrap would overflow here, and an overflow in release is a control clipped
+    /// off the side of the screen rather than a striped bar saying so.
+    testWidgets('a caller’s own control fits beside the rest at 375 points', (
+      tester,
+    ) async {
+      await _pumpRaw(
+        tester,
+        StructureCanvas(
+          tree: _tree(),
+          franchiseLabel: _franchiseLabel,
+          onArranged: (_) {},
+          controls: Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: const [
+              Text('The chart flows'),
+              ChoiceChip(label: Text('Left to right'), selected: true),
+              ChoiceChip(label: Text('Top to bottom'), selected: false),
+            ],
+          ),
+        ),
+        size: const Size(375, 700),
+      );
+
+      expect(tester.takeException(), isNull);
+
+      // Every one of them, still reachable: this widget's three and the
+      // caller's.
+      expect(find.text('Arrange for me'), findsOneWidget);
+      expect(find.text('Fit'), findsOneWidget);
+      expect(find.text('Left to right'), findsOneWidget);
+      expect(find.text('Top to bottom'), findsOneWidget);
+
+      // And nothing was drawn off the side of the window, which is what an
+      // overflow silently does in a release build.
+      for (final label in const [
+        'Arrange for me',
+        'Fit',
+        'Left to right',
+        'Top to bottom',
+      ]) {
+        expect(
+          tester.getRect(find.text(label)).right,
+          lessThanOrEqualTo(375),
+          reason: '“$label” is drawn past the right edge of a 375-point window.',
+        );
+      }
     });
 
     testWidgets('panning the background never carries a box with it', (
@@ -919,9 +1838,7 @@ void main() {
       expect(_rectOf(tester, 'organization:org-1'), home);
 
       expect(
-        _painter(tester).links.any(
-          (link) => link.$1 == _paintedRectOf(tester, 'organization:org-1'),
-        ),
+        _touchesALink(tester, _paintedRectOf(tester, 'organization:org-1')),
         isTrue,
       );
     });
@@ -935,23 +1852,23 @@ void main() {
       // NOT arrived — which is what makes the assertion below meaningful.
       await _pump(
         tester,
-        state: _State(layout: {for (final key in _allKeys) key: Offset.zero}),
+        state: _State(layout: {for (final key in _boxKeys) key: Offset.zero}),
       );
 
       await tester.tap(find.text('Arrange for me'));
       await tester.pump();
 
-      final travelling = _rectOf(tester, 'franchise:f-deep');
+      final travelling = _rectOf(tester, 'company:c-sun');
 
       await tester.pumpAndSettle();
 
-      final arrived = _rectOf(tester, 'franchise:f-deep');
+      final arrived = _rectOf(tester, 'company:c-sun');
 
       expect(travelling, isNot(arrived));
 
       await _pump(
         tester,
-        state: _State(layout: {for (final key in _allKeys) key: Offset.zero}),
+        state: _State(layout: {for (final key in _boxKeys) key: Offset.zero}),
         disableAnimations: true,
       );
 
@@ -959,7 +1876,7 @@ void main() {
       await tester.pump();
 
       expect(
-        _rectOf(tester, 'franchise:f-deep'),
+        _rectOf(tester, 'company:c-sun'),
         arrived,
         reason: 'The boxes animated across the canvas for somebody who asked '
             'their system not to.',
@@ -1032,9 +1949,9 @@ void main() {
 
       final pad = await tester.createGesture(kind: PointerDeviceKind.trackpad);
 
-      await pad.panZoomStart(tester.getCenter(
-        find.byKey(structureBoxKey('company:c-ever')),
-      ));
+      await pad.panZoomStart(
+        tester.getCenter(find.byKey(structureBoxKey('company:c-ever'))),
+      );
       await pad.panZoomUpdate(
         tester.getCenter(find.byKey(structureBoxKey('company:c-ever'))),
         pan: const Offset(0, -120),
@@ -1077,10 +1994,7 @@ void main() {
 
       // Control: the two agree before the scroll, so what follows is about the
       // scroll rather than about the painter never having agreed.
-      expect(
-        _painter(tester).links.any((link) => link.$2 == before),
-        isTrue,
-      );
+      expect(_touchesALink(tester, before), isTrue);
 
       final wheel = TestPointer(1, PointerDeviceKind.mouse);
       final over = tester.getCenter(find.byType(StructureCanvas));
@@ -1098,7 +2012,7 @@ void main() {
             'viewport is being eased — which is the lag this test is about.',
       );
       expect(
-        _painter(tester).links.any((link) => link.$2 == after),
+        _touchesALink(tester, after),
         isTrue,
         reason: 'The line to this box is drawn somewhere the box is not.',
       );
@@ -1111,18 +2025,18 @@ void main() {
         'arranged', (tester) async {
       await _pump(
         tester,
-        state: _State(layout: {for (final key in _allKeys) key: Offset.zero}),
+        state: _State(layout: {for (final key in _boxKeys) key: Offset.zero}),
       );
 
       await tester.tap(find.text('Arrange for me'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 60));
 
-      final travelling = _paintedRectOf(tester, 'franchise:f-deep');
+      final travelling = _paintedRectOf(tester, 'company:c-sun');
       final arrived = () {
         // Where it ends up, so the frame above can be shown to be a frame in
         // the middle of the journey rather than the end of it.
-        return _auto['franchise:f-deep']!;
+        return _auto['company:c-sun']!;
       }();
 
       expect(
@@ -1131,7 +2045,7 @@ void main() {
         reason: 'The premise: 60ms in, this box is still on its way.',
       );
       expect(
-        _painter(tester).links.any((link) => link.$2 == travelling),
+        _touchesALink(tester, travelling),
         isTrue,
         reason: 'The line to this box was drawn where the box is going rather '
             'than where it is, so for a fifth of a second it ends in mid air.',
@@ -1143,6 +2057,41 @@ void main() {
     /// A box is two lines of text, and text follows the reader's font size.
     /// 150% is an ordinary accessibility setting on the tablets this view is
     /// served to, and the box used to stay 72 points tall through all of it.
+    /// The other end of the same setting, and the one nothing measured.
+    ///
+    /// A text scale BELOW 1 is ordinary — Android offers 0.85, and a reader who
+    /// wants more on screen picks it — and a place row is sized to the control
+    /// it carries rather than to the words in it. Scaled down with the text, the
+    /// row goes to 41 points while the action menu inside it stays at the
+    /// framework's 48-point minimum, and a control laid out taller than its row
+    /// is a striped bar in debug and a clipped menu in release.
+    ///
+    /// Pumped WITH the menus, because a row with no control in it cannot
+    /// overflow and would pass this whatever the height was.
+    testWidgets('a place row never shrinks below the control it carries', (
+      tester,
+    ) async {
+      for (final scale in const [0.8, 0.9, 1.0]) {
+        await _pump(
+          tester,
+          withActions: true,
+          textScaler: TextScaler.linear(scale),
+        );
+
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: 'A place row overflowed at ${scale}x text.',
+        );
+
+        expect(
+          _rectOf(tester, 'franchise:f-north').height,
+          greaterThanOrEqualTo(kStructurePlaceRowHeight - 0.5),
+          reason: 'At ${scale}x the row is shorter than the menu inside it.',
+        );
+      }
+    });
+
     testWidgets('a box grows with the reader’s text size rather than '
         'overflowing', (tester) async {
       for (final scale in const [1.5, 2.0]) {
@@ -1227,27 +2176,33 @@ void main() {
     /// This is JSON off the network. A screen that threw because one franchise
     /// came back without a name would be a screen nobody could open and nobody
     /// could fix.
-    test('a malformed payload is read for what it has rather than thrown on',
-        () {
-      expect(flattenStructure(const {}), isEmpty);
-      expect(flattenStructure(const {'organization': 'nonsense'}), isEmpty);
-      expect(flattenStructure(const {'companies': 'nonsense'}), isEmpty);
+    test(
+      'a malformed payload is read for what it has rather than thrown on',
+      () {
+        expect(flattenStructure(const {}), isEmpty);
+        expect(flattenStructure(const {'organization': 'nonsense'}), isEmpty);
+        expect(flattenStructure(const {'companies': 'nonsense'}), isEmpty);
 
-      final partial = flattenStructure(const {
-        'organization': {'id': 'o', 'name': 'O'},
-        'companies': [
-          'nonsense',
-          {'id': 'c', 'name': 'C', 'franchises': [
-            {'id': 'f', 'name': 'F'},
-            {'id': 7, 'name': 'skipped'},
+        final partial = flattenStructure(const {
+          'organization': {'id': 'o', 'name': 'O'},
+          'companies': [
             'nonsense',
-          ]},
-          {'name': 'no id at all'},
-        ],
-      });
+            {
+              'id': 'c',
+              'name': 'C',
+              'franchises': [
+                {'id': 'f', 'name': 'F'},
+                {'id': 7, 'name': 'skipped'},
+                'nonsense',
+              ],
+            },
+            {'name': 'no id at all'},
+          ],
+        });
 
-      expect([for (final node in partial) node.id], ['o', 'c', 'f']);
-    });
+        expect([for (final node in partial) node.id], ['o', 'c', 'f']);
+      },
+    );
 
     /// A node with no id would otherwise be dropped while its children were
     /// promoted to the top of the canvas — drawing a sub company as a sibling
@@ -1255,9 +2210,12 @@ void main() {
     test('a company that cannot be read takes its children with it', () {
       final orphaned = flattenStructure(const {
         'companies': [
-          {'name': 'no id', 'franchises': [
-            {'id': 'f', 'name': 'F'},
-          ]},
+          {
+            'name': 'no id',
+            'franchises': [
+              {'id': 'f', 'name': 'F'},
+            ],
+          },
         ],
       });
 
@@ -1265,92 +2223,198 @@ void main() {
     });
   });
 
+  /// ── What these are, now that the walk lives somewhere else ───────
+  ///
+  /// `arrangeStructure` is no longer a layout: it is where this widget's own
+  /// measurements — the width of a box, the gaps, the margin, the height a box
+  /// is drawn at for the reader's text size — are handed to
+  /// [arrangeStructureFlow], which does the walk and is asserted at length in
+  /// `structure_levels_test.dart` against the real thirteen-place business, in
+  /// both orientations.
+  ///
+  /// So what is left to assert here is the BINDING, and the way to catch a
+  /// binding that hands over the wrong number is to look at what it produces
+  /// with the real numbers in it rather than to compare it against a second
+  /// call written the same way. A test that recomputed the expected map by
+  /// calling `arrangeStructureFlow` with the constants would pass whatever this
+  /// function passed, because both sides would be wrong together.
   group('arranging it automatically', () {
-    /// This assertion used to say the opposite, and the opposite was the bug.
-    ///
-    /// A row was passed down the recursion, so a company's own place came out
-    /// on the same line as a sub company of the same company — the picture
-    /// saying the two are peers. They are not: a sub company holds places of
-    /// its own. A row is what a box IS.
-    test('a row is what a box IS, not how deep the walk went', () {
-      final nodes = flattenStructure(_tree());
-      final places = arrangeStructure(nodes);
-
-      double rowOf(String key) => places[key]!.dy;
+    test('a place is given no position at all, and every box is given one', () {
+      final placed = arrangeStructure(flattenStructure(_tree()));
 
       expect(
-        rowOf('franchise:f-north'),
-        greaterThan(rowOf('company:c-sun')),
-        reason: 'A place of the company is level with a sub company of the '
-            'same company, which draws them as the same size of thing.',
+        placed.keys.toSet(),
+        _boxKeys.toSet(),
+        reason: 'Four boxes: the business, two companies and a sub company. '
+            'The four places are rows in the lists attached to them, and a row '
+            'in a list has nowhere to put a coordinate.',
+      );
+    });
+
+    /// A box is drawn taller for a reader who has turned their text up, and the
+    /// layout has to be told — otherwise the boxes are laid out against 72 and
+    /// drawn at 144, and every one of them overlaps the one below it.
+    ///
+    /// Asserted on the DRAWN cards rather than on the number handed over,
+    /// because handing over a number and drawing something else is exactly the
+    /// failure, and only the picture can tell the two apart.
+    testWidgets('the picture is laid out at the size it is actually drawn', (
+      tester,
+    ) async {
+      for (final scale in const [1.0, 2.0]) {
+        await _pump(tester, textScaler: TextScaler.linear(scale));
+
+        final cards = [for (final key in _boxKeys) _cardOf(tester, key)];
+
+        for (var i = 0; i < cards.length; i++) {
+          for (var j = i + 1; j < cards.length; j++) {
+            expect(
+              cards[i].overlaps(cards[j]),
+              isFalse,
+              reason: 'At ${scale}x text, ${_boxKeys[i]} and ${_boxKeys[j]} '
+                  'are drawn on top of each other — the layout was given a box '
+                  'height the boxes are not drawn at.',
+            );
+          }
+        }
+      }
+    });
+
+    /// The orientation reaches the layout, which is the other half of the
+    /// binding and the one a caller can silently drop: a canvas that took the
+    /// word and never passed it on would draw the same chart whichever chip
+    /// somebody pressed, and look like a control that does nothing.
+    testWidgets('the chart flows the way the canvas is told to flow it', (
+      tester,
+    ) async {
+      await _pump(tester, orientation: structureLeftToRight);
+
+      final sideways =
+          _rectOf(tester, 'company:c-ever').topLeft -
+          _rectOf(tester, 'organization:org-1').topLeft;
+
+      expect(
+        sideways.dx,
+        greaterThan(0),
+        reason: 'Depth runs rightward: a company is to the right of the '
+            'business it belongs to.',
       );
 
-      // Every place on one line, whichever kind of company owns it. That is the
-      // owner's fourth line, and it is the half a walk-derived row cannot say.
-      expect(rowOf('franchise:f-north'), rowOf('franchise:f-deep'));
-      expect(rowOf('franchise:f-north'), rowOf('franchise:f-harbour'));
+      await _pump(tester, orientation: structureTopToBottom);
 
-      // And the three lines above it, in order.
-      expect(rowOf('organization:org-1'), lessThan(rowOf('company:c-ever')));
-      expect(rowOf('company:c-ever'), lessThan(rowOf('company:c-sun')));
-      expect(rowOf('company:c-sun'), lessThan(rowOf('franchise:f-deep')));
-    });
+      final downward =
+          _rectOf(tester, 'company:c-ever').topLeft -
+          _rectOf(tester, 'organization:org-1').topLeft;
 
-    /// The real customer, at the shape that exposed it: a company with places
-    /// of its OWN and sub companies with places of theirs, all hanging off one
-    /// company. Everything before this passed on a fixture where no company had
-    /// both.
-    test('Everdoors: a place of the company and a place of a sub company share '
-        'the fourth line, and a sub company sits on the line above both', () {
-      final places = arrangeStructure(flattenStructure(_everdoors()));
-
-      final companyPlace = places['franchise:f-everdoors-north']!.dy;
-      final subPlace = places['franchise:f-sunward-east']!.dy;
-      final sub = places['company:c-sunward']!.dy;
-      final company = places['company:c-everdoors']!.dy;
-
-      expect(companyPlace, subPlace);
-      expect(sub, lessThan(companyPlace));
-      expect(company, lessThan(sub));
-
-      // Exactly one pitch between each, so "above" is a LINE rather than a
-      // nudge — and so a picture that merely sorted the boxes vertically
-      // without putting them on lines cannot pass this.
-      expect(sub - company, _pitch);
-      expect(companyPlace - sub, _pitch);
-
-      // The second sub company's place lands on the same line as the first's,
-      // which is what makes the claim about the level rather than about one
-      // branch of the tree.
-      expect(places['franchise:f-premier-west']!.dy, companyPlace);
-    });
-
-    /// The consequence, and it is intended rather than tolerated. A-1 Chimney
-    /// has nine places and no sub companies at all, so the sub-company line is
-    /// empty beneath its company and every place is on one line — which is
-    /// exactly what somebody reading an org chart expects, and why the canvas's
-    /// standing note names the empty line in words.
-    test('A-1: nine places on one line, with the sub-company line left empty',
-        () {
-      final places = arrangeStructure(flattenStructure(_aOneChimney()));
-
-      final lines = {
-        for (final entry in places.entries)
-          if (entry.key.startsWith('franchise:')) entry.value.dy,
-      };
-
-      expect(lines, hasLength(1), reason: 'Nine places on more than one line.');
-
-      // The FOURTH line, counted from the top of the picture — which is the
-      // half that says the third was skipped rather than simply unused. The
-      // margin is where the whole picture starts; three pitches below it is
-      // where a place belongs.
-      expect(lines.single, kStructureMargin + 3 * _pitch);
-
-      // And nothing at all is drawn on the line above it.
+      expect(downward.dy, greaterThan(0), reason: 'Depth runs downward.');
       expect(
-        places.values.where((at) => at.dy == kStructureMargin + 2 * _pitch),
-        isEmpty,
+        downward.dx.abs(),
+        lessThan(sideways.dx),
+        reason: 'Both orientations drew the same chart, so the word never '
+            'reached the layout.',
+      );
+    });
+
+    /// The shape that exposed the level bug, drawn: ONE company holding two
+    /// places of its own AND two sub companies holding one each.
+    ///
+    /// Everything else in this file passes on a fixture where no company has
+    /// both, and both is what makes a company's attached list and its children
+    /// compete for the same room. In either orientation the sub companies must
+    /// clear the list rather than being drawn through it.
+    for (final orientation in kStructureOrientations) {
+      testWidgets('Everdoors: nothing is drawn through a company’s own list of '
+          'places, flowing $orientation', (tester) async {
+        await _pumpRaw(
+          tester,
+          StructureCanvas(
+            tree: _everdoors(),
+            franchiseLabel: _franchiseLabel,
+            orientation: orientation,
+          ),
+          size: const Size(1600, 1200),
+        );
+
+        const keys = [
+          'organization:org-ever',
+          'company:c-everdoors',
+          'company:c-sunward',
+          'company:c-premier',
+        ];
+
+        final cards = [for (final key in keys) _cardOf(tester, key)];
+
+        // The premise: Everdoors’ card really is taller than a bare box, so a
+        // layout that reserved room for the box alone has something to run
+        // into.
+        expect(
+          cards[1].height,
+          greaterThan(_rectOf(tester, 'company:c-everdoors').height),
+        );
+
+        for (var i = 0; i < cards.length; i++) {
+          for (var j = i + 1; j < cards.length; j++) {
+            expect(
+              cards[i].overlaps(cards[j]),
+              isFalse,
+              reason: '${keys[i]} and ${keys[j]} are drawn through each other.',
+            );
+          }
+        }
+      });
+    }
+
+    /// Turning it round on the canvas that is already on screen, which is what
+    /// somebody pressing the control actually does.
+    ///
+    /// The two-pump test above builds a fresh canvas each time and so says
+    /// nothing about the one path a person can reach: the same State being
+    /// handed a new orientation. A canvas that read the word once and never
+    /// again would pass everything above and be a control that does nothing.
+    ///
+    /// The viewport is re-aimed as well, and that is the half worth asserting
+    /// separately. The two orientations put the chart in different places, so a
+    /// canvas that moved the boxes and left the viewport alone would answer the
+    /// press with an empty grey surface — which reads as the picture having been
+    /// lost rather than turned.
+    testWidgets('turning it round on the same canvas moves the boxes and keeps '
+        'them in view', (tester) async {
+      await _pumpRaw(tester, const _Flipper());
+
+      final sideways = _rectOf(tester, 'company:c-ever').topLeft -
+          _rectOf(tester, 'organization:org-1').topLeft;
+
+      expect(sideways.dx, greaterThan(0), reason: 'premise: it starts sideways');
+
+      await tester.tap(find.text('Turn it round'));
+      await tester.pumpAndSettle();
+
+      final downward = _rectOf(tester, 'company:c-ever').topLeft -
+          _rectOf(tester, 'organization:org-1').topLeft;
+
+      expect(
+        downward.dy,
+        greaterThan(0),
+        reason: 'The canvas kept the orientation it was first built with, so '
+            'the control does nothing to anybody who presses it.',
+      );
+      expect(downward.dx.abs(), lessThan(sideways.dx));
+
+      // And the whole picture is still on the surface rather than wherever the
+      // old shape happened to leave the viewport pointing.
+      expect(_allInView(tester, _boxKeys), isTrue);
+    });
+
+    /// A word from a stored blob nobody recognises draws the default rather
+    /// than nothing. A chart that refuses to draw over one unreadable word
+    /// would be a structure screen nobody in the organization could open.
+    testWidgets('an orientation nobody recognises is drawn the usual way '
+        'round', (tester) async {
+      await _pump(tester, orientation: 'diagonal');
+
+      expect(
+        _rectOf(tester, 'company:c-ever').left,
+        greaterThan(_rectOf(tester, 'organization:org-1').left),
       );
     });
 
@@ -1367,7 +2431,10 @@ void main() {
 
       // And from a second read of the same payload, which is what a refetch
       // after a rename actually produces.
-      expect(arrangeStructure(nodes), arrangeStructure(flattenStructure(_tree())));
+      expect(
+        arrangeStructure(nodes),
+        arrangeStructure(flattenStructure(_tree())),
+      );
     });
 
     test('nothing is placed where nobody can scroll to it', () {
@@ -1406,16 +2473,15 @@ void main() {
 /// could not tell the difference between a lookup and a literal.
 const String _franchiseLabel = 'Territory';
 
-/// One line to the next: a box and the gap under it.
+/// Everything the fixture draws, in tree order — which is also the order the
+/// structure is read in.
 ///
-/// Built from the widget's own two constants rather than typed as 156, because
-/// what these assertions are about is boxes sitting exactly ONE line apart —
-/// not about the line being any particular number of points. Somebody who
-/// changes the gap should not have to edit a test that has no opinion about it.
-const double _pitch = kStructureBoxHeight + kStructureGapY;
-
-/// Every box the fixture draws, in tree order — which is also the order Tab has
-/// to walk them in.
+/// Four of these get a BOX and four are drawn as rows in the lists attached to
+/// them; see [_boxKeys], which is the half that has a position, can be dragged,
+/// can hold focus and can be linked by a connector. The two lists are kept apart
+/// on purpose rather than one being filtered out of the other at each use: an
+/// assertion that named a place where it meant a box would otherwise read as an
+/// ordinary one and fail somewhere unhelpful.
 const List<String> _allKeys = [
   'organization:org-1',
   'company:c-ever',
@@ -1427,6 +2493,55 @@ const List<String> _allKeys = [
   'franchise:f-harbour',
 ];
 
+/// The four that get a box, in tree order — which is also the order Tab has to
+/// walk them in.
+const List<String> _boxKeys = [
+  'organization:org-1',
+  'company:c-ever',
+  'company:c-sun',
+  'company:c-tide',
+];
+
+/// And the four that are rows in a company's attached list.
+const List<String> _placeKeys = [
+  'franchise:f-north',
+  'franchise:f-quiet',
+  'franchise:f-deep',
+  'franchise:f-harbour',
+];
+
+/// The boxes A-1 Chimney draws — the real customer, and the shape that made
+/// zoom necessary.
+///
+/// Two boxes and nine places attached to one of them. Nine places was 2,600
+/// points across when each was a box of its own and is a 438-point list now,
+/// which is a chart that still does not fit a short window at 100% — the zoom
+/// assertions are written against this rather than the fixture above, because
+/// the fixture fits and a "Fit" tested on a chart that already fits proves
+/// nothing.
+const List<String> _a1BoxKeys = ['organization:org-a1', 'company:c-a1'];
+
+/// The boxes and the places of the WHOLE real business — see [_a1Group].
+///
+/// Four companies and one organization get a box; the thirteen places are rows
+/// in four attached lists. Both halves are named because a chart can be fitted
+/// to its boxes and still hang nine branches off the bottom of the window.
+const List<String> _realBoxKeys = [
+  'organization:a1-group',
+  'company:a-1-chimney',
+  'company:everdoors',
+  'company:premier',
+  'company:speedy',
+];
+
+final List<String> _realPlaceKeys = [
+  for (final name in _chimneyPlaces) 'franchise:chimney-$name',
+  'franchise:everdoors-connecticut',
+  'franchise:everdoors-dmv',
+  'franchise:premier-connecticut',
+  'franchise:speedy-connecticut',
+];
+
 /// Every widget whose type is named [name], whatever it was parameterised with.
 Finder _byTypeName(String name) => find.byWidgetPredicate((widget) {
   final type = widget.runtimeType.toString();
@@ -1434,8 +2549,155 @@ Finder _byTypeName(String name) => find.byWidgetPredicate((widget) {
   return type == name || type.startsWith('$name<');
 });
 
+/// One BOX, or one place ROW — the rectangle the name is written in.
+///
+/// Deliberately not the card. A box is [kStructureBoxWidth] by
+/// [kStructureBoxHeight] whatever its company owns, which is what lets
+/// [_drawnScale] read the zoom off it; the card around it grows with the list of
+/// places, so measuring that instead would report A-1 Chimney as drawn at 700%.
 Rect _rectOf(WidgetTester tester, String key) =>
     tester.getRect(find.byKey(structureBoxKey(key)));
+
+/// One CARD — a box and, under it, the list of places attached to it.
+///
+/// This is what occupies the canvas: what the automatic layout is placing, what
+/// a pointer picks up, what the connectors leave from and what must not overlap
+/// anything else. Every assertion about the SHAPE of the chart goes through this
+/// rather than through [_rectOf], because two boxes that do not touch while
+/// A-1 Chimney's nine branches are drawn through Everdoors is a chart nobody can
+/// read passing a test that says it is fine.
+Rect _cardOf(WidgetTester tester, String key) =>
+    tester.getRect(find.byKey(structureCardKey(key)));
+
+// ── reading the zoom off what is actually drawn ────────────────────
+
+/// How big the picture is drawn, measured rather than asked for.
+///
+/// Every assertion about zoom in this file goes through this, and the reason is
+/// worth stating: a widget that reports its own scale can report one thing and
+/// draw another, and the two defects a zoom control actually has — the picture
+/// sliding out from under the pointer, and a drag in the wrong units — are both
+/// disagreements between a number and a drawing. A box is [kStructureBoxWidth]
+/// across by definition, so the width it is drawn at IS the scale, and there is
+/// no second opinion for a bug to hide behind.
+double _drawnScale(WidgetTester tester, [String key = 'company:c-ever']) =>
+    _rectOf(tester, key).width / kStructureBoxWidth;
+
+/// The canvas point currently under a screen point, in canvas units.
+///
+/// Measured against one box's corner rather than against the surface, because
+/// the viewport offset is private and the box is the only thing on screen whose
+/// canvas position is known. What the assertions actually compare is this
+/// answer before a zoom against the same answer after it: if the pointer is
+/// still over the same part of the same box, the picture grew about the
+/// pointer.
+Offset _canvasPointUnder(WidgetTester tester, Offset screen, String key) {
+  final box = _rectOf(tester, key);
+
+  return (screen - box.topLeft) / (box.width / kStructureBoxWidth);
+}
+
+/// The drawing surface itself — the ground the boxes are drawn on, below the
+/// toolbar. Found through the connector painter, which fills it.
+Rect _surfaceRect(WidgetTester tester) => tester.getRect(
+  find.byWidgetPredicate(
+    (widget) =>
+        widget is CustomPaint && widget.painter is StructureConnectorPainter,
+  ),
+);
+
+/// Whether every named box is drawn inside the surface.
+///
+/// Read off `getRect`, which answers where a box IS rather than where it is
+/// visible — a box outside the surface is clipped away on screen, and a test
+/// that looked for it there could not tell "off the edge" from "not drawn".
+bool _allInView(WidgetTester tester, List<String> keys) {
+  final surface = _surfaceRect(tester);
+
+  return keys.every((key) {
+    final card = _cardOf(tester, key);
+
+    return card.left >= surface.left - 0.5 &&
+        card.top >= surface.top - 0.5 &&
+        card.right <= surface.right + 0.5 &&
+        card.bottom <= surface.bottom + 0.5;
+  });
+}
+
+Rect _unionOf(WidgetTester tester, List<String> keys) => keys
+    .map((key) => _cardOf(tester, key))
+    .reduce((a, b) => a.expandToInclude(b));
+
+/// How much room is left in whichever direction the chart ran out of it first.
+///
+/// Near zero is what "the largest scale it fits at" means, and it is the one
+/// reading that separates a scale computed from the chart's real extent from
+/// any scale that merely happens to fit. A chart shrunk to half of what the
+/// window allows leaves hundreds of points here in both directions.
+double _roomLeftOver(WidgetTester tester, List<String> keys) {
+  final surface = _surfaceRect(tester);
+  final drawn = _unionOf(tester, keys);
+
+  return math.min(
+    surface.width - 2 * kStructureMargin - drawn.width,
+    surface.height - 2 * kStructureMargin - drawn.height,
+  );
+}
+
+/// The wheel with control held, which is what every browser and map has taught
+/// people means "zoom".
+///
+/// The key is genuinely pressed and released rather than the handler being
+/// called directly, because what is being asserted is that the widget consults
+/// [HardwareKeyboard] — a test that reached past it would pass against a canvas
+/// that zoomed on every scroll and made ordinary scrolling impossible.
+Future<void> _ctrlWheel(
+  WidgetTester tester, {
+  required Offset at,
+  required double by,
+}) async {
+  final wheel = TestPointer(3, PointerDeviceKind.mouse);
+
+  await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+  await tester.sendEventToBinding(wheel.hover(at));
+  await tester.sendEventToBinding(wheel.scroll(Offset(0, by)));
+  await tester.pump();
+  await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+}
+
+/// One of the two stepper buttons, so its enabled state can be read.
+///
+/// [IconButton] builds the tooltip INSIDE itself, so the button is an ancestor
+/// of what `byTooltip` finds rather than the other way round.
+IconButton _zoomButton(WidgetTester tester, String tooltip) => tester.widget(
+  find.ancestor(of: find.byTooltip(tooltip), matching: find.byType(IconButton)),
+);
+
+/// Whether what currently holds focus is inside [finder].
+///
+/// Walked up from the focused element rather than compared against a focus node
+/// the test made itself, because these are the framework's own buttons and the
+/// nodes they focus are private to them. What is being asserted is only that
+/// Tab arrives somewhere inside the control, which is the whole of what a
+/// keyboard user needs.
+bool _focusIsInside(WidgetTester tester, Finder finder) {
+  final focused = FocusManager.instance.primaryFocus?.context;
+  final targets = finder.evaluate().toSet();
+
+  if (focused == null || targets.isEmpty) return false;
+
+  var inside = false;
+
+  focused.visitAncestorElements((element) {
+    if (!targets.contains(element)) return true;
+
+    inside = true;
+
+    return false;
+  });
+
+  return inside;
+}
 
 /// A point on the drawing surface with no box under it.
 ///
@@ -1450,29 +2712,36 @@ Rect _rectOf(WidgetTester tester, String key) =>
 /// So it is found: below every box that is actually on screen, at an x no box
 /// occupies, with the assertion below to say so. Somebody rearranging the
 /// levels again gets a working test rather than a puzzle.
+///
+/// The CARDS, not the boxes. A point below a box can be squarely on the list of
+/// places attached to it, and the whole card answers a pointer — so a patch
+/// found against boxes alone would pick a place row and turn every viewport-pan
+/// assertion below it into a box drag.
 Offset _emptyPatch(WidgetTester tester) {
-  final boxes = [for (final key in _allKeys) _rectOf(tester, key)];
-  final lowest = boxes.map((box) => box.bottom).reduce(math.max);
+  final cards = [for (final key in _boxKeys) _cardOf(tester, key)];
+  final lowest = cards.map((card) => card.bottom).reduce(math.max);
   final patch = Offset(60, lowest + 40);
 
   expect(
-    boxes.where((box) => box.contains(patch)),
+    cards.where((card) => card.contains(patch)),
     isEmpty,
-    reason: 'The patch this test pans from has a box on it, so it is about to '
+    reason: 'The patch this test pans from has a card on it, so it is about to '
         'measure a box drag and call it a viewport pan.',
   );
 
   return patch;
 }
 
-/// A box's rectangle in the canvas's own coordinates rather than the window's.
+/// A card's rectangle in the canvas's own coordinates rather than the window's.
 ///
 /// The painter is handed rectangles relative to the drawing surface, which
 /// starts below the toolbar. Comparing a window rectangle against one of those
 /// is the kind of test that fails by a constant and sends somebody looking for
 /// a bug in the geometry.
+///
+/// Cards, because that is what the painter is given — see the links it holds.
 Rect _paintedRectOf(WidgetTester tester, String key) =>
-    _rectOf(tester, key).shift(-_canvasOrigin(tester));
+    _cardOf(tester, key).shift(-_canvasOrigin(tester));
 
 Offset _canvasOrigin(WidgetTester tester) => tester
     .getRect(
@@ -1489,6 +2758,11 @@ Offset _canvasOrigin(WidgetTester tester) => tester
 /// a copy would have to be re-derived by hand every time the geometry moved,
 /// and the assertions that matter are about the RELATIONSHIP between a stored
 /// coordinate and a drawn one rather than about the numbers themselves.
+///
+/// Flowing the default way, because that is what [_pump] draws unless a test
+/// says otherwise. What the layout ITSELF answers in each orientation is
+/// asserted in `structure_levels_test.dart`, against the real thirteen-place
+/// business rather than against this fixture.
 final Map<String, Offset> _auto = arrangeStructure(flattenStructure(_tree()));
 
 /// The level a box says it is, read off the box itself.
@@ -1514,16 +2788,18 @@ IconData _iconIn(WidgetTester tester, String key) => tester
     )
     .icon!;
 
-BoxDecoration _decorationOf(WidgetTester tester, String key) => tester
-    .widget<Container>(
-      find
-          .descendant(
-            of: find.byKey(structureBoxKey(key)),
-            matching: find.byType(Container),
-          )
-          .first,
-    )
-    .decoration! as BoxDecoration;
+BoxDecoration _decorationOf(WidgetTester tester, String key) =>
+    tester
+            .widget<Container>(
+              find
+                  .descendant(
+                    of: find.byKey(structureBoxKey(key)),
+                    matching: find.byType(Container),
+                  )
+                  .first,
+            )
+            .decoration!
+        as BoxDecoration;
 
 double _radiusOf(BoxDecoration decoration) =>
     ((decoration.borderRadius! as BorderRadius).topLeft).x;
@@ -1532,21 +2808,28 @@ BorderSide _borderOf(BoxDecoration decoration) =>
     (decoration.border! as Border).top;
 
 /// The keys of every box currently drawing its frame in [colour].
+///
+/// The boxes, because a place row has no frame at all — see the assertion that
+/// says so, which is the other half of "nothing lights up under a dragged box".
 List<String> _highlighted(WidgetTester tester, Color colour) => [
-  for (final key in _allKeys)
+  for (final key in _boxKeys)
     if (_borderOf(_decorationOf(tester, key)).color == colour) key,
 ];
 
-String? _semanticsOf(WidgetTester tester, String key) => tester
-    .getSemantics(find.byKey(structureBoxKey(key)))
-    .label;
+String? _semanticsOf(WidgetTester tester, String key) =>
+    tester.getSemantics(find.byKey(structureBoxKey(key))).label;
 
 /// The box that currently holds focus, by its node key.
 ///
 /// Read off the Focus widget rather than a debug label, because the key is the
 /// thing the canvas actually promises and a debug label is not.
+///
+/// The boxes only. A place row holds no focus and has no [Focus] to read — it
+/// cannot be moved, so there is nothing for the arrow keys to do to it, and
+/// putting every place in the tab order would be four more stops on this fixture
+/// and thirteen more on the real business, each of which does nothing.
 String? _focusedBox(WidgetTester tester) {
-  for (final key in _allKeys) {
+  for (final key in _boxKeys) {
     final focus = tester.widget<Focus>(find.byKey(structureBoxKey(key)));
 
     if (focus.focusNode?.hasPrimaryFocus == true) return key;
@@ -1554,6 +2837,92 @@ String? _focusedBox(WidgetTester tester) {
 
   return null;
 }
+
+/// The runs the connector painter actually PAINTS, each as its two ends.
+///
+/// ── Why this drives the painter rather than reading its fields ────
+///
+/// Because the fields are what it was handed and the path is what it drew, and
+/// the whole question about an anchor is which of the two it used. A painter
+/// given the height of a box and then routing its lines through the middle of a
+/// card would satisfy every assertion about [StructureConnectorPainter.links]
+/// and [StructureConnectorPainter.faceHeight] while drawing a line that points
+/// at a company's fifth branch.
+///
+/// The ends are read with [Path.computeMetrics], which is the only way to get a
+/// point back out of a [Path]: the first and last positions of each run are
+/// exactly where it leaves and where it arrives, which is what the assertions
+/// are about. The corners in between are not read, because where the jog sits
+/// is a matter of taste and the two ends are not.
+List<(Offset, Offset)> _linesDrawn(WidgetTester tester) {
+  final canvas = _PathRecorder();
+
+  _painter(tester).paint(canvas, Size.zero);
+
+  return [
+    for (final path in canvas.paths)
+      if (path.computeMetrics().isNotEmpty)
+        (
+          path.computeMetrics().first.getTangentForOffset(0)!.position,
+          path
+              .computeMetrics()
+              .last
+              .getTangentForOffset(path.computeMetrics().last.length)!
+              .position,
+        ),
+  ];
+}
+
+/// A [Canvas] that keeps the paths it is asked to draw and does nothing else.
+///
+/// `implements` with a [noSuchMethod] rather than a real recording canvas,
+/// because the only thing this needs is the argument to `drawPath` — a
+/// `PictureRecorder` would give back a picture nothing can read the geometry out
+/// of again, which is the opposite of what is wanted.
+class _PathRecorder implements Canvas {
+  final List<Path> paths = [];
+
+  @override
+  void drawPath(Path path, Paint paint) => paths.add(path);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+/// Whether a connector is currently drawn from one card to the other.
+///
+/// ── Why the rectangles are compared with a tolerance ─────────────
+///
+/// Because they arrive by two different routes from the same numbers. The
+/// painter is handed `position × zoom + view`; this test reads the same card
+/// back out of the widget tree through `localToGlobal` and then subtracts the
+/// surface's own origin. The two agree to about a ten-thousandth of a point and
+/// differ in the last bit of a double, so `==` on a [Rect] passes or fails on
+/// which order the arithmetic happened in — which is not a fact about
+/// connectors, and is a test that goes red for somebody who changed nothing.
+///
+/// Half a point is far tighter than any real defect: a line drawn to the wrong
+/// card is out by a whole card, and a line that failed to follow a moving box is
+/// out by the distance it travelled.
+bool _isLinked(WidgetTester tester, String parent, String child) {
+  final from = _paintedRectOf(tester, parent);
+  final to = _paintedRectOf(tester, child);
+
+  return _painter(
+    tester,
+  ).links.any((link) => _sameRect(link.$1, from) && _sameRect(link.$2, to));
+}
+
+/// Whether any connector at all begins or ends at this rectangle.
+bool _touchesALink(WidgetTester tester, Rect rect) => _painter(
+  tester,
+).links.any((link) => _sameRect(link.$1, rect) || _sameRect(link.$2, rect));
+
+bool _sameRect(Rect a, Rect b) =>
+    (a.left - b.left).abs() < 0.5 &&
+    (a.top - b.top).abs() < 0.5 &&
+    (a.right - b.right).abs() < 0.5 &&
+    (a.bottom - b.bottom).abs() < 0.5;
 
 /// The connector painter, so its colour and its endpoints can be read directly.
 ///
@@ -1563,37 +2932,37 @@ String? _focusedBox(WidgetTester tester) {
 /// ink splash the day the toolbar gains a control.
 StructureConnectorPainter _painter(WidgetTester tester) =>
     tester
-        .widget<CustomPaint>(
-          find.byWidgetPredicate(
-            (widget) =>
-                widget is CustomPaint &&
-                widget.painter is StructureConnectorPainter,
-          ),
-        )
-        .painter!
+            .widget<CustomPaint>(
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is CustomPaint &&
+                    widget.painter is StructureConnectorPainter,
+              ),
+            )
+            .painter!
         as StructureConnectorPainter;
 
 /// Collects the sentences the app asks a screen reader to say, in order.
 List<String> _recordAnnouncements(WidgetTester tester) {
   final said = <String>[];
 
-  tester.binding.defaultBinaryMessenger
-      .setMockDecodedMessageHandler<Object?>(SystemChannels.accessibility, (
-    message,
-  ) async {
-    if (message is Map && message['type'] == 'announce') {
-      said.add((message['data'] as Map)['message'] as String);
-    }
+  tester.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<Object?>(
+    SystemChannels.accessibility,
+    (message) async {
+      if (message is Map && message['type'] == 'announce') {
+        said.add((message['data'] as Map)['message'] as String);
+      }
 
-    return null;
-  });
+      return null;
+    },
+  );
 
   addTearDown(
     () => tester.binding.defaultBinaryMessenger
         .setMockDecodedMessageHandler<Object?>(
-      SystemChannels.accessibility,
-      null,
-    ),
+          SystemChannels.accessibility,
+          null,
+        ),
   );
 
   return said;
@@ -1633,8 +3002,7 @@ List<String> _recordHaptics(WidgetTester tester) {
 /// also what makes a test that asserts the box moved a test of the canvas AND
 /// of the contract, rather than of a widget quietly keeping its own state.
 class _State {
-  _State({Map<String, Offset> layout = const {}})
-      : layout = {...layout};
+  _State({Map<String, Offset> layout = const {}}) : layout = {...layout};
 
   final Map<String, Offset> layout;
 
@@ -1653,15 +3021,45 @@ Future<void> _pump(
   bool disableAnimations = false,
   TextScaler textScaler = TextScaler.noScaling,
   bool withActions = false,
-}) =>
-    _pumpRaw(
-      tester,
-      _Harness(state: state ?? _State(), withActions: withActions),
-      theme: theme,
-      size: size,
-      disableAnimations: disableAnimations,
-      textScaler: textScaler,
-    );
+  String orientation = kStructureDefaultOrientation,
+}) => _pumpRaw(
+  tester,
+  _Harness(
+    state: state ?? _State(),
+    withActions: withActions,
+    orientation: orientation,
+  ),
+  theme: theme,
+  size: size,
+  disableAnimations: disableAnimations,
+  textScaler: textScaler,
+);
+
+/// A-1 Chimney on a canvas, with nothing that could save anything.
+///
+/// No `onMoved` and no `onArranged` on purpose: the zoom controls are drawn for
+/// everybody, including somebody who may not rearrange the structure, and
+/// pumping it this way is what would fail if they were ever gated on the same
+/// permission the move handles are.
+/// The window is deliberately small, and that is the premise of every Fit
+/// assertion below. Nine places became a 438-point list rather than 2,600
+/// points of boxes, which is the whole point of the change — so the chart now
+/// fits a desktop window at 100% and a "Fit" tested on a chart that already
+/// fits proves nothing. 760 by 560 is about a canvas on a laptop with the
+/// sidebar open, and A-1 Chimney's card is taller than the surface it leaves.
+Future<void> _pumpA1(
+  WidgetTester tester, {
+  String orientation = kStructureDefaultOrientation,
+  Size size = const Size(760, 560),
+}) => _pumpRaw(
+  tester,
+  StructureCanvas(
+    tree: _aOneChimney(),
+    franchiseLabel: _franchiseLabel,
+    orientation: orientation,
+  ),
+  size: size,
+);
 
 Future<void> _pumpRaw(
   WidgetTester tester,
@@ -1703,9 +3101,19 @@ Future<void> _pumpRaw(
 }
 
 class _Harness extends StatefulWidget {
-  const _Harness({required this.state, this.withActions = false});
+  const _Harness({
+    required this.state,
+    this.withActions = false,
+    this.orientation = kStructureDefaultOrientation,
+  });
 
   final _State state;
+
+  /// Which way the chart flows, which is the caller's to hold — see
+  /// `StructureCanvas.orientation`. Passed through this harness rather than set
+  /// on the canvas directly so a test can turn the chart round on the SAME
+  /// State, which is what somebody pressing the control actually does.
+  final String orientation;
 
   /// Whether the canvas is given the action menus the real screen gives it.
   ///
@@ -1740,6 +3148,7 @@ class _HarnessState extends State<_Harness> {
       // could not tell a lookup from a hardcode.
       franchiseLabel: _franchiseLabel,
       layout: widget.state.layout,
+      orientation: widget.orientation,
       actions: widget.withActions ? _actionsFor : null,
       onMoved: (key, to) => setState(() {
         widget.state.moved.add((key, to));
@@ -1772,6 +3181,45 @@ class _HarnessState extends State<_Harness> {
         ),
         _ => null,
       };
+}
+
+/// One canvas that can be turned round without being rebuilt.
+///
+/// The whole point is the State: [_pumpRaw] keys every canvas with a fresh
+/// [UniqueKey] so that pumping twice is somebody OPENING it again, which is what
+/// most of these tests want and is exactly wrong for the one that is about a
+/// canvas already on screen being handed a new orientation.
+class _Flipper extends StatefulWidget {
+  const _Flipper();
+
+  @override
+  State<_Flipper> createState() => _FlipperState();
+}
+
+class _FlipperState extends State<_Flipper> {
+  String _orientation = structureLeftToRight;
+
+  /// Held, for the reason `_HarnessState` holds its own: a fresh map every frame
+  /// is a caller no real screen resembles, and it turns the canvas's own "has
+  /// the tree actually changed" guard into a no-op.
+  final Map<String, dynamic> _held = _tree();
+
+  @override
+  Widget build(BuildContext context) {
+    return StructureCanvas(
+      tree: _held,
+      franchiseLabel: _franchiseLabel,
+      orientation: _orientation,
+      controls: TextButton(
+        onPressed: () => setState(
+          () => _orientation = _orientation == structureLeftToRight
+              ? structureTopToBottom
+              : structureLeftToRight,
+        ),
+        child: const Text('Turn it round'),
+      ),
+    );
+  }
 }
 
 // ── the business ───────────────────────────────────────────────────
@@ -1924,6 +3372,78 @@ Map<String, dynamic> _everdoors() => {
     },
   ],
 };
+
+/// A1-Group, exactly as the business stands.
+///
+/// ── The data the whole change was made for ───────────────────────
+///
+/// Thirteen places under four companies: nine under A-1 Chimney, two under
+/// Everdoors, and one under each of Everdoors' two sub companies. Thirteen
+/// boxes side by side is about 3,800 points, which is wider than any window
+/// that exists, and the owner's screenshots showed the tab opening on a
+/// fragment of its own chart with nothing on screen saying so. That is why a
+/// place stopped being a box and why the chart flows left to right.
+///
+/// It is a fixture of its own rather than a bigger version of [_aOneChimney]
+/// because it is the only shape with BOTH a company that is tall with places and
+/// a company that is deep with sub companies. Every arithmetic mistake the
+/// layout can make shows up where those two compete for room, and neither of the
+/// other two fixtures has both.
+Map<String, dynamic> _a1Group() => {
+  'organization': {'id': 'a1-group', 'name': 'A1-Group'},
+  'companies': [
+    {
+      'id': 'a-1-chimney',
+      'name': 'A-1 Chimney',
+      'is_active': true,
+      'franchises': [
+        for (final name in _chimneyPlaces)
+          {'id': 'chimney-$name', 'name': name},
+      ],
+      'sub_companies': <Map<String, dynamic>>[],
+    },
+    {
+      'id': 'everdoors',
+      'name': 'Everdoors',
+      'is_active': true,
+      'franchises': [
+        {'id': 'everdoors-connecticut', 'name': 'Connecticut'},
+        {'id': 'everdoors-dmv', 'name': 'DMV'},
+      ],
+      'sub_companies': [
+        {
+          'id': 'premier',
+          'name': 'Premier Garage Repair',
+          'is_active': true,
+          'franchises': [
+            {'id': 'premier-connecticut', 'name': 'Connecticut'},
+          ],
+        },
+        {
+          'id': 'speedy',
+          'name': 'Speedy Garage Doors',
+          'is_active': true,
+          'franchises': [
+            {'id': 'speedy-connecticut', 'name': 'Connecticut'},
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+/// A-1 Chimney's nine, in the order the server sends them.
+const List<String> _chimneyPlaces = [
+  'connecticut',
+  'dmv',
+  'georgia',
+  'illinois',
+  'nationwide',
+  'new-jersey',
+  'ohio',
+  'texas',
+  'washington',
+];
 
 /// A-1 Chimney: nine places, no sub companies anywhere.
 ///

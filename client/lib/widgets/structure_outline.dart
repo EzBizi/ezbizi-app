@@ -100,13 +100,19 @@ const double kStructureOutlineBelow = 760;
 /// is the case where not one box fits at all, and that is the same case at every
 /// text size.
 ///
-/// With a level skipped — a company whose places sit on the fourth line with the
-/// third line empty beneath it — a parent and its child can now be two pitches
-/// apart rather than one, so 340 no longer guarantees you can see a company and
-/// its place together. Deliberately left alone, for the reason directly above:
-/// this number's job is to catch the case where NOT ONE BOX FITS, and raising it
-/// would push a working device onto the outline for a picture it could simply
-/// scroll.
+/// It is arithmetic about the TOP-DOWN orientation, which is no longer the only
+/// one. Left to right spends its depth on width instead, so a viewport this
+/// short holds a whole branch rather than one box — the number is generous
+/// there rather than wrong, and one threshold that is right for the worse case
+/// beats two that have to be kept in step with which way somebody last flipped
+/// the chart.
+///
+/// The empty middle line it used to have to allow for is gone: a company's
+/// places hang off the company now instead of sitting on a fourth line below an
+/// empty third one, so a parent and its child are one pitch apart again in both
+/// orientations. What this number exists to catch is unchanged either way — the
+/// case where NOT ONE BOX FITS — and raising it would push a working device onto
+/// the outline for a picture it could simply scroll.
 const double kStructureOutlineShorterThan = 340;
 
 /// What the header says when the outline is on screen because it is too NARROW.
@@ -231,21 +237,41 @@ class StructureOutlineRow {
   /// A company with something above it. There is no separate kind for it (§3).
   bool get isSubCompany => kind == structureCompany && ancestry.isNotEmpty;
 
-  /// Which line this row is on — 0 organization, 1 company, 2 sub company,
-  /// 3 every place.
+  /// How many steps in this row is drawn — 0 organization, 1 company, 2 sub
+  /// company, and one step past its owner for a place.
   ///
-  /// Derived rather than passed, from the same [structureLevelOf] the canvas
-  /// lays its boxes out with, so the two views cannot come to disagree about
-  /// the hierarchy.
+  /// Derived rather than passed, from the same [structureIndentOf] the canvas
+  /// hangs its attached lists by, so the two views cannot come to disagree about
+  /// the shape of the business.
   ///
   /// It used to be typed in at four call sites in [outlineRows], and two of
   /// them said 2 — a top-level company's places, and a sub company. That is the
   /// same bug the canvas had, written a different way, and it is precisely why
   /// the answer now comes from one function instead of from whoever was writing
-  /// the walk. A top-level company's place is three levels in, one step further
-  /// than the sub company above it, because a place is a place wherever it
-  /// hangs.
-  int get depth => structureLevelOf(kind: kind, isSub: isSubCompany);
+  /// the walk.
+  ///
+  /// ── Why this is no longer simply the LEVEL ───────────────────
+  ///
+  /// It was [structureLevelOf] until places stopped being boxes. A place is
+  /// level 3 whichever company owns it — that is what a place IS — and it used
+  /// to be drawn on the fourth line of the canvas with every other place, so a
+  /// top-level company's place was genuinely two steps in from its company with
+  /// an empty sub-company step between them.
+  ///
+  /// The canvas draws a place as a row in a list attached to its company now.
+  /// An outline that kept indenting by level would step A-1 Chimney's nine
+  /// places in twice and draw a guide rail down the empty step, which reads as a
+  /// sub company that failed to load — while the same nine places sit directly
+  /// under the same company on the canvas. One business, two pictures, and they
+  /// would be saying different things about where nine places hang.
+  int get indent => structureIndentOf(
+    kind: kind,
+    isSub: isSubCompany,
+    // The path this row already carries to tell four places called Connecticut
+    // apart is also the count of companies above it, so nothing new is worked
+    // out to answer this.
+    ancestors: ancestry.length,
+  );
 
   /// What this row is, and which one of it — "Territory in Everdoors › Sunward".
   ///
@@ -371,9 +397,30 @@ List<StructureOutlineRow> outlineRows(Map<String, dynamic> tree) {
     // companies hang underneath it — so somebody switching views is reading the
     // same sequence rather than relearning it.
     //
-    // ORDER, not level. These rows are listed before the sub company below them
-    // and indented one step FURTHER than it, which is the two facts an outline
-    // has to keep apart: where a thing is read, and what it is.
+    // ── A place and a sub company now share an indent ────────────
+    //
+    // They did not this morning: a company's places were indented one step
+    // FURTHER than its sub companies, because a place was drawn on the canvas's
+    // fourth line whichever company owned it, and the outline agreed with the
+    // canvas about that. It was the fix for a real bug — the two used to be
+    // typed in at the same depth, which said a place and a sub company are the
+    // same size of thing.
+    //
+    // What changed is what "the same line" means. A place is not a box any more:
+    // it is a row in a list attached to the company above it, and Everdoors' own
+    // territories hang off Everdoors on the canvas exactly the way Premier's
+    // hang off Premier. An outline that kept the old indent would put them two
+    // steps from a company they sit directly under, with a guide rail down an
+    // empty step that reads as a sub company which failed to load.
+    //
+    // So the indent says PARENTAGE here, which is what an indent says in every
+    // other outline anybody has read, and the thing it used to say — what rank a
+    // row holds — is carried by the two channels that already carried it and are
+    // not positional: the glyph, and the caption naming the row in words
+    // ("Territory in Everdoors" against "Sub company in Everdoors"). A screen
+    // reader was always getting its answer from the caption rather than from the
+    // indent, which is the honest test of whether the indent was the one saying
+    // it.
     addFranchises(company, ancestry: [companyRow.name]);
 
     for (final sub in _mapsIn(company['sub_companies'])) {
@@ -752,14 +799,14 @@ class _OutlineTile extends StatelessWidget {
             label: row.sentence(franchiseLabel),
             child: CustomPaint(
               painter: _IndentRailPainter(
-                depth: row.depth,
+                indent: row.indent,
                 // Theme-derived, never a hex. An organization defines its own
                 // theme (§12), and a guide line pinned to one palette's grey is
                 // a line that disappears in somebody else's.
                 colour: scheme.outlineVariant,
               ),
               child: Padding(
-                padding: EdgeInsets.only(left: row.depth * _step),
+                padding: EdgeInsets.only(left: row.indent * _step),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
@@ -915,31 +962,36 @@ class _OutlineTile extends StatelessWidget {
 /// a fixed row height — which breaks the moment somebody turns their text size
 /// up — or an `IntrinsicHeight` around every row to discover it.
 ///
-/// One guide per ancestor level, drawn on every row deeper than that level, so
-/// each guide starts under its parent and stops on its own when the block ends.
+/// One guide per step this row is indented, drawn so each guide starts under the
+/// row it belongs to and stops on its own when that block ends.
 class _IndentRailPainter extends CustomPainter {
-  const _IndentRailPainter({required this.depth, required this.colour});
+  const _IndentRailPainter({required this.indent, required this.colour});
 
-  final int depth;
+  final int indent;
   final Color colour;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (depth == 0) return;
+    if (indent == 0) return;
 
     final brush = Paint()
       ..color = colour
       ..strokeWidth = 1;
 
-    // One guide per level above this row, including a level with no row on it —
-    // a company with no sub companies still HAS a sub-company level, this
-    // branch simply does not use it, and its places are genuinely three levels
-    // in. The rail is marking LEVELS, not the rows that happen to exist, and
-    // that is the same fact the canvas states by leaving a line empty. The
-    // row's own caption ("Territory in Everdoors") says which company it
-    // belongs to, so nothing is ambiguous about the empty step.
-    for (var level = 0; level < depth; level++) {
-      final x = level * _step + _step / 2;
+    // One guide per step, and every step now has something on it.
+    //
+    // This used to draw a rail down an EMPTY step: a company with no sub
+    // companies still had a sub-company level, and its places sat three steps in
+    // with the second rail marking a level nothing in that branch used. It was
+    // right at the time — the canvas said the same thing by leaving a line
+    // blank, and the rail was marking levels rather than rows.
+    //
+    // Neither view has that empty step any more. A place is drawn one step past
+    // the company that owns it, here and on the canvas, so a rail with no row
+    // beside it would now be the outline claiming a sub company that is not
+    // there.
+    for (var step = 0; step < indent; step++) {
+      final x = step * _step + _step / 2;
 
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), brush);
     }
@@ -947,5 +999,5 @@ class _IndentRailPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_IndentRailPainter old) =>
-      old.depth != depth || old.colour != colour;
+      old.indent != indent || old.colour != colour;
 }

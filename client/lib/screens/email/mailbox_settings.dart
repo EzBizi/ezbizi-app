@@ -210,6 +210,7 @@ class ProviderOption {
     required this.value,
     required this.label,
     required this.needsHost,
+    required this.connectsBy,
     required this.caution,
     required this.usable,
     required this.unusableBecause,
@@ -220,11 +221,18 @@ class ProviderOption {
 
   /// Whether this one is configured with a mail server and a password.
   ///
-  /// It decides which FIELDS the form draws — a host and a password, or a
-  /// sign-in. It no longer decides whether the form is offered at all: see
-  /// [usable], and the paragraph there about why this was the wrong question
-  /// for that.
+  /// It decides which FIELDS the IMAP form draws. It does not decide how a
+  /// provider is finished — see [connectsBy]. A third provider (Google
+  /// Workspace) has no host and is not finished by signing in as the inbox.
   final bool needsHost;
+
+  /// How this provider is finished: `sign_in`, `password`, or `directory`.
+  ///
+  /// Published by the server so this client never infers the connect road
+  /// from [needsHost]. An older server that does not send the key is read as
+  /// the two-way world this screen used to assume: a host means a password,
+  /// no host means a sign-in.
+  final String connectsBy;
 
   /// What to say beside the choice, in the server's words. Null when there is
   /// no warning to give.
@@ -260,6 +268,8 @@ class ProviderOption {
     value: json['value'] as String? ?? '',
     label: json['label'] as String? ?? '',
     needsHost: json['needs_host'] == true,
+    connectsBy: json['connects_by'] as String? ??
+        (json['needs_host'] == true ? 'password' : 'sign_in'),
     caution: json['caution'] as String?,
     // Absent means an older server that cannot answer. Treated as USABLE,
     // because the alternative is a client that silently refuses to connect
@@ -275,6 +285,40 @@ class ProviderOption {
             const []))
       if (entry is Map<String, dynamic>) ProviderOption.fromJson(entry),
   ];
+}
+
+/// The organization's Google Workspace domain grant, as Email settings reads it.
+@immutable
+class WorkspaceLink {
+  const WorkspaceLink({
+    required this.domain,
+    required this.adminEmail,
+    required this.status,
+    required this.statusReason,
+    required this.clientIdForAdminConsole,
+    required this.scopes,
+  });
+
+  final String domain;
+  final String adminEmail;
+  final String status;
+  final String? statusReason;
+  final String? clientIdForAdminConsole;
+  final List<String> scopes;
+
+  bool get connected => status == 'connected';
+
+  factory WorkspaceLink.fromJson(Map<String, dynamic> json) => WorkspaceLink(
+    domain: json['domain'] as String? ?? '',
+    adminEmail: json['admin_email'] as String? ?? '',
+    status: json['status'] as String? ?? '',
+    statusReason: json['status_reason'] as String?,
+    clientIdForAdminConsole: json['client_id_for_admin_console'] as String?,
+    scopes: [
+      for (final scope in json['scopes'] as List? ?? const [])
+        if (scope is String) scope,
+    ],
+  );
 }
 
 /// A state a person can act on: a word, a sentence, and whether it is trouble.

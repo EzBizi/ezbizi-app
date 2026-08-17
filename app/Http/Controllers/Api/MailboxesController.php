@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Email\CannotReachHost;
+use App\Support\Email\GoogleWorkspace;
+use App\Support\Email\GoogleWorkspaceRefused;
 use App\Support\Email\MailboxAccess;
 use App\Support\Email\MailboxProvider;
 use App\Support\Email\MailboxReaders;
@@ -72,6 +74,7 @@ class MailboxesController extends Controller
         private readonly RemoteHostGuard $guard,
         private readonly TenantContext $tenant,
         private readonly AuditLogger $audit,
+        private readonly GoogleWorkspace $workspace,
     ) {}
 
     /**
@@ -157,6 +160,7 @@ class MailboxesController extends Controller
                     'value'    => $p->value,
                     'label'    => $p->label(),
                     'needs_host' => $p->needsHost(),
+                    'connects_by' => $p->connectsBy(),
                     'usable'   => $this->readers->forProvider($p)->notReadyBecause() === null,
                     'unusable_because' => $this->readers->forProvider($p)->notReadyBecause(),
                     // The IMAP warning, published by the server so every client
@@ -207,25 +211,33 @@ class MailboxesController extends Controller
         $provider = MailboxProvider::from($input['provider']);
         $server   = $this->mailServerFor($provider, $input['mail_server'] ?? []);
 
-        $mailbox = DB::transaction(function () use ($input, $scope, $provider, $server) {
-            $mailbox = Mailbox::create([
-                'organization_id' => $this->organizationIdOf($scope),
-                'scope_type'      => $input['scope_type'],
-                'scope_id'        => $scope->getKey(),
-                'address'         => strtolower($input['address']),
-                'display_name'    => $input['display_name'],
-                'provider'        => $provider->value,
-                'mail_server'     => $server,
-            ]);
+        try {
+            $mailbox = DB::transaction(function () use ($input, $scope, $provider, $server) {
+                $mailbox = Mailbox::create([
+                    'organization_id' => $this->organizationIdOf($scope),
+                    'scope_type'      => $input['scope_type'],
+                    'scope_id'        => $scope->getKey(),
+                    'address'         => strtolower($input['address']),
+                    'display_name'    => $input['display_name'],
+                    'provider'        => $provider->value,
+                    'mail_server'     => $server,
+                ]);
 
-            $this->audit->log('mailbox.added', $mailbox, [
-                'address'  => $mailbox->address,
-                'provider' => $mailbox->provider,
-                'scope'    => $input['scope_type'],
-            ]);
+                if ($provider === MailboxProvider::GmailWorkspace) {
+                    $this->workspace->attach($mailbox);
+                }
 
-            return $mailbox;
-        });
+                $this->audit->log('mailbox.added', $mailbox, [
+                    'address'  => $mailbox->address,
+                    'provider' => $mailbox->provider,
+                    'scope'    => $input['scope_type'],
+                ]);
+
+                return $mailbox;
+            });
+        } catch (GoogleWorkspaceRefused $e) {
+            return response()->json(['message' => $e->getMessage()], $e->status);
+        }
 
         return response()->json(['data' => $this->row($mailbox, $request->user())], Response::HTTP_CREATED);
     }
@@ -336,6 +348,17 @@ class MailboxesController extends Controller
     public function connect(Request $request, Mailbox $mailbox): JsonResponse
     {
         $this->assertMayManage($request->user(), $mailbox, 'connect this inbox');
+
+        if ($mailbox->providerEnum() === MailboxProvider::GmailWorkspace) {
+            return response()->json([
+                'message' => sprintf(
+                    '%s is opened through the connected Google Workspace, so there is no '
+                    .'password to enter. Disconnect it and add the address again from the '
+                    .'directory if it is not connected yet.',
+                    $mailbox->address,
+                ),
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
 
         $input = $request->validate([
             'credential' => ['required', 'string', 'max:4096'],

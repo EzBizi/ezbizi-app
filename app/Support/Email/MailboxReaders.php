@@ -122,8 +122,9 @@ class MailboxReaders
     public function forProvider(MailboxProvider $provider): MailboxReader
     {
         return match ($provider) {
-            MailboxProvider::GmailOAuth => app(GmailMailboxReader::class),
-            MailboxProvider::Imap       => app(ImapMailboxReader::class),
+            MailboxProvider::GmailOAuth     => app(GmailMailboxReader::class),
+            MailboxProvider::GmailWorkspace => app(WorkspaceMailboxReader::class),
+            MailboxProvider::Imap           => app(ImapMailboxReader::class),
         };
     }
 }

@@ -3,6 +3,7 @@ import '../../core/staff_session.dart';
 import '../../core/theme.dart';
 import '../../widgets/enrolment_dialog.dart';
 import '../../widgets/side_panel.dart';
+import 'client_versions_screen.dart';
 import 'health_screen.dart';
 import 'impersonations_screen.dart';
 import 'modules_screen.dart';
@@ -95,6 +96,16 @@ class _StaffShellState extends State<StaffShell> {
         'Modules',
         Icons.toggle_on_outlined,
         ModulesScreen(staff: widget.staff),
+      ),
+      // Beside Modules because it is the same kind of control — a platform-wide
+      // switch owned by staff that changes what every organization experiences
+      // at once. It is the only one that can stop a customer's app from
+      // starting, which is why it must be reachable in the product rather than
+      // by hand-issuing a request with a bearer token.
+      _Destination(
+        'Client versions',
+        Icons.devices_outlined,
+        ClientVersionsScreen(staff: widget.staff),
       ),
       _Destination(
         'Client access',

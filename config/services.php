@@ -69,6 +69,12 @@ return [
 
         'redirect' => env('GOOGLE_MAIL_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/email/google/callback',
+
+        // Service account for domain-wide delegation. Impersonates listed
+        // Workspace mailboxes. Lives in .env, never on a tenant row.
+        'workspace_client_email' => env('GOOGLE_MAIL_WORKSPACE_CLIENT_EMAIL'),
+        'workspace_private_key'  => env('GOOGLE_MAIL_WORKSPACE_PRIVATE_KEY'),
+        'workspace_client_id'    => env('GOOGLE_MAIL_WORKSPACE_CLIENT_ID'),
     ],
 
 ];

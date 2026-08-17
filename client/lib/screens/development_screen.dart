@@ -3,6 +3,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/staff_session.dart';
 import '../widgets/tab_bar_like.dart';
+import 'staff/client_versions_screen.dart';
 import 'staff/health_screen.dart';
 import 'staff/impersonations_screen.dart';
 import 'staff/modules_screen.dart';
@@ -105,6 +106,11 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
         OrganizationsScreen(staff: _staff),
       ),
       ('Modules', Icons.toggle_on_outlined, ModulesScreen(staff: _staff)),
+      (
+        'Client versions',
+        Icons.devices_outlined,
+        ClientVersionsScreen(staff: _staff),
+      ),
       (
         'Client access',
         Icons.history_outlined,

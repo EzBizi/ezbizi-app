@@ -111,6 +111,8 @@ final class GoogleOAuth
 
     private const PROFILE_ENDPOINT = 'https://gmail.googleapis.com/gmail/v1/users/me/profile';
 
+    private const USERINFO_ENDPOINT = 'https://openidconnect.googleapis.com/v1/userinfo';
+
     /** Seconds. Somebody is waiting at a screen for all three of these. */
     private const TIMEOUT = 10;
 
@@ -359,6 +361,100 @@ final class GoogleOAuth
         $address = $response->json('emailAddress');
 
         return is_string($address) && trim($address) !== '' ? strtolower(trim($address)) : null;
+    }
+
+    /**
+     * Where to send a Workspace administrator so they can prove they run a domain.
+     *
+     * `openid` and `email` only — this flow must not receive a Gmail refresh
+     * token. `hd` is a hint Google honours for Workspace accounts; the check
+     * after the fact is {@see identifyWorkspaceAccount}, because a hint is
+     * something a person can click past.
+     *
+     * No `access_type=offline`: a lasting mail grant is the mailbox flow's job,
+     * and this one must not mint one by accident.
+     *
+     * @throws GoogleOAuthRefused
+     */
+    public function workspaceAuthorizeUrl(string $state, string $verifier, string $hostedDomain): string
+    {
+        return self::AUTHORIZE_ENDPOINT.'?'.http_build_query([
+            'client_id'             => (string) config('services.google_mail.client_id'),
+            'redirect_uri'          => $this->redirectUri(),
+            'response_type'         => 'code',
+            'scope'                 => 'openid email',
+            'hd'                    => strtolower($hostedDomain),
+            'prompt'                => 'select_account',
+            'state'                 => $state,
+            'code_challenge'        => $this->challengeFor($verifier),
+            'code_challenge_method' => 'S256',
+        ]);
+    }
+
+    /**
+     * Which Workspace domain the administrator actually signed in as.
+     *
+     * `hd` is Google's hosted-domain claim. A personal Gmail account has none,
+     * and "we could not check" is treated as not a Workspace — same polarity as
+     * {@see identify}: absence is never a pass.
+     *
+     * @return array{email: string, domain: string}
+     *
+     * @throws GoogleOAuthRefused
+     * @throws GoogleWorkspaceRefused
+     */
+    public function identifyWorkspaceAccount(string $code, string $verifier): array
+    {
+        try {
+            $response = Http::asForm()->timeout(self::TIMEOUT)->post(self::TOKEN_ENDPOINT, [
+                'client_id'     => (string) config('services.google_mail.client_id'),
+                'client_secret' => (string) config('services.google_mail.client_secret'),
+                'code'          => $code,
+                'code_verifier' => $verifier,
+                'grant_type'    => 'authorization_code',
+                'redirect_uri'  => $this->redirectUri(),
+            ]);
+        } catch (ConnectionException) {
+            throw GoogleOAuthRefused::exchangeFailed();
+        }
+
+        if ($response->failed() || ! is_string($response->json('access_token'))) {
+            throw GoogleOAuthRefused::exchangeFailed();
+        }
+
+        $access  = (string) $response->json('access_token');
+        $refresh = $response->json('refresh_token');
+
+        // This flow asked for identity only. A refresh token here is leftover
+        // permission we did not want; hand it back rather than hold it.
+        if (is_string($refresh) && $refresh !== '') {
+            $this->revoke($refresh);
+        }
+
+        try {
+            $info = Http::withToken($access)
+                ->timeout(self::TIMEOUT)
+                ->get(self::USERINFO_ENDPOINT);
+        } catch (ConnectionException) {
+            throw GoogleOAuthRefused::exchangeFailed();
+        }
+
+        if ($info->failed()) {
+            throw GoogleOAuthRefused::exchangeFailed();
+        }
+
+        $email = strtolower(trim((string) $info->json('email')));
+        $hd    = strtolower(trim((string) $info->json('hd')));
+
+        if ($email === '' || ! str_contains($email, '@')) {
+            throw GoogleOAuthRefused::exchangeFailed();
+        }
+
+        if ($hd === '') {
+            throw GoogleWorkspaceRefused::notAWorkspace();
+        }
+
+        return ['email' => $email, 'domain' => $hd];
     }
 
     // ── the disposal path ────────────────────────────────────────

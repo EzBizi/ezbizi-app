@@ -510,6 +510,46 @@ void main() {
     );
   });
 
+  testWidgets('a Workspace inbox is not finished by signing in as the mailbox',
+      (tester) async {
+    final requests = <String>[];
+
+    await _pump(
+      tester,
+      _handler(
+        workspaceUsable: true,
+        mailboxes: [
+          _row(
+            id: 'mb-1',
+            address: 'info@a-1chimney.com',
+            provider: 'gmail_workspace',
+            providerLabel: 'Google Workspace',
+            status: 'unconfigured',
+            canBeOpened: false,
+            mailServer: const {},
+          ),
+        ],
+        onRequest: (method, path, _) => requests.add('$method $path'),
+      ),
+    );
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+
+    expect(find.textContaining('picking it from the directory'), findsOneWidget);
+    expect(
+      find.textContaining('Continue with'),
+      findsNothing,
+      reason:
+          'needs_host is false, which used to mean "sign in". Workspace has no '
+          'host and is not finished by signing in as the inbox.',
+    );
+    expect(
+      requests.where((r) => r.endsWith('/mailboxes/mb-1/oauth/start')),
+      isEmpty,
+    );
+  });
+
   testWidgets('pressing it opens the provider\'s own window at the address the '
       'server minted, and claims the window before it asks', (tester) async {
     final window = _FakeConsentWindow();
@@ -1930,6 +1970,7 @@ MockClientHandler _handler({
   void Function(Uri url)? onUrl,
   bool imapUsable = false,
   bool googleUsable = false,
+  bool workspaceUsable = false,
   Object startBody = const {
     'data': {
       'authorization_url':
@@ -2021,6 +2062,7 @@ MockClientHandler _handler({
               'value': 'gmail_oauth',
               'label': 'Google (recommended)',
               'needs_host': false,
+              'connects_by': 'sign_in',
               'caution': null,
               'usable': googleUsable,
               'unusable_because': googleUsable
@@ -2030,9 +2072,25 @@ MockClientHandler _handler({
                         'and signing in would not complete.',
             },
             {
+              'value': 'gmail_workspace',
+              'label': 'Google Workspace',
+              'needs_host': false,
+              'connects_by': 'directory',
+              'caution':
+                  'Connect the company\'s Google Workspace once, then pick '
+                  'shared addresses like info@ from the directory.',
+              'usable': workspaceUsable,
+              'unusable_because': workspaceUsable
+                  ? null
+                  : 'EzBizi has no Google Workspace connection set up on this '
+                        'installation yet, so a company Workspace cannot be '
+                        'connected.',
+            },
+            {
               'value': 'imap',
               'label': 'IMAP',
               'needs_host': true,
+              'connects_by': 'password',
               'caution':
                   'Connecting by IMAP means storing the mailbox password here, '
                   'and for most mail services that is the account password.',
@@ -2057,6 +2115,22 @@ MockClientHandler _handler({
         'data': const [],
         'meta': {'page': 1, 'last_page': 1},
       });
+    }
+
+    if (path.endsWith('/email/workspace/directory')) {
+      return _json({'data': const []});
+    }
+
+    if (path.endsWith('/email/workspace')) {
+      if (request.method == 'DELETE') {
+        return _json({
+          'message':
+              'a-1chimney.com is no longer connected to EzBizi. Shared inboxes '
+              'that were picked from that directory are still listed.',
+        });
+      }
+
+      return _json({'data': null});
     }
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);

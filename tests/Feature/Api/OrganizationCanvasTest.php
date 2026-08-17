@@ -43,6 +43,21 @@ use Tests\TestCase;
  * — claims the controller's docblock makes at length, which would otherwise be
  * prose nobody can check.
  *
+ * ── And a fourth, from the day the chart learned to flow ─────────
+ *
+ * An arrangement is `{orientation, boxes}` now rather than a bare list, because
+ * which way the chart runs is a fact about the picture everybody opens. So there
+ * are tests that an unknown orientation is refused where an unknown coordinate
+ * would have been cleaned, that a save which says nothing about it keeps what is
+ * stored, and that a blob written before the field existed still reads.
+ *
+ * A place also stopped being a box on that day — a franchise has no children and
+ * never can, so it is a row in a list attached to its company — which means a
+ * stored `{kind: franchise, x, y}` is a coordinate for something with nowhere to
+ * sit. It is dropped in both directions, and both directions are asserted:
+ * every tenant has such entries, because the feature shipped with places as
+ * boxes that morning.
+ *
  * ── The one engine rule everything here obeys ────────────────────
  *
  * MySQL does not preserve a JSON object's key order — it sorts keys by length
@@ -123,7 +138,36 @@ class OrganizationCanvasTest extends TestCase
 
         $decoded = json_decode((string) $raw, true);
 
-        return is_array($decoded) ? self::inAuthoredKeyOrder($decoded) : $decoded;
+        if (! is_array($decoded)) {
+            return $decoded;
+        }
+
+        // The arrangement is an OBJECT now, so the engine reorders its two keys
+        // as readily as it reorders a box's four — MySQL sorts by length then
+        // lexicographically, which puts `boxes` before `orientation` however
+        // this file wrote them. Same template trick, same reason: a key that
+        // should not be stored at all is still visible after the one it is
+        // appended to, so a test that exists to catch a stray key still does.
+        $arrangement = array_replace(['orientation' => null, 'boxes' => null], $decoded);
+
+        if (is_array($arrangement['boxes'])) {
+            $arrangement['boxes'] = self::inAuthoredKeyOrder($arrangement['boxes']);
+        }
+
+        return $arrangement;
+    }
+
+    /**
+     * Just the boxes of it, which is what most of these assertions are about.
+     *
+     * Null when there is no row at all, so `assertNull` still says "nothing was
+     * written" rather than "an empty arrangement was".
+     *
+     * @return array<mixed>|null
+     */
+    private function storedBoxes(?string $organizationId = null): ?array
+    {
+        return $this->storedArrangement($organizationId)['boxes'] ?? null;
     }
 
     /**
@@ -201,6 +245,21 @@ class OrganizationCanvasTest extends TestCase
     private function asToldTo(User $user): ?array
     {
         return $this->as($user)->getJson('/api/v1/companies')->assertOk()->json('canvas');
+    }
+
+    /**
+     * And just the boxes of it.
+     *
+     * Safe to assert on whole-value, unlike anything read out of the column:
+     * every response is rebuilt by Canvas::clean() in one fixed order, which is
+     * the property that makes a client's answer independent of which engine the
+     * tenant is on.
+     *
+     * @return array<mixed>|null
+     */
+    private function boxesToldTo(User $user): ?array
+    {
+        return $this->asToldTo($user)['boxes'] ?? null;
     }
 
     /** A second person in the same organization, assigned organization-wide like the first. */
@@ -301,14 +360,31 @@ class OrganizationCanvasTest extends TestCase
         SubscriptionGuard::flush();
     }
 
-    /** The three boxes most of these tests save. */
-    private function threeBoxes(): array
+    /**
+     * The two boxes most of these tests save.
+     *
+     * It was three, and the third was the franchise. A place is not a box any
+     * more — it is a row in the list attached to its company — so a coordinate
+     * for one is dropped rather than stored, and a shared fixture that carried
+     * one would have every count in this file quietly measuring the dropping
+     * rather than the thing under test. The dropping has tests of its own.
+     */
+    private function twoBoxes(): array
     {
         return [
-            ['kind' => 'organization', 'id' => $this->alpha['org']->id,       'x' => 0,   'y' => 0],
-            ['kind' => 'company',      'id' => $this->alpha['company']->id,   'x' => 232, 'y' => 156],
-            ['kind' => 'franchise',    'id' => $this->alpha['franchise']->id, 'x' => 464, 'y' => 312],
+            ['kind' => 'organization', 'id' => $this->alpha['org']->id,     'x' => 0,   'y' => 0],
+            ['kind' => 'company',      'id' => $this->alpha['company']->id, 'x' => 232, 'y' => 156],
         ];
+    }
+
+    /**
+     * The whole arrangement, in the shape it is stored and published in.
+     *
+     * @param  list<array<string, mixed>>  $boxes
+     */
+    private function arrangement(array $boxes, string $orientation = Canvas::DEFAULT_ORIENTATION): array
+    {
+        return ['orientation' => $orientation, 'boxes' => $boxes];
     }
 
     // ── it is the organization's, not one person's ───────────────
@@ -328,13 +404,20 @@ class OrganizationCanvasTest extends TestCase
         // The control first: nobody has arranged anything, so the colleague
         // sees an empty list rather than an arrangement that happened to be
         // theirs already.
-        $this->assertSame([], $this->asToldTo($other));
+        $this->assertSame([], $this->boxesToldTo($other));
 
-        $this->as($this->alpha['admin'])
-            ->putJson('/api/v1/organization/canvas', ['boxes' => $this->threeBoxes()])
-            ->assertOk();
+        $this->as($this->alpha['admin'])->putJson('/api/v1/organization/canvas', [
+            'orientation' => 'top_to_bottom',
+            'boxes'       => $this->twoBoxes(),
+        ])->assertOk();
 
-        $this->assertSame($this->threeBoxes(), $this->asToldTo($other));
+        // The WHOLE arrangement, because both halves of it are shared: one
+        // person's boxes and one person's choice of which way the chart runs are
+        // what the next person opens.
+        $this->assertSame(
+            $this->arrangement($this->twoBoxes(), 'top_to_bottom'),
+            $this->asToldTo($other),
+        );
     }
 
     /**
@@ -347,14 +430,14 @@ class OrganizationCanvasTest extends TestCase
     public function test_an_arrangement_is_one_row_for_the_whole_organization(): void
     {
         $this->as($this->alpha['admin'])
-            ->putJson('/api/v1/organization/canvas', ['boxes' => $this->threeBoxes()])
+            ->putJson('/api/v1/organization/canvas', ['boxes' => $this->twoBoxes()])
             ->assertOk();
 
         // Save twice: two rows would make resolution order-dependent, and
         // updateOrCreate is the only thing standing between one arrangement and
         // a table that grows a row per debounced drag.
         $this->as($this->alpha['admin'])
-            ->putJson('/api/v1/organization/canvas', ['boxes' => $this->threeBoxes()])
+            ->putJson('/api/v1/organization/canvas', ['boxes' => $this->twoBoxes()])
             ->assertOk();
 
         $rows = DB::table('settings')->where('key', Canvas::SETTING)->get();
@@ -364,14 +447,21 @@ class OrganizationCanvasTest extends TestCase
         $this->assertSame($this->alpha['org']->id, $rows[0]->scope_id);
         $this->assertSame($this->alpha['org']->id, $rows[0]->organization_id);
 
-        // And the value is the three boxes — element by element, so nothing here
+        // And the value is the two boxes — element by element, so nothing here
         // depends on how the engine ordered the keys inside one of them.
-        $stored = $this->storedArrangement();
+        $stored = $this->storedBoxes();
 
-        $this->assertCount(3, $stored);
+        $this->assertCount(2, $stored);
         $this->assertSame($this->alpha['company']->id, $stored[1]['id']);
         $this->assertSame(232, $stored[1]['x']);
         $this->assertSame(156, $stored[1]['y']);
+
+        // The direction is in the same row rather than in a second one. It is
+        // half of what "one arrangement per organization" has to mean now.
+        $this->assertSame(
+            Canvas::DEFAULT_ORIENTATION,
+            $this->storedArrangement()['orientation'],
+        );
     }
 
     /**
@@ -400,22 +490,30 @@ class OrganizationCanvasTest extends TestCase
 
         $this->assertSame(
             [['kind' => 'company', 'id' => $this->alpha['company']->id, 'x' => 11, 'y' => 22]],
-            $this->asToldTo($this->alpha['admin']),
+            $this->boxesToldTo($this->alpha['admin']),
         );
 
         $this->assertSame(
             [['kind' => 'company', 'id' => $beta['company']->id, 'x' => 77, 'y' => 88]],
-            $this->as($beta['administrator'])->getJson('/api/v1/companies')->assertOk()->json('canvas'),
+            $this->as($beta['administrator'])->getJson('/api/v1/companies')->assertOk()->json('canvas.boxes'),
         );
     }
 
-    /** Nobody has arranged anything: a list, present and empty, rather than a missing key. */
-    public function test_a_canvas_nobody_has_arranged_is_an_empty_list_on_the_tree(): void
+    /**
+     * Nobody has arranged anything: the whole shape, present, with an empty list
+     * of boxes in it — rather than a missing key or a bare list.
+     *
+     * One shape whatever is stored, because the alternative puts a branch in
+     * every reader. "Nobody has arranged it" and "the arrangement is empty" mean
+     * the same thing to the only reader there is: every box goes to its
+     * automatic place, flowing the default way.
+     */
+    public function test_a_canvas_nobody_has_arranged_is_an_empty_arrangement_on_the_tree(): void
     {
         $tree = $this->as($this->alpha['admin'])->getJson('/api/v1/companies')->assertOk()->json();
 
         $this->assertArrayHasKey('canvas', $tree);
-        $this->assertSame([], $tree['canvas']);
+        $this->assertSame($this->arrangement([]), $tree['canvas']);
     }
 
     // ── the gate, and what it does not take away ─────────────────
@@ -431,7 +529,7 @@ class OrganizationCanvasTest extends TestCase
     public function test_somebody_without_the_permission_is_refused_the_save_and_still_gets_the_arrangement(): void
     {
         $this->as($this->alpha['admin'])
-            ->putJson('/api/v1/organization/canvas', ['boxes' => $this->threeBoxes()])
+            ->putJson('/api/v1/organization/canvas', ['boxes' => $this->twoBoxes()])
             ->assertOk();
 
         $viewer   = $this->viewerWithoutThePermission();
@@ -443,11 +541,11 @@ class OrganizationCanvasTest extends TestCase
 
         // Nothing was written. Read through the raw column rather than the tree,
         // because a save that half-worked would otherwise be invisible.
-        $this->assertCount(3, $this->storedArrangement());
+        $this->assertCount(2, $this->storedBoxes());
 
         $tree = $this->as($viewer)->getJson('/api/v1/companies')->assertOk()->json();
 
-        $this->assertSame($this->threeBoxes(), $tree['canvas']);
+        $this->assertSame($this->twoBoxes(), $tree['canvas']['boxes']);
         $this->assertFalse($tree['organization']['may_arrange']);
         $this->assertSame($expected, $tree['organization']['may_arrange_reason']);
     }
@@ -555,7 +653,7 @@ class OrganizationCanvasTest extends TestCase
 
         AuditEvent::query()->delete();   // signing in writes rows of its own
 
-        $signedIn->putJson('/api/v1/organization/canvas', ['boxes' => $this->threeBoxes()])
+        $signedIn->putJson('/api/v1/organization/canvas', ['boxes' => $this->twoBoxes()])
             ->assertOk();
 
         $events = AuditEvent::where('action', 'organization.structure_arranged')->get();
@@ -574,7 +672,7 @@ class OrganizationCanvasTest extends TestCase
         $this->assertArrayHasKey('boxes_after', $event->changes);
 
         $this->assertSame(0, $event->changes['boxes_before']);
-        $this->assertSame(3, $event->changes['boxes_after']);
+        $this->assertSame(2, $event->changes['boxes_after']);
 
         // Counts, never positions. A row carrying x and y is the fat variant
         // this endpoint exists to avoid.
@@ -584,12 +682,38 @@ class OrganizationCanvasTest extends TestCase
         $this->assertStringNotContainsString('"y"', $encoded);
     }
 
+    /**
+     * Turning the whole chart round IS the change, and a row that recorded only
+     * counts would say nothing happened.
+     *
+     * Two short words rather than sixty kilobytes of coordinates: the audit
+     * argument here is about weight, not about secrecy, and this is the one
+     * thing anybody does on this screen that a colleague notices immediately and
+     * cannot undo by dragging.
+     */
+    public function test_the_audit_row_says_which_way_the_chart_was_turned(): void
+    {
+        $signedIn = $this->as($this->alpha['admin']);
+
+        AuditEvent::query()->delete();
+
+        $signedIn->putJson('/api/v1/organization/canvas', [
+            'orientation' => 'top_to_bottom',
+            'boxes'       => $this->twoBoxes(),
+        ])->assertOk();
+
+        $event = AuditEvent::where('action', 'organization.structure_arranged')->sole();
+
+        $this->assertSame('left_to_right', $event->changes['orientation_before']);
+        $this->assertSame('top_to_bottom', $event->changes['orientation_after']);
+    }
+
     /** The before-count is the previous arrangement's, not zero forever. */
     public function test_the_audit_row_counts_what_was_there_before(): void
     {
         $signedIn = $this->as($this->alpha['admin']);
 
-        $signedIn->putJson('/api/v1/organization/canvas', ['boxes' => $this->threeBoxes()])
+        $signedIn->putJson('/api/v1/organization/canvas', ['boxes' => $this->twoBoxes()])
             ->assertOk();
 
         $signedIn->putJson('/api/v1/organization/canvas', [
@@ -599,7 +723,7 @@ class OrganizationCanvasTest extends TestCase
         $latest = AuditEvent::where('action', 'organization.structure_arranged')
             ->orderByDesc('occurred_at')->orderByDesc('id')->first();
 
-        $this->assertSame(3, $latest->changes['boxes_before']);
+        $this->assertSame(2, $latest->changes['boxes_before']);
         $this->assertSame(1, $latest->changes['boxes_after']);
     }
 
@@ -645,7 +769,7 @@ class OrganizationCanvasTest extends TestCase
                 ['kind' => 'company', 'id' => $this->alpha['company']->id, 'x' => 10, 'y' => 20],
                 ['kind' => 'company', 'id' => $gone,                       'x' => 30, 'y' => 40],
             ],
-            $this->storedArrangement(),
+            $this->storedBoxes(),
         );
     }
 
@@ -672,7 +796,7 @@ class OrganizationCanvasTest extends TestCase
 
         $this->assertSame(
             [['kind' => 'company', 'id' => $beta['company']->id, 'x' => 5, 'y' => 5]],
-            $this->storedArrangement(),
+            $this->storedBoxes(),
         );
 
         $tree = $this->as($this->alpha['admin'])->getJson('/api/v1/companies')->assertOk()->json();
@@ -702,7 +826,7 @@ class OrganizationCanvasTest extends TestCase
 
         $clamped = [['kind' => 'company', 'id' => $this->alpha['company']->id, 'x' => 0, 'y' => Canvas::MAX_COORDINATE]];
 
-        $this->assertSame($clamped, $this->storedArrangement());
+        $this->assertSame($clamped, $this->storedBoxes());
 
         // And the RESPONSE carries the clamped values, not the ones that were
         // sent. Otherwise the correction happens behind the client's back and
@@ -719,7 +843,7 @@ class OrganizationCanvasTest extends TestCase
 
         $this->assertSame(
             [['kind' => 'company', 'id' => $this->alpha['company']->id, 'x' => 12, 'y' => 13]],
-            $this->storedArrangement(),
+            $this->storedBoxes(),
         );
     }
 
@@ -741,9 +865,9 @@ class OrganizationCanvasTest extends TestCase
     {
         $this->as($this->alpha['admin'])->putJson('/api/v1/organization/canvas', [
             'boxes' => [
-                ['kind' => 'company',   'id' => $this->alpha['company']->id, 'x' => 1,  'y' => 1],
-                ['kind' => 'company',   'id' => $this->alpha['company']->id, 'x' => 99, 'y' => 99],
-                ['kind' => 'franchise', 'id' => $this->alpha['franchise']->id, 'x' => 7, 'y' => 7],
+                ['kind' => 'company',      'id' => $this->alpha['company']->id, 'x' => 1,  'y' => 1],
+                ['kind' => 'company',      'id' => $this->alpha['company']->id, 'x' => 99, 'y' => 99],
+                ['kind' => 'organization', 'id' => $this->alpha['org']->id,     'x' => 7,  'y' => 7],
             ],
         ])->assertOk();
 
@@ -752,10 +876,10 @@ class OrganizationCanvasTest extends TestCase
         // places.
         $this->assertSame(
             [
-                ['kind' => 'company',   'id' => $this->alpha['company']->id,   'x' => 99, 'y' => 99],
-                ['kind' => 'franchise', 'id' => $this->alpha['franchise']->id, 'x' => 7,  'y' => 7],
+                ['kind' => 'company',      'id' => $this->alpha['company']->id, 'x' => 99, 'y' => 99],
+                ['kind' => 'organization', 'id' => $this->alpha['org']->id,     'x' => 7,  'y' => 7],
             ],
-            $this->storedArrangement(),
+            $this->storedBoxes(),
         );
     }
 
@@ -765,7 +889,11 @@ class OrganizationCanvasTest extends TestCase
      * `kind` is what makes the blob readable by a person who opens the column,
      * and it is half the key. Dropping it from the key would be a step towards
      * dropping it from the payload — at which point a stale company id and a
-     * stale franchise id become indistinguishable.
+     * stale organization id become indistinguishable.
+     *
+     * It used to prove this with a company and a franchise sharing an id, which
+     * is no longer a pair that can both be stored: a place has no position. The
+     * two kinds that DO are the two used here, and the claim is the same one.
      */
     public function test_the_kind_is_part_of_what_names_a_box(): void
     {
@@ -773,12 +901,12 @@ class OrganizationCanvasTest extends TestCase
 
         $this->as($this->alpha['admin'])->putJson('/api/v1/organization/canvas', [
             'boxes' => [
-                ['kind' => 'company',   'id' => $shared, 'x' => 1, 'y' => 1],
-                ['kind' => 'franchise', 'id' => $shared, 'x' => 2, 'y' => 2],
+                ['kind' => 'company',      'id' => $shared, 'x' => 1, 'y' => 1],
+                ['kind' => 'organization', 'id' => $shared, 'x' => 2, 'y' => 2],
             ],
         ])->assertOk();
 
-        $this->assertCount(2, $this->storedArrangement());
+        $this->assertCount(2, $this->storedBoxes());
     }
 
     /**
@@ -837,7 +965,201 @@ class OrganizationCanvasTest extends TestCase
             ->putJson('/api/v1/organization/canvas', ['boxes' => []])
             ->assertOk();
 
-        $this->assertSame([], $this->storedArrangement());
+        $this->assertSame([], $this->storedBoxes());
+    }
+
+    // ── a place is not a box, in both directions ─────────────────
+
+    /**
+     * A place coordinate is ACCEPTED and then dropped, which is the difference
+     * between cleaning and refusing.
+     *
+     * A franchise has no children and never can, so the chart draws one as a row
+     * in the list attached to its company — and a row in a list has nowhere to
+     * put a coordinate. But `franchise` is still a word the payload may use, and
+     * refusing over it would dead-end every save made by a browser tab that has
+     * been open since this morning, including the company positions in the same
+     * request that are perfectly good.
+     *
+     * So the two lists are two questions. This is the one that says the
+     * validator still knows the word.
+     */
+    public function test_a_place_coordinate_is_accepted_and_not_stored(): void
+    {
+        $this->as($this->alpha['admin'])->putJson('/api/v1/organization/canvas', [
+            'boxes' => [
+                ['kind' => 'company',   'id' => $this->alpha['company']->id,   'x' => 10, 'y' => 20],
+                ['kind' => 'franchise', 'id' => $this->alpha['franchise']->id, 'x' => 30, 'y' => 40],
+            ],
+        ])->assertOk();
+
+        $this->assertSame(
+            [['kind' => 'company', 'id' => $this->alpha['company']->id, 'x' => 10, 'y' => 20]],
+            $this->storedBoxes(),
+        );
+
+        // And the client is TOLD, because the response echoes what was stored.
+        // A drop nobody is told about is a client that sends the same three
+        // useless entries back on every save for as long as the tab is open.
+        $this->assertSame(
+            [['kind' => 'company', 'id' => $this->alpha['company']->id, 'x' => 10, 'y' => 20]],
+            $this->as($this->alpha['admin'])->putJson('/api/v1/organization/canvas', [
+                'boxes' => [
+                    ['kind' => 'company',   'id' => $this->alpha['company']->id,   'x' => 10, 'y' => 20],
+                    ['kind' => 'franchise', 'id' => $this->alpha['franchise']->id, 'x' => 30, 'y' => 40],
+                ],
+            ])->assertOk()->json('boxes'),
+        );
+    }
+
+    /**
+     * And the way OUT, which is the direction that actually matters today.
+     *
+     * Every tenant has place coordinates in this column: the feature shipped
+     * with places as boxes and somebody arranged one. They are cleaned by the
+     * same function that cleans them on the way in — one function, so neither
+     * direction can be the one somebody forgot — and the company beside them
+     * survives, because losing one box is a box in the wrong place and losing
+     * the arrangement is the whole office's afternoon.
+     */
+    public function test_a_stored_place_coordinate_is_discarded_on_the_way_out(): void
+    {
+        $this->storeRaw([
+            'orientation' => 'left_to_right',
+            'boxes'       => [
+                ['kind' => 'franchise', 'id' => $this->alpha['franchise']->id, 'x' => 30, 'y' => 40],
+                ['kind' => 'company',   'id' => $this->alpha['company']->id,   'x' => 10, 'y' => 20],
+            ],
+        ]);
+
+        $this->assertSame(
+            [['kind' => 'company', 'id' => $this->alpha['company']->id, 'x' => 10, 'y' => 20]],
+            $this->boxesToldTo($this->alpha['admin']),
+        );
+    }
+
+    /**
+     * The whole of an old arrangement was places for a company with no sub
+     * companies, and what is left is an empty list rather than an error.
+     *
+     * Worth its own test because "nothing survived the clean" is the case a
+     * defensive reader is most likely to turn into a null, and a null on the
+     * tree is a client branch nobody wrote.
+     */
+    public function test_an_arrangement_that_was_only_places_reads_as_an_empty_one(): void
+    {
+        $this->storeRaw([
+            ['kind' => 'franchise', 'id' => $this->alpha['franchise']->id, 'x' => 30, 'y' => 40],
+        ]);
+
+        $this->assertSame($this->arrangement([]), $this->asToldTo($this->alpha['admin']));
+    }
+
+    // ── which way the chart flows ────────────────────────────────
+
+    /**
+     * The one field here that is refused rather than cleaned, and the reason is
+     * that there is no sensible reading of a word that is not one of the two.
+     *
+     * A coordinate is where a finger ended up; an orientation came from a
+     * two-item control, so an unrecognised one is a client sending something no
+     * person chose. The sentence says what the two answers are, because this is
+     * a refusal only whoever is reading the response can act on.
+     */
+    public function test_an_unknown_orientation_is_refused(): void
+    {
+        $message = $this->as($this->alpha['admin'])->putJson('/api/v1/organization/canvas', [
+            'orientation' => 'diagonal',
+            'boxes'       => $this->twoBoxes(),
+        ])->assertStatus(422)->json('errors.orientation.0');
+
+        $this->assertStringContainsString('left to right', $message);
+        $this->assertStringContainsString('top to bottom', $message);
+
+        // Nothing was stored, including the boxes that came with it. A refusal
+        // that half-applied would be the worst of both.
+        $this->assertNull($this->storedArrangement());
+    }
+
+    /** Both of the two, so the closed list is a list rather than a constant. */
+    public function test_either_orientation_is_stored_and_echoed(): void
+    {
+        foreach (Canvas::ORIENTATIONS as $orientation) {
+            $echoed = $this->as($this->alpha['admin'])->putJson('/api/v1/organization/canvas', [
+                'orientation' => $orientation,
+                'boxes'       => [],
+            ])->assertOk()->json('orientation');
+
+            $this->assertSame($orientation, $echoed);
+            $this->assertSame($orientation, $this->storedArrangement()['orientation']);
+        }
+    }
+
+    /**
+     * A save that says nothing about the direction KEEPS the stored one.
+     *
+     * This is the difference between "absent" and "invalid", and it is what
+     * makes a client older than this field safe: it sends boxes and nothing
+     * else, and defaulting would have every drag from that tab quietly turn
+     * everybody's chart back round. Nobody chose that, and nobody would know who
+     * to blame.
+     */
+    public function test_a_save_that_says_nothing_about_the_direction_keeps_it(): void
+    {
+        $signedIn = $this->as($this->alpha['admin']);
+
+        $signedIn->putJson('/api/v1/organization/canvas', [
+            'orientation' => 'top_to_bottom',
+            'boxes'       => [],
+        ])->assertOk();
+
+        $signedIn->putJson('/api/v1/organization/canvas', [
+            'boxes' => [['kind' => 'company', 'id' => $this->alpha['company']->id, 'x' => 1, 'y' => 1]],
+        ])->assertOk();
+
+        $this->assertSame('top_to_bottom', $this->storedArrangement()['orientation']);
+    }
+
+    /**
+     * A stored word nobody recognises draws the chart the usual way round rather
+     * than failing to draw it.
+     *
+     * The out-clean's whole argument, applied to a word instead of to a number:
+     * this column can be hand-edited or restored from a backup, and there is
+     * nobody standing there to be told.
+     */
+    public function test_a_stored_orientation_nobody_recognises_reads_as_the_default(): void
+    {
+        $this->storeRaw(['orientation' => 'diagonal', 'boxes' => []]);
+
+        $this->assertSame(
+            Canvas::DEFAULT_ORIENTATION,
+            $this->asToldTo($this->alpha['admin'])['orientation'],
+        );
+    }
+
+    /**
+     * An arrangement written before the field existed is still an arrangement.
+     *
+     * A bare list is what every row in every tenant holds today — including
+     * every one PromoteCanvasArrangements wrote at the migration, which
+     * reimplements this reduction as it stood and writes a list on purpose.
+     * Refusing the old shape would mean an arrangement that survived being
+     * promoted out of one person's preferences and then vanished at the next
+     * deploy.
+     */
+    public function test_an_arrangement_stored_as_a_bare_list_is_read_as_boxes(): void
+    {
+        $this->storeRaw([
+            ['kind' => 'company', 'id' => $this->alpha['company']->id, 'x' => 11, 'y' => 22],
+        ]);
+
+        $this->assertSame(
+            $this->arrangement([
+                ['kind' => 'company', 'id' => $this->alpha['company']->id, 'x' => 11, 'y' => 22],
+            ]),
+            $this->asToldTo($this->alpha['admin']),
+        );
     }
 
     // ── a blob written before any of this existed ────────────────
@@ -857,7 +1179,7 @@ class OrganizationCanvasTest extends TestCase
     {
         $this->storeRaw('nonsense');
 
-        $this->assertSame([], $this->asToldTo($this->alpha['admin']));
+        $this->assertSame([], $this->boxesToldTo($this->alpha['admin']));
     }
 
     /**
@@ -872,15 +1194,15 @@ class OrganizationCanvasTest extends TestCase
             'not even a map',
             ['kind' => 'somewhere', 'id' => (string) Str::uuid(), 'x' => 1, 'y' => 1],
             ['kind' => 'company', 'id' => 'a whole sentence where an id should be', 'x' => 1, 'y' => 1],
-            ['kind' => 'franchise', 'id' => $this->alpha['franchise']->id, 'x' => 33, 'y' => 44],
+            ['kind' => 'organization', 'id' => $this->alpha['org']->id, 'x' => 33, 'y' => 44],
         ]);
 
         $this->assertSame(
             [
-                ['kind' => 'company',   'id' => $this->alpha['company']->id,   'x' => 11, 'y' => 22],
-                ['kind' => 'franchise', 'id' => $this->alpha['franchise']->id, 'x' => 33, 'y' => 44],
+                ['kind' => 'company',      'id' => $this->alpha['company']->id, 'x' => 11, 'y' => 22],
+                ['kind' => 'organization', 'id' => $this->alpha['org']->id,     'x' => 33, 'y' => 44],
             ],
-            $this->asToldTo($this->alpha['admin']),
+            $this->boxesToldTo($this->alpha['admin']),
         );
     }
 
@@ -897,7 +1219,7 @@ class OrganizationCanvasTest extends TestCase
 
         $this->assertSame(
             [['kind' => 'company', 'id' => $this->alpha['company']->id, 'x' => 0, 'y' => Canvas::MAX_COORDINATE]],
-            $this->asToldTo($this->alpha['admin']),
+            $this->boxesToldTo($this->alpha['admin']),
         );
     }
 
@@ -933,13 +1255,13 @@ class OrganizationCanvasTest extends TestCase
     {
         $this->storeRaw('nonsense');
 
-        $this->assertSame([], $this->asToldTo($this->alpha['admin']));
+        $this->assertSame([], $this->boxesToldTo($this->alpha['admin']));
 
         // A number as well as a string, because they fail identically and the
         // guard must not be a special case for one of them.
         $this->storeRaw(4);
 
-        $this->assertSame([], $this->asToldTo($this->alpha['admin']));
+        $this->assertSame([], $this->boxesToldTo($this->alpha['admin']));
     }
 
     /**
@@ -956,7 +1278,7 @@ class OrganizationCanvasTest extends TestCase
 
         $this->assertSame(
             [['kind' => 'company', 'id' => $this->alpha['company']->id, 'x' => 3, 'y' => 4]],
-            $this->storedArrangement(),
+            $this->storedBoxes(),
         );
     }
 
@@ -1035,7 +1357,7 @@ class OrganizationCanvasTest extends TestCase
         // Accepted and ignored — an unknown key in a validated array is not a
         // 422, and it must not become a stored one either. What matters is that
         // nothing about the company moved, which is what the tree still says.
-        $this->assertSame([$box], $this->storedArrangement());
+        $this->assertSame([$box], $this->storedBoxes());
 
         $this->assertNull(
             $this->inTenant(fn () => Company::find($this->alpha['company']->id)->parent_company_id),
@@ -1082,7 +1404,7 @@ class OrganizationCanvasTest extends TestCase
 
         $this->assertSame(
             [['kind' => 'company', 'id' => $this->alpha['company']->id, 'x' => 8, 'y' => 9]],
-            $this->asToldTo($this->alpha['admin']),
+            $this->boxesToldTo($this->alpha['admin']),
         );
     }
 }

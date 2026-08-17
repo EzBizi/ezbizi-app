@@ -163,6 +163,23 @@ class _StructureTabState extends State<StructureTab> {
   /// straight after a drag lands inside [dispose]'s flush rather than needing it.
   static const Duration _settle = Duration(milliseconds: 700);
 
+  /// Which way the chart flows, which is part of the shared arrangement.
+  ///
+  /// ── Why this is stored and the zoom level is not ─────────────
+  ///
+  /// Because it is a fact about the PICTURE rather than about where somebody is
+  /// looking. Everybody in the business opens one chart; if it ran left to right
+  /// for one person and top to bottom for another, "the box on the left" would
+  /// name two different companies on two desks. Zoom is the opposite case and is
+  /// deliberately absent from everything in this file — one person zooming in
+  /// moves nothing for anybody else, and it is never sent anywhere.
+  ///
+  /// It is saved through the same debounce as a drag, because it is the same
+  /// kind of act: somebody changing the picture everybody sees. That also means
+  /// it is gated the same way — see [StructureFlowChoice], which is simply not
+  /// drawn for somebody who may not arrange.
+  late String _orientation;
+
   /// Where every box goes — INCLUDING keys that name nothing on screen.
   ///
   /// This is the most important line in the file. The server keeps a position
@@ -189,6 +206,11 @@ class _StructureTabState extends State<StructureTab> {
   /// [_arrivedFromServer]).
   late Map<String, Offset> _lastSaved;
 
+  /// The orientation the server is believed to be holding, for the same two
+  /// jobs [_lastSaved] does: what a refused save is put back to, and what an
+  /// arriving arrangement is compared against.
+  late String _lastSavedOrientation;
+
   /// The arrangement currently on the wire, or null when nothing is in flight.
   ///
   /// Only [_arrivedFromServer] reads it, and only to keep quiet: a refetch that
@@ -197,6 +219,7 @@ class _StructureTabState extends State<StructureTab> {
   /// and then glancing at the List tab would announce that a colleague had
   /// rearranged the structure, naming this person's own drag.
   Map<String, Offset>? _sent;
+  String? _sentOrientation;
 
   /// Boxes moved while a save was on the wire, and therefore absent from the
   /// answer it is about to come back with.
@@ -221,6 +244,17 @@ class _StructureTabState extends State<StructureTab> {
   /// SAVE from the current one, and a move is not a save. Nothing between two
   /// saves ever bumps it.
   Map<String, Offset> _movedSinceSent = const {};
+
+  /// Whether the chart was turned round while a save was on the wire, and
+  /// therefore after the orientation that save is about.
+  ///
+  /// [_movedSinceSent]'s job for the one value that cannot be reconciled box by
+  /// box: a chart flows one way or the other, so an arriving orientation either
+  /// wins outright or is refused outright. It is refused exactly when this
+  /// person has turned the chart since the request left, because that is the
+  /// thing they are in the middle of — the same rule the boxes follow, applied
+  /// to the only field where "merge" has no meaning.
+  bool _flippedSinceSent = false;
 
   /// The boxes the tree currently contains, cached rather than re-flattened.
   ///
@@ -265,6 +299,12 @@ class _StructureTabState extends State<StructureTab> {
     // wrong the moment it is everybody's.
     _positions = canvasLayoutFrom(widget.tree['canvas']);
     _lastSaved = _positions;
+    // Off the same value, through the same reader. The boxes and the direction
+    // they flow in are one arrangement and arrive together; reading the
+    // direction from anywhere else — a preference, a constant here — would be a
+    // second copy for the first one to disagree with.
+    _orientation = canvasOrientationFrom(widget.tree['canvas']);
+    _lastSavedOrientation = _orientation;
     _nodes = flattenStructure(widget.tree);
   }
 
@@ -274,7 +314,10 @@ class _StructureTabState extends State<StructureTab> {
 
     if (!identical(old.tree, widget.tree)) {
       _nodes = flattenStructure(widget.tree);
-      _arrivedFromServer(canvasLayoutFrom(widget.tree['canvas']));
+      _arrivedFromServer(
+        canvasLayoutFrom(widget.tree['canvas']),
+        canvasOrientationFrom(widget.tree['canvas']),
+      );
     }
   }
 
@@ -313,15 +356,21 @@ class _StructureTabState extends State<StructureTab> {
   /// make the drawn picture differ from the stored one constantly, and
   /// comparing against those would announce a colleague every time anybody
   /// dragged anything.
-  void _arrivedFromServer(Map<String, Offset> theirs) {
+  void _arrivedFromServer(Map<String, Offset> theirs, String theirOrientation) {
     // Ours, come back to us — either the arrangement we already knew about or
     // the one currently in flight. Nothing happened.
-    if (_sameArrangement(theirs, _lastSaved)) return;
+    if (_sameArrangement(theirs, _lastSaved) &&
+        theirOrientation == _lastSavedOrientation) {
+      return;
+    }
 
     final sent = _sent;
 
-    if (sent != null && _sameArrangement(theirs, sent)) {
+    if (sent != null &&
+        _sameArrangement(theirs, sent) &&
+        theirOrientation == _sentOrientation) {
       _lastSaved = theirs;
+      _lastSavedOrientation = theirOrientation;
 
       return;
     }
@@ -331,6 +380,15 @@ class _StructureTabState extends State<StructureTab> {
       // reconciliation the response to a save does, and for the same reason.
       _positions = {...theirs, ..._movedSinceSent};
       _lastSaved = theirs;
+
+      // A chart flows one way or the other, so there is nothing to merge: the
+      // colleague's direction is taken unless this person has turned the chart
+      // themselves since their last save left, in which case they are in the
+      // middle of exactly this decision and having it change under them would be
+      // the same jolt as a box leaping out from under a pointer.
+      if (!_flippedSinceSent) _orientation = theirOrientation;
+
+      _lastSavedOrientation = theirOrientation;
       _rearrangedByAnother = true;
     });
   }
@@ -401,6 +459,28 @@ class _StructureTabState extends State<StructureTab> {
     _schedule();
   }
 
+  /// The chart turned the other way round.
+  ///
+  /// Applied first and saved second, like a drag, and through the SAME debounce
+  /// rather than written immediately. Somebody trying the two views against each
+  /// other — flip, look, flip back — is one decision being made, not two saves
+  /// and two audit rows, and the boxes they nudge while deciding travel in the
+  /// same request.
+  ///
+  /// A flip to the orientation already on screen is dropped rather than saved.
+  /// A chip that is already selected can still be pressed, and a save that
+  /// changes nothing would still take the audit row and would still announce
+  /// itself to every colleague's next fetch.
+  void _flipped(String orientation) {
+    if (orientation == _orientation) return;
+
+    setState(() {
+      _orientation = orientation;
+      _flippedSinceSent = true;
+    });
+    _schedule();
+  }
+
   void _schedule() {
     _debounce?.cancel();
     _debounce = Timer(_settle, _save);
@@ -412,15 +492,24 @@ class _StructureTabState extends State<StructureTab> {
 
     final attempt = ++_saving;
     final undo = _lastSaved;
+    final undoOrientation = _lastSavedOrientation;
     final sent = _positions;
+    final sentOrientation = _orientation;
 
-    // From here, anything moved is measured against what is on the wire.
+    // From here, anything moved or flipped is measured against what is on the
+    // wire.
     _movedSinceSent = const {};
+    _flippedSinceSent = false;
     _sent = sent;
+    _sentOrientation = sentOrientation;
 
-    final response = await widget.api.put('/organization/canvas', {
-      'boxes': canvasBoxes(sent),
-    });
+    final response = await widget.api.put(
+      '/organization/canvas',
+      // Assembled by one function, because an arrangement is the boxes AND the
+      // direction they flow in — a body written out here is a body that can be
+      // half of one.
+      canvasArrangement(positions: sent, orientation: sentOrientation),
+    );
 
     // A save this one has already superseded says nothing about anything: its
     // answer is about an arrangement that is no longer the arrangement, and
@@ -430,6 +519,7 @@ class _StructureTabState extends State<StructureTab> {
     if (attempt != _saving) return;
 
     _sent = null;
+    _sentOrientation = null;
 
     if (!response.ok) {
       // Put back, and say the server's own sentence. Boxes leaping back to
@@ -447,7 +537,14 @@ class _StructureTabState extends State<StructureTab> {
       // arrangement that was refused.
       if (_gone || !mounted) return;
 
-      setState(() => _positions = {...undo, ..._movedSinceSent});
+      setState(() {
+        _positions = {...undo, ..._movedSinceSent};
+
+        // And the direction goes back too, unless this person has turned the
+        // chart since the refused request left — that flip was never part of
+        // what was refused.
+        if (!_flippedSinceSent) _orientation = undoOrientation;
+      });
       _snack(_firstError(response) ?? response.message);
       return;
     }
@@ -481,12 +578,21 @@ class _StructureTabState extends State<StructureTab> {
     // drawn first.
     if (_gone || !mounted) return;
 
-    final stored = canvasLayoutFrom(echoed);
+    // Read through the same reader the tree's own copy goes through, and off
+    // the whole body rather than off `boxes` alone: the response is an
+    // arrangement in exactly the shape the tree carries one, so one reading
+    // serves both and neither can drift.
+    final stored = canvasLayoutFrom(response.body);
+    final storedOrientation = canvasOrientationFrom(response.body);
 
     setState(() {
       // Reconciled, not replaced — see [_movedSinceSent].
       _positions = {...stored, ..._movedSinceSent};
       _lastSaved = stored;
+
+      if (!_flippedSinceSent) _orientation = storedOrientation;
+
+      _lastSavedOrientation = storedOrientation;
     });
   }
 
@@ -579,6 +685,11 @@ class _StructureTabState extends State<StructureTab> {
             // tab disagreeing with itself about what its own boxes are.
             franchiseLabel: widget.session.me!.organization.franchiseLabel,
             layout: _positions,
+            // Which way the picture everybody shares flows. Held here rather
+            // than inside the canvas for the same reason the boxes are: it is
+            // part of the arrangement, and this is the only thing on this screen
+            // that writes one. The canvas is handed it and draws it.
+            orientation: _orientation,
             // Null, not a handler that refuses. The canvas draws no move handle
             // and no "Arrange for me" when it is handed neither, which is what
             // keeps a dead control off a screen somebody cannot use it on.
@@ -586,17 +697,43 @@ class _StructureTabState extends State<StructureTab> {
             onArranged: widget.mayArrange ? _arranged : null,
             actions: (context, node) =>
                 widget.actions?.call(context, node.kind, node.raw),
-            // The canvas's own sentence, which it used to be passed `null` for.
+            // ── In the canvas's toolbar, beside the controls it owns ────
             //
-            // The two no longer say the same thing, which is why both are now
-            // on screen. The header above the tab strip says what this tab IS
-            // and states the rule — who owns what is settled when a thing is
-            // created. This one says how to USE the surface and what its lines
-            // mean, including the line that is empty whenever a company has no
-            // sub companies. That last part cannot live in the header: it is
-            // about the canvas specifically, and the outline three hundred
-            // points narrower has no lines at all.
-            note: StructureCanvas.defaultNote,
+            // Turning the chart round belongs in the row that holds "Arrange for
+            // me", "Bring the boxes into view" and the zoom cluster, because
+            // that is the row of controls that act on the PICTURE and this is
+            // one of them. It spent an afternoon in a full-width strip directly
+            // above the canvas because there was nowhere to put it, and that
+            // read as another of the sentences about the arrangement rather than
+            // as a control — while costing a strip of height on the view whose
+            // whole problem is that the picture is too big for the window.
+            //
+            // Absent rather than disabled for somebody who may not arrange, like
+            // the other two controls that would produce a save. The sentence
+            // above the canvas is what explains the gap.
+            controls: widget.mayArrange
+                ? StructureFlowChoice(
+                    orientation: _orientation,
+                    onChanged: _flipped,
+                  )
+                : null,
+            // This tab's own sentence rather than the canvas's default, and
+            // that is a change worth naming.
+            //
+            // The header above the tab strip says what this tab IS and states
+            // the rule — who owns what is settled when a thing is created. This
+            // one says how to USE the surface and how to read it, which now
+            // depends on which way the person reading it has the chart flowing.
+            // A constant inside the canvas cannot say that: it is one string,
+            // and there are two pictures.
+            //
+            // `StructureCanvas.defaultNote` is still the canvas's answer for a
+            // caller that offers none, and it is a true one: it says the rule
+            // and it says where the places went. What it cannot say is which
+            // way the chart is running, because it is one string and there are
+            // two pictures — which is exactly the sentence this tab is here to
+            // supply.
+            note: _flowNote,
             // No logo badge in the box, deliberately. A LogoBadge is an EDITING
             // control — it opens a file picker — and putting one inside the
             // thing you drag makes the tap-versus-pan arbitration decide
@@ -678,7 +815,52 @@ class _StructureTabState extends State<StructureTab> {
   int get _unplaced {
     if (_lastSaved.isEmpty) return 0;
 
-    return _nodes.where((node) => !_lastSaved.containsKey(node.key)).length;
+    // Boxes, and places are not boxes. A place is drawn as a row in the list
+    // attached to its company, so it has no position for an arrangement to be
+    // missing — counting them would have told this organization that thirteen
+    // boxes were unplaced, permanently, with an escape hatch that could never
+    // clear the sentence because pressing it would never place them either.
+    return _nodes
+        .where(
+          (node) =>
+              structureHasBox(node.kind) && !_lastSaved.containsKey(node.key),
+        )
+        .length;
+  }
+
+  /// How to read the picture, in the direction it is actually flowing.
+  ///
+  /// ── Why this tab writes its own rather than taking the canvas's ──
+  ///
+  /// Because it is the tab that offers the CHOICE, and the sentence has to be
+  /// about the picture actually on screen. The canvas's own note is true either
+  /// way round and says so by saying nothing about direction, which is the most
+  /// a constant can honestly do when there are two pictures.
+  ///
+  /// Both notes are past the paragraph they used to share: neither says each
+  /// kind of thing keeps its own line, and neither explains a blank one, because
+  /// a place is not on a line at all — it is listed under the company that owns
+  /// it, which is what took thirteen boxes down to four attached lists.
+  ///
+  /// "Places" rather than the organization's own word for one (§8). The canvas's
+  /// note has always used the generic word while the BOXES use the customer's,
+  /// and that split is deliberate: a sentence has to pluralise and inflect, and
+  /// "Territory" is a noun a customer chose that may well be an acronym or a
+  /// proper noun a naive plural would damage.
+  String get _flowNote {
+    final flow = _orientation == structureTopToBottom
+        ? 'The chart runs top to bottom: the whole business, then its '
+              'companies, then any sub companies, with things that sit side by '
+              'side drawn side by side.'
+        : 'The chart runs left to right: the whole business, then its '
+              'companies, then any sub companies, with things that sit side by '
+              'side stacked downwards.';
+
+    return 'Drag the boxes to lay the picture out the way you like it. Nothing '
+        'you do here changes the business — where a box sits on screen is just '
+        'where you put it. $flow The places work happens in are listed under '
+        'the company or sub company that runs them rather than drawn as boxes '
+        'of their own.';
   }
 
   /// What happened when somebody else's arrangement arrived, and what it means.
@@ -747,6 +929,94 @@ class _StructureTabState extends State<StructureTab> {
               'they belong in the shape rather than where you would have put '
               'them. “Arrange for me” tidies the whole picture.';
   }
+}
+
+/// Which way the chart flows, as two chips somebody picks between.
+///
+/// ── Why both, rather than the one that reads better ──────────────
+///
+/// The owner asked for both and picked left to right as the default from the
+/// mockups, and the reason each is worth keeping is a different reason. Left to
+/// right stacks siblings downward, which is the direction a screen scrolls, so a
+/// company with nine places costs nothing; top to bottom is the shape most
+/// people picture when they hear "org chart", and a business four companies wide
+/// reads perfectly well that way. Neither is a preference about how the product
+/// behaves, so neither is a setting — it is a fact about one picture, stored
+/// with the picture.
+///
+/// ── Chips rather than a SegmentedButton ──────────────────────────
+///
+/// A `Wrap` of chips is the pattern this app already uses where a segmented
+/// control would overflow (`AppearanceCard`), and it is the safe one here: the
+/// canvas is only drawn above 760 points, but a reader at 200% text size on a
+/// window barely over that has a toolbar's worth of labels to fit, and a control
+/// that overflows is a control nobody can press. Chips also announce their
+/// selected state to a screen reader without anything being written by hand.
+///
+/// Labelled in words, not by two arrow glyphs. An icon-only control is a control
+/// that depends on a tooltip, and a tooltip is a mouse-only affordance — the one
+/// thing this product may not build (§ house rules, and the touch devices this
+/// tab is served to).
+///
+/// ── A control in a toolbar, not a strip of its own ───────────────
+///
+/// It is handed to `StructureCanvas.controls` and drawn in the same [Wrap] as
+/// "Arrange for me", "Bring the boxes into view" and the zoom cluster, so it has
+/// no ground of its own and no full width to fill. It had both while the canvas
+/// took no such slot, and both were wrong: a coloured full-width strip is what
+/// every SENTENCE on this tab is drawn in, so a control wearing one read as
+/// another notice, and it cost a whole strip of height on the view whose entire
+/// problem is that the picture does not fit the window.
+class StructureFlowChoice extends StatelessWidget {
+  const StructureFlowChoice({
+    super.key,
+    required this.orientation,
+    required this.onChanged,
+  });
+
+  final String orientation;
+
+  /// One of [structureLeftToRight] or [structureTopToBottom]. Reported rather
+  /// than applied, like every other control on this tab: this widget draws what
+  /// it is given and says what somebody pressed, and the tab is what decides
+  /// whether that becomes a save.
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // A Wrap inside the toolbar's own Wrap, so the label and its two chips stay
+    // together on one line while there is room and break onto the next when
+    // there is not — which at 375 points, or at 200% text on a window barely
+    // over the width the canvas is drawn at, there is not.
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        // Said out loud rather than left to be inferred from two chips. On its
+        // own, "Left to right" beside "Top to bottom" is two options with no
+        // question above them.
+        Padding(
+          padding: const EdgeInsets.only(left: 4, right: 4),
+          child: Text('The chart flows', style: theme.textTheme.bodyMedium),
+        ),
+        _chip(context, structureLeftToRight, 'Left to right'),
+        _chip(context, structureTopToBottom, 'Top to bottom'),
+      ],
+    );
+  }
+
+  Widget _chip(BuildContext context, String value, String label) => ChoiceChip(
+    label: Text(label),
+    selected: orientation == value,
+    // Every press reports, including a press on the chip already selected. The
+    // tab drops the ones that change nothing, which is one place to decide it
+    // rather than two — and a chip that silently ignores a press is a chip
+    // somebody presses again harder.
+    onSelected: (_) => onChanged(value),
+  );
 }
 
 /// A sentence about the state of this tab, above the thing it is about.

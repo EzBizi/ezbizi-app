@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Exceptions\SubscriptionLapsedException;
 use App\Models\GoogleMailSignIn;
+use App\Models\GoogleWorkspaceConnection;
+use App\Models\GoogleWorkspaceSignIn;
 use App\Models\Mailbox;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
@@ -11,6 +13,9 @@ use App\Support\Email\GoogleOAuth;
 use App\Support\Email\GoogleOAuthGrant;
 use App\Support\Email\GoogleOAuthRefused;
 use App\Support\Email\GoogleOAuthSignIns;
+use App\Support\Email\GoogleWorkspace;
+use App\Support\Email\GoogleWorkspaceRefused;
+use App\Support\Email\GoogleWorkspaceSignIns;
 use App\Support\Email\MailboxAccess;
 use App\Support\Email\MailboxProvider;
 use App\Support\Email\MailboxReaders;
@@ -113,6 +118,8 @@ class GoogleMailAuthController extends Controller
         private readonly MailboxReaders $readers,
         private readonly GoogleOAuth $google,
         private readonly GoogleOAuthSignIns $signIns,
+        private readonly GoogleWorkspace $workspace,
+        private readonly GoogleWorkspaceSignIns $workspaceSignIns,
         private readonly TenantContext $tenant,
         private readonly AuditLogger $audit,
     ) {}
@@ -283,11 +290,28 @@ class GoogleMailAuthController extends Controller
          * is nothing to key an outcome to, and nothing that could legitimately
          * be waiting on it.
          */
-        $signIn = null;
+        $signIn          = null;
+        $workspaceSignIn = null;
 
         try {
             if ($state === '') {
                 throw GoogleOAuthRefused::noOpenSignIn();
+            }
+
+            $workspaceSignIn = $this->workspaceSignIns->completeIfPresent($state);
+
+            if ($workspaceSignIn !== null) {
+                if ($request->query('error') !== null) {
+                    throw GoogleOAuthRefused::declined();
+                }
+
+                $code = (string) $request->query('code', '');
+
+                if ($code === '') {
+                    throw GoogleOAuthRefused::exchangeFailed();
+                }
+
+                return $this->finishWorkspace($workspaceSignIn, $code);
             }
 
             $signIn = $this->signIns->complete($state);
@@ -317,6 +341,10 @@ class GoogleMailAuthController extends Controller
 
             return $this->finish($signIn, $code);
         } catch (GoogleOAuthRefused $e) {
+            if ($workspaceSignIn !== null) {
+                $this->workspaceSignIns->record($workspaceSignIn, GoogleWorkspaceSignIns::REFUSED, $e->getMessage());
+            }
+
             if ($signIn !== null) {
                 // The same sentence the browser is about to read, so the screen
                 // that was waiting says exactly what the tab says. The likeliest
@@ -327,7 +355,71 @@ class GoogleMailAuthController extends Controller
             }
 
             return $this->page('That did not work', $e->getMessage(), $e->status);
+        } catch (GoogleWorkspaceRefused $e) {
+            if ($workspaceSignIn !== null) {
+                $this->workspaceSignIns->record($workspaceSignIn, GoogleWorkspaceSignIns::REFUSED, $e->getMessage());
+            }
+
+            return $this->page('That did not work', $e->getMessage(), $e->status);
         }
+    }
+
+    /**
+     * Prove a Workspace administrator runs the domain named on the sign-in row.
+     *
+     * @throws GoogleOAuthRefused
+     * @throws GoogleWorkspaceRefused
+     */
+    private function finishWorkspace(GoogleWorkspaceSignIn $signIn, string $code): Response
+    {
+        $organization = $signIn->organization;
+
+        if ($organization === null) {
+            throw GoogleOAuthRefused::noLongerPermitted(
+                'The business this sign-in belongs to is no longer set up in EzBizi.',
+            );
+        }
+
+        return $this->tenant->run($organization, function () use ($signIn, $code, $organization) {
+            $user = User::find($signIn->user_id);
+
+            if ($user === null || ! $user->is_active
+                || ! $user->hasPermission('email.edit')
+                || ! $user->canActOnOrganization($organization)) {
+                throw GoogleOAuthRefused::noLongerPermitted(
+                    'The person who started it is no longer able to connect Google Workspace. '
+                    .'Somebody who can manage Email at the organization needs to connect it.',
+                );
+            }
+
+            $identity = $this->google->identifyWorkspaceAccount($code, $signIn->code_verifier);
+
+            if ($identity['domain'] !== $signIn->domain) {
+                throw GoogleWorkspaceRefused::wrongDomain($signIn->domain, $identity['domain']);
+            }
+
+            $connection = $this->workspace->bind($organization, $identity['domain'], $identity['email']);
+
+            $said = $connection->status === GoogleWorkspaceConnection::STATUS_CONNECTED
+                ? $identity['domain'].' is connected to EzBizi. You can close this window and '
+                    .'pick shared addresses like info@ from the directory under Email → Settings. '
+                    .'EzBizi will not import anyone\'s personal mailbox — only the addresses you pick.'
+                : (string) $connection->status_reason;
+
+            $this->workspaceSignIns->record($signIn, GoogleWorkspaceSignIns::CONNECTED, $said);
+
+            $this->audit->log('workspace.connected', $organization, [
+                'domain'      => $identity['domain'],
+                'admin_email' => $identity['email'],
+                'status'      => $connection->status,
+            ], actor: $user);
+
+            $heading = $connection->status === GoogleWorkspaceConnection::STATUS_CONNECTED
+                ? 'Connected'
+                : 'Almost connected';
+
+            return $this->page($heading, $said, Status::HTTP_OK);
+        });
     }
 
     /**

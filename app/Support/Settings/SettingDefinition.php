@@ -115,8 +115,9 @@ final class SettingDefinition
          *
          * ── Why a row can need leaving out ───────────────────────
          *
-         * `organization.structure_canvas` is a list of box coordinates authored
-         * by dragging boxes on the Organization tab. The Settings screen has no
+         * `organization.structure_canvas` is box coordinates and the direction
+         * the chart flows in, authored by dragging boxes and pressing a
+         * two-way control on the Organization tab. The Settings screen has no
          * shape to draw for a plain `json` value, so it falls back to a box of
          * raw JSON. Handing somebody five hundred `{kind,id,x,y}` objects to
          * hand-edit is a control whose every use is a mistake: the picture it

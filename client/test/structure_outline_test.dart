@@ -78,45 +78,72 @@ void main() {
       );
     });
 
-    /// The bug this release fixes, in outline form.
+    /// A place hangs off the company that owns it, and so does a sub company.
     ///
-    /// A company's own place used to be typed in at depth 2 and a sub company
-    /// at depth 2 as well, so the two drew at the SAME indent — the outline
-    /// saying a place and a sub company are the same size of thing. They are
-    /// not: a sub company holds places of its own. Nothing in this file
-    /// compared those two indents before, which is how two views managed to
-    /// carry one bug in two spellings.
-    testWidgets('a company’s own place is indented one step further than a sub '
-        'company of the same company', (tester) async {
+    /// ── This assertion is the reverse of what it said this morning ──
+    ///
+    /// It used to require a company's own place to be indented one step FURTHER
+    /// than a sub company of the same company, because the canvas drew every
+    /// place on its own fourth line: a top-level company's place was genuinely
+    /// two steps in, with the sub-company step empty above it, and the outline
+    /// agreed with the canvas about that.
+    ///
+    /// A place is not a box any more. It is a row in a list attached to its
+    /// company, and Everdoors' own territories hang off Everdoors on the canvas
+    /// exactly the way Premier's hang off Premier. Keeping the old indent would
+    /// have drawn nine of A-1 Chimney's places two steps from a company they sit
+    /// directly under, with a guide rail down an empty step that reads as a sub
+    /// company which failed to load.
+    ///
+    /// What that costs is a shared indent, and it is why the second half of this
+    /// test exists: the thing the indent used to say — which of the two is the
+    /// bigger kind of thing — has to still be said, and it is said in words on
+    /// every row rather than by position.
+    testWidgets('a company’s own place and its sub company both hang one step '
+        'off it', (tester) async {
       await _pump(tester);
 
+      final company = _indentOf(tester, 'Everdoors — Company');
       final place = _indentOf(tester, 'DMV — Territory in Everdoors');
       final sub = _indentOf(
         tester,
         'Premier Garage Repair — Sub company in Everdoors, switched off',
       );
 
-      expect(
-        place,
-        greaterThan(sub),
-        reason: 'A place of the company sits level with a sub company of the '
-            'same company, which says the two are the same kind of thing.',
-      );
+      expect(place - company, moreOrLessEquals(_stepInTest, epsilon: 0.5));
+      expect(sub - company, moreOrLessEquals(_stepInTest, epsilon: 0.5));
 
-      // Exactly one step, so this is a LEVEL rather than a nudge — and the same
-      // one step the sub company itself is indented past its company.
-      expect(place - sub, moreOrLessEquals(_stepInTest, epsilon: 0.5));
+      // A place of a SUB company is one step further again, because its owner
+      // is one step further in. The rule is "one step off whatever owns you",
+      // not "places are all on one line".
       expect(
-        sub - _indentOf(tester, 'Everdoors — Company'),
+        _indentOf(
+          tester,
+          'Connecticut — Territory in Everdoors › Premier Garage Repair',
+        ) -
+            sub,
         moreOrLessEquals(_stepInTest, epsilon: 0.5),
       );
+
+      // And the two rows that now share an indent still say which is which, in
+      // words, on screen and to a reader who cannot see the indent at all.
+      // (Everdoors runs two territories of its own, so that caption is on more
+      // than one row — what matters is that it is not the sub company's.)
+      expect(find.text('Territory in Everdoors'), findsWidgets);
+      expect(find.text('Sub company in Everdoors'), findsOneWidget);
     });
 
     /// The claim the whole of `structure_levels.dart` exists to make true: there
     /// is ONE hierarchy, and the two views read it from one function rather than
     /// each keeping a copy. Both copies used to carry the same bug, and both had
     /// to be found separately.
-    testWidgets('the outline and the canvas agree about every level', (
+    ///
+    /// What they have to agree about has changed with the model. A box is
+    /// indented by the level the canvas lays it out on, as before. A place is
+    /// not laid out at all — it has no position, which is the assertion at the
+    /// bottom — so what the two views must agree on is where it HANGS, and both
+    /// hang it one step off the company that owns it.
+    testWidgets('the outline and the canvas agree about where every row hangs', (
       tester,
     ) async {
       await _pump(tester);
@@ -128,25 +155,44 @@ void main() {
       // an agreement below is not an agreement about an empty intersection.
       expect(rows, hasLength(nodes.length));
 
-      final canvasLevels = {
-        for (final node in nodes)
-          node.key: structureLevelOf(kind: node.kind, isSub: node.isSub),
-      };
+      final indents = {for (final row in rows) row.key: row.indent};
 
-      for (final row in rows) {
+      for (final node in nodes) {
+        if (structureHasBox(node.kind)) {
+          expect(
+            indents[node.key],
+            structureLevelOf(kind: node.kind, isSub: node.isSub),
+            reason: '${node.name} is ${indents[node.key]} steps in on the '
+                'outline and on line '
+                '${structureLevelOf(kind: node.kind, isSub: node.isSub)} of the '
+                'canvas. One business, two pictures, and they disagree about '
+                'its shape.',
+          );
+
+          continue;
+        }
+
         expect(
-          row.depth,
-          canvasLevels[row.key],
-          reason: '${row.name} is on line ${row.depth} of the outline and line '
-              '${canvasLevels[row.key]} of the canvas. One business, two '
-              'pictures, and they disagree about its shape.',
+          indents[node.key],
+          indents[node.parentKey]! + 1,
+          reason: '${node.name} is drawn attached to its company on the canvas '
+              'and ${indents[node.key]! - indents[node.parentKey]!} steps off '
+              'it here.',
         );
       }
 
-      // And the levels really are spread across the four, so the loop above is
-      // not comparing a column of zeroes with a column of zeroes.
+      // The other half of the same claim, and the one an indent cannot show: a
+      // place has no position for the canvas to draw it at.
       expect(
-        {for (final row in rows) row.depth},
+        nodes.where((node) => !structureHasBox(node.kind)),
+        isNotEmpty,
+        reason: 'The fixture has places, or the loop above proved nothing.',
+      );
+
+      // And the indents really are spread across the four steps, so the loop
+      // above is not comparing a column of zeroes with a column of zeroes.
+      expect(
+        {for (final row in rows) row.indent},
         {0, 1, 2, 3},
       );
     });

@@ -75,6 +75,8 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
   List<ProviderOption> _providers = const [];
   List<int> _imapPorts = const [];
   List<int> _smtpPorts = const [];
+  WorkspaceLink? _workspace;
+  bool _workspaceReachable = false;
 
   /// The server's last word about something that just happened — what
   /// disconnecting took away, in its own sentence.
@@ -99,6 +101,7 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
     });
 
     final response = await widget.api.get('/email/mailboxes');
+    final workspace = await widget.api.get('/email/workspace');
 
     if (!mounted) return;
 
@@ -118,6 +121,11 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
       _providers = ProviderOption.listFrom(meta);
       _imapPorts = _ports(meta, 'imap_ports');
       _smtpPorts = _ports(meta, 'smtp_ports');
+
+      _workspaceReachable = workspace.ok;
+      _workspace = workspace.ok && workspace.data is Map<String, dynamic>
+          ? WorkspaceLink.fromJson(workspace.data as Map<String, dynamic>)
+          : null;
     });
   }
 
@@ -226,6 +234,30 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
     await _load();
   }
 
+  Future<void> _connectWorkspace() async {
+    final connected = await showSidePanel<bool>(
+      context,
+      builder: (_) => ConnectWorkspacePanel(
+        api: widget.api,
+        openConsent: widget.openConsent,
+      ),
+    );
+
+    if (connected != true || !mounted) return;
+
+    setState(() => _notice = null);
+    await _load();
+  }
+
+  Future<void> _disconnectWorkspace() async {
+    final response = await widget.api.delete('/email/workspace');
+
+    if (!mounted) return;
+
+    setState(() => _notice = response.ok ? response.message : response.reason);
+    await _load();
+  }
+
   /// How this address is set up, as the server described the service. Null when
   /// the server named a provider this build's `meta` block does not describe —
   /// a newer server than this bundle, which the connect panel says out loud
@@ -263,6 +295,16 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
             child: _Notice(_notice!, onDismiss: () => setState(() => _notice = null)),
+          ),
+        if (_workspaceReachable)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: _WorkspaceCard(
+              link: _workspace,
+              connectRefusal: _me.refusal('email.edit', 'connect Google Workspace'),
+              onConnect: _connectWorkspace,
+              onDisconnect: _disconnectWorkspace,
+            ),
           ),
         Expanded(
           child: AsyncBody(
@@ -328,6 +370,85 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
       );
     },
   );
+}
+
+/// The organization's Google Workspace domain, connected once for every inbox.
+class _WorkspaceCard extends StatelessWidget {
+  const _WorkspaceCard({
+    required this.link,
+    required this.connectRefusal,
+    required this.onConnect,
+    required this.onDisconnect,
+  });
+
+  final WorkspaceLink? link;
+  final String? connectRefusal;
+  final VoidCallback onConnect;
+  final VoidCallback onDisconnect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final linked = link != null;
+    final pending = link?.status == 'pending_delegation';
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Google Workspace', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 6),
+            Text(
+              linked
+                  ? (pending
+                      ? '${link!.domain} is linked, but EzBizi cannot open '
+                          'mailboxes until domain-wide delegation is allowed '
+                          'in Google Admin.'
+                      : '${link!.domain} is connected. Shared inboxes are '
+                          'picked from the directory when you add one.')
+                  : 'Connect the company domain once, then pick shared '
+                      'addresses like info@ from the directory. Do not pick a '
+                      'person\'s own mailbox.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            if (link?.statusReason != null) ...[
+              const SizedBox(height: 8),
+              Text(link!.statusReason!, style: theme.textTheme.bodySmall),
+            ],
+            if (link?.clientIdForAdminConsole != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Google Admin client ID: ${link!.clientIdForAdminConsole}',
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: linked
+                  ? Refused(
+                      reason: connectRefusal,
+                      child: OutlinedButton(
+                        onPressed: connectRefusal == null ? onDisconnect : null,
+                        child: const Text('Disconnect Workspace'),
+                      ),
+                    )
+                  : Refused(
+                      reason: connectRefusal,
+                      child: FilledButton(
+                        onPressed: connectRefusal == null ? onConnect : null,
+                        child: const Text('Connect Workspace'),
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// One connection, everything about it on one card.

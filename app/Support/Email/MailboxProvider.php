@@ -5,9 +5,11 @@ namespace App\Support\Email;
 /**
  * Where a shared inbox actually lives.
  *
- * Both were decided, and they are not equals. OAuth is what a customer should be
- * steered to; IMAP exists because not everybody is on Google, and it is the one
- * that asks somebody to hand us a password.
+ * Three ways in, and they are not equals. Per-inbox Google OAuth is what a
+ * customer should be steered to for a single address; Google Workspace is the
+ * domain-wide grant for companies that would rather connect once and pick
+ * shared inboxes from the Directory; IMAP exists because not everybody is on
+ * Google, and it is the one that asks somebody to hand us a password.
  */
 enum MailboxProvider: string
 {
@@ -21,6 +23,21 @@ enum MailboxProvider: string
      * of the alternative.
      */
     case GmailOAuth = 'gmail_oauth';
+
+    /**
+     * Google Workspace, over domain-wide delegation.
+     *
+     * A Workspace administrator connects the DOMAIN once. After that, shared
+     * addresses on that domain are opened by impersonating them with EzBizi's
+     * service account — nobody signs in as info@, and no mailbox password is
+     * stored. The grant is larger than per-inbox OAuth (it can open any address
+     * the Directory lists), which is why connecting it is its own act, proved
+     * by an admin Google sign-in, and bound uniquely to one EzBizi organization.
+     *
+     * Personal mailboxes are not imported. An administrator picks the shared
+     * addresses this module is for.
+     */
+    case GmailWorkspace = 'gmail_workspace';
 
     /**
      * Anything that speaks IMAP, with a username and a password.
@@ -40,6 +57,7 @@ enum MailboxProvider: string
     {
         return match ($this) {
             self::GmailOAuth => 'Google (recommended)',
+            self::GmailWorkspace => 'Google Workspace',
             self::Imap       => 'IMAP',
         };
     }
@@ -48,8 +66,8 @@ enum MailboxProvider: string
     public function storesAPassword(): bool
     {
         return match ($this) {
-            self::GmailOAuth => false,
-            self::Imap       => true,
+            self::GmailOAuth, self::GmailWorkspace => false,
+            self::Imap                             => true,
         };
     }
 
@@ -63,8 +81,8 @@ enum MailboxProvider: string
     public function needsHost(): bool
     {
         return match ($this) {
-            self::GmailOAuth => false,
-            self::Imap       => true,
+            self::GmailOAuth, self::GmailWorkspace => false,
+            self::Imap                             => true,
         };
     }
 
@@ -78,11 +96,33 @@ enum MailboxProvider: string
     {
         return match ($this) {
             self::GmailOAuth => null,
+            self::GmailWorkspace => 'Connect the company\'s Google Workspace once, then pick '
+                .'shared addresses like info@ from the directory. Do not pick a person\'s own '
+                .'mailbox — this module is for team inboxes. A Workspace administrator has to '
+                .'allow EzBizi in Google Admin (Security → Domain-wide delegation) first.',
             self::Imap       => 'Connecting by IMAP means storing the mailbox password here, '
                 .'and for most mail services that is the account password — the same one that '
                 .'opens everything else on that account. If this address is on Google, connect '
                 .'it with Google instead: that hands over a key for mail only, and it can be '
                 .'taken back without changing anybody\'s password.',
+        };
+    }
+
+    /**
+     * How this provider is finished, published rather than inferred.
+     *
+     * The connect form used to guess from {@see needsHost}: a host meant a
+     * password, no host meant a sign-in. Google Workspace has no host and is
+     * not finished by signing in as the inbox — it is finished by picking the
+     * address from the Directory after the domain is connected. A third value
+     * is cheaper than teaching every client a new exception.
+     */
+    public function connectsBy(): string
+    {
+        return match ($this) {
+            self::GmailOAuth      => 'sign_in',
+            self::GmailWorkspace  => 'directory',
+            self::Imap            => 'password',
         };
     }
 

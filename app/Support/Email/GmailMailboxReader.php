@@ -116,6 +116,7 @@ final class GmailMailboxReader implements MailboxReader
     public function __construct(
         private readonly GmailMessageMapper $mapper,
         private readonly ReplyComposer $composer,
+        private readonly GoogleWorkspace $workspace,
     ) {}
 
     // ── is there anything behind this at all ─────────────────────
@@ -136,6 +137,10 @@ final class GmailMailboxReader implements MailboxReader
 
     public function unavailableBecause(Mailbox $mailbox): ?string
     {
+        if ($mailbox->providerEnum() === MailboxProvider::GmailWorkspace) {
+            return $this->workspace->unavailableBecause($mailbox);
+        }
+
         if (($notReady = $this->notReadyBecause()) !== null) {
             return $notReady;
         }
@@ -591,6 +596,10 @@ final class GmailMailboxReader implements MailboxReader
      */
     private function accessToken(Mailbox $mailbox): string
     {
+        if ($mailbox->providerEnum() === MailboxProvider::GmailWorkspace) {
+            return $this->workspace->gmailAccessToken($mailbox);
+        }
+
         $this->assertUsable($mailbox);
 
         if (($cached = $this->cachedAccessToken($mailbox)) !== null) {
@@ -968,6 +977,12 @@ final class GmailMailboxReader implements MailboxReader
      */
     private function assertUsable(Mailbox $mailbox): void
     {
+        if ($mailbox->providerEnum() === MailboxProvider::GmailWorkspace) {
+            $this->workspace->assertCanOpen($mailbox);
+
+            return;
+        }
+
         if (! $this->platformIsRegistered()) {
             throw CannotReadMailbox::notBuiltHere(
                 MailboxProvider::GmailOAuth,

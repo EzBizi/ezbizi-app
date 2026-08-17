@@ -32,6 +32,37 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         /*
+         * The minimum client version gate, in front of the entire API.
+         *
+         * PREPENDED TO THE GROUP rather than aliased and listed per route, and
+         * both halves of that matter.
+         *
+         * On the GROUP, because an installed app that is too old to talk to this
+         * API is too old for every endpoint of it, and an allowlist of gated
+         * routes would leave each new endpoint ungated until somebody
+         * remembered — the same trap EnforceSubscriptionState avoids by keying
+         * off the HTTP verb instead of a route list. The exemptions live inside
+         * the middleware, where the reason for each one is written down beside
+         * it.
+         *
+         * PREPENDED, so it runs before auth:sanctum. An out-of-date client
+         * should be told it is out of date at the front door — including on the
+         * login request itself — rather than being let in and then failing on
+         * whatever endpoint first uses the part of the API it does not
+         * understand. It reads nothing from the authenticated user (the platform
+         * and version come from headers, and are untrusted precisely because
+         * they come from headers), so there is nothing for it to wait on.
+         *
+         * It refuses nothing until EzBizi staff configure a minimum, and refuses
+         * nothing at all to a client that sends no version header — which is
+         * every client shipped to date. See EnforceMinimumClientVersion for why
+         * that fail-open behaviour is the load-bearing part of the design.
+         */
+        $middleware->api(prepend: [
+            App\Http\Middleware\EnforceMinimumClientVersion::class,
+        ]);
+
+        /*
          * Tenancy is established BEFORE route model binding.
          *
          * Listing middleware in a route's ->middleware([...]) does not decide the

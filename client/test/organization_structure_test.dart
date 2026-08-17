@@ -342,7 +342,7 @@ void main() {
     /// somebody who had moved one box and changed nothing about the business.
     /// It said it on every visit, and the only way to silence it was to press
     /// the escape hatch, which overwrites the placement they had just made.
-    testWidgets('dragging one box does not make the other five new', (
+    testWidgets('dragging one box does not make the other three new', (
       tester,
     ) async {
       await _pump(tester, _server());
@@ -363,14 +363,46 @@ void main() {
             'something.',
       );
       expect(
-        find.textContaining('5 boxes have not been placed by you'),
+        find.textContaining('3 boxes have not been placed by you'),
         findsOneWidget,
         reason:
             'The honest half stays, because it is what is actually on screen: '
-            'five boxes really are where the shape put them rather than where '
+            'three boxes really are where the shape put them rather than where '
             'this person did, which is why one may be sitting on another, and '
             'there is one button that tidies the lot.',
       );
+    });
+
+    /// Three rather than five, and the two that went are the two PLACES.
+    ///
+    /// A place has no position now — it is a row in the list attached to its
+    /// company — so it can never be missing from an arrangement and can never be
+    /// placed by pressing anything. Counting them would have told this
+    /// organization that thirteen boxes were unplaced, on every visit, for ever,
+    /// with an escape hatch that could not clear the sentence because pressing
+    /// it would not place them either. That is the same failure the "new since
+    /// you last arranged" wording was fixed for, arriving from the other side.
+    testWidgets('and the places are not among the boxes it counts', (
+      tester,
+    ) async {
+      await _pump(tester, _server());
+      await _openStructure(tester);
+
+      // The premise: the fixture has six things in it and two of them are
+      // places, so a count that included them would say five.
+      expect(flattenStructure(_tree()), hasLength(6));
+      expect(
+        flattenStructure(_tree()).where((n) => !structureHasBox(n.kind)),
+        hasLength(2),
+      );
+
+      await tester.drag(
+        find.byKey(structureBoxKey('company:$_sun')),
+        const Offset(120, 60),
+      );
+      await _settle(tester);
+
+      expect(find.textContaining('5 boxes have not been placed'), findsNothing);
     });
   });
 
@@ -456,18 +488,21 @@ void main() {
 
       // A second box, moved while the first answer has not come back yet.
       //
+      // A COMPANY rather than a place: a place is a row in the list attached to
+      // its company now, so it has no position of its own and nothing to move.
+      //
       // Measured against a box nobody has touched rather than against the
       // window, because the note above the canvas appears the moment there is a
       // saved arrangement and shifts the whole picture down with it — which is
       // a change of layout and not of arrangement.
       Offset apart() =>
-          _rectOf(tester, 'franchise:$_north').topLeft -
+          _rectOf(tester, 'company:$_ever').topLeft -
           _rectOf(tester, 'organization:$_org').topLeft;
 
       final settled = apart();
 
       await tester.drag(
-        find.byKey(structureBoxKey('franchise:$_north')),
+        find.byKey(structureBoxKey('company:$_ever')),
         const Offset(80, 90),
       );
       await _land(tester);
@@ -497,12 +532,12 @@ void main() {
       final from = arrangeStructure(flattenStructure(_tree()));
 
       expect(
-        second.firstWhere((box) => box['id'] == _north),
+        second.firstWhere((box) => box['id'] == _ever),
         {
-          'kind': 'franchise',
-          'id': _north,
-          'x': (from['franchise:$_north']!.dx + 80).round(),
-          'y': (from['franchise:$_north']!.dy + 90).round(),
+          'kind': 'company',
+          'id': _ever,
+          'x': (from['company:$_ever']!.dx + 80).round(),
+          'y': (from['company:$_ever']!.dy + 90).round(),
         },
         reason:
             'And it is written, rather than lost from the column as well as '
@@ -536,11 +571,13 @@ void main() {
       expect(saves, hasLength(1));
       expect(
         saves.single.keys.toSet(),
-        {'boxes'},
+        {'orientation', 'boxes'},
         reason:
-            'The only wire this tab owns is a list of coordinates. A second '
-            'field on this request is the drag having started to move the '
-            'business.',
+            'The only wire this tab owns carries coordinates and which way the '
+            'chart runs. A THIRD field on this request is the drag having '
+            'started to move the business — there is no field here a parent '
+            'could arrive in, which is what makes the rule structural rather '
+            'than a promise.',
       );
 
       for (final box in (saves.single['boxes'] as List).cast<Map>()) {
@@ -1212,8 +1249,222 @@ void main() {
     });
   });
 
+  group('which way the chart flows', () {
+    /// It is part of the SHARED arrangement, so it comes off the tree with the
+    /// boxes rather than out of a preference or a constant. A tab that opened
+    /// left to right whatever the organization had chosen would be one person's
+    /// picture disagreeing with everybody else's about which way their own
+    /// business runs.
+    testWidgets('the tab opens the way the shared arrangement says', (
+      tester,
+    ) async {
+      await _pump(tester, _server(orientation: 'top_to_bottom'));
+      await _openStructure(tester);
+
+      expect(_chosenFlow(tester), 'Top to bottom');
+      expect(find.textContaining('The chart runs top to bottom'), findsOneWidget);
+
+      // And the BOXES flow that way, which is the half the chip and the
+      // sentence cannot say. A tab that read the stored word, drew the chip
+      // selected, wrote the right sentence and never handed the word to the
+      // canvas would pass both assertions above and show everybody the chart
+      // running the other way.
+      final apart = _rectOf(tester, 'company:$_ever').topLeft -
+          _rectOf(tester, 'organization:$_org').topLeft;
+
+      expect(
+        apart.dy,
+        greaterThan(0),
+        reason: 'Depth runs downward when the arrangement says top to bottom.',
+      );
+      expect(apart.dy, greaterThan(apart.dx.abs()));
+    });
+
+    testWidgets('and left to right when nobody has chosen', (tester) async {
+      await _pump(tester, _server());
+      await _openStructure(tester);
+
+      expect(
+        _chosenFlow(tester),
+        'Left to right',
+        reason:
+            'The owner picked it from the mockups, and the reason is the real '
+            'data: nine places under one company is nothing stacked downwards '
+            'and three screens across.',
+      );
+    });
+
+    /// One request, carrying the direction AND the boxes — because they are one
+    /// arrangement, and a save that sent half of one would drop whichever half
+    /// it left out.
+    testWidgets('turning it round is written once, with the boxes', (
+      tester,
+    ) async {
+      final saves = <Map<String, dynamic>>[];
+
+      await _pump(
+        tester,
+        _server(saves: saves, canvas: [_box('company', _sun, 240, 140)]),
+      );
+      await _openStructure(tester);
+
+      await tester.tap(find.text('Top to bottom'));
+      await _settle(tester);
+
+      expect(saves, hasLength(1));
+      expect(saves.single['orientation'], 'top_to_bottom');
+      expect(
+        (saves.single['boxes'] as List).single,
+        {'kind': 'company', 'id': _sun, 'x': 240, 'y': 140},
+        reason:
+            'The arrangement it had goes back with the direction. A body that '
+            'carried the orientation alone would be a save that flattened '
+            'everybody\'s boxes to nothing.',
+      );
+    });
+
+    /// The chip already selected can still be pressed, and a save that changes
+    /// nothing still takes an audit row and still announces itself to every
+    /// colleague's next fetch as somebody having rearranged the chart.
+    testWidgets('pressing the one already chosen writes nothing', (
+      tester,
+    ) async {
+      final saves = <Map<String, dynamic>>[];
+
+      await _pump(tester, _server(saves: saves));
+      await _openStructure(tester);
+
+      await tester.tap(find.text('Left to right'));
+      await _settle(tester);
+
+      expect(saves, isEmpty);
+    });
+
+    /// A colleague's flip is a colleague's arrangement, and gets the same
+    /// treatment: taken, and said out loud.
+    testWidgets('a colleague turning it round arrives and is said out loud', (
+      tester,
+    ) async {
+      final (api, session) = await _signIn(tester, _server());
+
+      await _pumpTab(tester, api: api, session: session, tree: _tree());
+
+      expect(_chosenFlow(tester), 'Left to right');
+
+      // The same State, handed the payload a refetch brought back.
+      await _pumpTab(
+        tester,
+        api: api,
+        session: session,
+        tree: _tree(orientation: 'top_to_bottom'),
+      );
+
+      expect(_chosenFlow(tester), 'Top to bottom');
+      expect(
+        find.textContaining('Somebody else has arranged these boxes'),
+        findsOneWidget,
+        reason:
+            'Turning the whole chart round is the most visible thing anybody '
+            'can do here. Doing it to somebody silently is the same failure as '
+            'moving their boxes silently.',
+      );
+    });
+
+    /// Saving is what the permission gates, and this is a save. Absent rather
+    /// than disabled, like the other two controls that would produce one.
+    testWidgets('somebody who may not arrange is not offered the control', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _server(mayArrange: false, arrangeRefusal: 'You may not.'),
+      );
+      await _openStructure(tester);
+
+      expect(find.byType(StructureFlowChoice), findsNothing);
+      expect(find.text('Top to bottom'), findsNothing);
+      expect(
+        find.textContaining('You may not.'),
+        findsOneWidget,
+        reason:
+            'And the server\'s own sentence is still on screen, so the missing '
+            'control is explained rather than merely missing.',
+      );
+    });
+
+    /// A server that has not been deployed yet answers with the bare list this
+    /// payload used to be, and an arrangement is not lost over it.
+    testWidgets('an arrangement from an older server is still read', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _server(rawCanvas: [_box('company', _sun, 240, 140)]),
+      );
+      await _openStructure(tester);
+
+      expect(
+        _rectOf(tester, 'company:$_sun').topLeft -
+            _rectOf(tester, 'organization:$_org').topLeft,
+        isNot(Offset.zero),
+        reason: 'The premise: the two boxes are not on top of each other.',
+      );
+
+      // The arrangement was read: this box is where the old-shaped payload put
+      // it rather than where the automatic layout would have.
+      expect(
+        find.byKey(structureBoxKey('company:$_sun')),
+        findsOneWidget,
+      );
+      expect(
+        _chosenFlow(tester),
+        'Left to right',
+        reason:
+            'A payload that says nothing about direction says the default, not '
+            'nothing at all.',
+      );
+    });
+
+    /// The client half of "a place has no position". The server drops these in
+    /// both directions; a client that kept them would send them straight back
+    /// on the next drag and they would live in the shared column forever.
+    testWidgets('a stored place coordinate is discarded rather than sent back', (
+      tester,
+    ) async {
+      final saves = <Map<String, dynamic>>[];
+
+      await _pump(
+        tester,
+        _server(
+          saves: saves,
+          canvas: [
+            _box('company', _sun, 240, 140),
+            _box('franchise', _quiet, 700, 700),
+          ],
+        ),
+      );
+      await _openStructure(tester);
+
+      await tester.drag(
+        find.byKey(structureBoxKey('company:$_sun')),
+        const Offset(40, 20),
+      );
+      await _settle(tester);
+
+      expect(
+        [for (final box in (saves.single['boxes'] as List).cast<Map>()) box['id']],
+        isNot(contains(_quiet)),
+        reason:
+            'A place is a row in the list attached to its company now, so a '
+            'coordinate for one describes something with nowhere to sit. It is '
+            'not the same as a position for a company that is away for the '
+            'afternoon, which this same request is careful to send back.',
+      );
+    });
+  });
+
   group('the explanations', () {
-    testWidgets('the canvas says what its lines mean, including the empty one', (
+    testWidgets('the canvas says which way it runs and where the places are', (
       tester,
     ) async {
       await _pump(tester, _server());
@@ -1229,15 +1480,45 @@ void main() {
             'about the rule that matters most here.',
       );
       expect(
+        find.textContaining('The chart runs left to right'),
+        findsOneWidget,
+        reason:
+            'Which way depth runs is now a choice, so the sentence explaining '
+            'how to read the picture has to be about the picture actually on '
+            'screen. A constant inside the canvas cannot say that: it is one '
+            'string, and there are two pictures.',
+      );
+      expect(
         find.textContaining(
-          'A line with nothing on it means that branch has no sub companies.',
+          'listed under the company or sub company that runs them',
         ),
         findsOneWidget,
         reason:
-            'A place\'s line is what a place IS, so a company with no sub '
-            'companies leaves the third line empty. Unexplained, a gap in a '
-            'chart reads as something that failed to draw.',
+            'A place is not a box any more, and somebody looking for thirteen '
+            'of them and finding four companies is owed the reason in words.',
       );
+      expect(
+        find.textContaining('A line with nothing on it'),
+        findsNothing,
+        reason:
+            'The canvas\'s own default note still says this, and it is the '
+            'wrong sentence here: there is no line for a place to be absent '
+            'from any more, so a blank line is not a thing this chart has.',
+      );
+    });
+
+    /// The other half of the same sentence: it follows the control.
+    testWidgets('and it says the other thing when the chart is turned round', (
+      tester,
+    ) async {
+      await _pump(tester, _server());
+      await _openStructure(tester);
+
+      await tester.tap(find.text('Top to bottom'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('The chart runs top to bottom'), findsOneWidget);
+      expect(find.textContaining('The chart runs left to right'), findsNothing);
     });
 
     /// The rule above BOTH views, in one wording.
@@ -1358,8 +1639,15 @@ const _away = '00000000-0000-4000-8000-0000000000ff';
 /// [mayArrange] and [arrangeRefusal] are the server's §4 answer, published as a
 /// flag and as the sentence behind it — the same pair `may_add_company` beside
 /// them already is.
+///
+/// [canvas] is the BOXES, and [orientation] the direction they flow in. They go
+/// out as one value — `{orientation, boxes}` — because they are one arrangement:
+/// which way the chart runs is a fact about the picture everybody opens, not
+/// about where one person is looking, so it is stored and published with the
+/// coordinates rather than beside them.
 Map<String, dynamic> _tree({
   List<Map<String, dynamic>> canvas = const [],
+  String orientation = 'left_to_right',
   bool mayArrange = true,
   String? arrangeRefusal,
 }) => {
@@ -1389,7 +1677,7 @@ Map<String, dynamic> _tree({
     ),
     _company(_sun, 'Sunward Overhead Doors'),
   ],
-  'canvas': canvas,
+  'canvas': {'orientation': orientation, 'boxes': canvas},
 };
 
 /// One box of an arrangement, in the shape the endpoint stores and echoes.
@@ -1439,6 +1727,8 @@ typedef MockClientHandler = Future<http.Response> Function(http.Request);
 MockClientHandler _server({
   Map<String, dynamic> preferences = const {},
   List<Map<String, dynamic>> canvas = const [],
+  String orientation = 'left_to_right',
+  Object? rawCanvas,
   bool mayArrange = true,
   String? arrangeRefusal,
   List<Map<String, dynamic>>? saves,
@@ -1510,18 +1800,26 @@ MockClientHandler _server({
       // Echoes what was STORED, the way the endpoint does — the client applies
       // this answer rather than the value it sent, so a clamped or deduplicated
       // coordinate would show up on screen rather than being corrected behind
-      // its back.
-      return _json({'boxes': body['boxes']});
+      // its back. The whole arrangement, in the same shape the tree carries
+      // one, because that is what the endpoint answers with.
+      return _json({
+        'orientation': body['orientation'] ?? orientation,
+        'boxes': body['boxes'],
+      });
     }
 
     if (request.url.path.endsWith('/companies')) {
-      return _json(
-        _tree(
-          canvas: canvas,
-          mayArrange: mayArrange,
-          arrangeRefusal: arrangeRefusal,
-        ),
+      final tree = _tree(
+        canvas: canvas,
+        orientation: orientation,
+        mayArrange: mayArrange,
+        arrangeRefusal: arrangeRefusal,
       );
+
+      // A server that has not been deployed yet answers with the bare list this
+      // payload used to be. One test needs to hand the client exactly that, and
+      // it is the only reason this hatch exists.
+      return _json(rawCanvas == null ? tree : {...tree, 'canvas': rawCanvas});
     }
 
     // The logo badges on the list fetch bytes. Answering with JSON hands the
@@ -1564,6 +1862,19 @@ Future<(ApiClient, Session)> _signIn(
   return (api, session);
 }
 
+/// The default is 1400 by 1000, which is back where it started.
+///
+/// It went up to 1100 for one afternoon, while the tab carried one more strip
+/// above the canvas than it does now — the control that turns the chart round,
+/// which had nowhere else to sit — and while the chart was four levels deep
+/// because a place was a box. Both are gone: the control is in the canvas's own
+/// toolbar and a place is a row attached to its company, so the chart is three
+/// levels deep and the surface has its hundred points back.
+///
+/// Worth stating rather than silently lowering, because the canvas below is
+/// CLIPPED rather than scrolled: a box past the bottom is out of reach rather
+/// than out of sight, and a test that pumps a window too small for the fixture
+/// fails somewhere that says nothing about what it was testing.
 Future<Session> _pump(
   WidgetTester tester,
   MockClientHandler handler, {
@@ -1673,6 +1984,26 @@ Future<void> _settle(WidgetTester tester) async {
 
 Rect _rectOf(WidgetTester tester, String key) =>
     tester.getRect(find.byKey(structureBoxKey(key)));
+
+/// Which way the chart is currently set to flow, read off the control itself.
+///
+/// The chip's own `selected` rather than a colour or a position: that is the
+/// property a screen reader announces, so asserting on it is asserting on what
+/// somebody who cannot see the chips is actually told.
+///
+/// Scoped to the control rather than to every chip on screen, because the tab
+/// strip above this whole page is chips as well — List and Structure — and one
+/// of those is always selected too.
+String _chosenFlow(WidgetTester tester) => tester
+    .widgetList<ChoiceChip>(
+      find.descendant(
+        of: find.byType(StructureFlowChoice),
+        matching: find.byType(ChoiceChip),
+      ),
+    )
+    .where((chip) => chip.selected)
+    .map((chip) => ((chip.label as Text).data)!)
+    .single;
 
 /// A point ON the drawing surface with no box under it.
 ///

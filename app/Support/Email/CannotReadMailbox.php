@@ -130,11 +130,15 @@ class CannotReadMailbox extends RuntimeException
                 .'inbox. %s Until that is done, mail sent to this address is still arriving '
                 .'normally; EzBizi simply cannot show it to you.',
                 $address,
-                $provider === MailboxProvider::GmailOAuth
-                    ? 'Somebody with permission to manage mailboxes needs to sign in to Google '
-                        .'and give EzBizi permission to read it.'
-                    : 'Somebody with permission to manage mailboxes needs to enter the mail '
-                        .'server details and the password for this address.',
+                match ($provider) {
+                    MailboxProvider::GmailOAuth => 'Somebody with permission to manage mailboxes '
+                        .'needs to sign in to Google and give EzBizi permission to read it.',
+                    MailboxProvider::GmailWorkspace => 'Somebody with permission to manage '
+                        .'mailboxes needs to connect this organization\'s Google Workspace and '
+                        .'pick this address from the directory.',
+                    MailboxProvider::Imap => 'Somebody with permission to manage mailboxes needs '
+                        .'to enter the mail server details and the password for this address.',
+                },
             ),
             MailboxFault::NotConnected,
         );

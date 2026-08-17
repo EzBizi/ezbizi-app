@@ -78,6 +78,18 @@ Read it before setting `GOOGLE_MAIL_*` in `.env`. One decision in there —
 Internal versus External on the consent screen — is the difference between
 working this afternoon and waiting weeks for a Google security assessment.
 
+## Shipping the installed apps
+
+`scripts/deploy.sh` ships the web client and the API, and nothing else. The
+Windows, Android, iOS and macOS builds are made by `scripts/build-app.sh` and
+distributed through the public app stores, which is account work rather than
+deploy work — so it lives on its own in **[STORES.md](STORES.md)**.
+
+Read it before the first submission, not after. Two things in there are cheap
+now and permanent later: the bundle identifiers are still `flutter create`
+defaults, and a bundle identifier cannot be changed once a build carrying it has
+been accepted.
+
 ## Where things are
 
 | | |

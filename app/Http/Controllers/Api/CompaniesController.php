@@ -210,13 +210,21 @@ class CompaniesController extends Controller
              * DashboardController::index re-checks a layout its own saveLayout
              * already checked, for this reason.
              *
-             * Always present, always a list — `[]` when nobody has arranged
-             * anything. The old per-user blob distinguished "never arranged"
-             * from "arranged nothing" because a preferences map either has a
-             * key or does not; here the two mean the same thing to the only
-             * reader there is (every box goes to its automatic place), and a
-             * key that comes and goes is one more shape for a second client to
-             * get wrong.
+             * Always present, and always the same shape: `{orientation, boxes}`,
+             * with an empty list of boxes when nobody has arranged anything.
+             *
+             * It was a bare list until places stopped being boxes and the chart
+             * gained a direction to flow in. Which way it flows is a fact about
+             * the picture everybody is looking at rather than about one reader,
+             * so it is stored with the coordinates and published with them —
+             * unlike the zoom level, which is where somebody happens to be
+             * looking and is never sent anywhere.
+             *
+             * The old per-user blob distinguished "never arranged" from
+             * "arranged nothing" because a preferences map either has a key or
+             * does not; here the two mean the same thing to the only reader
+             * there is (every box goes to its automatic place), and a key that
+             * comes and goes is one more shape for a second client to get wrong.
              */
             'canvas' => OrganizationCanvasController::arrangementFor(
                 $this->settings, $user->organization,

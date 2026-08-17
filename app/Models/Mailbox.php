@@ -236,6 +236,23 @@ class Mailbox extends Model implements CarriesAutomationScope, HoldsSensitiveVal
     }
 
     /**
+     * Mark it connected without storing a mailbox secret.
+     *
+     * Google Workspace mailboxes are opened by impersonating the address with
+     * EzBizi's service account. That key lives in installation config, not on
+     * this row — so "connected" here means "the address was picked from the
+     * Directory", not "a refresh token arrived". {@see connect} remains the
+     * only writer of `credentials`.
+     */
+    public function markConnectedWithoutSecret(): void
+    {
+        $this->forceFill([
+            'status'        => self::STATUS_CONNECTED,
+            'status_reason' => null,
+        ]);
+    }
+
+    /**
      * The mail service refused us, and somebody has to be told.
      *
      * The row is kept rather than deleted. A mailbox that vanished when its

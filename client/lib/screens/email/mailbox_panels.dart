@@ -107,11 +107,54 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
   bool _saving = false;
   String? _error;
 
+  List<_DirectoryEntry> _directory = const [];
+  bool _loadingDirectory = false;
+  String? _pickedAddress;
+
   @override
   void initState() {
     super.initState();
 
     _provider = widget.providers.isEmpty ? null : widget.providers.first;
+    _loadDirectoryIfNeeded();
+  }
+
+  bool get _fromDirectory => _provider?.connectsBy == 'directory';
+
+  Future<void> _loadDirectoryIfNeeded() async {
+    if (!_fromDirectory) {
+      _directory = const [];
+      _pickedAddress = null;
+      return;
+    }
+
+    setState(() {
+      _loadingDirectory = true;
+      _error = null;
+    });
+
+    final response = await widget.api.get('/email/workspace/directory');
+
+    if (!mounted) return;
+
+    setState(() {
+      _loadingDirectory = false;
+
+      if (!response.ok) {
+        _error = response.reason;
+        _directory = const [];
+        return;
+      }
+
+      _directory = [
+        for (final entry in (response.data is List ? response.data as List : const []))
+          if (entry is Map<String, dynamic>)
+            _DirectoryEntry(
+              address: entry['address'] as String? ?? '',
+              name: entry['name'] as String? ?? '',
+            ),
+      ].where((e) => e.address.isNotEmpty).toList();
+    });
   }
 
   @override
@@ -134,13 +177,11 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
     final me = widget.session.me!;
 
     final response = await widget.api.post('/email/mailboxes', {
-      // Where this person is standing, exactly as the sending-identity panel
-      // decides the same question. The panel says so in words above, and the
-      // scope switcher is how somebody changes it — a second scope picker
-      // inside this form would be a second answer to "where am I".
       'scope_type': me.scope.type,
       'scope_id': me.scope.id ?? me.organization.id,
-      'address': _address.text.trim(),
+      'address': _fromDirectory
+          ? (_pickedAddress ?? '')
+          : _address.text.trim(),
       'display_name': _displayName.text.trim(),
       'provider': provider.value,
       if (provider.needsHost && _server.currentState != null)
@@ -164,6 +205,61 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
     Navigator.of(context).pop(true);
   }
 
+  Widget _directoryField() {
+    if (_loadingDirectory) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text('Loading addresses from the connected Workspace…'),
+      );
+    }
+
+    if (_directory.isEmpty) {
+      return const _Note(
+        'No user addresses came back from the connected Google Workspace. '
+        'Connect the domain under Email settings if it is not connected yet, '
+        'and pick a shared inbox like info@ rather than typing an address.',
+      );
+    }
+
+    return DropdownButtonFormField<String>(
+      initialValue: _pickedAddress,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: 'Address from the directory',
+        helperText:
+            'Only addresses on the connected Workspace can be opened this way. '
+            'Pick a shared inbox — do not pick a person\'s own mailbox.',
+        helperMaxLines: 3,
+      ),
+      items: [
+        for (final entry in _directory)
+          DropdownMenuItem(
+            value: entry.address,
+            child: Text(
+              entry.name.isEmpty || entry.name == entry.address
+                  ? entry.address
+                  : '${entry.address} · ${entry.name}',
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
+      onChanged: _saving
+          ? null
+          : (value) => setState(() {
+              _pickedAddress = value;
+              final match = _directory.where((e) => e.address == value).firstOrNull;
+              if (match != null && _displayName.text.trim().isEmpty) {
+                _displayName.text = match.name.contains('@')
+                    ? match.address.split('@').first
+                    : match.name;
+              }
+            }),
+      validator: (value) => (value == null || value.isEmpty)
+          ? 'Pick a shared address from the directory.'
+          : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final me = widget.session.me!;
@@ -181,7 +277,12 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _saving || provider == null ? null : _save,
+          onPressed: _saving ||
+                  provider == null ||
+                  _loadingDirectory ||
+                  (_fromDirectory && _pickedAddress == null)
+              ? null
+              : _save,
           child: Text(_saving ? 'Adding…' : 'Add the address'),
         ),
       ],
@@ -194,22 +295,25 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
               ErrorNote(_error!),
               const SizedBox(height: 16),
             ],
-            TextFormField(
-              controller: _address,
-              autofocus: true,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Address',
-                hintText: 'info@example.com',
-                helperText:
-                    'The address itself cannot be changed afterwards — every '
-                    'grant and every read mark hangs off it.',
-                helperMaxLines: 3,
+            if (_fromDirectory)
+              _directoryField()
+            else
+              TextFormField(
+                controller: _address,
+                autofocus: true,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Address',
+                  hintText: 'info@example.com',
+                  helperText:
+                      'The address itself cannot be changed afterwards — every '
+                      'grant and every read mark hangs off it.',
+                  helperMaxLines: 3,
+                ),
+                validator: (value) => (value ?? '').trim().isEmpty
+                    ? 'Type the address of the inbox you want to share.'
+                    : null,
               ),
-              validator: (value) => (value ?? '').trim().isEmpty
-                  ? 'Type the address of the inbox you want to share.'
-                  : null,
-            ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _displayName,
@@ -245,11 +349,14 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
                 ],
                 onChanged: _saving
                     ? null
-                    : (value) => setState(() {
-                        _provider = widget.providers
-                            .where((option) => option.value == value)
-                            .firstOrNull;
-                      }),
+                    : (value) {
+                        setState(() {
+                          _provider = widget.providers
+                              .where((option) => option.value == value)
+                              .firstOrNull;
+                        });
+                        _loadDirectoryIfNeeded();
+                      },
               ),
 
             // The server's warning about handing over a password, in the
@@ -301,6 +408,13 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
       ),
     );
   }
+}
+
+class _DirectoryEntry {
+  const _DirectoryEntry({required this.address, required this.name});
+
+  final String address;
+  final String name;
 }
 
 /// Where the mail lives — asked the same way in both panels that ask it.
@@ -678,7 +792,16 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
   /// runs, so a five-minute cap would be five real minutes or nothing at all.
   int _asksLeft = 0;
 
-  bool get _needsHost => widget.provider?.needsHost ?? false;
+  bool get _needsHost => _connectsBy == 'password';
+
+  /// How this inbox is finished, published rather than guessed from [needsHost].
+  String get _connectsBy {
+    final provider = widget.provider;
+    if (provider == null) return 'sign_in';
+    return provider.connectsBy;
+  }
+
+  bool get _fromDirectory => _connectsBy == 'directory';
 
   /// True while anything is in flight, whichever road this is on.
   bool get _busy => _step != _Step.idle;
@@ -1085,11 +1208,12 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
     // asked here now. `needsHost` still decides which FIELDS a usable provider
     // draws, which is what it actually knows about.
     final unusable = provider == null || !provider.usable;
+    final fromDirectory = !unusable && _fromDirectory;
 
     return SidePanel(
       title: 'Connect ${widget.mailbox.address}',
       subtitle: provider == null ? null : 'Set up as ${provider.label}.',
-      actions: unusable
+      actions: unusable || fromDirectory
           ? [
               TextButton(
                 onPressed: () => Navigator.of(context).maybePop(),
@@ -1123,6 +1247,8 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
             ],
       child: unusable
           ? _cannotConnectYet(provider)
+          : fromDirectory
+          ? _directoryInstead()
           : _needsHost
           ? _password()
           : _signInInstead(),
@@ -1135,6 +1261,23 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
     _Step.waiting => 'Waiting for $_serviceLabel…',
     _Step.idle => _needsHost ? 'Connect it' : 'Continue with $_serviceLabel',
   };
+
+  Widget _directoryInstead() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _Note(
+        '${widget.mailbox.address} is opened through the connected Google '
+        'Workspace, by picking it from the directory — not by signing in as '
+        'the inbox and not by handing over a password. If it is not '
+        'connected yet, disconnect it and add the address again from the '
+        'directory under Add an inbox.',
+      ),
+      if (widget.mailbox.unavailableReason != null) ...[
+        const SizedBox(height: 16),
+        _Note(widget.mailbox.unavailableReason!),
+      ],
+    ],
+  );
 
   /// Why nothing live can be offered here.
   ///
@@ -1155,12 +1298,18 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
         // somebody holding a password. One says "do not type it here"; the
         // other says "there is nothing to press".
         _NotHereNote(
-          provider.needsHost
+          provider.connectsBy == 'password'
               ? 'This address is connected by handing over a password and the '
                     'name of a mail server, and EzBizi cannot open that kind of '
                     'connection on this installation. Nothing typed here would '
                     'reach anything, so nothing is asked for. Nothing is wrong '
                     'with ${widget.mailbox.address} — the missing piece is at '
+                    'EzBizi\'s end.'
+              : provider.connectsBy == 'directory'
+              ? 'This address is opened through the connected Google Workspace. '
+                    'EzBizi cannot talk to Workspace on this installation yet, '
+                    'so there is nothing to pick here. Nothing is wrong with '
+                    '${widget.mailbox.address} — the missing piece is at '
                     'EzBizi\'s end.'
               : 'This address is connected by signing in to the mail service '
                     'and allowing EzBizi to read it, rather than by handing '
@@ -1365,6 +1514,224 @@ class _Working extends StatelessWidget {
             Expanded(child: Text(text, style: theme.textTheme.bodySmall)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Connect the company's Google Workspace domain, once, then pick inboxes.
+class ConnectWorkspacePanel extends StatefulWidget {
+  const ConnectWorkspacePanel({
+    super.key,
+    required this.api,
+    this.openConsent = openConsentWindow,
+    this.pollEvery = const Duration(seconds: 2),
+    this.waitAtMost = const Duration(minutes: 5),
+  });
+
+  final ApiClient api;
+  final OpenConsentWindow openConsent;
+  final Duration pollEvery;
+  final Duration waitAtMost;
+
+  @override
+  State<ConnectWorkspacePanel> createState() => _ConnectWorkspacePanelState();
+}
+
+class _ConnectWorkspacePanelState extends State<ConnectWorkspacePanel> {
+  final _domain = TextEditingController();
+  _Step _step = _Step.idle;
+  String? _error;
+  String? _flow;
+  int _asksLeft = 0;
+  ConsentWindow? _window;
+  Timer? _poll;
+
+  bool get _busy => _step != _Step.idle;
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    _domain.dispose();
+    super.dispose();
+  }
+
+  Future<void> _signIn() async {
+    final domain = _domain.text.trim().replaceFirst(RegExp(r'^@'), '');
+    if (domain.isEmpty) {
+      setState(() => _error =
+          'Type the company domain, for example a-1chimney.com.');
+      return;
+    }
+
+    final window = widget.openConsent();
+    if (window == null) {
+      setState(() {
+        _error =
+            'EzBizi could not open the Google sign-in window. On the web that '
+            'is usually the browser blocking new windows for this site — allow '
+            'them and press the button again.';
+      });
+      return;
+    }
+
+    setState(() {
+      _step = _Step.opening;
+      _error = null;
+    });
+
+    final response = await widget.api.post('/email/workspace/oauth/start', {
+      'domain': domain,
+    });
+
+    if (!mounted) {
+      window.close();
+      return;
+    }
+
+    if (!response.ok) {
+      window.close();
+      setState(() {
+        _step = _Step.idle;
+        _error = response.reason;
+      });
+      return;
+    }
+
+    final data = response.data;
+    final url = data is Map<String, dynamic>
+        ? data['authorization_url'] as String?
+        : null;
+
+    if (url == null || url.isEmpty) {
+      window.close();
+      setState(() {
+        _step = _Step.idle;
+        _error =
+            'EzBizi asked for the Google sign-in address and did not get one '
+            'back, so there is nowhere to send you. Nothing has changed.';
+      });
+      return;
+    }
+
+    window.goTo(url);
+
+    setState(() {
+      _step = _Step.waiting;
+      _window = window;
+      _flow = data is Map<String, dynamic> ? data['flow'] as String? : null;
+      _asksLeft = widget.waitAtMost.inMilliseconds ~/
+          (widget.pollEvery.inMilliseconds == 0
+              ? 1
+              : widget.pollEvery.inMilliseconds);
+    });
+
+    _askAgainLater();
+  }
+
+  void _askAgainLater() {
+    _poll?.cancel();
+    _poll = Timer(widget.pollEvery, _ask);
+  }
+
+  Future<void> _ask() async {
+    if (!mounted || _step != _Step.waiting) return;
+
+    if (_asksLeft <= 0) {
+      _window?.close();
+      setState(() {
+        _step = _Step.idle;
+        _error =
+            'EzBizi stopped waiting for the Google sign-in. Nothing was '
+            'connected. Press the button again if you still want to connect '
+            'the domain.';
+      });
+      return;
+    }
+
+    _asksLeft -= 1;
+
+    final response = await widget.api.get(
+      '/email/workspace/oauth/status',
+      _flow == null ? null : {'flow': _flow!},
+    );
+
+    if (!mounted || _step != _Step.waiting) return;
+
+    final data = response.data;
+    final state = data is Map<String, dynamic> ? data['state'] as String? : null;
+
+    if (state == 'connected') {
+      _window?.close();
+      if (mounted) Navigator.of(context).pop(true);
+      return;
+    }
+
+    if (state == 'refused') {
+      _window?.close();
+      setState(() {
+        _step = _Step.idle;
+        _error = data is Map<String, dynamic>
+            ? data['message'] as String?
+            : 'That sign-in did not connect the domain.';
+      });
+      return;
+    }
+
+    _askAgainLater();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SidePanel(
+      title: 'Connect Google Workspace',
+      subtitle:
+          'A Workspace administrator signs in once for the company domain. '
+          'After that, pick shared inboxes like info@ from the directory — '
+          'do not import anyone\'s personal mailbox.',
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).maybePop(),
+          child: const Text('Cancel'),
+        ),
+        if (_step == _Step.waiting)
+          TextButton(
+            onPressed: () {
+              _poll?.cancel();
+              _window?.close();
+              setState(() => _step = _Step.idle);
+            },
+            child: const Text('Stop waiting'),
+          ),
+        FilledButton(
+          onPressed: _busy ? null : _signIn,
+          child: Text(switch (_step) {
+            _Step.opening => 'Opening Google…',
+            _Step.waiting => 'Waiting for Google…',
+            _ => 'Continue with Google',
+          }),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_error != null) ...[
+            ErrorNote(_error!),
+            const SizedBox(height: 16),
+          ],
+          TextField(
+            controller: _domain,
+            enabled: !_busy,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Company domain',
+              hintText: 'a-1chimney.com',
+              helperText:
+                  'The Google Workspace domain, not a person\'s address.',
+              helperMaxLines: 2,
+            ),
+          ),
+        ],
       ),
     );
   }

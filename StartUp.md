@@ -214,20 +214,44 @@ owner answers by number.
 
 ---
 
-## 7 · Comments are part of the product
+## 7 · Comments: for decisions, not for narration
 
-This codebase's comments are unusually long, and that is deliberate — it is where
-the decision records live (build plan §1: a decision written beside the code it
-constrains gets read; one in a folder does not).
+Decision records live in the code rather than in a folder (build plan §1: a decision
+written beside the code it constrains gets read; one in a folder does not). That is
+still true. What follows is the correction to how far it was taken.
 
-A comment here explains **why**, in full sentences, and names the alternative that
-was rejected and what it would have cost. `// set the value` is worse than no
-comment. If you change behaviour a comment describes, **change the comment in the
-same edit** — a paragraph describing a property the code no longer has is worse than
-no paragraph.
+**A long comment is for a decision that constrains the future.** §3's write-once
+parent earns one — it is non-obvious, and undoing it silently rewrites history. So
+does the MySQL key-order trap in section 8. So does "why this is not in
+CompaniesController". The test: *would somebody reasonably do the obvious thing here
+and be wrong?* If yes, write down why. If no, write nothing.
 
-Match this. It will feel excessive. It is the reason the codebase can be picked up
-after a month away.
+**Everything else gets an ordinary comment or none.** A method that clears a state
+variable does not need a paragraph. `// set the value` is still worse than nothing —
+the choice is between a real reason and silence, not between prose and prose.
+
+**Say each thing once.** If a rule is written out in full in three files, two of them
+will eventually be wrong. Explain it where it lives and point at it from elsewhere.
+This is the same argument the code already makes about duplicated logic.
+
+**If you change behaviour a comment describes, change the comment in the same edit.**
+A paragraph describing a property the code no longer has is worse than no paragraph.
+
+### Why this section was rewritten on 2026-08-17
+
+It used to say "match this, it will feel excessive" and the result was measurable:
+`client/lib/widgets/structure_canvas.dart` reached 2,933 lines — **1,513 of comment
+against 1,150 of code** — and the feature it belongs to about 300KB across five
+files. Every change after that pays to read it, so each one costs more than the last.
+
+The prose was not buying correctness either. On the day that file peaked, two real
+defects went through it untouched (an explanation strip crushing the canvas to
+nothing, a stale sentence left on screen), and a defect that did *not* exist was
+reported and confirmed with a confident paragraph explaining a mechanism the code
+never performs. Length made a wrong thing look considered, which is worse than a
+short comment, not better.
+
+Depth where a decision is load-bearing. Silence where the code already says it.
 
 ---
 
@@ -391,7 +415,10 @@ readings would produce materially different work.
 
 ## 13 · Never
 
-- Commit or log a credential, a token, or anything out of `CREDENTIALS.md`
+- Commit or log a credential, a token, or anything out of `CREDENTIALS.md`. **Moving a
+  document into this repo counts as publishing it** — this repo is pushed to production,
+  so scan anything you bring in. That exact mistake was made on 2026-08-17 and caught
+  one commit before it shipped.
 - Edit files on the production server as a way of shipping
 - Point a test or a sandbox at the production database
 - Add a re-parent, or any write that moves an entity between parents

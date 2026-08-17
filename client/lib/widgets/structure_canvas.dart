@@ -6,6 +6,29 @@
 /// the view that shows its shape, and the two draw the same nodes from the same
 /// payload so they cannot disagree about what exists.
 ///
+/// ── THREE OF THE FOUR ARE BOXES, AND WHICH WAY IT FLOWS IS A CHOICE ──
+///
+/// A franchise has no children and never can (§3), so it is not a box: it is a
+/// row in the compact list attached to the company or sub company that owns it,
+/// and it has no position of its own for anybody to store or drag. The business
+/// this was built for has thirteen of them under four companies, and thirteen
+/// boxes on one line is wider than any window — the owner's screenshots showed
+/// the tab opening on a fragment of its own chart with nothing on screen saying
+/// so. Thirteen boxes became four attached lists.
+///
+/// And the chart flows LEFT TO RIGHT by default — depth rightward, siblings
+/// stacked downward, because down is the direction a screen scrolls — with top
+/// to bottom kept as the second view the owner asked for. Which one is on screen
+/// is [StructureCanvas.orientation], and unlike the zoom it belongs to the
+/// arrangement everybody shares: two colleagues describing "the box on the left"
+/// are describing the same box only if the chart runs the same way for both.
+/// This widget is handed the word and does not store it, for the same reason it
+/// is handed the layout and does not store that.
+///
+/// Both changes are one change twice, both were picked by the owner from
+/// mockups, and the layout that produces them is [arrangeStructureFlow] in
+/// `structure_levels.dart`, beside the definition of the hierarchy it applies.
+///
 /// ── DRAGGING MOVES THE PICTURE, NOT THE BUSINESS ─────────────────
 ///
 /// This is the constraint the whole widget is shaped around, and it is not a
@@ -65,6 +88,45 @@
 /// the organization rather than to one person. This widget is untouched by
 /// that, which is the point of it holding no opinion — but the sentence above
 /// would otherwise name a store that no longer exists.
+///
+/// ── ZOOM IS WHERE SOMEBODY IS LOOKING, NOT HOW THEY ARRANGED THINGS ──
+///
+/// The business this was built for has thirteen places in it, and thirteen
+/// boxes side by side is wider than any window — the owner's screenshots show
+/// the tab opening on a fragment of its own chart with nothing on screen
+/// saying so. So the surface scales: a cluster in the toolbar (out, a
+/// percentage, in, and "Fit"), ctrl with the wheel, and a trackpad or
+/// touchscreen pinch, all four driving one number.
+///
+/// None of it is ever reported, and that is the important half.
+/// [StructureCanvas.onMoved] and [StructureCanvas.onArranged] are the only two
+/// things this widget says out loud, and both carry CANVAS coordinates —
+/// where a box sits in the arrangement, identical at every zoom. Nothing about
+/// the scale can reach `PUT /organization/canvas`, whose payload is
+/// `{orientation, boxes}` — a word from a closed list and a list of
+/// `{kind, id, x, y}` — and has nowhere to put one.
+///
+/// [StructureCanvas.orientation] is on that wire and the zoom is not, which is
+/// the same distinction drawn twice rather than an inconsistency. Which way the
+/// chart flows is a fact about the picture everybody opens; how big one person
+/// has drawn it on their own screen is a fact about their eyes. That is why this
+/// widget is HANDED the orientation and merely holds the scale.
+///
+/// That is the same line the viewport offset already draws (see
+/// [_StructureCanvasState._view]) and it matters more than it did, because the
+/// arrangement is now ONE setting for the whole organization rather than a
+/// preference of one person's. If zoom rode along with it, somebody leaning in
+/// to read a name would move every colleague's picture, and the colleagues
+/// would find out by having their own chart jump the next time anybody pressed
+/// a button. What magnification a person's own eyes want is not a fact about
+/// the business.
+///
+/// The alternative considered was keeping zoom per user, on `/me`, beside
+/// nothing else. It was rejected twice over: it would add a second store for a
+/// second kind of state to this feature, and what it would remember is a
+/// number that was right for whatever window somebody last had open — a chart
+/// that reopens at 30% on a laptop because it was fitted on a monitor is worse
+/// than one that opens at 100% with a Fit button an inch away.
 library;
 
 import 'dart:math' as math;
@@ -166,12 +228,94 @@ const double kStructureGapY = 84;
 /// is drawn flush against the edge it can be dragged past.
 const double kStructureMargin = 32;
 
-/// The widget key a box is drawn with.
+/// How far in and how far out the picture may be taken.
+///
+/// ── Why there is a floor at all, and why "Fit" is allowed to hit it ──
+///
+/// The floor is what keeps "Fit" honest. Thirteen places side by side is about
+/// 3,800 points across, which is a little under a third of itself on an
+/// ordinary laptop — comfortably inside this. What is outside it is the
+/// window that is narrower still, and there Fit CLAMPS rather than shrinking
+/// further, so the chart is as small as it is worth making and the person pans
+/// the rest. That is a deliberate choice between two imperfect answers: a
+/// picture scaled to 8% technically contains every box and is a grey smear
+/// with no readable word anywhere in it, which is a screen that looks like it
+/// worked while telling nobody anything. A quarter size still shows the shape,
+/// the levels and which branch is which.
+///
+/// The ceiling is for the opposite reader — somebody at a large system text
+/// size who is zooming in to be certain of a name. Past three times, a
+/// 260-point box is wider than the window it is being read in, and a box you
+/// have to pan across to read is not more legible than one you do not.
+const double kStructureZoomMin = 0.25;
+const double kStructureZoomMax = 3;
+
+/// The stops the minus and plus buttons walk between.
+///
+/// A LADDER rather than a multiplier, because the number between the buttons
+/// is meant to be read. Multiplying by a constant gives 100, 125, 156, 195,
+/// 244 — every step is the same size to the eye, and not one of those is a
+/// figure a person would say out loud or aim for. These are the ones every
+/// other zoomable thing somebody uses shows them, and "back to normal size" is
+/// one press from either side of 100%.
+///
+/// Both ends are the bounds above, so the buttons can never ask for a scale
+/// the wheel and the pinch are not also allowed to reach — two different
+/// answers to "how far out does this go" is how a control ends up with a state
+/// only one of its inputs can produce.
+///
+/// Deliberately NOT something a customer configures, unlike almost everything
+/// else on this screen. A zoom ladder is the shape of a control rather than a
+/// fact about a business — an organization has no more use for its own than
+/// for its own scrollbar — and a setting nobody would ever open is still a
+/// setting somebody has to maintain.
+const List<double> kStructureZoomStops = [
+  0.25,
+  0.33,
+  0.5,
+  0.67,
+  0.75,
+  1,
+  1.25,
+  1.5,
+  2,
+  2.5,
+  3,
+];
+
+/// Close enough to a stop to count as standing on it.
+///
+/// Zoom is continuous — a pinch or a wheel leaves it at 1.0000000000000002 as
+/// readily as at 1 — so "is this already the smallest?" cannot be `==`. Without
+/// this the minus button at the floor is drawn live, does nothing when pressed,
+/// and is the one control on the toolbar that lies about what it can do.
+const double _zoomTouching = 0.001;
+
+/// The widget key one NODE is drawn with — a box for the things that have one,
+/// and the row in a company's attached list for a place.
 ///
 /// Exposed rather than spelled out at each call site because the screen's tests
-/// and this file's tests have to name the same box, and a key format copied
+/// and this file's tests have to name the same thing, and a key format copied
 /// into two test files is two things that have to be kept in step.
+///
+/// Kept for a place even though a place is no longer a box, and that is worth a
+/// sentence rather than a rename. What this key answers is "where on screen is
+/// the thing called `franchise:abc`", which is a question the tab's own tests
+/// ask about a place — its menu, its name, the customer's word for it — and the
+/// answer is a row now instead of a box. Renaming it would have been a diff
+/// across four test files that changed nothing about what is being asked.
 Key structureBoxKey(String key) => ValueKey('structure-box:$key');
+
+/// The widget key the whole CARD is drawn with — a box and, under it, its
+/// attached list of places.
+///
+/// Two keys because there are two rectangles and the difference matters. The
+/// card is what occupies the canvas, what a pointer can pick up and what the
+/// connectors leave from; the box inside it is what a name is written on and
+/// what a connector points AT. A single key would make "how big is a box drawn"
+/// — which is how every zoom assertion in this file measures the scale — answer
+/// with a rectangle that grows as a company gains places.
+Key structureCardKey(String key) => ValueKey('slot:$key');
 
 /// The two halves of a `kind:id` layout key.
 ///
@@ -196,8 +340,22 @@ String structureIdOf(String key) {
   return at < 0 ? '' : key.substring(at + 1);
 }
 
-/// One box: what it is, what it is called, and what it hangs off.
-class StructureNode {
+/// One thing in the business: what it is, what it is called, and what it hangs
+/// off.
+///
+/// It implements [StructureItem], which is the whole of what
+/// [arrangeStructureFlow] is allowed to see. The four members that interface
+/// asks for — [key], [kind], [parentKey], [isSub] — were already here and are
+/// unchanged; declaring the relationship is what lets the automatic layout live
+/// in a file with no widgets in it, be asked where nine places end up without a
+/// screen existing, and still be handed this exact object with no conversion at
+/// the call site. A second node model for the layout to read is the thing that
+/// would come to disagree with this one.
+///
+/// It is deliberately NOT called a box any more. A franchise is one of these and
+/// never gets a box — see [structureHasBox] — it is drawn as a row in the
+/// compact list attached to the company above it.
+class StructureNode implements StructureItem {
   const StructureNode({
     required this.kind,
     required this.id,
@@ -210,12 +368,14 @@ class StructureNode {
   });
 
   /// One of [structureOrganization], [structureCompany], [structureFranchise].
+  @override
   final String kind;
   final String id;
   final String name;
 
-  /// The key of the box this one hangs off — `company:<uuid>` — or null for the
-  /// organization, which hangs off nothing.
+  /// The key of the thing this one hangs off — `company:<uuid>` — or null for
+  /// the organization, which hangs off nothing.
+  @override
   final String? parentKey;
 
   /// Carried so the box can say "under Everdoors" out loud. The connector says
@@ -227,6 +387,7 @@ class StructureNode {
 
   /// A company whose parent is a company. Not a fourth [kind] — see the note on
   /// the kind constants.
+  @override
   final bool isSub;
 
   /// The server's own map for this node, untouched.
@@ -238,9 +399,11 @@ class StructureNode {
   /// approximated one of those answers for itself.
   final Map<String, dynamic> raw;
 
-  /// How the layout names this box. The kind travels with the id because it is
-  /// what makes a stored arrangement readable by a person who opens the column,
-  /// and what lets a stale company id be told from a stale franchise id.
+  /// How the layout and the arrangement name this thing. The kind travels with
+  /// the id because it is what makes a stored arrangement readable by a person
+  /// who opens the column, and what lets a stale company id be told from a stale
+  /// franchise id.
+  @override
   String get key => '$kind:$id';
 }
 
@@ -389,167 +552,51 @@ void _addFranchises(
   }
 }
 
-/// A place for every box, laid out as an org chart.
+/// A place for every BOX, in the canvas's own measurements.
 ///
-/// ── A row is what a thing IS ─────────────────────────────────────
+/// ── This is not a layout. It is where the measurements meet one ──
 ///
-/// The organization on the top line, companies on the second, sub companies on
-/// the third, every place on the fourth — see [structureLevelOf], which both
-/// this and the outline read so there is one answer rather than two.
+/// The layout is [arrangeStructureFlow], and it lives in `structure_levels.dart`
+/// with the hierarchy it is an application of. What is left here is the binding:
+/// the numbers a box is actually drawn with — [kStructureBoxWidth],
+/// [kStructureGapX], [kStructureGapY], [kStructureMargin] — belong to the widget
+/// that draws one and deliberately stay in this file, and something has to hand
+/// them over.
 ///
-/// This used to pass a row down the recursion, so a row was how deep the walk
-/// had gone. That put a company's own franchise on the same line as a sub
-/// company of the same company, which says the two are peers. They are not: a
-/// sub company holds franchises of its own, and the customer this was found on
-/// has both kinds of thing hanging off one company.
+/// It is a function rather than six arguments repeated at each call site because
+/// there are five call sites — three in this widget and two in its tests — and
+/// six numbers copied five times is five chances for a connector to start
+/// landing three pixels off the box it points at. That is the same argument the
+/// constants themselves are declared with, arriving one level up.
 ///
-/// A branch with no sub companies therefore leaves the third line empty, and
-/// that is the intended picture rather than a gap: every place in the business
-/// is on one line, which is what makes the chart readable at a glance.
-/// [StructureCanvas.defaultNote] says so in words above the canvas, so nobody
-/// reads the blank line as something that failed to draw. The connector across
-/// it is a longer vertical run with its jog at the midpoint — see
-/// [StructureConnectorPainter._route], which needs no case for it.
-///
-/// Horizontally it is one tidy pass, unchanged: a subtree is as wide as its
-/// children laid side by side, or one box, whichever is more; a parent is
-/// centred over the span its children occupy; siblings run left to right in
-/// tree order. A company's franchises and its sub companies still share a
-/// horizontal span — they simply no longer share a line.
-///
-/// Deliberately NOT a general tree-layout algorithm. §3 fixes the depth at four,
-/// so a general one would be code with no second caller, encoding a depth the
-/// model forbids.
-///
-/// **Deterministic.** The same tree in gives an identical map out, every time.
-/// That is what makes "Arrange for me" pressed twice a no-op instead of a
-/// slowly drifting picture, and it is what lets a test assert exact numbers
-/// rather than "roughly tidy".
+/// The walk that used to be here is gone rather than kept beside the new one.
+/// Two tidy passes is two places for "centred over its children" to be subtly
+/// different, and the old one could only draw the chart one way round and could
+/// only draw a place as a box — both of which the owner replaced.
 ///
 /// [boxHeight] is taken rather than read off [kStructureBoxHeight] because a box
 /// is as tall as the reader's text size makes it (see [structureBoxHeight]), and
-/// rows laid out against a different height than the boxes are drawn at is the
+/// boxes laid out against a different height than they are drawn at is the
 /// automatic layout stacking them on top of each other for anybody who has
-/// turned their font up. It defaults to the height at the default text size, so
-/// a caller with no opinion — every test that only cares about the shape — gets
-/// the same answer it always did.
+/// turned their font up. [placeRowHeight] is the same story for a row in a
+/// company's attached list of places. Both default to the height at the default
+/// text size, so a caller with no opinion gets the shape without having to know
+/// about either.
 Map<String, Offset> arrangeStructure(
   List<StructureNode> nodes, {
+  String orientation = kStructureDefaultOrientation,
   double boxHeight = kStructureBoxHeight,
-}) {
-  if (nodes.isEmpty) return const {};
-
-  final byKey = {for (final node in nodes) node.key: node};
-  final children = <String, List<StructureNode>>{};
-  final roots = <StructureNode>[];
-
-  for (final node in nodes) {
-    final parent = node.parentKey;
-
-    // A node whose parent is not in the list is laid out as a root HORIZONTALLY
-    // rather than dropped — it gets a column of its own. It should not happen —
-    // the payload is nested — but a box nobody can find is worse than a box in
-    // an odd place.
-    //
-    // It no longer gets the top LINE, though: its line is its kind, like
-    // everything else's. A stray franchise now appears on the places line
-    // instead of beside the organization, which is more honest about what it
-    // is, and it is a behaviour change worth naming because the old answer was
-    // row 0 by accident of the recursion rather than by anybody's decision.
-    if (parent == null || !byKey.containsKey(parent)) {
-      roots.add(node);
-    } else {
-      (children[parent] ??= <StructureNode>[]).add(node);
-    }
-  }
-
-  final widths = <String, double>{};
-
-  double measure(StructureNode node) {
-    final kids = children[node.key] ?? const <StructureNode>[];
-
-    if (kids.isEmpty) return widths[node.key] = kStructureBoxWidth;
-
-    var total = -kStructureGapX;
-
-    for (final kid in kids) {
-      total += measure(kid) + kStructureGapX;
-    }
-
-    return widths[node.key] = math.max(kStructureBoxWidth, total);
-  }
-
-  final places = <String, Offset>{};
-
-  void place(StructureNode node, double left) {
-    final span = widths[node.key]!;
-    final kids = children[node.key] ?? const <StructureNode>[];
-
-    places[node.key] = Offset(
-      left + (span - kStructureBoxWidth) / 2,
-      // The level, not the depth of the recursion. A row used to be passed down
-      // this walk and incremented at each step, which is the same number only
-      // while every branch of the business is the same shape — and the first
-      // customer whose company held both a franchise and a sub company was the
-      // one it was wrong about.
-      structureLevelOf(kind: node.kind, isSub: node.isSub) *
-          (boxHeight + kStructureGapY),
-    );
-
-    if (kids.isEmpty) return;
-
-    var run = -kStructureGapX;
-
-    for (final kid in kids) {
-      run += widths[kid.key]! + kStructureGapX;
-    }
-
-    // Centred under the parent when the children take up less room than it
-    // does, which happens whenever a company holds a single place.
-    var x = left + (span - run) / 2;
-
-    for (final kid in kids) {
-      place(kid, x);
-      x += widths[kid.key]! + kStructureGapX;
-    }
-  }
-
-  var cursor = 0.0;
-
-  for (final root in roots) {
-    measure(root);
-    place(root, cursor);
-    cursor += widths[root.key]! + kStructureGapX;
-  }
-
-  // Shifted so the whole picture starts at the margin. The origin is the top
-  // left of the viewport and nothing scrolls above or left of it, so a box at a
-  // negative coordinate is a box nobody can reach.
-  //
-  // An empty MIDDLE level keeps its band, and that is the point rather than an
-  // oversight: a company with no sub companies still leaves the sub-company
-  // line clear, so every place in the business lines up with every other place.
-  // Only a missing TOP level moves anything — an organization the payload could
-  // not be read for leaves the companies as the highest thing on the canvas,
-  // and they are then drawn at the margin rather than a band below it.
-  var minX = double.infinity;
-  var minY = double.infinity;
-
-  for (final at in places.values) {
-    minX = math.min(minX, at.dx);
-    minY = math.min(minY, at.dy);
-  }
-
-  final shift = Offset(kStructureMargin - minX, kStructureMargin - minY);
-
-  return {
-    for (final entry in places.entries)
-      entry.key: Offset(
-        math.max(0, entry.value.dx + shift.dx),
-        math.max(0, entry.value.dy + shift.dy),
-      ),
-  };
-}
+  double placeRowHeight = kStructurePlaceRowHeight,
+}) => arrangeStructureFlow(
+  nodes,
+  orientation: orientation,
+  boxWidth: kStructureBoxWidth,
+  boxHeight: boxHeight,
+  gapBetweenSiblings: kStructureGapX,
+  gapBetweenLevels: kStructureGapY,
+  margin: kStructureMargin,
+  placeRowHeight: placeRowHeight,
+);
 
 /// The canvas.
 class StructureCanvas extends StatefulWidget {
@@ -558,10 +605,12 @@ class StructureCanvas extends StatefulWidget {
     required this.tree,
     required this.franchiseLabel,
     this.layout = const {},
+    this.orientation = kStructureDefaultOrientation,
     this.onMoved,
     this.onArranged,
     this.leading,
     this.actions,
+    this.controls,
     this.note = defaultNote,
   });
 
@@ -590,7 +639,41 @@ class StructureCanvas extends StatefulWidget {
   ///
   /// Entries naming nothing on screen are ignored here and MUST be kept by the
   /// caller — see [structureKindOf].
+  ///
+  /// A place is not in here and cannot be. It has no position at all now — see
+  /// [structureHasBox] — and both the reader on the way in and
+  /// `OrganizationCanvasController::clean` on the way out drop one.
   final Map<String, Offset> layout;
+
+  /// Which way the chart flows — one of [kStructureOrientations].
+  ///
+  /// ── Held by the CALLER, unlike the zoom ──────────────────────────
+  ///
+  /// This is a fact about the picture everybody in the organization opens, so it
+  /// is part of the shared arrangement and the screen that owns the saving owns
+  /// it. The zoom is the opposite case and is held privately in this State,
+  /// never reported and never stored — the section at the top of this file is
+  /// where that line is drawn and why.
+  ///
+  /// Taken as a plain [String] rather than an enum for the reason the kinds are:
+  /// this word is stored in a JSON column and validated against the same closed
+  /// list on the server, and an enum here would mean a conversion at every door
+  /// and a decision at each one about what to do with a word that is not in it.
+  /// [arrangeStructureFlow] reads anything it does not recognise as the default,
+  /// so a chart always draws.
+  ///
+  /// ── What turning it round does, and what it deliberately does not ──
+  ///
+  /// It changes where the AUTOMATIC layout puts a box. It does not move a box
+  /// somebody has placed by hand, because [layout] is what those are and this
+  /// widget is not allowed to invent a save. So an organization that has
+  /// arranged its chart sees the direction change only for boxes nobody has
+  /// placed, and "Arrange for me" is the one control that re-lays out the lot —
+  /// which is the same escape hatch the drift note already points at. Quietly
+  /// re-arranging everything on a flip was the alternative and it is worse: it
+  /// would throw away every colleague's placement on a press of a control that
+  /// looks like a view switch.
+  final String orientation;
 
   /// One box's new place. Null means nothing on this canvas can be moved, and
   /// then no move affordance is drawn at all — not a disabled one, which
@@ -613,10 +696,40 @@ class StructureCanvas extends StatefulWidget {
   /// the four levels apart.
   final Widget? Function(BuildContext context, StructureNode node)? leading;
 
-  /// What goes in the box after its name — the action menu, typically. Kept a
-  /// builder because §4's answers live on the server's own payload, which the
-  /// caller reads off [StructureNode.raw] at the point of use.
+  /// What goes after a name — the action menu, typically. Kept a builder because
+  /// §4's answers live on the server's own payload, which the caller reads off
+  /// [StructureNode.raw] at the point of use.
+  ///
+  /// Asked for a PLACE as well as for a box, and it always was. A place is a row
+  /// in a company's attached list now rather than a box of its own, and the row
+  /// carries the same menu the box did — a picture of the business you cannot
+  /// rename a branch from is a picture people leave in order to find the list.
+  /// It is also why a place row is as tall as it is; see
+  /// [kStructurePlaceRowHeight].
   final Widget? Function(BuildContext context, StructureNode node)? actions;
+
+  /// The caller's own control, in the toolbar beside this widget's two.
+  ///
+  /// ── Why there is a slot rather than a strip above the canvas ─────
+  ///
+  /// Because the row that holds "Arrange for me", "Bring the boxes into view"
+  /// and the zoom cluster is the row of controls that act on the PICTURE, and
+  /// the one the screen above has — which way the chart flows — is exactly one
+  /// of those. It sat in its own full-width strip directly above this widget
+  /// while there was nowhere to put it, which is the right neighbourhood and the
+  /// wrong row: it read as another one of the sentences about the arrangement
+  /// rather than as a control, and it cost a strip of height on the view whose
+  /// whole problem is that the picture is too big for the window.
+  ///
+  /// A slot rather than this widget building the control itself, because which
+  /// orientations exist and what a press MEANS are the caller's — the same
+  /// reason [actions] is a builder. This widget draws what it is handed and
+  /// reports what somebody did; it does not know that flipping the chart is a
+  /// save, or that saving is a permission.
+  ///
+  /// It goes in the same [Wrap] as the rest, so it wraps onto its own line at
+  /// 375 points instead of overflowing.
+  final Widget? controls;
 
   /// The sentence above the canvas. Null when the screen around it already says
   /// this in its own header, so the two cannot end up saying it twice — or,
@@ -636,23 +749,31 @@ class StructureCanvas extends StatefulWidget {
   /// another, so the refusal is stated before anybody tries it — and
   /// [_landedNote] says it again, at length, at the moment they do.
   ///
-  /// The third and fourth are about the LINES, and they are here because change
-  /// (3) made a blank line ordinary. A row is what a thing IS (see
-  /// [structureLevelOf]), so a company with no sub companies leaves the third
-  /// line empty and its places sit on the fourth with everybody else's. Without
-  /// this sentence that gap is a picture with a hole in it, and the first
-  /// reading of a hole is that something failed to draw.
+  /// The third says where the places went, because thirteen boxes becoming four
+  /// attached lists is the change somebody is most likely to read as data having
+  /// gone missing. It names them in the generic word rather than in the
+  /// organization's own (§8), unlike the boxes: a sentence has to pluralise, and
+  /// "Territory" is a noun a customer chose that a naive plural would damage.
   ///
-  /// Not a caption on the empty line itself. A label painted at a fixed height
-  /// would be a lie the moment somebody parked a box there, which free
-  /// positioning allows and this file's own painter already handles.
+  /// ── What it deliberately no longer says ──────────────────────────
+  ///
+  /// It used to say each kind of thing keeps its own LINE, and that a line with
+  /// nothing on it means a branch with no sub companies. Both halves are dead.
+  /// A place is not on a line at all — it is a row attached to the company that
+  /// owns it — so there is no line for one to be absent from, and nothing sits
+  /// below a sub company any more, so no branch leaves a gap to explain.
+  ///
+  /// It also says nothing about WHICH WAY the chart runs, and that is the limit
+  /// of what a constant can honestly say: [orientation] is a choice, and there
+  /// are two pictures. A caller that offers both — `StructureTab` does — passes
+  /// its own [note] saying which one is on screen. This is the answer for a
+  /// caller with no opinion, and it is true either way round.
   static const String defaultNote =
       'Drag the boxes to lay the picture out the way you like it. Nothing you '
       'do here changes the business — where a box sits on screen is just where '
-      'you put it. Each kind of thing keeps its own line: the whole business at '
-      'the top, then companies, then sub companies, then the places work '
-      'happens. A line with nothing on it means that branch has no sub '
-      'companies.';
+      'you put it. The whole business, then its companies, then any sub '
+      'companies; the places work happens in are listed under the company or '
+      'sub company that runs them rather than drawn as boxes of their own.';
 
   @override
   State<StructureCanvas> createState() => _StructureCanvasState();
@@ -680,6 +801,24 @@ class _StructureCanvasState extends State<StructureCanvas>
     with SingleTickerProviderStateMixin {
   List<StructureNode> _nodes = const [];
 
+  /// The things that get a box, in tree order. Everything in [_nodes] except the
+  /// places, which hang off one of these instead.
+  ///
+  /// Held rather than filtered at each use because six things ask it — the
+  /// automatic layout, the extent, the rectangles, the connectors, the overlap
+  /// notice and the Stack itself — and every one of them has to be looking at
+  /// the same list on the same frame.
+  List<StructureNode> _boxes = const [];
+
+  /// The places hanging off each box, keyed by the box's key, in tree order.
+  ///
+  /// A place whose owner is not in the tree appears in neither of these and is
+  /// therefore drawn nowhere, which cannot happen from a real payload:
+  /// [flattenStructure] drops a company it cannot read along with its franchises
+  /// on purpose. The outline is the view that lists everything whatever the
+  /// canvas can draw.
+  Map<String, List<StructureNode>> _places = const {};
+
   /// Where a box goes when [StructureCanvas.layout] has never heard of it.
   ///
   /// Which is also the whole first visit: somebody opening this tab for the
@@ -694,6 +833,31 @@ class _StructureCanvasState extends State<StructureCanvas>
   /// measuring the same number on the same frame.
   double _boxHeight = kStructureBoxHeight;
 
+  /// And one row of a box's attached list of places, for the same reason and
+  /// scaled by the same [TextScaler] — but never DOWN.
+  ///
+  /// ── Why this one has a floor and a box's height does not ─────
+  ///
+  /// Because the row is the same height as the control inside it. A text scale
+  /// below 1 is an ordinary setting — Android offers 0.85, and a reader who
+  /// wants more on screen chooses it — and it would take this row to 41 points
+  /// while the action menu it carries stays at the framework's interactive
+  /// minimum of 48, which is a control laid out taller than the row it is in.
+  /// In debug that is a striped bar across the chart and in release it is a
+  /// clipped menu. A box is 72 and has the same 48-point control in it, so it
+  /// has 24 points of slack and needs no floor; this row was sized to the
+  /// control in the first place and has none.
+  ///
+  /// Growing is still allowed and still necessary: at 200% the words inside the
+  /// row are twice the size and the row has to be too.
+  ///
+  /// The GAP between a box and its first place is deliberately not scaled at
+  /// all. Six points of separation is a gap rather than a line of text, and
+  /// growing it with somebody's font size would push the places away from the
+  /// box they belong to exactly for the reader least able to see which box that
+  /// is.
+  double _placeRowHeight = kStructurePlaceRowHeight;
+
   /// Whether the first layout has happened, so the viewport is aimed once.
   bool _placed = false;
 
@@ -702,6 +866,38 @@ class _StructureCanvasState extends State<StructureCanvas>
   /// you arranged things, and persisting it would open the tab somewhere nobody
   /// chose and put a second drifting thing in the stored blob.
   Offset _view = Offset.zero;
+
+  /// How big the picture is drawn, which is the same kind of thing as [_view]
+  /// and is treated the same way — see the section on it at the top of this
+  /// file, which is where the argument lives rather than here.
+  ///
+  /// ── The one equation everything below is written against ─────
+  ///
+  ///     screen = canvas × _zoom + _view
+  ///
+  /// [_view] is therefore in SCREEN points, not canvas points, and that is the
+  /// choice worth stating because the other convention — `(canvas + view) ×
+  /// zoom` — is equally defensible and quietly breaks two things. Under this
+  /// one a pan is the same number of points at every scale, so the wheel
+  /// handler and the pan gestures need no scale in them at all and cannot go
+  /// wrong when one is forgotten. Under the other, every pan would have to
+  /// divide, and a drag of the background would move the picture a different
+  /// distance than the finger doing it.
+  ///
+  /// What DOES have to divide is a box drag, because a pointer delta is in
+  /// screen points and a box's position is in canvas points — see
+  /// [_panUpdate], which is the one place it happens.
+  double _zoom = 1;
+
+  /// The drawing surface's size, recorded as it is laid out.
+  ///
+  /// Held rather than looked up, because the two things that need it — "Fit"
+  /// and the zoom buttons, which grow the picture about the middle of the
+  /// window — are pressed in the TOOLBAR, which is built above the surface and
+  /// has no constraints of its own to read it from. A render-object lookup at
+  /// the moment of the press would answer the same question through three
+  /// nullable hops.
+  Size _viewport = Size.zero;
 
   /// The box in hand, and where it is right now.
   ///
@@ -714,8 +910,19 @@ class _StructureCanvasState extends State<StructureCanvas>
   Offset _pointerAnchor = Offset.zero;
   Offset _boxAnchor = Offset.zero;
 
+  /// Where the viewport stood, what it was scaled to, and where on the surface
+  /// the fingers were, when the current two-finger gesture began.
+  ///
+  /// All three read at the START and never updated during the gesture, because
+  /// a pinch is anchor-to-now rather than a running sum: the canvas point that
+  /// was under the fingers when they landed is the point that must still be
+  /// under them at every frame, and that is a statement about where the gesture
+  /// began. Recomputing it from the previous frame accumulates the rounding of
+  /// every frame of a long pinch, which shows up as the picture creeping away
+  /// from the fingers holding it.
   Offset _viewAnchor = Offset.zero;
   Offset _viewPointerAnchor = Offset.zero;
+  double _zoomAnchor = 1;
 
   /// The box currently being moved with the arrow keys, if any.
   String? _nudging;
@@ -737,6 +944,18 @@ class _StructureCanvasState extends State<StructureCanvas>
   String? _focused;
 
   final Map<String, FocusNode> _focusNodes = {};
+
+  /// The drawing surface itself, so a pointer's GLOBAL position can be put back
+  /// into the surface's own coordinates.
+  ///
+  /// Needed by exactly one thing: a trackpad pinch whose cursor is sitting over
+  /// a BOX. That gesture is caught by a [Listener] around the box (see
+  /// [_panZoomStart]), so its local coordinates are measured from the box's own
+  /// corner — and a zoom has to be anchored on a point in the same frame as
+  /// [_view], which is the surface's. Anchoring it on the box's frame instead
+  /// puts the fixed point wherever that box happens to be, so the picture
+  /// lurches by the box's offset the moment two fingers land on one.
+  final GlobalKey _surfaceKey = GlobalKey();
 
   /// ── Why the picture is drawn by hand rather than by AnimatedPositioned ──
   ///
@@ -769,7 +988,7 @@ class _StructureCanvasState extends State<StructureCanvas>
   @override
   void initState() {
     super.initState();
-    _nodes = flattenStructure(widget.tree);
+    _readTree();
     _arranging.addListener(_repaint);
   }
 
@@ -784,12 +1003,20 @@ class _StructureCanvasState extends State<StructureCanvas>
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    final height = structureBoxHeight(MediaQuery.textScalerOf(context));
+    final scaler = MediaQuery.textScalerOf(context);
+    final height = structureBoxHeight(scaler);
+    // Never below the constant, which is the height of the control the row
+    // carries — see [_placeRowHeight], where the reason is written out.
+    final row = math.max(
+      kStructurePlaceRowHeight,
+      scaler.scale(kStructurePlaceRowHeight),
+    );
 
-    if (_placed && height == _boxHeight) return;
+    if (_placed && height == _boxHeight && row == _placeRowHeight) return;
 
     _boxHeight = height;
-    _auto = arrangeStructure(_nodes, boxHeight: height);
+    _placeRowHeight = row;
+    _auto = _arrangement();
 
     // Aimed once, and never again. Where somebody is LOOKING is not part of the
     // arrangement, and moving it because they changed their font size would move
@@ -824,6 +1051,20 @@ class _StructureCanvasState extends State<StructureCanvas>
 
       if (_nudging != null && !present.contains(_nudging)) _nudging = null;
     }
+
+    // Turning the chart round moves every box nobody has placed by hand, and
+    // the whole picture with them: left to right spends its depth on width,
+    // top to bottom on height, so the ground the chart covers is a different
+    // shape and generally somewhere else. The viewport IS re-aimed here, unlike
+    // on a refetch, and the difference is who asked: a refetch is the network
+    // arriving under somebody who is reading, whereas a flip is somebody
+    // pressing a control and expecting the picture to change. Leaving the view
+    // where it was would answer that press with an empty grey surface, which is
+    // the same failure "Arrange for me" re-aims to avoid.
+    if (old.orientation != widget.orientation) {
+      _auto = _arrangement();
+      _view = _homeView();
+    }
   }
 
   @override
@@ -841,8 +1082,57 @@ class _StructureCanvasState extends State<StructureCanvas>
 
   void _readTree() {
     _nodes = flattenStructure(widget.tree);
-    _auto = arrangeStructure(_nodes, boxHeight: _boxHeight);
+    _boxes = [
+      for (final node in _nodes)
+        if (structureHasBox(node.kind)) node,
+    ];
+
+    final places = <String, List<StructureNode>>{};
+    final boxed = {for (final box in _boxes) box.key};
+
+    for (final node in _nodes) {
+      final parent = node.parentKey;
+
+      if (structureHasBox(node.kind) || parent == null) continue;
+      if (!boxed.contains(parent)) continue;
+
+      (places[parent] ??= <StructureNode>[]).add(node);
+    }
+
+    _places = places;
+    _auto = _arrangement();
   }
+
+  /// Every box's automatic place, in this canvas's own measurements.
+  ///
+  /// One method rather than the call written out at each of the three places
+  /// that needs it, because the two heights are read off the reader's text size
+  /// and a call site that forgot one would lay the chart out against numbers the
+  /// boxes are not drawn at — which is the automatic layout stacking them on top
+  /// of each other for anybody who has turned their font up.
+  Map<String, Offset> _arrangement() => arrangeStructure(
+    _nodes,
+    orientation: widget.orientation,
+    boxHeight: _boxHeight,
+    placeRowHeight: _placeRowHeight,
+  );
+
+  /// How much room a box's attached places take underneath it, right now.
+  double _placesHeight(String key) => structurePlacesHeight(
+    _places[key]?.length ?? 0,
+    rowHeight: _placeRowHeight,
+  );
+
+  /// The whole CARD: the box, and its list of places under it.
+  ///
+  /// This and not [kStructureBoxWidth] by [_boxHeight] is what occupies the
+  /// canvas, so it is what the extent is measured from, what a pointer picks up,
+  /// what the connectors leave from, and what "landed on top of that one" is
+  /// judged by. The box inside it is a fixed size whatever the company owns —
+  /// see [_face] — which is what keeps a connector pointing at a name rather
+  /// than at the middle of a list of nine branches.
+  Size _cardSize(String key) =>
+      Size(kStructureBoxWidth, _boxHeight + _placesHeight(key));
 
   FocusNode _focusNode(String key) =>
       _focusNodes.putIfAbsent(key, () => FocusNode(debugLabel: 'box $key'));
@@ -865,20 +1155,236 @@ class _StructureCanvasState extends State<StructureCanvas>
   }
 
   /// The viewport offset that puts the top-left-most box at the margin.
+  ///
+  /// Scaled, because the equation is `screen = canvas × zoom + view`: the
+  /// top-left box is drawn at `minX × zoom + view`, so putting it at the margin
+  /// means subtracting the SCALED coordinate rather than the raw one. Left
+  /// unscaled this looks right at 100% and sends "Bring the boxes into view"
+  /// somewhere increasingly wrong the further from it somebody is — which is
+  /// the worst kind of wrong, because the control is only reached by people who
+  /// are already lost.
   Offset _homeView() {
+    final extent = _extent();
+
+    if (extent == null) return Offset.zero;
+
+    return Offset(
+      kStructureMargin - extent.left * _zoom,
+      kStructureMargin - extent.top * _zoom,
+    );
+  }
+
+  /// Every box's ground, in CANVAS coordinates — the real extent of the chart.
+  ///
+  /// Unscaled on purpose, and this is the whole reason it is a function rather
+  /// than something measured off the drawn rectangles. "Fit" has to work while
+  /// somebody is already zoomed in, and the drawn rectangles at 300% describe a
+  /// chart three times the size of the one that needs fitting: measuring those
+  /// and dividing the window by them would fit the picture to a third of the
+  /// window, then a third of that, converging on nothing every time the button
+  /// was pressed. A box's canvas footprint does not move when the scale does,
+  /// so this answers the same thing at every zoom.
+  ///
+  /// Read through [_positionOf] rather than off [StructureCanvas.layout], so a
+  /// box part-way through an "Arrange for me" or currently in somebody's hand
+  /// is measured where it IS. Fitting to where things are about to be would put
+  /// the chart out of the window for the length of the animation.
+  ///
+  /// Null when there is nothing to measure, which the caller has to answer for:
+  /// a fit of an empty chart is a division by zero.
+  ///
+  /// ── CARDS, and only the things that have one ─────────────────
+  ///
+  /// This used to measure every node as one box, [kStructureBoxWidth] by
+  /// [_boxHeight], because every node was one. A place is a row in a list
+  /// attached to its company now, and that is wrong in both directions at once:
+  /// a place has no rectangle of its own to include — [_positionOf] would answer
+  /// `Offset.zero` for one and drag the extent to the origin — and the company
+  /// it hangs off is taller than [_boxHeight] by whatever its list adds. Left
+  /// alone this would fit the window to a chart that is partly imaginary and
+  /// partly short, and "Fit" would cut the bottom off every company with more
+  /// than a place or two — which on the business this was built for is the one
+  /// with nine.
+  ///
+  /// So it walks [_boxes] and measures [_cardSize], and that is the whole of
+  /// what the zoom code had to learn about places. Nothing else here did: the
+  /// scale arithmetic, the gestures and the drag are all written against
+  /// rectangles rather than against what is inside them.
+  Rect? _extent() {
     var minX = double.infinity;
     var minY = double.infinity;
+    var maxX = double.negativeInfinity;
+    var maxY = double.negativeInfinity;
 
-    for (final node in _nodes) {
+    for (final node in _boxes) {
       final at = _positionOf(node.key);
+      final size = _cardSize(node.key);
+
       minX = math.min(minX, at.dx);
       minY = math.min(minY, at.dy);
+      maxX = math.max(maxX, at.dx + size.width);
+      maxY = math.max(maxY, at.dy + size.height);
     }
 
-    if (!minX.isFinite || !minY.isFinite) return Offset.zero;
+    if (!minX.isFinite || !minY.isFinite) return null;
 
-    return Offset(kStructureMargin - minX, kStructureMargin - minY);
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
   }
+
+  // ── how big the picture is drawn ─────────────────────────────
+
+  /// The percentage as it is written on the toolbar and said out loud.
+  int get _percent => (_zoom * 100).round();
+
+  /// The middle of the window, which is what a BUTTON zooms about.
+  ///
+  /// A button press has no pointer to keep still, so the thing held fixed is
+  /// the centre of what somebody is looking at. Anchoring on the top-left
+  /// corner instead — which is what falls out of doing nothing — walks the
+  /// picture off the bottom right of the window a little further with every
+  /// press, and a control that has to be undone by panning is a control people
+  /// stop touching.
+  Offset get _windowCentre => _viewport.isEmpty
+      ? Offset.zero
+      : Offset(_viewport.width / 2, _viewport.height / 2);
+
+  /// Scale to [to], keeping the canvas point under [around] exactly where it is.
+  ///
+  /// ── The arithmetic, because it is the part that is easy to get wrong ──
+  ///
+  /// A screen point `p` is showing the canvas point `(p − view) ÷ zoom`. For
+  /// that same canvas point to still be under `p` at the new scale:
+  ///
+  ///     (p − view) ÷ zoom  =  (p − view′) ÷ zoom′
+  ///     view′ = p − (p − view) × zoom′ ÷ zoom
+  ///
+  /// Which is what the line below says. Without it — scaling and leaving the
+  /// viewport alone — the fixed point is the surface's top-left corner, so
+  /// zooming in on a box in the middle of the chart flings it off the bottom
+  /// right and somebody has to go and find it again. That is the single thing
+  /// that decides whether a zoom control gets used.
+  void _zoomTo(double to, Offset around) {
+    final next = to.clamp(kStructureZoomMin, kStructureZoomMax);
+
+    if (next == _zoom) return;
+
+    setState(() {
+      _view = around - (around - _view) * (next / _zoom);
+      _zoom = next;
+    });
+  }
+
+  /// The next stop up or down, from wherever a pinch happens to have left this.
+  ///
+  /// Searched rather than indexed, because the wheel and the pinch are
+  /// continuous: at 137% there is no index to add one to, and the honest answer
+  /// to "smaller" is the largest stop below where you are — 125% — rather than
+  /// a jump to whichever stop an index happened to be nearest.
+  double _stopBelow(double from) {
+    var found = kStructureZoomMin;
+
+    for (final stop in kStructureZoomStops) {
+      if (stop < from - _zoomTouching) found = stop;
+    }
+
+    return found;
+  }
+
+  double _stopAbove(double from) {
+    for (final stop in kStructureZoomStops) {
+      if (stop > from + _zoomTouching) return stop;
+    }
+
+    return kStructureZoomMax;
+  }
+
+  void _zoomOut() {
+    _zoomTo(_stopBelow(_zoom), _windowCentre);
+    _sayZoom();
+  }
+
+  void _zoomIn() {
+    _zoomTo(_stopAbove(_zoom), _windowCentre);
+    _sayZoom();
+  }
+
+  /// The whole chart, in the window, at the largest scale that holds it.
+  ///
+  /// Computed from [_extent] — the real ground the boxes cover, wherever
+  /// somebody has dragged them to — rather than from the automatic layout,
+  /// which is a guess about a picture nobody has touched and is wrong the
+  /// moment they have. The margin is subtracted from the room on BOTH sides so
+  /// the outermost boxes are not drawn flush against the edge of the surface,
+  /// where a box reads as cut off rather than as the end of the chart.
+  ///
+  /// Then centred, which is not the same as putting the corner at the margin.
+  /// A chart that is wide and short fits on width and leaves a band of empty
+  /// surface, and hanging that band entirely below the picture looks like the
+  /// bottom of the chart failed to draw.
+  ///
+  /// The scale is clamped like every other route to a zoom, so a window too
+  /// small for the chart gets the smallest scale worth reading rather than an
+  /// unreadable one — see [kStructureZoomMin], where that trade is argued.
+  void _fit() {
+    final extent = _extent();
+
+    // Nothing to fit. The empty canvas is handled far above this — there are no
+    // boxes and no toolbar — but a chart of one box with no height would divide
+    // by zero here, and a control that throws is worse than one that waits.
+    if (extent == null ||
+        _viewport.isEmpty ||
+        extent.width <= 0 ||
+        extent.height <= 0) {
+      return;
+    }
+
+    final room = Size(
+      math.max(1, _viewport.width - 2 * kStructureMargin),
+      math.max(1, _viewport.height - 2 * kStructureMargin),
+    );
+
+    final scale = math
+        .min(room.width / extent.width, room.height / extent.height)
+        .clamp(kStructureZoomMin, kStructureZoomMax);
+
+    setState(() {
+      _zoom = scale;
+      _view = Offset(
+        (_viewport.width - extent.width * scale) / 2 - extent.left * scale,
+        (_viewport.height - extent.height * scale) / 2 - extent.top * scale,
+      );
+    });
+
+    _say('The whole chart is in view. Zoom $_percent percent.');
+  }
+
+  /// ── Why the zoom DOES say a number, when nothing else here does ──
+  ///
+  /// [_say]'s own docblock argues at length that a box's position is never read
+  /// out, because a coordinate is a fact about a picture the listener cannot
+  /// see and moving a box changes nothing about the business. Every word of
+  /// that is still true and none of it applies here.
+  ///
+  /// A zoom percentage is not a fact about the business or about the picture —
+  /// it is the setting of the instrument being used to look at it, it is
+  /// written on the toolbar in figures, and it is the only feedback the two
+  /// buttons give. A person who presses "Zoom in" and hears nothing has no way
+  /// to know whether the control did anything, whether they are at the ceiling,
+  /// or how far from normal size they have wandered.
+  ///
+  /// Said on the BUTTONS and on Fit, and deliberately not on the wheel or the
+  /// pinch. Those are continuous and would produce a sentence every few
+  /// milliseconds, which is not information — it is a screen reader nobody can
+  /// hear anything else over. A discrete press is a moment where somebody asked
+  /// a question and is owed an answer; a gesture is somebody already watching
+  /// the thing change.
+  ///
+  /// The percentage is also on the readout's own semantics label, so it can be
+  /// read at any time by somebody who has not just pressed anything. A
+  /// `liveRegion` was the alternative to announcing here and was dropped: its
+  /// support differs across the three platforms this ships to, and half of an
+  /// announcement is worse than a whole one.
+  void _sayZoom() => _say('Zoom $_percent percent.');
 
   // ── moving a box ─────────────────────────────────────────────
 
@@ -932,7 +1438,22 @@ class _StructureCanvasState extends State<StructureCanvas>
     // node that no longer exists would write a stale entry every frame.
     if (key == null) return;
 
-    final moved = _boxAnchor + (details.globalPosition - _pointerAnchor);
+    // ── DIVIDED BY THE SCALE, and this is the defect worth naming ──
+    //
+    // A pointer moves in SCREEN points and a box's position is in CANVAS
+    // points, and the two are the same number only at 100%. Left undivided,
+    // this is the classic broken zoomable canvas: at 200% the box travels twice
+    // as far as the pointer and slides out from under it, at 50% it lags behind
+    // by half, and either way the thing being dragged is not the thing under
+    // the finger. It is worst exactly where zoom is most useful — somebody
+    // zoomed out to see the whole business, trying to tidy one box.
+    //
+    // The reported coordinate is a canvas coordinate for the same reason it
+    // always was: the arrangement is shared, and a position stored in the
+    // points of one person's screen at one person's zoom would land every
+    // colleague's box somewhere else.
+    final moved =
+        _boxAnchor + (details.globalPosition - _pointerAnchor) / _zoom;
 
     setState(() {
       _dragTo = Offset(math.max(0, moved.dx), math.max(0, moved.dy));
@@ -981,21 +1502,28 @@ class _StructureCanvasState extends State<StructureCanvas>
   /// and it is also the overlap somebody makes on purpose when they are
   /// tucking a branch up tight.
   ///
-  /// More than half of the moved box's own area, rather than any overlap at
+  /// More than half of the moved card's own area, rather than any overlap at
   /// all. Boxes brush each other constantly on a hand-arranged canvas — that is
   /// what the drift note and "Arrange for me" are about — and a paragraph that
   /// appeared every time two corners touched would be noise somebody learns to
   /// look past, which is the one thing an explanation cannot afford to become.
+  ///
+  /// Measured on the CARDS, so a company's list of places counts as part of it.
+  /// The alternative — comparing the boxes and ignoring the lists — would stay
+  /// silent while A-1 Chimney's nine branches were dropped squarely across
+  /// Everdoors, which is the most emphatic way anybody can ask the question this
+  /// answers.
   void _noticeLanding(StructureNode node) {
-    final size = Size(kStructureBoxWidth, _boxHeight);
-    final mine = _positionOf(node.key) & size;
+    final mine = _positionOf(node.key) & _cardSize(node.key);
     final half = mine.width * mine.height / 2;
 
-    for (final other in _nodes) {
+    for (final other in _boxes) {
       if (other.key == node.key) continue;
       if (other.key == node.parentKey || other.parentKey == node.key) continue;
 
-      final overlap = mine.intersect(_positionOf(other.key) & size);
+      final overlap = mine.intersect(
+        _positionOf(other.key) & _cardSize(other.key),
+      );
 
       if (overlap.width <= 0 || overlap.height <= 0) continue;
       if (overlap.width * overlap.height <= half) continue;
@@ -1078,7 +1606,7 @@ class _StructureCanvasState extends State<StructureCanvas>
     if (moved) _noticeLanding(node);
   }
 
-  /// ── Why nothing here ever says a number ──────────────────────
+  /// ── Why nothing about a BOX ever says a number ───────────────
   ///
   /// Every other announcement in this app says where a thing landed — the
   /// dashboard's is "moved to position 3 of 5". This one deliberately says
@@ -1090,6 +1618,11 @@ class _StructureCanvasState extends State<StructureCanvas>
   /// identical before and after. Reading out coordinates would be inventing a
   /// fact about a picture nobody using a screen reader can see, and it would be
   /// the only place in this feature that implied the move meant something.
+  ///
+  /// The zoom percentage IS said, and the distinction is worth stating so the
+  /// two rules are not read as one being broken: a coordinate describes the
+  /// picture, and a percentage describes the instrument somebody is looking at
+  /// it through. [_sayZoom] carries the rest of that argument.
   ///
   /// Sent to THIS view rather than the implicit one, for `DashboardGrid`'s
   /// reason: `SemanticsService.announce` asserts there is exactly one window,
@@ -1142,13 +1675,13 @@ class _StructureCanvasState extends State<StructureCanvas>
   // ── the two toolbar controls ─────────────────────────────────
 
   void _arrange() {
-    final placed = arrangeStructure(_nodes, boxHeight: _boxHeight);
+    final placed = _arrangement();
 
     // Read BEFORE anything is told about the new arrangement, because this is
     // where every box currently IS — including one that is part-way through an
     // arrangement somebody pressed a moment ago, which is why it is read through
     // [_positionOf] rather than off the layout.
-    _leaving = {for (final node in _nodes) node.key: _positionOf(node.key)};
+    _leaving = {for (final node in _boxes) node.key: _positionOf(node.key)};
 
     setState(() {
       _nudging = null;
@@ -1160,8 +1693,15 @@ class _StructureCanvasState extends State<StructureCanvas>
       // Arranged and then looked at. Leaving the viewport where it was would
       // tidy the whole picture somewhere off screen, which reads as a button
       // that did nothing.
+      //
+      // Scaled, for [_homeView]'s reason: the corner of the tidied picture is
+      // drawn at `topLeft × zoom + view`, so aiming at it means subtracting the
+      // scaled coordinate. The zoom itself is deliberately LEFT ALONE — this
+      // button rearranges the boxes, and quietly resetting the scale would take
+      // away the magnification somebody chose in order to read what they were
+      // tidying.
       _view = Offset(kStructureMargin, kStructureMargin) -
-          (placed.values.isEmpty ? Offset.zero : _topLeftOf(placed));
+          (placed.values.isEmpty ? Offset.zero : _topLeftOf(placed)) * _zoom;
     });
 
     widget.onArranged?.call(placed);
@@ -1198,12 +1738,69 @@ class _StructureCanvasState extends State<StructureCanvas>
   /// recognizer, which reads a trackpad pan as focal-point movement — the same
   /// "the surface follows your fingers" this produces, so the gesture does the
   /// same thing over a box as it does beside one.
+  /// A trackpad's own gesture also carries a PINCH, which is the same zoom.
+  ///
+  /// `PointerPanZoomUpdateEvent` reports `pan` and `scale` together, because on
+  /// a trackpad they are one gesture: two fingers sliding is a pan, two fingers
+  /// spreading is a zoom, and doing both at once is ordinary rather than
+  /// exceptional. Reading only the pan — which is what this did — meant a
+  /// trackpad user pinching over a box got nothing at all, and the whole point
+  /// of putting zoom on the wheel and the pinch is that they never have to go
+  /// looking for the buttons.
+  ///
+  /// The anchor is put back into the SURFACE's coordinates, because the
+  /// [Listener] this comes through is wrapped around a box — see [_surfaceKey].
   void _panZoomStart(PointerPanZoomStartEvent event) {
     _viewAnchor = _view;
+    _zoomAnchor = _zoom;
+    _viewPointerAnchor = _onSurface(event.position) ?? Offset.zero;
   }
 
   void _panZoomUpdate(PointerPanZoomUpdateEvent event) {
-    setState(() => _view = _viewAnchor + event.pan);
+    // The cursor does not move during a trackpad gesture; `pan` is how far the
+    // fingers have travelled since it began, so where they are NOW is the
+    // anchor plus the pan.
+    _pinch(_viewPointerAnchor + event.pan, event.scale);
+  }
+
+  /// One gesture, both things: the surface follows the fingers and the picture
+  /// grows about the point between them.
+  ///
+  /// ── Why a pan and a pinch are the same three lines ───────────
+  ///
+  /// [focus] is where the fingers are now and [_viewPointerAnchor] is where
+  /// they were when the gesture started, both in surface coordinates. The
+  /// canvas point that was under them at the start is `(anchor − viewAnchor) ÷
+  /// zoomAnchor`, and keeping that point under the fingers at the new scale
+  /// gives `view = focus − (anchor − viewAnchor) × scale`.
+  ///
+  /// At a scale of exactly 1 that reduces to `viewAnchor + (focus − anchor)`,
+  /// which is the plain pan this used to be, so a one-finger drag and a
+  /// two-finger pinch are not two code paths that have to be kept in step. The
+  /// alternative — a pan handler and a separate zoom handler — is how the
+  /// picture ends up sliding during a pinch, because each of them is anchored
+  /// on its own idea of where the gesture began.
+  void _pinch(Offset focus, double scale) {
+    final next = (_zoomAnchor * scale).clamp(
+      kStructureZoomMin,
+      kStructureZoomMax,
+    );
+
+    setState(() {
+      _view =
+          focus - (_viewPointerAnchor - _viewAnchor) * (next / _zoomAnchor);
+      _zoom = next;
+    });
+  }
+
+  /// A global point in the drawing surface's own coordinates, or null before it
+  /// has been laid out.
+  Offset? _onSurface(Offset global) {
+    final box = _surfaceKey.currentContext?.findRenderObject();
+
+    if (box is! RenderBox || !box.hasSize) return null;
+
+    return box.globalToLocal(global);
   }
 
   Offset _topLeftOf(Map<String, Offset> places) {
@@ -1222,6 +1819,68 @@ class _StructureCanvasState extends State<StructureCanvas>
     setState(() => _view = _homeView());
     _say('The boxes are back in view.');
   }
+
+  /// A wheel, and the two things a wheel means.
+  ///
+  /// ── Plain wheel scrolls, ctrl with the wheel zooms ───────────
+  ///
+  /// Which is not a convention this feature invented — it is the one every
+  /// browser, map and drawing tool has taught people, including the browser
+  /// this runs inside. Choosing anything else would mean somebody's muscle
+  /// memory did the wrong thing on the one gesture they make without looking.
+  /// Meta is accepted alongside control because it is the same key on a Mac.
+  ///
+  /// Exponential rather than a fixed step per notch, so the gesture is
+  /// symmetric: three notches in and three notches back arrive exactly where
+  /// they started, which a `zoom ± 0.1` cannot do. It also makes a trackpad's
+  /// stream of small deltas feel like the same control as a mouse's discrete
+  /// notches rather than a wildly faster one.
+  ///
+  /// `PointerScaleEvent` is the same act again, from a third direction: a
+  /// browser turns a trackpad pinch into ctrl-with-wheel, and the web engine
+  /// hands that on as this. Handling it here rather than leaving it to fall
+  /// through is what makes a pinch work for the web build, which is the build
+  /// that ships today.
+  ///
+  /// Both anchor on the pointer, so the thing under the cursor is the thing
+  /// that stays put — see [_zoomTo]. A [Listener] rather than a gesture, for
+  /// the reason it always was: it never enters the arena, so it cannot take a
+  /// drag off a box.
+  void _onSignal(PointerSignalEvent signal) {
+    // Local to this Listener, which is the drawing surface, which is the frame
+    // [_view] is measured in. A global position would be out by the height of
+    // everything above the canvas, so the picture would slide by the toolbar's
+    // height on every notch.
+    if (signal is PointerScaleEvent) {
+      _zoomTo(_zoom * signal.scale, signal.localPosition);
+
+      return;
+    }
+
+    if (signal is! PointerScrollEvent) return;
+
+    final keys = HardwareKeyboard.instance;
+
+    if (keys.isControlPressed || keys.isMetaPressed) {
+      _zoomTo(
+        _zoom * math.exp(-signal.scrollDelta.dy / _wheelZoomDamping),
+        signal.localPosition,
+      );
+
+      return;
+    }
+
+    setState(() => _view -= signal.scrollDelta);
+  }
+
+  /// How much of a zoom one wheel notch is.
+  ///
+  /// A notch arrives as 120 logical pixels, and `exp(120 ÷ 860)` is about 1.15
+  /// — roughly what a browser's own ctrl+wheel does, which is the step people
+  /// already have a feel for. Larger and a single flick of a finger overshoots
+  /// past anything readable; smaller and crossing the range means spinning a
+  /// wheel for several seconds.
+  static const double _wheelZoomDamping = 860;
 
   // ── drawing it ───────────────────────────────────────────────
 
@@ -1297,16 +1956,33 @@ class _StructureCanvasState extends State<StructureCanvas>
           ),
           Expanded(
             child: LayoutBuilder(
-              builder: (context, constraints) => SizedBox(
+              builder: (context, constraints) {
                 // A canvas needs a bounded height to be a canvas at all. A
                 // caller that puts one inside a scroll view gets a workable
                 // slab rather than an assertion, because a screen that throws
                 // on layout is a screen nobody can get back out of.
-                height: constraints.maxHeight.isFinite
+                // Typed, because without it `520` is an int and the whole
+                // expression comes out as `num` — which the two places it is
+                // handed to both refuse, and which would otherwise have been
+                // "fixed" by casting rather than by saying what it is.
+                final double height = constraints.maxHeight.isFinite
                     ? constraints.maxHeight
-                    : 520,
-                child: _surface(theme),
-              ),
+                    : 520;
+
+                // Written down as the surface is measured, which is the only
+                // moment its size is known for certain, and read later by the
+                // zoom buttons and by "Fit" — both of which live in the toolbar
+                // above and have no constraints of their own. Assigned rather
+                // than set through setState on purpose: nothing drawn this
+                // frame depends on it, so asking for a rebuild here would be a
+                // rebuild caused by a rebuild.
+                _viewport = Size(
+                  constraints.maxWidth.isFinite ? constraints.maxWidth : 0,
+                  height,
+                );
+
+                return SizedBox(height: height, child: _surface(theme));
+              },
             ),
           ),
         ],
@@ -1332,6 +2008,17 @@ class _StructureCanvasState extends State<StructureCanvas>
         icon: const Icon(Icons.filter_center_focus, size: 18),
         label: const Text('Bring the boxes into view'),
       ),
+      // Drawn for everybody, including somebody who may not save. Reading a
+      // chart thirteen places wide needs a scale as much as arranging it does,
+      // and none of this is written anywhere — see the section at the top of
+      // the file. Gating it on `organizations.edit` would take the only way of
+      // seeing the whole business away from most of the business.
+      _zoomCluster(theme),
+      // Last, and after the zoom rather than before it, because it is the
+      // caller's rather than this widget's — the row reads as "what this canvas
+      // can do" and then "what the screen around it can do". See
+      // [StructureCanvas.controls] for why it is a slot at all.
+      ?widget.controls,
     ];
 
     final note = widget.note;
@@ -1344,13 +2031,120 @@ class _StructureCanvasState extends State<StructureCanvas>
           // Wrapped rather than a Row, because two buttons and a 375-point
           // window do not fit on one line and a toolbar that overflows is a
           // control nobody can press.
-          Wrap(spacing: 8, runSpacing: 8, children: controls),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            // Middles rather than tops, because the things in this row are
+            // different heights — a filled button, a framed stepper and a label
+            // beside two chips — and a row of controls aligned by their tops
+            // reads as several rows that failed to line up.
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: controls,
+          ),
           if (note != null) ...[
             const SizedBox(height: 10),
             Text(note, style: theme.textTheme.bodyMedium),
           ],
         ],
       ),
+    );
+  }
+
+  /// Out, the number, in — and "Fit" beside them.
+  ///
+  /// ── Why the three sit in a frame and Fit does not ────────────
+  ///
+  /// Because they are one control with three parts and Fit is a different act.
+  /// Minus, the percentage and plus are a single quantity being adjusted, and
+  /// the percentage is not a label for the buttons — it is the value they move,
+  /// which is why it is BETWEEN them rather than beside them. Fit sets that
+  /// value to whatever the window needs; grouping it with them would say it is
+  /// a fourth step on the same scale.
+  ///
+  /// The frame is the outline token and nothing else — no fill, no elevation.
+  /// It is grouping rather than emphasis, and a filled tile here would compete
+  /// with "Arrange for me", which is the one thing on this toolbar that changes
+  /// what everybody else sees.
+  ///
+  /// ── Both buttons go dead at the ends, deliberately ───────────
+  ///
+  /// This file argues elsewhere that a control should be ABSENT rather than
+  /// disabled, and that is about permissions: a greyed-out button somebody can
+  /// never use invites them to work out why. A numeric limit is the opposite
+  /// case. "Zoom out" at 25% has a visible reason sitting a centimetre away in
+  /// figures, the state is temporary and self-explanatory, and removing the
+  /// button would make the cluster change shape as somebody scrolled — a
+  /// control that moves under the pointer is worse than one that waits.
+  ///
+  /// ── Why the readout has a width of its own ───────────────────
+  ///
+  /// "25%" and "100%" are different widths, so without a fixed slot the plus
+  /// button walks left and right as somebody steps through the ladder, and a
+  /// button that moves while being pressed repeatedly gets missed. The slot is
+  /// derived from the reader's own text size rather than typed as a pixel
+  /// count, because the figures inside it grow with that setting and a fixed
+  /// slot would clip "100%" for exactly the reader who most needs to read it.
+  Widget _zoomCluster(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    final scaler = MediaQuery.textScalerOf(context);
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border.all(color: scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                iconSize: 18,
+                tooltip: 'Zoom out',
+                icon: const Icon(Icons.remove),
+                onPressed: _zoom <= kStructureZoomMin + _zoomTouching
+                    ? null
+                    : _zoomOut,
+              ),
+              SizedBox(
+                width: scaler.scale(34),
+                child: Semantics(
+                  // The figures are what a sighted reader sees; this is the
+                  // same fact in a sentence, so somebody landing here with a
+                  // screen reader is told what the number IS rather than
+                  // hearing "125 percent" with nothing to attach it to.
+                  label: 'Zoom $_percent percent',
+                  excludeSemantics: true,
+                  child: Text(
+                    '$_percent%',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.labelLarge,
+                  ),
+                ),
+              ),
+              IconButton(
+                iconSize: 18,
+                tooltip: 'Zoom in',
+                icon: const Icon(Icons.add),
+                onPressed: _zoom >= kStructureZoomMax - _zoomTouching
+                    ? null
+                    : _zoomIn,
+              ),
+            ],
+          ),
+        ),
+        TextButton.icon(
+          onPressed: _fit,
+          icon: const Icon(Icons.fit_screen_outlined, size: 18),
+          // The word on the button and the sentence a pointer or a screen
+          // reader gets are different lengths on purpose: "Fit" is what fits on
+          // a toolbar at 375 points, and it does not say fit to WHAT.
+          label: const Text('Fit'),
+        ),
+      ],
     );
   }
 
@@ -1399,19 +2193,46 @@ class _StructureCanvasState extends State<StructureCanvas>
     // whole reason [_positionOf] interpolates rather than an implicit animation
     // doing it — an implicitly animated box knows where it is and the painter
     // beside it does not.
+    // `screen = canvas × zoom + view`, in the one place the two frames meet.
+    //
+    // The scale is applied HERE rather than by wrapping the whole stack in a
+    // Transform, and the reason is hit testing. A Transform changes what is
+    // painted without changing what is laid out, so at 50% the boxes would be
+    // drawn across the whole surface while the Stack behind them still measured
+    // one window — and every box beyond that width would be visible and
+    // undraggable, because a render box does not hit test outside its own size.
+    // Scaling the rectangles instead means a box's drawn rectangle IS its hit
+    // rectangle at every zoom, and the connector painter is handed the same
+    // numbers on the same frame, which is the promise the whole widget is built
+    // around.
+    //
+    // Only the things that HAVE a rectangle, which is now everything except a
+    // place. A place is drawn inside its owner's card by [_placeRow], so it has
+    // no entry here, is in no link, and is not a child of the Stack — which is
+    // what makes "thirteen boxes became four" true of the widget tree and not
+    // only of the picture.
     final rects = <String, Rect>{
-      for (final node in _nodes)
-        node.key: (_positionOf(node.key) + _view) &
-            Size(kStructureBoxWidth, _boxHeight),
+      for (final node in _boxes)
+        node.key: (_positionOf(node.key) * _zoom + _view) &
+            (_cardSize(node.key) * _zoom),
     };
 
+    // Card to card, and BOX to box within them — see the painter, which is
+    // handed the height of the box at the top of every card so it can point a
+    // line at a name rather than at the middle of a list of nine branches.
+    // Every link is between two things that have a card, because a place hangs
+    // off its company inside one rather than beside it.
     final links = <(Rect, Rect)>[
-      for (final node in _nodes)
+      for (final node in _boxes)
         if (node.parentKey != null && rects.containsKey(node.parentKey))
           (rects[node.parentKey]!, rects[node.key]!),
     ];
 
     return ClipRect(
+      // Named so a pointer's global position can be put back into this
+      // surface's own coordinates — see [_onSurface], and [_panZoomStart] for
+      // the one gesture that needs it.
+      key: _surfaceKey,
       child: DecoratedBox(
         decoration: BoxDecoration(color: scheme.surfaceContainerHigh),
         // A wheel scrolls the canvas, which is how a desktop expects to move
@@ -1424,11 +2245,7 @@ class _StructureCanvasState extends State<StructureCanvas>
         // around each box when they land on one — see [_panZoomStart], which is
         // where the reason both exist is written down.
         child: Listener(
-          onPointerSignal: (signal) {
-            if (signal is! PointerScrollEvent) return;
-
-            setState(() => _view -= signal.scrollDelta);
-          },
+          onPointerSignal: _onSignal,
           // Tree order, not screen order. Flutter's default policy reads a
           // Stack of Positioned children GEOMETRICALLY, so Tab order would
           // change every time somebody dragged a box — the structure would
@@ -1449,14 +2266,38 @@ class _StructureCanvasState extends State<StructureCanvas>
                     // one-finger drag arrives as a scale of 1.0, and using it
                     // means a second finger landing mid-drag keeps panning
                     // instead of confusing a pan recognizer.
+                    //
+                    // That choice is what makes a touchscreen PINCH free here.
+                    // The recognizer was already reporting `scale` and this was
+                    // already throwing it away; reading it means two fingers
+                    // spreading on the surface do the same thing as ctrl with a
+                    // wheel and the same thing as the buttons, which is the
+                    // whole point of having all three.
+                    //
+                    // The focal point is taken LOCAL rather than global,
+                    // because a zoom has to be anchored in the frame [_view] is
+                    // measured in. It made no difference while this only ever
+                    // took a difference between two of them.
+                    //
+                    // What this cannot reach, said plainly rather than left to
+                    // be found: a pinch whose two fingers both land on BOXES.
+                    // Each box owns its own drag recognizer and Flutter's arena
+                    // is per pointer, so those two fingers are two separate
+                    // one-finger drags rather than one gesture. Fixing it
+                    // properly would mean moving every box's drag up into a
+                    // single surface-level recognizer that hit tests the boxes
+                    // itself — which would re-open the trackpad-versus-box
+                    // arbitration this file has just settled ([_panZoomStart]),
+                    // to buy a gesture that already works on the surface
+                    // between the boxes, over any box for a trackpad, and from
+                    // three controls in the toolbar.
                     onScaleStart: (details) => setState(() {
                       _viewAnchor = _view;
-                      _viewPointerAnchor = details.focalPoint;
+                      _viewPointerAnchor = details.localFocalPoint;
+                      _zoomAnchor = _zoom;
                     }),
-                    onScaleUpdate: (details) => setState(() {
-                      _view = _viewAnchor +
-                          (details.focalPoint - _viewPointerAnchor);
-                    }),
+                    onScaleUpdate: (details) =>
+                        _pinch(details.localFocalPoint, details.scale),
                   ),
                 ),
                 Positioned.fill(
@@ -1468,6 +2309,11 @@ class _StructureCanvasState extends State<StructureCanvas>
                     child: CustomPaint(
                       painter: StructureConnectorPainter(
                         links: links,
+                        // As drawn, which is what the rectangles beside it are.
+                        // A box is the same height whatever its company owns —
+                        // only the card under it grows — so one number answers
+                        // for every link.
+                        faceHeight: _boxHeight * _zoom,
                         // Never a literal, and deliberately not
                         // `EzBiziTheme.edge`: that token is 0xFFE9EDF1 against
                         // this canvas's own ground, which is about 1.05:1 —
@@ -1479,7 +2325,7 @@ class _StructureCanvasState extends State<StructureCanvas>
                     ),
                   ),
                 ),
-                for (final node in _nodes) _box(theme, node, rects[node.key]!),
+                for (final node in _boxes) _card(theme, node, rects[node.key]!),
               ],
             ),
           ),
@@ -1488,67 +2334,251 @@ class _StructureCanvasState extends State<StructureCanvas>
     );
   }
 
-  Widget _box(ThemeData theme, StructureNode node, Rect at) {
+  /// One card: a box, and under it the compact list of places that hang off it.
+  ///
+  /// ── Why the two are one Positioned rather than two ───────────
+  ///
+  /// Because they are one thing on the canvas. A place has no position of its
+  /// own — it is drawn where its company is, and it moves when its company moves
+  /// — so the alternative is a second Positioned that has to be kept underneath
+  /// the first on every frame of every drag, at every zoom, through the
+  /// "Arrange for me" ease. One rectangle cannot come apart.
+  ///
+  /// It is also what makes the whole card draggable, which is the honest
+  /// gesture: the list belongs to the box, so picking up any part of it picks up
+  /// the box. The alternative — a drag that only starts on the box and leaves
+  /// the list inert — would have a pointer landing on nine of A-1 Chimney's
+  /// branches fall through to the background and pan the view instead, which is
+  /// a card that is only draggable at the top and says nothing about where.
+  Widget _card(ThemeData theme, StructureNode node, Rect at) {
     final movable = widget.onMoved != null;
+    final places = _places[node.key] ?? const <StructureNode>[];
 
     return Positioned(
-      key: ValueKey('slot:${node.key}'),
+      key: structureCardKey(node.key),
       left: at.left,
       top: at.top,
-      width: kStructureBoxWidth,
-      height: _boxHeight,
+      // The rectangle already carries the zoom, so the slot a card occupies on
+      // screen and the area that answers a pointer are the same rectangle at
+      // every scale. What is INSIDE is still built at the canvas's own sizes and
+      // scaled to fill this — see the FittedBox below.
+      width: at.width,
+      height: at.height,
       // Plain, not AnimatedPositioned. [at] already carries the one easing this
       // widget does, worked out in [_positionOf] where the connector painter can
       // read the same numbers — see the note on [_arranging].
-      child: Semantics(
-        container: true,
-        label: _sentenceFor(node),
-        child: Focus(
-          key: structureBoxKey(node.key),
-          focusNode: _focusNode(node.key),
-          onKeyEvent: (_, event) => _onKey(node, event),
-          onFocusChange: (has) {
-            // Focus is handed back as a widget is being taken down, which is
-            // after this State can be asked to rebuild.
-            if (!mounted) return;
+      child: MouseRegion(
+        // `move`, not `grab`. See the note at the top of the file: one of
+        // these says "carry this somewhere", and it is not this one.
+        cursor: movable
+            ? SystemMouseCursors.move
+            : SystemMouseCursors.basic,
+        // The card is opaque to hit testing, so a two-finger trackpad gesture
+        // landing on it never reaches the pan surface underneath — which is
+        // why this catches it here and moves the viewport rather than the
+        // box. See [_panZoomStart].
+        child: Listener(
+          onPointerPanZoomStart: _panZoomStart,
+          onPointerPanZoomUpdate: _panZoomUpdate,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            // Everything but a trackpad. A DragGestureRecognizer takes
+            // trackpad pan-zoom pointers unless it is told not to, and a
+            // two-finger scroll is not somebody moving this box.
+            supportedDevices: _dragPointers,
+            onPanStart: movable ? (d) => _panStart(node, d) : null,
+            onPanUpdate: movable ? _panUpdate : null,
+            onPanEnd: movable ? (_) => _panEnd(node) : null,
+            // ── The card is built once, at its own size, and scaled ──
+            //
+            // Everything inside — the glyph, the two lines of text, the move
+            // handle, the caller's menu, every place row — is laid out against
+            // [kStructureBoxWidth], [_boxHeight] and [_placeRowHeight] exactly
+            // as it would be at 100%, and this scales the finished thing. The
+            // alternative was multiplying every size, padding and font by the
+            // zoom, which is a dozen numbers that have to be kept in step, and
+            // the first one anybody forgot would be a name ellipsizing at one
+            // scale and not at another.
+            //
+            // Scaled rather than re-laid-out also means the picture at 50% is
+            // the picture at 100%, smaller. A card that re-flowed its contents
+            // as it shrank would be a different card, and somebody zooming out
+            // to see the shape would find the shape had changed.
+            //
+            // The SizedBox is what makes it work at all: a FittedBox lays its
+            // child out unbounded, and the Rows inside have Expandeds in them,
+            // which assert under an unbounded width.
+            child: FittedBox(
+              fit: BoxFit.fill,
+              child: SizedBox(
+                width: kStructureBoxWidth,
+                height: _boxHeight + _placesHeight(node.key),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: _boxHeight,
+                      // The focus, the key and the box's own sentence wrap the
+                      // BOX rather than the card, and that is deliberate on all
+                      // three counts. A place row inside carries a sentence of
+                      // its own, so a container around both would read the
+                      // company's name and then swallow its branches; the key
+                      // has to answer "how big is a box drawn" for every zoom
+                      // assertion, which a rectangle that grows with the list
+                      // cannot; and the arrow keys belong to the box, because
+                      // the box is the thing with a position.
+                      child: Semantics(
+                        container: true,
+                        label: _sentenceFor(node),
+                        child: Focus(
+                          key: structureBoxKey(node.key),
+                          focusNode: _focusNode(node.key),
+                          onKeyEvent: (_, event) => _onKey(node, event),
+                          onFocusChange: (has) {
+                            // Focus is handed back as a widget is being taken
+                            // down, which is after this State can be asked to
+                            // rebuild.
+                            if (!mounted) return;
 
-            setState(() {
-              if (has) {
-                _focused = node.key;
-              } else {
-                if (_focused == node.key) _focused = null;
-                // The mode is per box and ends on blur, which is what keeps
-                // Tab working: leaving a box always hands the arrow keys back
-                // to whatever wants them next.
-                if (_nudging == node.key) _nudging = null;
-              }
-            });
-          },
-          child: MouseRegion(
-            // `move`, not `grab`. See the note at the top of the file: one of
-            // these says "carry this somewhere", and it is not this one.
-            cursor: movable
-                ? SystemMouseCursors.move
-                : SystemMouseCursors.basic,
-            // The box is opaque to hit testing, so a two-finger trackpad gesture
-            // landing on it never reaches the pan surface underneath — which is
-            // why this catches it here and moves the viewport rather than the
-            // box. See [_panZoomStart].
-            child: Listener(
-              onPointerPanZoomStart: _panZoomStart,
-              onPointerPanZoomUpdate: _panZoomUpdate,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                // Everything but a trackpad. A DragGestureRecognizer takes
-                // trackpad pan-zoom pointers unless it is told not to, and a
-                // two-finger scroll is not somebody moving this box.
-                supportedDevices: _dragPointers,
-                onPanStart: movable ? (d) => _panStart(node, d) : null,
-                onPanUpdate: movable ? _panUpdate : null,
-                onPanEnd: movable ? (_) => _panEnd(node) : null,
-                child: _face(theme, node),
+                            setState(() {
+                              if (has) {
+                                _focused = node.key;
+                              } else {
+                                if (_focused == node.key) _focused = null;
+                                // The mode is per box and ends on blur, which
+                                // is what keeps Tab working: leaving a box
+                                // always hands the arrow keys back to whatever
+                                // wants them next.
+                                if (_nudging == node.key) _nudging = null;
+                              }
+                            });
+                          },
+                          child: _face(theme, node),
+                        ),
+                      ),
+                    ),
+                    if (places.isNotEmpty)
+                      SizedBox(
+                        height: _placesHeight(node.key),
+                        child: Column(
+                          children: [
+                            // The gap between the box and its first place,
+                            // which is what [structurePlacesHeight] reserves.
+                            // Spent as space rather than as padding on the
+                            // rows, so the arithmetic here and the arithmetic
+                            // the automatic layout does are the same shape and
+                            // a reader can check one against the other.
+                            const SizedBox(height: kStructurePlacesGap),
+                            for (final place in places)
+                              _placeRow(theme, place),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// One place, as a row in the list attached to the company that owns it.
+  ///
+  /// ── Why this is not a small box ──────────────────────────────
+  ///
+  /// No frame, no fill and no move handle, and each absence is the picture
+  /// saying something true. A place has nowhere of its own to be — it cannot be
+  /// dragged, because it has no position for a drag to change — and a rounded
+  /// rectangle with a border is what everything else on this canvas that CAN be
+  /// dragged looks like. Drawing one here would be an affordance for a gesture
+  /// that does not exist, which is the same class of mistake as a drop target on
+  /// a canvas that cannot re-parent.
+  ///
+  /// What it keeps is everything a place actually says: the glyph, the name, the
+  /// organization's own word for one (§8), whether it is switched off, and the
+  /// caller's action menu. All five are what the box carried this morning, and
+  /// dropping any of them would have made "a place is not a box" mean "a place
+  /// tells you less", which is not what the owner picked from the mockups.
+  ///
+  /// It carries [structureBoxKey] for the same reason: the question "where on
+  /// screen is `franchise:abc`" is asked by this tab's tests and by nothing
+  /// else, and the answer is a row now rather than a box.
+  Widget _placeRow(ThemeData theme, StructureNode place) {
+    final scheme = theme.colorScheme;
+    final actions = widget.actions?.call(context, place);
+
+    return SizedBox(
+      height: _placeRowHeight,
+      // The label OUTSIDE the keyed widget rather than inside it, which is not
+      // cosmetic: `WidgetTester.getSemantics` walks UP from the element a finder
+      // landed on, so a key beneath the label finds it and a key above it walks
+      // past every widget in this card and answers with the page. The box does
+      // the same thing for the same reason — its key is on the [Focus] inside
+      // its own label.
+      child: Semantics(
+        container: true,
+        label: _sentenceFor(place),
+        child: Padding(
+          key: structureBoxKey(place.key),
+          // Indented from the left so the list reads as hanging off the box
+          // above it rather than as a continuation of it, and level with the
+          // box's own text so the two columns of names line up. Nothing on the
+          // right, because the menu is a full-size target and its own padding
+          // is what holds it off the edge.
+          padding: const EdgeInsets.only(left: 22),
+          child: Row(
+            children: [
+              // Excluded from semantics, both of them, for the same reason the
+              // box's are: the row's own label already says the name, the word
+              // and the state as one sentence, in the order a reader wants it.
+              // The CALLER's menu is untouched — it is a control, and taking a
+              // control out of the semantics tree is how a menu becomes
+              // unreachable.
+              ExcludeSemantics(
+                child: Icon(
+                  _glyphFor(place),
+                  size: 16,
+                  color: place.isActive ? scheme.onSurfaceVariant : scheme.outline,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ExcludeSemantics(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        place.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontSize: 13,
+                          color: place.isActive ? null : scheme.onSurfaceVariant,
+                          // Being switched off carried by a line as well as by
+                          // grey, so it survives a reader who cannot see the
+                          // grey — the same three channels the box uses.
+                          decoration:
+                              place.isActive ? null : TextDecoration.lineThrough,
+                        ),
+                      ),
+                      Text(
+                        place.isActive
+                            ? _wordFor(place)
+                            : '${_wordFor(place)} · switched off',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: place.isActive ? null : scheme.error,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              ?actions,
+            ],
           ),
         ),
       ),
@@ -1587,14 +2617,18 @@ class _StructureCanvasState extends State<StructureCanvas>
   ///
   /// The word is the decisive channel and it is deliberately the plainest one:
   /// it survives colour blindness, a greyscale screen, a printout and a screen
-  /// reader, none of which a fill or a border does. The glyph and the border
-  /// weight are there so the levels can be told apart at a glance without
-  /// reading, and the corner radius separates the two ends — a place is round
-  /// like the chip it is drawn as on the list tab, the whole business is the
-  /// squarest and heaviest thing on the canvas.
+  /// reader, none of which a fill or a border does. The glyph is there so the
+  /// levels can be told apart at a glance without reading, and on the three
+  /// things that get a box the corner radius and the border weight separate the
+  /// ends — the whole business is the squarest and heaviest thing on the canvas.
+  ///
+  /// A place is now told apart by something stronger than any of those: it is
+  /// not a box at all. It is a row in the list under the company that owns it,
+  /// which says both what it is and whose it is in one reading, and is why the
+  /// two shape channels below no longer have a case for one.
   ///
   /// A fifth channel of shape for company-versus-sub-company was considered and
-  /// dropped: four distinct box shapes in a 260-point slot is a visual language
+  /// dropped: three distinct box shapes in a 260-point slot is a visual language
   /// nobody has been taught, and "SUB COMPANY" written on the box is not.
   ///
   /// A place is called whatever the ORGANIZATION calls one (§8). This used to
@@ -1614,15 +2648,16 @@ class _StructureCanvasState extends State<StructureCanvas>
     _ => node.isSub ? Icons.account_tree_outlined : Icons.apartment_outlined,
   };
 
-  double _radiusFor(StructureNode node) => switch (node.kind) {
-    structureOrganization => 16,
-    structureFranchise => 26,
-    _ => 12,
-  };
+  /// The two below are asked only of things that HAVE a box, so neither has a
+  /// case for a place any more. The `franchise` arms were removed rather than
+  /// left to rot: a switch arm nothing can reach is a claim that a place is
+  /// drawn as a 26-radius rounded rectangle, which is exactly the picture this
+  /// change replaced.
+  double _radiusFor(StructureNode node) =>
+      node.kind == structureOrganization ? 16 : 12;
 
   double _borderFor(StructureNode node) => switch (node.kind) {
     structureOrganization => 2,
-    structureFranchise => 1,
     _ => node.isSub ? 1 : 1.5,
   };
 
@@ -1750,10 +2785,38 @@ class _StructureCanvasState extends State<StructureCanvas>
 /// dynamically, which fails at run time with a NoSuchMethodError the day a
 /// field is renamed and says nothing useful about what actually broke.
 class StructureConnectorPainter extends CustomPainter {
-  const StructureConnectorPainter({required this.links, required this.color});
+  const StructureConnectorPainter({
+    required this.links,
+    required this.faceHeight,
+    required this.color,
+  });
 
-  /// Parent box and child box, both already in viewport coordinates.
+  /// Parent CARD and child CARD, both already in viewport coordinates.
+  ///
+  /// Cards rather than boxes, and that is what keeps a line out of a list of
+  /// places. A card is a box with its places under it, so in a top-to-bottom
+  /// chart the run has to leave the bottom of the whole card — leaving the
+  /// bottom of the BOX would send the vertical segment straight down through
+  /// the middle of the company's own nine branches, drawing a line through nine
+  /// names.
   final List<(Rect, Rect)> links;
+
+  /// How tall the box at the top of every card is, as drawn.
+  ///
+  /// ── Why a scalar rather than a third rectangle per link ──────
+  ///
+  /// Because a box is the same height on every card — only the list under it
+  /// varies — so one number answers for all of them, and a per-link rectangle
+  /// would be the same value repeated with an opportunity to disagree.
+  ///
+  /// It is what the SIDEWAYS runs anchor on. A left-to-right chart puts the
+  /// child in the next column, so nothing is crossed and the honest place to
+  /// leave from is the middle of the box: a line that left A-1 Chimney's card at
+  /// its vertical centre would leave it beside the fifth of its nine branches,
+  /// pointing at a place rather than at the company. Vertically the opposite is
+  /// true, which is why the two directions read different edges — the geometry
+  /// decides which, exactly as it always did.
+  final double faceHeight;
 
   final Color color;
 
@@ -1767,7 +2830,7 @@ class StructureConnectorPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     for (final (parent, child) in links) {
-      final route = _route(parent, child);
+      final route = _route(parent, child, faceHeight);
       final path = Path()..moveTo(route.first.dx, route.first.dy);
 
       for (final point in route.skip(1)) {
@@ -1781,33 +2844,43 @@ class StructureConnectorPainter extends CustomPainter {
     }
   }
 
-  /// An orthogonal run out of one box and into the other.
+  /// An orthogonal run out of one card and into the other.
   ///
   /// Not a bezier. With free positions a curve routes straight through whatever
   /// boxes happen to lie between, whereas an out-across-in run stays readable
   /// in every arrangement — including upside down, which free positioning
   /// allows and which an org chart drawn by hand will eventually contain.
   ///
-  /// Which edges it leaves from is decided by where the boxes actually ARE, not
+  /// Which edges it leaves from is decided by where the cards actually ARE, not
   /// by which is the parent, so a child dragged above or beside its parent gets
   /// a line that still reads as a connection rather than one that doubles back
-  /// through both boxes.
+  /// through both cards. That is also what makes ONE routine serve both
+  /// orientations: left to right takes the third branch and top to bottom the
+  /// first, without either being named anywhere in here.
   ///
-  /// ── A run across a skipped line needs no case, and must not get one ──
+  /// ── Cards vertically, boxes horizontally ─────────────────────
   ///
-  /// A company with no sub companies has its places two lines below it rather
-  /// than one, because a place's line is what a place IS (see
-  /// [arrangeStructure]). The first branch below already draws that correctly:
-  /// out of the bottom, down to the midpoint between the two boxes, across, and
-  /// into the top. At the default text size that is a 240-point run with its
-  /// horizontal jog halfway down instead of a 84-point one, which is the same
-  /// line the reader has already seen twenty of, drawn longer.
+  /// [faceHeight] is where that shows up, and it is the one asymmetry in this
+  /// routine. Going DOWN, the line must clear the parent's own list of places,
+  /// so it leaves the card's bottom edge; going ACROSS, nothing is in the way
+  /// and the line should point at the box, so both ends anchor half a box down
+  /// from the top of their card. The alternative — the card's vertical centre —
+  /// puts the line beside a company's fifth branch and reads as a connector to a
+  /// place, which is the one thing on this canvas a connector may never appear
+  /// to be.
   ///
-  /// Written down because the tempting "fix" for a gap that looks unusual is a
+  /// A run that spans a level nothing is on needs no case, and must not get one.
+  /// It is out of the near edge, along to the midpoint between the two cards,
+  /// across, and in — which is the same line the reader has already seen twenty
+  /// of, drawn longer. The tempting "fix" for a gap that looks unusual is a
   /// special case that shortens it, and shortening it would put the jog
-  /// somewhere other than between the two lines it actually crosses — which is
-  /// the one thing about this run that tells a reader it spans two levels.
-  static List<Offset> _route(Rect from, Rect to) {
+  /// somewhere other than between the two things it actually spans.
+  static List<Offset> _route(Rect from, Rect to, double faceHeight) {
+    // Half a box down from the top, which on a card with no places is the
+    // centre and is what this always was.
+    final fromFace = from.top + faceHeight / 2;
+    final toFace = to.top + faceHeight / 2;
+
     if (to.top >= from.bottom) {
       final mid = (from.bottom + to.top) / 2;
 
@@ -1834,10 +2907,10 @@ class StructureConnectorPainter extends CustomPainter {
       final mid = (from.right + to.left) / 2;
 
       return [
-        Offset(from.right, from.center.dy),
-        Offset(mid, from.center.dy),
-        Offset(mid, to.center.dy),
-        Offset(to.left, to.center.dy),
+        Offset(from.right, fromFace),
+        Offset(mid, fromFace),
+        Offset(mid, toFace),
+        Offset(to.left, toFace),
       ];
     }
 
@@ -1845,24 +2918,28 @@ class StructureConnectorPainter extends CustomPainter {
       final mid = (to.right + from.left) / 2;
 
       return [
-        Offset(from.left, from.center.dy),
-        Offset(mid, from.center.dy),
-        Offset(mid, to.center.dy),
-        Offset(to.right, to.center.dy),
+        Offset(from.left, fromFace),
+        Offset(mid, fromFace),
+        Offset(mid, toFace),
+        Offset(to.right, toFace),
       ];
     }
 
-    // The boxes are on top of each other, which is what dropping one on another
-    // does and is allowed to do. A straight line between the centres is the
+    // The cards are on top of each other, which is what dropping one on another
+    // does and is allowed to do. A straight line between the two BOXES is the
     // only honest thing left to draw, and drawing SOMETHING is the point: the
     // connector surviving the overlap is how the picture says the tree did not
     // change.
-    return [from.center, to.center];
+    return [
+      Offset(from.center.dx, fromFace),
+      Offset(to.center.dx, toFace),
+    ];
   }
 
   @override
   bool shouldRepaint(StructureConnectorPainter old) =>
       old.color != color ||
+      old.faceHeight != faceHeight ||
       old.links.length != links.length ||
       _differs(old.links, links);
 
