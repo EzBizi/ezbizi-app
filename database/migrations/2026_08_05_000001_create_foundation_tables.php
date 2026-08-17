@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Schema;
  *       └── Sub Company                   a Company with a parent
  *           └── Franchise
  *
- * Reference: H:\AWS\Application\EZBIZI-BUILD-PLAN.md §3, §4, §5
+ * Reference: docs/EZBIZI-BUILD-PLAN.md §3, §4, §5
  *
  * Decisions encoded here, each of which is expensive to change later:
  *   - UUID primary keys       (§5) — sequential ints leak business volume via the API

@@ -33,7 +33,11 @@
 
 set -uo pipefail
 
-STATUS=${EZBIZI_STATUS:-"$(dirname "$0")/../../AWS/Application/EZBIZI-STATUS.md"}
+# In the repo since 2026-08-17. It used to live in H:/AWS/Application, which is
+# the folder for the SERVER — its credentials and its key — and is not a git
+# repository, so the architecture brief every § in the code points at had no
+# history at all. The override is kept for anyone running this by hand.
+STATUS=${EZBIZI_STATUS:-"$(dirname "$0")/../docs/EZBIZI-STATUS.md"}
 REMOTE=${EZBIZI_REMOTE:-app}
 
 BACKEND_TESTS=${1:-}

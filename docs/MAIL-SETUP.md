@@ -113,6 +113,64 @@ through a shared inbox, and it is worth seeing work once.
 
 ---
 
+## Google Workspace — domain-wide delegation
+
+This is a **third** way to open a shared inbox, for companies that would rather
+connect the domain once than sign in as each address. Per-inbox Google sign-in
+and IMAP stay as they are.
+
+A Workspace administrator signs in to prove they run the domain. EzBizi then
+impersonates **only the addresses somebody picks from the Directory** (info@,
+jobs@). Personal mailboxes are not imported. Google Groups are not in this
+version.
+
+### What has to exist besides the OAuth client above
+
+1. In the same Google Cloud project, create a **service account**. Enable the
+   **Gmail API** and the **Admin SDK API**.
+2. Open the service account and copy:
+   - the client email (`…@….iam.gserviceaccount.com`)
+   - a JSON key's **private key**
+   - the numeric **Unique ID** (Client ID) — this is what Google Admin asks for,
+     not the `….apps.googleusercontent.com` OAuth client id
+3. In **Google Admin** (the customer's Admin Console, not Cloud Console):
+   Security → Access and data control → API controls → Domain-wide delegation
+   → Add new, paste that numeric client ID, and allow exactly these scopes:
+
+```
+https://www.googleapis.com/auth/gmail.readonly
+https://www.googleapis.com/auth/gmail.send
+https://www.googleapis.com/auth/admin.directory.user.readonly
+```
+
+Do not add `mail.google.com` or `gmail.modify`. Same reasons as the per-inbox
+flow: EzBizi must not delete or label mail at Google.
+
+### Environment variables on the app box
+
+```
+GOOGLE_MAIL_WORKSPACE_CLIENT_EMAIL=ezbizi@….iam.gserviceaccount.com
+GOOGLE_MAIL_WORKSPACE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n…\n-----END PRIVATE KEY-----\n"
+GOOGLE_MAIL_WORKSPACE_CLIENT_ID=123456789012345678901
+```
+
+The OAuth client (`GOOGLE_MAIL_CLIENT_ID` / `_SECRET`) is still required: it is
+how a Workspace administrator proves they run the domain. The service account
+is what opens listed mailboxes afterwards. Two keys, two jobs.
+
+The domain is unique across EzBizi. The first organization that proves it runs
+`a-1chimney.com` is the only one that may impersonate addresses there.
+
+### Checking it worked
+
+Email → Settings → Connect Workspace. Sign in as a Workspace administrator on
+that domain. If Directory listing fails, the screen keeps the numeric client ID
+and the three scopes — allow them in Google Admin, then try again. Then add a
+shared inbox and pick it from the directory. **Do not pick a person's own
+mailbox.**
+
+---
+
 ## Still to come
 
 **Push notification for `email.received`.** Gmail can tell EzBizi when mail
