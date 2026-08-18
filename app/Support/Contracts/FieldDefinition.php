@@ -33,6 +33,7 @@ final class FieldDefinition
         public readonly bool $required,
         public readonly bool $sensitive,
         public readonly bool $retired,
+        public readonly bool $isExpiry,
     ) {}
 
     /**
@@ -60,6 +61,7 @@ final class FieldDefinition
             required:  (bool) ($raw['required'] ?? false),
             sensitive: (bool) ($raw['sensitive'] ?? false),
             retired:   (bool) ($raw['retired'] ?? false),
+            isExpiry:  (bool) ($raw['is_expiry'] ?? false),
         );
     }
 
@@ -95,6 +97,7 @@ final class FieldDefinition
             'required'  => $this->required,
             'sensitive' => $this->sensitive,
             'retired'   => $this->retired,
+            'is_expiry' => $this->isExpiry,
         ];
     }
 
@@ -118,6 +121,7 @@ final class FieldDefinition
             'filled_by' => $this->filledBy,
             'required'  => $this->required,
             'sensitive' => $this->sensitive,
+            'is_expiry' => $this->isExpiry,
         ];
     }
 }

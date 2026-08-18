@@ -190,6 +190,7 @@ final class FieldSet
 
         self::checkOptions($field, $at, $errors);
         self::checkSignature($field, $at, $errors);
+        self::checkExpiry($field, $at, $errors);
     }
 
     /**
@@ -264,6 +265,17 @@ final class FieldSet
 
                 return;
             }
+        }
+    }
+
+    /**
+     * An expiry is a date that lapses. Marking a number or a signature as one
+     * would put nonsense on the certifications panel.
+     */
+    private static function checkExpiry(FieldDefinition $field, string $at, array &$errors): void
+    {
+        if ($field->isExpiry && $field->type !== FieldType::DATE) {
+            $errors["{$at}.is_expiry"] = 'Only a date can be marked as an expiry. A date of birth that is not an expiry stays a date; mark a licence or certificate date instead.';
         }
     }
 

@@ -2,45 +2,23 @@
 
 namespace App\Support\Dashboard\Widgets\Hr;
 
+use App\Models\EmploymentEvent;
 use App\Models\User;
 use App\Support\Dashboard\Widget;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
- * Who has just joined, and who is no longer active
- * (EZBIZI-HR-PLAN.md — Dashboard).
- *
- * ── The halves are not symmetric, and the panel says so ──────────
+ * Who has just joined, and who left (EZBIZI-HR-PLAN.md — Dashboard).
  *
  * Starting is dated. An account comes into being when an invitation is accepted,
- * so `users.created_at` is a real timestamp for "when this person joined" — it is
- * already what HrPeopleController presents as `joined_at`, and this reads the
- * same column so the two cannot disagree.
+ * so a `started` employment event is written then — the same moment
+ * `users.created_at` is set — and this panel reads that event so Records and
+ * the dashboard cannot disagree.
  *
- * Leaving is NOT dated. §5's rule is that deactivate is not delete, and the
- * record survives as `users.is_active = false` — a boolean with no timestamp
- * beside it. Nothing in the schema records WHEN somebody was deactivated:
- *
- *   - `audit_events` holds the change, but as a generic `user.updated` row with
- *     `is_active` inside a JSON `changes` blob. Reading a dashboard figure out of
- *     that means matching an action name and parsing JSON, and it would go blank
- *     the day §10's retention sweep expires the row — a leaver disappearing from
- *     history because a log rotated is worse than not offering the number.
- *   - `automation_events` holds `user.deactivated`, but that table is the
- *     automation engine's queue. Reading HR facts out of another module's work
- *     log is the second home §6 warns about, and it would tie this panel's
- *     correctness to a retention policy that belongs to something else.
- *
- * So the leaving half is reported WITHOUT a period: how many people are no
- * longer active, full stop. That is true, it is answerable from a first-class
- * column, and it does not invent an employment-lifecycle shape that onboarding
- * would then have to match. `period_applies_to` tells the client which half the
- * window covers so it can label them honestly rather than implying both are
- * "in the last 30 days".
- *
- * Whether leaving should BE a dated event is recorded as EZBIZI-TODO.md #27 —
- * parked rather than forgotten, and the size of that decision is why this panel
- * reports what the schema can support instead of waiting for it.
+ * Leaving is dated from the day this table shipped. Deactivate writes a `left`
+ * row. People who were already inactive before then have no leaving date; they
+ * still appear on "No longer active" so the panel does not disagree with Records.
+ * History is not invented from `users.updated_at`.
  */
 class StartersAndLeavers implements Widget
 {
@@ -76,27 +54,27 @@ class StartersAndLeavers implements Widget
 
         $inactive = $this->inView($places)->where('is_active', false)->count();
 
+        $left = EmploymentEvent::query()
+            ->where('kind', EmploymentEvent::LEFT)
+            ->whereDate('occurred_on', '>=', $since->toDateString())
+            ->whereIn('user_id', $this->inView($places)->select('id'))
+            ->count();
+
         return [
             'rows' => [
                 ['title' => 'Joined', 'total' => $started],
+                ['title' => 'Left', 'total' => $left],
                 ['title' => 'No longer active', 'total' => $inactive],
             ],
 
             'total' => $started,
             'days'  => (int) $since->diffInDays(now()),
 
-            /*
-             * Which row the window actually covers.
-             *
-             * The client draws the period beside the first row and a plain count
-             * beside the second. Sent as data rather than left to the client to
-             * know, because a client that hardcoded "the first row is the dated
-             * one" would silently start lying the day a third row is added.
-             */
-            'period_applies_to' => ['Joined'],
+            'period_applies_to' => ['Joined', 'Left'],
 
-            // The names, for the panel that is about people rather than about a
-            // number. Capped: this is a summary, and the Records tab is the list.
+            'note' => 'Leaving dates start from when this record-keeping began. '
+                .'People who were already inactive before then have no leaving date.',
+
             'people' => (clone $starters)->limit(self::NAMES_SHOWN)->get()
                 ->map(fn (User $person) => [
                     'id'        => $person->getKey(),

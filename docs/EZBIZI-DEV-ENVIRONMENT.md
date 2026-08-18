@@ -82,7 +82,7 @@ green gate. Three are missing libraries; one was fixed.
 
 | | Symptom | State |
 |---|---|---|
-| MySQL | `Access denied for user 'root'@'localhost'` on ~1100 tests | **open** — no `ezbizi_testing` database here; `phpunit.xml` requires MySQL. See TODO. |
+| MySQL | `Access denied for user 'root'@'localhost'` on ~1100 tests | **fixed 2026-08-18** — MySQL 8.4.9 Community, schema `ezbizi_testing`. `php artisan test` talks to it. The Windows service could not be installed without elevation, so `mysqld` is a user process (`C:\ProgramData\MySQL\Data`). GD and Dompdf are still missing. |
 | OpenSSL | `openssl_pkey_export(): Cannot get key from parameter 1` | **fixed 2026-08-17** — see below |
 | GD | `GD extension is not installed` — image tests | open |
 | dompdf | `Class "Dompdf\Dompdf" not found` — PDF tests | open |
@@ -101,8 +101,9 @@ config it was not pointed at:
 Set for this machine's user on 2026-08-17. A new shell picks it up; an already-open one needs
 restarting. Verify with `php -r 'var_dump(openssl_pkey_new([]) !== false);'`.
 
-**Until MySQL is available locally, the sandbox is the only honest backend gate.** sqlite
-differs from MySQL in ways that have already shipped a broken deploy — see StartUp.md §8.
+A sqlite `:memory:` run is still not the gate (StartUp.md §8). This machine now has MySQL;
+use `php artisan test` with no sqlite overrides. GD and Dompdf remain missing, so a handful
+of image/PDF tests will still fail here and pass on the sandbox.
 
 ## Permissions model
 

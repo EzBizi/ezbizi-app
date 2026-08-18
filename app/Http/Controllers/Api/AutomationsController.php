@@ -654,7 +654,70 @@ class AutomationsController extends Controller
             $this->assertActionUsable($action, $i, $trigger);
         }
 
+        if (array_key_exists('conditions', $input) && $input['conditions'] !== null) {
+            $this->assertConditionsUsable($input['conditions']);
+        }
+
         return $input;
+    }
+
+    /**
+     * An empty condition row would save and then throw on every run.
+     *
+     * The builder already refuses to POST one; this is the same rule on the
+     * wire so a hand-written body cannot sneak past.
+     */
+    private function assertConditionsUsable(array $node, string $at = 'conditions'): void
+    {
+        if ($node === []) {
+            return;
+        }
+
+        if (array_is_list($node)) {
+            foreach ($node as $i => $child) {
+                if (! is_array($child)) {
+                    throw ValidationException::withMessages([
+                        "{$at}.{$i}" => 'Each condition has to be an object with a field and an operator.',
+                    ]);
+                }
+                $this->assertConditionsUsable($child, "{$at}.{$i}");
+            }
+
+            return;
+        }
+
+        foreach (['all', 'any'] as $group) {
+            if (array_key_exists($group, $node)) {
+                if (! is_array($node[$group])) {
+                    throw ValidationException::withMessages([
+                        "{$at}.{$group}" => 'A group of conditions has to be a list.',
+                    ]);
+                }
+                $this->assertConditionsUsable($node[$group], "{$at}.{$group}");
+
+                return;
+            }
+        }
+
+        if (array_key_exists('not', $node)) {
+            if (! is_array($node['not'])) {
+                throw ValidationException::withMessages([
+                    "{$at}.not" => 'A "not" condition has to wrap another condition.',
+                ]);
+            }
+            $this->assertConditionsUsable($node['not'], "{$at}.not");
+
+            return;
+        }
+
+        $field = $node['field'] ?? null;
+        $op    = $node['op'] ?? null;
+
+        if (! is_string($field) || trim($field) === '' || ! is_string($op) || trim($op) === '') {
+            throw ValidationException::withMessages([
+                $at => 'A condition needs a field and an operator. An empty row would never match anything, so it cannot be saved.',
+            ]);
+        }
     }
 
     /**

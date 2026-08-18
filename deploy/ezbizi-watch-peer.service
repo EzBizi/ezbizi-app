@@ -1,0 +1,8 @@
+[Unit]
+Description=Ask whether the EzBizi websites box is answering
+OnFailure=ezbizi-watch-peer-failed.service
+
+[Service]
+Type=oneshot
+User=www-data
+ExecStart=/usr/local/bin/ezbizi-watch-peer-websites.sh

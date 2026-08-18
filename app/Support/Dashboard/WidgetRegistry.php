@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\Dashboard\Widgets\AutomationHealth;
 use App\Support\Dashboard\Widgets\CustomersAdded;
 use App\Support\Dashboard\Widgets\JobsByStatus;
+use App\Support\Dashboard\Widgets\Hr\ExpiringCertifications;
 use App\Support\Dashboard\Widgets\Hr\Headcount;
 use App\Support\Dashboard\Widgets\Hr\InvitationsStalled;
 use App\Support\Dashboard\Widgets\Hr\OnboardingsInFlight;
@@ -54,6 +55,7 @@ class WidgetRegistry
         OnboardingsInFlight::class,
         InvitationsStalled::class,
         StartersAndLeavers::class,
+        ExpiringCertifications::class,
     ];
 
     /**

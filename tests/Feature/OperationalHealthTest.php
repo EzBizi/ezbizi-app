@@ -309,7 +309,48 @@ class OperationalHealthTest extends TestCase
             ->assertJsonPath('backups.ok', false)
             ->assertJsonPath('mail.delivers', false)
             ->assertJsonPath('outbox.ok', true)
-            ->assertJsonPath('certificate.ok', false);
+            ->assertJsonPath('certificate.ok', false)
+            ->assertJsonPath('peer.ok', false);
+    }
+
+    public function test_a_missing_peer_verdict_is_a_failure(): void
+    {
+        $token = $this->staffToken();
+
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->getJson('/api/v1/staff/health')
+            ->assertOk()
+            ->assertJsonPath('peer.ok', false);
+
+        $this->assertNotEmpty(
+            $this->withHeader('Authorization', "Bearer {$token}")
+                ->getJson('/api/v1/staff/health')->json('peer.problem')
+        );
+    }
+
+    public function test_a_fresh_peer_ok_is_healthy(): void
+    {
+        $token = $this->staffToken();
+        $path = storage_path('app/peer-status-test.json');
+        config(['ezbizi.peer.status_file' => $path]);
+
+        file_put_contents($path, json_encode([
+            'ok' => true,
+            'at' => now()->toIso8601String(),
+            'host' => 'www.ezbizi.com',
+        ]));
+
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->getJson('/api/v1/staff/health')
+            ->assertOk()
+            ->assertJsonPath('peer.ok', true);
+
+        @unlink($path);
+    }
+
+    public function test_the_framework_up_probe_answers_when_mysql_does(): void
+    {
+        $this->get('/up')->assertOk();
     }
 
     public function test_a_test_email_refuses_rather_than_pretending(): void

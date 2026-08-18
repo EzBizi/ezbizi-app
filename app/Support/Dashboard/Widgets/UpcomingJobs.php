@@ -41,14 +41,17 @@ class UpcomingJobs implements Widget
 
         $jobs = $this->reachable(Job::query(), $user)
             ->whereNotNull('scheduled_for')
-            ->where('scheduled_for', '>=', now())
-            ->with(['customer:id,name', 'franchise:id,name'])
+            ->with(['customer:id,name', 'franchise:id,name,timezone'])
             ->orderBy('scheduled_for')
-            // Clamped rather than trusted: the value arrives from a stored
-            // preference, and a preference is user input that happens to have
-            // been saved earlier.
-            ->limit(max(1, min($limit, 50)))
-            ->get();
+            ->limit(50)
+            ->get()
+            ->filter(function (Job $job) {
+                $tz = $job->franchise?->timezone ?: 'UTC';
+                $wall = $job->scheduled_for;
+                return $wall !== null && $wall->gte(now($tz));
+            })
+            ->take(max(1, min($limit, 50)))
+            ->values();
 
         return [
             'rows' => $jobs->map(fn (Job $job) => [

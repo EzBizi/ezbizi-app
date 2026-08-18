@@ -13,16 +13,16 @@ are separate projects; the shared numbering only produced gaps whenever an item 
 | 2 | ~~**`hello@ezbizi.com`**~~ → **`contact@ezbizi.com`** | ✅ | **Done.** Mailbox created on the websites box, MX published, and all six CTAs on ezbizi.com repointed. Receiving is verified — `contact@` accepted, `nobody@` rejected. **It cannot reply until #1 is settled.** Password in `_secrets/Application-credentials.md`. |
 | 3 | **`ns2` on a second machine** | **[BOTH]** | **On hold at your request.** Primary half done: ns1 offers TSIG-authenticated transfers and notifies `32.194.222.151` (`deploy/named-primary-ezbizi.conf`, key in `_secrets/`). The secondary half is not a config paste — that box runs BIND under Plesk, chrooted, from a `named.conf` Plesk regenerates, so a hand-added zone is erased on its next DNS change anywhere. Either add `ezbizi.com` to Plesk as a DNS-only domain and `plesk bin dns --set-secondary` (supported, but Plesk slaves transfer by source IP, so ns1 drops TSIG for that host), or put the secondary somewhere that is not Plesk. |
 
-| 22 | **Signup has no email verification** | **[CLAUDE]** | **Blocked by #1, and deliberate rather than forgotten.** `POST /api/v1/auth/signup` creates the account and signs the person straight in. It cannot ask them to confirm their address first, because nothing on this platform can send mail — so a verification gate would lock out every account signup creates. Add it *after* #1 has an outbound transport, and not before. The consequence while it is absent: an address is never proved to belong to the person who typed it, so a typo produces a real organization nobody can reach, and password reset — the one flow that would recover it — also needs #1. The absence is stated in `AuthController::signup` and pinned by a test (`SignupTest::test_the_account_can_read_and_write_immediately_with_no_verification_step`), so adding the gate early fails the suite rather than a customer. |
+| 22 | **Signup has no email verification** | **[CLAUDE]** | **Chosen 2026-08-18: a confirmation email**, still blocked by #1. The pin test exists at `SignupTest::test_the_account_can_read_and_write_immediately_with_no_verification_step`. The gate must not fire while `MailStatus::delivers()` is false. SES steps: `C:\Users\jose\Desktop\ezbizi-ses-setup.md`. |
 
 ## Decisions only you can make
 
 | # | Question | What it blocks |
 |---|---|---|
-| 4 | **Are the state territories separate legal entities?** | **Deferred 2026-08-06 — "keep as is for now".** They are franchises under the single company "A-1 Chimney". Still worth answering before real jobs exist: §3 forbids moving a franchise between companies afterwards, and it decides whether #5's single organization counter stays correct. |
+| 4 | **Are the state territories separate legal entities?** | **2026-08-18 — not ours to decide.** Each client can differ. Keep the current franchise shape under one organization. Do not encode a global legal rule. Revisit only if a specific tenant needs its own filing entity, because that is when #5's shared counter would be wrong. |
 | 5 | ~~Which entity owns the invoice numbering sequence~~ (§5.2) | ✅ **Decided 2026-08-06: one counter for the whole ORGANIZATION.** Connecticut issues 1001, Georgia 1002, Texas 1003 — one unbroken run across the business. Revisit only if #4 turns any territory into its own filing entity, because a shared counter across separate legal entities is what tax authorities object to. |
 | 6 | **Pricing metric** (§13) | Not urgent — users are metered from day one either way. |
-| 9 | **What does a demo organization suppress?** | **Open.** `is_demo` is written by `ProvisionOrganization` and read in exactly one place, for display. It excludes an organization from nothing — not metering, not the health canary, not backups, not reporting. Name what it suppresses before §13's metering is built, or the first sales demo lands in the MRR. |
+| 9 | **What does a demo organization suppress?** | **Parked 2026-08-18 — not yet.** `is_demo` is still display-only. |
 
 ## Decided 2026-08-07
 
@@ -40,16 +40,16 @@ because §16's dispositions are what stop a settled question being re-litigated.
 | 16 | What happens when a trial ends | **Read-only.** Owner's words: *"write permissions are disabled, only read is kept, so no changes whatsoever can be done."* |
 | 17 | Trial length | **Sales can extend it**, so it is data, not code. Today it is `now()->addMonth()` — which is also the calendar month §13 explicitly rejects, since February trials come out shorter. |
 | 18 | Audit retention | **3 months.** One policy for every customer. |
-| 19 | §8 i18n · §11.4 public API · §12 theming | **Build now.** All three were *claimed* rather than built; the plan asserting them while the code lacked them was the problem, not the absence itself. |
+| 19 | §8 i18n · §11.4 public API · §12 theming | **i18n foundation 2026-08-18:** strings as data (`ui_locales` / `ui_strings`), en+es seeded, org setting + user override, login/sidebar/Settings. Public API and extra theming still open. |
 
 ### Deferred, deliberately
 
 | # | Question | Why it is parked |
 |---|---|---|
-| 20 | **Is a scheduled job an instant or a local wall time?** | Parked with modules — *"we are not working on modules yet"*. Worth flagging that the price of parking it rises fast: `franchises.timezone` is already stored and validated at three levels and read by nothing, and "9am Tuesday" for a technician is a wall time. Stored as an instant it moves on DST and on any timezone correction. A column and a cast today; unvalidatable once ten thousand jobs exist. **Answer before the scheduling module, not after.** |
-| 21 | **Does a deactivated franchise's history stay in roll-ups?** | *"Figure this later."* Only affects reporting, and no franchise has been deactivated. |
-| 26 | **Can a contract field say that a date IS an expiry?** | Recorded because two docblocks point here for it. `App\Support\Contracts\FieldDefinition` carries key, label, type, filled_by, required, sensitive and retired — and nothing that marks a `date` as the one that lapses. So "which certifications expire this month" has no honest answer, and the HR dashboard's **Expiring certifications** panel is drawn badged "Not built yet" rather than guessing (`HrDashboardController::PANELS`, `client/lib/screens/hr/dashboard_tab.dart`). It is a **contract-template** decision, not a dashboard one: a seventh field property has to be matched by onboarding, the diff, the renderer and every stored version, so it is worth deciding once rather than inventing here. Parked until somebody wants the panel enough to pay for that. |
-| 27 | **Is leaving a dated event?** | Recorded because `StartersAndLeavers` points here for it. §5's rule is that deactivate is not delete, and the record survives as `users.is_active = false` — a boolean with no timestamp beside it. So "who left this month" cannot be answered; only "who is no longer active". The panel reports the leaving half **without** a period and says so on screen, and `period_applies_to` names which rows the window covers. The fix, if it is wanted, is an employment-lifecycle shape (a dated leaving event, not just a column), which onboarding and Records would then have to match — the same size of decision as #26. Reading it out of `audit_events` or `automation_events` instead was rejected: both are logs on somebody else's retention policy, and a leaver would vanish from history the day one rotated. |
+| 20 | **Is a scheduled job an instant or a local wall time?** | **Decided 2026-08-18: wall time** in the franchise timezone. An instant moves on DST. Jobs screens stay parked; the column meaning still changes so later UI cannot store the wrong thing. |
+| 21 | **Does a deactivated franchise's history stay in roll-ups?** | **Decided 2026-08-18: yes.** They may re-activate. History stays. |
+| 26 | **Can a contract field say that a date IS an expiry?** | **Decided 2026-08-18: yes.** Fourth boolean on `FieldDefinition` (`is_expiry`), default false. Older JSON without the key is not an expiry. |
+| 27 | **Is leaving a dated event?** | **Decided 2026-08-18: yes.** `employment_events`, not `users.is_active` alone, and not `audit_events`. History begins at the migration — do not invent `left` dates from `updated_at`. |
 
 ## Base UI — not module work
 
@@ -59,10 +59,10 @@ not: they are the shell and the front door.
 | # | Item | Owner |
 |---|---|---|
 | ~~7~~ | ✅ ~~**Settings**~~ — a typed value is discarded unless you press Enter; the three JSON settings render as a box that rejects what it just displayed; every control looks editable to people without `organizations.edit`, who then get a 403 on save; company-level scope is supported end to end and unreachable from the UI; the `help` text the server sends for every setting is never shown. | ✅ **Done 2026-08-06** — all five. |
-| 8 | **Login** — somebody with accounts in two organizations, one with an authenticator, is silently signed into the other and can never reach the first. (The mistyped-code half is fixed: the server's message is shown.) | **[CLAUDE]** |
-| 23 | **Nothing alerts.** `CheckBackupHealth` only mails, and mail does not send; the scheduler discards task output and exits 0 regardless; nothing watches disk, TLS, MySQL, nginx or whether the site answers. The Health screen requires somebody to look, and is served by the app that would be down. Needs one out-of-band channel that is not email, plus `OnFailure=` units so systemd can shout when the app cannot. | **[CLAUDE]** |
-| 24 | **§18 Phase 0 item 4 was never done.** Webmin 2.653 runs as root and answers `0.0.0.0:10000` as well as through nginx; `ufw` is inactive; `fail2ban` is inactive. That box is also MySQL, the backup source, the GPG passphrase, the ACME account key and the sole nameserver. | **[BOTH]** |
-| 25 | **Users, roles, invitations — none of it exists.** `User::create`, `Role::create` and `Assignment::create` appear only inside `ProvisionOrganization`. There is no way to add a second person to an organization, `permission_role` is never written, and every tenant is permanently one Administrator for whom `hasPermission` short-circuits to true. **This blocks Phase 4**: every permission a module registers is ungrantable, and it is why 32 of 33 `authorize()` calls would survive deletion with the suite green. | **[CLAUDE]** |
+| ~~8~~ | ✅ ~~**Login**~~ — somebody with accounts in two organizations, one with an authenticator, is silently signed into the other. | ✅ **Done.** Picker + `needs_code`. `AuthApiTest::test_an_account_behind_an_authenticator_is_not_silently_skipped`. Closed 2026-08-18. |
+| 23 | **Mutual box alerts.** The Health screen cannot shout if the app is down, and our mail cannot shout until #1. The websites box (`32.194.222.151`) and the app box watch each other: curl `/up` (readiness: nginx + PHP + MySQL, not backups/mail/TLS) and a static alive file on www. Missing peer verdict is a failure. `OnFailure=` on php-fpm, nginx, mysql, named. | **[CLAUDE]** |
+| 24 | **§18 Phase 0 item 4 was never done.** Webmin 2.653 runs as root and answers `0.0.0.0:10000` as well as through nginx; `ufw` is inactive; `fail2ban` is inactive. That box is also MySQL, the backup source, the GPG passphrase, the ACME account key and the sole nameserver. | **[BOTH]** **Parked 2026-08-18 — not for now.** |
+| ~~25~~ | ✅ ~~**Users, roles, invitations — none of it exists.**~~ | ✅ **Done.** Roles, HR people, invitations and onboarding exist; production has two users. Closed 2026-08-18. |
 
 ## Module work — deferred until each module is built
 
@@ -72,8 +72,13 @@ base UI, so they are recorded here rather than fixed piecemeal.
 | Module | What is wrong |
 |---|---|
 | **Customers** | A row is a dead end — no detail, edit, deactivate, delete or reassign-owner control, though the API supports all five. The `Inactive` tag the list draws cannot be produced by any user action. Address fields are not on the create form at all, so no customer has an address. |
-| **Jobs** | No open, edit or delete, so a status is frozen at creation. No schedule date on the create form, so `scheduled_for` — which the dashboard's "Coming up" panel reads — can never be set. No filters, though the endpoint supports three. A failed customer search reads as "no such customer". |
-| **Automations** | No way to read back, edit or roll back a rule. A failed run shows no reason, though the server sends one. "Conditions did not match" is hardcoded; the per-clause trace is discarded. Deleting a condition row leaves stale text below it. An empty condition row saves and produces a rule that never matches. "is one of" cannot be expressed by the form. |
+| **Jobs** | Screens still parked (no open/edit/delete/filters). `scheduled_for` is **wall time** in the franchise timezone (TODO #20, 2026-08-18). A failed customer search reads as "no such customer". |
+| **Automations** | Read-back, edit, rollback ("Put this one back"), failed-run reason and condition trace exist. Empty condition rows are refused on save (client and API). Stale text after deleting a condition was already fixed by keyed controllers. "is one of" splits on commas. |
+
+- ✅ **Login no longer skips the authenticator org** — *2026-08-18.* Closed TODO #8.
+- ✅ **Users, roles, invitations exist** — *2026-08-18.* Closed TODO #25. HR + Roles; production has two users.
+- ✅ **Local MySQL `ezbizi_testing`** — *2026-08-18.* This machine can run `php artisan test` against MySQL 8.4. GD and Dompdf still missing.
+- ✅ **Microsoft 365 as a fourth mailbox provider** — *2026-08-18.* Catalogue, PKCE sign-in, Graph reads, token refresh. Azure app registration is still console work (`docs/MAIL-SETUP.md`).
 
 ## Done
 

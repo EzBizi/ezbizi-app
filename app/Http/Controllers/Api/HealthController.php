@@ -42,6 +42,7 @@ class HealthController extends Controller
             'mail'     => $mail->summary(),
             'outbox'   => $this->outbox(),
             'certificate' => $this->certificate(),
+            'peer'     => $this->peer(),
             'checked_at' => now()->toIso8601String(),
         ];
     }
@@ -179,6 +180,43 @@ class HealthController extends Controller
      * changes — which is exactly what happened for a week. An oldest-undelivered
      * age is a direct read of whether the sweep is running.
      */
+    /**
+     * Whether the other box last saw this one, and whether that reading is fresh.
+     *
+     * Written by deploy/watch-peer-websites.sh on a timer. A missing file is a
+     * failure: the timer that has never run looks identical to one that stopped.
+     */
+    private function peer(): array
+    {
+        $path = (string) config('ezbizi.peer.status_file');
+        $host = parse_url((string) config('ezbizi.peer.url'), PHP_URL_HOST) ?: 'the other box';
+
+        if (! is_readable($path)) {
+            return [
+                'ok'      => false,
+                'host'    => $host,
+                'problem' => 'No peer verdict has ever been written. The watchdog has not run.',
+            ];
+        }
+
+        $status = json_decode((string) file_get_contents($path), true) ?: [];
+        $at     = isset($status['at']) ? Carbon::parse($status['at']) : null;
+        $age    = $at === null ? null : (int) $at->diffInMinutes(now());
+        $stale  = $at === null || $age > (int) config('ezbizi.peer.max_age_minutes');
+        $ok     = ! $stale && ($status['ok'] ?? false) === true;
+
+        return [
+            'ok'      => $ok,
+            'host'    => $status['host'] ?? $host,
+            'at'      => $at?->toIso8601String(),
+            'problem' => $ok ? null : (
+                $stale
+                    ? 'The other box has not been heard from recently. The watchdog has stopped or the peer is down.'
+                    : (string) ($status['problem'] ?? 'The other box did not answer.')
+            ),
+        ];
+    }
+
     private function outbox(): array
     {
         $oldest = AutomationEvent::withoutGlobalScopes()

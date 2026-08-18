@@ -159,6 +159,7 @@ class GoogleWorkspaceTest extends TestCase
         $this->assertFalse($workspace['needs_host']);
         $this->assertSame('directory', $workspace['connects_by']);
         $this->assertSame('sign_in', $byValue['gmail_oauth']['connects_by']);
+        $this->assertSame('sign_in', $byValue['microsoft_oauth']['connects_by']);
         $this->assertSame('password', $byValue['imap']['connects_by']);
         $this->assertStringContainsString('Workspace', $workspace['label']);
         $this->assertStringContainsString('shared', strtolower((string) $workspace['caution']));

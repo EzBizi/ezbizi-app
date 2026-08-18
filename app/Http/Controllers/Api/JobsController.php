@@ -269,6 +269,8 @@ class JobsController extends Controller
 
     private function present(Job $job, bool $detailed = false): array
     {
+        $job->loadMissing(['franchise:id,name,timezone', 'customer:id,name,number,owning_franchise_id']);
+
         $base = [
             'id'     => $job->id,
             'number' => $job->number,

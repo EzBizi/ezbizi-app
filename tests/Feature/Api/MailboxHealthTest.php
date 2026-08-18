@@ -601,6 +601,7 @@ class MailboxHealthTest extends TestCase
             foreach ([
                 'gmail_oauth' => 'GmailMailboxReader',
                 'gmail_workspace' => 'WorkspaceMailboxReader',
+                'microsoft_oauth' => 'MicrosoftMailboxReader',
                 'imap' => 'ImapMailboxReader',
             ] as $provider => $expected) {
                 $mailbox = Mailbox::create([

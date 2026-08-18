@@ -136,6 +136,8 @@ class CannotReadMailbox extends RuntimeException
                     MailboxProvider::GmailWorkspace => 'Somebody with permission to manage '
                         .'mailboxes needs to connect this organization\'s Google Workspace and '
                         .'pick this address from the directory.',
+                    MailboxProvider::MicrosoftOauth => 'Somebody with permission to manage mailboxes '
+                        .'needs to sign in to Microsoft and give EzBizi permission to read it.',
                     MailboxProvider::Imap => 'Somebody with permission to manage mailboxes needs '
                         .'to enter the mail server details and the password for this address.',
                 },

@@ -340,6 +340,17 @@ class AutomationsApiTest extends TestCase
         $this->assertStringContainsString('title, description, status', $message);
     }
 
+    public function test_an_empty_condition_row_is_refused_while_someone_is_looking_at_the_form(): void
+    {
+        $this->as()->postJson('/api/v1/automations', [
+            'name'        => 'Broken if',
+            'trigger_key' => 'job.status_changed',
+            'conditions'  => ['all' => [['field' => '', 'op' => 'eq']]],
+            'actions'     => [['type' => 'notify', 'message' => 'hi']],
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('conditions.all.0');
+    }
+
     /**
      * The other subject's fields are refused too, which is the second half of
      * the same defect: the picker offered "Customers › Update a field" under a

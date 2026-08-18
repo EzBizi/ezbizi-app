@@ -77,4 +77,21 @@ return [
         'workspace_client_id'    => env('GOOGLE_MAIL_WORKSPACE_CLIENT_ID'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Microsoft 365, for shared Outlook inboxes
+    |--------------------------------------------------------------------------
+    |
+    | Same rules as google_mail: one OAuth client for the installation, never a
+    | per-tenant value. Redirect URI defaults to this application's callback on
+    | APP_URL and MicrosoftOAuth refuses anything that is not that path.
+    |
+    */
+    'microsoft_mail' => [
+        'client_id'     => env('MICROSOFT_MAIL_CLIENT_ID'),
+        'client_secret' => env('MICROSOFT_MAIL_CLIENT_SECRET'),
+        'redirect' => env('MICROSOFT_MAIL_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/email/microsoft/callback',
+    ],
+
 ];

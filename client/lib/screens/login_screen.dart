@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/ui_strings.dart';
 import '../widgets/auth_preview.dart';
 import '../widgets/auth_shell.dart';
 import '../widgets/error_note.dart';
@@ -68,6 +69,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// Populated only when the server reports more than one matching account.
   List<Map<String, dynamic>>? _choices;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCopy();
+  }
+
+  Future<void> _loadCopy() async {
+    final response = await widget.api.get('/ui-strings');
+    if (!mounted || !response.ok) return;
+    UiStrings.adopt(response.data as Map<String, dynamic>);
+    setState(() {});
+  }
 
   @override
   void dispose() {
@@ -245,7 +259,7 @@ class _LoginScreenState extends State<LoginScreen> {
             widget.session.expired
                 ? 'Your session ended, so you have been signed out. Sign in '
                       'again to pick up where you were.'
-                : 'Sign in to your workspace.',
+                : UiStrings.t('shell.sign_in_prompt'),
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 28),
@@ -345,7 +359,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Colors.white,
                     ),
                   )
-                : const Text('Sign in'),
+                : Text(UiStrings.t('shell.sign_in')),
           ),
 
           // The only door into signup, and it is here because this is where
@@ -366,7 +380,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               TextButton(
                 onPressed: _busy ? null : widget.onCreateAccount,
-                child: const Text('Create an account'),
+                child: Text(UiStrings.t('shell.create_account')),
               ),
             ],
           ),
@@ -437,7 +451,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Colors.white,
                     ),
                   )
-                : const Text('Sign in'),
+                : Text(UiStrings.t('shell.sign_in')),
           ),
           const SizedBox(height: 4),
           TextButton(

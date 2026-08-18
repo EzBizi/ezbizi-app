@@ -280,17 +280,11 @@ cd client && flutter analyze && flutter test
 ```
 
 The backend suite expects MySQL (`phpunit.xml` forces `DB_DATABASE=ezbizi_testing`).
-**At the time of writing, that database does not exist on the development machine**,
-so the full backend suite runs only in the deploy gate or a sandbox. A local
-approximation:
-
-```bash
-DB_CONNECTION=sqlite DB_DATABASE=:memory: php artisan test
-```
-
-Useful for fast feedback, and it will show a handful of environment failures (missing
-GD, missing dompdf, real TLS connects) that are not your change. **It is not a gate.**
-Check `docs/EZBIZI-TODO.md` — closing this gap is an open item.
+On this development machine that schema exists as of 2026-08-18 — run
+`php artisan test` with no sqlite overrides. sqlite still differs from MySQL
+(JSON key order, `VARCHAR` length, `REGEXP_REPLACE`, `SHOW`); do not use it as a
+gate. GD and Dompdf are still missing locally, so a handful of image/PDF tests
+fail here and pass on the sandbox. See `docs/EZBIZI-DEV-ENVIRONMENT.md`.
 
 ### A test that cannot fail is not a test
 

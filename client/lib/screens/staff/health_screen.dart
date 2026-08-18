@@ -124,13 +124,14 @@ class _HealthScreenState extends State<HealthScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Four subsystems that stop without complaining. Everything here is '
+            'Five subsystems that stop without complaining. Everything here is '
             'a read of when it last actually worked, not whether it answers.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 20),
           if (_health != null) ...[
             _backups(_health!['backups'] as Map<String, dynamic>),
+            _peer(_health!['peer'] as Map<String, dynamic>?),
             _certificate(_health!['certificate'] as Map<String, dynamic>?),
             _mail(_health!['mail'] as Map<String, dynamic>),
             _outbox(_health!['outbox'] as Map<String, dynamic>),
@@ -175,6 +176,21 @@ class _HealthScreenState extends State<HealthScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _peer(Map<String, dynamic>? peer) {
+    if (peer == null) return const SizedBox.shrink();
+
+    final ok = peer['ok'] == true;
+
+    return _card(
+      ok: ok,
+      title: 'The other box',
+      headline: ok
+          ? '${peer['host'] ?? 'The websites box'} answered recently.'
+          : (peer['problem'] as String? ??
+                'The other box has not been heard from.'),
     );
   }
 

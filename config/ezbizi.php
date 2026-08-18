@@ -122,6 +122,19 @@ return [
     ],
 
     /*
+     * The other box, watching this one (TODO #23).
+     *
+     * `/up` is nginx + PHP + MySQL. It is not backups, mail or TLS — those stay
+     * on the staff Health screen. A missing verdict is a failure: a timer that
+     * has stopped writes nothing, which is exactly what a dead peer looks like.
+     */
+    'peer' => [
+        'status_file' => env('EZBIZI_PEER_STATUS', storage_path('app/peer-status.json')),
+        'url' => env('EZBIZI_PEER_URL', 'https://www.ezbizi.com/ezbizi-alive.txt'),
+        'max_age_minutes' => (int) env('EZBIZI_PEER_MAX_AGE_MINUTES', 15),
+    ],
+
+    /*
      * ─────────────────────────────────────────────────────────────
      *  WATCHING THE SHARED INBOXES (§5.5's `email.received`)
      * ─────────────────────────────────────────────────────────────

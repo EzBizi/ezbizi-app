@@ -1,0 +1,10 @@
+[Unit]
+Description=Record that the EzBizi peer watchdog itself failed
+
+[Service]
+Type=oneshot
+# The watch script already wrote peer-status.json. This unit exists so systemd
+# OnFailure= has somewhere to go when php-fpm, nginx, mysql or named die —
+# install it as OnFailure= on those units on the box. The websites box noticing
+# a missed /up is the shout; this is the local mark.
+ExecStart=/bin/true

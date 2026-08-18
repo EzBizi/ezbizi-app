@@ -271,6 +271,11 @@ The Health screen reports days-to-expiry as read **off the wire**, not off the
 disk, for the same reason: `/etc/letsencrypt` and "what nginx is serving" are two
 different facts, and only the second one is a customer's problem.
 
+`GET /up` is Laravel's health probe. It is **readiness**: nginx, PHP-FPM and
+MySQL (`DiagnosingHealth` runs `select 1`). It is **not** backups, mail or TLS.
+Those stay on Development → Health. The websites box curls `/up`; the app box
+curls `https://www.ezbizi.com/ezbizi-alive.txt`. Units: `deploy/ezbizi-watch-peer.*`.
+
 ## What runs the clock
 
 Two systemd units, both versioned in `deploy/` and installed on the app box:

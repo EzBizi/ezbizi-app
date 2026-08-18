@@ -9,6 +9,7 @@ import 'core/module_screens.dart';
 import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
+import 'core/ui_strings.dart';
 import 'core/version_gate.dart';
 import 'screens/development_screen.dart';
 import 'screens/hr/onboarding_form.dart';
@@ -441,7 +442,7 @@ class _HomeShellState extends State<HomeShell> {
       // see settings_shell.dart for why roles belong here rather than in the
       // list above.
       Destination(
-        'Settings',
+        UiStrings.t('shell.settings'),
         Icons.settings_outlined,
         SettingsShell(api: widget.api, session: widget.session),
       ),
@@ -648,7 +649,7 @@ class _HomeShellState extends State<HomeShell> {
                   ),
                 ),
               PopupMenuButton<String>(
-                tooltip: 'Your account — ${me.name} (${me.email})',
+                tooltip: '${UiStrings.t('shell.your_account')} — ${me.name} (${me.email})',
                 // The photo, not just the initial. It was an initial always: the
                 // profile screen was the only place a picture appeared, and even
                 // there it did not, because it was fetched without the token the
@@ -680,8 +681,8 @@ class _HomeShellState extends State<HomeShell> {
                     ),
                   ),
                   const PopupMenuDivider(),
-                  const PopupMenuItem(value: 'me', child: Text('Your account')),
-                  const PopupMenuItem(value: 'out', child: Text('Sign out')),
+                  PopupMenuItem(value: 'me', child: Text(UiStrings.t('shell.your_account'))),
+                  PopupMenuItem(value: 'out', child: Text(UiStrings.t('shell.sign_out'))),
                 ],
                 onSelected: (v) {
                   if (v == 'out') {

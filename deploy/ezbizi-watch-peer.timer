@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch the EzBizi websites box every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=ezbizi-watch-peer.service
+
+[Install]
+WantedBy=timers.target

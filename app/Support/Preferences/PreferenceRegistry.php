@@ -124,6 +124,17 @@ class PreferenceRegistry
                 'default' => 'organization',
                 'help'    => 'Set by the switcher in the top bar.',
             ],
+
+            /*
+             * Per-user language (§8). Empty follows the organization setting.
+             * Codes live in `ui_locales`, so a new language is a row.
+             */
+            'locale' => [
+                'label'   => 'Language',
+                'type'    => 'string',
+                'default' => '',
+                'help'    => 'Leave blank to follow the organization. Login, the sidebar and Settings read this now; the rest of the app still follows later.',
+            ],
         ];
     }
 

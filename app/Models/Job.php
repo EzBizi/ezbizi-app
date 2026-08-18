@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use App\Models\Concerns\HasAttachments;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Time\FranchiseWallTime;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -45,7 +46,7 @@ class Job extends Model
     protected function casts(): array
     {
         return [
-            'scheduled_for'    => 'datetime',
+            'scheduled_for'    => FranchiseWallTime::class,
             'duration_minutes' => 'integer',
             // Integer minor units (§7). Casting it keeps a string '1999' from a
             // JSON body out of arithmetic that would silently concatenate.

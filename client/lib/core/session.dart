@@ -4,6 +4,7 @@ import 'password_policy.dart';
 import 'permissions.dart';
 import 'timestamps.dart';
 import 'token_store.dart';
+import 'ui_strings.dart';
 
 /// Who is signed in, and what they can reach.
 ///
@@ -107,7 +108,9 @@ class Session extends ChangeNotifier {
     final response = await _api.get('/me');
 
     if (response.ok) {
-      _me = Me.fromJson(response.data as Map<String, dynamic>);
+      final data = response.data as Map<String, dynamic>;
+      _me = Me.fromJson(data);
+      UiStrings.adopt(data);
       _unreachable = false;
       // Whatever brought them back, they are in now — so the sentence about a
       // session that ended stops being true here rather than lingering.

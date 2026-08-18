@@ -356,6 +356,13 @@ class InvitationAcceptanceController extends Controller
             'gender'        => $input['gender'] ?? null,
         ]);
 
+        \App\Models\EmploymentEvent::create([
+            'organization_id' => $user->organization_id,
+            'user_id'         => $user->getKey(),
+            'kind'            => \App\Models\EmploymentEvent::STARTED,
+            'occurred_on'     => now()->toDateString(),
+        ]);
+
         // §4's XOR, carried straight across: the invitation's three scope columns
         // ARE an assignment's three scope columns, which is why the tables share
         // their shape.

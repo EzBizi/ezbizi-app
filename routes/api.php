@@ -10,6 +10,8 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\FranchisesController;
+use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\UiStringsController;
 use App\Http\Controllers\Api\GoogleMailAuthController;
 use App\Http\Controllers\Api\GoogleWorkspaceAuthController;
 use App\Http\Controllers\Api\HealthController;
@@ -185,6 +187,13 @@ Route::prefix('v1/invitations')->middleware('throttle:invitation')->group(functi
 Route::get('v1/email/google/callback', [GoogleMailAuthController::class, 'callback'])
     ->middleware('throttle:30,1')
     ->name('email.google.callback');
+
+Route::get('v1/email/microsoft/callback', [MicrosoftMailAuthController::class, 'callback'])
+    ->middleware('throttle:30,1')
+    ->name('email.microsoft.callback');
+
+Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
+    ->middleware('throttle:60,1');
 
 // ── Authenticated ────────────────────────────────────────────────
 Route::prefix('v1')
@@ -888,6 +897,8 @@ Route::prefix('v1')
                     // the client at all for any screen to read.
                     'display' => app(\App\Support\Settings\DisplaySettings::class)
                         ->forScope($view->settingsScope()),
+
+                    ...app(\App\Support\I18n\UiCatalogue::class)->forUser($user),
 
                     'franchises' => $user->reachableFranchises()->map(fn ($f) => [
                         'id'         => $f->id,

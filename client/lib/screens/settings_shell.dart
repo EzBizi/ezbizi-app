@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/ui_strings.dart';
 import '../widgets/tab_bar_like.dart';
 import 'roles_screen.dart';
 import 'settings_screen.dart';
@@ -43,7 +44,7 @@ class _SettingsShellState extends State<SettingsShell> {
 
     final tabs = <(String, IconData, Widget)>[
       (
-        'Settings',
+        UiStrings.t('shell.settings'),
         Icons.tune_outlined,
         SettingsScreen(api: widget.api, session: widget.session),
       ),

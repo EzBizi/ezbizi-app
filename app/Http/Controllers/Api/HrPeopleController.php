@@ -249,16 +249,25 @@ class HrPeopleController extends Controller
 
             $user->save();
 
-            /*
-             * The two events, and the one that is easy to get subtly wrong.
-             *
-             * `user.activated` fires for a reactivation as well as for an
-             * acceptance — the description in the registry says so — because the
-             * end state is the same and there is no second event for it. A rule
-             * that says "when somebody's account starts working, tell their
-             * manager" must fire both times or it is wrong half the time.
-             */
             if (array_key_exists('is_active', $changed)) {
+                \App\Models\EmploymentEvent::create([
+                    'organization_id' => $user->organization_id,
+                    'user_id'         => $user->id,
+                    'kind'            => $user->is_active
+                        ? \App\Models\EmploymentEvent::STARTED
+                        : \App\Models\EmploymentEvent::LEFT,
+                    'occurred_on'     => now()->toDateString(),
+                ]);
+
+                /*
+                 * The two events, and the one that is easy to get subtly wrong.
+                 *
+                 * `user.activated` fires for a reactivation as well as for an
+                 * acceptance — the description in the registry says so — because the
+                 * end state is the same and there is no second event for it. A rule
+                 * that says "when somebody's account starts working, tell their
+                 * manager" must fire both times or it is wrong half the time.
+                 */
                 $this->events->emit(
                     $user->is_active ? 'user.activated' : 'user.deactivated',
                     $user,

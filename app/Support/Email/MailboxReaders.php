@@ -124,6 +124,7 @@ class MailboxReaders
         return match ($provider) {
             MailboxProvider::GmailOAuth     => app(GmailMailboxReader::class),
             MailboxProvider::GmailWorkspace => app(WorkspaceMailboxReader::class),
+            MailboxProvider::MicrosoftOauth => app(MicrosoftMailboxReader::class),
             MailboxProvider::Imap           => app(ImapMailboxReader::class),
         };
     }

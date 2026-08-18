@@ -177,9 +177,7 @@ class SettingRegistry
                 key: 'locale', label: 'Language',
                 type: SettingDefinition::TYPE_ENUM, default: 'en',
                 options: ['en', 'es'],   // §8 — more addable without a code change
-                help: 'Users may override this for themselves.',
-                notYetInEffect: 'Takes effect when the Spanish translation ships. Every screen '
-                    .'is in English today, whichever language is chosen here.',
+                help: 'Users may override this for themselves under Your account.',
             ),
             new SettingDefinition(
                 key: 'timezone', label: 'Default timezone',

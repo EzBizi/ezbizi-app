@@ -150,6 +150,10 @@ class GoogleMailAuthController extends Controller
 
         abort_if($refusal !== null, Status::HTTP_FORBIDDEN, $refusal);
 
+        if ($mailbox->providerEnum() === MailboxProvider::MicrosoftOauth) {
+            return app(MicrosoftMailAuthController::class)->start($request, $mailbox);
+        }
+
         if ($mailbox->providerEnum() !== MailboxProvider::GmailOAuth) {
             // Not a permission failure and not a fault — the wrong door for this
             // inbox. 422 names the state of the record, the way the guard's
@@ -251,6 +255,10 @@ class GoogleMailAuthController extends Controller
         $refusal = $this->access->manageRefusal($request->user(), $mailbox, 'connect this inbox');
 
         abort_if($refusal !== null, Status::HTTP_FORBIDDEN, $refusal);
+
+        if ($mailbox->providerEnum() === MailboxProvider::MicrosoftOauth) {
+            return app(MicrosoftMailAuthController::class)->status($request, $mailbox);
+        }
 
         $flow = $request->query('flow');
 

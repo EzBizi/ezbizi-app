@@ -117,28 +117,25 @@ void main() {
     expect(find.textContaining('needs sending again'), findsOneWidget);
   });
 
-  /// The asymmetry this panel is careful about.
-  ///
-  /// Joining has a date. Leaving does not — `is_active` is a boolean with no
-  /// timestamp beside it — so the leaving row must not inherit the window the
-  /// joining row is counted over. The server says which rows the period covers
-  /// and the client labels them from that.
-  testWidgets('the period is applied to joining and withheld from leaving', (
+  /// Joining and leaving both have dates. People inactive before record-keeping
+  /// began have no leaving date and sit on "No longer active".
+  testWidgets('the period is applied to joining and leaving, not to the undated remainder', (
     tester,
   ) async {
-    await _pump(tester, _handler(joined: 2, noLongerActive: 3));
+    await _pump(
+      tester,
+      _handler(joined: 2, noLongerActive: 3, periodAppliesTo: const ['Joined', 'Left']),
+    );
 
     expect(find.text('Joined in the last 30 days'), findsOneWidget);
+    expect(find.text('Left in the last 30 days'), findsOneWidget);
 
-    // Not "No longer active in the last 30 days" — the app does not know that.
     expect(find.text('No longer active'), findsOneWidget);
     expect(find.textContaining('No longer active in the last'), findsNothing);
 
-    // And it says why, rather than leaving the inconsistency to be noticed.
     expect(
-      find.textContaining('not the day it happened'),
+      find.textContaining('Leaving dates start from when this record-keeping began'),
       findsOneWidget,
-      reason: 'The two rows are counted differently and nothing said so.',
     );
   });
 
@@ -303,7 +300,7 @@ MockClientHandler _handler({
   int sentTotal = 0,
   int joined = 1,
   int noLongerActive = 0,
-  List<String> periodAppliesTo = const ['Joined'],
+  List<String> periodAppliesTo = const ['Joined', 'Left'],
   List<Map<String, Object?>>? people,
   Set<String>? only,
 }) {
@@ -349,11 +346,14 @@ MockClientHandler _handler({
       'data': {
         'rows': [
           {'title': 'Joined', 'total': joined},
+          {'title': 'Left', 'total': 0},
           {'title': 'No longer active', 'total': noLongerActive},
         ],
         'total': joined,
         'days': 30,
         'period_applies_to': periodAppliesTo,
+        'note':
+            'Leaving dates start from when this record-keeping began. People who were already inactive before then have no leaving date.',
         'people': people ??
             [
               {
@@ -363,6 +363,16 @@ MockClientHandler _handler({
               },
             ],
         'more_people': 0,
+      },
+    },
+    {
+      'key': 'hr.certifications',
+      'label': 'Expiring certifications',
+      'data': {
+        'rows': [],
+        'total': 0,
+        'note':
+            'None of the contract questions are marked as an expiry, so there is nothing to list yet.',
       },
     },
   ];

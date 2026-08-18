@@ -140,6 +140,22 @@ class AppServiceProvider extends ServiceProvider
         );
 
         $this->defineRateLimiters();
+
+        /*
+         * `/up` is already registered in bootstrap/app.php. Laravel's default
+         * probe is 200 once the framework boots, including with MySQL stopped.
+         * A peer watchdog built on that would prove nginx and PHP-FPM, not that
+         * EzBizi can read its database — the failure the watchdog exists to catch.
+         *
+         * select 1 is cheap and fails closed. Backups, mail and TLS stay on the
+         * staff Health screen; this probe does not claim them.
+         */
+        \Illuminate\Support\Facades\Event::listen(
+            \Illuminate\Foundation\Events\DiagnosingHealth::class,
+            function (): void {
+                \Illuminate\Support\Facades\DB::select('select 1');
+            },
+        );
     }
 
     /**

@@ -1076,6 +1076,7 @@ class HrContractBodyTest extends TestCase
             'required'  => true,
             'sensitive' => false,
             'retired'   => false,
+            'is_expiry' => false,
         ];
     }
 

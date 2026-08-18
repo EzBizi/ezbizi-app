@@ -351,9 +351,9 @@ class HrDashboardTest extends TestCase
         $this->assertNotNull($inFlight['oldest_started_at']);
     }
 
-    // ── starters, and the half that has no date ──────────────────
+    // ── starters and leavers ─────────────────────────────────────
 
-    public function test_starters_are_dated_and_leavers_are_not(): void
+    public function test_starters_are_dated_and_leavers_are_dated_from_the_table(): void
     {
         $this->person('New', 'new@alpha.test', $this->alpha['franchise']->id);
 
@@ -377,7 +377,15 @@ class HrDashboardTest extends TestCase
          * claimed both were "in the last 30 days" would be asserting something
          * the data cannot support.
          */
-        $this->assertSame(['Joined'], $panel['period_applies_to']);
+        $this->assertSame(['Joined', 'Left'], $panel['period_applies_to']);
+    }
+
+    public function test_expiring_certifications_says_none_are_marked_when_none_are(): void
+    {
+        $panel = $this->panels($this->alpha['admin'])['hr.certifications'];
+
+        $this->assertSame(0, $panel['total']);
+        $this->assertStringContainsString('marked as an expiry', $panel['note']);
     }
 
     // ── the gates ────────────────────────────────────────────────
@@ -428,6 +436,7 @@ class HrDashboardTest extends TestCase
         // widget rather than a second one that counts slightly differently.
         $this->assertContains('hr.headcount', $keys);
         $this->assertContains('hr.starters_and_leavers', $keys);
+        $this->assertContains('hr.certifications', $keys);
     }
 
     /**
@@ -478,7 +487,8 @@ class HrDashboardTest extends TestCase
         $this->assertContains('jobs.by_status', $keys);
 
         foreach (['hr.headcount', 'hr.onboardings_in_flight',
-            'hr.invitations_stalled', 'hr.starters_and_leavers'] as $hr) {
+            'hr.invitations_stalled', 'hr.starters_and_leavers',
+            'hr.certifications'] as $hr) {
             $this->assertNotContains($hr, $keys);
         }
     }

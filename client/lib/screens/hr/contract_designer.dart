@@ -134,6 +134,7 @@ class _Question {
     List<String> options = const [],
     this.isRequired = false,
     this.sensitive = false,
+    this.isExpiry = false,
     this.retired = false,
   }) : key = TextEditingController(text: key),
        label = TextEditingController(text: label),
@@ -159,6 +160,7 @@ class _Question {
   String? filledBy;
   bool isRequired;
   bool sensitive;
+  bool isExpiry;
   bool retired;
 
   /// This question exists in the version that is live, so its key and its kind
@@ -209,6 +211,7 @@ class _Question {
     'filled_by': filledBy,
     'required': isRequired,
     'sensitive': sensitive,
+    'is_expiry': isExpiry,
     'retired': retired,
   };
 
@@ -222,6 +225,7 @@ class _Question {
     filledBy: filledBy ?? '',
     required: isRequired,
     sensitive: sensitive,
+    isExpiry: isExpiry,
     retired: retired,
   );
 
@@ -393,6 +397,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
       options: field.options,
       isRequired: field.required,
       sensitive: field.sensitive,
+      isExpiry: field.isExpiry,
       retired: field.retired,
     );
 
@@ -1267,7 +1272,10 @@ class _ContractDesignerState extends State<ContractDesigner> {
                     ),
                 ],
                 onChanged: enabled && !question.published
-                    ? (value) => setState(() => question.type = value)
+                    ? (value) => setState(() {
+                        question.type = value;
+                        if (value != 'date') question.isExpiry = false;
+                      })
                     : null,
               ),
             ),
@@ -1286,6 +1294,21 @@ class _ContractDesignerState extends State<ContractDesigner> {
             ),
           ],
         ),
+        if (question.type == 'date') ...[
+          const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            value: question.isExpiry,
+            title: const Text('This date is an expiry'),
+            subtitle: const Text(
+              'Licences and certificates that lapse. Leave a date of birth unmarked.',
+            ),
+            onChanged: enabled
+                ? (value) => setState(() => question.isExpiry = value)
+                : null,
+          ),
+        ],
         if (takesOptions) ...[
           const SizedBox(height: 12),
           TextField(

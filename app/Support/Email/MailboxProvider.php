@@ -5,11 +5,12 @@ namespace App\Support\Email;
 /**
  * Where a shared inbox actually lives.
  *
- * Three ways in, and they are not equals. Per-inbox Google OAuth is what a
+ * Four ways in, and they are not equals. Per-inbox Google OAuth is what a
  * customer should be steered to for a single address; Google Workspace is the
  * domain-wide grant for companies that would rather connect once and pick
- * shared inboxes from the Directory; IMAP exists because not everybody is on
- * Google, and it is the one that asks somebody to hand us a password.
+ * shared inboxes from the Directory; Microsoft 365 is the Outlook equivalent of
+ * per-inbox Google; IMAP exists because not everybody is on those, and it is the
+ * one that asks somebody to hand us a password.
  */
 enum MailboxProvider: string
 {
@@ -40,6 +41,13 @@ enum MailboxProvider: string
     case GmailWorkspace = 'gmail_workspace';
 
     /**
+     * Microsoft 365, over OAuth. Per-inbox, like Google — not a domain-wide grant.
+     *
+     * Shared team inboxes only. Do not connect a person's own mailbox.
+     */
+    case MicrosoftOauth = 'microsoft_oauth';
+
+    /**
      * Anything that speaks IMAP, with a username and a password.
      *
      * Two things are worse here and both are worth saying on the screen rather
@@ -58,6 +66,7 @@ enum MailboxProvider: string
         return match ($this) {
             self::GmailOAuth => 'Google (recommended)',
             self::GmailWorkspace => 'Google Workspace',
+            self::MicrosoftOauth => 'Microsoft 365',
             self::Imap       => 'IMAP',
         };
     }
@@ -66,7 +75,7 @@ enum MailboxProvider: string
     public function storesAPassword(): bool
     {
         return match ($this) {
-            self::GmailOAuth, self::GmailWorkspace => false,
+            self::GmailOAuth, self::GmailWorkspace, self::MicrosoftOauth => false,
             self::Imap                             => true,
         };
     }
@@ -81,7 +90,7 @@ enum MailboxProvider: string
     public function needsHost(): bool
     {
         return match ($this) {
-            self::GmailOAuth, self::GmailWorkspace => false,
+            self::GmailOAuth, self::GmailWorkspace, self::MicrosoftOauth => false,
             self::Imap                             => true,
         };
     }
@@ -100,6 +109,9 @@ enum MailboxProvider: string
                 .'shared addresses like info@ from the directory. Do not pick a person\'s own '
                 .'mailbox — this module is for team inboxes. A Workspace administrator has to '
                 .'allow EzBizi in Google Admin (Security → Domain-wide delegation) first.',
+            self::MicrosoftOauth => 'Connect a shared Outlook address, not a person\'s own '
+                .'mailbox — this module is for team inboxes. Microsoft 365 has to be set up '
+                .'on this installation first.',
             self::Imap       => 'Connecting by IMAP means storing the mailbox password here, '
                 .'and for most mail services that is the account password — the same one that '
                 .'opens everything else on that account. If this address is on Google, connect '
@@ -122,6 +134,7 @@ enum MailboxProvider: string
         return match ($this) {
             self::GmailOAuth      => 'sign_in',
             self::GmailWorkspace  => 'directory',
+            self::MicrosoftOauth  => 'sign_in',
             self::Imap            => 'password',
         };
     }

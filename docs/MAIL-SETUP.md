@@ -178,5 +178,12 @@ arrives, over Cloud Pub/Sub — a topic, a subscription, and `users.watch()`
 renewed within seven days. It needs more console work in the same project.
 Until then, new mail is noticed by polling.
 
-**Microsoft 365.** Not built. It would be a third reader beside Gmail and IMAP,
-and the mailbox model already carries the provider that would select it.
+**Microsoft 365.** Per-inbox OAuth, same shape as Gmail — PKCE, Graph list/open/search/reply,
+token refresh. Register an app in Azure
+(https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app),
+redirect URI `https://app.ezbizi.com/api/v1/email/microsoft/callback` character for
+character, delegated scopes `Mail.Read` `Mail.Send` `offline_access` `User.Read`. Env:
+`MICROSOFT_MAIL_CLIENT_ID`, `MICROSOFT_MAIL_CLIENT_SECRET`, optional
+`MICROSOFT_MAIL_REDIRECT_URI`. Until those exist, Email refuses to start a sign-in and
+says so. Shared team inboxes only.
+

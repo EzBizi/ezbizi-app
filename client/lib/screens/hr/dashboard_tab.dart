@@ -7,7 +7,6 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/dashboard_grid.dart';
-import '../../widgets/tag.dart';
 
 /// Human Resources at a glance (HR plan, "Dashboard").
 ///
@@ -56,13 +55,7 @@ class _DashboardTabState extends State<DashboardTab> {
   /// This tab, as a saved order names it.
   static const String _surface = 'hr';
 
-  /// The panel this tab draws that the server has no widget for.
-  ///
-  /// It is still a panel — it is on screen, it takes a place in the row, and
-  /// somebody can move it — so it needs a key like the rest. Prefixed the same
-  /// way, because the day the field model can answer "what expires next month"
-  /// this becomes a registry widget under exactly this key and every saved order
-  /// that already names it keeps working.
+  /// The panel this tab draws for expiries. Same key the registry widget uses.
   static const String _certificationsKey = 'hr.certifications';
 
   /// The panels this tab draws, in the order the HR plan names them.
@@ -240,23 +233,7 @@ class _DashboardTabState extends State<DashboardTab> {
   /// label, not a copy of it kept here. The same widget is offered on the main
   /// dashboard, and a panel named two things on two screens is one rename away
   /// from looking like two different figures.
-  ///
-  /// Certifications is the one exception, and only because there is no widget
-  /// behind it to ask: it is drawn by this tab alone and badged as unbuilt, so
-  /// its name is written here with it. That is the same reason it needs
-  /// [_certificationsKey] — and on the day the registry can answer it, the name
-  /// arrives from the same place as every other one and this branch goes.
   DashboardPanel? _panelFor(BuildContext context, String key) {
-    if (key == _certificationsKey) {
-      return DashboardPanel(
-        key: key,
-        title: 'Expiring certifications',
-        icon: dashboardPanelIcon(key),
-        badge: const Tag('Not built yet', warn: true),
-        body: const _CertificationsBody(),
-      );
-    }
-
     final panel = _panels[key];
 
     if (panel == null) return null;
@@ -268,9 +245,7 @@ class _DashboardTabState extends State<DashboardTab> {
       'hr.onboardings_in_flight' => _onboardings(context, data),
       'hr.invitations_stalled' => _invitations(context, data),
       'hr.starters_and_leavers' => _startersAndLeavers(context, data),
-      // A widget this tab lists but has no body for. Skipped rather than drawn
-      // blank, which is the same answer the server gives a widget it cannot
-      // resolve.
+      'hr.certifications' => _certifications(context, data),
       _ => null,
     };
 
@@ -459,13 +434,10 @@ class _DashboardTabState extends State<DashboardTab> {
         ],
 
         const SizedBox(height: 8),
-        // The asymmetry, stated rather than hidden. "No longer active" has no
-        // period because nothing records the DAY somebody was deactivated —
-        // saying so is better than implying the count covers the window above.
-        const DashboardNote(
-          'People who have left are counted in total rather than over a '
-          'period: the app records that an account was switched off, not the '
-          'day it happened.',
+        DashboardNote(
+          (data['note'] as String?) ??
+              'Leaving dates start from when this record-keeping began. '
+              'People who were already inactive before then have no leaving date.',
         ),
       ],
     );
@@ -473,39 +445,32 @@ class _DashboardTabState extends State<DashboardTab> {
 
   static int _sum(List<Map<String, dynamic>> rows) =>
       rows.fold(0, (running, row) => running + (row['total'] as int));
-}
 
-/// Expiring certifications — named by the plan, and not built.
-///
-/// Shown rather than omitted, which is this codebase's standing answer for work
-/// that is planned and absent: an automation action the engine cannot run is
-/// listed and badged, and a module the platform has switched off is drawn greyed
-/// with the reason beside it. Something simply missing invites the reader to
-/// conclude the app is broken or that they have lost a permission, and both
-/// guesses are worse than the truth.
-///
-/// The truth here is specific. A contract template's fields carry a key, a
-/// label, a type, who fills them, whether they are required, whether they are
-/// sensitive and whether they are retired — and nothing that says a date IS an
-/// expiry. A template can already ask for "First aid certificate" as a date, but
-/// nothing marks that date as the one that lapses, so there is no honest way to
-/// answer "what expires next month". Building the panel first would mean
-/// inventing that shape here and making onboarding match it afterwards.
-///
-/// It is the BODY only. The card around it — the badge, the header, the border,
-/// the minimum height — is DashboardCard's, like every other panel on this tab
-/// and on the main dashboard, because two card implementations was the other
-/// half of the bug this replaced.
-class _CertificationsBody extends StatelessWidget {
-  const _CertificationsBody();
+  Widget _certifications(BuildContext context, Map<String, dynamic> data) {
+    final rows = (data['rows'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final note = data['note'] as String?;
+    final total = data['total'] as int? ?? 0;
 
-  @override
-  Widget build(BuildContext context) {
-    return const DashboardNote(
-      'A contract can already ask for a date, but nothing yet marks one as an '
-      'expiry — so there is no way to tell a licence that runs out from a date '
-      'of birth. When contract fields can carry an expiry, the ones lapsing '
-      'soonest will be listed here.',
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DashboardBigNumber(
+          '$total',
+          total == 1 ? 'coming due' : 'coming due',
+        ),
+        const SizedBox(height: 12),
+        if (note != null && note.isNotEmpty)
+          DashboardNote(note)
+        else ...[
+          for (final row in rows)
+            DashboardCountRow(
+              label: '${row['title']} · ${row['field']}',
+              value: '${row['expires_on']}',
+            ),
+        ],
+      ],
     );
   }
 }
+

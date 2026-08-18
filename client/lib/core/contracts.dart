@@ -649,6 +649,7 @@ class ContractField {
     required this.filledBy,
     required this.required,
     required this.sensitive,
+    this.isExpiry = false,
     required this.retired,
   });
 
@@ -659,6 +660,7 @@ class ContractField {
   final String filledBy;
   final bool required;
   final bool sensitive;
+  final bool isExpiry;
 
   /// Out of new onboardings, still readable on records that already carry it.
   /// Never deleted — see the plan, and the server's refusal to accept a version
@@ -675,6 +677,7 @@ class ContractField {
     filledBy: json['filled_by'] as String? ?? '',
     required: json['required'] == true,
     sensitive: json['sensitive'] == true,
+    isExpiry: json['is_expiry'] == true,
     retired: json['retired'] == true,
   );
 

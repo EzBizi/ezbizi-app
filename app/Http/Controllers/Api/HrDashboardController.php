@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\User;
 use App\Support\Dashboard\Widget;
 use App\Support\Dashboard\WidgetRegistry;
+use App\Support\Dashboard\Widgets\Hr\ExpiringCertifications;
 use App\Support\Dashboard\Widgets\Hr\Headcount;
 use App\Support\Dashboard\Widgets\Hr\InvitationsStalled;
 use App\Support\Dashboard\Widgets\Hr\OnboardingsInFlight;
@@ -31,22 +32,20 @@ use Illuminate\Http\Request;
  * The main dashboard is a preference twice over: you choose which panels you
  * have and what sequence they sit in (§2.1 category 6). This tab is a
  * preference once. WHICH panels appear is fixed — PANELS below is a constant,
- * and everybody with `hr.view` gets the same four — because the HR plan names
+ * and everybody with `hr.view` gets the same five — because the HR plan names
  * five things this dashboard is for and an owner opening Human Resources for
  * the first time should see them without having to assemble anything. The same
  * widgets stay available on the main dashboard for anybody who wants headcount
  * beside their revenue.
  *
  * The ORDER is theirs. Dragging a card on this tab saves the sequence under
- * `dashboard.order['hr']` — DashboardController::ORDERABLE, its saveOrder(),
+ * `dashboard.order['hr']` — DashboardController::saveOrder(),
  * the same endpoint and the same preferences store the main layout uses. That
  * reuse is why the widgets did not have to be rebuilt to get it.
  *
  * This endpoint knows nothing about that order and deliberately does not: it
  * always answers in the plan's sequence and the CLIENT rearranges (see
- * `panelsInSavedOrder`). A saved order names panels this endpoint never sends —
- * "Expiring certifications" is drawn client-side and has no widget — so the
- * server is the wrong place to apply it.
+ * `panelsInSavedOrder`).
  */
 class HrDashboardController extends Controller
 {
@@ -59,24 +58,16 @@ class HrDashboardController extends Controller
      * layout and returned on the wire, so it exists in one place and both the
      * widget and this list read it from there.
      *
-     * "Expiring certifications" is absent, and its absence is a decision. A
-     * contract template's fields (App\Support\Contracts\FieldDefinition) carry
-     * key, label, type, filled_by, required, sensitive and retired — and no
-     * expiry. A `date` field can hold one, but nothing marks a date AS an expiry,
-     * so there is no way to ask "which certifications lapse this month" without
-     * first inventing a seventh field property that onboarding, the diff, the
-     * renderer and every stored version would then have to match. That is a
-     * contract-template decision, not a dashboard one; it is recorded as
-     * EZBIZI-TODO.md #26 and the panel stays out until the field model can
-     * answer. The client draws the card badged "Not built yet" and says what it
-     * waits for, rather than the tab quietly having one fewer panel than the
-     * plan names.
+     * "Expiring certifications" reads date fields marked `is_expiry` (TODO #26).
+     * Until a template marks one, the panel says none are marked rather than
+     * pretending every date is a licence.
      */
     private const PANELS = [
         Headcount::KEY,
         OnboardingsInFlight::KEY,
         InvitationsStalled::KEY,
         StartersAndLeavers::KEY,
+        ExpiringCertifications::KEY,
     ];
 
     /**
@@ -89,7 +80,7 @@ class HrDashboardController extends Controller
      * later with a narrower permission is filtered by the registry without this
      * controller having to remember it exists.
      *
-     * No widget in PANELS needs it yet — all four answer `hr.view`, which is
+     * No widget in PANELS needs it yet — all five answer `hr.view`, which is
      * what the route already asked — so on THIS tab the second gate is
      * unexercised rather than proven. Where it is exercised is the catalogue,
      * which any signed-in caller may read: HrDashboardTest

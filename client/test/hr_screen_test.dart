@@ -77,27 +77,20 @@ void main() {
   /// The convention moved down a level rather than going away.
   ///
   /// Every tab is built now, so nothing on the strip is a placeholder. What is
-  /// still unfinished is one PANEL — expiring certifications, which cannot be
-  /// computed because a contract field has no way to say a date is an expiry —
-  /// and it gets the same treatment a whole tab used to: drawn, marked, and
-  /// saying specifically what it waits for.
-  testWidgets('the unbuilt panel is drawn, marked, and says what it waits for', (
+  /// still unfinished is one PANEL — wait, certifications now has a widget.
+  /// The empty state is the one worth pinning: none marked as expiry.
+  testWidgets('the expiring panel is drawn and says none are marked yet', (
     tester,
   ) async {
     await _pump(tester, _handler());
 
     expect(find.text('Expiring certifications'), findsOneWidget);
-    expect(
-      find.text('Not built yet'),
-      findsOneWidget,
-      reason: 'The certifications panel was drawn with nothing to say it is '
-          'unfinished.',
-    );
+    expect(find.text('Not built yet'), findsNothing);
 
-    // And it says something specific. "Coming soon" tells a reader nothing they
-    // had not already worked out from the empty panel.
-    expect(find.textContaining('nothing yet marks one as an expiry'),
-        findsOneWidget);
+    expect(
+      find.textContaining('marked as an expiry'),
+      findsOneWidget,
+    );
   });
 
   /// Onboarding stopped being a placeholder. Only that it opens and reaches the
@@ -911,15 +904,28 @@ const _dashboardPanels = [
     'data': {
       'rows': [
         {'title': 'Joined', 'total': 1},
+        {'title': 'Left', 'total': 0},
         {'title': 'No longer active', 'total': 0},
       ],
       'total': 1,
       'days': 30,
-      'period_applies_to': ['Joined'],
+      'period_applies_to': ['Joined', 'Left'],
+      'note':
+          'Leaving dates start from when this record-keeping began. People who were already inactive before then have no leaving date.',
       'people': [
         {'id': 'u-1', 'name': 'Jose Silva', 'joined_at': '2026-08-01T09:00:00+00:00'},
       ],
       'more_people': 0,
+    },
+  },
+  {
+    'key': 'hr.certifications',
+    'label': 'Expiring certifications',
+    'data': {
+      'rows': [],
+      'total': 0,
+      'note':
+          'None of the contract questions are marked as an expiry, so there is nothing to list yet. Mark a date field as an expiry on a contract template.',
     },
   },
 ];

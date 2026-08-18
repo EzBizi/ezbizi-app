@@ -2087,6 +2087,18 @@ MockClientHandler _handler({
                         'connected.',
             },
             {
+              'value': 'microsoft_oauth',
+              'label': 'Microsoft 365',
+              'needs_host': false,
+              'connects_by': 'sign_in',
+              'caution':
+                  'Connect a shared Outlook address, not a person\'s own mailbox.',
+              'usable': false,
+              'unusable_because':
+                  'EzBizi has no Microsoft 365 connection set up on this '
+                  'installation yet.',
+            },
+            {
               'value': 'imap',
               'label': 'IMAP',
               'needs_host': true,
