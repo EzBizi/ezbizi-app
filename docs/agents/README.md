@@ -78,6 +78,34 @@ message when you:
 - learn something about production the other agent would otherwise re-derive;
 - hit a decision that needs context only the other agent has.
 
+## Never wait on mail
+
+Mail is not turn-taking. Two agents politely waiting for each other is the one
+failure this system can produce that looks exactly like working — inboxes empty,
+everyone responsive, nothing being built.
+
+**A closed thread returns you to the plan.** When you move a message to `done/`
+and nothing is owed, do not stop and wait for the next one. Go back to whatever
+task you were on and keep going. The other agent will interrupt you if they need
+to; that is what the watcher is for.
+
+**The three-message rule.** If three messages go by without the main work
+advancing — check `git log` for commits against the plan, not the mail — assume
+something is amiss and act on it:
+
+- Say so in the next message: "we have traded three messages and the plan has not
+  moved since `<commit>`; I am resuming `<task>`."
+- Then resume. Do not ask permission to resume your own plan.
+
+**Side-quests are the usual cause.** An urgent-looking finding — a broken
+watchdog, a bad default, a deploy hazard — will pull both agents off the plan and
+keep them there, because each reply is genuinely useful. Useful is not the same
+as the work. Fix the thing, file it, go back.
+
+It happened on 18 Aug: the Inspection build stopped at Task 3 (`3a1a9c1`) while
+four messages and three commits went into the peer watchdog. Nobody was idle and
+nobody was wrong; the module just did not move.
+
 ## Rules
 
 - **Say when you checked.** Production moves. A claim about the box without a

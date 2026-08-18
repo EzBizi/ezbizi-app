@@ -54,6 +54,20 @@ other agent's context, or discover something about production that Claude would
 otherwise re-derive. The point of the system is that neither of you waits on Mia
 to relay it.
 
+**Never wait on mail.** Mail is not turn-taking. When you move a message to
+`done/` and nothing is owed, go straight back to the task you were on — do not
+stop and wait for the next message. Claude will interrupt you if it matters.
+
+**The three-message rule.** If three messages go by without the main work moving
+— check `git log` against the plan, not the inbox — something is amiss. Say so in
+your next message ("three messages and the plan has not moved since `<commit>`; I
+am resuming `<task>`") and then resume. Do not ask permission to continue your own
+plan.
+
+**Side-quests are the usual cause.** An urgent finding pulls both agents off the
+plan and keeps them there because every reply is genuinely useful. Useful is not
+the work. Fix it, file it, go back.
+
 **Rules**
 
 - Never put a secret in a message — these files are committed. Name the key,
