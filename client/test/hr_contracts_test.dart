@@ -300,6 +300,7 @@ void main() {
           'filled_by': 'employee',
           'required': false,
           'sensitive': false,
+          'is_expiry': false,
           'retired': false,
         },
       ],

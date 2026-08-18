@@ -70,7 +70,8 @@ void main() {
 
       await _pumpHr(tester, _hr());
 
-      // Four from the server and the one this tab draws itself.
+      // Five from the server, including certifications — the same card widget
+      // the main dashboard uses, not a second implementation on this tab.
       expect(find.byType(DashboardCard), findsNWidgets(5));
     });
 
@@ -894,7 +895,7 @@ MockClientHandler _dashboard({
   };
 }
 
-/// The HR tab's four widgets, with a saved order optionally already in this
+/// The HR tab's five widgets, with a saved order optionally already in this
 /// user's preferences — which is where /me carries it from.
 MockClientHandler _hr({
   List<String>? savedOrder,
@@ -935,6 +936,16 @@ MockClientHandler _hr({
         'period_applies_to': ['Joined'],
         'people': <Map<String, Object?>>[],
         'more_people': 0,
+      },
+    },
+    {
+      'key': 'hr.certifications',
+      'label': 'Expiring certifications',
+      'data': {
+        'rows': <Map<String, Object?>>[],
+        'total': 0,
+        'note':
+            'None of the contract questions are marked as an expiry, so there is nothing to list yet.',
       },
     },
   ].where((panel) => !withhold.contains(panel['key'])).toList();
