@@ -9,11 +9,99 @@ are separate projects; the shared numbering only produced gaps whenever an item 
 
 | # | Item | Owner | Notes |
 |---|---|---|---|
-| 1 | **Outbound mail** | **[BOTH]** | Everything is wired but the provider credential. **Relaying through the websites box does not work** — AWS blocks outbound port 25 on both instances (`aspmx.l.google.com:25 BLOCKED`; 587 outbound is open). That box receives fine and has never been able to send, which is why "email sending (currently broken)" has sat in the migration TODO since the cutover plan was written. Two routes: **(a)** ask AWS to lift the port-25 restriction per instance — needs reverse DNS, not always granted; **(b)** SES, either as the app's transport or behind Postfix on the websites box. 587 outbound is open, so SES works the moment there is a key. Until then the Health screen says `missing AWS_ACCESS_KEY_ID` rather than pretending. |
+| 1 | **Outbound mail (SES SMTP)** | **[YOU]** then **[CLAUDE]** | Code is live. AWS still blocks outbound 25; **587 is open**, so SES SMTP is the path — not the Laravel `ses` SDK, and not relaying through the websites box. Console steps below. Until credentials are on the box `.env`, Health reports the transport cannot deliver. `contact@` cannot reply until this is done. |
 | 2 | ~~**`hello@ezbizi.com`**~~ → **`contact@ezbizi.com`** | ✅ | **Done.** Mailbox created on the websites box, MX published, and all six CTAs on ezbizi.com repointed. Receiving is verified — `contact@` accepted, `nobody@` rejected. **It cannot reply until #1 is settled.** Password in `_secrets/Application-credentials.md`. |
 | 3 | **`ns2` on a second machine** | **[BOTH]** | **On hold at your request.** Primary half done: ns1 offers TSIG-authenticated transfers and notifies `32.194.222.151` (`deploy/named-primary-ezbizi.conf`, key in `_secrets/`). The secondary half is not a config paste — that box runs BIND under Plesk, chrooted, from a `named.conf` Plesk regenerates, so a hand-added zone is erased on its next DNS change anywhere. Either add `ezbizi.com` to Plesk as a DNS-only domain and `plesk bin dns --set-secondary` (supported, but Plesk slaves transfer by source IP, so ns1 drops TSIG for that host), or put the secondary somewhere that is not Plesk. |
+| 22 | **Signup has no email verification** | **[CLAUDE]** | **Chosen 2026-08-18: a confirmation email**, still blocked by #1. The pin test exists at `SignupTest::test_the_account_can_read_and_write_immediately_with_no_verification_step`. The gate must not fire while mail does not deliver. Do not ship this until a Health-screen test message has actually arrived. |
+| 28 | **Google Workspace go-live** | **[YOU]** then **[CLAUDE]** | Code is live. Needs Cloud Console (OAuth + service account) and Google Admin domain-wide delegation, then keys on the box `.env`. Console steps below. Shared inboxes only — do not pick a person's mailbox. |
+| 29 | **Outlook / Azure app** | **[YOU]** then **[CLAUDE]** | Code is live (PKCE, Graph, token refresh). Needs an Entra app registration, then keys on the box `.env`. Console steps below. Shared team inboxes only. |
 
-| 22 | **Signup has no email verification** | **[CLAUDE]** | **Chosen 2026-08-18: a confirmation email**, still blocked by #1. The pin test exists at `SignupTest::test_the_account_can_read_and_write_immediately_with_no_verification_step`. The gate must not fire while `MailStatus::delivers()` is false. SES steps: `C:\Users\jose\Desktop\ezbizi-ses-setup.md`. |
+## Mail console work (you) — recorded 2026-08-18
+
+Nothing here is committed. Values go in the live `.env` on the app box, never in the repo.
+When they exist, paste them here or say they are on the box.
+
+### SES — platform mail (TODO #1)
+
+Opens password resets, invitations, `contact@` replies, and unblocks #22.
+
+- Home: https://us-east-1.console.aws.amazon.com/ses/home?region=us-east-1#/homepage
+- Identities: https://us-east-1.console.aws.amazon.com/ses/home?region=us-east-1#/identities
+- Leave the sandbox: https://us-east-1.console.aws.amazon.com/ses/home?region=us-east-1#/account/production-access
+- SMTP credentials: https://us-east-1.console.aws.amazon.com/ses/home?region=us-east-1#/smtp
+
+1. Create a **domain** identity for `ezbizi.com`. Publish the DKIM / verification records it gives you on ns1. Wait until Verified.
+2. Request **production access**. Reason: transactional mail for EzBizi (resets, invitations) from `ezbizi.com`. Sandbox can only send to addresses you verify by hand.
+3. **Create SMTP credentials.** Download the user and password once.
+
+On the box (SMTP on 587 — not `MAIL_MAILER=ses`):
+
+```
+MAIL_MAILER=smtp
+MAIL_HOST=email-smtp.us-east-1.amazonaws.com
+MAIL_PORT=587
+MAIL_USERNAME=<smtp username>
+MAIL_PASSWORD=<smtp password>
+MAIL_FROM_ADDRESS=noreply@ezbizi.com
+MAIL_FROM_NAME=EzBizi
+```
+
+`MAIL_FROM_ADDRESS` must be on the verified domain. Then send a test from Development → Health.
+
+### Google Workspace (TODO #28)
+
+Connect the customer's domain once, then pick shared inboxes from the Directory.
+Per-inbox Gmail OAuth (`GOOGLE_MAIL_CLIENT_ID` / `_SECRET`) is still required — that is how
+an administrator proves they run the domain. The service account is what opens listed
+mailboxes afterwards.
+
+**Google Cloud** — https://console.cloud.google.com/
+
+1. Enable **Gmail API** https://console.cloud.google.com/apis/library/gmail.googleapis.com and **Admin SDK API** https://console.cloud.google.com/apis/library/admin.googleapis.com
+2. OAuth consent — **Internal** if every inbox is one Workspace (A-1 Chimney). External is a weeks-long Google review. https://console.cloud.google.com/auth/overview
+3. Credentials → **OAuth client ID**, type **Web application**. Redirect URI, character for character: `https://app.ezbizi.com/api/v1/email/google/callback` — https://console.cloud.google.com/apis/credentials
+4. Same page → **service account**. Copy the email (`…@….iam.gserviceaccount.com`), the numeric **Unique ID** (what Admin asks for, not `….apps.googleusercontent.com`), and a JSON key's private key.
+
+**Google Admin** (the customer's Workspace) — https://admin.google.com/ac/owl/domainwidedelegation
+
+Security → Access and data control → API controls → Domain-wide delegation → Add new. Paste the numeric Unique ID. Scopes, exactly these three:
+
+```
+https://www.googleapis.com/auth/gmail.readonly
+https://www.googleapis.com/auth/gmail.send
+https://www.googleapis.com/auth/admin.directory.user.readonly
+```
+
+On the box:
+
+```
+GOOGLE_MAIL_CLIENT_ID=....apps.googleusercontent.com
+GOOGLE_MAIL_CLIENT_SECRET=...
+GOOGLE_MAIL_WORKSPACE_CLIENT_EMAIL=ezbizi@….iam.gserviceaccount.com
+GOOGLE_MAIL_WORKSPACE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n…\n-----END PRIVATE KEY-----\n"
+GOOGLE_MAIL_WORKSPACE_CLIENT_ID=123456789012345678901
+```
+
+In the app: Email → Settings → Connect Workspace as a Workspace admin. Pick `info@` / `jobs@`, not a person.
+
+### Azure / Microsoft 365 (TODO #29)
+
+- App list: https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade
+- Walkthrough: https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app
+
+1. New registration. Supported accounts: **Accounts in any organizational directory (multitenant)** — sign-in uses `login.microsoftonline.com/common`.
+2. Authentication → Add a platform → **Web**. Redirect URI, character for character: `https://app.ezbizi.com/api/v1/email/microsoft/callback`
+3. Certificates & secrets → New client secret. Copy the Value once.
+4. API permissions → Microsoft Graph → **Delegated**: `Mail.Read`, `Mail.Send`, `offline_access`, `User.Read`. Do not add `Mail.ReadWrite`.
+
+On the box:
+
+```
+MICROSOFT_MAIL_CLIENT_ID=<application (client) id>
+MICROSOFT_MAIL_CLIENT_SECRET=<secret value>
+```
+
+`MICROSOFT_MAIL_REDIRECT_URI` only if it must differ from `APP_URL`. Then Email → Settings should offer Outlook.
 
 ## Decisions only you can make
 
@@ -78,7 +166,8 @@ base UI, so they are recorded here rather than fixed piecemeal.
 - ✅ **Login no longer skips the authenticator org** — *2026-08-18.* Closed TODO #8.
 - ✅ **Users, roles, invitations exist** — *2026-08-18.* Closed TODO #25. HR + Roles; production has two users.
 - ✅ **Local MySQL `ezbizi_testing`** — *2026-08-18.* This machine can run `php artisan test` against MySQL 8.4. GD and Dompdf still missing.
-- ✅ **Microsoft 365 as a fourth mailbox provider** — *2026-08-18.* Catalogue, PKCE sign-in, Graph reads, token refresh. Azure app registration is still console work (`docs/MAIL-SETUP.md`).
+- ✅ **Microsoft 365 as a fourth mailbox provider** — *2026-08-18.* Catalogue, PKCE sign-in, Graph reads, token refresh. Azure app registration is still console work (TODO #29).
+- Workspace DWD and SES SMTP are the same kind of leftover: **TODO #28 and #1**, steps on this page under Mail console work.
 
 ## Done
 

@@ -41,10 +41,10 @@ worth having. The numbers point at `EZBIZI-TODO.md`, which was renumbered from 1
 2026-08-06; the references here still said #21, #22, #24 and #26 and pointed at nothing.
 
 1. **Mail does not send.** Everything is wired except the provider credential — AWS blocks
-   outbound port 25 on both instances, and SES needs a key nobody has issued. The app says so
-   on Development → Health rather than failing silently. Password resets reach nobody; the
-   working path is a Lead Developer generating a reset link from the control plane.
-   See TODO #1.
+   outbound port 25 on both instances, and SES SMTP on 587 needs credentials nobody has
+   issued. The app says so on Development → Health rather than failing silently. Password
+   resets reach nobody; the working path is a Lead Developer generating a reset link from
+   the control plane. Console steps: TODO #1 (SES), #28 (Workspace), #29 (Azure / Outlook).
 
 2. **The off-site backup is off-instance, not off-account.** Encrypted, copied nightly to the
    websites box, and restore-verified by pulling the file back *down* first — so a copy that

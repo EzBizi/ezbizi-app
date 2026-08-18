@@ -171,19 +171,39 @@ mailbox.**
 
 ---
 
+## Amazon SES — platform mail (SMTP on 587)
+
+This is EzBizi's own outbound mail (resets, invitations, Health-screen tests),
+not a customer's inbox. Click-by-click, including the sandbox request and the
+`.env` names, lives on **TODO #1** and the Mail console section of
+`EZBIZI-TODO.md`. The transport is **plain SMTP** (`MAIL_MAILER=smtp`,
+`MAIL_HOST=email-smtp.us-east-1.amazonaws.com`, port 587). Do not switch
+production to `MAIL_MAILER=ses` — that path wants IAM keys and is what has
+been sitting empty.
+
+SES home (us-east-1):
+https://us-east-1.console.aws.amazon.com/ses/home?region=us-east-1#/homepage
+
+---
+
+## Microsoft 365 — per-inbox OAuth
+
+Same shape as Gmail: PKCE, Graph list/open/search/reply, token refresh.
+Click-by-click is **TODO #29**. Register an app in Azure
+(https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade,
+walkthrough https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app).
+Redirect URI `https://app.ezbizi.com/api/v1/email/microsoft/callback` character
+for character. Delegated scopes `Mail.Read` `Mail.Send` `offline_access`
+`User.Read`. Env: `MICROSOFT_MAIL_CLIENT_ID`, `MICROSOFT_MAIL_CLIENT_SECRET`,
+optional `MICROSOFT_MAIL_REDIRECT_URI`. Until those exist, Email refuses to
+start a sign-in and says so. Shared team inboxes only.
+
+---
+
 ## Still to come
 
 **Push notification for `email.received`.** Gmail can tell EzBizi when mail
 arrives, over Cloud Pub/Sub — a topic, a subscription, and `users.watch()`
 renewed within seven days. It needs more console work in the same project.
 Until then, new mail is noticed by polling.
-
-**Microsoft 365.** Per-inbox OAuth, same shape as Gmail — PKCE, Graph list/open/search/reply,
-token refresh. Register an app in Azure
-(https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app),
-redirect URI `https://app.ezbizi.com/api/v1/email/microsoft/callback` character for
-character, delegated scopes `Mail.Read` `Mail.Send` `offline_access` `User.Read`. Env:
-`MICROSOFT_MAIL_CLIENT_ID`, `MICROSOFT_MAIL_CLIENT_SECRET`, optional
-`MICROSOFT_MAIL_REDIRECT_URI`. Until those exist, Email refuses to start a sign-in and
-says so. Shared team inboxes only.
 
