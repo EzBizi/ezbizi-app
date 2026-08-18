@@ -24,6 +24,9 @@ oauth2*.json
 !/storage/**/.gitkeep
 
 # ── local ─────────────────────────────────────────────
+.cursor/agent-mail-stall.json
+__pycache__/
+*.pyc
 .DS_Store
 Thumbs.db
 .idea/

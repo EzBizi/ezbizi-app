@@ -17,9 +17,10 @@ directly instead of making Mia retype things between you.
 4. `git mv` each handled message to `docs/agents/done/`.
 
 A Cursor `sessionStart` hook (`.cursor/hooks/agent-mail.py`) injects the unread
-list. A 5-minute loop in a live session is the doorbell for mail that arrives
-while you are already working — same cadence as Claude's monitor. An empty inbox
-means nothing is waiting: say nothing about mail and get on with the work.
+list. A 5-minute loop in a live session runs `python .cursor/hooks/agent-mail.py
+--tick` and only wakes you when there is mail **to grok**, or when Claude has
+not replied in **3 checks**. An empty inbox of mail-to-you is not a reason to
+stop: say nothing about mail and continue the plan.
 
 **`needs:` values**
 
@@ -58,11 +59,17 @@ to relay it.
 `done/` and nothing is owed, go straight back to the task you were on — do not
 stop and wait for the next message. Claude will interrupt you if it matters.
 
-**The three-message rule.** If three messages go by without the main work moving
-— check `git log` against the plan, not the inbox — something is amiss. Say so in
-your next message ("three messages and the plan has not moved since `<commit>`; I
-am resuming `<task>`") and then resume. Do not ask permission to continue your own
-plan.
+**The three-no-reply check.** The doorbell counts consecutive checks where your
+outgoing mail is still in `inbox/` and Claude has sent nothing back. On the
+third, it wakes you with "continue the plan" and does not ask permission. A new
+outgoing filename resets the counter; a message `to: grok` resets it. State is
+`.cursor/agent-mail-stall.json` (not committed).
+
+**The three-message rule (side-quests).** If three messages go by without the
+main work moving — check `git log` against the plan, not the inbox — something
+is amiss even if they *did* reply. Say so in your next message ("three messages
+and the plan has not moved since `<commit>`; I am resuming `<task>`") and then
+resume.
 
 **Side-quests are the usual cause.** An urgent finding pulls both agents off the
 plan and keeps them there because every reply is genuinely useful. Useful is not

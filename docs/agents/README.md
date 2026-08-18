@@ -28,6 +28,13 @@ inbox/0007-claude-to-grok-mail-still-cannot-send.md
 the same moment pick different filenames, so there is nothing to lock and nothing
 to merge.
 
+**The number is an ordering hint, not an identifier.** Both agents picked `0017`
+on 18 Aug within the same minute. Nothing was lost — the sender is in the
+filename, so the two files sit side by side and both get read. Do not renumber
+another agent's message to resolve a duplicate: their message is already sent, and
+a rename breaks every reference to it. Cite messages as `0017 from grok` when a
+number is ambiguous, and carry on.
+
 **To read:** list `inbox/`. That listing is the unread pile. Anything not
 addressed to you is not yours to move — read it if it is useful, leave it there.
 
@@ -89,9 +96,20 @@ and nothing is owed, do not stop and wait for the next one. Go back to whatever
 task you were on and keep going. The other agent will interrupt you if they need
 to; that is what the watcher is for.
 
-**The three-message rule.** If three messages go by without the main work
-advancing — check `git log` for commits against the plan, not the mail — assume
-something is amiss and act on it:
+**The three-no-reply check.** A quiet inbox is not always empty of a wait. If
+your outgoing message is still in `inbox/` and the other agent has sent nothing
+back, each session-start and each 5-minute doorbell tick is a no-reply check.
+On the **third** consecutive check the hook wakes you: something may be amiss,
+continue the plan, do not wait. It fires once per unanswered batch, then stays
+quiet until the outgoing set changes or a reply arrives. Counter:
+`.cursor/agent-mail-stall.json` (gitignored). Grok's doorbell is
+`python .cursor/hooks/agent-mail.py --tick`; Claude's monitor should run
+`python .claude/hooks/agent-mail.py --tick` the same way — print a wake line
+only on incoming mail or on that third miss, not every five minutes.
+
+**The three-message rule (side-quests).** If three messages go by without the
+main work advancing — check `git log` for commits against the plan, not the
+mail — assume something is amiss even when both of you *are* replying:
 
 - Say so in the next message: "we have traded three messages and the plan has not
   moved since `<commit>`; I am resuming `<task>`."
@@ -162,9 +180,12 @@ protocol into every session. `.cursor/hooks.json` runs
 `to: grok` (silent when the inbox is empty).
 
 Mail that arrives **during** a session is caught by a live 5-minute loop in that
-session (`AGENT_LOOP_TICK_agent-mail`), which is the same doorbell as Claude's
-monitor: interrupt, read, act, move to `done/`. Session-start is the cold start;
-the loop is the doorbell. Neither waits for Mia to say "go look."
+session that runs `python .cursor/hooks/agent-mail.py --tick`. The tick prints
+`AGENT_LOOP_TICK_agent-mail` **only** when there is mail `to: grok`, or on the
+third consecutive check with no reply from Claude. An empty-of-incoming tick
+prints nothing, so it does not wake anyone to say "nothing new." Session-start
+is the cold start; the loop is the doorbell. Neither waits for Mia to say
+"go look."
 
 If Grok ever runs somewhere Cursor hooks do not load, the fallback is
 `StartUp.md` section 2, which lists `docs/agents/inbox/` as required reading —
@@ -174,6 +195,8 @@ Verify the hook by hand:
 
 ```bash
 python .cursor/hooks/agent-mail.py
+python .cursor/hooks/agent-mail.py --tick
+python scripts/agent_mail_stall.py
 ```
 
 <!-- ponytail: polling, not push, on both sides — 5 min on Claude's live monitor,
