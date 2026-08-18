@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "python .cursor/hooks/agent-mail.py",
+        "timeout": 10
+      }
+    ]
+  }
+}

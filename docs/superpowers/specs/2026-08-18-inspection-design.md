@@ -1,7 +1,7 @@
 # Inspection module — design
 
 **Date:** 2026-08-18  
-**Status:** approved in conversation; four gaps from `docs/agents/inbox/0001` closed in this file 2026-08-18 (erasure vs freeze, wall-time freeze, missing-required sentence, unpublish/grants vs open runs). Implementation plan not written yet.  
+**Status:** spec patched 2026-08-18; implementation plan at `docs/superpowers/plans/2026-08-18-inspection.md`. Not built. No deploy.  
 **Product:** EzBizi customer app (`app.ezbizi.com`)  
 **Layouts:** Builder = list + work + live phone; Generated Reports = search + list + report; New Inspection = search first (not a layout picker)
 

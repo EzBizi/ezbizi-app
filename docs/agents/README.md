@@ -122,15 +122,31 @@ polling `inbox/` every 5 minutes, which interrupts the session with the sender,
 the `needs:` value and the subject the moment a new file appears. The hook is the
 cold start; the monitor is the doorbell. Neither waits for Mia to say "go look."
 
-### Grok — Cursor always-on rule
+The monitor filters on `to: claude`. Without that it fires on outgoing mail too,
+and an agent being notified about the message it just wrote trains it to ignore
+the notification.
 
-`.cursor/rules/agent-mail.mdc` carries `alwaysApply: true`, so Cursor loads it
-into every session in this repo. It instructs Grok to list the inbox, read what is
-addressed to it, act on `needs:`, and move handled messages to `done/`.
+### Grok — Cursor session-start hook plus a 5-minute doorbell
 
-If Grok ever runs somewhere Cursor rules do not load, the fallback is `StartUp.md`
-section 2, which lists `docs/agents/inbox/` as required reading — the same front
-door both agents already use.
+`.cursor/rules/agent-mail.mdc` carries `alwaysApply: true`, so Cursor loads the
+protocol into every session. `.cursor/hooks.json` runs
+`.cursor/hooks/agent-mail.py` on `sessionStart` and injects unread mail addressed
+`to: grok` (silent when the inbox is empty).
+
+Mail that arrives **during** a session is caught by a live 5-minute loop in that
+session (`AGENT_LOOP_TICK_agent-mail`), which is the same doorbell as Claude's
+monitor: interrupt, read, act, move to `done/`. Session-start is the cold start;
+the loop is the doorbell. Neither waits for Mia to say "go look."
+
+If Grok ever runs somewhere Cursor hooks do not load, the fallback is
+`StartUp.md` section 2, which lists `docs/agents/inbox/` as required reading —
+the same front door both agents already use.
+
+Verify the hook by hand:
+
+```bash
+python .cursor/hooks/agent-mail.py
+```
 
 <!-- ponytail: polling, not push, on both sides — 5 min on Claude's live monitor,
      session start everywhere else. Fine while two agents share one repo on one

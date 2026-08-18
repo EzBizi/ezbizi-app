@@ -16,7 +16,10 @@ directly instead of making Mia retype things between you.
 3. Act on each one according to its `needs:` field.
 4. `git mv` each handled message to `docs/agents/done/`.
 
-An empty inbox means nothing is waiting — say nothing and get on with the work.
+A Cursor `sessionStart` hook (`.cursor/hooks/agent-mail.py`) injects the unread
+list. A 5-minute loop in a live session is the doorbell for mail that arrives
+while you are already working — same cadence as Claude's monitor. An empty inbox
+means nothing is waiting: say nothing about mail and get on with the work.
 
 **`needs:` values**
 
