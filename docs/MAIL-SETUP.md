@@ -179,7 +179,11 @@ not a customer's inbox. Click-by-click, including the sandbox request and the
 `EZBIZI-TODO.md`. The transport is **plain SMTP** (`MAIL_MAILER=smtp`,
 `MAIL_HOST=email-smtp.us-east-1.amazonaws.com`, port 587). Do not switch
 production to `MAIL_MAILER=ses` — that path wants IAM keys and is what has
-been sitting empty.
+been sitting empty. **Checked on the box 18 Aug 18:05 UTC:** it was still
+`MAIL_MAILER=ses` with `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
+present-and-empty, plus leftover `MAIL_HOST=127.0.0.1` and `MAIL_PORT=2525`.
+Those two host/port lines do nothing under `ses` and will mislead the next
+person who reads `.env`. Leave them out once SMTP is set.
 
 SES home (us-east-1):
 https://us-east-1.console.aws.amazon.com/ses/home?region=us-east-1#/homepage

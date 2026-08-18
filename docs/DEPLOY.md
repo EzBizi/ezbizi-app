@@ -276,6 +276,73 @@ MySQL (`DiagnosingHealth` runs `select 1`). It is **not** backups, mail or TLS.
 Those stay on Development → Health. The websites box curls `/up`; the app box
 curls `https://www.ezbizi.com/ezbizi-alive.txt`. Units: `deploy/ezbizi-watch-peer.*`.
 
+### Peer watchdog install (TODO #23) — needs a go-ahead
+
+The scripts and units are in the release. They are **not** in `/etc/systemd/system`
+until someone pastes this. Do not run it without Mia granting a window on **both**
+boxes. Checked not-installed 18 Aug 18:05 UTC (no units, no `peer-status.json`,
+`www.ezbizi.com/ezbizi-alive.txt` was 404).
+
+**App box** (`ssh app`). Paths assume the live symlink `/var/www/ezbizi-current`
+(or `/var/www/ezbizi` if that is still the current name — `readlink` first):
+
+```bash
+ssh app 'set -euo pipefail
+ROOT=$(readlink -f /var/www/ezbizi-current 2>/dev/null || readlink -f /var/www/ezbizi)
+sudo install -m 0755 "$ROOT/deploy/watch-peer-websites.sh" /usr/local/bin/ezbizi-watch-peer-websites.sh
+sudo install -m 0644 "$ROOT/deploy/ezbizi-watch-peer.service" /etc/systemd/system/ezbizi-watch-peer.service
+sudo install -m 0644 "$ROOT/deploy/ezbizi-watch-peer.timer" /etc/systemd/system/ezbizi-watch-peer.timer
+sudo install -m 0644 "$ROOT/deploy/ezbizi-watch-peer-failed.service" /etc/systemd/system/ezbizi-watch-peer-failed.service
+for u in php8.4-fpm nginx mysql named; do
+  sudo mkdir -p /etc/systemd/system/${u}.service.d
+  printf "[Unit]\nOnFailure=ezbizi-watch-peer-failed.service\n" | sudo tee /etc/systemd/system/${u}.service.d/ezbizi-peer.conf >/dev/null
+done
+sudo systemctl daemon-reload
+sudo systemctl enable --now ezbizi-watch-peer.timer
+systemctl is-active ezbizi-watch-peer.timer
+ls -l /var/www/ezbizi/storage/app/peer-status.json || true
+'
+```
+
+**Websites box** (`32.194.222.151`). Put `ezbizi-alive.txt` in whatever document
+root actually serves `https://www.ezbizi.com` — do not guess a Plesk path. The
+file body is one word, `ok`. Then install the app-side curl:
+
+```bash
+# as whoever administers that box — after confirming the vhost root
+printf "ok\n" | sudo tee /PATH/TO/WWW/ezbizi-alive.txt
+curl -fsS --max-time 10 https://www.ezbizi.com/ezbizi-alive.txt
+
+sudo install -m 0755 /path/to/ezbizi/deploy/watch-peer-app.sh /usr/local/bin/ezbizi-watch-peer-app.sh
+sudo tee /etc/systemd/system/ezbizi-watch-peer-app.service >/dev/null <<EOF
+[Unit]
+Description=Ask whether the EzBizi app box is answering /up
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ezbizi-watch-peer-app.sh
+EOF
+sudo tee /etc/systemd/system/ezbizi-watch-peer-app.timer >/dev/null <<EOF
+[Unit]
+Description=Watch the EzBizi app box every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=ezbizi-watch-peer-app.service
+
+[Install]
+WantedBy=timers.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now ezbizi-watch-peer-app.timer
+```
+
+Copy `watch-peer-app.sh` from the app repo (`deploy/watch-peer-app.sh`) onto that
+box; it is not deployed there by `scripts/deploy.sh`. Verify with
+`curl -fsS https://app.ezbizi.com/up` from the websites box and
+`curl -fsS https://www.ezbizi.com/ezbizi-alive.txt` from the app box.
+
 ## What runs the clock
 
 Two systemd units, both versioned in `deploy/` and installed on the app box:

@@ -9,7 +9,7 @@ are separate projects; the shared numbering only produced gaps whenever an item 
 
 | # | Item | Owner | Notes |
 |---|---|---|---|
-| 1 | **Outbound mail (SES SMTP)** | **[YOU]** then **[CLAUDE]** | Code is live. AWS still blocks outbound 25; **587 is open**, so SES SMTP is the path — not the Laravel `ses` SDK, and not relaying through the websites box. Console steps below. Until credentials are on the box `.env`, Health reports the transport cannot deliver. `contact@` cannot reply until this is done. |
+| 1 | **Outbound mail (SES SMTP)** | **[YOU]** then **[CLAUDE]** | Code is live. AWS still blocks outbound 25; **587 is open**, so SES SMTP is the path — not the Laravel `ses` SDK, and not relaying through the websites box. Console steps below. Until credentials are on the box `.env`, Health reports the transport cannot deliver. `contact@` cannot reply until this is done. **Box check 18 Aug 18:05 UTC:** `MAIL_MAILER=ses`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` present-and-empty, leftover `MAIL_HOST=127.0.0.1` / `MAIL_PORT=2525` (inert under `ses`, misleading). Switch to the SMTP block below; do not fill IAM keys for the `ses` mailer. Signup verification (#22) stays out until a Health-screen test message arrives. |
 | 2 | ~~**`hello@ezbizi.com`**~~ → **`contact@ezbizi.com`** | ✅ | **Done.** Mailbox created on the websites box, MX published, and all six CTAs on ezbizi.com repointed. Receiving is verified — `contact@` accepted, `nobody@` rejected. **It cannot reply until #1 is settled.** Password in `_secrets/Application-credentials.md`. |
 | 3 | **`ns2` on a second machine** | **[BOTH]** | **On hold at your request.** Primary half done: ns1 offers TSIG-authenticated transfers and notifies `32.194.222.151` (`deploy/named-primary-ezbizi.conf`, key in `_secrets/`). The secondary half is not a config paste — that box runs BIND under Plesk, chrooted, from a `named.conf` Plesk regenerates, so a hand-added zone is erased on its next DNS change anywhere. Either add `ezbizi.com` to Plesk as a DNS-only domain and `plesk bin dns --set-secondary` (supported, but Plesk slaves transfer by source IP, so ns1 drops TSIG for that host), or put the secondary somewhere that is not Plesk. |
 | 22 | **Signup has no email verification** | **[CLAUDE]** | **Chosen 2026-08-18: a confirmation email**, still blocked by #1. The pin test exists at `SignupTest::test_the_account_can_read_and_write_immediately_with_no_verification_step`. The gate must not fire while mail does not deliver. Do not ship this until a Health-screen test message has actually arrived. |
@@ -46,7 +46,10 @@ MAIL_FROM_ADDRESS=noreply@ezbizi.com
 MAIL_FROM_NAME=EzBizi
 ```
 
-`MAIL_FROM_ADDRESS` must be on the verified domain. Then send a test from Development → Health.
+`MAIL_FROM_ADDRESS` must be an identity SES has verified. The receiving mailbox
+is `contact@ezbizi.com`. Platform *from* in this block is `noreply@ezbizi.com` —
+keep them in agreement with whatever identity you actually verify; do not leave
+the box on `MAIL_MAILER=ses`. Then send a test from Development → Health.
 
 ### Google Workspace (TODO #28)
 
@@ -148,7 +151,7 @@ not: they are the shell and the front door.
 |---|---|---|
 | ~~7~~ | ✅ ~~**Settings**~~ — a typed value is discarded unless you press Enter; the three JSON settings render as a box that rejects what it just displayed; every control looks editable to people without `organizations.edit`, who then get a 403 on save; company-level scope is supported end to end and unreachable from the UI; the `help` text the server sends for every setting is never shown. | ✅ **Done 2026-08-06** — all five. |
 | ~~8~~ | ✅ ~~**Login**~~ — somebody with accounts in two organizations, one with an authenticator, is silently signed into the other. | ✅ **Done.** Picker + `needs_code`. `AuthApiTest::test_an_account_behind_an_authenticator_is_not_silently_skipped`. Closed 2026-08-18. |
-| 23 | **Mutual box alerts.** The Health screen cannot shout if the app is down, and our mail cannot shout until #1. The websites box (`32.194.222.151`) and the app box watch each other: curl `/up` (readiness: nginx + PHP + MySQL, not backups/mail/TLS) and a static alive file on www. Missing peer verdict is a failure. `OnFailure=` on php-fpm, nginx, mysql, named. | **[CLAUDE]** |
+| 23 | **Mutual box alerts.** The Health screen cannot shout if the app is down, and our mail cannot shout until #1. The websites box (`32.194.222.151`) and the app box watch each other: curl `/up` (readiness: nginx + PHP + MySQL, not backups/mail/TLS) and a static alive file on www. Missing peer verdict is a failure. `OnFailure=` on php-fpm, nginx, mysql, named. **Code is in the live release; nothing is installed.** Paste in `docs/DEPLOY.md` (Peer watchdog install). Needs a go-ahead on both boxes. Checked 18 Aug 18:05 UTC: no units, no `peer-status.json`, `www.ezbizi.com/ezbizi-alive.txt` was 404. | **[CLAUDE]** |
 | 24 | **§18 Phase 0 item 4 was never done.** Webmin 2.653 runs as root and answers `0.0.0.0:10000` as well as through nginx; `ufw` is inactive; `fail2ban` is inactive. That box is also MySQL, the backup source, the GPG passphrase, the ACME account key and the sole nameserver. | **[BOTH]** **Parked 2026-08-18 — not for now.** |
 | ~~25~~ | ✅ ~~**Users, roles, invitations — none of it exists.**~~ | ✅ **Done.** Roles, HR people, invitations and onboarding exist; production has two users. Closed 2026-08-18. |
 

@@ -1,7 +1,7 @@
 # Inspection module — design
 
 **Date:** 2026-08-18  
-**Status:** approved in conversation; waiting on a read of this file before the implementation plan  
+**Status:** approved in conversation; four gaps from `docs/agents/inbox/0001` closed in this file 2026-08-18 (erasure vs freeze, wall-time freeze, missing-required sentence, unpublish/grants vs open runs). Implementation plan not written yet.  
 **Product:** EzBizi customer app (`app.ezbizi.com`)  
 **Layouts:** Builder = list + work + live phone; Generated Reports = search + list + report; New Inspection = search first (not a layout picker)
 
@@ -100,7 +100,9 @@ Carlos never sees Rodrigo’s draft, cannot resume it, cannot discard it. Two pe
 
 **Step strip:** screens in order. **Next** stays blocked until every **required** field on this screen is answered (including a photo that is required because another field has a given answer). **Back** is allowed. **Submit** is on the last screen.
 
-**Document** and **quiet stack:** more than one screen can be on screen at once. **Submit** still waits until every required field in the whole inspection is filled.
+When Next or Submit is blocked, the first missing required field is **named in a sentence under the control** (“Crown needs an answer before you can continue”) and that field is **scrolled into view and focused**. A long document preset must not fail as a button that does nothing.
+
+**Document** and **quiet stack:** more than one screen can be on screen at once. **Submit** still waits until every required field in the whole inspection is filled. The same sentence-and-focus rule applies.
 
 Prefill: a field may **wire** to one entry in the bindable catalogue (§8). Builder marks each wired field **locked** or **editable**. Editing never writes the customer or job. Empty source (customer-only run, job field wired) → the field is empty; locked empty is shown empty, not invented.
 
@@ -128,7 +130,7 @@ Same contracts idea: a named inspection is a pointer; **publish** writes a new *
 - **New** runs get the current published version.
 - **Reports** stay on the version they were submitted with.
 
-**Unpublish** (retire from the picker): leaves the picker. In-progress of that inspection can still finish. Old reports still open. Same idea as retiring a contract template from use without erasing history.
+**Unpublish** (retire from the picker): leaves the picker. **New starts** are blocked. An **already-open in-progress run may still be submitted** — the work is done and the report is the evidence. Resume still works for the owner. **Start again** is a new start, so it is blocked once unpublished. Old reports still open. Same idea as retiring a contract template from use without erasing history.
 
 ### Field types (in code, Inspection’s catalogue — do not add `heading` / `photo` to HR `FieldType`)
 
@@ -151,6 +153,8 @@ v1 keys (extend the registry when those modules grow — not a one-off in Inspec
 **Customer:** `name`, `email`, `phone`, `number`, `address_line1`, `address_line2`, `city`, `state`, `postal_code`.
 
 **Job:** `number`, `title`, `scheduled_for`, `status`, `description` — and, when a job is selected, the customer keys via that job’s customer (same catalogue, same labels).
+
+`scheduled_for` is franchise wall time (`FranchiseWallTime` since `4f214e3`). A bound value is copied onto the run as that wall clock, and at submit it is **frozen onto the report as already-rendered text** in the job’s franchise timezone. Do not store an instant and re-render on read — correcting a franchise timezone would silently rewrite every old report’s time.
 
 A customer-only start leaves job keys empty.
 
@@ -179,6 +183,8 @@ Chips the person cannot use are **not drawn** (do not offer a control that 403s)
 **Which named inspections a role may start** is not a compiled action per Level 1. It is a **grant**, same idea as `MailboxGrant`: tenant rows, edited under Inspection on the Roles screen. `create` without any grants → picker empty, with a sentence that the organization has not offered any inspections to this role. Builder (`edit`) can still create kinds that nobody can run yet — same as connecting an inbox before granting it.
 
 Reach still applies: grants do not leak jobs above the person’s assignment.
+
+A **revoked grant** is the same as unpublish for that role: **block new starts**, let an already-open draft **submit**. The picker no longer offers it. Start again is a new start, so it is refused.
 
 ---
 
@@ -213,7 +219,7 @@ Approximate tables (names can match Laravel conventions; the split is the decisi
 
 **`inspection_runs`** — in-progress only. `user_id` (who started — the only person who can see/resume/discard it), `customer_id`, `job_id` nullable, definition + **version** pin, answers JSON, photo/file/signature attachments via FileStore. One draft per person per inspection per customer per job, enforced by a unique index on `(user_id, definition_id, scope_key)` where `scope_key` is `customer:{id}|job:{id}` or `customer:{id}|job:none`. Do not unique on nullable `job_id` — MySQL allows several NULLs and that would permit two customer-only drafts.
 
-**`inspection_reports`** — submitted, frozen. Copy of answers and version pin, customer, job, submitted_by, submitted_at, `archived_at` nullable. Never updated except `archived_at`. Retention: keep for the life of the organization (evidence), same argument as `ContractVersion`. Personal data: customer facts, signatures, photos — implement `HoldsPersonalData` / erasure like other records that hold a name on a document.
+**`inspection_reports`** — submitted, frozen. Copy of answers and version pin, customer, job, submitted_by, submitted_at, `archived_at` nullable. Two write exceptions only: **`archived_at`**, and **§9 erasure** (anonymise in place). Erasure is the second explicit hole in the write-once guard — without it the first purge request fails because the guard refuses the row. Erasure blanks or replaces personal columns (names, signatures, photos, stamped customer facts) per `HoldsPersonalData`; it is not a correction of the inspection. Retention: keep the row for the life of the organization (evidence), same argument as `ContractVersion`.
 
 Signatures store enough to show they were signed (image + signer label + time). Technician field does not secretly overwrite the label with another user; it is whatever they signed on that field.
 
@@ -234,9 +240,11 @@ Photos/files: `FileStore`, never `Storage::disk()` in a controller.
 
 ## 13. Testing and seed data
 
-TDD. PHP feature tests on MySQL `ezbizi_testing`. Client widget tests for the three tabs, search miss copy, picker grants, resume-vs-start-again for the **same** user, invisibility of another user’s draft, frozen report, archive filter.
+TDD. PHP feature tests on a MySQL database whose name contains `testing` (`tests/TestCase.php`). Confirm `php artisan test` actually talks to it in the implementing session before treating it as the gate — do not assume from an older STATUS line.
 
-**Seed:** when this ships, create **10 fake customers and 10 jobs** on the existing organization so the search is usable. Nobody is live on the app yet. Factories, not hand SQL. Do not seed production-looking personal data (no real emails of real people).
+Client widget tests for the three tabs, search miss copy, picker grants, resume-vs-start-again for the **same** user, invisibility of another user’s draft, frozen report, archive filter, missing-required sentence, submit-after-unpublish.
+
+**Seed:** an artisan command that takes a **named organization**, e.g. `inspection:seed-demo {organization}` — 10 fake customers and 10 jobs via factories, no real people’s emails. Default is **not** the live org. Prefer `ezbizi_testing`. Do not run it against production while TODO #9 (demo-org suppression) is still open: the fakes would show up in dashboards and roll-ups. Tests must not depend on the seed.
 
 ---
 

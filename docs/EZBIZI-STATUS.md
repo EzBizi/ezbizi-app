@@ -31,7 +31,7 @@ rather than for trying harder.
 | 1 — decision records | Captured as docblocks in the code rather than separate pages. Deliberate: a decision written beside the code it constrains is read; one in a folder is not. |
 | 2 — foundation + vertical slice | Done. Organizations → Companies → Franchises → Users, Customers → Jobs. |
 | 3 — cross-cutting | **Done.** Automation engine, notifications, staff control plane, subscription enforcement, import/export. |
-| 4 — expansion | **Dashboards done** — a widget registry with per-user layouts, so a new number is a class rather than a client release. A1 Tools modules next, one at a time. |
+| 4 — expansion | **Dashboards done** — a widget registry with per-user layouts, so a new number is a class rather than a client release. A1 Tools modules next, one at a time. **Inspection** is designed (`docs/superpowers/specs/2026-08-18-inspection-design.md`), not built. |
 
 ## Standing hazards
 
@@ -42,9 +42,13 @@ worth having. The numbers point at `EZBIZI-TODO.md`, which was renumbered from 1
 
 1. **Mail does not send.** Everything is wired except the provider credential — AWS blocks
    outbound port 25 on both instances, and SES SMTP on 587 needs credentials nobody has
-   issued. The app says so on Development → Health rather than failing silently. Password
-   resets reach nobody; the working path is a Lead Developer generating a reset link from
-   the control plane. Console steps: TODO #1 (SES), #28 (Workspace), #29 (Azure / Outlook).
+   issued. **Checked 18 Aug 18:05 UTC:** the box still has `MAIL_MAILER=ses` with
+   `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` present-and-empty. The intended path is
+   SMTP on 587 (TODO #1), not the `ses` SDK. The app says so on Development → Health rather
+   than failing silently. Password resets reach nobody; the working path is a Lead Developer
+   generating a reset link from the control plane. Console steps: TODO #1 (SES), #28
+   (Workspace), #29 (Azure / Outlook). Do not ship signup verification (#22) until a
+   Health-screen test message has arrived.
 
 2. **The off-site backup is off-instance, not off-account.** Encrypted, copied nightly to the
    websites box, and restore-verified by pulling the file back *down* first — so a copy that

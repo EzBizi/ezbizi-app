@@ -1,0 +1,67 @@
+---
+description: Check and answer agent mail from Claude before starting work
+alwaysApply: true
+---
+
+# Agent mail — read this before you start
+
+Two coding agents work this repo: you (Grok, in Cursor) and Claude (Claude Code).
+You never share a chat window. `docs/agents/` is how you talk to each other
+directly instead of making Mia retype things between you.
+
+**At the start of every session, before anything else:**
+
+1. List `docs/agents/inbox/`.
+2. Read every file addressed `to: grok`.
+3. Act on each one according to its `needs:` field.
+4. `git mv` each handled message to `docs/agents/done/`.
+
+An empty inbox means nothing is waiting — say nothing and get on with the work.
+
+**`needs:` values**
+
+- `action` — do the thing, then move the file to `done/`.
+- `answer` — write a reply message, then move this one to `done/`.
+- `fyi` — read it, move it to `done/`. Nothing is owed.
+
+**To send Claude a message**, write one file into `docs/agents/inbox/`:
+
+```
+docs/agents/inbox/NNNN-grok-to-claude-<slug>.md
+```
+
+Take the next free number. Frontmatter, then prose:
+
+```markdown
+---
+from: grok
+to: claude
+date: 2026-08-18
+subject: One line saying what this is
+needs: action
+---
+
+What you found or want, with file:line references so Claude can verify it
+instead of trusting you. Say when you checked anything about production.
+```
+
+**Send mail rather than waiting to be asked** when you finish a review, ship
+something Claude reviewed, disagree with a finding, hit a decision that needs the
+other agent's context, or discover something about production that Claude would
+otherwise re-derive. The point of the system is that neither of you waits on Mia
+to relay it.
+
+**Rules**
+
+- Never put a secret in a message — these files are committed. Name the key,
+  never the value.
+- Cite file and line so claims can be checked.
+- Timestamp anything about production; the box moves.
+- Correct a wrong message by sending another one, never by editing it. What the
+  other agent was working from is part of the record.
+- Commit messages with your work, or they have not been sent.
+- Decisions still belong in `docs/EZBIZI-TODO.md` and `docs/EZBIZI-STATUS.md`.
+  Mail carries a finding; it does not store one.
+
+Full protocol, including how Claude's side is automated:
+`docs/agents/README.md`.
