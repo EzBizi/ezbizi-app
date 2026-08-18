@@ -501,23 +501,24 @@ class DashboardTest extends TestCase
      * sequence to draw whatever the surface's own endpoint allowed — so it may
      * name a panel with no registry widget behind it at all.
      *
-     * "Expiring certifications" is exactly that panel: the HR tab draws it,
-     * badged as not built, and it would otherwise be the one card nobody could
-     * move.
+     * The unknown name used to be `hr.certifications`. That panel now has a
+     * widget, so putting it on the main dashboard is a composition the registry
+     * allows. The assertion still needs a key nothing declares, or it would pass
+     * for the opposite reason the day the panel shipped.
      */
     public function test_a_surface_order_may_name_a_panel_the_registry_has_no_widget_for(): void
     {
         $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
-            'widgets' => [['key' => 'hr.certifications', 'options' => []]],
+            'widgets' => [['key' => 'hr.not_a_widget', 'options' => []]],
         ])->assertStatus(422);
 
         $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
             'surface' => 'hr',
-            'widgets' => [['key' => 'hr.certifications'], ['key' => 'hr.headcount']],
+            'widgets' => [['key' => 'hr.not_a_widget'], ['key' => 'hr.headcount']],
         ])->assertOk();
 
         $this->assertSame(
-            ['hr.certifications', 'hr.headcount'],
+            ['hr.not_a_widget', 'hr.headcount'],
             $this->preferencesOf($this->alpha['admin'])['dashboard.order']['hr'],
         );
     }
