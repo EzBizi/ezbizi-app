@@ -80,10 +80,14 @@ working this afternoon and waiting weeks for a Google security assessment.
 
 ## Shipping the installed apps
 
-`scripts/deploy.sh` ships the web client and the API, and nothing else. The
-Windows, Android, iOS and macOS builds are made by `scripts/build-app.sh` and
-distributed through the public app stores, which is account work rather than
-deploy work — so it lives on its own in **[STORES.md](STORES.md)**.
+`scripts/deploy.sh` ships the web client, the API, and a content-guarded refresh
+of the **app-box** peer watchdog (script + units, only if they are already
+installed and md5 differs). It does not first-install those units, does not
+touch the `peer-url.conf` drop-in, and does not update `watch-peer-app.sh` on the
+websites box. The Windows, Android, iOS and macOS builds are made by
+`scripts/build-app.sh` and distributed through the public app stores, which is
+account work rather than deploy work — so it lives on its own in
+**[STORES.md](STORES.md)**.
 
 Read it before the first submission, not after. Two things in there are cheap
 now and permanent later: the bundle identifiers are still `flutter create`
@@ -299,10 +303,20 @@ rebuilt, so the Health screen names the host it actually watches. Verified as
 returns null — that is the file permission, not a broken watchdog. Check it with
 `sudo`, or as `www-data`.
 
-The scripts and units are in the release. They are **not** in `/etc/systemd/system`
-until someone pastes this. Do not run it without Mia granting a window on **both**
-boxes. Checked not-installed 18 Aug 18:05 UTC (no units, no `peer-status.json`,
-`www.ezbizi.com/ezbizi-alive.txt` was 404).
+The scripts and units are in the release. **First install** is still this paste —
+they are not in `/etc/systemd/system` until someone runs it. Do not run it without
+Mia granting a window on **both** boxes. After that, `scripts/deploy.sh` recopies
+`watch-peer-websites.sh` and the three app-box units from the live release onto
+`/usr/local/bin` and `/etc/systemd/system` **only when md5 differs**. A missing
+dest is skipped, so a box that never had the watchdog does not get it from a
+normal deploy. The `peer-url.conf` drop-in is local config and is never
+overwritten. `watch-peer-app.sh` on the websites box stays a snapshot — that box
+is not this SSH.
+
+Checked not-installed 18 Aug 18:05 UTC (no units, no `peer-status.json`,
+`www.ezbizi.com/ezbizi-alive.txt` was 404). Installed 18 Aug 19:49 UTC. Box
+script matched repo 18 Aug 20:05 UTC after a manual copy (deploy.sh did not yet
+refresh `/usr/local/bin`).
 
 **App box** (`ssh app`). Paths assume the live symlink `/var/www/ezbizi-current`
 (or `/var/www/ezbizi` if that is still the current name — `readlink` first):
@@ -327,7 +341,8 @@ ls -l /var/www/ezbizi/storage/app/peer-status.json || true
 
 **Websites box** (`32.194.222.151`). No alive file: that box already answers
 on `https://panel.triplexhost.net`. Copy `watch-peer-app.sh` from the app repo
-onto that box; it is not deployed there by `scripts/deploy.sh`. Verify with
+onto that box; it is **not** deployed there by `scripts/deploy.sh`, and a later
+deploy will not refresh it. Drift there is still a manual md5 check. Verify with
 `curl -fsS https://app.ezbizi.com/up` from the websites box and
 `curl -fsS https://panel.triplexhost.net` from the app box.
 

@@ -98,6 +98,49 @@ fi
 echo "→ pushing code"
 git push production main
 
+# The peer watchdog is a snapshot in /usr/local/bin, not a symlink into the
+# release. A fix that only lives in deploy/ stays dead on the box until
+# something copies it. First install is still the paste in DEPLOY.md (missing
+# dest is a no-op here, so a box that never had the units does not get them).
+# After that, a release carries watchdog fixes the same way it carries
+# everything else: copy only when md5 differs.
+#
+# This SSH is the app box. watch-peer-app.sh lives on 32.194.222.151 and is
+# not updated here. The systemd drop-in that supplies EZBIZI_PEER_URL is
+# local config and is never overwritten.
+echo "→ refreshing the peer watchdog if the live copy drifted"
+ssh "$REMOTE" 'set -euo pipefail
+ROOT=$(readlink -f /var/www/ezbizi-current 2>/dev/null || readlink -f /var/www/ezbizi)
+updated=0
+refresh() {
+  src=$1 dest=$2 mode=$3
+  if [ ! -f "$dest" ]; then
+    return 0
+  fi
+  if [ ! -f "$src" ]; then
+    echo "missing $src" >&2
+    return 1
+  fi
+  a=$(md5sum "$src"); a=${a%% *}
+  b=$(md5sum "$dest"); b=${b%% *}
+  if [ "$a" = "$b" ]; then
+    return 0
+  fi
+  sudo install -m "$mode" "$src" "$dest"
+  echo "updated $dest"
+  updated=1
+}
+refresh "$ROOT/deploy/watch-peer-websites.sh" /usr/local/bin/ezbizi-watch-peer-websites.sh 0755
+refresh "$ROOT/deploy/ezbizi-watch-peer.service" /etc/systemd/system/ezbizi-watch-peer.service 0644
+refresh "$ROOT/deploy/ezbizi-watch-peer.timer" /etc/systemd/system/ezbizi-watch-peer.timer 0644
+refresh "$ROOT/deploy/ezbizi-watch-peer-failed.service" /etc/systemd/system/ezbizi-watch-peer-failed.service 0644
+if [ "$updated" -eq 1 ]; then
+  sudo systemctl daemon-reload
+else
+  echo "peer watchdog unchanged"
+fi
+'
+
 if [ "$CODE_ONLY" != "--code" ]; then
   echo "→ uploading UI to shared directory"
 
