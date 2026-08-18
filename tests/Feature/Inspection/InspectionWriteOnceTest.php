@@ -59,7 +59,7 @@ class InspectionWriteOnceTest extends TestCase
         $fresh = $this->inTenant($tenant['org'], fn () => $report->fresh());
 
         $this->assertNotNull($fresh, 'The report was deleted rather than anonymised.');
-        $this->assertNull($fresh->answers);
+        $this->assertSame([], $fresh->answers);
         $this->assertSame('Level 1', $fresh->definition_name);
     }
 

@@ -10,6 +10,7 @@ use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use App\Support\Privacy\RetentionPolicy;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -60,10 +61,10 @@ class InspectionReport extends Model implements HoldsPersonalData
                 'Whatever the named inspection asked for — a customer name copied from the '
                 .'job, a signature, photographs of the work, free text. The list of fields '
                 .'is in the version this report is pinned to, so it differs from one '
-                .'inspection to the next.',
-                // Nullable so a purge can empty the blob rather than invent a stand-in
-                // that a renderer would try to read as answers.
-                Erasure::erase(),
+                .                'inspection to the next.',
+                // `[]` rather than NULL: a forgotten write on submit would otherwise
+                // look like a purged report. A real submit always has answers.
+                Erasure::erase('[]'),
                 tenantDefined: true),
             new PersonalDataEntry('submitted_by', PersonalDataEntry::ACTIVITY,
                 'Who submitted the inspection. A foreign key, not a name.',
@@ -80,6 +81,18 @@ class InspectionReport extends Model implements HoldsPersonalData
     }
 
     /**
+     * Columns this row may still change after insert.
+     *
+     * Derived from `personalDataHeld()` where the disposition is ERASE, plus
+     * `archived_at`. That is the point: the exception list cannot drift from the
+     * erasure declaration.
+     *
+     * The weakness is that the exception is column-scoped, not caller-scoped.
+     * Any `saveQuietly()` can write these columns, not only the Anonymiser. Today
+     * that is just `answers`. The day someone marks `definition_name` or a
+     * stamped customer fact as ERASE, that column silently becomes writable on a
+     * frozen report forever — see that cost before adding an entry.
+     *
      * @return list<string>
      */
     public static function writeOnceExceptions(): array
@@ -105,10 +118,45 @@ class InspectionReport extends Model implements HoldsPersonalData
     protected function casts(): array
     {
         return [
-            'answers' => 'array',
             'submitted_at' => 'datetime',
             'archived_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Answers as an array, including the `[]` stand-in Anonymiser writes.
+     *
+     * The purge forceFills the Erasure stand-in as a string. An `array` cast
+     * would json-encode that string and store `"[]"` — a JSON string, not an
+     * empty object — so this accessor treats `[]` as empty answers instead.
+     *
+     * @return Attribute<array<string, mixed>, array<string, mixed>|string>
+     */
+    protected function answers(): Attribute
+    {
+        return Attribute::make(
+            get: function (mixed $value): array {
+                if ($value === null || $value === '') {
+                    return [];
+                }
+                if (is_array($value)) {
+                    return $value;
+                }
+                $decoded = json_decode((string) $value, true);
+
+                return is_array($decoded) ? $decoded : [];
+            },
+            set: function (mixed $value): string {
+                if ($value === '[]' || $value === '{}') {
+                    return '[]';
+                }
+                if ($value === null) {
+                    return '[]';
+                }
+
+                return is_string($value) ? $value : json_encode($value);
+            },
+        );
     }
 
     protected static function booted(): void

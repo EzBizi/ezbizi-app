@@ -80,9 +80,9 @@ return new class extends Migration
             $table->foreignUuid('submitted_by')->constrained('users')->restrictOnDelete();
             $table->timestamp('submitted_at');
             $table->timestamp('archived_at')->nullable();
-            // Nullable so §9 can empty the blob. A submitted report always has
-            // answers; null means the person was erased, not that submit skipped them.
-            $table->json('answers')->nullable();
+            // NOT NULL: a submit that forgets answers must fail rather than look
+            // like erasure. Erasure writes `[]`, which a real submit never does.
+            $table->json('answers');
             $table->string('layout_preset', 32);
             $table->string('definition_name', 150);
             $table->timestamps();

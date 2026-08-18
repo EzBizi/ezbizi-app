@@ -743,6 +743,65 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                 ],
             ),
+
+            /*
+             * Inspection — named templates a role fills in on a visit, then a
+             * frozen report. The tab is one destination with three faces (New
+             * Inspection, Generated Reports, Builder). Extra work after submit
+             * is automations on `inspection.submitted`, not a second filing
+             * place on the form.
+             *
+             * No automation actions. A rule that wrote answers, archived a
+             * report, or published a template would skip the screens that make
+             * those acts mean something. Triggers are enough for
+             * satisfiesAutomationRule; the empty array is the decision, not an
+             * omission.
+             *
+             * No subject: events are about a run or a report, and naming either
+             * would make the field picker wrong about the other. Same cost as
+             * HR — `update_field` is refused at save, in a sentence.
+             *
+             * `isRaised: false` until Task 8 emits. ModuleRegistryTest holds
+             * that claim to the source.
+             */
+            new ModuleDefinition(
+                key:     'inspection',
+                label:   'Inspection',
+                actions: ['view', 'create', 'edit', 'delete', 'archive'],
+                triggers: [
+                    new TriggerDefinition(
+                        key:   'inspection.started',
+                        label: 'Inspection started',
+                        description: 'Somebody started filling in a named inspection for a '
+                            .'client or a job. The draft is personal to them until they submit it.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'inspection.submitted',
+                        label: 'Inspection submitted',
+                        description: 'A named inspection was finished and a report was written. '
+                            .'The answers, photographs and signatures are frozen as they were '
+                            .'on the day.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'inspection.archived',
+                        label: 'Report archived',
+                        description: 'A submitted inspection was hidden from the default list. '
+                            .'Archive does not delete the report.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'inspection.discarded',
+                        label: 'In-progress discarded',
+                        description: 'Somebody threw away their own unfinished inspection and '
+                            .'started again, or discarded it without submitting.',
+                        isRaised: false,
+                    ),
+                ],
+                automationActions: [],
+            ),
+
             /*
              * Marketing — declared before it is built, and NOT a stub.
              *

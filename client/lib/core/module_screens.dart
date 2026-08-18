@@ -5,6 +5,7 @@ import '../screens/customers_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/email/email_screen.dart';
 import '../screens/hr_screen.dart';
+import '../screens/inspection_screen.dart';
 import '../screens/jobs_screen.dart';
 import '../screens/marketing_screen.dart';
 import 'api_client.dart';
@@ -50,6 +51,10 @@ final Map<String, ModuleScreen> moduleScreens = {
   'jobs': ModuleScreen(
     Icons.construction_outlined,
     (api, session) => JobsScreen(api: api, session: session),
+  ),
+  'inspection': ModuleScreen(
+    Icons.fact_check_outlined,
+    (api, session) => InspectionScreen(api: api, session: session),
   ),
   'hr': ModuleScreen(
     Icons.badge_outlined,

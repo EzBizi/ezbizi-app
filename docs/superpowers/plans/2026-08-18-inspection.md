@@ -239,7 +239,7 @@ Smallest tab; forces freeze and version pin.
 **Files:**
 - Search customers/jobs with existing reach
 - Picker: published + granted
-- Start: insert run, emit `inspection.started`
+- Start: insert run with `answers` `{}` (column is NOT NULL), emit `inspection.started`
 - Resume vs start again panel (not a modal). Start again discards own run (`inspection.discarded`) then starts — refused if unpublished or ungranted
 - Fill: step strip in order; Next blocked with sentence naming first missing required field and focus; photo required-if; camera or file
 - Submit: write report, copy answers, freeze bind text (including `scheduled_for`), delete run, emit `inspection.submitted`
