@@ -49,7 +49,40 @@ class WriteOnceBuilder extends Builder
     /** @param  array<string, mixed>  $values */
     public function update(array $values): int
     {
-        throw new WrittenOnceRefusal($this->refusal('updated'));
+        if (! $this->isAllowedException($values)) {
+            throw new WrittenOnceRefusal($this->refusal('updated'));
+        }
+
+        return parent::update($values);
+    }
+
+    /**
+     * The two holes InspectionReport declares: archive, and §9 erasure.
+     *
+     * Every other written-once model returns an empty list, so this is the same
+     * total refusal it was. `updated_at` is ignored when present because Eloquent
+     * stamps it on a model save; a timestamp-only write is still refused.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    private function isAllowedException(array $values): bool
+    {
+        $model = $this->getModel();
+
+        if (! method_exists($model, 'writeOnceExceptions')) {
+            return false;
+        }
+
+        $allowed = $model::writeOnceExceptions();
+
+        if ($allowed === []) {
+            return false;
+        }
+
+        $ignore = array_filter([$model->getUpdatedAtColumn()]);
+        $meaningful = array_values(array_diff(array_keys($values), $ignore));
+
+        return $meaningful !== [] && array_diff($meaningful, $allowed) === [];
     }
 
     public function delete(): mixed

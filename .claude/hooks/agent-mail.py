@@ -36,9 +36,14 @@ def main():
                 head = fh.read(2000)
         except OSError:
             continue
+        to = field(head, "to") or "?"
+        # Mail addressed to the other agent is not news here. Being told about the
+        # message you just wrote trains you to ignore the notification. "?" stays
+        # in, so a message with no `to:` is seen by somebody rather than nobody.
+        if to not in ("claude", "?"):
+            continue
         subject = field(head, "subject") or name
         sender = field(head, "from") or "?"
-        to = field(head, "to") or "?"
         needs = field(head, "needs") or "fyi"
         lines.append(f"  {name}\n    {sender} -> {to} · needs {needs} · {subject}")
 

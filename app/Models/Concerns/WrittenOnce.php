@@ -35,4 +35,19 @@ trait WrittenOnce
     {
         return new WriteOnceBuilder($query);
     }
+
+    /**
+     * Columns this row may still change after insert.
+     *
+     * Empty on every written-once model except InspectionReport, which names
+     * `archived_at` and the columns HoldsPersonalData lists for erasure. The
+     * builder is where saveQuietly and query()->update go, so the holes have
+     * to live here rather than only on the model's updating event.
+     *
+     * @return list<string>
+     */
+    public static function writeOnceExceptions(): array
+    {
+        return [];
+    }
 }
