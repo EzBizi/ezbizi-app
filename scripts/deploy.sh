@@ -98,12 +98,50 @@ fi
 echo "→ pushing code"
 git push production main
 
-# The peer watchdog is a snapshot in /usr/local/bin, not a symlink into the
-# release. A fix that only lives in deploy/ stays dead on the box until
-# something copies it. First install is still the paste in DEPLOY.md (missing
-# dest is a no-op here, so a box that never had the units does not get them).
-# After that, a release carries watchdog fixes the same way it carries
-# everything else: copy only when md5 differs.
+if [ "$CODE_ONLY" != "--code" ]; then
+  echo "→ uploading UI to shared directory"
+
+  # tar over ssh rather than rsync, for two reasons.
+  #
+  # It is there. rsync is not on a stock Windows Git Bash, and the deploy that
+  # found that out had already pushed the backend — leaving a new API behind an
+  # old UI, which is the exact state the code half is carefully ordered to avoid.
+  # tar ships with every shell this runs in.
+  #
+  # And it swaps rather than syncs. rsync --delete edits the live directory in
+  # place, so for the length of an upload the site is a mix of two builds — and
+  # Flutter's assets are content-addressed, so half of them 404. Unpacking beside
+  # it and renaming makes the change one operation, and leaves the previous build
+  # next door to rename back to.
+  tar -cz -C client/build/web . | ssh "$REMOTE" "
+    set -e
+    rm -rf '$SHARED.new' '$SHARED.old'
+    mkdir -p '$SHARED.new'
+    tar -xz -C '$SHARED.new'
+    mv '$SHARED' '$SHARED.old'
+    mv '$SHARED.new' '$SHARED'
+  "
+fi
+
+# The four volatile rows of STATUS.md, from the things themselves. This is the
+# one moment all of them are known at once — both suites have just run and the
+# release is live — and the reason it is automated at all is that every one of
+# them was hand-written, correct at the time, and wrong within hours.
+echo "→ refreshing the STATUS numbers"
+scripts/status-numbers.sh "${BACKEND_TESTS:-}" "${CLIENT_TESTS:-}" || true
+
+# After both halves of the release, not between them. The watchdog is a
+# snapshot in /usr/local/bin, not a symlink into the release — so a fix that
+# only lives in deploy/ stays dead on the box until something copies it.
+# First install is still the paste in DEPLOY.md (missing dest is a no-op, so
+# a box that never had the units does not get them). After that, copy only
+# when md5 differs.
+#
+# This step is housekeeping. A sudo prompt, a missing source, or a
+# daemon-reload failure must not abort a deploy that already pushed the API
+# — that would leave a new backend behind an old UI, the state the code-then-
+# UI order exists to avoid. Keep set -e inside the remote shell so a bad
+# step still stops *itself*; swallow the ssh exit so the deploy does not.
 #
 # This SSH is the app box. watch-peer-app.sh lives on 32.194.222.151 and is
 # not updated here. The systemd drop-in that supplies EZBIZI_PEER_URL is
@@ -139,38 +177,6 @@ if [ "$updated" -eq 1 ]; then
 else
   echo "peer watchdog unchanged"
 fi
-'
-
-if [ "$CODE_ONLY" != "--code" ]; then
-  echo "→ uploading UI to shared directory"
-
-  # tar over ssh rather than rsync, for two reasons.
-  #
-  # It is there. rsync is not on a stock Windows Git Bash, and the deploy that
-  # found that out had already pushed the backend — leaving a new API behind an
-  # old UI, which is the exact state the code half is carefully ordered to avoid.
-  # tar ships with every shell this runs in.
-  #
-  # And it swaps rather than syncs. rsync --delete edits the live directory in
-  # place, so for the length of an upload the site is a mix of two builds — and
-  # Flutter's assets are content-addressed, so half of them 404. Unpacking beside
-  # it and renaming makes the change one operation, and leaves the previous build
-  # next door to rename back to.
-  tar -cz -C client/build/web . | ssh "$REMOTE" "
-    set -e
-    rm -rf '$SHARED.new' '$SHARED.old'
-    mkdir -p '$SHARED.new'
-    tar -xz -C '$SHARED.new'
-    mv '$SHARED' '$SHARED.old'
-    mv '$SHARED.new' '$SHARED'
-  "
-fi
-
-# The four volatile rows of STATUS.md, from the things themselves. This is the
-# one moment all of them are known at once — both suites have just run and the
-# release is live — and the reason it is automated at all is that every one of
-# them was hand-written, correct at the time, and wrong within hours.
-echo "→ refreshing the STATUS numbers"
-scripts/status-numbers.sh "${BACKEND_TESTS:-}" "${CLIENT_TESTS:-}" || true
+' || echo "warning: peer watchdog refresh failed; box may be on an older copy" >&2
 
 echo "✓ done — https://app.ezbizi.com"

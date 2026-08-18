@@ -82,8 +82,10 @@ working this afternoon and waiting weeks for a Google security assessment.
 
 `scripts/deploy.sh` ships the web client, the API, and a content-guarded refresh
 of the **app-box** peer watchdog (script + units, only if they are already
-installed and md5 differs). It does not first-install those units, does not
-touch the `peer-url.conf` drop-in, and does not update `watch-peer-app.sh` on the
+installed and md5 differs). The refresh runs **after** the release is live and
+cannot abort the deploy: a failed copy warns and leaves the box on the older
+script. It does not first-install those units, does not touch the
+`peer-url.conf` drop-in, and does not update `watch-peer-app.sh` on the
 websites box. The Windows, Android, iOS and macOS builds are made by
 `scripts/build-app.sh` and distributed through the public app stores, which is
 account work rather than deploy work — so it lives on its own in
@@ -307,7 +309,8 @@ The scripts and units are in the release. **First install** is still this paste 
 they are not in `/etc/systemd/system` until someone runs it. Do not run it without
 Mia granting a window on **both** boxes. After that, `scripts/deploy.sh` recopies
 `watch-peer-websites.sh` and the three app-box units from the live release onto
-`/usr/local/bin` and `/etc/systemd/system` **only when md5 differs**. A missing
+`/usr/local/bin` and `/etc/systemd/system` **only when md5 differs**, after both
+halves of the release, and a failed copy does not abort the deploy. A missing
 dest is skipped, so a box that never had the watchdog does not get it from a
 normal deploy. The `peer-url.conf` drop-in is local config and is never
 overwritten. `watch-peer-app.sh` on the websites box stays a snapshot — that box
