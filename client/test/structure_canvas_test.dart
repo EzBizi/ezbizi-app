@@ -5,6 +5,7 @@ import 'package:ezbizi_client/widgets/structure_canvas.dart';
 import 'package:ezbizi_client/widgets/structure_menu.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -1253,6 +1254,26 @@ void main() {
         findsOneWidget,
         reason: 'The number beside the buttons and the size the boxes are drawn '
             'at are two different answers to one question.',
+      );
+    });
+
+    /// The slot between minus and plus is there so the plus does not walk as
+    /// the figure changes width. A slot narrower than the figure is worse than
+    /// no slot: "100%" wraps, the digits sit on one line and the percent on
+    /// the next, and the cluster reads as a broken control rather than a
+    /// scale.
+    testWidgets('the zoom percentage stays on one line', (tester) async {
+      await _pump(tester);
+
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.text('100%'),
+      );
+
+      expect(
+        paragraph.size.height,
+        moreOrLessEquals(paragraph.preferredLineHeight, epsilon: 0.5),
+        reason: 'The digits and the percent wrapped onto two lines, which is '
+            'what a slot narrower than “100%” does.',
       );
     });
 

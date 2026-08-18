@@ -2050,6 +2050,23 @@ class _StructureCanvasState extends State<StructureCanvas>
     );
   }
 
+  /// The width of the widest figure this control can show, in the style it is
+  /// drawn in. `kStructureZoomMax` is 3, so that figure is "300%".
+  double _zoomReadoutWidth(ThemeData theme, TextScaler scaler) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: '${(kStructureZoomMax * 100).round()}%',
+        style: theme.textTheme.labelLarge,
+      ),
+      maxLines: 1,
+      textDirection: Directionality.of(context),
+      textScaler: scaler,
+    )..layout();
+    final width = painter.width;
+    painter.dispose();
+    return width;
+  }
+
   /// Out, the number, in — and "Fit" beside them.
   ///
   /// ── Why the three sit in a frame and Fit does not ────────────
@@ -2081,9 +2098,9 @@ class _StructureCanvasState extends State<StructureCanvas>
   /// "25%" and "100%" are different widths, so without a fixed slot the plus
   /// button walks left and right as somebody steps through the ladder, and a
   /// button that moves while being pressed repeatedly gets missed. The slot is
-  /// derived from the reader's own text size rather than typed as a pixel
-  /// count, because the figures inside it grow with that setting and a fixed
-  /// slot would clip "100%" for exactly the reader who most needs to read it.
+  /// the width of the widest figure this control can show, measured in the
+  /// style it is drawn in — a typed pixel count that looked right at one text
+  /// size is the slot that wraps "100%" onto two lines at another.
   Widget _zoomCluster(ThemeData theme) {
     final scheme = theme.colorScheme;
     final scaler = MediaQuery.textScalerOf(context);
@@ -2110,7 +2127,7 @@ class _StructureCanvasState extends State<StructureCanvas>
                     : _zoomOut,
               ),
               SizedBox(
-                width: scaler.scale(34),
+                width: _zoomReadoutWidth(theme, scaler),
                 child: Semantics(
                   // The figures are what a sighted reader sees; this is the
                   // same fact in a sentence, so somebody landing here with a
@@ -2121,6 +2138,8 @@ class _StructureCanvasState extends State<StructureCanvas>
                   child: Text(
                     '$_percent%',
                     textAlign: TextAlign.center,
+                    maxLines: 1,
+                    softWrap: false,
                     style: theme.textTheme.labelLarge,
                   ),
                 ),
