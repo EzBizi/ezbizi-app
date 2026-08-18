@@ -75,13 +75,19 @@
 
 Schema (review this before running migrate on anything but `ezbizi_testing`):
 
-`inspection_definitions`: `id` uuid PK, `organization_id` FK cascade, `name` string 150 nullable, `intro` text nullable, `cover_path` string nullable, `cover_disk` string nullable, `current_version_id` uuid nullable (no FK, same reason as `contracts.current_version_id`), `published_at` timestamp nullable, `created_by` uuid nullable FK users nullOnDelete, timestamps. Unique `(organization_id, name)` — publish is what sets a name; drafts may use a placeholder unique per row (see test: two unnamed drafts are allowed by using `name` null and a unique that permits multiple NULLs, **or** a `draft_key` uuid. Prefer **`name` required on insert as a working title** the Builder can rename on publish, unique per org. Spec: publish requires a name. Implementation: name is NOT NULL from create, unique per org.)
+`inspection_definitions`: `id` uuid PK, `organization_id` FK cascade, **`name` string 150 NOT NULL**, `intro` text nullable, `cover_path` string nullable, `cover_disk` string nullable, `current_version_id` uuid nullable (no FK, same reason as `contracts.current_version_id`), `published_at` timestamp nullable, `created_by` uuid nullable FK users nullOnDelete, timestamps. Unique `(organization_id, name)`.
+
+Create (Task 6) generates a unique working title in the same transaction — `Untitled inspection`, `Untitled inspection 2`, … — so the unique index never 500s the create button. Publish still requires a real name; renaming to a taken published name is a 422. Do **not** use a nullable name.
 
 `inspection_definition_versions`: `id` uuid PK, `organization_id`, `inspection_definition_id` FK cascade, `version` unsigned int, `layout_preset` string 32, `screens` json, `intro` text nullable, cover path/disk nullable (copied onto the version), `published_by` uuid nullable, `created_at` only (`UPDATED_AT = null`). Unique `(inspection_definition_id, version)`.
 
-`inspection_runs`: `id` uuid PK, `organization_id`, `user_id` FK users cascade, `customer_id` FK customers cascade, `job_id` uuid nullable FK jobs nullOnDelete, `inspection_definition_id`, `inspection_definition_version_id`, `scope_key` string 120, `answers` json, timestamps. Unique `(user_id, inspection_definition_id, scope_key)`. Index `(organization_id, user_id)`.
+`inspection_runs`: `id` uuid PK, `organization_id`, `user_id` FK users cascade, `customer_id` FK customers **restrict** (customers soft-delete; a hard DELETE is org cascade via `organization_id`), `job_id` uuid nullable FK jobs **restrict** — **not** `nullOnDelete`. Customers and jobs use `softDeletes()`; a soft delete is an UPDATE, so `nullOnDelete` never fires and would be dead. `scope_key` embeds those ids, so the row staying put is what keeps the key consistent.
 
-`inspection_reports`: `id` uuid PK, `organization_id`, `customer_id`, `job_id` nullable, `inspection_definition_id`, `inspection_definition_version_id`, `submitted_by` uuid, `submitted_at` timestamp, `archived_at` timestamp nullable, `answers` json (includes frozen bind text), `layout_preset` string 32, `definition_name` string 150 (stamp; the definition may later be renamed), timestamps. Index `(organization_id, archived_at)`, `(organization_id, customer_id)`, `(organization_id, job_id)`.
+**Soft-deleted customer or job:**
+- A **report** still lists and still opens (evidence). Generated Reports search joins customers and jobs **`withTrashed()`**, so a historical name/number still hits. After §9 erasure the name is blanked and search will not find it by the old name — that is the purge working.
+- A **run** is not resumable. New Inspection will not offer resume, and start against a trashed customer/job is refused. The run row stays until discarded or the org is removed; it must not become a second live draft after a job is restored (same `scope_key`).
+
+`inspection_reports`: `id` uuid PK, `organization_id`, `customer_id`, `job_id` nullable, `inspection_definition_id`, `inspection_definition_version_id`, `submitted_by` uuid, `submitted_at` timestamp, `archived_at` timestamp nullable, `answers` json (includes frozen bind text), `layout_preset` string 32, `definition_name` string 150 (stamp; the definition may later be renamed), timestamps. Index `(organization_id, archived_at)`, `(organization_id, customer_id)`, `(organization_id, job_id)`. FKs to customers/jobs restrict, same soft-delete reason.
 
 `inspection_definition_grants`: like `mailbox_grants` — `organization_id`, `inspection_definition_id`, `role_id`, unique `(inspection_definition_id, role_id)`.
 
@@ -127,7 +133,7 @@ public function test_two_customer_only_drafts_for_the_same_person_are_refused():
 **Files:**
 - Modify: `app/Providers/ModuleServiceProvider.php` — add `inspection` in `businessModules()`
 - Modify: `client/lib/core/module_screens.dart`
-- Create: `client/lib/screens/inspection_screen.dart` — three chips, empty panes that say what they are waiting for is unacceptable; draw the three tabs even if inner lists are empty states
+- Create: `client/lib/screens/inspection_screen.dart` — three chips. The three tabs always draw with **honest empty states** (no published inspections, no reports, no search yet) — not blank panes and not a “waiting for” placeholder that looks like a missing permission.
 - Test: existing `ClientModuleScreensTest` and `ModuleRegistryTest` must stay green
 - Test: `client/test/inspection_screen_test.dart` — chips New Inspection, Generated Reports, Builder; chips not drawn when the corresponding action is missing
 
@@ -255,10 +261,9 @@ Smallest tab; forces freeze and version pin.
 
 **Files:**
 - `app/Console/Commands/InspectionSeedDemo.php` — signature `inspection:seed-demo {organization}`
-- Refuses if the org `is_demo` is false **and** we are not on a testing DB? Spec: default not live; prefer `ezbizi_testing`; do not run against production while TODO #9 is open.
-- Implementation: require `{organization}` uuid; refuse unless `config('app.env') === 'testing'` OR the org is explicitly named **and** the connected database name contains `testing`. Never default to the first organization.
+- Both required, **AND** not OR: a named `{organization}` **and** the connected database name contains `testing` (`tests/TestCase.php` marker). `APP_ENV=testing` alone is not enough — that is a line in `.env`. Never default the org. Refuse on a database named `ezbizi`.
 
-- [ ] **Step 1:** Test: missing argument fails. Production-named DB name without `testing` refused.
+- [ ] **Step 1:** Test: missing argument fails. Database name without `testing` refused even if `APP_ENV=testing`. Named org plus testing DB required.
 - [ ] **Step 2:** On `ezbizi_testing`, 10 customers + 10 jobs via factories.
 - [ ] **Step 3:** Commit: `Add a named-org inspection demo seed that cannot silently hit production.`
 
