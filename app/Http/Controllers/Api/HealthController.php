@@ -188,8 +188,20 @@ class HealthController extends Controller
      */
     private function peer(): array
     {
+        $url  = trim((string) config('ezbizi.peer.url'));
+        $host = parse_url($url, PHP_URL_HOST) ?: 'the other box';
+
+        if ($url === '') {
+            return [
+                'ok'      => false,
+                'host'    => $host,
+                'problem' => 'EZBIZI_PEER_URL is not set, so this screen cannot name the other '
+                    .'box. The watchdog has nothing to ask — and the old default was this box '
+                    .'asking itself whether it was alive.',
+            ];
+        }
+
         $path = (string) config('ezbizi.peer.status_file');
-        $host = parse_url((string) config('ezbizi.peer.url'), PHP_URL_HOST) ?: 'the other box';
 
         if (! is_readable($path)) {
             return [

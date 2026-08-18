@@ -274,9 +274,30 @@ different facts, and only the second one is a customer's problem.
 `GET /up` is Laravel's health probe. It is **readiness**: nginx, PHP-FPM and
 MySQL (`DiagnosingHealth` runs `select 1`). It is **not** backups, mail or TLS.
 Those stay on Development → Health. The websites box curls `/up`; the app box
-curls `https://www.ezbizi.com/ezbizi-alive.txt`. Units: `deploy/ezbizi-watch-peer.*`.
+curls `https://panel.triplexhost.net` (not `www.ezbizi.com` — that name is this
+box). Units: `deploy/ezbizi-watch-peer.*`. `EZBIZI_PEER_URL` has no repo default.
 
-### Peer watchdog install (TODO #23) — needs a go-ahead
+### Peer watchdog install (TODO #23) — INSTALLED 2026-08-18 19:49 UTC
+
+**Installed and running on both boxes.** Kept below for reference and reinstall.
+
+**`www.ezbizi.com` is NOT the websites box.** It resolves to 100.24.188.241 — the
+app box itself. Pointing the app-box watchdog at it would have been the app
+checking whether the app is alive, which proves nothing and is the exact
+anti-pattern this phase exists to avoid. The real peer target is
+`https://panel.triplexhost.net` (32.194.222.151), set as a systemd drop-in at
+`/etc/systemd/system/ezbizi-watch-peer.service.d/peer-url.conf` so a redeploy
+cannot restore the self-check URL. No `ezbizi-alive.txt` was needed; that box
+already answers on its own hostname.
+
+`EZBIZI_PEER_URL=https://panel.triplexhost.net` is in the box `.env` (added
+19:53 UTC, `.env.bak-20260818-peerurl` beside it) and the config cache was
+rebuilt, so the Health screen names the host it actually watches. Verified as
+`www-data`: `{"watching":"panel.triplexhost.net","verdict":{"ok":true,...}}`.
+
+`peer-status.json` is mode 600 owned by `www-data`. Reading it as `ubuntu`
+returns null — that is the file permission, not a broken watchdog. Check it with
+`sudo`, or as `www-data`.
 
 The scripts and units are in the release. They are **not** in `/etc/systemd/system`
 until someone pastes this. Do not run it without Mia granting a window on **both**
@@ -304,15 +325,13 @@ ls -l /var/www/ezbizi/storage/app/peer-status.json || true
 '
 ```
 
-**Websites box** (`32.194.222.151`). Put `ezbizi-alive.txt` in whatever document
-root actually serves `https://www.ezbizi.com` — do not guess a Plesk path. The
-file body is one word, `ok`. Then install the app-side curl:
+**Websites box** (`32.194.222.151`). No alive file: that box already answers
+on `https://panel.triplexhost.net`. Copy `watch-peer-app.sh` from the app repo
+onto that box; it is not deployed there by `scripts/deploy.sh`. Verify with
+`curl -fsS https://app.ezbizi.com/up` from the websites box and
+`curl -fsS https://panel.triplexhost.net` from the app box.
 
 ```bash
-# as whoever administers that box — after confirming the vhost root
-printf "ok\n" | sudo tee /PATH/TO/WWW/ezbizi-alive.txt
-curl -fsS --max-time 10 https://www.ezbizi.com/ezbizi-alive.txt
-
 sudo install -m 0755 /path/to/ezbizi/deploy/watch-peer-app.sh /usr/local/bin/ezbizi-watch-peer-app.sh
 sudo tee /etc/systemd/system/ezbizi-watch-peer-app.service >/dev/null <<EOF
 [Unit]
@@ -337,11 +356,6 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now ezbizi-watch-peer-app.timer
 ```
-
-Copy `watch-peer-app.sh` from the app repo (`deploy/watch-peer-app.sh`) onto that
-box; it is not deployed there by `scripts/deploy.sh`. Verify with
-`curl -fsS https://app.ezbizi.com/up` from the websites box and
-`curl -fsS https://www.ezbizi.com/ezbizi-alive.txt` from the app box.
 
 ## What runs the clock
 

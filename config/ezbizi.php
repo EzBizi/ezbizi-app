@@ -127,10 +127,15 @@ return [
      * `/up` is nginx + PHP + MySQL. It is not backups, mail or TLS — those stay
      * on the staff Health screen. A missing verdict is a failure: a timer that
      * has stopped writes nothing, which is exactly what a dead peer looks like.
+     *
+     * No default URL. `www.ezbizi.com` is THIS box (100.24.188.241), so a
+     * fallback that named it made the watchdog ask itself whether it was alive.
+     * Production sets `EZBIZI_PEER_URL=https://panel.triplexhost.net`. An unset
+     * value is reported as missing, the same way MailStatus names an empty key.
      */
     'peer' => [
         'status_file' => env('EZBIZI_PEER_STATUS', storage_path('app/peer-status.json')),
-        'url' => env('EZBIZI_PEER_URL', 'https://www.ezbizi.com/ezbizi-alive.txt'),
+        'url' => env('EZBIZI_PEER_URL'),
         'max_age_minutes' => (int) env('EZBIZI_PEER_MAX_AGE_MINUTES', 15),
     ],
 

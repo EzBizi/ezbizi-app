@@ -313,9 +313,37 @@ class OperationalHealthTest extends TestCase
             ->assertJsonPath('peer.ok', false);
     }
 
+    public function test_the_peer_url_does_not_default_to_this_box(): void
+    {
+        $url = (string) config('ezbizi.peer.url');
+
+        $this->assertStringNotContainsString(
+            'www.ezbizi.com',
+            $url,
+            'www.ezbizi.com is the app box. Defaulting the peer URL there makes '
+            .'the watchdog ask itself whether it is alive.',
+        );
+        $this->assertStringNotContainsString('ezbizi-alive.txt', $url);
+    }
+
+    public function test_an_unset_peer_url_names_the_env_var(): void
+    {
+        $token = $this->staffToken();
+        config(['ezbizi.peer.url' => '']);
+
+        $problem = $this->withHeader('Authorization', "Bearer {$token}")
+            ->getJson('/api/v1/staff/health')
+            ->assertOk()
+            ->assertJsonPath('peer.ok', false)
+            ->json('peer.problem');
+
+        $this->assertStringContainsString('EZBIZI_PEER_URL', $problem);
+    }
+
     public function test_a_missing_peer_verdict_is_a_failure(): void
     {
         $token = $this->staffToken();
+        config(['ezbizi.peer.url' => 'https://panel.triplexhost.net']);
 
         $this->withHeader('Authorization', "Bearer {$token}")
             ->getJson('/api/v1/staff/health')
@@ -332,12 +360,15 @@ class OperationalHealthTest extends TestCase
     {
         $token = $this->staffToken();
         $path = storage_path('app/peer-status-test.json');
-        config(['ezbizi.peer.status_file' => $path]);
+        config([
+            'ezbizi.peer.status_file' => $path,
+            'ezbizi.peer.url' => 'https://panel.triplexhost.net',
+        ]);
 
         file_put_contents($path, json_encode([
             'ok' => true,
             'at' => now()->toIso8601String(),
-            'host' => 'www.ezbizi.com',
+            'host' => 'panel.triplexhost.net',
         ]));
 
         $this->withHeader('Authorization', "Bearer {$token}")
