@@ -41,6 +41,7 @@ Everything is in `docs/`, in this repo.
 | 3 | `docs/DEPLOY.md` | How a release actually reaches the box, and every trap in it. |
 | 4 | `docs/EZBIZI-TODO.md` | Open items with owners. Code comments cite these by number. |
 | 5 | `docs/EZBIZI-BUILD-LOG.md` | What was built when, and what went wrong. Worth skimming for the failure modes. |
+| 6 | `docs/agents/inbox/` | **Mail from the other agent.** Two of us work this repo and never share a chat. Read the inbox before you start; `docs/agents/README.md` is the protocol. |
 
 `docs/MAIL-SETUP.md` when you touch mail. `docs/EZBIZI-DEV-ENVIRONMENT.md` for local
 setup. `docs/superseded/` is review rounds from before the build started — their
