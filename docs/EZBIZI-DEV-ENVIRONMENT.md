@@ -86,6 +86,12 @@ green gate. Three are missing libraries; one was fixed.
 | OpenSSL | `openssl_pkey_export(): Cannot get key from parameter 1` | **fixed 2026-08-17** — see below |
 | GD | `GD extension is not installed` — image tests | open |
 | dompdf | `Class "Dompdf\Dompdf" not found` — PDF tests | open |
+| Windows paths | `ErrorAuditTest::test_a_file_scope_closure_does_not_carry_the_deploy_root_into_the_trace` — the trace comes back with `tests\Fixtures\…` backslashes and the assertion wants the forward-slash form | **Windows only** |
+| Local TLS | `ImapReplySenderTest::test_a_credential_containing_a_line_break_is_refused` — the connection to the test server on `localhost` fails on the certificate *before* the credential is validated, so the refusal names the certificate rather than the line break | **Windows only** |
+
+**A full local run is 9 red, and none of them are the code.** 2026-08-19: 1438 tests, 1393 passed. Seven are dompdf, two are the rows above. The deploy gate does **not** run here — `scripts/deploy.sh` pipes `git archive main` to `/opt/ezbizi-test` on the box and runs it there, where `gd` and `dompdf` both exist. So these nine block nothing; they only mean a green local run is the weaker signal, exactly as the four-things note above says.
+
+Run the full suite with `php -d memory_limit=1G vendor/bin/phpunit`. Plain `php artisan test` dies with a 128M exhaustion partway through — the parent's `-d` does not reach the processes it spawns.
 
 **The OpenSSL fix.** Windows PHP shipped no `openssl.cnf` and `OPENSSL_CONF` was unset, so
 `openssl_pkey_new()` failed for *any* key — which meant every test that mints a keypair
