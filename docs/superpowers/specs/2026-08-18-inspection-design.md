@@ -1,7 +1,7 @@
 # Inspection module — design
 
 **Date:** 2026-08-18  
-**Status:** spec patched 2026-08-18; implementation plan at `docs/superpowers/plans/2026-08-18-inspection.md`. Not built. No deploy.  
+**Status:** built and deployed 2026-08-19 as release `20260819130615`. Plan `docs/superpowers/plans/2026-08-18-inspection.md`.  
 **Product:** EzBizi customer app (`app.ezbizi.com`)  
 **Layouts:** Builder = list + work + live phone; Generated Reports = search + list + report; New Inspection = search first (not a layout picker)
 

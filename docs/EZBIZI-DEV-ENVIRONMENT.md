@@ -16,8 +16,8 @@
 
 ## Repository
 
-**`H:\EzBizi`** — deliberately **outside `H:\AWS`**, so no credential file or `.pem` can ever
-be swept into a `git add`. First commit `0520deb`, 56 files.
+**`H:\Development\EzBizi`** — deliberately **outside `H:\AWS`**, so no credential file or `.pem` can ever
+be swept into a `git add`. First commit `0520deb`, 56 files. Copied here from `H:\EzBizi` on 2026-08-19; the original remains.
 
 The product documentation moved *into* this repo on 2026-08-17 and now lives in `docs/`.
 `H:\AWS\Application\` is the **server's** folder — its credentials and its key. `H:\AWS\_secrets\`
@@ -82,14 +82,14 @@ green gate. Three are missing libraries; one was fixed.
 
 | | Symptom | State |
 |---|---|---|
-| MySQL | `Access denied for user 'root'@'localhost'` on ~1100 tests | **fixed 2026-08-18** — MySQL 8.4.9 Community, schema `ezbizi_testing`. `php artisan test` talks to it. The Windows service could not be installed without elevation, so `mysqld` is a user process (`C:\ProgramData\MySQL\Data`). GD and Dompdf are still missing. |
+| MySQL | `Access denied for user 'root'@'localhost'` on ~1100 tests | **fixed 2026-08-18** — MySQL 8.4.9 Community, schema `ezbizi_testing`. `php artisan test` talks to it. The Windows service could not be installed without elevation, so `mysqld` is a user process (`C:\ProgramData\MySQL\Data`). Start it with `mysqld --datadir=C:\ProgramData\MySQL\Data` if port 3306 is refused. |
 | OpenSSL | `openssl_pkey_export(): Cannot get key from parameter 1` | **fixed 2026-08-17** — see below |
-| GD | `GD extension is not installed` — image tests | open |
-| dompdf | `Class "Dompdf\Dompdf" not found` — PDF tests | open |
+| GD | `GD extension is not installed` — image tests | **fixed 2026-08-19** — `extension=gd` in this machine's `php.ini`. Not a repo file. |
+| dompdf | `Class "Dompdf\Dompdf" not found` — PDF tests | **fixed 2026-08-19** — `composer.phar install` pulled `dompdf/dompdf` from the lockfile; it had been missing from `vendor/`. |
 | Windows paths | `ErrorAuditTest::test_a_file_scope_closure_does_not_carry_the_deploy_root_into_the_trace` — the trace comes back with `tests\Fixtures\…` backslashes and the assertion wants the forward-slash form | **Windows only** |
 | Local TLS | `ImapReplySenderTest::test_a_credential_containing_a_line_break_is_refused` — the connection to the test server on `localhost` fails on the certificate *before* the credential is validated, so the refusal names the certificate rather than the line break | **Windows only** |
 
-**A full local run is 9 red, and none of them are the code.** 2026-08-19: 1438 tests, 1393 passed. Seven are dompdf, two are the rows above. The deploy gate does **not** run here — `scripts/deploy.sh` pipes `git archive main` to `/opt/ezbizi-test` on the box and runs it there, where `gd` and `dompdf` both exist. So these nine block nothing; they only mean a green local run is the weaker signal, exactly as the four-things note above says.
+**A full local run is no longer the nine-red of 2026-08-19 morning.** GD and Dompdf are on this machine now (`HrOnboardingDocumentPdfTest` 13/13). Two Windows-only rows remain (path separators in a stack trace, localhost TLS). The deploy gate does **not** run here — `scripts/deploy.sh` pipes `git archive main` to `/opt/ezbizi-test` on the box. A green local run is still the weaker signal.
 
 Run the full suite with `php -d memory_limit=1G vendor/bin/phpunit`. Plain `php artisan test` dies with a 128M exhaustion partway through — the parent's `-d` does not reach the processes it spawns.
 
@@ -108,8 +108,7 @@ Set for this machine's user on 2026-08-17. A new shell picks it up; an already-o
 restarting. Verify with `php -r 'var_dump(openssl_pkey_new([]) !== false);'`.
 
 A sqlite `:memory:` run is still not the gate (StartUp.md §8). This machine now has MySQL;
-use `php artisan test` with no sqlite overrides. GD and Dompdf remain missing, so a handful
-of image/PDF tests will still fail here and pass on the sandbox.
+use `php artisan test` with no sqlite overrides. GD and Dompdf are present as of 2026-08-19.
 
 ## Permissions model
 
@@ -124,7 +123,7 @@ Only those two paths are writable by the web server. Nothing else needs to be.
 
 ## Working on it
 
-Local is the source of truth (plan §11). Edit in `H:\EzBizi`, deploy to the server.
+Local is the source of truth (plan §11). Edit in `H:\Development\EzBizi`, deploy to the server.
 
 ```bash
 # on the server
