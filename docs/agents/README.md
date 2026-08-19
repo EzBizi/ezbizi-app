@@ -96,7 +96,7 @@ and nothing is owed, do not stop and wait for the next one. Go back to whatever
 task you were on and keep going. The other agent will interrupt you if they need
 to; that is what the watcher is for.
 
-**The three-no-reply check.** A quiet inbox is not always empty of a wait. If
+**The three-no-reply check.** Counts only outgoing mail marked `action` or `answer` — an `fyi` is owed nothing, so waiting on one is not a wait. It cried no-reply over the deploy notice on 19 Aug before that was fixed. A quiet inbox is not always empty of a wait. If
 your outgoing message is still in `inbox/` and the other agent has sent nothing
 back, each session-start and each 5-minute doorbell tick is a no-reply check.
 On the **third** consecutive check the hook wakes you: something may be amiss,

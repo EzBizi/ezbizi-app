@@ -56,7 +56,11 @@ def listed():
         if to in (ME, "?"):
             incoming.append(name)
             incoming_rows.append((name, sender, needs, subject))
-        if sender == ME and to == OTHER:
+        # Only mail that asked for something counts as a wait. An outgoing
+        # `fyi` is owed nothing, so counting it made the stall check cry
+        # "no reply" over a message that never wanted one — which it did on
+        # 19 Aug over the deploy notice.
+        if sender == ME and to == OTHER and needs in ("action", "answer"):
             outgoing.append(name)
     return incoming_rows, incoming, outgoing
 
