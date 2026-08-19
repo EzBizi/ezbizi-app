@@ -185,7 +185,7 @@ base UI, so they are recorded here rather than fixed piecemeal.
   are granted per role the way inboxes are, not as a permission per inspection. A bound
   `scheduled_for` freezes as rendered text in the franchise timezone, so correcting a timezone
   later cannot rewrite an old report. All four automation triggers raised.
-  **On `main`, not deployed** — production has no Inspection tab. Named-org demo
+  **Deployed 2026-08-19** (release `20260819130615`). Named-org demo
   seed is `inspection:seed-demo {organization}` and refuses a database whose name
   does not contain `testing`. Plan `docs/superpowers/plans/2026-08-18-inspection.md`.
 

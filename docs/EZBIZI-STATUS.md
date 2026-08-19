@@ -17,10 +17,10 @@ rather than for trying harder.
 | Server panel | https://srv.ezbizi.com (Webmin) |
 | Stack | Laravel 13 · PHP 8.4 · MySQL 8 · Flutter web client |
 <!-- numbers:start -->
-| Tests | 1386 backend · 665 client. Both gated on deploy: nothing ships if either is red. |
+| Tests | 1438 backend · 678 client. Both gated on deploy: nothing ships if either is red. |
 | Client version | `v0.0.0031` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
-| Production data | **1 organization(s) · 4 companies · 13 franchises · 2 users · 0 customers · 0 jobs.** Counted 2026-08-18 against the live database by `scripts/status-numbers.sh`, not typed. |
-| Permissions in production | **42 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
+| Production data | **1 organization(s) · 4 companies · 13 franchises · 2 users · 0 customers · 0 jobs.** Counted 2026-08-19 against the live database by `scripts/status-numbers.sh`, not typed. |
+| Permissions in production | **47 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
 <!-- numbers:end -->
 
 ## Build phases (§18 of the build plan)
@@ -31,7 +31,7 @@ rather than for trying harder.
 | 1 — decision records | Captured as docblocks in the code rather than separate pages. Deliberate: a decision written beside the code it constrains is read; one in a folder is not. |
 | 2 — foundation + vertical slice | Done. Organizations → Companies → Franchises → Users, Customers → Jobs. |
 | 3 — cross-cutting | **Done.** Automation engine, notifications, staff control plane, subscription enforcement, import/export. |
-| 4 — expansion | **Dashboards done** — a widget registry with per-user layouts, so a new number is a class rather than a client release. A1 Tools modules next, one at a time. **Inspection is built and on `main` — not deployed.** Builder publishes written-once versions; Generated Reports are frozen, searchable and archivable; New Inspection is a personal draft that submits to a report. Named inspections are granted per role the way inboxes are. Spec `docs/superpowers/specs/2026-08-18-inspection-design.md`, plan `docs/superpowers/plans/2026-08-18-inspection.md`. **None of it is live**: production is still on the 18 August release, so the app on the box has no Inspection tab. |
+| 4 — expansion | **Dashboards done** — a widget registry with per-user layouts, so a new number is a class rather than a client release. A1 Tools modules next, one at a time. **Inspection is built and on `main` — not deployed.** Builder publishes written-once versions; Generated Reports are frozen, searchable and archivable; New Inspection is a personal draft that submits to a report. Named inspections are granted per role the way inboxes are. Spec `docs/superpowers/specs/2026-08-18-inspection-design.md`, plan `docs/superpowers/plans/2026-08-18-inspection.md`. **Deployed 2026-08-19** as release `20260819130615` — five tables migrated, five `inspection.*` permissions synced (47 total), health-checked as `www-data` before the symlink swap. Nobody holds those permissions yet, so the tab is granted, not visible by default. |
 
 ## Standing hazards
 
