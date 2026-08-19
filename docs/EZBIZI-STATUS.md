@@ -1,6 +1,6 @@
 # EzBizi — where things stand
 
-**2026-08-18.** One page. If something contradicts another document, this one is right —
+**2026-08-19.** One page. If something contradicts another document, this one is right —
 which only works if it is the newest, and on 6 August it was not: it claimed the off-site
 backup was still outstanding some three hours after `EZBIZI-TODO.md` recorded it closed.
 **Update this page in the same pass as the thing it describes, or delete the claim.** The four
@@ -31,7 +31,7 @@ rather than for trying harder.
 | 1 — decision records | Captured as docblocks in the code rather than separate pages. Deliberate: a decision written beside the code it constrains is read; one in a folder is not. |
 | 2 — foundation + vertical slice | Done. Organizations → Companies → Franchises → Users, Customers → Jobs. |
 | 3 — cross-cutting | **Done.** Automation engine, notifications, staff control plane, subscription enforcement, import/export. |
-| 4 — expansion | **Dashboards done** — a widget registry with per-user layouts, so a new number is a class rather than a client release. A1 Tools modules next, one at a time. **Inspection** is designed (`docs/superpowers/specs/2026-08-18-inspection-design.md`), not built. |
+| 4 — expansion | **Dashboards done** — a widget registry with per-user layouts, so a new number is a class rather than a client release. A1 Tools modules next, one at a time. **Inspection is built and on `main` — not deployed.** Builder publishes written-once versions; Generated Reports are frozen, searchable and archivable; New Inspection is a personal draft that submits to a report. Named inspections are granted per role the way inboxes are. Spec `docs/superpowers/specs/2026-08-18-inspection-design.md`, plan `docs/superpowers/plans/2026-08-18-inspection.md`. **None of it is live**: production is still on the 18 August release, so the app on the box has no Inspection tab. |
 
 ## Standing hazards
 

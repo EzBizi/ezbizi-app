@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToTenant;
 use App\Models\Concerns\HasAttachments;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Time\FranchiseWallTime;
+use Database\Factories\JobFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -28,6 +29,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class Job extends Model
 {
+    /** @use HasFactory<JobFactory> */
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;

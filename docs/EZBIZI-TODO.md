@@ -174,6 +174,21 @@ base UI, so they are recorded here rather than fixed piecemeal.
 
 ## Done
 
+- ✅ **Inspection module built** — *2026-08-19.* Companies design named inspections in Builder,
+  technicians fill them in from New Inspection, and finished work lands in Generated Reports.
+  Versions are **written once**, so publishing an edit never restyles a report already
+  submitted — pinned by a test that republishes under a different preset and reopens the old
+  report. Drafts are personal and one per person per inspection per customer/job, keyed by a
+  `scope_key` string rather than a nullable `job_id`, because MySQL allows several NULLs in a
+  unique index and two customer-only drafts would have hidden behind that. Reports are frozen
+  apart from two holes stated in the model: `archived_at`, and §9 erasure. Named inspections
+  are granted per role the way inboxes are, not as a permission per inspection. A bound
+  `scheduled_for` freezes as rendered text in the franchise timezone, so correcting a timezone
+  later cannot rewrite an old report. All four automation triggers raised.
+  **On `main`, not deployed** — production has no Inspection tab. Named-org demo
+  seed is `inspection:seed-demo {organization}` and refuses a database whose name
+  does not contain `testing`. Plan `docs/superpowers/plans/2026-08-18-inspection.md`.
+
 - ✅ **"Workflow" is now "automation", all the way down.** *2026-08-10.* The product said
   automation on screen while the tables, models, routes, permission keys and the plan's §5.5
   heading all said workflow. All four tables were empty in production, so this was the last

@@ -263,9 +263,9 @@ Smallest tab; forces freeze and version pin.
 - `app/Console/Commands/InspectionSeedDemo.php` — signature `inspection:seed-demo {organization}`
 - Both required, **AND** not OR: a named `{organization}` **and** the connected database name contains `testing` (`tests/TestCase.php` marker). `APP_ENV=testing` alone is not enough — that is a line in `.env`. Never default the org. Refuse on a database named `ezbizi`.
 
-- [ ] **Step 1:** Test: missing argument fails. Database name without `testing` refused even if `APP_ENV=testing`. Named org plus testing DB required.
-- [ ] **Step 2:** On `ezbizi_testing`, 10 customers + 10 jobs via factories.
-- [ ] **Step 3:** Commit: `Add a named-org inspection demo seed that cannot silently hit production.`
+- [x] **Step 1:** Test: missing argument fails. Database name without `testing` refused even if `APP_ENV=testing`. Named org plus testing DB required.
+- [x] **Step 2:** On `ezbizi_testing`, 10 customers + 10 jobs via factories.
+- [x] **Step 3:** Commit: `Add a named-org inspection demo seed that cannot silently hit production.`
 
 ---
 
@@ -274,8 +274,8 @@ Smallest tab; forces freeze and version pin.
 - Note Inspection as built (not deployed) on `docs/EZBIZI-STATUS.md` phase 4 when Task 8 is green.
 - Do not bump STATUS numbers by hand.
 
-- [ ] **Step 1:** Update STATUS in the same commit as the last green test, not before.
-- [ ] **Step 2:** Agent mail to Claude: what landed, file:line for migrations, no deploy.
+- [x] **Step 1:** Update STATUS in the same commit as the last green test, not before. *Done 2026-08-19 by Claude — Task 8 green (60 backend, 678 assertions) before the edit. Phase 4 row and the page date only; the generated numbers block was not touched.*
+- [x] **Step 2:** Agent mail — Claude did this task, so the mail went the other way (`0026-claude-to-grok`). No deploy.
 
 ---
 

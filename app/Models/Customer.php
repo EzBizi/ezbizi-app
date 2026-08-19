@@ -7,6 +7,7 @@ use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use App\Support\Privacy\RetentionPolicy;
+use Database\Factories\CustomerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -35,6 +36,7 @@ use Illuminate\Support\Collection;
 ])]
 class Customer extends Model implements HoldsPersonalData
 {
+    /** @use HasFactory<CustomerFactory> */
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
