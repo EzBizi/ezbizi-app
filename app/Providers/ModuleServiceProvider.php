@@ -761,8 +761,9 @@ class ModuleServiceProvider extends ServiceProvider
              * would make the field picker wrong about the other. Same cost as
              * HR — `update_field` is refused at save, in a sentence.
              *
-             * `isRaised: false` until Task 8 emits. ModuleRegistryTest holds
-             * that claim to the source.
+             * `inspection.archived` is raised when a report is hidden (Task 7).
+             * The other three stay `isRaised: false` until Task 8 emits them.
+             * ModuleRegistryTest holds that claim to the source.
              */
             new ModuleDefinition(
                 key:     'inspection',
@@ -789,7 +790,7 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Report archived',
                         description: 'A submitted inspection was hidden from the default list. '
                             .'Archive does not delete the report.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                     new TriggerDefinition(
                         key:   'inspection.discarded',

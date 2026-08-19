@@ -70,6 +70,13 @@ Future<void> _pump(WidgetTester tester, List<String> permissions) async {
           headers: {'content-type': 'application/json'},
         );
       }
+      if (request.url.path.contains('/inspections/reports')) {
+        return http.Response(
+          '{"data":[]}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
       return http.Response('{"message":"not stubbed"}', 500);
     }),
   );

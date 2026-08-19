@@ -189,14 +189,19 @@ class InspectionReport extends Model implements HoldsPersonalData
         $this->update(['archived_at' => now()]);
     }
 
+    public function unarchive(): void
+    {
+        $this->update(['archived_at' => null]);
+    }
+
     public function customer(): BelongsTo
     {
-        return $this->belongsTo(Customer::class);
+        return $this->belongsTo(Customer::class)->withTrashed();
     }
 
     public function job(): BelongsTo
     {
-        return $this->belongsTo(Job::class);
+        return $this->belongsTo(Job::class)->withTrashed();
     }
 
     public function definition(): BelongsTo
