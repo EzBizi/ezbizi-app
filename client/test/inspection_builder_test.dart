@@ -44,21 +44,73 @@ void main() {
     expect(find.byType(Dialog), findsNothing);
     expect(find.byType(AlertDialog), findsNothing);
   });
+
+  testWidgets('a published inspection is unpublished, not deleted', (tester) async {
+    await _pump(tester, size: const Size(1400, 900));
+
+    await tester.drag(
+      find.byKey(const Key('inspection-builder-fields')),
+      const Offset(0, -600),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unpublish'), findsOneWidget);
+    expect(find.text('Delete draft'), findsNothing);
+  });
+
+  testWidgets('a never-published draft can be deleted', (tester) async {
+    final methods = <String>[];
+
+    await _pump(
+      tester,
+      size: const Size(1400, 900),
+      list: _draftList,
+      onRequest: (request) {
+        methods.add('${request.method} ${request.url.path}');
+        if (request.method == 'DELETE' &&
+            request.url.path.endsWith('/inspections/insp-draft')) {
+          return http.Response('{"message":"Draft deleted."}', 200, headers: _json);
+        }
+        return null;
+      },
+    );
+
+    expect(find.text('Delete draft'), findsOneWidget);
+    expect(find.text('Unpublish'), findsNothing);
+
+    await tester.ensureVisible(find.text('Delete draft'));
+    await tester.tap(find.text('Delete draft'));
+    await tester.pumpAndSettle();
+
+    expect(
+      methods.any((m) => m == 'DELETE /api/v1/inspections/insp-draft'),
+      isTrue,
+    );
+    expect(find.text('Untitled inspection'), findsNothing);
+  });
 }
 
-Future<void> _pump(WidgetTester tester, {required Size size}) async {
+Future<void> _pump(
+  WidgetTester tester, {
+  required Size size,
+  String list = _list,
+  http.Response? Function(http.Request request)? onRequest,
+}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
   final api = ApiClient(
     client: MockClient((request) async {
+      final override = onRequest?.call(request);
+      if (override != null) return override;
+
       final path = request.url.path;
       if (path.endsWith('/inspections/catalogue')) {
         return http.Response(_catalogue, 200, headers: _json);
       }
       if (path.endsWith('/inspections')) {
-        return http.Response(_list, 200, headers: _json);
+        return http.Response(list, 200, headers: _json);
       }
       return http.Response('{"message":"not stubbed"}', 500, headers: _json);
     }),
@@ -100,6 +152,22 @@ const _list = '''
           ]
         }
       ]
+    }
+  ]
+}
+''';
+
+const _draftList = '''
+{
+  "data": [
+    {
+      "id": "insp-draft",
+      "name": "Untitled inspection",
+      "intro": null,
+      "layout_preset": "step_strip",
+      "published": false,
+      "current_version": null,
+      "screens": []
     }
   ]
 }

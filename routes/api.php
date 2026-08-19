@@ -458,7 +458,8 @@ Route::prefix('v1')
         // Named inspections: a pointer row plus written-once versions.
         // `catalogue` sits before `{inspection_definition}` so it does not bind
         // as an id. Cover upload is on the definition (create already minted
-        // one). There is no DELETE: unpublish hides it from the picker.
+        // one). DELETE is only a never-published draft; unpublish hides a
+        // published one from the picker without touching versions or reports.
         Route::get('inspections/catalogue', [InspectionDefinitionsController::class, 'catalogue']);
         Route::get('inspections/search', [InspectionRunsController::class, 'search']);
         Route::get('inspections/startable', [InspectionRunsController::class, 'startable']);
@@ -481,6 +482,7 @@ Route::prefix('v1')
         Route::post('inspections/{inspection_definition}/unpublish', [InspectionDefinitionsController::class, 'unpublish']);
         Route::get('inspections/{inspection_definition}', [InspectionDefinitionsController::class, 'show']);
         Route::patch('inspections/{inspection_definition}', [InspectionDefinitionsController::class, 'update']);
+        Route::delete('inspections/{inspection_definition}', [InspectionDefinitionsController::class, 'destroy']);
 
         // ── Email: shared team inboxes ───────────────────────────
         //

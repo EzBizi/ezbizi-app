@@ -246,6 +246,62 @@ class InspectionDefinitionsTest extends TestCase
         });
     }
 
+    public function test_a_never_published_draft_can_be_deleted(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editor($tenant);
+
+        $id = $this->signedInAs($editor)
+            ->postJson('/api/v1/inspections')
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->signedInAs($editor)
+            ->deleteJson("/api/v1/inspections/{$id}")
+            ->assertOk();
+
+        $this->inTenant($tenant['org'], function () use ($id) {
+            $this->assertNull(InspectionDefinition::query()->find($id));
+        });
+    }
+
+    public function test_a_published_inspection_cannot_be_deleted(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editor($tenant);
+
+        $id = $this->signedInAs($editor)
+            ->postJson('/api/v1/inspections')
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->signedInAs($editor)->patchJson("/api/v1/inspections/{$id}", [
+            'name' => 'Level 1',
+            'screens' => [['name' => 'One', 'fields' => [[
+                'key' => 'ok', 'label' => 'Ok', 'type' => 'text',
+            ]]]],
+        ])->assertOk();
+
+        $this->signedInAs($editor)->postJson("/api/v1/inspections/{$id}/publish")->assertOk();
+
+        $response = $this->signedInAs($editor)
+            ->deleteJson("/api/v1/inspections/{$id}")
+            ->assertStatus(422);
+
+        $this->assertStringContainsString('unpublish', strtolower($response->json('message')));
+
+        $this->signedInAs($editor)->postJson("/api/v1/inspections/{$id}/unpublish")->assertOk();
+
+        $this->signedInAs($editor)
+            ->deleteJson("/api/v1/inspections/{$id}")
+            ->assertStatus(422);
+
+        $this->inTenant($tenant['org'], function () use ($id) {
+            $this->assertNotNull(InspectionDefinition::query()->find($id));
+            $this->assertSame(1, InspectionDefinitionVersion::query()->count());
+        });
+    }
+
     private function editor(array $tenant)
     {
         return $this->userWithRole($tenant, 'Designer', [

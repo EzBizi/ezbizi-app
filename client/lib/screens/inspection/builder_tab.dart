@@ -186,6 +186,34 @@ class _BuilderTabState extends State<BuilderTab> {
     _replace(Map<String, dynamic>.from(response.data as Map));
   }
 
+  Future<void> _deleteDraft() async {
+    final current = _selected;
+    if (current == null || !_isDeletableDraft(current)) return;
+    setState(() => _busy = 'delete');
+    final response = await widget.api.delete('/inspections/${current['id']}');
+    if (!mounted) return;
+    setState(() => _busy = null);
+    if (!response.ok) {
+      setState(() => _error = response.reason);
+      return;
+    }
+    setState(() {
+      _definitions = [
+        for (final row in _definitions)
+          if (row['id'] != current['id']) row,
+      ];
+      _selectedId = _definitions.isEmpty
+          ? null
+          : _definitions.first['id'] as String?;
+      _screenIndex = 0;
+      _fieldIndex = 0;
+    });
+    _adoptControllers();
+  }
+
+  static bool _isDeletableDraft(Map<String, dynamic> row) =>
+      row['published'] != true && row['current_version'] == null;
+
   Future<void> _unpublish() async {
     final current = _selected;
     if (current == null) return;
@@ -621,6 +649,11 @@ class _BuilderTabState extends State<BuilderTab> {
               TextButton(
                 onPressed: _busy == 'unpublish' ? null : _unpublish,
                 child: const Text('Unpublish'),
+              ),
+            if (_isDeletableDraft(current))
+              TextButton(
+                onPressed: _busy == 'delete' ? null : _deleteDraft,
+                child: const Text('Delete draft'),
               ),
           ],
         ),

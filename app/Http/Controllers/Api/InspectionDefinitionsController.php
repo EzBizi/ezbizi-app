@@ -25,7 +25,8 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * PATCH writes the draft. POST publish copies that draft onto a new
  * written-once version and points the name at it. Unpublish only clears
- * published_at — versions and open runs stay where they are.
+ * published_at — versions and open runs stay where they are. DELETE is
+ * only for a draft that has never been published.
  */
 class InspectionDefinitionsController extends Controller
 {
@@ -206,6 +207,43 @@ class InspectionDefinitionsController extends Controller
                 detailed: true,
             ),
         ]);
+    }
+
+    /**
+     * A never-published draft. Once a version exists, unpublish is the way
+     * off the picker — deleting would take reports and in-progress work.
+     */
+    public function destroy(InspectionDefinition $inspectionDefinition): JsonResponse
+    {
+        $this->authorize('delete', $inspectionDefinition);
+
+        if ($inspectionDefinition->published_at !== null
+            || $inspectionDefinition->current_version_id !== null
+            || $inspectionDefinition->versions()->exists()
+            || $inspectionDefinition->runs()->exists()
+            || $inspectionDefinition->reports()->exists()) {
+            return response()->json([
+                'message' => 'This inspection has been published. Unpublish it to take it off the picker — deleting it would take the history of reports and in-progress work with it.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        DB::transaction(function () use ($inspectionDefinition) {
+            $cover = $inspectionDefinition->cover_path;
+            $disk = $inspectionDefinition->cover_disk;
+
+            $this->audit->log('inspection.deleted', $inspectionDefinition, metadata: [
+                'name' => $inspectionDefinition->name,
+            ]);
+
+            $inspectionDefinition->grants()->delete();
+            $inspectionDefinition->delete();
+
+            if ($cover) {
+                $this->files->delete($cover, $disk);
+            }
+        });
+
+        return response()->json(['message' => 'Draft deleted.']);
     }
 
     public function storeCover(Request $request, InspectionDefinition $inspectionDefinition): JsonResponse

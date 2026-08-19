@@ -41,6 +41,19 @@ class InspectionDefinitionPolicy
         return $this->mayDesign($user);
     }
 
+    /**
+     * Removing a never-published draft. Once a version exists, unpublish is
+     * the retirement — delete would take history with it.
+     */
+    public function delete(User $user, InspectionDefinition $definition): Response
+    {
+        if ($definition->organization_id !== $user->organization_id) {
+            return Response::deny('That inspection belongs to another organization.');
+        }
+
+        return $this->mayDesign($user);
+    }
+
     private function mayDesign(User $user): Response
     {
         if (! $user->hasPermission('inspection.edit')) {
