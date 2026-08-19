@@ -1,0 +1,344 @@
+import 'package:flutter/material.dart';
+
+import '../../core/api_client.dart';
+import '../../core/money.dart';
+import '../../core/session.dart';
+import '../../widgets/error_note.dart';
+import '../../widgets/refused.dart';
+import '../../widgets/side_panel.dart';
+import '../../widgets/tag.dart';
+
+/// One job, opened from the list.
+///
+/// Franchise and customer do not move: that would rewrite two histories.
+/// Status, date, description, duration and price do. Delete is here too.
+class JobDetailPanel extends StatefulWidget {
+  const JobDetailPanel({
+    super.key,
+    required this.api,
+    required this.session,
+    required this.id,
+  });
+
+  final ApiClient api;
+  final Session session;
+  final String id;
+
+  @override
+  State<JobDetailPanel> createState() => _JobDetailPanelState();
+}
+
+class _JobDetailPanelState extends State<JobDetailPanel> {
+  final _title = TextEditingController();
+  final _description = TextEditingController();
+  final _scheduled = TextEditingController();
+  final _duration = TextEditingController();
+  final _amount = TextEditingController();
+
+  Map<String, dynamic>? _row;
+  List<String> _statuses = const [];
+  String _status = 'scheduled';
+  bool _loading = true;
+  bool _busy = false;
+  String? _error;
+
+  Me get _me => widget.session.me!;
+
+  String? get _editRefusal => _me.refusal('jobs.edit', 'change a job');
+  String? get _deleteRefusal => _me.refusal('jobs.delete', 'delete a job');
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _description.dispose();
+    _scheduled.dispose();
+    _duration.dispose();
+    _amount.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    final response = await widget.api.get('/jobs/${widget.id}');
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _loading = false;
+        _error = response.message;
+      });
+      return;
+    }
+
+    final row = Map<String, dynamic>.from(response.data as Map);
+    _fill(row);
+
+    setState(() {
+      _row = row;
+      _loading = false;
+    });
+  }
+
+  void _fill(Map<String, dynamic> row) {
+    _title.text = row['title'] as String? ?? '';
+    _description.text = row['description'] as String? ?? '';
+    _scheduled.text = _wallClock(row['scheduled_for'] as String?);
+    final duration = row['duration_minutes'];
+    _duration.text = duration == null ? '' : '$duration';
+
+    final amount = row['amount'] as Map<String, dynamic>?;
+    final display = amount?['display'];
+    _amount.text = display == null ? '' : '$display';
+
+    final allowed = (row['allowed_statuses'] as List?)
+            ?.map((s) => s.toString())
+            .toList() ??
+        const <String>[];
+    _statuses = allowed.isEmpty
+        ? [row['status'] as String? ?? 'scheduled']
+        : allowed;
+    _status = row['status'] as String? ?? _statuses.first;
+    if (!_statuses.contains(_status)) {
+      _statuses = [_status, ..._statuses];
+    }
+  }
+
+  Future<void> _save() async {
+    final int? cents;
+    try {
+      cents = parseAmountMinor(_amount.text);
+    } on FormatException catch (e) {
+      setState(() => _error = e.message);
+      return;
+    }
+
+    final durationText = _duration.text.trim();
+    final int? minutes;
+    if (durationText.isEmpty) {
+      minutes = null;
+    } else {
+      minutes = int.tryParse(durationText);
+      if (minutes == null || minutes < 1) {
+        setState(() {
+          _error = 'Duration is minutes as a whole number, or leave it empty.';
+        });
+        return;
+      }
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    final scheduled = _scheduled.text.trim();
+
+    final response = await widget.api.patch('/jobs/${widget.id}', {
+      'title': _title.text.trim(),
+      'status': _status,
+      'description': _description.text.trim().isEmpty
+          ? null
+          : _description.text.trim(),
+      'scheduled_for': scheduled.isEmpty ? null : scheduled,
+      'duration_minutes': minutes,
+      'amount_minor': ?cents,
+    });
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _busy = false;
+        _error = _firstError(response);
+      });
+      return;
+    }
+
+    Navigator.of(context).pop(true);
+  }
+
+  Future<void> _delete() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    final response = await widget.api.delete('/jobs/${widget.id}');
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _busy = false;
+        _error = _firstError(response);
+      });
+      return;
+    }
+
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final row = _row;
+    final customer = row?['customer'] as Map<String, dynamic>?;
+    final franchise = row?['franchise'] as Map<String, dynamic>?;
+    final editable = _editRefusal == null && !_busy && !_loading;
+
+    return SidePanel(
+      title: row == null ? 'Job' : row['title'] as String,
+      subtitle: row == null
+          ? null
+          : [
+              row['number'],
+              customer?['name'],
+              franchise?['name'],
+            ].where((s) => s != null && '$s'.isNotEmpty).join(' · '),
+      width: 520,
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        Refused(
+          reason: _editRefusal,
+          child: FilledButton(
+            onPressed: editable ? _save : null,
+            child: const Text('Save'),
+          ),
+        ),
+      ],
+      child: _loading
+          ? const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (row != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        Tag(row['status'] as String),
+                        if (customer?['owned_by_this_franchise'] == false)
+                          const Tag('Shared customer', warn: true),
+                      ],
+                    ),
+                  ),
+                TextField(
+                  controller: _title,
+                  decoration: const InputDecoration(labelText: 'What is the job'),
+                  enabled: editable,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _statuses.contains(_status) ? _status : null,
+                  decoration: const InputDecoration(labelText: 'Status'),
+                  items: _statuses
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: editable
+                      ? (v) => setState(() => _status = v ?? _status)
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _scheduled,
+                  decoration: const InputDecoration(
+                    labelText: 'Scheduled for',
+                    helperText:
+                        'Wall time at this place — 2026-03-08 09:00. '
+                        'Empty means not dated yet.',
+                    helperMaxLines: 3,
+                  ),
+                  enabled: editable,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _duration,
+                  decoration: const InputDecoration(
+                    labelText: 'Duration',
+                    helperText: 'Minutes. Optional.',
+                  ),
+                  keyboardType: TextInputType.number,
+                  enabled: editable,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _amount,
+                  decoration: InputDecoration(
+                    labelText: 'Price',
+                    helperText:
+                        'In dollars. Stored as whole cents so it cannot drift.',
+                    helperMaxLines: 2,
+                    suffixText: (row?['amount'] as Map?)?['currency'] as String?,
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  enabled: editable,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _description,
+                  decoration: const InputDecoration(labelText: 'Notes'),
+                  minLines: 2,
+                  maxLines: 6,
+                  enabled: editable,
+                ),
+                const SizedBox(height: 20),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Refused(
+                    reason: _deleteRefusal,
+                    child: OutlinedButton(
+                      onPressed: (_deleteRefusal == null && !_busy && !_loading)
+                          ? _delete
+                          : null,
+                      child: const Text('Delete'),
+                    ),
+                  ),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 14),
+                  ErrorNote(_error!),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+/// ISO from the API (`2026-03-08T09:00:00-05:00`) as the wall clock a person
+/// typed. The franchise timezone is already baked into the stored value.
+String _wallClock(String? stamp) {
+  if (stamp == null || stamp.isEmpty) return '';
+
+  return stamp.replaceFirst('T', ' ').split(RegExp(r'[Z+-]')).first.trim();
+}
+
+String _firstError(ApiResponse response) {
+  final errors = response.body['errors'];
+
+  if (errors is Map && errors.isNotEmpty) {
+    final first = errors.values.first;
+    if (first is List && first.isNotEmpty) return first.first.toString();
+  }
+
+  return response.message;
+}

@@ -8,6 +8,7 @@ import '../widgets/franchise_field.dart';
 import '../widgets/refused.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tag.dart';
+import 'customers/customer_detail_panel.dart';
 
 /// Customers (plan §5.2).
 ///
@@ -289,6 +290,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        onTap: () => _open(customer),
         title: Row(
           children: [
             Flexible(
@@ -373,6 +375,19 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
     if (mounted) _load();
   }
+
+  Future<void> _open(Map<String, dynamic> customer) async {
+    final changed = await showSidePanel<bool>(
+      context,
+      builder: (_) => CustomerDetailPanel(
+        api: widget.api,
+        session: widget.session,
+        id: customer['id'] as String,
+      ),
+    );
+
+    if (changed == true && mounted) _load();
+  }
 }
 
 class _NewCustomerPanel extends StatefulWidget {
@@ -389,6 +404,11 @@ class _NewCustomerPanelState extends State<_NewCustomerPanel> {
   final _name = TextEditingController();
   final _phone = TextEditingController();
   final _email = TextEditingController();
+  final _line1 = TextEditingController();
+  final _line2 = TextEditingController();
+  final _city = TextEditingController();
+  final _state = TextEditingController();
+  final _postal = TextEditingController();
 
   String? _franchiseId;
   bool _busy = false;
@@ -408,6 +428,11 @@ class _NewCustomerPanelState extends State<_NewCustomerPanel> {
     _name.dispose();
     _phone.dispose();
     _email.dispose();
+    _line1.dispose();
+    _line2.dispose();
+    _city.dispose();
+    _state.dispose();
+    _postal.dispose();
     super.dispose();
   }
 
@@ -422,6 +447,12 @@ class _NewCustomerPanelState extends State<_NewCustomerPanel> {
       'name': _name.text.trim(),
       if (_phone.text.trim().isNotEmpty) 'phone': _phone.text.trim(),
       if (_email.text.trim().isNotEmpty) 'email': _email.text.trim(),
+      if (_line1.text.trim().isNotEmpty) 'address_line1': _line1.text.trim(),
+      if (_line2.text.trim().isNotEmpty) 'address_line2': _line2.text.trim(),
+      if (_city.text.trim().isNotEmpty) 'city': _city.text.trim(),
+      if (_state.text.trim().isNotEmpty)
+        'state': _state.text.trim().toUpperCase(),
+      if (_postal.text.trim().isNotEmpty) 'postal_code': _postal.text.trim(),
     });
 
     if (!mounted) return;
@@ -498,6 +529,50 @@ class _NewCustomerPanelState extends State<_NewCustomerPanel> {
             decoration: const InputDecoration(labelText: 'Email'),
             keyboardType: TextInputType.emailAddress,
             enabled: !_busy,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _line1,
+            decoration: const InputDecoration(labelText: 'Street address'),
+            enabled: !_busy,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _line2,
+            decoration: const InputDecoration(
+              labelText: 'Apartment, suite, etc.',
+            ),
+            enabled: !_busy,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _city,
+            decoration: const InputDecoration(labelText: 'City'),
+            enabled: !_busy,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _state,
+                  decoration: const InputDecoration(
+                    labelText: 'State',
+                    helperText: 'Two letters.',
+                  ),
+                  textCapitalization: TextCapitalization.characters,
+                  enabled: !_busy,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _postal,
+                  decoration: const InputDecoration(labelText: 'ZIP'),
+                  enabled: !_busy,
+                ),
+              ),
+            ],
           ),
           if (_error != null) ...[
             const SizedBox(height: 14),

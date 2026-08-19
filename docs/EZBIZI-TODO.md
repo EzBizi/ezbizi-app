@@ -137,7 +137,7 @@ because §16's dispositions are what stop a settled question being re-litigated.
 
 | # | Question | Why it is parked |
 |---|---|---|
-| 20 | **Is a scheduled job an instant or a local wall time?** | **Decided 2026-08-18: wall time** in the franchise timezone. An instant moves on DST. Jobs screens stay parked; the column meaning still changes so later UI cannot store the wrong thing. |
+| 20 | **Is a scheduled job an instant or a local wall time?** | **Decided 2026-08-18: wall time** in the franchise timezone. An instant moves on DST. Screens landed 2026-08-19 and write that wall clock. |
 | 21 | **Does a deactivated franchise's history stay in roll-ups?** | **Decided 2026-08-18: yes.** They may re-activate. History stays. |
 | 26 | **Can a contract field say that a date IS an expiry?** | **Decided 2026-08-18: yes.** Fourth boolean on `FieldDefinition` (`is_expiry`), default false. Older JSON without the key is not an expiry. |
 | 27 | **Is leaving a dated event?** | **Decided 2026-08-18: yes.** `employment_events`, not `users.is_active` alone, and not `audit_events`. History begins at the migration — do not invent `left` dates from `updated_at`. |
@@ -162,8 +162,8 @@ base UI, so they are recorded here rather than fixed piecemeal.
 
 | Module | What is wrong |
 |---|---|
-| **Customers** | A row is a dead end — no detail, edit, deactivate, delete or reassign-owner control, though the API supports all five. The `Inactive` tag the list draws cannot be produced by any user action. Address fields are not on the create form at all, so no customer has an address. |
-| **Jobs** | Screens still parked (no open/edit/delete/filters). `scheduled_for` is **wall time** in the franchise timezone (TODO #20, 2026-08-18). A failed customer search reads as "no such customer". |
+| **Customers** | ✅ **Screens finished 2026-08-19.** A row opens a panel: edit (including address), deactivate / reactivate, delete, and reassign-owner as its own audited step. Create asks for an address. `Inactive` is produced by Deactivate. |
+| **Jobs** | ✅ **Screens finished 2026-08-19.** A row opens a panel: edit status / date / notes / price / duration, delete. The list searches number, title and customer, and can filter by status. `scheduled_for` is wall time (TODO #20). A failed customer search says the request failed rather than reading as "no such customer". |
 | **Automations** | Read-back, edit, rollback ("Put this one back"), failed-run reason and condition trace exist. Empty condition rows are refused on save (client and API). Stale text after deleting a condition was already fixed by keyed controllers. "is one of" splits on commas. |
 
 - ✅ **Login no longer skips the authenticator org** — *2026-08-18.* Closed TODO #8.
@@ -173,6 +173,8 @@ base UI, so they are recorded here rather than fixed piecemeal.
 - Workspace DWD and SES SMTP are the same kind of leftover: **TODO #28 and #1**, steps on this page under Mail console work.
 
 ## Done
+
+- ✅ **Customers and Jobs screens finished** — *2026-08-19.* A customer row is no longer a dead end (detail, address, deactivate, delete, reassign-owner). A job can be opened, edited, deleted, searched and filtered. A failed customer search in the job form says the request failed.
 
 - ✅ **Inspection module built** — *2026-08-19.* Companies design named inspections in Builder,
   technicians fill them in from New Inspection, and finished work lands in Generated Reports.

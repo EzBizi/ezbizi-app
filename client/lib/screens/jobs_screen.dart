@@ -10,6 +10,7 @@ import '../widgets/franchise_field.dart';
 import '../widgets/refused.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tag.dart';
+import 'jobs/job_detail_panel.dart';
 
 /// Jobs (plan §5.2).
 ///
@@ -34,9 +35,13 @@ class JobsScreen extends StatefulWidget {
 }
 
 class _JobsScreenState extends State<JobsScreen> {
+  final _search = TextEditingController();
+
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _jobs = [];
+  List<String> _statuses = const [];
+  String? _status;
   int _total = 0;
   // Page one only, until asked. The header used to claim a total the list did
   // not render, with no next-page control and nothing saying records were
@@ -69,7 +74,39 @@ class _JobsScreenState extends State<JobsScreen> {
   @override
   void initState() {
     super.initState();
+    _loadStatuses();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadStatuses() async {
+    final organizationId = widget.session.me!.organization.id;
+    final settings = await widget.api.get('/settings', {
+      'scope_type': 'organization',
+      'scope_id': organizationId,
+    });
+
+    if (!mounted || !settings.ok) return;
+
+    final all = settings.data;
+    final rows = (all is List)
+        ? all
+              .cast<Map<String, dynamic>>()
+              .where((s) => s['key'] == 'jobs.statuses')
+              .toList()
+        : const <Map<String, dynamic>>[];
+    final resolved = rows.isEmpty ? null : rows.first['value'];
+
+    if (resolved is List && resolved.isNotEmpty) {
+      setState(() {
+        _statuses = resolved.map((s) => s.toString()).toList();
+      });
+    }
   }
 
   Future<void> _load({int page = 1}) async {
@@ -90,7 +127,11 @@ class _JobsScreenState extends State<JobsScreen> {
       _pageError = null;
     });
 
-    final response = await widget.api.get('/jobs', {'page': '$page'});
+    final response = await widget.api.get('/jobs', {
+      'page': '$page',
+      if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
+      'status': ?_status,
+    });
 
     // Superseded while this was in flight — a newer load owns the screen now,
     // and applying this answer would undo it.
@@ -180,13 +221,60 @@ class _JobsScreenState extends State<JobsScreen> {
             ],
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                width: 320,
+                child: TextField(
+                  controller: _search,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search),
+                    hintText: 'Job number, title or customer',
+                    suffixIcon: _search.text.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.clear),
+                            tooltip: 'Clear the search',
+                            onPressed: () {
+                              _search.clear();
+                              _load();
+                            },
+                          ),
+                  ),
+                  onSubmitted: (_) => _load(),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              if (_statuses.isNotEmpty)
+                DropdownMenu<String?>(
+                  initialSelection: _status,
+                  label: const Text('Status'),
+                  dropdownMenuEntries: [
+                    const DropdownMenuEntry(value: null, label: 'Any status'),
+                    ..._statuses.map(
+                      (s) => DropdownMenuEntry(value: s, label: s),
+                    ),
+                  ],
+                  onSelected: (value) {
+                    setState(() => _status = value);
+                    _load();
+                  },
+                ),
+            ],
+          ),
+        ),
         Expanded(
           child: AsyncBody(
             loading: _loading,
             error: _error,
             onRetry: _load,
             child: _jobs.isEmpty
-                ? const Center(child: Text('No jobs yet.'))
+                ? Center(child: Text(_emptyCopy()))
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                     itemCount: _jobs.length + (_page < _lastPage ? 1 : 0),
@@ -232,6 +320,7 @@ class _JobsScreenState extends State<JobsScreen> {
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        onTap: () => _open(job),
         title: Row(
           children: [
             Flexible(
@@ -278,6 +367,33 @@ class _JobsScreenState extends State<JobsScreen> {
 
     if (created == true && mounted) _load();
   }
+
+  Future<void> _open(Map<String, dynamic> job) async {
+    final changed = await showSidePanel<bool>(
+      context,
+      builder: (_) => JobDetailPanel(
+        api: widget.api,
+        session: widget.session,
+        id: job['id'] as String,
+      ),
+    );
+
+    if (changed == true && mounted) _load();
+  }
+
+  String _emptyCopy() {
+    final term = _search.text.trim();
+
+    if (term.isEmpty && _status == null) {
+      return 'No jobs yet.';
+    }
+
+    if (RegExp(r'^[A-Za-z][A-Za-z0-9]*-\d+(?:-\d+)?$').hasMatch(term)) {
+      return 'Job not found.';
+    }
+
+    return 'Nothing matches "$term".';
+  }
 }
 
 class _NewJobPanel extends StatefulWidget {
@@ -293,6 +409,8 @@ class _NewJobPanel extends StatefulWidget {
 class _NewJobPanelState extends State<_NewJobPanel> {
   final _title = TextEditingController();
   final _amount = TextEditingController();
+  final _description = TextEditingController();
+  final _scheduled = TextEditingController();
 
   String? _franchiseId;
   String? _customerId;
@@ -304,6 +422,7 @@ class _NewJobPanelState extends State<_NewJobPanel> {
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  String? _customerSearchError;
 
   @override
   void initState() {
@@ -319,6 +438,8 @@ class _NewJobPanelState extends State<_NewJobPanel> {
   void dispose() {
     _title.dispose();
     _amount.dispose();
+    _description.dispose();
+    _scheduled.dispose();
     super.dispose();
   }
 
@@ -396,11 +517,16 @@ class _NewJobPanelState extends State<_NewJobPanel> {
       return;
     }
 
+    final scheduled = _scheduled.text.trim();
+
     final response = await widget.api.post('/jobs', {
       'franchise_id': _franchiseId,
       'customer_id': _customerId,
       'title': _title.text.trim(),
       'status': _status,
+      if (_description.text.trim().isNotEmpty)
+        'description': _description.text.trim(),
+      if (scheduled.isNotEmpty) 'scheduled_for': scheduled,
       // Minor units, always — money never travels as a float (§7). Null here
       // means the field was left empty, which is a job booked before anyone
       // quoted it; an amount that could not be read never reaches this line.
@@ -479,14 +605,31 @@ class _NewJobPanelState extends State<_NewJobPanel> {
                   displayStringForOption: (c) =>
                       '${c['name']} · ${c['number']}',
                   optionsBuilder: (value) async {
-                    if (value.text.trim().isEmpty) return _customers.take(50);
+                    if (value.text.trim().isEmpty) {
+                      if (_customerSearchError != null && mounted) {
+                        setState(() => _customerSearchError = null);
+                      }
+                      return _customers.take(50);
+                    }
 
                     final response = await widget.api.get('/customers', {
                       'search': value.text.trim(),
                       'per_page': '50',
                     });
 
-                    if (!response.ok) return const <Map<String, dynamic>>[];
+                    if (!response.ok) {
+                      if (mounted) {
+                        setState(() {
+                          _customerSearchError =
+                              'Could not search customers: ${response.message}';
+                        });
+                      }
+                      return const <Map<String, dynamic>>[];
+                    }
+
+                    if (_customerSearchError != null && mounted) {
+                      setState(() => _customerSearchError = null);
+                    }
 
                     return List<Map<String, dynamic>>.from(
                       response.data as List,
@@ -551,10 +694,27 @@ class _NewJobPanelState extends State<_NewJobPanel> {
                   ),
                 ),
                 const SizedBox(height: 14),
+                if (_customerSearchError != null) ...[
+                  const SizedBox(height: 8),
+                  ErrorNote(_customerSearchError!),
+                ],
+                const SizedBox(height: 14),
                 TextField(
                   controller: _title,
                   decoration: const InputDecoration(
                     labelText: 'What is the job',
+                  ),
+                  enabled: !_busy,
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _scheduled,
+                  decoration: const InputDecoration(
+                    labelText: 'Scheduled for',
+                    helperText:
+                        'Wall time at this place — 2026-03-08 09:00. '
+                        'Empty means not dated yet.',
+                    helperMaxLines: 3,
                   ),
                   enabled: !_busy,
                 ),
@@ -585,6 +745,14 @@ class _NewJobPanelState extends State<_NewJobPanel> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
+                  enabled: !_busy,
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _description,
+                  decoration: const InputDecoration(labelText: 'Notes'),
+                  minLines: 2,
+                  maxLines: 5,
                   enabled: !_busy,
                 ),
                 if (_error != null) ...[
