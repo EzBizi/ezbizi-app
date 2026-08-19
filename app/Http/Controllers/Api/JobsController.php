@@ -64,6 +64,19 @@ class JobsController extends Controller
             ->when($request->query('franchise_id'), fn ($q, $id) => $q->where('franchise_id', $id))
             ->when($request->query('customer_id'), fn ($q, $id) => $q->where('customer_id', $id))
             ->when($request->query('status'), fn ($q, $s) => $q->where('status', $s))
+            ->when(filled($request->query('search')), function ($q) use ($request) {
+                $term = trim((string) $request->query('search'));
+                $like = '%'.$term.'%';
+
+                $q->where(function ($inner) use ($like) {
+                    $inner->where('title', 'like', $like)
+                        ->orWhere('number', 'like', $like)
+                        ->orWhereHas('customer', function ($customers) use ($like) {
+                            $customers->where('name', 'like', $like)
+                                ->orWhere('number', 'like', $like);
+                        });
+                });
+            })
             // COALESCE, not scheduled_for alone. MySQL sorts NULLs last under
             // DESC, and a job created without a date has a null one — so a user
             // who had just created one watched it fail to appear.
