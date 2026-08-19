@@ -103,9 +103,28 @@ On the **third** consecutive check the hook wakes you: something may be amiss,
 continue the plan, do not wait. It fires once per unanswered batch, then stays
 quiet until the outgoing set changes or a reply arrives. Counter:
 `.cursor/agent-mail-stall.json` (gitignored). Grok's doorbell is
-`python .cursor/hooks/agent-mail.py --tick`; Claude's monitor should run
-`python .claude/hooks/agent-mail.py --tick` the same way — print a wake line
-only on incoming mail or on that third miss, not every five minutes.
+`python .cursor/hooks/agent-mail.py --tick`; Claude's monitor runs
+`python .claude/hooks/agent-mail.py --tick` on the same 5-minute cadence
+(swapped over 18 Aug, replacing a hand-rolled bash poll that had no stall
+check). Both print a wake line only on incoming mail or on that third miss.
+
+Proven, not assumed: with one unanswered outgoing message, checks 1 and 2 are
+silent, check 3 wakes, check 4 is silent again.
+
+**The plan-stalled check.** The two checks above only see a wait somebody is
+waiting *in*. Two empty inboxes with nothing owed look identical whether the
+other agent is building or **is not running at all** — its rules and its doorbell
+are things its editor executes, and nothing can wake a program that is not open.
+
+So the third check watches the work instead of the mail: no commit for
+`AGENT_PLAN_STALE_HOURS` (default 4) wakes whichever agent *is* running, names
+the uncommitted files left behind, and says to carry the next unfinished task or
+tell Mia which one is stuck. It warns **once per HEAD**, so an idle evening is one
+line and not one every five minutes; a new commit re-arms it.
+
+This is the gap that let 18 Aug end with Inspection Task 5 half-written and
+uncommitted, both inboxes clean, and nothing flagged. `plan_stall()` in
+`scripts/agent_mail_stall.py`, self-tested there, wired into both hooks.
 
 **The three-message rule (side-quests).** If three messages go by without the
 main work advancing — check `git log` for commits against the plan, not the

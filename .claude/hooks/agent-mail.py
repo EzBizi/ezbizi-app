@@ -22,7 +22,12 @@ ME = "claude"
 OTHER = "grok"
 
 sys.path.insert(0, str(ROOT / "scripts"))
-from agent_mail_stall import STALL_AFTER, note  # noqa: E402
+from agent_mail_stall import (  # noqa: E402
+    STALL_AFTER,
+    git_facts,
+    note,
+    plan_stall,
+)
 
 
 def field(text, name):
@@ -80,6 +85,22 @@ def stall_context(waiting_on, noreply):
     )
 
 
+def plan_context(idle):
+    wip = idle["wip"]
+    left = (
+        "Uncommitted work is sitting in the tree: " + ", ".join(wip[:6]) + ". "
+        if wip
+        else "Nothing is uncommitted, so it stopped between tasks. "
+    )
+    return (
+        f"No commit for {idle['age_hours']} hours (HEAD {idle['head']}). {left}"
+        f"{OTHER.title()} may not be running — nothing can wake an agent that is "
+        "not open. Check the plan for the next unfinished task and either carry it "
+        "yourself or tell Mia which one is stuck and why. Do not wait for mail; "
+        "an empty inbox is not a signal here."
+    )
+
+
 def emit_session(context, system=""):
     payload = {
         "hookSpecificOutput": {
@@ -124,6 +145,23 @@ def main():
             emit_tick(context)
         else:
             emit_session(context, system="No reply in 3 inbox checks — continue the plan")
+        return
+
+    # Both inboxes empty and nothing owed looks the same whether the other agent
+    # is building or is not running at all. This is the only check that sees it.
+    import time
+
+    sha, epoch, wip = git_facts(ROOT)
+    idle = plan_stall(ME, sha, epoch, wip, STATE, now=time.time())
+    if idle["warn"]:
+        context = plan_context(idle)
+        if tick:
+            emit_tick(context)
+        else:
+            emit_session(
+                context,
+                system=f"No commit in {idle['age_hours']}h — the plan may have stalled",
+            )
 
 
 if __name__ == "__main__":
