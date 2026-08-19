@@ -470,9 +470,18 @@ class RoleInboxesApiTest extends TestCase
 
         $registry = app(ModuleRegistry::class);
 
-        // Composing the inboxes in must not have changed what the tree IS. Every
-        // module the registry declares, in its order, with its actions.
-        $this->assertSame(array_keys($registry->all()), array_column($body, 'key'));
+        // Composing the inboxes in must not have changed what the tree IS.
+        // Order follows the sidebar, and modules that are not a grantable
+        // surface (Users) stay out of the editor.
+        $shown = array_values(array_filter(
+            $registry->all(),
+            fn (ModuleDefinition $module) => $module->rolesGroup !== ModuleDefinition::ROLES_OMIT,
+        ));
+
+        $this->assertEqualsCanonicalizing(
+            array_map(fn (ModuleDefinition $m) => $m->key, $shown),
+            array_column($body, 'key'),
+        );
 
         foreach ($body as $module) {
             $definition = $registry->get($module['key']);
