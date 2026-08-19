@@ -8,7 +8,6 @@ import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
 import '../widgets/refused.dart';
 import '../widgets/side_panel.dart';
-import '../widgets/tag.dart';
 
 /// The organization's roles, and what each of them may do (plan §4).
 ///
@@ -360,17 +359,15 @@ class _RolesScreenState extends State<RolesScreen> {
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
                     children: [
-                      for (final role in _roles)
-                        _RoleCard(
-                          role: role,
-                          moduleCount: _reachableTabs(role),
-                          onOpen: () => _open(role),
-                          // The server's own answer for this role and this
-                          // person, from the policy that will be asked again
-                          // when the delete lands. The built-in administrator
-                          // fails it however senior the person looking at it.
-                          onDelete: role.mayDelete ? () => _delete(role) : null,
-                        ),
+                      for (final role in _builtIn)
+                        _card(role),
+                      if (_builtIn.isNotEmpty && _composed.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        const Divider(height: 1),
+                        const SizedBox(height: 8),
+                      ],
+                      for (final role in _composed)
+                        _card(role),
                     ],
                   ),
           ),
@@ -378,6 +375,24 @@ class _RolesScreenState extends State<RolesScreen> {
       ),
     );
   }
+
+  /// The built-in administrator first, then the ones this organization wrote.
+  ///
+  /// Decided from [RoleSummary.editable], never from the name. An organization
+  /// is free to create a role called "Administrators"; matching the word would
+  /// pin the wrong row.
+  List<RoleSummary> get _builtIn =>
+      _roles.where((role) => !role.editable).toList();
+
+  List<RoleSummary> get _composed =>
+      _roles.where((role) => role.editable).toList();
+
+  Widget _card(RoleSummary role) => _RoleCard(
+    role: role,
+    moduleCount: _reachableTabs(role),
+    onOpen: () => _open(role),
+    onDelete: role.mayDelete ? () => _delete(role) : null,
+  );
 
   /// How many tabs this role can actually open — the number somebody reading
   /// the list wants, rather than a count of permission keys that means nothing
@@ -428,19 +443,9 @@ class _RoleCard extends StatelessWidget {
     return Card(
       child: ListTile(
         onTap: onOpen,
-        title: Row(
-          children: [
-            Flexible(
-              child: Text(
-                role.name,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-            // Said on the row, not only inside. Somebody scanning the list for
-            // the role they cannot change should not have to open it to find
-            // out which one it is.
-            if (!role.editable) const Tag('Built in'),
-          ],
+        title: Text(
+          role.name,
+          style: Theme.of(context).textTheme.titleMedium,
         ),
         subtitle: Text(
           '${_people(role.userCount)} · '

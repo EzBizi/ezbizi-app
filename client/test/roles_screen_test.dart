@@ -155,7 +155,7 @@ void main() {
     // Not hidden. Somebody looking for it and not finding it assumes the app is
     // broken, and it is the role most people come to this screen to check.
     expect(find.text('Administrator'), findsOneWidget);
-    expect(find.text('Built in'), findsOneWidget);
+    expect(find.text('Built in'), findsNothing);
 
     await tester.tap(find.text('View'));
     await tester.pumpAndSettle();
@@ -181,6 +181,38 @@ void main() {
     );
 
     expect(patched, isFalse);
+  });
+
+  testWidgets('the built-in administrator sits above a divider, first', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpRoles(
+      tester,
+      roles: [
+        _role('r-2', 'Accounting', permissions: const []),
+        _role(
+          'r-1',
+          'Administrator',
+          permissions: const ['customers.view'],
+          editable: false,
+          users: 2,
+        ),
+        _role('r-3', 'Dispatcher', permissions: const ['jobs.view']),
+      ],
+    );
+
+    expect(find.text('Built in'), findsNothing);
+
+    final admin = tester.getTopLeft(find.text('Administrator'));
+    final accounting = tester.getTopLeft(find.text('Accounting'));
+    final dispatcher = tester.getTopLeft(find.text('Dispatcher'));
+    final divider = tester.getTopLeft(find.byType(Divider).first);
+
+    expect(admin.dy, lessThan(divider.dy));
+    expect(divider.dy, lessThan(accounting.dy));
+    expect(accounting.dy, lessThan(dispatcher.dy));
   });
 
   /// §13. A module the platform has switched off is SHOWN — greyed, dead, and
