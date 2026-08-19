@@ -4,6 +4,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/dashboard_card.dart';
 import '../widgets/tab_bar_like.dart';
+import 'inspection/builder_tab.dart';
 
 /// Inspection — New Inspection, Generated Reports, Builder.
 ///
@@ -53,7 +54,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
         (
           'Builder',
           Icons.dashboard_customize_outlined,
-          () => const _BuilderTab(),
+          () => BuilderTab(api: widget.api, session: widget.session),
         ),
     ];
   }
@@ -106,21 +107,6 @@ class _GeneratedReportsTab extends StatelessWidget {
       padding: EdgeInsets.all(DashboardCard.padding),
       child: DashboardNote(
         'Finished inspections show here. None have been submitted yet.',
-      ),
-    );
-  }
-}
-
-class _BuilderTab extends StatelessWidget {
-  const _BuilderTab();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.all(DashboardCard.padding),
-      child: DashboardNote(
-        'No named inspections yet. Create one to decide the steps, the look, '
-        'and what has to be photographed.',
       ),
     );
   }

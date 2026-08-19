@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Inspection\LayoutPreset;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -38,6 +39,7 @@ class InspectionDefinition extends Model implements StatesRetention
 
     protected $fillable = [
         'organization_id', 'name', 'intro', 'cover_path', 'cover_disk',
+        'layout_preset', 'screens',
         'current_version_id', 'published_at', 'created_by',
     ];
 
@@ -45,7 +47,16 @@ class InspectionDefinition extends Model implements StatesRetention
     {
         return [
             'published_at' => 'datetime',
+            'screens' => 'array',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $definition) {
+            $definition->layout_preset ??= LayoutPreset::DEFAULT;
+            $definition->screens ??= [];
+        });
     }
 
     public function versions(): HasMany

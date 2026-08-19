@@ -41,4 +41,18 @@ final class BindableFields
             ...array_map(fn (string $c) => "job.{$c}", self::JOB),
         ];
     }
+
+    /** @return list<array{key: string, label: string}> */
+    public static function catalogue(): array
+    {
+        return array_map(function (string $key) {
+            [$source, $column] = explode('.', $key, 2);
+            $who = $source === 'customer' ? 'Client' : 'Job';
+
+            return [
+                'key' => $key,
+                'label' => $who.' '.str_replace('_', ' ', $column),
+            ];
+        }, self::keys());
+    }
 }

@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\HrDashboardController;
 use App\Http\Controllers\Api\HrInvitationsController;
 use App\Http\Controllers\Api\HrOnboardingsController;
 use App\Http\Controllers\Api\HrPeopleController;
+use App\Http\Controllers\Api\InspectionDefinitionsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\MailboxesController;
@@ -449,6 +450,22 @@ Route::prefix('v1')
         // it from nothing: a role the organization has not granted the tab to is
         // refused here in a sentence, like everywhere else.
         Route::get('marketing/newsletter', [MarketingController::class, 'newsletter']);
+
+        // ── Inspection Builder ───────────────────────────────────
+        //
+        // Named inspections: a pointer row plus written-once versions.
+        // `catalogue` sits before `{inspection_definition}` so it does not bind
+        // as an id. Cover upload is on the definition (create already minted
+        // one). There is no DELETE: unpublish hides it from the picker.
+        Route::get('inspections/catalogue', [InspectionDefinitionsController::class, 'catalogue']);
+        Route::get('inspections', [InspectionDefinitionsController::class, 'index']);
+        Route::post('inspections', [InspectionDefinitionsController::class, 'store']);
+        Route::post('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'storeCover']);
+        Route::get('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'showCover']);
+        Route::post('inspections/{inspection_definition}/publish', [InspectionDefinitionsController::class, 'publish']);
+        Route::post('inspections/{inspection_definition}/unpublish', [InspectionDefinitionsController::class, 'unpublish']);
+        Route::get('inspections/{inspection_definition}', [InspectionDefinitionsController::class, 'show']);
+        Route::patch('inspections/{inspection_definition}', [InspectionDefinitionsController::class, 'update']);
 
         // ── Email: shared team inboxes ───────────────────────────
         //
