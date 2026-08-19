@@ -59,8 +59,8 @@ class InboxOption {
 
   factory InboxOption.fromJson(Map<String, dynamic> json) => InboxOption(
     id: json['id'].toString(),
-    address: json['address'] as String? ?? '',
-    label: json['label'] as String?,
+    address: json['address'] as String? ?? json['name'] as String? ?? '',
+    label: json['label'] as String? ?? json['name'] as String?,
     grantable: json['grantable'] != false,
   );
 }
@@ -68,13 +68,22 @@ class InboxOption {
 /// Which modules take inboxes, and which inboxes this organization has.
 @immutable
 class InboxCatalogue {
-  const InboxCatalogue(this._byModule);
+  const InboxCatalogue(this._byModule, [this._kind = const {}]);
 
   static const InboxCatalogue none = InboxCatalogue(
     <String, List<InboxOption>>{},
   );
 
   final Map<String, List<InboxOption>> _byModule;
+  final Map<String, String> _kind;
+
+  /// `inboxes` or `inspections` — which JSON key this module nested.
+  String? kindFor(String moduleKey) => _kind[moduleKey];
+
+  bool hasKind(String kind) => _kind.values.contains(kind);
+
+  Iterable<String> moduleKeysOf(String kind) =>
+      _kind.entries.where((e) => e.value == kind).map((e) => e.key);
 
   /// Does this module take inboxes at all?
   ///
@@ -127,22 +136,26 @@ class InboxCatalogue {
     if (list is! List) return none;
 
     final byModule = <String, List<InboxOption>>{};
+    final kind = <String, String>{};
 
     for (final module in list.whereType<Map<String, dynamic>>()) {
-      final inboxes = module['inboxes'];
-
-      // Present-and-empty means "this module takes inboxes and there are none".
-      // Absent means the module has nothing to do with mail. Only the first gets
-      // an entry here.
-      if (inboxes is! List) continue;
-
-      byModule[module['key'].toString()] = inboxes
-          .whereType<Map<String, dynamic>>()
-          .map(InboxOption.fromJson)
-          .toList(growable: false);
+      final key = module['key'].toString();
+      if (module['inboxes'] is List) {
+        kind[key] = 'inboxes';
+        byModule[key] = (module['inboxes'] as List)
+            .whereType<Map<String, dynamic>>()
+            .map(InboxOption.fromJson)
+            .toList(growable: false);
+      } else if (module['inspections'] is List) {
+        kind[key] = 'inspections';
+        byModule[key] = (module['inspections'] as List)
+            .whereType<Map<String, dynamic>>()
+            .map(InboxOption.fromJson)
+            .toList(growable: false);
+      }
     }
 
-    return InboxCatalogue(byModule);
+    return InboxCatalogue(byModule, kind);
   }
 }
 
@@ -157,11 +170,14 @@ Map<String, Set<String>> inboxHoldingsFrom(dynamic data) {
   if (data is! List) return holdings;
 
   for (final role in data.whereType<Map<String, dynamic>>()) {
-    final inboxes = role['inboxes'];
-
-    holdings[role['id'].toString()] = inboxes is List
-        ? inboxes.map((id) => id.toString()).toSet()
-        : <String>{};
+    final nested = <String>{};
+    if (role['inboxes'] is List) {
+      nested.addAll((role['inboxes'] as List).map((id) => id.toString()));
+    }
+    if (role['inspections'] is List) {
+      nested.addAll((role['inspections'] as List).map((id) => id.toString()));
+    }
+    holdings[role['id'].toString()] = nested;
   }
 
   return holdings;

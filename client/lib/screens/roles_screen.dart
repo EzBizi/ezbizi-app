@@ -242,8 +242,8 @@ class _RolesScreenState extends State<RolesScreen> {
         catalogue: _catalogue,
         inboxes: _inboxes,
         heldInboxes: _held[role.id] ?? const {},
-        onSave: (name, permissions, inboxes) =>
-            _save(role, name, permissions, inboxes),
+        onSave: (name, permissions, inboxes, inspections) =>
+            _save(role, name, permissions, inboxes, inspections),
       ),
     );
 
@@ -258,18 +258,13 @@ class _RolesScreenState extends State<RolesScreen> {
     String name,
     Set<String> permissions,
     Set<String>? inboxes,
+    Set<String>? inspections,
   ) async {
     final response = await widget.api.patch('/roles/${role.id}', {
       'name': name,
-      // Sorted so two saves of the same set produce the same request, which is
-      // what makes an audit diff readable.
       'permissions': permissions.toList()..sort(),
-
-      // Omitted entirely when this catalogue has no inboxes in it — absent means
-      // "leave them alone" and an empty list means "this role should hold none",
-      // and sending the second about controls that were never drawn is how an
-      // editor revokes access nobody chose to revoke.
       if (inboxes != null) 'inboxes': inboxes.toList()..sort(),
+      if (inspections != null) 'inspections': inspections.toList()..sort(),
     });
 
     // Nothing is spliced from the answer here, unlike the settings screen. The
@@ -480,6 +475,7 @@ class _RoleEditor extends StatefulWidget {
     String name,
     Set<String> permissions,
     Set<String>? inboxes,
+    Set<String>? inspections,
   )
   onSave;
 
@@ -531,9 +527,18 @@ class _RoleEditorState extends State<_RoleEditor> {
   /// absent field as "leave these alone" and an empty list as "this role should
   /// hold none" — and this editor has no business making the second statement
   /// about controls it never drew.
-  Set<String>? get _inboxPayload => widget.inboxes.isEmpty
-      ? null
-      : _inboxes.where(widget.inboxes.mayGrant).toSet();
+  Set<String>? _payloadFor(String kind) {
+    if (!widget.inboxes.hasKind(kind)) return null;
+    final ids = <String>{};
+    for (final key in widget.inboxes.moduleKeysOf(kind)) {
+      for (final item in widget.inboxes.under(key)) {
+        if (_inboxes.contains(item.id) && widget.inboxes.mayGrant(item.id)) {
+          ids.add(item.id);
+        }
+      }
+    }
+    return ids;
+  }
 
   @override
   void dispose() {
@@ -763,7 +768,12 @@ class _RoleEditorState extends State<_RoleEditor> {
       _error = null;
     });
 
-    final failure = await widget.onSave(name, _payload, _inboxPayload);
+    final failure = await widget.onSave(
+      name,
+      _payload,
+      _payloadFor('inboxes'),
+      _payloadFor('inspections'),
+    );
 
     if (!mounted) return;
 
@@ -997,17 +1007,22 @@ class _RoleEditorState extends State<_RoleEditor> {
 
     if (all.isEmpty) {
       return Text(
-        'No inboxes connected yet.',
+        widget.inboxes.kindFor(module.key) == 'inspections'
+            ? 'No named inspections yet.'
+            : 'No inboxes connected yet.',
         style: theme.textTheme.bodySmall,
       );
     }
 
     final held = _inboxesUnder(module.key).length;
+    final noun = widget.inboxes.kindFor(module.key) == 'inspections'
+        ? 'inspections'
+        : 'inboxes';
 
     return Text(
       held == 0
-          ? 'No inboxes granted, of ${all.length}. The tab on its own opens none.'
-          : '$held of ${all.length} inboxes granted.',
+          ? 'No $noun granted, of ${all.length}. The tab on its own opens none.'
+          : '$held of ${all.length} $noun granted.',
       style: theme.textTheme.bodySmall,
     );
   }
@@ -1021,28 +1036,30 @@ class _RoleEditorState extends State<_RoleEditor> {
   }) {
     if (!widget.inboxes.nests(module.key)) return const [];
 
-    final inboxes = widget.inboxes.under(module.key);
+    final nested = widget.inboxes.under(module.key);
+    final inspections = widget.inboxes.kindFor(module.key) == 'inspections';
 
     return [
       const Divider(height: 20),
       Padding(
         padding: const EdgeInsets.only(bottom: 4),
         child: Text(
-          'Inboxes',
+          inspections ? 'Named inspections' : 'Inboxes',
           style: theme.textTheme.labelLarge?.copyWith(color: muted),
         ),
       ),
 
-      // An organization with no mail connected gets a sentence, never an empty
-      // nested list. The two look identical to somebody who does not already
-      // know the answer, and one of them looks like a bug.
-      if (inboxes.isEmpty)
+      if (nested.isEmpty)
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: Text(
-            'This organization has not connected any shared inboxes yet. They '
-            'appear here as soon as somebody does, and can be granted one at a '
-            'time.',
+            inspections
+                ? 'This organization has not created any named inspections yet. '
+                    'They appear here as soon as somebody does, and can be '
+                    'granted one at a time.'
+                : 'This organization has not connected any shared inboxes yet. They '
+                    'appear here as soon as somebody does, and can be granted one at a '
+                    'time.',
             style: theme.textTheme.bodySmall,
           ),
         )
@@ -1050,12 +1067,15 @@ class _RoleEditorState extends State<_RoleEditor> {
         Padding(
           padding: const EdgeInsets.only(bottom: 4),
           child: Text(
-            'Opening the tab and reading an inbox are separate grants. Tick each '
-            'inbox this role may open.',
+            inspections
+                ? 'Opening the tab and starting a named inspection are separate '
+                    'grants. Tick each inspection this role may start.'
+                : 'Opening the tab and reading an inbox are separate grants. Tick each '
+                    'inbox this role may open.',
             style: theme.textTheme.bodySmall,
           ),
         ),
-        for (final inbox in inboxes)
+        for (final inbox in nested)
           CheckboxListTile(
             key: ValueKey('inbox:${inbox.id}'),
             dense: true,

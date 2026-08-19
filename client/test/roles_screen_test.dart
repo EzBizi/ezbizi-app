@@ -670,6 +670,49 @@ void main() {
       );
     });
 
+    testWidgets('named inspections nest under Inspection, not under Customers', (
+      tester,
+    ) async {
+      _wide(tester);
+
+      Map<String, dynamic>? sent;
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-2', 'Manager', permissions: const [])],
+        catalogue: [
+          _catalogueModule('customers', 'Customers'),
+          _catalogueModule(
+            'inspection',
+            'Inspection',
+            actions: const [('view', 'View'), ('create', 'Create')],
+            inspections: [
+              {'id': 'def-1', 'name': 'Level 1', 'grantable': true},
+            ],
+          ),
+        ],
+        onPatch: (body) => sent = body,
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Inspection'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Named inspections'), findsOneWidget);
+      expect(find.text('Level 1'), findsOneWidget);
+
+      await tester.tap(_tabCheckbox('inspection'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('inbox:def-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(sent!['inspections'], ['def-1']);
+      expect(sent!.containsKey('inboxes'), isFalse);
+    });
+
     /// R7: the tree is already dense and this adds a level to it.
     testWidgets('it fits a 375px screen', (tester) async {
       tester.view.physicalSize = const Size(375, 800);
@@ -928,6 +971,7 @@ Map<String, dynamic> _catalogueModule(
   /// different statement: it takes inboxes and this organization has connected
   /// none.
   List<Map<String, dynamic>>? inboxes,
+  List<Map<String, dynamic>>? inspections,
 }) => {
   'key': key,
   'label': label,
@@ -943,6 +987,7 @@ Map<String, dynamic> _catalogueModule(
       },
   ],
   'inboxes': ?inboxes,
+  'inspections': ?inspections,
 };
 
 /// An administrator, holding the whole catalogue as a LIST rather than a

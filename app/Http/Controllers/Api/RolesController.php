@@ -6,6 +6,7 @@ use App\Models\Invitation;
 use App\Models\Role;
 use App\Support\Access\InboxAccess;
 use App\Support\Audit\AuditLogger;
+use App\Support\Inspection\InspectionGrantAccess;
 use App\Support\Modules\PermissionCatalogue;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -48,13 +49,10 @@ use Illuminate\Validation\ValidationException;
  * ── A role holds two kinds of thing, and only one is a key ───────
  *
  * `permissions` is what the software can do, declared in code, identical for
- * every tenant. `inboxes` is which of THIS organization's shared mailboxes a
- * role may open — tenant records, unknown to the software until somebody
- * connects one, and therefore not permission keys. InboxAccess argues that at
- * length; what matters here is that the two travel as separate fields and obey
- * the same rules, so a caller sending one, the other, or neither gets consistent
- * behaviour: absent means leave it alone, present means this is the complete
- * set within the window of what the caller may grant.
+ * every tenant. `inboxes` and `inspections` are which of THIS organization's
+ * mailboxes or named inspections a role may use — tenant records, not permission
+ * keys. Absent means leave them alone; present means this is the complete set
+ * within the window of what the caller may grant.
  */
 class RolesController extends Controller
 {
@@ -62,6 +60,7 @@ class RolesController extends Controller
         private readonly AuditLogger $audit,
         private readonly PermissionCatalogue $catalogue,
         private readonly InboxAccess $inboxes,
+        private readonly InspectionGrantAccess $inspections,
     ) {}
 
     /**
@@ -84,6 +83,7 @@ class RolesController extends Controller
         // screen that gets slower as an organization gets more careful about
         // access.
         $inboxes = $this->inboxes->heldByRoles($roles);
+        $inspections = $this->inspections->heldByRoles($roles);
 
         return response()->json([
             'data' => $roles->map(fn (Role $role) => [
@@ -107,6 +107,7 @@ class RolesController extends Controller
                 // draw beside them come from the catalogue, once, rather than
                 // being repeated on every role.
                 'inboxes' => $inboxes[$role->id] ?? [],
+                'inspections' => $inspections[$role->id] ?? [],
 
                 'may_edit'   => $user->can('update', $role),
                 'may_delete' => $user->can('delete', $role),
@@ -141,8 +142,11 @@ class RolesController extends Controller
         $actor = $request->user();
 
         return response()->json([
-            'modules' => $this->inboxes->compose(
-                $this->catalogue->grantableTreeFor($actor),
+            'modules' => $this->inspections->compose(
+                $this->inboxes->compose(
+                    $this->catalogue->grantableTreeFor($actor),
+                    $actor,
+                ),
                 $actor,
             ),
         ]);
@@ -158,11 +162,13 @@ class RolesController extends Controller
 
         $requested = $input['permissions'] ?? [];
         $inboxes   = $input['inboxes'] ?? [];
+        $inspections = $input['inspections'] ?? [];
 
         $this->catalogue->assertGrantable($actor, $requested);
         $this->inboxes->assertGrantable($actor, $inboxes);
+        $this->inspections->assertGrantable($actor, $inspections);
 
-        $role = DB::transaction(function () use ($input, $requested, $inboxes, $actor) {
+        $role = DB::transaction(function () use ($input, $requested, $inboxes, $inspections, $actor) {
             $role = Role::create([
                 'organization_id' => $actor->organization_id,
                 'name'            => trim($input['name']),
@@ -176,16 +182,13 @@ class RolesController extends Controller
             // the tab and an inbox under it in one request is the ordinary case.
             $this->inboxes->assertReachable($role, $inboxes);
             $mail = $this->inboxes->sync($role, $inboxes);
+            $this->inspections->assertReachable($role, $inspections);
+            $offered = $this->inspections->sync($role, $inspections);
 
-            // One entry, with the permissions in it. A "role created" line
-            // followed by nothing about what it can do is the entry somebody
-            // reads six months later and learns nothing from.
             $this->audit->log('role.created', $role, metadata: [
                 'permissions' => $changed['added'],
-                // In addresses, not ids — see InboxAccess::sync. An id in an
-                // audit entry is a fact nobody can read, and it stops resolving
-                // to anything the day the inbox is disconnected.
                 'inboxes' => $mail['added'],
+                'inspections' => $offered['added'],
             ]);
 
             return $role;
@@ -236,36 +239,39 @@ class RolesController extends Controller
                 }
             }
 
-            if (! array_key_exists('inboxes', $input)) {
-                return;
+            if (array_key_exists('inboxes', $input)) {
+                $this->inboxes->assertGrantable($actor, $input['inboxes']);
+
+                $wanted = [
+                    ...$input['inboxes'],
+                    ...$this->inboxes->preservedFor($role, $actor),
+                ];
+
+                $this->inboxes->assertReachable($role, $wanted);
+
+                $mail = $this->inboxes->sync($role, $wanted);
+
+                if ($mail['added'] !== [] || $mail['removed'] !== []) {
+                    $this->audit->log('role.inboxes_changed', $role, changes: $mail);
+                }
             }
 
-            $this->inboxes->assertGrantable($actor, $input['inboxes']);
+            if (array_key_exists('inspections', $input)) {
+                $this->inspections->assertGrantable($actor, $input['inspections']);
 
-            $wanted = [
-                ...$input['inboxes'],
-                // The same window as the permissions above: an inbox this person
-                // cannot open was never a live control in their editor, so
-                // leaving it out is not a decision to revoke it.
-                ...$this->inboxes->preservedFor($role, $actor),
-            ];
+                $wantedInspections = [
+                    ...$input['inspections'],
+                    ...$this->inspections->preservedFor($role, $actor),
+                ];
 
-            // Asked of the role as this request will leave it — the permissions
-            // block above has already run, so ticking Email and an inbox under
-            // it in one save goes through and an inbox on its own does not.
-            $this->inboxes->assertReachable($role, $wanted);
+                $this->inspections->assertReachable($role, $wantedInspections);
 
-            $mail = $this->inboxes->sync($role, $wanted);
+                $offered = $this->inspections->sync($role, $wantedInspections);
 
-            if ($mail['added'] === [] && $mail['removed'] === []) {
-                return;
+                if ($offered['added'] !== [] || $offered['removed'] !== []) {
+                    $this->audit->log('role.inspections_changed', $role, changes: $offered);
+                }
             }
-
-            // Its own action, beside the permission one rather than folded into
-            // it. Reaching a tab and reaching somebody's mail are different
-            // sizes of decision, and an audit log that spells the second as a
-            // permission key nobody recognises buries the one that matters.
-            $this->audit->log('role.inboxes_changed', $role, changes: $mail);
         });
 
         return response()->json(['data' => $this->present($role->fresh())]);
@@ -353,6 +359,7 @@ class RolesController extends Controller
                 // somebody's inbox. Addresses rather than ids, for the reason
                 // InboxAccess::sync gives: an id here resolves to nothing.
                 'inboxes' => $this->inboxes->addressesHeldBy($role),
+                'inspections' => $this->inspections->namesHeldBy($role),
             ]);
 
             $role->permissions()->detach();
@@ -396,6 +403,8 @@ class RolesController extends Controller
             // refusal can say something useful.
             'inboxes'   => ['sometimes', 'array'],
             'inboxes.*' => ['string', 'max:64'],
+            'inspections'   => ['sometimes', 'array'],
+            'inspections.*' => ['string', 'max:64'],
         ]);
     }
 
@@ -407,6 +416,7 @@ class RolesController extends Controller
             'is_administrator' => $role->isAdministrator(),
             'permissions'      => $role->permissionKeys(),
             'inboxes'          => $this->inboxes->heldBy($role),
+            'inspections'      => $this->inspections->heldBy($role),
         ];
     }
 }
