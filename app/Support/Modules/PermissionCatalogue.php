@@ -224,13 +224,25 @@ class PermissionCatalogue
     {
         $held = $this->heldBy($user);
 
-        return array_values(array_map(function (ModuleDefinition $module) use ($user, $held) {
-            $available = $this->availability->isAvailable($module->key, $user->organization);
+        $modules = [];
 
-            return [
+        foreach ($this->registry->all() as $module) {
+            if ($module->rolesGroup === ModuleDefinition::ROLES_OMIT) {
+                continue;
+            }
+
+            $available = $this->availability->isAvailable($module->key, $user->organization);
+            $group = ModuleDefinition::rolesGroupMeta($module->rolesGroup);
+
+            $modules[] = [
                 'key'       => $module->key,
                 'label'     => $module->label,
                 'available' => $available,
+                'group'     => $group ?? [
+                    'key'   => ModuleDefinition::ROLES_TAB,
+                    'label' => $module->label,
+                    'hint'  => null,
+                ],
                 'actions'   => array_map(fn (string $action) => [
                     'key'       => "{$module->key}.{$action}",
                     'action'    => $action,
@@ -238,7 +250,27 @@ class PermissionCatalogue
                     'grantable' => in_array("{$module->key}.{$action}", $held, true),
                 ], $module->actions),
             ];
-        }, $this->registry->all()));
+        }
+
+        usort($modules, function (array $a, array $b) {
+            $rank = static fn (array $m) => match ($m['group']['key']) {
+                ModuleDefinition::ROLES_TAB => 0,
+                ModuleDefinition::ROLES_ORGANIZATION => 1,
+                ModuleDefinition::ROLES_SETTINGS => 2,
+                default => 3,
+            };
+
+            $cmp = $rank($a) <=> $rank($b);
+            if ($cmp !== 0) {
+                return $cmp;
+            }
+
+            // Tabs keep registry order (the sidebar). Nested grants keep
+            // the order they were declared in, which usort is stable for.
+            return 0;
+        });
+
+        return array_values($modules);
     }
 
     /**

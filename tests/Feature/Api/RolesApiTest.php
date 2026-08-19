@@ -6,6 +6,7 @@ use App\Models\AuditEvent;
 use App\Models\PlatformModuleFlag;
 use App\Models\Role;
 use App\Support\Modules\ModuleAvailability;
+use App\Support\Modules\ModuleDefinition;
 use App\Support\Modules\ModuleRegistry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -74,12 +75,15 @@ class RolesApiTest extends TestCase
 
         $registry = app(ModuleRegistry::class);
 
-        // Asserted against the registry itself, never a retyped list: a module
-        // that declares a new action must appear here with no edit anywhere,
-        // and a test carrying its own copy of the answer cannot show that.
-        $this->assertSame(
-            array_keys($registry->all()),
+        $shown = array_values(array_filter(
+            $registry->all(),
+            fn (ModuleDefinition $module) => $module->rolesGroup !== ModuleDefinition::ROLES_OMIT,
+        ));
+
+        $this->assertEqualsCanonicalizing(
+            array_map(fn (ModuleDefinition $m) => $m->key, $shown),
             array_column($body, 'key'),
+            'Every grantable module is listed — omitted ones are not a tab.',
         );
 
         foreach ($body as $module) {
@@ -89,6 +93,50 @@ class RolesApiTest extends TestCase
             $this->assertSame($definition->actions, array_column($module['actions'], 'action'));
             $this->assertSame($definition->permissionKeys(), array_column($module['actions'], 'key'));
         }
+    }
+
+    public function test_the_catalogue_follows_the_sidebar_then_organization_then_settings(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $keys = array_column(
+            $this->signedInAs($alpha['admin'])
+                ->getJson('/api/v1/roles/catalogue')->assertOk()->json('modules'),
+            'key',
+        );
+
+        $this->assertSame('dashboard', $keys[0]);
+        $this->assertContains('hr', $keys);
+        $this->assertContains('companies', $keys);
+        $this->assertNotContains(
+            'users',
+            $keys,
+            'Users is not a tab — Human Resources is. Granting users.* would look like a tab that does not exist.',
+        );
+
+        $this->assertLessThan(
+            array_search('companies', $keys, true),
+            array_search('automations', $keys, true),
+            'Work tabs come first, then Organization grants.',
+        );
+        $this->assertLessThan(
+            array_search('roles', $keys, true),
+            array_search('companies', $keys, true),
+            'Organization grants come before Settings grants.',
+        );
+
+        $groups = array_column(
+            $this->signedInAs($alpha['admin'])
+                ->getJson('/api/v1/roles/catalogue')->json('modules'),
+            'group',
+            'key',
+        );
+
+        $this->assertSame('tab', $groups['customers']['key']);
+        $this->assertSame('organization', $groups['companies']['key']);
+        $this->assertSame('Organization', $groups['franchises']['label']);
+        $this->assertSame('settings', $groups['roles']['key']);
+        $this->assertStringContainsString('no Companies', $groups['companies']['hint']);
     }
 
     public function test_every_module_declares_a_view_action(): void

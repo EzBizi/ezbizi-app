@@ -27,6 +27,21 @@ final class ModuleDefinition
     /** The default CRUD set. Stored per-action even though the UI shows one toggle (§4). */
     public const DEFAULT_ACTIONS = ['view', 'create', 'edit', 'delete'];
 
+    /**
+     * Where this module appears in the roles editor, which must match the
+     * sidebar a person actually sees.
+     *
+     * `tab` is a work destination in the rail. `organization` and `settings`
+     * are the two pinned screens at the bottom — there is no Companies tab,
+     * so those grants live under Organization. `omit` is declared for
+     * automations and is not a grantable surface of its own (Human Resources
+     * replaced the Users tab).
+     */
+    public const ROLES_TAB = 'tab';
+    public const ROLES_ORGANIZATION = 'organization';
+    public const ROLES_SETTINGS = 'settings';
+    public const ROLES_OMIT = 'omit';
+
     public function __construct(
         public readonly string $key,
         public readonly string $label,
@@ -60,6 +75,11 @@ final class ModuleDefinition
          * class.
          */
         public readonly ?AutomationSubject $subject = null,
+        /**
+         * Which face of the app this grant belongs to. Default is a sidebar
+         * tab of its own. See ROLES_* above.
+         */
+        public readonly string $rolesGroup = self::ROLES_TAB,
     ) {
         if ($key === '' || ! preg_match('/^[a-z][a-z0-9_]*$/', $key)) {
             throw new InvalidArgumentException(
@@ -69,6 +89,17 @@ final class ModuleDefinition
 
         if ($actions === []) {
             throw new InvalidArgumentException("Module '{$key}' declares no actions.");
+        }
+
+        if (! in_array($this->rolesGroup, [
+            self::ROLES_TAB,
+            self::ROLES_ORGANIZATION,
+            self::ROLES_SETTINGS,
+            self::ROLES_OMIT,
+        ], true)) {
+            throw new InvalidArgumentException(
+                "Module '{$key}' has unknown rolesGroup '{$this->rolesGroup}'."
+            );
         }
 
         /*
@@ -211,5 +242,28 @@ final class ModuleDefinition
         return $this->automationExemptBecause !== null
             || $this->triggers !== []
             || $this->automationActions !== [];
+    }
+
+    /**
+     * Words the roles editor uses for a group heading.
+     *
+     * @return array{key: string, label: string, hint: ?string}|null
+     */
+    public static function rolesGroupMeta(string $group): ?array
+    {
+        return match ($group) {
+            self::ROLES_TAB => null,
+            self::ROLES_ORGANIZATION => [
+                'key' => self::ROLES_ORGANIZATION,
+                'label' => 'Organization',
+                'hint' => 'The Organization screen at the bottom of the sidebar. There is no Companies or Franchises tab.',
+            ],
+            self::ROLES_SETTINGS => [
+                'key' => self::ROLES_SETTINGS,
+                'label' => 'Settings',
+                'hint' => 'The Settings screen at the bottom of the sidebar.',
+            ],
+            default => null,
+        };
     }
 }

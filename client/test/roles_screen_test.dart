@@ -225,6 +225,60 @@ void main() {
     );
   });
 
+  testWidgets('grants follow the sidebar, with Organization not a fake tab', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Dispatcher', permissions: const ['dashboard.view'])],
+      catalogue: [
+        _catalogueModule('dashboard', 'Dashboard'),
+        _catalogueModule('customers', 'Customers'),
+        _catalogueModule(
+          'companies',
+          'Companies',
+          groupKey: 'organization',
+          groupLabel: 'Organization',
+          groupHint:
+              'The Organization screen at the bottom of the sidebar. '
+              'There is no Companies or Franchises tab.',
+        ),
+        _catalogueModule(
+          'franchises',
+          'Franchises',
+          groupKey: 'organization',
+          groupLabel: 'Organization',
+          groupHint:
+              'The Organization screen at the bottom of the sidebar. '
+              'There is no Companies or Franchises tab.',
+        ),
+      ],
+    );
+
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Organization'), findsWidgets);
+    expect(
+      find.textContaining('no Companies or Franchises tab'),
+      findsOneWidget,
+    );
+
+    final titles = tester
+        .widgetList<Text>(find.descendant(
+          of: find.byType(ExpansionTile),
+          matching: find.byType(Text),
+        ))
+        .map((t) => t.data)
+        .whereType<String>()
+        .toList();
+
+    expect(titles.indexOf('Dashboard'), lessThan(titles.indexOf('Customers')));
+    expect(titles.indexOf('Customers'), lessThan(titles.indexOf('Companies')));
+  });
+
   /// §4: nobody grants what they do not hold — but a role can hold what the
   /// person editing it does not.
   ///
@@ -972,11 +1026,19 @@ Map<String, dynamic> _catalogueModule(
   /// none.
   List<Map<String, dynamic>>? inboxes,
   List<Map<String, dynamic>>? inspections,
+  String groupKey = 'tab',
+  String groupLabel = '',
+  String? groupHint,
 }) => {
   'key': key,
   'label': label,
   'available': available,
   'unavailable_reason': reason,
+  'group': {
+    'key': groupKey,
+    'label': groupLabel.isEmpty ? label : groupLabel,
+    'hint': groupHint,
+  },
   'actions': [
     for (final (action, actionLabel) in actions)
       {

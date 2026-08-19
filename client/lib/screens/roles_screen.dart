@@ -383,11 +383,32 @@ class _RolesScreenState extends State<RolesScreen> {
   /// the list wants, rather than a count of permission keys that means nothing
   /// on its own.
   int _reachableTabs(RoleSummary role) => _catalogue.modules
-      .where((m) => m.viewKey != null && role.permissions.contains(m.viewKey))
+      .where(
+        (m) =>
+            m.isSidebarTab &&
+            m.viewKey != null &&
+            role.permissions.contains(m.viewKey),
+      )
       .length;
 }
 
 String _people(int count) => count == 1 ? '1 person' : '$count people';
+
+class _RoleSection {
+  const _RoleSection({
+    required this.key,
+    required this.label,
+    required this.modules,
+    this.hint,
+  });
+
+  final String key;
+  final String label;
+  final String? hint;
+  final List<PermissionModule> modules;
+
+  bool get isTab => modules.length == 1 && modules.first.isSidebarTab;
+}
 
 class _RoleCard extends StatelessWidget {
   const _RoleCard({
@@ -840,8 +861,11 @@ class _RoleEditorState extends State<_RoleEditor> {
           // dash in a checkbox is not self-explanatory and this screen has a lot
           // of them.
           Text(
-            'Ticking a tab lets this role open it. The tick fills in when every '
-            'action inside is granted and shows a dash when only some are.',
+            'Ticking a tab lets this role open it — the same tabs, in the same '
+            'order, as the sidebar. The tick fills in when every action inside '
+            'is granted and shows a dash when only some are. Organization and '
+            'Settings at the bottom of the sidebar are not tabs; the grants '
+            'under those headings are what you can do on those screens.',
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 8),
@@ -855,7 +879,21 @@ class _RoleEditorState extends State<_RoleEditor> {
               ),
             )
           else
-            for (final module in widget.catalogue.modules) _moduleTile(module),
+            for (final section in _sections(widget.catalogue.modules)) ...[
+              if (!section.isTab) ...[
+                const SizedBox(height: 16),
+                Text(
+                  section.label,
+                  style: theme.textTheme.titleSmall,
+                ),
+                if (section.hint != null) ...[
+                  const SizedBox(height: 4),
+                  Text(section.hint!, style: theme.textTheme.bodySmall),
+                ],
+                const SizedBox(height: 8),
+              ],
+              for (final module in section.modules) _moduleTile(module),
+            ],
 
           if (_error != null) ...[
             const SizedBox(height: 16),
@@ -896,6 +934,35 @@ class _RoleEditorState extends State<_RoleEditor> {
       ),
     ),
   );
+
+  /// Tabs first, in sidebar order, then Organization, then Settings.
+  List<_RoleSection> _sections(List<PermissionModule> modules) {
+    final tabs = <PermissionModule>[];
+    final nested = <String, List<PermissionModule>>{};
+
+    for (final module in modules) {
+      if (module.isSidebarTab) {
+        tabs.add(module);
+        continue;
+      }
+      (nested[module.groupKey] ??= []).add(module);
+    }
+
+    return [
+      for (final module in tabs)
+        _RoleSection(key: module.key, label: module.label, modules: [module]),
+      for (final groupKey in const ['organization', 'settings'])
+        if (nested[groupKey] case final members?)
+          _RoleSection(
+            key: groupKey,
+            label: members.first.groupLabel.isEmpty
+                ? groupKey
+                : members.first.groupLabel,
+            hint: members.first.groupHint,
+            modules: members,
+          ),
+    ];
+  }
 
   Widget _moduleTile(PermissionModule module) {
     final theme = Theme.of(context);

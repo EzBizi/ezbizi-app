@@ -128,10 +128,21 @@ class PermissionModule {
     required this.available,
     required this.actions,
     this.unavailableReason,
+    this.groupKey = 'tab',
+    this.groupLabel = '',
+    this.groupHint,
   });
 
   final String key;
   final String label;
+
+  /// Where this grant belongs on the sidebar: a work tab, Organization, or
+  /// Settings. Absent or `tab` means this module IS a tab.
+  final String groupKey;
+  final String groupLabel;
+  final String? groupHint;
+
+  bool get isSidebarTab => groupKey == 'tab';
 
   /// The platform permits it for this organization (§13). A module switched off
   /// is shown, greyed, with the reason — never hidden, because somebody looking
@@ -158,18 +169,26 @@ class PermissionModule {
     return null;
   }
 
-  factory PermissionModule.fromJson(Map<String, dynamic> json) =>
-      PermissionModule(
-        key: json['key'] as String,
-        label: json['label'] as String? ?? json['key'] as String,
-        available: json['available'] != false,
-        unavailableReason:
-            json['unavailable_reason'] as String? ?? json['reason'] as String?,
-        actions: (json['actions'] as List<dynamic>? ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map(PermissionAction.fromJson)
-            .toList(growable: false),
-      );
+  factory PermissionModule.fromJson(Map<String, dynamic> json) {
+    final group = json['group'] is Map<String, dynamic>
+        ? json['group'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+
+    return PermissionModule(
+      key: json['key'] as String,
+      label: json['label'] as String? ?? json['key'] as String,
+      available: json['available'] != false,
+      unavailableReason:
+          json['unavailable_reason'] as String? ?? json['reason'] as String?,
+      groupKey: group['key'] as String? ?? 'tab',
+      groupLabel: group['label'] as String? ?? '',
+      groupHint: group['hint'] as String?,
+      actions: (json['actions'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(PermissionAction.fromJson)
+          .toList(growable: false),
+    );
+  }
 }
 
 /// Everything a role could be granted, as the server declares it.

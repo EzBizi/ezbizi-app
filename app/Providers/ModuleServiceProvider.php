@@ -136,6 +136,7 @@ class ModuleServiceProvider extends ServiceProvider
                             .'administer this organization.',
                     ),
                 ],
+                rolesGroup: ModuleDefinition::ROLES_SETTINGS,
             ),
 
             new ModuleDefinition(
@@ -170,6 +171,7 @@ class ModuleServiceProvider extends ServiceProvider
                             .'they are.',
                     ),
                 ],
+                rolesGroup: ModuleDefinition::ROLES_ORGANIZATION,
             ),
 
             new ModuleDefinition(
@@ -205,6 +207,7 @@ class ModuleServiceProvider extends ServiceProvider
                             .'already recorded against it.',
                     ),
                 ],
+                rolesGroup: ModuleDefinition::ROLES_ORGANIZATION,
             ),
 
             new ModuleDefinition(
@@ -274,6 +277,10 @@ class ModuleServiceProvider extends ServiceProvider
                             .'and with it the records they can reach.',
                     ),
                 ],
+                // Not a tab. Human Resources is the people screen; these keys
+                // exist so automations can talk about a User. Granting them
+                // in Roles would look like a Users tab that does not exist.
+                rolesGroup: ModuleDefinition::ROLES_OMIT,
             ),
 
             new ModuleDefinition(
@@ -286,6 +293,7 @@ class ModuleServiceProvider extends ServiceProvider
                 // is audited (§2.2).
                 automationExemptBecause:
                     'Automating permission changes would let a rule escalate privileges.',
+                rolesGroup: ModuleDefinition::ROLES_SETTINGS,
             ),
 
             new ModuleDefinition(
@@ -297,6 +305,7 @@ class ModuleServiceProvider extends ServiceProvider
                 // question — there is simply no code path.
                 automationExemptBecause:
                     'The audit log is append-only; nothing may act on it programmatically.',
+                rolesGroup: ModuleDefinition::ROLES_SETTINGS,
             ),
         ];
     }
