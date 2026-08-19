@@ -1,0 +1,365 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Models\Customer;
+use App\Models\InspectionDefinition;
+use App\Models\InspectionReport;
+use App\Models\InspectionRun;
+use App\Models\Job;
+use App\Support\Audit\AuditLogger;
+use App\Support\Automations\EventEmitter;
+use App\Support\Inspection\BoundAnswers;
+use App\Support\Inspection\InspectionAccess;
+use App\Support\Inspection\LooksLikeJobNumber;
+use App\Support\Inspection\RequiredFields;
+use App\Support\Inspection\ScopeKey;
+use App\Support\Scoping\ViewScope;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\Response;
+
+/**
+ * New Inspection: search, start a personal draft, fill, submit.
+ *
+ * Drafts are personal. A second start of the same scope offers resume rather
+ * than colliding with the unique index. Submit still works after unpublish;
+ * start again does not — that is a new start.
+ */
+class InspectionRunsController extends Controller
+{
+    public function __construct(
+        private readonly InspectionAccess $access,
+        private readonly EventEmitter $events,
+        private readonly AuditLogger $audit,
+    ) {}
+
+    public function search(Request $request): JsonResponse
+    {
+        $this->authorize('create', InspectionRun::class);
+
+        $q = trim((string) $request->query('q', $request->query('search', '')));
+        if ($q === '') {
+            return response()->json(['data' => []]);
+        }
+
+        $reachable = collect(ViewScope::forUser($request->user())->franchiseIds());
+
+        if (LooksLikeJobNumber::check($q)) {
+            $jobs = Job::query()
+                ->with('customer:id,name,number')
+                ->where('number', $q)
+                ->whereIn('franchise_id', $reachable)
+                ->limit(20)
+                ->get();
+
+            if ($jobs->isEmpty()) {
+                return response()->json(['data' => [], 'message' => 'Job not found']);
+            }
+
+            return response()->json([
+                'data' => $jobs->map(fn (Job $job) => [
+                    'type' => 'job',
+                    'id' => $job->id,
+                    'label' => $job->number.($job->customer ? ' · '.$job->customer->name : ''),
+                    'customer_id' => $job->customer_id,
+                    'job_id' => $job->id,
+                    'customer_name' => $job->customer?->name,
+                    'job_number' => $job->number,
+                ])->values(),
+            ]);
+        }
+
+        $customers = Customer::query()
+            ->where('name', 'like', '%'.addcslashes($q, '%_\\').'%')
+            ->orderBy('name')
+            ->limit(20)
+            ->get();
+
+        if ($customers->isEmpty()) {
+            return response()->json(['data' => [], 'message' => 'Client not found']);
+        }
+
+        return response()->json([
+            'data' => $customers->map(fn (Customer $c) => [
+                'type' => 'customer',
+                'id' => $c->id,
+                'label' => $c->name,
+                'customer_id' => $c->id,
+                'job_id' => null,
+                'customer_name' => $c->name,
+                'job_number' => null,
+            ])->values(),
+        ]);
+    }
+
+    public function startable(Request $request): JsonResponse
+    {
+        $this->authorize('create', InspectionRun::class);
+
+        $customerId = (string) $request->query('customer_id', '');
+        $jobId = $request->query('job_id');
+        $jobId = is_string($jobId) && $jobId !== '' ? $jobId : null;
+
+        $offered = $this->access->startable($request->user());
+        $scope = $customerId !== '' ? ScopeKey::for($customerId, $jobId) : null;
+
+        $drafts = $scope === null
+            ? collect()
+            : InspectionRun::query()
+                ->where('user_id', $request->user()->id)
+                ->where('scope_key', $scope)
+                ->get()
+                ->keyBy('inspection_definition_id');
+
+        $message = $offered->isEmpty()
+            ? 'This organization has not offered any inspections to this role yet.'
+            : null;
+
+        return response()->json([
+            'data' => $offered->map(fn (InspectionDefinition $d) => [
+                'id' => $d->id,
+                'name' => $d->name,
+                'draft_id' => $drafts[$d->id]->id ?? null,
+            ])->values(),
+            'message' => $message,
+        ]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $this->authorize('create', InspectionRun::class);
+
+        $input = $request->validate([
+            'customer_id' => ['required', 'uuid'],
+            'job_id' => ['nullable', 'uuid'],
+            'inspection_definition_id' => ['required', 'uuid'],
+        ]);
+
+        $customer = $this->findLiveCustomer($input['customer_id']);
+        $job = $this->findLiveJob($input['job_id'] ?? null, $customer, $request);
+        $definition = InspectionDefinition::query()->findOrFail($input['inspection_definition_id']);
+
+        if (! $this->access->mayStart($request->user(), $definition)) {
+            throw ValidationException::withMessages([
+                'inspection_definition_id' => 'That inspection is not offered to this role, or is no longer published.',
+            ]);
+        }
+
+        abort_if($definition->current_version_id === null, 422, 'That inspection has no published version to start.');
+
+        $scope = ScopeKey::for($customer->id, $job?->id);
+
+        $existing = InspectionRun::query()
+            ->where('user_id', $request->user()->id)
+            ->where('inspection_definition_id', $definition->id)
+            ->where('scope_key', $scope)
+            ->first();
+
+        if ($existing !== null) {
+            return response()->json([
+                'data' => [
+                    'choice' => 'resume',
+                    'run' => $this->present($existing->load(['version', 'customer', 'job', 'definition'])),
+                ],
+            ], Response::HTTP_CONFLICT);
+        }
+
+        $run = $this->insertRun($request, $customer, $job, $definition, $scope);
+
+        return response()->json(['data' => $this->present($run)], Response::HTTP_CREATED);
+    }
+
+    public function show(InspectionRun $inspectionRun): JsonResponse
+    {
+        $this->authorize('view', $inspectionRun);
+
+        return response()->json([
+            'data' => $this->present($inspectionRun->load(['version', 'customer', 'job', 'definition'])),
+        ]);
+    }
+
+    public function update(Request $request, InspectionRun $inspectionRun): JsonResponse
+    {
+        $this->authorize('update', $inspectionRun);
+
+        $input = $request->validate([
+            'answers' => ['required', 'array'],
+        ]);
+
+        $inspectionRun->forceFill(['answers' => $input['answers']])->save();
+
+        return response()->json([
+            'data' => $this->present($inspectionRun->fresh()->load(['version', 'customer', 'job', 'definition'])),
+        ]);
+    }
+
+    public function restart(Request $request, InspectionRun $inspectionRun): JsonResponse
+    {
+        $this->authorize('delete', $inspectionRun);
+
+        $definition = $inspectionRun->definition;
+        if ($definition === null || ! $this->access->mayStart($request->user(), $definition)) {
+            throw ValidationException::withMessages([
+                'inspection_definition_id' => 'Start again is a new start, so it needs a published inspection this role may still run.',
+            ]);
+        }
+
+        $customer = $this->findLiveCustomer($inspectionRun->customer_id);
+        $job = $this->findLiveJob($inspectionRun->job_id, $customer, $request);
+
+        $run = DB::transaction(function () use ($request, $inspectionRun, $customer, $job, $definition) {
+            $scope = $inspectionRun->scope_key;
+            $inspectionRun->delete();
+            $this->events->emit('inspection.discarded', $inspectionRun);
+            $this->audit->log('inspection.discarded', $inspectionRun);
+
+            return $this->insertRun($request, $customer, $job, $definition, $scope);
+        });
+
+        return response()->json(['data' => $this->present($run)], Response::HTTP_CREATED);
+    }
+
+    public function submit(Request $request, InspectionRun $inspectionRun): JsonResponse
+    {
+        $this->authorize('update', $inspectionRun);
+
+        if (! $this->access->maySubmit($request->user(), $inspectionRun)) {
+            throw ValidationException::withMessages([
+                'answers' => 'Only the person who started this inspection can submit it.',
+            ]);
+        }
+
+        $inspectionRun->load(['version', 'customer', 'job', 'definition']);
+        $screens = $inspectionRun->version?->screens ?? [];
+        RequiredFields::assertFilled($screens, $inspectionRun->answers ?? []);
+
+        $answers = BoundAnswers::freeze(
+            $inspectionRun->customer,
+            $inspectionRun->job,
+            $screens,
+            $inspectionRun->answers ?? [],
+        );
+
+        $report = DB::transaction(function () use ($request, $inspectionRun, $answers) {
+            $report = InspectionReport::create([
+                'customer_id' => $inspectionRun->customer_id,
+                'job_id' => $inspectionRun->job_id,
+                'inspection_definition_id' => $inspectionRun->inspection_definition_id,
+                'inspection_definition_version_id' => $inspectionRun->inspection_definition_version_id,
+                'submitted_by' => $request->user()->id,
+                'submitted_at' => now(),
+                'answers' => $answers,
+                'layout_preset' => $inspectionRun->version?->layout_preset ?? 'step_strip',
+                'definition_name' => $inspectionRun->definition?->name ?? 'Inspection',
+            ]);
+
+            $inspectionRun->delete();
+            $this->events->emit('inspection.submitted', $report, [
+                'report_id' => $report->id,
+                'customer_id' => $report->customer_id,
+                'job_id' => $report->job_id,
+            ]);
+            $this->audit->log('inspection.submitted', $report);
+
+            return $report;
+        });
+
+        return response()->json([
+            'data' => [
+                'id' => $report->id,
+                'definition_name' => $report->definition_name,
+                'layout_preset' => $report->layout_preset,
+                'answers' => $report->answers,
+                'customer_name' => $inspectionRun->customer?->name,
+                'job_number' => $inspectionRun->job?->number,
+                'submitted_at' => $report->submitted_at?->toIso8601String(),
+            ],
+        ]);
+    }
+
+    public function destroy(InspectionRun $inspectionRun): JsonResponse
+    {
+        $this->authorize('delete', $inspectionRun);
+
+        DB::transaction(function () use ($inspectionRun) {
+            $inspectionRun->delete();
+            $this->events->emit('inspection.discarded', $inspectionRun);
+            $this->audit->log('inspection.discarded', $inspectionRun);
+        });
+
+        return response()->json(['data' => ['discarded' => true]]);
+    }
+
+    private function insertRun(
+        Request $request,
+        Customer $customer,
+        ?Job $job,
+        InspectionDefinition $definition,
+        string $scope,
+    ): InspectionRun {
+        $definition->loadMissing('currentVersion');
+        $screens = $definition->currentVersion?->screens ?? [];
+        $answers = BoundAnswers::freeze($customer, $job, $screens, []);
+
+        $run = InspectionRun::create([
+            'user_id' => $request->user()->id,
+            'customer_id' => $customer->id,
+            'job_id' => $job?->id,
+            'inspection_definition_id' => $definition->id,
+            'inspection_definition_version_id' => $definition->current_version_id,
+            'scope_key' => $scope,
+            'answers' => $answers,
+        ]);
+
+        $this->events->emit('inspection.started', $run);
+        $this->audit->log('inspection.started', $run);
+
+        return $run->load(['version', 'customer', 'job', 'definition']);
+    }
+
+    private function findLiveCustomer(string $id): Customer
+    {
+        $customer = Customer::query()->find($id);
+        abort_if($customer === null, 422, 'That client is no longer available to inspect.');
+
+        return $customer;
+    }
+
+    private function findLiveJob(mixed $id, Customer $customer, Request $request): ?Job
+    {
+        if (! is_string($id) || $id === '') {
+            return null;
+        }
+
+        $job = Job::query()->find($id);
+        abort_if($job === null, 422, 'That job is no longer available to inspect.');
+        abort_if($job->customer_id !== $customer->id, 422, 'That job does not belong to this client.');
+
+        $reachable = collect(ViewScope::forUser($request->user())->franchiseIds());
+        abort_if(! $reachable->contains($job->franchise_id), 404);
+
+        return $job;
+    }
+
+    /** @return array<string, mixed> */
+    private function present(InspectionRun $run): array
+    {
+        return [
+            'id' => $run->id,
+            'customer_id' => $run->customer_id,
+            'job_id' => $run->job_id,
+            'customer_name' => $run->customer?->name,
+            'job_number' => $run->job?->number,
+            'inspection_definition_id' => $run->inspection_definition_id,
+            'definition_name' => $run->definition?->name,
+            'layout_preset' => $run->version?->layout_preset ?? 'step_strip',
+            'screens' => $run->version?->screens ?? [],
+            'intro' => $run->version?->intro,
+            'answers' => $run->answers ?? [],
+            'scope_key' => $run->scope_key,
+        ];
+    }
+}

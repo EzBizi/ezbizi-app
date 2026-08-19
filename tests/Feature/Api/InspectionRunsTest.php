@@ -1,0 +1,294 @@
+<?php
+
+namespace Tests\Feature\Api;
+
+use App\Models\AutomationEvent;
+use App\Models\Customer;
+use App\Models\InspectionDefinition;
+use App\Models\InspectionDefinitionGrant;
+use App\Models\InspectionDefinitionVersion;
+use App\Models\InspectionReport;
+use App\Models\InspectionRun;
+use App\Models\Job;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsTenants;
+use Tests\TestCase;
+
+class InspectionRunsTest extends TestCase
+{
+    use BuildsTenants;
+    use RefreshDatabase;
+
+    public function test_a_job_shaped_miss_says_job_not_found(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+
+        $this->signedInAs($tech)
+            ->getJson('/api/v1/inspections/search?q=J-1042')
+            ->assertOk()
+            ->assertJsonPath('message', 'Job not found')
+            ->assertJsonPath('data', []);
+    }
+
+    public function test_a_name_shaped_miss_says_client_not_found(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+
+        $this->signedInAs($tech)
+            ->getJson('/api/v1/inspections/search?q=Marta')
+            ->assertOk()
+            ->assertJsonPath('message', 'Client not found');
+    }
+
+    public function test_a_second_start_offers_resume_instead_of_a_unique_index_error(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+        $seeded = $this->seedOffered($tenant, $tech);
+
+        $first = $this->signedInAs($tech)->postJson('/api/v1/inspections/runs', [
+            'customer_id' => $seeded['customer']->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+        ])->assertCreated();
+
+        $this->assertSame([], $first->json('data.answers'));
+
+        $again = $this->signedInAs($tech)->postJson('/api/v1/inspections/runs', [
+            'customer_id' => $seeded['customer']->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+        ]);
+
+        $again->assertStatus(409)
+            ->assertJsonPath('data.choice', 'resume')
+            ->assertJsonPath('data.run.id', $first->json('data.id'));
+
+        $this->inTenant($tenant['org'], fn () => $this->assertSame(1, InspectionRun::count()));
+    }
+
+    public function test_carlos_starting_the_same_job_gets_his_own_run(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $rodrigo = $this->tech($tenant, 'Rodrigo');
+        $carlos = $this->tech($tenant, 'Carlos');
+        $seeded = $this->seedOffered($tenant, $rodrigo, jobNumber: 'J-1042');
+        $this->grant($tenant, $seeded['definition'], $carlos->role_id);
+
+        $a = $this->signedInAs($rodrigo)->postJson('/api/v1/inspections/runs', [
+            'customer_id' => $seeded['customer']->id,
+            'job_id' => $seeded['job']->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+        ])->assertCreated()->json('data.id');
+
+        $b = $this->signedInAs($carlos)->postJson('/api/v1/inspections/runs', [
+            'customer_id' => $seeded['customer']->id,
+            'job_id' => $seeded['job']->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+        ])->assertCreated()->json('data.id');
+
+        $this->assertNotSame($a, $b);
+        $this->signedInAs($carlos)->getJson("/api/v1/inspections/runs/{$a}")->assertNotFound();
+    }
+
+    public function test_submit_after_unpublish_still_works_and_start_again_is_refused(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+        $seeded = $this->seedOffered($tenant, $tech, screens: [[
+            'name' => 'Roof',
+            'fields' => [[
+                'key' => 'crown',
+                'label' => 'Crown',
+                'type' => 'text',
+                'required' => true,
+            ]],
+        ]]);
+
+        $runId = $this->signedInAs($tech)->postJson('/api/v1/inspections/runs', [
+            'customer_id' => $seeded['customer']->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+        ])->assertCreated()->json('data.id');
+
+        $this->signedInAs($tech)->patchJson("/api/v1/inspections/runs/{$runId}", [
+            'answers' => ['crown' => 'Sound'],
+        ])->assertOk();
+
+        $this->inTenant($tenant['org'], fn () => $seeded['definition']->update(['published_at' => null]));
+
+        $this->signedInAs($tech)
+            ->postJson("/api/v1/inspections/runs/{$runId}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.definition_name', 'Level 1');
+
+        $this->inTenant($tenant['org'], function () {
+            $this->assertSame(0, InspectionRun::count());
+            $this->assertSame(1, InspectionReport::count());
+            $this->assertNotNull(
+                AutomationEvent::query()->where('event_key', 'inspection.submitted')->first(),
+            );
+        });
+
+        $this->signedInAs($tech)->postJson('/api/v1/inspections/runs', [
+            'customer_id' => $seeded['customer']->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+        ])->assertStatus(422);
+    }
+
+    public function test_submit_refuses_an_empty_required_field_by_name(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+        $seeded = $this->seedOffered($tenant, $tech, screens: [[
+            'name' => 'Roof',
+            'fields' => [[
+                'key' => 'crown',
+                'label' => 'Crown',
+                'type' => 'text',
+                'required' => true,
+            ]],
+        ]]);
+
+        $runId = $this->signedInAs($tech)->postJson('/api/v1/inspections/runs', [
+            'customer_id' => $seeded['customer']->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+        ])->assertCreated()->json('data.id');
+
+        $response = $this->signedInAs($tech)
+            ->postJson("/api/v1/inspections/runs/{$runId}/submit")
+            ->assertStatus(422);
+
+        $flat = strtolower($response->json('message').json_encode($response->json('errors')));
+        $this->assertStringContainsString('crown', $flat);
+    }
+
+    public function test_bound_scheduled_for_freezes_as_text_on_the_report(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+        $seeded = $this->seedOffered($tenant, $tech, jobNumber: 'J-1042', screens: [[
+            'name' => 'When',
+            'fields' => [[
+                'key' => 'when',
+                'label' => 'When',
+                'type' => 'text',
+                'bind' => 'job.scheduled_for',
+            ]],
+        ]]);
+
+        $this->inTenant($tenant['org'], function () use ($seeded) {
+            $seeded['job']->update(['scheduled_for' => '2026-08-18 09:00:00']);
+        });
+
+        $runId = $this->signedInAs($tech)->postJson('/api/v1/inspections/runs', [
+            'customer_id' => $seeded['customer']->id,
+            'job_id' => $seeded['job']->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+        ])->assertCreated()->json('data.id');
+
+        $report = $this->signedInAs($tech)
+            ->postJson("/api/v1/inspections/runs/{$runId}/submit")
+            ->assertOk()
+            ->json('data');
+
+        $this->assertIsString($report['answers']['when']);
+        $this->assertNotSame('', $report['answers']['when']);
+        $this->assertFalse(is_numeric($report['answers']['when']));
+    }
+
+    public function test_start_again_after_unpublish_is_refused(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant, extra: ['inspection.delete']);
+        $seeded = $this->seedOffered($tenant, $tech);
+
+        $runId = $this->signedInAs($tech)->postJson('/api/v1/inspections/runs', [
+            'customer_id' => $seeded['customer']->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+        ])->assertCreated()->json('data.id');
+
+        $this->inTenant($tenant['org'], fn () => $seeded['definition']->update(['published_at' => null]));
+
+        $this->signedInAs($tech)
+            ->postJson("/api/v1/inspections/runs/{$runId}/restart")
+            ->assertStatus(422);
+    }
+
+    private function tech(array $tenant, string $name = 'Rodrigo', array $extra = [])
+    {
+        return $this->userWithRole($tenant, $name, [
+            'inspection.view', 'inspection.create', ...$extra,
+        ]);
+    }
+
+    private function grant(array $tenant, InspectionDefinition $definition, string $roleId): void
+    {
+        $this->inTenant($tenant['org'], fn () => InspectionDefinitionGrant::create([
+            'inspection_definition_id' => $definition->id,
+            'role_id' => $roleId,
+        ]));
+    }
+
+    /**
+     * @return array{
+     *     customer: Customer,
+     *     job: ?Job,
+     *     definition: InspectionDefinition,
+     *     version: InspectionDefinitionVersion
+     * }
+     */
+    private function seedOffered(
+        array $tenant,
+        $tech,
+        ?string $jobNumber = null,
+        array $screens = [],
+    ): array {
+        return $this->inTenant($tenant['org'], function () use ($tenant, $tech, $jobNumber, $screens) {
+            $customer = Customer::create([
+                'owning_franchise_id' => $tenant['franchise']->id,
+                'number' => 'C-'.bin2hex(random_bytes(3)),
+                'name' => '14 Maple',
+            ]);
+
+            $job = null;
+            if ($jobNumber !== null) {
+                $job = Job::create([
+                    'franchise_id' => $tenant['franchise']->id,
+                    'customer_id' => $customer->id,
+                    'number' => $jobNumber,
+                    'title' => 'Work',
+                    'status' => 'scheduled',
+                ]);
+            }
+
+            $definition = InspectionDefinition::create([
+                'name' => 'Level 1',
+                'created_by' => $tenant['admin']->id,
+                'published_at' => now(),
+                'screens' => $screens,
+            ]);
+
+            $version = InspectionDefinitionVersion::create([
+                'inspection_definition_id' => $definition->id,
+                'version' => 1,
+                'layout_preset' => 'step_strip',
+                'screens' => $screens,
+                'published_by' => $tenant['admin']->id,
+            ]);
+
+            $definition->update(['current_version_id' => $version->id]);
+
+            InspectionDefinitionGrant::create([
+                'inspection_definition_id' => $definition->id,
+                'role_id' => $tech->role_id,
+            ]);
+
+            return [
+                'customer' => $customer,
+                'job' => $job,
+                'definition' => $definition->fresh(),
+                'version' => $version,
+            ];
+        });
+    }
+}

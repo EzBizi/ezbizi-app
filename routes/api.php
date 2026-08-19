@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\HrOnboardingsController;
 use App\Http\Controllers\Api\HrPeopleController;
 use App\Http\Controllers\Api\InspectionDefinitionsController;
 use App\Http\Controllers\Api\InspectionReportsController;
+use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\MailboxesController;
@@ -459,6 +460,8 @@ Route::prefix('v1')
         // as an id. Cover upload is on the definition (create already minted
         // one). There is no DELETE: unpublish hides it from the picker.
         Route::get('inspections/catalogue', [InspectionDefinitionsController::class, 'catalogue']);
+        Route::get('inspections/search', [InspectionRunsController::class, 'search']);
+        Route::get('inspections/startable', [InspectionRunsController::class, 'startable']);
         Route::get('inspections', [InspectionDefinitionsController::class, 'index']);
         Route::post('inspections', [InspectionDefinitionsController::class, 'store']);
         Route::get('inspections/reports', [InspectionReportsController::class, 'index']);
@@ -466,6 +469,12 @@ Route::prefix('v1')
         Route::patch('inspections/reports/{inspection_report}', [InspectionReportsController::class, 'update']);
         Route::post('inspections/reports/{inspection_report}/archive', [InspectionReportsController::class, 'archive']);
         Route::post('inspections/reports/{inspection_report}/unarchive', [InspectionReportsController::class, 'unarchive']);
+        Route::post('inspections/runs', [InspectionRunsController::class, 'store']);
+        Route::get('inspections/runs/{inspection_run}', [InspectionRunsController::class, 'show']);
+        Route::patch('inspections/runs/{inspection_run}', [InspectionRunsController::class, 'update']);
+        Route::post('inspections/runs/{inspection_run}/restart', [InspectionRunsController::class, 'restart']);
+        Route::post('inspections/runs/{inspection_run}/submit', [InspectionRunsController::class, 'submit']);
+        Route::delete('inspections/runs/{inspection_run}', [InspectionRunsController::class, 'destroy']);
         Route::post('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'storeCover']);
         Route::get('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'showCover']);
         Route::post('inspections/{inspection_definition}/publish', [InspectionDefinitionsController::class, 'publish']);

@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
-import '../widgets/dashboard_card.dart';
 import '../widgets/tab_bar_like.dart';
 import 'inspection/builder_tab.dart';
+import 'inspection/new_tab.dart';
 import 'inspection/reports_tab.dart';
 
 /// Inspection — New Inspection, Generated Reports, Builder.
@@ -43,7 +43,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
         (
           'New Inspection',
           Icons.fact_check_outlined,
-          () => const _NewInspectionTab(),
+          () => NewInspectionTab(api: widget.api, session: widget.session),
         ),
       if (can('inspection.view'))
         (
@@ -79,22 +79,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
         const Divider(height: 1),
         Expanded(child: tabs.isEmpty ? const SizedBox.shrink() : tabs[selected].$3()),
       ],
-    );
-  }
-}
-
-/// Search is Task 8. Until then the pane says what it is waiting for: a client
-/// or a job, not a missing permission.
-class _NewInspectionTab extends StatelessWidget {
-  const _NewInspectionTab();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.all(DashboardCard.padding),
-      child: DashboardNote(
-        'Search for a client by name, or a job by its number, to start.',
-      ),
     );
   }
 }

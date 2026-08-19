@@ -761,8 +761,8 @@ class ModuleServiceProvider extends ServiceProvider
              * would make the field picker wrong about the other. Same cost as
              * HR — `update_field` is refused at save, in a sentence.
              *
-             * `inspection.archived` is raised when a report is hidden (Task 7).
-             * The other three stay `isRaised: false` until Task 8 emits them.
+             * All four triggers are raised: archived from Generated Reports,
+             * started / submitted / discarded from New Inspection.
              * ModuleRegistryTest holds that claim to the source.
              */
             new ModuleDefinition(
@@ -775,7 +775,7 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Inspection started',
                         description: 'Somebody started filling in a named inspection for a '
                             .'client or a job. The draft is personal to them until they submit it.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                     new TriggerDefinition(
                         key:   'inspection.submitted',
@@ -783,7 +783,7 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A named inspection was finished and a report was written. '
                             .'The answers, photographs and signatures are frozen as they were '
                             .'on the day.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                     new TriggerDefinition(
                         key:   'inspection.archived',
@@ -797,7 +797,7 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'In-progress discarded',
                         description: 'Somebody threw away their own unfinished inspection and '
                             .'started again, or discarded it without submitting.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                 ],
                 automationActions: [],
