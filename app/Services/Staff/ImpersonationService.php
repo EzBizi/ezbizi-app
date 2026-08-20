@@ -51,9 +51,14 @@ class ImpersonationService
             );
         }
 
-        if (! $clientApproved && ! $staff->mayEnterWithoutApproval()) {
+        if (! $staff->mayEnterWithoutApproval()) {
+            // Client approval used to be a boolean on the request. A Developer
+            // posted `client_approved: true` and walked in. Approval has to be
+            // a grant the client records, which does not exist yet, so this
+            // tier cannot open a tenant from here.
             throw new InvalidArgumentException(
-                'This staff tier requires client approval before entering a tenant (§4.2).'
+                'This staff tier cannot open a tenant from here. Client approval '
+                .'has to be a grant the client records, not a box the caller ticks.'
             );
         }
 

@@ -21,6 +21,9 @@ class UiStringsController extends Controller
         $wanted = $request->query('locale');
         $code   = is_string($wanted) && $wanted !== '' ? $wanted : 'en';
 
-        return response()->json(['data' => $this->catalogue->strings($code)]);
+        $payload = $this->catalogue->strings($code);
+        $payload['signup_open'] = (bool) config('ezbizi.signup.enabled');
+
+        return response()->json(['data' => $payload]);
     }
 }

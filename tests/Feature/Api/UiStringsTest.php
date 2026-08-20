@@ -26,6 +26,7 @@ class UiStringsTest extends TestCase
         $this->assertSame('en', $body['locale']);
         $this->assertSame('Sign in', $body['strings']['shell.sign_in']);
         $this->assertArrayHasKey('shell.sign_in', $body['strings']);
+        $this->assertTrue($body['signup_open']);
     }
 
     public function test_spanish_is_a_row_not_an_enum(): void

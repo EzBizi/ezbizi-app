@@ -158,18 +158,18 @@ class StaffController extends Controller
             'organization_id'  => ['required', 'uuid', 'exists:organizations,id'],
             'reason'           => ['required', 'string', 'min:10', 'max:1000'],
             'minutes'          => ['integer', 'min:1', 'max:120'],
-            'client_approved'  => ['boolean'],
-            'approved_by_user_id' => ['nullable', 'uuid'],
         ]);
 
         try {
+            // client_approved is NOT taken from the request. A Developer used
+            // to POST `client_approved: true` and that was the whole grant.
+            // Lead Developer may still enter; that is a property of the
+            // account (mayEnterWithoutApproval), not of the body.
             $session = $this->impersonation->begin(
                 staff: $request->user(),
                 organization: Organization::findOrFail($input['organization_id']),
                 reason: $input['reason'],
                 minutes: $input['minutes'] ?? 30,
-                clientApproved: (bool) ($input['client_approved'] ?? false),
-                approvedByUserId: $input['approved_by_user_id'] ?? null,
             );
         } catch (InvalidArgumentException $e) {
             throw ValidationException::withMessages(['reason' => $e->getMessage()]);

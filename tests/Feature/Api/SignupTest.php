@@ -72,6 +72,17 @@ class SignupTest extends TestCase
         ])->assertOk()->assertJsonPath('status', 'authenticated');
     }
 
+    public function test_signup_is_closed_when_the_flag_is_off(): void
+    {
+        config(['ezbizi.signup.enabled' => false]);
+
+        $this->postJson('/api/v1/auth/signup', $this->payload())
+            ->assertForbidden()
+            ->assertJsonPath('code', 'signup_closed');
+
+        $this->assertDatabaseCount('organizations', 0);
+    }
+
     // ── the happy path ───────────────────────────────────────────
 
     public function test_one_request_creates_the_whole_tree(): void

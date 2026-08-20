@@ -35,6 +35,17 @@ return [
     'hosts' => $hosts,
 
     /*
+     * Self-serve signup. Off until mail can verify an address (TODO #1 / #22).
+     * An open front door with no mailbox check is a way to fill the database
+     * from a script; invitations remain the way in.
+     *
+     * Tests turn it on in phpunit.xml.
+     */
+    'signup' => [
+        'enabled' => filter_var(env('EZBIZI_SIGNUP_ENABLED', false), FILTER_VALIDATE_BOOL),
+    ],
+
+    /*
      * The certificate, as served — not as stored.
      *
      * nginx reads its certificates once and keeps them in memory for the life of

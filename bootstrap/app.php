@@ -29,6 +29,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
             // The control plane (§4.2) — deliberately not 'tenant'.
             'staff'        => App\Http\Middleware\StaffOnly::class,
+
+            // Public staff auth is refused on the customer host. See the class.
+            'staff-auth-host' => App\Http\Middleware\RefuseStaffAuthOnCustomerHost::class,
         ]);
 
         /*

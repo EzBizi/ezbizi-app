@@ -366,26 +366,27 @@ class _LoginScreenState extends State<LoginScreen> {
 
           // The only door into signup, and it is here because this is where
           // somebody without an account arrives — there is no marketing page in
-          // the app to put it on. It sits below the button rather than beside
-          // "Forgot password?": the two are for different people, and a row of
-          // three small links is three things to read before typing.
-          const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Flexible(
-                child: Text(
-                  'New to EzBizi?',
-                  style: Theme.of(context).textTheme.bodySmall,
-                  overflow: TextOverflow.ellipsis,
+          // the app to put it on. Hidden when the server has closed the front
+          // door (no mailbox to verify an address). Invitations still work.
+          if (UiStrings.signupOpen) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    'New to EzBizi?',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-              TextButton(
-                onPressed: _busy ? null : widget.onCreateAccount,
-                child: Text(UiStrings.t('shell.create_account')),
-              ),
-            ],
-          ),
+                TextButton(
+                  onPressed: _busy ? null : widget.onCreateAccount,
+                  child: Text(UiStrings.t('shell.create_account')),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

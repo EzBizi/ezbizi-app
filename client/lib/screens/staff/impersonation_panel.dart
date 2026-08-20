@@ -34,7 +34,6 @@ class _ImpersonationPanelState extends State<ImpersonationPanel> {
   final _reason = TextEditingController();
 
   int _minutes = 30;
-  bool _clientApproved = false;
   bool _busy = false;
   String? _error;
 
@@ -54,7 +53,6 @@ class _ImpersonationPanelState extends State<ImpersonationPanel> {
       'organization_id': widget.organizationId,
       'reason': _reason.text.trim(),
       'minutes': _minutes,
-      'client_approved': _clientApproved,
     });
 
     if (!mounted) return;
@@ -85,7 +83,7 @@ class _ImpersonationPanelState extends State<ImpersonationPanel> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _busy ? null : _start,
+          onPressed: (_busy || !me.mayEnterWithoutApproval) ? null : _start,
           child: const Text('Start session'),
         ),
       ],
@@ -120,22 +118,15 @@ class _ImpersonationPanelState extends State<ImpersonationPanel> {
           ),
           const SizedBox(height: 8),
 
-          CheckboxListTile(
-            value: _clientApproved,
-            onChanged: _busy
-                ? null
-                : (v) => setState(() => _clientApproved = v ?? false),
-            contentPadding: EdgeInsets.zero,
-            controlAffinity: ListTileControlAffinity.leading,
-            title: const Text('The client approved this'),
-            subtitle: Text(
-              me.mayEnterWithoutApproval
-                  ? 'Your tier may enter without approval. Unticked is recorded '
-                        'as unapproved, not as unrecorded.'
-                  : 'Required for your tier.',
-              style: Theme.of(context).textTheme.bodyMedium,
+          if (!me.mayEnterWithoutApproval)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Your tier cannot open a tenant from here. Client approval has '
+                'to be a grant the client records, not a box on this form.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
             ),
-          ),
 
           if (_error != null) ...[
             const SizedBox(height: 12),

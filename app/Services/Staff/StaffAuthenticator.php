@@ -3,6 +3,7 @@
 namespace App\Services\Staff;
 
 use App\Models\PlatformStaff;
+use App\Support\Auth\PasswordTiming;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use PragmaRX\Google2FA\Google2FA;
@@ -38,8 +39,10 @@ class StaffAuthenticator
 
         // Hash even when nobody matched, so a non-existent address costs the
         // same as a wrong password and cannot be enumerated by timing.
+        // PasswordTiming reuses one dummy hash; Hash::make on every miss was
+        // slower than a real check and became the oracle it was meant to close.
         if ($staff === null) {
-            Hash::check($password, Hash::make('timing-equalisation'));
+            PasswordTiming::equalise($password);
 
             return null;
         }

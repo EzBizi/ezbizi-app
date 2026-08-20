@@ -66,8 +66,7 @@ class StaffAuthController extends Controller
         // something they don't.
         if (! $staff->hasTotp()) {
             return response()->json([
-                'message' => 'This account has not completed TOTP enrolment and cannot sign in. '
-                    .'Run: php artisan ezbizi:staff-enrol '.$staff->email.' <code>',
+                'message' => 'This account has not completed authenticator setup and cannot sign in yet.',
                 'code'    => 'totp_enrolment_required',
             ], Response::HTTP_FORBIDDEN);
         }

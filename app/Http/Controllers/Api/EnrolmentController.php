@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\PlatformStaff;
 use App\Support\Audit\AuditLogger;
+use App\Support\Auth\PasswordTiming;
 use App\Support\Auth\TotpEnrolment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -80,9 +81,12 @@ class EnrolmentController extends Controller
 
         // Hash even when nobody matched, so a non-existent address costs the same
         // as a wrong password and cannot be enumerated by timing.
-        $passwordOk = $staff !== null
-            ? Hash::check($input['password'], $staff->password)
-            : Hash::check($input['password'], Hash::make('timing-equalisation'));
+        if ($staff === null) {
+            PasswordTiming::equalise($input['password']);
+            $passwordOk = false;
+        } else {
+            $passwordOk = Hash::check($input['password'], $staff->password);
+        }
 
         if ($staff === null || ! $passwordOk || ! $staff->is_active) {
             RateLimiter::hit($key, decaySeconds: 900);

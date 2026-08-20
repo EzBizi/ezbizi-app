@@ -81,6 +81,19 @@ class StaffControlPlaneTest extends TestCase
         ])->assertUnauthorized()->assertJsonPath('code', 'invalid_credentials');
     }
 
+    public function test_staff_login_is_not_served_on_the_customer_host(): void
+    {
+        [$staff, $secret] = $this->staff();
+
+        // An absolute URL so Symfony takes the host from it — a relative
+        // path is built against APP_URL (localhost) and HTTP_HOST is ignored.
+        $this->postJson('http://app.ezbizi.com/api/v1/staff/auth/login', [
+            'email'    => $staff->email,
+            'password' => 'a-sufficiently-long-password',
+            'code'     => $this->totp->getCurrentOtp($secret),
+        ])->assertNotFound();
+    }
+
     public function test_password_and_code_together_issue_a_working_token(): void
     {
         [$staff, $secret] = $this->staff();
@@ -99,11 +112,16 @@ class StaffControlPlaneTest extends TestCase
         // password-only.
         [$staff, $secret] = $this->staff(enrolled: false);
 
-        $this->postJson('/api/v1/staff/auth/login', [
+        $denied = $this->postJson('/api/v1/staff/auth/login', [
             'email'    => $staff->email,
             'password' => 'a-sufficiently-long-password',
             'code'     => $this->totp->getCurrentOtp($secret),
         ])->assertForbidden()->assertJsonPath('code', 'totp_enrolment_required');
+
+        $message = $denied->json('message');
+        $this->assertStringNotContainsString('artisan', $message);
+        $this->assertStringNotContainsString('php ', $message);
+        $this->assertStringNotContainsString($staff->email, $message);
     }
 
     public function test_a_recovery_code_works_once(): void
@@ -172,6 +190,26 @@ class StaffControlPlaneTest extends TestCase
                 'organization_id' => $org->id,
                 'reason'          => 'Investigating a reported export failure.',
             ])->assertStatus(422);
+    }
+
+    public function test_a_developer_cannot_self_attest_client_approval(): void
+    {
+        [$staff, $secret] = $this->staff(PlatformStaff::TIER_DEV);
+        ['organization' => $org] = $this->organization();
+
+        $token = $this->signIn($staff, $secret);
+
+        // The previous grant was a boolean on this body. Sending it must not
+        // be enough, whether or not the field is still accepted.
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->postJson('/api/v1/staff/impersonations', [
+                'organization_id'  => $org->id,
+                'reason'           => 'Investigating a reported export failure.',
+                'client_approved'  => true,
+                'approved_by_user_id' => $org->id,
+            ])->assertStatus(422);
+
+        $this->assertDatabaseCount('staff_impersonations', 0);
     }
 
     public function test_the_lead_developer_may_enter_without_approval_and_it_is_still_recorded(): void

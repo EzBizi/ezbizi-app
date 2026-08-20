@@ -960,7 +960,8 @@ Route::prefix('v1')
 | tenant user's token in here.
 |
 */
-Route::post('v1/staff/auth/login', [StaffAuthController::class, 'login']);
+Route::post('v1/staff/auth/login', [StaffAuthController::class, 'login'])
+    ->middleware('staff-auth-host');
 
 /*
  * Setting up a second factor with nobody else present (§4.2).
@@ -974,9 +975,10 @@ Route::post('v1/staff/auth/login', [StaffAuthController::class, 'login']);
  * it sits behind auth:sanctum but deliberately NOT behind the `staff` middleware,
  * which would refuse an account that is not yet able to authenticate.
  */
-Route::post('v1/staff/auth/enrolment', [EnrolmentController::class, 'begin']);
+Route::post('v1/staff/auth/enrolment', [EnrolmentController::class, 'begin'])
+    ->middleware('staff-auth-host');
 Route::post('v1/staff/auth/enrolment/confirm', [EnrolmentController::class, 'confirm'])
-    ->middleware('auth:sanctum');
+    ->middleware(['staff-auth-host', 'auth:sanctum']);
 
 Route::prefix('v1/staff')
     ->middleware(['auth:sanctum', 'staff'])

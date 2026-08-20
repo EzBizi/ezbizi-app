@@ -278,10 +278,22 @@ class FileStore
                 fclose($stream);
                 fclose($out);
             },
-            $filename ?? basename($path),
+            $this->safeDownloadName($filename ?? basename($path)),
             $headers,
             $disposition,
         );
+    }
+
+    /**
+     * A Content-Disposition filename cannot carry CR, LF, quotes or a path.
+     * The original name is already truncated to the column; this is the header.
+     */
+    private function safeDownloadName(string $filename): string
+    {
+        $name = str_replace(["\r", "\n", '"', '\\'], '', $filename);
+        $name = basename($name);
+
+        return $name === '' ? 'download' : $name;
     }
 
     private function on(?string $disk = null): Filesystem

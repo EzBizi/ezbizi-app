@@ -6,6 +6,10 @@ class UiStrings {
   static String locale = 'en';
   static Map<String, String> _strings = {};
 
+  /// Self-serve signup. The server is the source; default true so a widget
+  /// test that never loads /ui-strings still reaches the form.
+  static bool signupOpen = true;
+
   static const Map<String, String> _english = {
     'shell.sign_in': 'Sign in',
     'shell.sign_in_prompt': 'Sign in to your workspace.',
@@ -20,6 +24,7 @@ class UiStrings {
 
   static void adopt(Map<String, dynamic> payload) {
     locale = payload['locale'] as String? ?? 'en';
+    signupOpen = payload['signup_open'] as bool? ?? true;
     final raw = payload['strings'];
     if (raw is Map) {
       _strings = {

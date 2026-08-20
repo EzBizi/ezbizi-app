@@ -86,6 +86,13 @@ class AuthController extends Controller
      */
     public function signup(Request $request): JsonResponse
     {
+        if (! config('ezbizi.signup.enabled')) {
+            return response()->json([
+                'message' => 'Self-serve signup is closed. Ask whoever invited you for a link.',
+                'code'    => 'signup_closed',
+            ], Response::HTTP_FORBIDDEN);
+        }
+
         $input = $request->validate([
             'name'  => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
@@ -205,14 +212,10 @@ class AuthController extends Controller
         // Throttled per email+IP. Without this, the same-email design gives an
         // attacker a way to test one password against several organizations at
         // once, which is strictly better value than a single-tenant login.
-        $throttleKey = strtolower($credentials['email']).'|'.$request->ip();
+        $throttleKey = $this->loginThrottleKey($request, $credentials['email']);
 
         if (RateLimiter::tooManyAttempts($throttleKey, maxAttempts: 5)) {
-            return response()->json([
-                'message'     => 'Too many attempts. Try again shortly.',
-                'code'        => 'throttled',
-                'retry_after' => RateLimiter::availableIn($throttleKey),
-            ], Response::HTTP_TOO_MANY_REQUESTS);
+            return $this->throttled($throttleKey);
         }
 
         $result = ($this->authenticate)(
@@ -233,10 +236,16 @@ class AuthController extends Controller
         }
 
         if ($result->needsSecondFactor()) {
-            // Not a failure and not a success. The password was right; this
-            // account carries platform reach, so it needs the authenticator too.
-            // The throttle is NOT cleared — an attacker with a stolen password
-            // must not get unlimited attempts at the second factor.
+            // A missing code is the login form's first step and must not spend
+            // the budget — the client posts the password, learns it needs a
+            // code, then posts both. A WRONG code is a second-factor guess and
+            // is charged. Leaving the counter untouched (the previous code)
+            // meant a stolen password had unlimited TOTP attempts, because a
+            // correct password never `hit()` in the first place.
+            if ($result->message !== null) {
+                RateLimiter::hit($throttleKey, decaySeconds: 300);
+            }
+
             return response()->json([
                 'status'  => 'second_factor_required',
 
@@ -275,6 +284,14 @@ class AuthController extends Controller
             'remember' => ['sometimes', 'boolean'],
         ]);
 
+        // Same key as login. A stolen password that could not grind TOTP on
+        // /login must not grind it here instead.
+        $throttleKey = $this->loginThrottleKey($request, $input['email']);
+
+        if (RateLimiter::tooManyAttempts($throttleKey, maxAttempts: 5)) {
+            return $this->throttled($throttleKey);
+        }
+
         // Re-verifies the password: the chosen id comes from the client, so
         // trusting it as proof of the earlier step would let anyone post a user
         // id and skip authentication.
@@ -283,11 +300,15 @@ class AuthController extends Controller
         );
 
         if (! $result->succeeded()) {
+            RateLimiter::hit($throttleKey, decaySeconds: 300);
+
             return response()->json([
                 'message' => 'Those credentials do not match our records.',
                 'code'    => 'invalid_credentials',
             ], Response::HTTP_UNAUTHORIZED);
         }
+
+        RateLimiter::clear($throttleKey);
 
         return ($this->session)($request, $result->user);
     }
@@ -300,5 +321,19 @@ class AuthController extends Controller
         $this->audit->log('auth.signed_out', actor: $request->user());
 
         return response()->json(['message' => 'Signed out.']);
+    }
+
+    private function loginThrottleKey(Request $request, string $email): string
+    {
+        return strtolower($email).'|'.$request->ip();
+    }
+
+    private function throttled(string $key): JsonResponse
+    {
+        return response()->json([
+            'message'     => 'Too many attempts. Try again shortly.',
+            'code'        => 'throttled',
+            'retry_after' => RateLimiter::availableIn($key),
+        ], Response::HTTP_TOO_MANY_REQUESTS);
     }
 }

@@ -175,6 +175,87 @@ class AuthApiTest extends TestCase
         ])->assertStatus(429)->assertJsonPath('code', 'throttled');
     }
 
+    public function test_a_wrong_authenticator_code_is_throttled(): void
+    {
+        $r = $this->org('Alpha', 'a@alpha.test');
+
+        $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
+        $secret = $totp->generateSecretKey(32);
+
+        \App\Models\User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
+            'totp_secret' => Crypt::encryptString($secret), 'totp_confirmed_at' => now(),
+        ]);
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/v1/auth/login', [
+                'email' => 'a@alpha.test', 'password' => 'a-real-password', 'code' => '000000',
+            ])->assertOk()->assertJsonPath('status', 'second_factor_required');
+        }
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'a@alpha.test', 'password' => 'a-real-password', 'code' => '000000',
+        ])->assertStatus(429)->assertJsonPath('code', 'throttled');
+    }
+
+    public function test_asking_for_the_code_the_first_time_is_not_throttled(): void
+    {
+        $r = $this->org('Alpha', 'a@alpha.test');
+
+        $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
+        $secret = $totp->generateSecretKey(32);
+
+        \App\Models\User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
+            'totp_secret' => Crypt::encryptString($secret), 'totp_confirmed_at' => now(),
+        ]);
+
+        // The login form posts the password, learns it needs a code, then posts
+        // both. Charging the first step would lock someone out for opening the
+        // form six times.
+        for ($i = 0; $i < 6; $i++) {
+            $this->postJson('/api/v1/auth/login', [
+                'email' => 'a@alpha.test', 'password' => 'a-real-password',
+            ])->assertOk()->assertJsonPath('status', 'second_factor_required');
+        }
+    }
+
+    public function test_choose_shares_the_login_throttle(): void
+    {
+        ['administrator' => $admin] = $this->org('Alpha', 'shared@example.com', 'same-password');
+        $this->org('Bravo', 'shared@example.com', 'same-password');
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/v1/auth/choose', [
+                'user_id'  => $admin->id,
+                'email'    => 'shared@example.com',
+                'password' => 'wrong',
+            ])->assertUnauthorized();
+        }
+
+        $this->postJson('/api/v1/auth/choose', [
+            'user_id'  => $admin->id,
+            'email'    => 'shared@example.com',
+            'password' => 'wrong',
+        ])->assertStatus(429)->assertJsonPath('code', 'throttled');
+    }
+
+    public function test_the_api_does_not_reflect_an_arbitrary_origin(): void
+    {
+        $this->withHeaders(['Origin' => 'https://evil.example'])
+            ->postJson('/api/v1/auth/login', [
+                'email' => 'nobody@nowhere.test', 'password' => 'whatever',
+            ])
+            ->assertHeaderMissing('Access-Control-Allow-Origin');
+    }
+
+    public function test_the_api_allows_the_customer_host(): void
+    {
+        $this->withHeaders(['Origin' => 'https://app.ezbizi.com'])
+            ->postJson('/api/v1/auth/login', [
+                'email' => 'nobody@nowhere.test', 'password' => 'whatever',
+            ])
+            ->assertHeader('Access-Control-Allow-Origin', 'https://app.ezbizi.com');
+    }
+
     // ── two organizations, one protected (plan §4) ───────────────
 
     /** @return array{0: \App\Models\User, 1: string} the protected account and its secret */

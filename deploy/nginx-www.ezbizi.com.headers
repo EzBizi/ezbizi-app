@@ -1,0 +1,5 @@
+# Superseded by nginx-www.ezbizi.com.conf. Keep this file only so an old
+# install note still points somewhere useful.
+#
+#   sudo cp deploy/nginx-www.ezbizi.com.conf \
+#           /etc/nginx/sites-available/www.ezbizi.com.conf

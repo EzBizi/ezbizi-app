@@ -8,6 +8,20 @@ git push production main
 
 That's it. The hook on the app box does the rest.
 
+nginx vhosts are **not** swapped by the hook. After a change under `deploy/nginx-*.conf`:
+
+```bash
+sudo cp deploy/nginx-security-headers.conf /etc/nginx/snippets/ezbizi-security-headers.conf
+sudo cp deploy/nginx-app.ezbizi.com.conf /etc/nginx/sites-available/
+sudo cp deploy/nginx-dev.ezbizi.com.conf /etc/nginx/sites-available/dev.ezbizi.com.conf
+sudo cp deploy/nginx-wildcard-subdomains.conf /etc/nginx/conf.d/wildcard_subdomains.conf
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+`www.ezbizi.com` is served by `/etc/nginx/conf.d/wildcard_subdomains.conf` (root `/var/www/www`). `sites-available/ezbizi.conf` is not enabled. HSTS `includeSubDomains` only covers children of the host that sent the header, so the apex/www response is the one that protects every name.
+
+Production `.env` should have `EZBIZI_SIGNUP_ENABLED=false` until mail can verify addresses. The app box also needs that value, not only phpunit.
+
 ## What actually happens
 
 `git push production main` → `/var/repos/ezbizi.git` → `hooks/post-receive`:

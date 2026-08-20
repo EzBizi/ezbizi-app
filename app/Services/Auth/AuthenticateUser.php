@@ -6,6 +6,7 @@ use App\Models\PlatformStaff;
 use App\Models\PlatformStaffLink;
 use App\Models\User;
 use App\Services\Staff\StaffAuthenticator;
+use App\Support\Auth\PasswordTiming;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\Hash;
 
@@ -171,9 +172,10 @@ class AuthenticateUser
         if ($matched === []) {
             // One dummy hash so a non-existent address costs the same as a
             // wrong password. Without it, response time reveals which addresses
-            // are registered.
+            // are registered. Built once, not with Hash::make on every miss —
+            // that made unknown emails slower, which is an oracle too.
             if ($accounts->isEmpty()) {
-                Hash::check($password, Hash::make('timing-equalisation'));
+                PasswordTiming::equalise($password);
             }
 
             return AuthenticationResult::failed();
