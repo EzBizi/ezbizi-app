@@ -30,8 +30,13 @@ return new class extends Migration
         }
 
         Schema::table('google_workspace_connections', function (Blueprint $table) {
+            // The unique index is the one the FK sits on. MySQL will not drop
+            // it while the constraint exists, so the FK comes off first and
+            // goes back on the same column after the new unique is in place.
+            $table->dropForeign(['organization_id']);
             $table->dropUnique(['organization_id']);
             $table->unique(['organization_id', 'scope_type', 'scope_id']);
+            $table->foreign('organization_id')->references('id')->on('organizations')->cascadeOnDelete();
         });
 
         Schema::table('google_workspace_sign_ins', function (Blueprint $table) {
