@@ -35,7 +35,10 @@ return new class extends Migration
             // goes back on the same column after the new unique is in place.
             $table->dropForeign(['organization_id']);
             $table->dropUnique(['organization_id']);
-            $table->unique(['organization_id', 'scope_type', 'scope_id']);
+            $table->unique(
+                ['organization_id', 'scope_type', 'scope_id'],
+                'gws_conn_org_scope_unique',
+            );
             $table->foreign('organization_id')->references('id')->on('organizations')->cascadeOnDelete();
         });
 
@@ -52,7 +55,7 @@ return new class extends Migration
         });
 
         Schema::table('google_workspace_connections', function (Blueprint $table) {
-            $table->dropUnique(['organization_id', 'scope_type', 'scope_id']);
+            $table->dropUnique('gws_conn_org_scope_unique');
         });
 
         Schema::table('google_workspace_connections', function (Blueprint $table) {
