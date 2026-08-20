@@ -199,6 +199,7 @@ class AuthController extends Controller
             // Only accounts linked to a staff record need this (§4.2, revised),
             // so it is optional here and demanded by the service if it applies.
             'code'     => ['nullable', 'string'],
+            'remember' => ['sometimes', 'boolean'],
         ]);
 
         // Throttled per email+IP. Without this, the same-email design gives an
@@ -271,6 +272,7 @@ class AuthController extends Controller
             'email'    => ['required', 'email'],
             'password' => ['required', 'string'],
             'code'     => ['nullable', 'string'],
+            'remember' => ['sometimes', 'boolean'],
         ]);
 
         // Re-verifies the password: the chosen id comes from the client, so

@@ -74,9 +74,24 @@ final class SessionLifetime
         private readonly TenantContext $tenant,
     ) {}
 
-    /** The configured idle window, never shorter than the recovery margin. */
-    public function idleMinutesFor(Organization $organization): int
+    /**
+     * Whether this token was minted with "Keep me signed in".
+     *
+     * The checkbox is a client persist flag AND a server lifetime. Without the
+     * suffix, a remembered browser still held a token that idle-expired overnight.
+     */
+    public static function isRemembered(?string $tokenName): bool
     {
+        return is_string($tokenName) && str_ends_with($tokenName, ':remember');
+    }
+
+    /** The configured idle window, never shorter than the recovery margin. */
+    public function idleMinutesFor(Organization $organization, bool $remembered = false): int
+    {
+        if ($remembered) {
+            return self::ABSOLUTE_DAYS * 24 * 60;
+        }
+
         // Setting rows are tenant-scoped and this is called from both inside a
         // request that has a tenant (SlideIdleWindow) and from IssueSession,
         // which runs during login before there is one. Entering the
@@ -96,9 +111,9 @@ final class SessionLifetime
      * rather than the later is what keeps the ceiling a ceiling: an organization
      * configuring a sixty-day idle window gets thirty days, not sixty.
      */
-    public function expiryFor(Organization $organization, Carbon $issuedAt): Carbon
+    public function expiryFor(Organization $organization, Carbon $issuedAt, bool $remembered = false): Carbon
     {
-        $idle     = now()->addMinutes($this->idleMinutesFor($organization));
+        $idle     = now()->addMinutes($this->idleMinutesFor($organization, $remembered));
         $absolute = $issuedAt->copy()->addDays(self::ABSOLUTE_DAYS);
 
         return $idle->lt($absolute) ? $idle : $absolute;

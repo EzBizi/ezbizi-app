@@ -67,6 +67,10 @@ class IssueSession
         // retrying built a second one. Resolved here rather than in each
         // caller's validation, because this is the line that cannot accept it.
         $deviceName = trim((string) $request->input('device_name')) ?: 'web';
+        $remembered = $request->boolean('remember');
+        if ($remembered && ! SessionLifetime::isRemembered($deviceName)) {
+            $deviceName .= ':remember';
+        }
 
         /*
          * The idle window, not a flat month (§6 — `security.session_timeout_minutes`).
@@ -81,7 +85,7 @@ class IssueSession
          */
         $token = $user->createToken(
             $deviceName,
-            expiresAt: $this->lifetime->expiryFor($user->organization, now()),
+            expiresAt: $this->lifetime->expiryFor($user->organization, now(), $remembered),
         );
 
         // The user agent and address, so the session list can name this row

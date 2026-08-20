@@ -106,6 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
       'password': _password.text,
       if (_code.text.trim().isNotEmpty) 'code': _code.text.trim(),
       'device_name': 'web',
+      'remember': _stayed,
     });
 
     if (!mounted) return;
@@ -193,6 +194,7 @@ class _LoginScreenState extends State<LoginScreen> {
       'password': _password.text,
       if (_code.text.trim().isNotEmpty) 'code': _code.text.trim(),
       'device_name': 'web',
+      'remember': _stayed,
     });
 
     if (!mounted) return;

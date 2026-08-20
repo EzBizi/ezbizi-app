@@ -439,7 +439,8 @@ class SettingRegistry
                 // number is where it is.
                 help: 'Counts from the last thing you did, not from signing in. '
                     .'Below 5 is treated as 5, and no session outlives 30 days however '
-                    .'much it is used.',
+                    .'much it is used. Does not apply to "Keep me signed in", which lasts '
+                    .'up to those 30 days.',
             ),
             new SettingDefinition(
                 key: 'security.password_min_length', label: 'Minimum password length',

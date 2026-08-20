@@ -448,6 +448,61 @@ class SecuritySettingsTest extends TestCase
         $as->getJson('/api/v1/me')->assertUnauthorized();
     }
 
+    /**
+     * "Keep me signed in" is a server lifetime, not only a browser persist flag.
+     *
+     * The idle setting would otherwise expire the token overnight while
+     * localStorage still held it, so the person came back to a login screen.
+     */
+    public function test_keep_me_signed_in_uses_the_absolute_ceiling_not_the_idle_window(): void
+    {
+        $this->set('security.session_timeout_minutes', 30);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'owner@everdoors.test',
+            'password' => 'a-real-password',
+            'remember' => true,
+            'device_name' => 'web',
+        ])->assertOk();
+
+        $token = PersonalAccessToken::latest('id')->first();
+
+        $this->assertNotNull($token);
+        $this->assertStringEndsWith(':remember', (string) $token->name);
+        $this->assertEqualsWithDelta(
+            SessionLifetime::ABSOLUTE_DAYS * 24 * 60 * 60,
+            now()->diffInSeconds($token->expires_at),
+            60,
+        );
+    }
+
+    /** An administrator tightening idle must not evict remembered sessions. */
+    public function test_a_remembered_session_is_not_re_windowed_to_the_idle_setting(): void
+    {
+        $this->set('security.session_timeout_minutes', 15);
+
+        $plain = $this->postJson('/api/v1/auth/login', [
+            'email' => 'owner@everdoors.test',
+            'password' => 'a-real-password',
+            'remember' => true,
+            'device_name' => 'web',
+        ])->assertOk()->json('token');
+
+        $this->app['auth']->forgetGuards();
+
+        $this->withHeader('Authorization', "Bearer {$plain}")
+            ->getJson('/api/v1/me')
+            ->assertOk();
+
+        $token = PersonalAccessToken::latest('id')->first();
+
+        $this->assertEqualsWithDelta(
+            SessionLifetime::ABSOLUTE_DAYS * 24 * 60 * 60,
+            now()->diffInSeconds($token->fresh()->expires_at),
+            60,
+        );
+    }
+
     /** No setting may push a session past the absolute ceiling. */
     public function test_no_session_outlives_the_absolute_ceiling(): void
     {

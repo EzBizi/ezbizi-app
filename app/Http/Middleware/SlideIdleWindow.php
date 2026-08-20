@@ -98,7 +98,11 @@ class SlideIdleWindow
         // created_at, not now(), so the absolute ceiling counts from when the
         // session began. Measuring it from the current request would make the
         // ceiling slide too, which is the one thing it exists not to do.
-        $target = $this->lifetime->expiryFor($organization, Carbon::instance($token->created_at));
+        $target = $this->lifetime->expiryFor(
+            $organization,
+            Carbon::instance($token->created_at),
+            SessionLifetime::isRemembered($token->name),
+        );
 
         $stored = $token->expires_at;
 
