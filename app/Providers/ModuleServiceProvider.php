@@ -952,8 +952,9 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
-             * Web Management and Phone — declared so they can be granted,
-             * and not built. Same shape as Marketing on the day it arrived:
+             * Web Management, Phone and Fleet Management — declared so they
+             * can be granted, and not built. Same shape as Marketing on the
+             * day it arrived:
              * a tab permission, a screen that says what is coming, and no
              * action that would show up on Roles as a switch for work the
              * software cannot do.
@@ -981,6 +982,15 @@ class ModuleServiceProvider extends ServiceProvider
                 automationExemptBecause:
                     'Calling and texting are not built, so there is no event a '
                     .'rule could fire on and nothing a rule could change.',
+            ),
+
+            new ModuleDefinition(
+                key:     'fleet_management',
+                label:   'Fleet Management',
+                actions: ['view'],
+                automationExemptBecause:
+                    'Vehicles and assignments are not built, so there is no '
+                    .'event a rule could fire on and nothing a rule could change.',
             ),
 
             /*

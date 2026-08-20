@@ -91,6 +91,16 @@ final Map<String, ModuleScreen> moduleScreens = {
           'here yet.',
     ),
   ),
+  'fleet_management': ModuleScreen(
+    Icons.local_shipping_outlined,
+    (_, _) => const ComingSoonScreen(
+      title: 'Fleet Management',
+      what:
+          'Fleet Management is where the company will keep its vehicles, '
+          'who is driving them, and what is due on each one — next to the '
+          'jobs those vehicles go out on. The records are not here yet.',
+    ),
+  ),
   'automations': ModuleScreen(
     Icons.bolt_outlined,
     (api, session) => AutomationsScreen(api: api, session: session),

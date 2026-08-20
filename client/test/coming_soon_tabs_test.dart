@@ -10,7 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Web Management and Phone: granted tabs that say they are coming, not blank.
+/// Coming-soon sidebar tabs: granted, named, not blank.
 void main() {
   testWidgets('Web Management names itself and is not a blank page', (
     tester,
@@ -64,6 +64,34 @@ void main() {
 
     expect(find.text('Coming soon'), findsOneWidget);
     expect(find.textContaining('without leaving EzBizi'), findsOneWidget);
+  });
+
+  testWidgets('Fleet Management names itself and is not a blank page', (
+    tester,
+  ) async {
+    await _pumpDestination(tester, 'fleet_management', 'Fleet Management');
+
+    expect(find.text('Coming soon'), findsOneWidget);
+    expect(find.textContaining('vehicles'), findsOneWidget);
+  });
+
+  testWidgets('a granted Fleet Management tab is in the sidebar and opens', (
+    tester,
+  ) async {
+    await _pumpShell(tester, 'fleet_management', 'Fleet Management');
+
+    final inSidebar = find.descendant(
+      of: find.byType(NavigationSidebar),
+      matching: find.text('Fleet Management'),
+    );
+
+    expect(inSidebar, findsOneWidget);
+
+    await tester.tap(inSidebar);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Coming soon'), findsOneWidget);
+    expect(find.textContaining('vehicles'), findsOneWidget);
   });
 
   testWidgets('Coming soon lays out on a 375-point window without overflowing', (
