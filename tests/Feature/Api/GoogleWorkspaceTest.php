@@ -556,10 +556,12 @@ class GoogleWorkspaceTest extends TestCase
 
     private function lookingAt(\App\Models\User $user, string $type, string $id): void
     {
-        $user->forceFill([
-            'preferences' => array_merge($user->preferences ?? [], [
-                'navigation.scope' => $type.':'.$id,
-            ]),
-        ])->save();
+        $this->inTenant($user->organization, function () use ($user, $type, $id) {
+            $user->forceFill([
+                'preferences' => array_merge($user->preferences ?? [], [
+                    'navigation.scope' => $type.':'.$id,
+                ]),
+            ])->save();
+        });
     }
 }
