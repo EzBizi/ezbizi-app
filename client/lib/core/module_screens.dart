@@ -75,6 +75,7 @@ final Map<String, ModuleScreen> moduleScreens = {
     Icons.language_outlined,
     (_, _) => const ComingSoonScreen(
       title: 'Web Management',
+      icon: Icons.language_outlined,
       what:
           'Web Management is where a company will edit and publish its public '
           'website from EzBizi — the same place it already runs the rest of '
@@ -85,6 +86,7 @@ final Map<String, ModuleScreen> moduleScreens = {
     Icons.phone_outlined,
     (_, _) => const ComingSoonScreen(
       title: 'Phone',
+      icon: Icons.phone_outlined,
       what:
           'Phone is where the team will place and receive calls, and send '
           'texts, with customers without leaving EzBizi. Calling is not '
@@ -95,6 +97,7 @@ final Map<String, ModuleScreen> moduleScreens = {
     Icons.local_shipping_outlined,
     (_, _) => const ComingSoonScreen(
       title: 'Fleet Management',
+      icon: Icons.local_shipping_outlined,
       what:
           'Fleet Management is where the company will keep its vehicles, '
           'who is driving them, and what is due on each one — next to the '

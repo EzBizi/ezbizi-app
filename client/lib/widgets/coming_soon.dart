@@ -12,10 +12,12 @@ class ComingSoonScreen extends StatelessWidget {
     super.key,
     required this.title,
     required this.what,
+    required this.icon,
   });
 
   final String title;
   final String what;
+  final IconData icon;
 
   static const double _readable = 760;
 
@@ -34,8 +36,10 @@ class ComingSoonScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Wrap(
+                  spacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
+                    Icon(icon, size: 22),
                     Text(title, style: theme.textTheme.headlineSmall),
                     const Tag('Coming soon', warn: true),
                   ],

@@ -53,4 +53,37 @@ echo "→ building v${VERSION} · ${COMMIT}"
 # itself and reloads the tabs.
 cp client/web/sw-kill.js client/build/web/flutter_service_worker.js
 
+# MaterialIcons is NOT content-hashed. Flutter writes the same filename every
+# build and tree-shakes a different subset into it. nginx's "hashed assets are
+# immutable" rule does not apply, and a browser that kept the previous subset
+# draws empty boxes for any icon this build added — which is how Web Management,
+# Phone and Fleet Management shipped without glyphs. The version in the filename
+# makes the next load a different URL.
+python - "$VERSION" <<'PY'
+import json, sys
+from pathlib import Path
+
+version = sys.argv[1]
+root = Path('client/build/web/assets')
+src = root / 'fonts' / 'MaterialIcons-Regular.otf'
+dst = root / 'fonts' / f'MaterialIcons-Regular.{version}.otf'
+if not src.is_file():
+    raise SystemExit(f'missing {src}')
+src.replace(dst)
+manifest_path = root / 'FontManifest.json'
+manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+old = 'fonts/MaterialIcons-Regular.otf'
+new = f'fonts/MaterialIcons-Regular.{version}.otf'
+changed = 0
+for family in manifest:
+    for font in family.get('fonts', []):
+        if font.get('asset') == old:
+            font['asset'] = new
+            changed += 1
+if changed != 1:
+    raise SystemExit(f'expected to rewrite 1 font path, rewrote {changed}')
+manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
+print(f'  icon font → {new}')
+PY
+
 echo "✓ built v${VERSION} · ${COMMIT}"

@@ -39,6 +39,13 @@ void main() {
     );
 
     expect(inSidebar, findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(NavigationSidebar),
+        matching: find.byIcon(Icons.language_outlined),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(inSidebar);
     await tester.pumpAndSettle();
@@ -58,6 +65,13 @@ void main() {
     );
 
     expect(inSidebar, findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(NavigationSidebar),
+        matching: find.byIcon(Icons.phone_outlined),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(inSidebar);
     await tester.pumpAndSettle();
@@ -86,6 +100,13 @@ void main() {
     );
 
     expect(inSidebar, findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(NavigationSidebar),
+        matching: find.byIcon(Icons.local_shipping_outlined),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(inSidebar);
     await tester.pumpAndSettle();
@@ -107,6 +128,7 @@ void main() {
         home: const Scaffold(
           body: ComingSoonScreen(
             title: 'Phone',
+            icon: Icons.phone_outlined,
             what: 'Calling is not here yet.',
           ),
         ),
