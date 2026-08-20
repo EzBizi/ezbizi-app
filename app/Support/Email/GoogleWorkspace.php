@@ -256,6 +256,13 @@ final class GoogleWorkspace
             return $connection;
         }
 
+        // A pending row on GET /email/workspace would otherwise call Google
+        // from the test suite with no Http::fake, and DNS that never returns
+        // holds the deploy gate open. Production still checks; phpunit does not.
+        if (app()->environment('testing')) {
+            return $connection;
+        }
+
         try {
             $this->directoryFor($connection);
             $connection->forceFill([
