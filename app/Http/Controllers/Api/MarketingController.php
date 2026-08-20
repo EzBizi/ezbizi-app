@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Marketing, whose only sub-module is Newsletter and Newsletter is not built.
+ * Marketing — Newsletter (not built) and Social Media Management (started).
  *
  * ── What an endpoint is FOR, on a module that does nothing ───────
  *

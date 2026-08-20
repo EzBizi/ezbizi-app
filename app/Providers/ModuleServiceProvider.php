@@ -952,6 +952,38 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
+             * Web Management and Phone — declared so they can be granted,
+             * and not built. Same shape as Marketing on the day it arrived:
+             * a tab permission, a screen that says what is coming, and no
+             * action that would show up on Roles as a switch for work the
+             * software cannot do.
+             *
+             * Exempt from automation until there is a record an event could
+             * be about. Inventing `website.published` or `call.ended` before
+             * either exists would put a trigger in the builder that saves,
+             * switches on and never runs — the failure Marketing avoided by
+             * declaring newsletter events as not raised, which we cannot do
+             * here because there is not even a name for the record yet.
+             */
+            new ModuleDefinition(
+                key:     'web_management',
+                label:   'Web Management',
+                actions: ['view'],
+                automationExemptBecause:
+                    'The website editor does not exist yet, so there is no event '
+                    .'a rule could fire on and nothing a rule could change.',
+            ),
+
+            new ModuleDefinition(
+                key:     'phone',
+                label:   'Phone',
+                actions: ['view'],
+                automationExemptBecause:
+                    'Calling and texting are not built, so there is no event a '
+                    .'rule could fire on and nothing a rule could change.',
+            ),
+
+            /*
              * ── Email: shared team inboxes ───────────────────────
              *
              * The owner: *"In this module the client will be able to add his

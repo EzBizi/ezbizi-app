@@ -11,7 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Marketing, whose only sub-module is declared and not built.
+/// Marketing — Newsletter is declared and not built; Social Media Management
+/// has its first screen.
 ///
 /// ── What these are about ─────────────────────────────────────────
 ///
@@ -38,9 +39,29 @@ void main() {
       // The strip, so somebody told "the newsletter is under Marketing" can
       // see they have arrived.
       expect(find.widgetWithText(ChoiceChip, 'Newsletter'), findsOneWidget);
+      expect(
+        find.widgetWithText(ChoiceChip, 'Social Media Management'),
+        findsOneWidget,
+      );
 
       // And the state, in the same words the HR dashboard's unbuilt panel uses.
       expect(find.text('Not built yet'), findsOneWidget);
+    });
+
+    testWidgets('Social Media Management is a second sub-tab, not a blank page', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler());
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Social Media Management'), findsWidgets);
+      expect(find.text('Connected accounts'), findsOneWidget);
+      expect(find.text('Compose'), findsOneWidget);
+      expect(find.text('Publish now'), findsOneWidget);
+      expect(find.text('Pinterest'), findsOneWidget);
+      expect(find.text('Not built yet'), findsNothing);
     });
 
     testWidgets('it says what Newsletter will be', (tester) async {

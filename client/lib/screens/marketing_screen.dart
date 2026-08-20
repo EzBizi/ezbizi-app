@@ -6,21 +6,16 @@ import '../widgets/async_body.dart';
 import '../widgets/dashboard_card.dart';
 import '../widgets/tab_bar_like.dart';
 import '../widgets/tag.dart';
+import 'marketing/social_media_tab.dart';
 
-/// Marketing — one sub-tab, Newsletter, and Newsletter is not built.
+/// Marketing — Newsletter (not built) and Social Media Management (started).
 ///
-/// ── Why a strip above one chip ───────────────────────────────────
+/// ── Why a strip above the chips ──────────────────────────────────
 ///
-/// The sidebar says "Marketing" and the strip says "Newsletter", which are two
-/// different words doing two different jobs: the first names the destination,
-/// the second names the sub-module inside it. Somebody who was told "the
-/// newsletter lives under Marketing" needs to see the second word to know they
-/// have arrived. It is also the shape Human Resources and Settings already use,
-/// so a second sub-module is a line in [_tabs] rather than a new layout.
-///
-/// The tabs stay in this file while there is one of them. HR keeps its five in
-/// `screens/hr/`, and that is where this goes on the day it has more than one —
-/// a directory holding a single file is a structure with nothing to organise.
+/// The sidebar says "Marketing" and the strip names the sub-module inside it.
+/// Somebody who was told "the newsletter lives under Marketing" needs to see
+/// the second word to know they have arrived. It is the shape Human Resources
+/// and Settings already use, so another sub-module is a line in [_tabs].
 class MarketingScreen extends StatefulWidget {
   const MarketingScreen({super.key, required this.api, required this.session});
 
@@ -34,7 +29,7 @@ class MarketingScreen extends StatefulWidget {
 class _MarketingScreenState extends State<MarketingScreen> {
   int _tab = 0;
 
-  /// The sub-modules, in the owner's order. One, today.
+  /// The sub-modules, in the owner's order.
   ///
   /// A list of (name, glyph, page) rather than a switch on the index, for the
   /// reason HrScreen gives: a name can never end up above the wrong page.
@@ -43,6 +38,11 @@ class _MarketingScreenState extends State<MarketingScreen> {
       'Newsletter',
       Icons.campaign_outlined,
       () => NewsletterTab(api: widget.api, session: widget.session),
+    ),
+    (
+      'Social Media Management',
+      Icons.share_outlined,
+      () => SocialMediaTab(session: widget.session),
     ),
   ];
 

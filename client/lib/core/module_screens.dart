@@ -8,6 +8,7 @@ import '../screens/hr_screen.dart';
 import '../screens/inspection_screen.dart';
 import '../screens/jobs_screen.dart';
 import '../screens/marketing_screen.dart';
+import '../widgets/coming_soon.dart';
 import 'api_client.dart';
 import 'session.dart';
 
@@ -69,6 +70,26 @@ final Map<String, ModuleScreen> moduleScreens = {
   'marketing': ModuleScreen(
     Icons.campaign_outlined,
     (api, session) => MarketingScreen(api: api, session: session),
+  ),
+  'web_management': ModuleScreen(
+    Icons.language_outlined,
+    (_, _) => const ComingSoonScreen(
+      title: 'Web Management',
+      what:
+          'Web Management is where a company will edit and publish its public '
+          'website from EzBizi — the same place it already runs the rest of '
+          'the business. The editor is not here yet.',
+    ),
+  ),
+  'phone': ModuleScreen(
+    Icons.phone_outlined,
+    (_, _) => const ComingSoonScreen(
+      title: 'Phone',
+      what:
+          'Phone is where the team will place and receive calls, and send '
+          'texts, with customers without leaving EzBizi. Calling is not '
+          'here yet.',
+    ),
   ),
   'automations': ModuleScreen(
     Icons.bolt_outlined,
