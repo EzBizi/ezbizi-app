@@ -41,7 +41,6 @@ final class GoogleWorkspaceSignIns
         string $scopeType = 'organization',
         ?string $scopeId = null,
     ): array {
-    {
         $state    = Str::random(64);
         $verifier = $this->google->newVerifier();
         $url      = $this->google->workspaceAuthorizeUrl($state, $verifier, $domain);
