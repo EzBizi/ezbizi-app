@@ -1511,6 +1511,69 @@ void main() {
     expect(bodies.single['scope_id'], 'org-1');
   });
 
+  testWidgets('Workspace addresses are searched, not dumped in a dropdown, '
+      'and Google test-domain aliases never appear', (tester) async {
+    final bodies = <Map<String, dynamic>>[];
+
+    await _pump(
+      tester,
+      _handler(
+        mailboxes: const [],
+        workspaceUsable: true,
+        directory: const [
+          {'address': 'info@a-1chimney.com', 'name': 'Info'},
+          {
+            'address': 'info@a-1chimney.com.test-google-a.com',
+            'name': 'Info',
+          },
+          {'address': 'ana@ezbizi.com', 'name': 'Analorena Ventoso'},
+          {
+            'address': 'ana@ezbizi.com.test-google-a.com',
+            'name': 'Analorena Ventoso',
+          },
+        ],
+        onRequest: (method, path, body) {
+          if (method == 'POST' && body != null) bodies.add(body);
+        },
+      ),
+    );
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add an inbox'));
+
+    await _tap(
+      tester,
+      find.widgetWithText(DropdownButtonFormField<String>, 'Mail service'),
+    );
+    await _tap(tester, find.text('Google Workspace').last);
+
+    expect(find.text('Address from the directory'), findsNothing);
+    expect(find.text('Search the directory'), findsOneWidget);
+    expect(
+      find.text('ana@ezbizi.com'),
+      findsNothing,
+      reason: 'A directory of hundreds cannot be a dropdown. Nothing is listed '
+          'until somebody searches.',
+    );
+    expect(find.textContaining('test-google-a.com'), findsNothing);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Search the directory'),
+      'ana@',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('ana@ezbizi.com · Analorena Ventoso'), findsOneWidget);
+    expect(find.textContaining('test-google-a.com'), findsNothing);
+
+    await _tap(tester, find.text('ana@ezbizi.com · Analorena Ventoso'));
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add the address'));
+
+    expect(bodies, hasLength(1));
+    expect(bodies.single['address'], 'ana@ezbizi.com');
+    expect(bodies.single['provider'], 'gmail_workspace');
+  });
+
   // ── gating ─────────────────────────────────────────────────────
 
   testWidgets('a role that may read the mail but not manage it gets no live '
@@ -2071,6 +2134,7 @@ MockClientHandler _handler({
   ],
   Future<http.Response> Function()? connect,
   Map<String, Object?>? workspace,
+  List<Map<String, Object?>> directory = const [],
 }) {
   final rows = mailboxes ?? [_row(id: 'mb-1', address: 'info@a-1chimney.com')];
 
@@ -2210,7 +2274,7 @@ MockClientHandler _handler({
     }
 
     if (path.endsWith('/email/workspace/directory')) {
-      return _json({'data': const []});
+      return _json({'data': directory});
     }
 
     if (path.endsWith('/email/workspace')) {

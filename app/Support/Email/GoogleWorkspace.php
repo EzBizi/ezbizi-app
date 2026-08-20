@@ -280,7 +280,9 @@ final class GoogleWorkspace
      * User accounts and aliases on the connected domain, for the picker.
      *
      * Suspended accounts are omitted. Groups are omitted — they are a different
-     * Google API and this reader impersonates user mailboxes only.
+     * Google API and this reader impersonates user mailboxes only. Google's
+     * own `user@domain.test-google-a.com` aliases are omitted: they are not
+     * inboxes, and listing them doubles every address.
      *
      * @return list<array{address: string, name: string, primary: bool}>
      *
@@ -358,15 +360,23 @@ final class GoogleWorkspace
 
                 $name = (string) (data_get($user, 'name.fullName') ?: $primary);
 
-                $listed[] = ['address' => $primary, 'name' => $name, 'primary' => true];
+                if (! $this->isGoogleTestAlias($primary)) {
+                    $listed[] = ['address' => $primary, 'name' => $name, 'primary' => true];
+                }
 
                 foreach ([...($user['aliases'] ?? []), ...($user['nonEditableAliases'] ?? [])] as $alias) {
                     if (! is_string($alias) || $alias === '') {
                         continue;
                     }
 
+                    $address = strtolower($alias);
+
+                    if ($this->isGoogleTestAlias($address)) {
+                        continue;
+                    }
+
                     $listed[] = [
-                        'address' => strtolower($alias),
+                        'address' => $address,
                         'name'    => $name,
                         'primary' => false,
                     ];
@@ -383,6 +393,19 @@ final class GoogleWorkspace
         }
 
         return array_values($unique);
+    }
+
+    /**
+     * Google Workspace mints a non-editable alias
+     * `user@domain.test-google-a.com` for every account. They are not
+     * inboxes a business can use, they double the directory, and they
+     * must not be pickable as a shared address.
+     */
+    private function isGoogleTestAlias(string $address): bool
+    {
+        $host = strtolower((string) substr(strrchr($address, '@') ?: '', 1));
+
+        return $host === 'test-google-a.com' || str_ends_with($host, '.test-google-a.com');
     }
 
     /**

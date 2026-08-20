@@ -95,6 +95,7 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
   final _form = GlobalKey<FormState>();
   final _address = TextEditingController();
   final _displayName = TextEditingController();
+  final _directorySearch = TextEditingController();
 
   /// Where the mail lives, drawn by [_MailServerFields] rather than by eight
   /// controllers here. The key is how this panel reads the block back out at
@@ -131,6 +132,8 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
     setState(() {
       _loadingDirectory = true;
       _error = null;
+      _pickedAddress = null;
+      _directorySearch.clear();
     });
 
     final response = await widget.api.get('/email/workspace/directory');
@@ -153,7 +156,7 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
               address: entry['address'] as String? ?? '',
               name: entry['name'] as String? ?? '',
             ),
-      ].where((e) => e.address.isNotEmpty).toList();
+      ].where((e) => e.address.isNotEmpty && !_isGoogleTestAlias(e.address)).toList();
     });
   }
 
@@ -161,6 +164,7 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
   void dispose() {
     _address.dispose();
     _displayName.dispose();
+    _directorySearch.dispose();
     super.dispose();
   }
 
@@ -221,42 +225,94 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
       );
     }
 
-    return DropdownButtonFormField<String>(
-      initialValue: _pickedAddress,
-      isExpanded: true,
-      decoration: const InputDecoration(
-        labelText: 'Address from the directory',
-        helperText:
-            'Only addresses on the connected Workspace can be opened this way. '
-            'Pick a shared inbox — do not pick a person\'s own mailbox.',
-        helperMaxLines: 3,
-      ),
-      items: [
-        for (final entry in _directory)
-          DropdownMenuItem(
-            value: entry.address,
-            child: Text(
-              entry.name.isEmpty || entry.name == entry.address
-                  ? entry.address
-                  : '${entry.address} · ${entry.name}',
-              overflow: TextOverflow.ellipsis,
+    final query = _directorySearch.text.trim().toLowerCase();
+    final matches = query.isEmpty
+        ? const <_DirectoryEntry>[]
+        : _directory
+            .where(
+              (e) =>
+                  e.address.contains(query) ||
+                  e.name.toLowerCase().contains(query),
+            )
+            .take(40)
+            .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextFormField(
+          controller: _directorySearch,
+          autofocus: true,
+          enabled: !_saving,
+          decoration: InputDecoration(
+            labelText: 'Search the directory',
+            hintText: 'info@',
+            helperText: _pickedAddress == null
+                ? 'Type part of an address. Only addresses on the connected '
+                    'Workspace can be opened this way. Pick a shared inbox — '
+                    'do not pick a person\'s own mailbox.'
+                : '$_pickedAddress is selected.',
+            helperMaxLines: 3,
+            suffixIcon: _pickedAddress == null
+                ? const Icon(Icons.search)
+                : IconButton(
+                    tooltip: 'Search again',
+                    icon: const Icon(Icons.clear),
+                    onPressed: _saving
+                        ? null
+                        : () => setState(() {
+                            _pickedAddress = null;
+                            _directorySearch.clear();
+                          }),
+                  ),
+          ),
+          onChanged: (_) => setState(() {
+            if (_pickedAddress != null) {
+              _pickedAddress = null;
+            }
+          }),
+          validator: (_) => (_pickedAddress == null || _pickedAddress!.isEmpty)
+              ? 'Pick a shared address from the directory.'
+              : null,
+        ),
+        if (_pickedAddress == null && query.isNotEmpty && matches.isEmpty) ...[
+          const SizedBox(height: 8),
+          const _Note('No address in the directory matches that.'),
+        ],
+        if (_pickedAddress == null && matches.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 240),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: matches.length,
+              itemBuilder: (context, index) {
+                final entry = matches[index];
+                final label = entry.name.isEmpty || entry.name == entry.address
+                    ? entry.address
+                    : '${entry.address} · ${entry.name}';
+
+                return ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(label, overflow: TextOverflow.ellipsis),
+                  onTap: _saving
+                      ? null
+                      : () => setState(() {
+                          _pickedAddress = entry.address;
+                          _directorySearch.text = entry.address;
+                          if (_displayName.text.trim().isEmpty) {
+                            _displayName.text = entry.name.contains('@')
+                                ? entry.address.split('@').first
+                                : entry.name;
+                          }
+                        }),
+                );
+              },
             ),
           ),
+        ],
       ],
-      onChanged: _saving
-          ? null
-          : (value) => setState(() {
-              _pickedAddress = value;
-              final match = _directory.where((e) => e.address == value).firstOrNull;
-              if (match != null && _displayName.text.trim().isEmpty) {
-                _displayName.text = match.name.contains('@')
-                    ? match.address.split('@').first
-                    : match.name;
-              }
-            }),
-      validator: (value) => (value == null || value.isEmpty)
-          ? 'Pick a shared address from the directory.'
-          : null,
     );
   }
 
@@ -415,6 +471,17 @@ class _DirectoryEntry {
 
   final String address;
   final String name;
+}
+
+/// Google Workspace mints `user@domain.test-google-a.com` for every account.
+/// They are not inboxes, and a picker that lists them looks like every
+/// address has a broken duplicate.
+bool _isGoogleTestAlias(String address) {
+  final at = address.lastIndexOf('@');
+  if (at < 0) return false;
+  final host = address.substring(at + 1).toLowerCase();
+
+  return host == 'test-google-a.com' || host.endsWith('.test-google-a.com');
 }
 
 /// Where the mail lives — asked the same way in both panels that ask it.

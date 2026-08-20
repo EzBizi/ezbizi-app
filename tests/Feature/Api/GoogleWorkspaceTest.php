@@ -367,6 +367,41 @@ class GoogleWorkspaceTest extends TestCase
         $this->assertNotContains('everyone@a-1chimney.com', $addresses);
     }
 
+    /**
+     * Google adds `user@domain.test-google-a.com` as a non-editable alias
+     * for every account. They are not inboxes. Listing them doubles the
+     * picker and invites somebody to connect a fake address.
+     */
+    public function test_the_directory_omits_google_test_domain_aliases(): void
+    {
+        $this->withSigningKey();
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'ya29.directory']),
+            'admin.googleapis.com/admin/directory/v1/users*' => Http::response([
+                'users' => [[
+                    'primaryEmail'  => self::INFO,
+                    'name'          => ['fullName' => 'Info'],
+                    'isMailboxSetup' => true,
+                    'aliases'       => ['jobs@a-1chimney.com'],
+                    'nonEditableAliases' => [
+                        'info@a-1chimney.com.test-google-a.com',
+                        'jobs@a-1chimney.com.test-google-a.com',
+                    ],
+                ]],
+            ]),
+        ]);
+
+        $addresses = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/email/workspace/directory')
+            ->assertOk()
+            ->json('data.*.address');
+
+        $this->assertSame([self::INFO, 'jobs@a-1chimney.com'], $addresses);
+    }
+
     public function test_picking_a_listed_address_connects_it_without_a_mailbox_secret(): void
     {
         $this->withSigningKey();
