@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Models\AuditEvent;
+use App\Models\Company;
 use App\Models\Mailbox;
 use App\Models\MailboxGrant;
 use App\Models\Role;
@@ -570,6 +571,77 @@ class MailboxesApiTest extends TestCase
         // `credentials` is not among them, and never can be — an allowlist is
         // what makes that a property of the code rather than of a habit.
         $this->assertArrayNotHasKey('credentials', $row);
+    }
+
+    /**
+     * An inbox added on EzBizi must not appear while looking at A-1 Chimney.
+     *
+     * The row already knew which company it belonged to. The list did not
+     * consult the switcher, so Settings and Inbox showed every inbox the
+     * administrator could reach, in every company. Workspace connections
+     * already hide a sibling; inboxes have to do the same.
+     */
+    public function test_a_company_inbox_is_hidden_from_a_sibling_company(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $premier = $this->inTenant($t['org'], fn () => Company::create([
+            'organization_id' => $t['org']->id,
+            'name'            => 'Premier Garage Repair',
+        ]));
+
+        $this->inbox($t, 'development@ezbizi.com', 'company', $t['company']->id);
+        $this->lookingAt($t['admin'], 'company', $premier->id);
+
+        $addresses = $this->signedInAs($t['admin']->fresh())
+            ->getJson(self::ENDPOINT)
+            ->assertOk()
+            ->json('data.*.address');
+
+        $this->assertSame([], $addresses);
+    }
+
+    public function test_the_organization_view_lists_a_company_inbox(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->inbox($t, 'development@ezbizi.com', 'company', $t['company']->id);
+
+        $addresses = $this->signedInAs($t['admin'])
+            ->getJson(self::ENDPOINT)
+            ->assertOk()
+            ->json('data.*.address');
+
+        $this->assertSame(['development@ezbizi.com'], $addresses);
+    }
+
+    public function test_a_company_view_lists_its_own_inbox_and_a_branch_inbox(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->inbox($t, 'info@a-1chimney.com', 'company', $t['company']->id);
+        $this->inbox($t, 'connecticut@a-1chimney.com', 'franchise', $t['franchise']->id);
+        $this->inbox($t, 'group@a-1chimney.com');
+
+        $this->lookingAt($t['admin'], 'company', $t['company']->id);
+
+        $addresses = $this->signedInAs($t['admin']->fresh())
+            ->getJson(self::ENDPOINT)
+            ->assertOk()
+            ->json('data.*.address');
+
+        $this->assertSame(
+            ['connecticut@a-1chimney.com', 'info@a-1chimney.com'],
+            $addresses,
+        );
+    }
+
+    private function lookingAt(\App\Models\User $user, string $type, string $id): void
+    {
+        $this->inTenant($user->organization, function () use ($user, $type, $id) {
+            $user->forceFill([
+                'preferences' => array_merge($user->preferences ?? [], [
+                    'navigation.scope' => $type.':'.$id,
+                ]),
+            ])->save();
+        });
     }
 
     /**

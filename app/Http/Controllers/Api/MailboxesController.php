@@ -78,12 +78,16 @@ class MailboxesController extends Controller
     ) {}
 
     /**
-     * GET /api/v1/email/mailboxes — every inbox this person may see, and their state.
+     * GET /api/v1/email/mailboxes — every inbox this person may see in this view.
      *
      * Two lists in one response rather than two endpoints, because the screen
      * shows one table: an administrator who may manage an inbox but has not been
      * granted it still needs to see it, so the row carries `may_read` and
      * `may_manage` per mailbox instead of the caller having to infer either.
+     *
+     * The company switcher then narrows that union. An inbox added on EzBizi
+     * stays on EzBizi (and on the organization view). A-1 Chimney must not
+     * list it, on Settings or Inbox — {@see MailboxAccess::inView}.
      */
     public function index(Request $request): JsonResponse
     {
@@ -123,7 +127,10 @@ class MailboxesController extends Controller
          * role). Listing only one of the two sets makes half the module
          * invisible to one of those two people.
          */
-        $mailboxes = $manageable->concat($readable)->unique(fn (Mailbox $m) => $m->getKey());
+        $mailboxes = $manageable
+            ->concat($readable)
+            ->unique(fn (Mailbox $m) => $m->getKey())
+            ->filter(fn (Mailbox $m) => $this->access->inView($user, $m));
 
         return response()->json([
             'data' => $mailboxes

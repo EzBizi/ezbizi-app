@@ -316,7 +316,7 @@ void main() {
   ) async {
     await _pump(tester, _handler(mailboxes: const []));
 
-    expect(find.textContaining('No inbox has been connected'), findsOneWidget);
+    expect(find.textContaining('No inbox belongs to this part of the business'), findsOneWidget);
     expect(find.textContaining('each role is then given'), findsOneWidget);
   });
 

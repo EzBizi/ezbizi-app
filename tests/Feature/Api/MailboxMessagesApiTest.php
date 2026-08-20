@@ -243,6 +243,48 @@ class MailboxMessagesApiTest extends TestCase
     }
 
     /**
+     * The switcher is a lens. An administrator who can open EzBizi's inbox
+     * must not open it while looking at A-1 Chimney — listing it on Inbox
+     * was the visible half of the same leak.
+     */
+    public function test_a_company_inbox_cannot_be_opened_from_a_sibling_company(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+        $premier = $this->inTenant($t['org'], fn () => \App\Models\Company::create([
+            'organization_id' => $t['org']->id,
+            'name'            => 'Premier Garage Repair',
+        ]));
+
+        $inbox = $this->inbox($t, 'development@ezbizi.com', 'company', $t['company']->id);
+        $this->lookingAt($t['admin'], 'company', $premier->id);
+
+        FakeMailboxReader::$page = new MessagePage([$this->summary()]);
+
+        $this->signedInAs($t['admin']->fresh())
+            ->getJson("/api/v1/email/mailboxes/{$inbox->id}/messages")
+            ->assertForbidden()
+            ->assertJsonPath(
+                'message',
+                fn (string $m) => str_contains($m, 'development@ezbizi.com')
+                    && str_contains($m, 'Premier Garage Repair')
+                    && str_contains($m, 'organization'),
+            );
+    }
+
+    private function lookingAt(\App\Models\User $user, string $type, string $id): void
+    {
+        $this->inTenant($user->organization, function () use ($user, $type, $id) {
+            $user->forceFill([
+                'preferences' => array_merge($user->preferences ?? [], [
+                    'navigation.scope' => $type.':'.$id,
+                ]),
+            ])->save();
+        });
+    }
+
+    /**
      * The other half: reach without a grant.
      *
      * Somebody standing exactly where the inbox is, holding the module's view

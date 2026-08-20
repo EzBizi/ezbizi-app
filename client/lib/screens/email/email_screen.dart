@@ -25,8 +25,9 @@ import 'settings_tab.dart';
 /// So: `info@`, `bookings@`, `careers@`. Not somebody's personal mailbox, and
 /// not a CRM mail integration — mail is deliberately NOT linked to customers or
 /// jobs. Which of an organization's inboxes a role reaches is granted per
-/// inbox, and the list endpoint answers with what this person may open, so
-/// there is no filtering in this file to get wrong.
+/// inbox, and the list endpoint answers with what this person may open in
+/// the company they are looking at, so there is no filtering in this file
+/// to get wrong.
 ///
 /// ── Read live, and hold nothing ─────────────────────────────────
 ///
@@ -457,15 +458,16 @@ class _EmailScreenState extends State<EmailScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'No inbox has been connected to your account yet.',
+              'No inbox belongs to this part of the business yet.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 6),
             Text(
-              'Shared addresses are connected once for the whole organization, '
-              'and each role is then given the ones it should be able to read. '
-              'Whoever set up this organization can add you to one.',
+              'An inbox added on another company stays there — switch to that '
+              'company, or to the organization, to see it. Settings is where '
+              'one is added, and each role is then given the ones it should '
+              'be able to read.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),

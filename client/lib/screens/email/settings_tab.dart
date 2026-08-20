@@ -285,10 +285,11 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
         PanelHeader(
           title: 'Connected inboxes',
           note:
-              'A shared address is connected once for the whole organization, '
-              'and each role is then given the ones it should be able to read. '
-              'This is where one is added, handed its password, and where an '
-              'inbox that has stopped working says so.',
+              'An inbox belongs to the company you are looking at when you add '
+              'it. The organization view lists every company\'s. Each role is '
+              'then given the ones it should be able to read. This is where '
+              'one is added, handed its password, and where an inbox that has '
+              'stopped working says so.',
           action: Refused(
             reason: refusal,
             child: FilledButton.icon(

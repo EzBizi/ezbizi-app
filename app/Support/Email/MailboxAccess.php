@@ -8,6 +8,7 @@ use App\Models\Mailbox;
 use App\Models\MailboxGrant;
 use App\Models\User;
 use App\Support\Access\Refusal;
+use App\Support\Scoping\ViewScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
@@ -67,6 +68,17 @@ use Illuminate\Support\Collection;
  *  The refusals below say WHICH of the two is missing, because the
  *  remedies are different people: a missing grant is fixed in the
  *  roles editor, a missing reach is fixed by an assignment.
+ *
+ *  ── THE SWITCHER IS A LENS, NOT A FOURTH GRANT ─────────────
+ *
+ *  Permission, grant and reach decide whether this person may ever
+ *  open the inbox. The company switcher decides whether it is on
+ *  screen right now. development@ezbizi.com belongs to EzBizi;
+ *  looking at A-1 Chimney must not list it — on Settings or Inbox —
+ *  and must not open it by id either. The organization view lists
+ *  every company's. A company view lists that company, its Sub
+ *  Companies, and the franchises under them. A franchise view lists
+ *  that branch's. Same rule the Workspace connections already follow.
  * ═══════════════════════════════════════════════════════════════════
  *
  * ── Managing a mailbox is a different act from reading it ────────
@@ -176,6 +188,10 @@ final class MailboxAccess
             return Refusal::permission($act)->message();
         }
 
+        if (! $this->inView($user, $mailbox)) {
+            return $this->outOfView($user, $mailbox, $act);
+        }
+
         /*
          * REACH BEFORE GRANT, and the order is the point.
          *
@@ -208,6 +224,10 @@ final class MailboxAccess
     {
         if (! $user->hasPermission(self::MANAGE)) {
             return Refusal::permission($act)->message();
+        }
+
+        if (! $this->inView($user, $mailbox)) {
+            return $this->outOfView($user, $mailbox, $act);
         }
 
         if (! $this->reaches($user, $mailbox)) {
@@ -246,6 +266,35 @@ final class MailboxAccess
             ->where('mailbox_id', $mailbox->getKey())
             ->where('role_id', $user->role_id)
             ->exists();
+    }
+
+    /**
+     * Is this inbox on screen for the company (or organization) they are looking at?
+     *
+     * Organization view: every inbox they already have grant and reach for.
+     * Company view: that company, its Sub Companies, and franchises under them
+     * — not a sibling, and not an organization-level inbox (those live on the
+     * group view, the same way a Workspace grant does). Franchise view: that
+     * branch only.
+     */
+    public function inView(User $user, Mailbox $mailbox): bool
+    {
+        $view = ViewScope::forUser($user);
+
+        if ($view->isOrganization()) {
+            return true;
+        }
+
+        if ($view->type === ViewScope::COMPANY) {
+            return match ($mailbox->scope_type) {
+                Mailbox::SCOPE_COMPANY => in_array($mailbox->scope_id, $view->companyIds(), true),
+                Mailbox::SCOPE_FRANCHISE => in_array($mailbox->scope_id, $view->franchiseIds(), true),
+                default => false,
+            };
+        }
+
+        return $mailbox->scope_type === Mailbox::SCOPE_FRANCHISE
+            && $mailbox->scope_id === $view->id;
     }
 
     /**
@@ -329,6 +378,29 @@ final class MailboxAccess
         $query->whereIn('id', MailboxGrant::query()
             ->where('role_id', $user->role_id)
             ->select('mailbox_id'));
+    }
+
+    /**
+     * The switcher refusal: they may well have the grant, they are just
+     * looking at a different company.
+     */
+    private function outOfView(User $user, Mailbox $mailbox, string $act): string
+    {
+        $here = ViewScope::forUser($user)->label();
+
+        $there = match ($mailbox->scope_type) {
+            Mailbox::SCOPE_COMPANY => Company::find($mailbox->scope_id)?->name,
+            Mailbox::SCOPE_FRANCHISE => Franchise::find($mailbox->scope_id)?->name,
+            default => $user->organization?->name,
+        } ?? 'another part of the business';
+
+        return sprintf(
+            'You cannot %s while looking at %s. %s belongs to %s. Switch there, or to the organization, to see it.',
+            $act,
+            $here,
+            $mailbox->address,
+            $there,
+        );
     }
 
     /**
