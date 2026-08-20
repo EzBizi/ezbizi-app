@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Company;
 use App\Models\GoogleWorkspaceConnection;
 use App\Models\Organization;
+use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Email\GoogleOAuth;
@@ -23,9 +25,9 @@ use Symfony\Component\HttpFoundation\Response;
  * EzBizi stores no mailbox secret, and shared addresses are picked from the
  * Directory rather than typed.
  *
- * Authority is `email.edit` plus organization-level reach. A franchise manager
- * who can connect a branch IMAP inbox must not be able to grant EzBizi the
- * whole company domain.
+ * Authority is `email.edit` plus reach of the place being connected. A
+ * franchise manager who can connect a branch IMAP inbox must not be able
+ * to grant EzBizi the company domain.
  */
 class GoogleWorkspaceAuthController extends Controller
 {
@@ -42,21 +44,39 @@ class GoogleWorkspaceAuthController extends Controller
     {
         $this->assertMayManageWorkspace($request, 'open Google Workspace settings');
 
-        $org        = $request->user()->organization;
-        $connection = $this->workspace->connectionFor($org->getKey());
+        $user   = $request->user();
+        $target = $this->workspace->bindTarget($user);
+        $listed = $this->workspace->connectionsVisibleTo($user)->map(
+            fn (GoogleWorkspaceConnection $row) => $this->workspace->refreshStatus($row),
+        );
 
         return response()->json([
-            'data' => $connection === null ? null : [
-                'domain'      => $connection->domain,
-                'admin_email' => $connection->admin_email,
-                'status'      => $connection->status,
-                'status_reason' => $connection->status_reason,
-                'client_id_for_admin_console' => $this->workspace->clientIdForAdminConsole(),
-                'scopes' => [
-                    GoogleOAuth::SCOPE_READ,
-                    GoogleOAuth::SCOPE_SEND,
-                    GoogleWorkspace::SCOPE_DIRECTORY,
-                ],
+            'data' => [
+                'view' => $target,
+                'can_connect' => ! $listed->contains(
+                    fn (GoogleWorkspaceConnection $row) => $row->scope_type === $target['type']
+                        && $row->scope_id === $target['id'],
+                ),
+                'connections' => $listed->map(fn (GoogleWorkspaceConnection $row) => [
+                    'domain'      => $row->domain,
+                    'admin_email' => $row->admin_email,
+                    'status'      => $row->status,
+                    'status_reason' => $row->status_reason,
+                    'scope_type'  => $row->scope_type,
+                    'scope_id'    => $row->scope_id,
+                    'scope_label' => $this->workspace->scopeLabel($row),
+                    'is_current_view' => $row->scope_type === $target['type']
+                        && $row->scope_id === $target['id'],
+                    'client_id_for_admin_console' => $this->workspace->clientIdForAdminConsole(),
+                    'scopes' => [
+                        GoogleOAuth::SCOPE_READ,
+                        GoogleOAuth::SCOPE_SEND,
+                        GoogleWorkspace::SCOPE_DIRECTORY,
+                    ],
+                    'setup_steps' => $row->status === GoogleWorkspaceConnection::STATUS_PENDING
+                        ? $this->workspace->setupSteps()
+                        : [],
+                ])->values(),
             ],
         ]);
     }
@@ -68,8 +88,20 @@ class GoogleWorkspaceAuthController extends Controller
     {
         $this->assertMayManageWorkspace($request, 'list Google Workspace addresses');
 
+        $user   = $request->user();
+        $target = $this->workspace->bindTarget($user);
+        $row    = $this->workspace->connectionAt(
+            $user->organization_id,
+            $target['type'],
+            $target['id'],
+        );
+
         try {
-            $listed = $this->workspace->directory($request->user()->organization);
+            if ($row === null) {
+                throw GoogleWorkspaceRefused::notConnected();
+            }
+
+            $listed = $this->workspace->directoryFor($row);
         } catch (GoogleWorkspaceRefused $e) {
             return response()->json(['message' => $e->getMessage()], $e->status);
         }
@@ -83,6 +115,7 @@ class GoogleWorkspaceAuthController extends Controller
     public function start(Request $request): JsonResponse
     {
         $this->assertMayManageWorkspace($request, 'connect Google Workspace');
+        $this->assertMayBindCurrentView($request, 'connect Google Workspace');
 
         $input = $request->validate([
             'domain' => ['required', 'string', 'max:255'],
@@ -117,9 +150,14 @@ class GoogleWorkspaceAuthController extends Controller
             ], Response::HTTP_NOT_IMPLEMENTED);
         }
 
-        $taken = GoogleWorkspaceConnection::withoutGlobalScopes()
+        $target = $this->workspace->bindTarget($request->user());
+        $taken  = GoogleWorkspaceConnection::withoutGlobalScopes()
             ->where('domain', $domain)
-            ->where('organization_id', '!=', $request->user()->organization_id)
+            ->where(function ($query) use ($request, $target) {
+                $query->where('organization_id', '!=', $request->user()->organization_id)
+                    ->orWhere('scope_type', '!=', $target['type'])
+                    ->orWhere('scope_id', '!=', $target['id']);
+            })
             ->exists();
 
         if ($taken) {
@@ -130,7 +168,14 @@ class GoogleWorkspaceAuthController extends Controller
         }
 
         try {
-            $begun = $this->signIns->begin($request->user(), $request->user()->organization, $domain);
+            $target = $this->workspace->bindTarget($request->user());
+            $begun  = $this->signIns->begin(
+                $request->user(),
+                $request->user()->organization,
+                $domain,
+                $target['type'],
+                $target['id'],
+            );
         } catch (GoogleOAuthRefused $e) {
             return response()->json(['message' => $e->getMessage()], $e->status);
         }
@@ -176,19 +221,28 @@ class GoogleWorkspaceAuthController extends Controller
     {
         $this->assertMayManageWorkspace($request, 'disconnect Google Workspace');
 
-        $org        = $request->user()->organization;
-        $connection = $this->workspace->connectionFor($org->getKey());
+        $org    = $request->user()->organization;
+        $target = $this->workspace->bindTarget($request->user());
+        $type   = (string) $request->query('scope_type', $target['type']);
+        $id     = (string) $request->query('scope_id', $target['id']);
+
+        $this->assertMayActOnScope($request->user(), $type, $id, 'disconnect Google Workspace');
+
+        $connection = $this->workspace->connectionAt($org->getKey(), $type, $id);
 
         if ($connection === null) {
             return response()->json([
-                'message' => 'This organization has not connected a Google Workspace.',
+                'message' => 'This part of the business has not connected a Google Workspace.',
             ]);
         }
 
         $domain = $connection->domain;
 
-        $this->audit->log('workspace.disconnected', $org, ['domain' => $domain]);
-        $this->workspace->unbind($org);
+        $this->audit->log('workspace.disconnected', $org, [
+            'domain' => $domain,
+            'scope'  => $type,
+        ]);
+        $this->workspace->unbind($org->getKey(), $type, $id);
 
         return response()->json([
             'message' => $domain.' is no longer connected to EzBizi. Shared inboxes that '
@@ -211,7 +265,27 @@ class GoogleWorkspaceAuthController extends Controller
         $org = $user->organization;
 
         abort_unless(
-            $org instanceof Organization && $user->canActOnOrganization($org),
+            $org instanceof Organization,
+            Response::HTTP_FORBIDDEN,
+            Refusal::abovePosition($act)->message(),
+        );
+    }
+
+    private function assertMayBindCurrentView(Request $request, string $act): void
+    {
+        $target = $this->workspace->bindTarget($request->user());
+
+        $this->assertMayActOnScope($request->user(), $target['type'], $target['id'], $act);
+    }
+
+    private function assertMayActOnScope(User $user, string $type, string $id, string $act): void
+    {
+        $ok = $type === 'company'
+            ? (($company = Company::find($id)) !== null && $user->canActOnCompany($company))
+            : $user->canActOnOrganization($user->organization);
+
+        abort_unless(
+            $ok,
             Response::HTTP_FORBIDDEN,
             Refusal::abovePosition($act)->message(),
         );

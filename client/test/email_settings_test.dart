@@ -96,6 +96,85 @@ void main() {
     expect(find.text('THE INBOX YOU ARE IN'), findsOneWidget);
   });
 
+  testWidgets('a pending Workspace is a numbered list with a Google Admin link', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        workspaceUsable: true,
+        workspace: {
+          'can_connect': false,
+          'view': {
+            'type': 'company',
+            'id': 'co-1',
+            'label': 'A1 Chimney',
+          },
+          'connections': [
+            {
+              'domain': 'a-1chimney.com',
+              'admin_email': 'it-admin@a-1chimney.com',
+              'status': 'pending_delegation',
+              'status_reason':
+                  'EzBizi cannot list or open mailboxes until Google Admin allows this app.',
+              'scope_type': 'company',
+              'scope_id': 'co-1',
+              'scope_label': 'A1 Chimney',
+              'is_current_view': true,
+              'client_id_for_admin_console': '117502255825060957159',
+              'scopes': const [
+                'https://www.googleapis.com/auth/gmail.readonly',
+                'https://www.googleapis.com/auth/gmail.send',
+                'https://www.googleapis.com/auth/admin.directory.user.readonly',
+              ],
+              'setup_steps': const [
+                {
+                  'title': 'Open Google Admin',
+                  'detail':
+                      'Sign in as a Super Admin of this company\'s Workspace.',
+                  'url':
+                      'https://admin.google.com/ac/owl/domainwidedelegation',
+                  'copy': null,
+                },
+                {
+                  'title': 'Add a new API client',
+                  'detail': 'Paste this client ID.',
+                  'url': null,
+                  'copy': '117502255825060957159',
+                },
+                {
+                  'title': 'Allow these three scopes',
+                  'detail': 'Paste all three.',
+                  'url': null,
+                  'copy':
+                      'https://www.googleapis.com/auth/gmail.readonly\nhttps://www.googleapis.com/auth/gmail.send',
+                },
+                {
+                  'title': 'Authorize, then come back here',
+                  'detail': 'Return to Email → Settings.',
+                  'url': null,
+                  'copy': null,
+                },
+              ],
+            },
+          ],
+        },
+      ),
+    );
+
+    await _openSettings(tester);
+
+    expect(find.text('To-do in Google Admin'), findsOneWidget);
+    expect(find.text('Open Google Admin'), findsWidgets);
+    expect(find.text('117502255825060957159'), findsOneWidget);
+    expect(find.text('A1 Chimney'), findsWidgets);
+    expect(
+      find.textContaining('Security → Access and data control'),
+      findsNothing,
+      reason: 'The old paragraph of path names is what this list replaces.',
+    );
+  });
+
   // ── what a row says ────────────────────────────────────────────
 
   testWidgets('a broken inbox says what went wrong and when it last worked', (
@@ -1991,6 +2070,7 @@ MockClientHandler _handler({
     },
   ],
   Future<http.Response> Function()? connect,
+  Map<String, Object?>? workspace,
 }) {
   final rows = mailboxes ?? [_row(id: 'mb-1', address: 'info@a-1chimney.com')];
 
@@ -2142,7 +2222,18 @@ MockClientHandler _handler({
         });
       }
 
-      return _json({'data': null});
+      return _json({
+        'data': workspace ??
+            {
+              'can_connect': true,
+              'view': {
+                'type': 'organization',
+                'id': 'org-1',
+                'label': 'Everdoors',
+              },
+              'connections': const [],
+            },
+      });
     }
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);

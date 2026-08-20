@@ -9,7 +9,8 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * One Google Workspace domain bound to this organization.
+ * One Google Workspace domain bound to one place in the tenant
+ * (the organization, or a company).
  *
  * The SERVICE ACCOUNT that impersonates mailboxes is installation config, not
  * this row. This row is the proof that a Workspace administrator signed in as

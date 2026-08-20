@@ -2,10 +2,15 @@
 
 namespace App\Support\Email;
 
+use App\Models\Company;
+use App\Models\Franchise;
 use App\Models\GoogleWorkspaceConnection;
 use App\Models\Mailbox;
 use App\Models\Organization;
+use App\Models\User;
+use App\Support\Scoping\ViewScope;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -65,12 +70,13 @@ final class GoogleWorkspace
             return $notReady;
         }
 
-        $connection = $this->connectionFor($mailbox->organization_id);
+        $connection = $this->connectionForMailbox($mailbox);
 
         if ($connection === null) {
-            return 'This organization has not connected its Google Workspace yet, so EzBizi '
-                .'has no permission to open addresses on that domain. A Workspace administrator '
-                .'needs to sign in under Email → Settings.';
+            return 'This part of the business has not connected its Google Workspace yet, so '
+                .'EzBizi has no permission to open addresses on that domain. A Workspace '
+                .'administrator needs to sign in under Email → Settings while looking at '
+                .'this company.';
         }
 
         if ($connection->status !== GoogleWorkspaceConnection::STATUS_CONNECTED) {
@@ -122,11 +128,145 @@ final class GoogleWorkspace
         }
     }
 
-    public function connectionFor(string $organizationId): ?GoogleWorkspaceConnection
+    public function connectionAt(string $organizationId, string $scopeType, string $scopeId): ?GoogleWorkspaceConnection
     {
         return GoogleWorkspaceConnection::query()
             ->where('organization_id', $organizationId)
+            ->where('scope_type', $scopeType)
+            ->where('scope_id', $scopeId)
             ->first();
+    }
+
+    /**
+     * The Workspace that covers this inbox: the same company, or the
+     * organization when the inbox itself hangs off the organization.
+     *
+     * A sibling company's domain is not this inbox's Workspace. That is the
+     * whole of the scoping: Premier Garage Repair cannot open A-1 Chimney's
+     * mail by standing in a different company.
+     */
+    public function connectionForMailbox(Mailbox $mailbox): ?GoogleWorkspaceConnection
+    {
+        [$type, $id] = $this->workspaceScopeOfMailbox($mailbox);
+
+        return $this->connectionAt($mailbox->organization_id, $type, $id);
+    }
+
+    /** @return array{0: string, 1: string} */
+    public function workspaceScopeOfMailbox(Mailbox $mailbox): array
+    {
+        if ($mailbox->scope_type === Mailbox::SCOPE_COMPANY) {
+            return ['company', $mailbox->scope_id];
+        }
+
+        if ($mailbox->scope_type === Mailbox::SCOPE_FRANCHISE) {
+            $companyId = Franchise::find($mailbox->scope_id)?->company_id;
+
+            return $companyId === null
+                ? ['organization', $mailbox->organization_id]
+                : ['company', $companyId];
+        }
+
+        return ['organization', $mailbox->organization_id];
+    }
+
+    /**
+     * Where a Connect Workspace from this person lands, given what they are
+     * looking at.
+     *
+     * A franchise view binds to its company: Workspace is a company (or
+     * organization) grant, not a branch one. Organization view binds to the
+     * organization itself, so A-1 Group can have a domain of its own as well.
+     *
+     * @return array{type: string, id: string, label: string}
+     */
+    public function bindTarget(User $user): array
+    {
+        $view = ViewScope::forUser($user);
+        $org  = $user->organization;
+
+        if ($view->type === ViewScope::COMPANY && is_string($view->id)) {
+            return [
+                'type'  => 'company',
+                'id'    => $view->id,
+                'label' => $view->label(),
+            ];
+        }
+
+        if ($view->type === ViewScope::FRANCHISE && is_string($view->id)) {
+            $companyId = Franchise::find($view->id)?->company_id;
+
+            if (is_string($companyId) && $companyId !== '') {
+                return [
+                    'type'  => 'company',
+                    'id'    => $companyId,
+                    'label' => Company::find($companyId)?->name ?? $view->label(),
+                ];
+            }
+        }
+
+        return [
+            'type'  => 'organization',
+            'id'    => $org->getKey(),
+            'label' => $org->name,
+        ];
+    }
+
+    /**
+     * Connections this person should see on Email settings, given the view.
+     *
+     * Organization view: every Workspace in the tenant, so A-1 Group can see
+     * A-1 Chimney's domain. Company view: that company only, so Premier Garage
+     * Repair does not inherit A-1 Chimney's.
+     *
+     * @return Collection<int, GoogleWorkspaceConnection>
+     */
+    public function connectionsVisibleTo(User $user): Collection
+    {
+        $view = ViewScope::forUser($user);
+        $rows = GoogleWorkspaceConnection::query()
+            ->where('organization_id', $user->organization_id);
+
+        if ($view->type === ViewScope::ORGANIZATION) {
+            return $rows->orderBy('domain')->get();
+        }
+
+        $target = $this->bindTarget($user);
+
+        return $rows
+            ->where('scope_type', $target['type'])
+            ->where('scope_id', $target['id'])
+            ->orderBy('domain')
+            ->get();
+    }
+
+    public function scopeLabel(GoogleWorkspaceConnection $connection): string
+    {
+        if ($connection->scope_type === 'company') {
+            return Company::find($connection->scope_id)?->name
+                ?? 'This company';
+        }
+
+        return $connection->organization?->name ?? 'This organization';
+    }
+
+    public function refreshStatus(GoogleWorkspaceConnection $connection): GoogleWorkspaceConnection
+    {
+        if ($connection->status === GoogleWorkspaceConnection::STATUS_CONNECTED) {
+            return $connection;
+        }
+
+        try {
+            $this->directoryFor($connection);
+            $connection->forceFill([
+                'status'        => GoogleWorkspaceConnection::STATUS_CONNECTED,
+                'status_reason' => null,
+            ])->save();
+        } catch (GoogleWorkspaceRefused) {
+            // Still pending or broken. The card keeps the checklist.
+        }
+
+        return $connection->fresh() ?? $connection;
     }
 
     /**
@@ -141,14 +281,28 @@ final class GoogleWorkspace
      */
     public function directory(Organization $organization): array
     {
-        if (($notReady = $this->notReadyBecause()) !== null) {
-            throw GoogleWorkspaceRefused::notConfigured($notReady);
-        }
-
-        $connection = $this->connectionFor($organization->getKey());
+        $connection = $this->connectionAt(
+            $organization->getKey(),
+            'organization',
+            $organization->getKey(),
+        );
 
         if ($connection === null) {
             throw GoogleWorkspaceRefused::notConnected();
+        }
+
+        return $this->directoryFor($connection);
+    }
+
+    /**
+     * @return list<array{address: string, name: string, primary: bool}>
+     *
+     * @throws GoogleWorkspaceRefused
+     */
+    public function directoryFor(GoogleWorkspaceConnection $connection): array
+    {
+        if (($notReady = $this->notReadyBecause()) !== null) {
+            throw GoogleWorkspaceRefused::notConfigured($notReady);
         }
 
         try {
@@ -231,7 +385,13 @@ final class GoogleWorkspace
      */
     public function attach(Mailbox $mailbox): void
     {
-        $addresses = array_column($this->directory($mailbox->organization), 'address');
+        $connection = $this->connectionForMailbox($mailbox);
+
+        if ($connection === null) {
+            throw GoogleWorkspaceRefused::notConnected();
+        }
+
+        $addresses = array_column($this->directoryFor($connection), 'address');
 
         if (! in_array($mailbox->address, $addresses, true)) {
             throw GoogleWorkspaceRefused::notOnDirectory($mailbox->address);
@@ -250,24 +410,37 @@ final class GoogleWorkspace
      *
      * @throws GoogleWorkspaceRefused
      */
-    public function bind(Organization $organization, string $domain, string $adminEmail): GoogleWorkspaceConnection
-    {
+    public function bind(
+        Organization $organization,
+        string $domain,
+        string $adminEmail,
+        string $scopeType = 'organization',
+        ?string $scopeId = null,
+    ): GoogleWorkspaceConnection {
         $domain     = strtolower($domain);
         $adminEmail = strtolower($adminEmail);
+        $scopeId    = $scopeId ?? $organization->getKey();
 
         $taken = GoogleWorkspaceConnection::withoutGlobalScopes()
             ->where('domain', $domain)
-            ->where('organization_id', '!=', $organization->getKey())
+            ->where(function ($query) use ($organization, $scopeType, $scopeId) {
+                $query->where('organization_id', '!=', $organization->getKey())
+                    ->orWhere('scope_type', '!=', $scopeType)
+                    ->orWhere('scope_id', '!=', $scopeId);
+            })
             ->exists();
 
         if ($taken) {
             throw GoogleWorkspaceRefused::domainTaken($domain);
         }
 
-        $row = $this->connectionFor($organization->getKey()) ?? new GoogleWorkspaceConnection;
+        $row = $this->connectionAt($organization->getKey(), $scopeType, $scopeId)
+            ?? new GoogleWorkspaceConnection;
 
         $row->forceFill([
             'organization_id' => $organization->getKey(),
+            'scope_type'      => $scopeType,
+            'scope_id'        => $scopeId,
             'domain'          => $domain,
             'admin_email'     => $adminEmail,
             'status'          => GoogleWorkspaceConnection::STATUS_PENDING,
@@ -275,7 +448,7 @@ final class GoogleWorkspace
         ])->save();
 
         try {
-            $this->directory($organization);
+            $this->directoryFor($row);
             $row->forceFill([
                 'status'        => GoogleWorkspaceConnection::STATUS_CONNECTED,
                 'status_reason' => null,
@@ -287,22 +460,53 @@ final class GoogleWorkspace
         return $row->fresh();
     }
 
-    public function unbind(Organization $organization): void
+    public function unbind(string $organizationId, string $scopeType, string $scopeId): void
     {
-        $this->connectionFor($organization->getKey())?->delete();
+        $this->connectionAt($organizationId, $scopeType, $scopeId)?->delete();
     }
 
     public function pendingReason(): string
     {
-        $id = $this->clientIdForAdminConsole()
-            ?? 'the client ID shown on Email settings';
+        return 'EzBizi cannot list or open mailboxes until Google Admin allows '
+            .'this app. Follow the steps below — they are done in this company\'s '
+            .'Google Admin, not in EzBizi.';
+    }
 
-        return 'Google Workspace is linked, but EzBizi cannot list or open mailboxes yet. In '
-            .'Google Admin, go to Security → Access and data control → API controls → '
-            .'Domain-wide delegation and allow client ID '.$id.' these three scopes: '
-            .GoogleOAuth::SCOPE_READ.', '.GoogleOAuth::SCOPE_SEND.', '.self::SCOPE_DIRECTORY
-            .'. Then try again from Email settings. Nothing about per-inbox Google sign-in '
-            .'or IMAP has changed.';
+    /**
+     * @return list<array{title: string, detail: string, url: ?string, copy: ?string}>
+     */
+    public function setupSteps(): array
+    {
+        $id = $this->clientIdForAdminConsole() ?? '';
+
+        $scopes = GoogleOAuth::SCOPE_READ."\n".GoogleOAuth::SCOPE_SEND."\n".self::SCOPE_DIRECTORY;
+
+        return [
+            [
+                'title'  => 'Open Google Admin',
+                'detail' => 'Sign in as a Super Admin of this company\'s Workspace, then open Domain-wide delegation.',
+                'url'    => 'https://admin.google.com/ac/owl/domainwidedelegation',
+                'copy'   => null,
+            ],
+            [
+                'title'  => 'Add a new API client',
+                'detail' => 'Click Add new. Paste this client ID. It is EzBizi\'s, and it is the same for every company.',
+                'url'    => null,
+                'copy'   => $id === '' ? null : $id,
+            ],
+            [
+                'title'  => 'Allow these three scopes',
+                'detail' => 'Paste all three, one per line or separated by commas. Do not add any others.',
+                'url'    => null,
+                'copy'   => $scopes,
+            ],
+            [
+                'title'  => 'Authorize, then come back here',
+                'detail' => 'Click Authorize. Return to Email → Settings. EzBizi checks again when this page loads.',
+                'url'    => null,
+                'copy'   => null,
+            ],
+        ];
     }
 
     public function clientIdForAdminConsole(): ?string

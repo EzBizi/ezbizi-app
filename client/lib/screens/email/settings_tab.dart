@@ -9,6 +9,7 @@ import '../../widgets/tag.dart';
 import 'consent_window.dart';
 import 'mailbox_panels.dart';
 import 'mailbox_settings.dart';
+import 'open_external.dart';
 
 /// Email › Settings — where an inbox is set up, and where you find out why one
 /// stopped working.
@@ -75,7 +76,7 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
   List<ProviderOption> _providers = const [];
   List<int> _imapPorts = const [];
   List<int> _smtpPorts = const [];
-  WorkspaceLink? _workspace;
+  WorkspaceSettings? _workspace;
   bool _workspaceReachable = false;
 
   /// The server's last word about something that just happened — what
@@ -124,7 +125,7 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
 
       _workspaceReachable = workspace.ok;
       _workspace = workspace.ok && workspace.data is Map<String, dynamic>
-          ? WorkspaceLink.fromJson(workspace.data as Map<String, dynamic>)
+          ? WorkspaceSettings.fromJson(workspace.data as Map<String, dynamic>)
           : null;
     });
   }
@@ -249,8 +250,14 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
     await _load();
   }
 
-  Future<void> _disconnectWorkspace() async {
-    final response = await widget.api.delete('/email/workspace');
+  Future<void> _disconnectWorkspace(WorkspaceLink link) async {
+    final response = await widget.api.delete(
+      '/email/workspace',
+      {
+        'scope_type': link.scopeType,
+        'scope_id': link.scopeId,
+      },
+    );
 
     if (!mounted) return;
 
@@ -299,11 +306,35 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
         if (_workspaceReachable)
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-            child: _WorkspaceCard(
-              link: _workspace,
-              connectRefusal: _me.refusal('email.edit', 'connect Google Workspace'),
-              onConnect: _connectWorkspace,
-              onDisconnect: _disconnectWorkspace,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final link in _workspace?.connections ?? const <WorkspaceLink>[])
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _WorkspaceCard(
+                      link: link,
+                      viewLabel: _workspace?.viewLabel ?? '',
+                      connectRefusal: _me.refusal(
+                        'email.edit',
+                        'connect Google Workspace',
+                      ),
+                      onConnect: _connectWorkspace,
+                      onDisconnect: () => _disconnectWorkspace(link),
+                    ),
+                  ),
+                if (_workspace?.canConnect ?? false)
+                  _WorkspaceCard(
+                    link: null,
+                    viewLabel: _workspace?.viewLabel ?? '',
+                    connectRefusal: _me.refusal(
+                      'email.edit',
+                      'connect Google Workspace',
+                    ),
+                    onConnect: _connectWorkspace,
+                    onDisconnect: () {},
+                  ),
+              ],
             ),
           ),
         Expanded(
@@ -372,16 +403,18 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
   );
 }
 
-/// The organization's Google Workspace domain, connected once for every inbox.
+/// One Workspace grant, or the empty card that offers to connect this view.
 class _WorkspaceCard extends StatelessWidget {
   const _WorkspaceCard({
     required this.link,
+    required this.viewLabel,
     required this.connectRefusal,
     required this.onConnect,
     required this.onDisconnect,
   });
 
   final WorkspaceLink? link;
+  final String viewLabel;
   final String? connectRefusal;
   final VoidCallback onConnect;
   final VoidCallback onDisconnect;
@@ -390,7 +423,10 @@ class _WorkspaceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final linked = link != null;
-    final pending = link?.status == 'pending_delegation';
+    final pending = link?.pending ?? false;
+    final belongs = link?.scopeLabel.isNotEmpty == true
+        ? link!.scopeLabel
+        : viewLabel;
 
     return Card(
       margin: EdgeInsets.zero,
@@ -400,30 +436,26 @@ class _WorkspaceCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text('Google Workspace', style: theme.textTheme.titleSmall),
+            if (belongs.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(belongs, style: theme.textTheme.bodySmall),
+            ],
             const SizedBox(height: 6),
             Text(
               linked
                   ? (pending
-                      ? '${link!.domain} is linked, but EzBizi cannot open '
-                          'mailboxes until domain-wide delegation is allowed '
-                          'in Google Admin.'
+                      ? '${link!.domain} is linked. Finish the steps below in '
+                          'this company\'s Google Admin — not in EzBizi — then '
+                          'come back here.'
                       : '${link!.domain} is connected. Shared inboxes are '
                           'picked from the directory when you add one.')
-                  : 'Connect the company domain once, then pick shared '
-                      'addresses like info@ from the directory. Do not pick a '
-                      'person\'s own mailbox.',
+                  : 'Connect the Google Workspace for $belongs, then pick '
+                      'shared addresses like info@ from the directory.',
               style: theme.textTheme.bodyMedium,
             ),
-            if (link?.statusReason != null) ...[
-              const SizedBox(height: 8),
-              Text(link!.statusReason!, style: theme.textTheme.bodySmall),
-            ],
-            if (link?.clientIdForAdminConsole != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Google Admin client ID: ${link!.clientIdForAdminConsole}',
-                style: theme.textTheme.bodySmall,
-              ),
+            if (pending && link!.setupSteps.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _DelegationGuide(steps: link!.setupSteps),
             ],
             const SizedBox(height: 12),
             Align(
@@ -447,6 +479,80 @@ class _WorkspaceCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _DelegationGuide extends StatelessWidget {
+  const _DelegationGuide({required this.steps});
+
+  final List<WorkspaceSetupStep> steps;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('To-do in Google Admin', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
+        for (var i = 0; i < steps.length; i++) ...[
+          if (i > 0) const SizedBox(height: 12),
+          _GuideStep(number: i + 1, step: steps[i]),
+        ],
+      ],
+    );
+  }
+}
+
+class _GuideStep extends StatelessWidget {
+  const _GuideStep({required this.number, required this.step});
+
+  final int number;
+  final WorkspaceSetupStep step;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 24,
+          child: Text('$number.', style: theme.textTheme.titleSmall),
+        ),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(step.title, style: theme.textTheme.titleSmall),
+              const SizedBox(height: 2),
+              Text(step.detail, style: theme.textTheme.bodySmall),
+              if (step.url != null) ...[
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: () => openExternalUrl(step.url!),
+                    child: const Text('Open Google Admin'),
+                  ),
+                ),
+              ],
+              if (step.copy != null && step.copy!.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                SelectableText(
+                  step.copy!,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

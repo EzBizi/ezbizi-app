@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\Company;
 use App\Models\GoogleWorkspaceConnection;
 use App\Models\Mailbox;
 use App\Support\Email\GoogleOAuth;
@@ -116,6 +117,8 @@ class GoogleWorkspaceTest extends TestCase
             $row = new GoogleWorkspaceConnection;
             $row->forceFill([
                 'organization_id' => $t['org']->id,
+                'scope_type'      => 'organization',
+                'scope_id'        => $t['org']->id,
                 'domain'          => $domain,
                 'admin_email'     => $admin,
                 'status'          => GoogleWorkspaceConnection::STATUS_CONNECTED,
@@ -460,5 +463,103 @@ class GoogleWorkspaceTest extends TestCase
 
             return true;
         });
+    }
+
+    public function test_a_company_workspace_is_hidden_from_a_sibling_company(): void
+    {
+        $this->withServiceAccount();
+        $t = $this->provisionTenant('A1-Group');
+        $premier = $this->inTenant($t['org'], fn () => Company::create([
+            'organization_id' => $t['org']->id,
+            'name'            => 'Premier Garage Repair',
+        ]));
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $row = new GoogleWorkspaceConnection;
+            $row->forceFill([
+                'organization_id' => $t['org']->id,
+                'scope_type'      => 'company',
+                'scope_id'        => $t['company']->id,
+                'domain'          => self::DOMAIN,
+                'admin_email'     => self::ADMIN,
+                'status'          => GoogleWorkspaceConnection::STATUS_PENDING,
+                'status_reason'   => 'waiting',
+            ])->save();
+        });
+
+        $this->lookingAt($t['admin'], 'company', $premier->id);
+
+        $body = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/email/workspace')
+            ->assertOk()->json('data');
+
+        $this->assertTrue($body['can_connect']);
+        $this->assertSame([], $body['connections']);
+        $this->assertSame('company', $body['view']['type']);
+        $this->assertSame($premier->id, $body['view']['id']);
+    }
+
+    public function test_the_organization_view_lists_a_company_workspace(): void
+    {
+        $this->withServiceAccount();
+        $t = $this->provisionTenant('A1-Group');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $row = new GoogleWorkspaceConnection;
+            $row->forceFill([
+                'organization_id' => $t['org']->id,
+                'scope_type'      => 'company',
+                'scope_id'        => $t['company']->id,
+                'domain'          => self::DOMAIN,
+                'admin_email'     => self::ADMIN,
+                'status'          => GoogleWorkspaceConnection::STATUS_CONNECTED,
+            ])->save();
+        });
+
+        $body = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/email/workspace')
+            ->assertOk()->json('data');
+
+        $this->assertTrue($body['can_connect']);
+        $this->assertCount(1, $body['connections']);
+        $this->assertSame(self::DOMAIN, $body['connections'][0]['domain']);
+        $this->assertSame('company', $body['connections'][0]['scope_type']);
+        $this->assertFalse($body['connections'][0]['is_current_view']);
+    }
+
+    public function test_pending_workspace_publishes_a_step_by_step_google_admin_guide(): void
+    {
+        $this->withServiceAccount();
+        Http::fake(['*' => Http::response(['error' => 'unauthorized_client'], 401)]);
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+        $this->inTenant($t['org'], function () {
+            GoogleWorkspaceConnection::query()->update([
+                'status'        => GoogleWorkspaceConnection::STATUS_PENDING,
+                'status_reason' => 'waiting',
+            ]);
+        });
+
+        $body = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/email/workspace')
+            ->assertOk()->json('data');
+
+        $steps = $body['connections'][0]['setup_steps'];
+
+        $this->assertCount(4, $steps);
+        $this->assertSame('https://admin.google.com/ac/owl/domainwidedelegation', $steps[0]['url']);
+        $this->assertSame('1234567890', $steps[1]['copy']);
+        $this->assertStringContainsString('gmail.readonly', $steps[2]['copy']);
+        $this->assertStringContainsString('gmail.send', $steps[2]['copy']);
+        $this->assertStringContainsString('admin.directory.user.readonly', $steps[2]['copy']);
+    }
+
+    private function lookingAt(\App\Models\User $user, string $type, string $id): void
+    {
+        $user->forceFill([
+            'preferences' => array_merge($user->preferences ?? [], [
+                'navigation.scope' => $type.':'.$id,
+            ]),
+        ])->save();
     }
 }

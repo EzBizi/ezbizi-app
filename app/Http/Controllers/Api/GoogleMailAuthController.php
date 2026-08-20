@@ -406,7 +406,13 @@ class GoogleMailAuthController extends Controller
                 throw GoogleWorkspaceRefused::wrongDomain($signIn->domain, $identity['domain']);
             }
 
-            $connection = $this->workspace->bind($organization, $identity['domain'], $identity['email']);
+            $connection = $this->workspace->bind(
+                $organization,
+                $identity['domain'],
+                $identity['email'],
+                $signIn->scope_type ?: 'organization',
+                $signIn->scope_id ?: $organization->getKey(),
+            );
 
             $said = $connection->status === GoogleWorkspaceConnection::STATUS_CONNECTED
                 ? $identity['domain'].' is connected to EzBizi. You can close this window and '

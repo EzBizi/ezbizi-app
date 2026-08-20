@@ -287,7 +287,7 @@ class ProviderOption {
   ];
 }
 
-/// The organization's Google Workspace domain grant, as Email settings reads it.
+/// One Google Workspace domain grant, as Email settings reads it.
 @immutable
 class WorkspaceLink {
   const WorkspaceLink({
@@ -295,30 +295,97 @@ class WorkspaceLink {
     required this.adminEmail,
     required this.status,
     required this.statusReason,
+    required this.scopeType,
+    required this.scopeId,
+    required this.scopeLabel,
+    required this.isCurrentView,
     required this.clientIdForAdminConsole,
     required this.scopes,
+    required this.setupSteps,
   });
 
   final String domain;
   final String adminEmail;
   final String status;
   final String? statusReason;
+  final String scopeType;
+  final String scopeId;
+  final String scopeLabel;
+  final bool isCurrentView;
   final String? clientIdForAdminConsole;
   final List<String> scopes;
+  final List<WorkspaceSetupStep> setupSteps;
 
   bool get connected => status == 'connected';
+
+  bool get pending => status == 'pending_delegation';
 
   factory WorkspaceLink.fromJson(Map<String, dynamic> json) => WorkspaceLink(
     domain: json['domain'] as String? ?? '',
     adminEmail: json['admin_email'] as String? ?? '',
     status: json['status'] as String? ?? '',
     statusReason: json['status_reason'] as String?,
+    scopeType: json['scope_type'] as String? ?? 'organization',
+    scopeId: json['scope_id'] as String? ?? '',
+    scopeLabel: json['scope_label'] as String? ?? '',
+    isCurrentView: json['is_current_view'] == true,
     clientIdForAdminConsole: json['client_id_for_admin_console'] as String?,
     scopes: [
       for (final scope in json['scopes'] as List? ?? const [])
         if (scope is String) scope,
     ],
+    setupSteps: [
+      for (final step in json['setup_steps'] as List? ?? const [])
+        if (step is Map<String, dynamic>) WorkspaceSetupStep.fromJson(step),
+    ],
   );
+}
+
+@immutable
+class WorkspaceSetupStep {
+  const WorkspaceSetupStep({
+    required this.title,
+    required this.detail,
+    this.url,
+    this.copy,
+  });
+
+  final String title;
+  final String detail;
+  final String? url;
+  final String? copy;
+
+  factory WorkspaceSetupStep.fromJson(Map<String, dynamic> json) =>
+      WorkspaceSetupStep(
+        title: json['title'] as String? ?? '',
+        detail: json['detail'] as String? ?? '',
+        url: json['url'] as String?,
+        copy: json['copy'] as String?,
+      );
+}
+
+@immutable
+class WorkspaceSettings {
+  const WorkspaceSettings({
+    required this.canConnect,
+    required this.viewLabel,
+    required this.connections,
+  });
+
+  final bool canConnect;
+  final String viewLabel;
+  final List<WorkspaceLink> connections;
+
+  factory WorkspaceSettings.fromJson(Map<String, dynamic> json) =>
+      WorkspaceSettings(
+        canConnect: json['can_connect'] == true,
+        viewLabel: (json['view'] as Map<String, dynamic>?)?['label'] as String? ??
+            '',
+        connections: [
+          for (final row in json['connections'] as List? ?? const [])
+            if (row is Map<String, dynamic>) WorkspaceLink.fromJson(row),
+        ],
+      );
 }
 
 /// A state a person can act on: a word, a sentence, and whether it is trouble.

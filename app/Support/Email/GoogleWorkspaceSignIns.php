@@ -34,11 +34,18 @@ final class GoogleWorkspaceSignIns
      *
      * @throws GoogleOAuthRefused
      */
-    public function begin(User $user, Organization $organization, string $domain): array
+    public function begin(
+        User $user,
+        Organization $organization,
+        string $domain,
+        string $scopeType = 'organization',
+        ?string $scopeId = null,
+    ): array {
     {
         $state    = Str::random(64);
         $verifier = $this->google->newVerifier();
         $url      = $this->google->workspaceAuthorizeUrl($state, $verifier, $domain);
+        $scopeId  ??= $organization->getKey();
 
         $this->clearExpired();
 
@@ -51,6 +58,8 @@ final class GoogleWorkspaceSignIns
             'state_hash'      => hash('sha256', $state),
             'code_verifier'   => $verifier,
             'expires_at'      => now()->addMinutes(self::MINUTES),
+            'scope_type'      => $scopeType,
+            'scope_id'        => $scopeId,
         ])->save();
 
         return [
