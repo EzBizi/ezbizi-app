@@ -1,0 +1,152 @@
+<?php
+
+namespace App\Support\Social;
+
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
+
+/** TikTok Login Kit + Content Posting. Not ads, not Research API. */
+final class TikTokOAuth implements SocialOAuth
+{
+    public const CALLBACK_PATH = '/api/v1/social/tiktok/callback';
+
+    /** @var string[] */
+    public const SCOPES = [
+        'user.info.basic',
+        'video.upload',
+        'video.publish',
+    ];
+
+    private const TIMEOUT = 10;
+
+    public function provider(): SocialProvider
+    {
+        return SocialProvider::TikTok;
+    }
+
+    public function routeKey(): string
+    {
+        return 'tiktok';
+    }
+
+    public function callbackPath(): string
+    {
+        return self::CALLBACK_PATH;
+    }
+
+    public function scopes(): array
+    {
+        return self::SCOPES;
+    }
+
+    public function usesPkce(): bool
+    {
+        return false;
+    }
+
+    public function requiresRefreshToken(): bool
+    {
+        return true;
+    }
+
+    public function notReadyBecause(): ?string
+    {
+        if (RedirectUri::credentialsPresent(
+            config('services.tiktok.client_key'),
+            config('services.tiktok.client_secret'),
+        )) {
+            return null;
+        }
+
+        return 'EzBizi has no TikTok app set up on this installation yet, so a TikTok '
+            .'account cannot be connected. Nothing is wrong with the account — the missing '
+            .'piece is at EzBizi\'s end.';
+    }
+
+    public function redirectUri(): string
+    {
+        return RedirectUri::fromConfig(
+            (string) config('services.tiktok.redirect'),
+            self::CALLBACK_PATH,
+            'TikTok',
+        );
+    }
+
+    public function authorizeUrl(string $state, ?string $verifier = null): string
+    {
+        return 'https://www.tiktok.com/v2/auth/authorize/?'.http_build_query([
+            'client_key'    => (string) config('services.tiktok.client_key'),
+            'redirect_uri'  => $this->redirectUri(),
+            'response_type' => 'code',
+            'scope'         => implode(',', self::SCOPES),
+            'state'         => $state,
+        ]);
+    }
+
+    public function exchange(string $code, ?string $verifier = null): SocialOAuthGrant
+    {
+        try {
+            $response = Http::asForm()->timeout(self::TIMEOUT)->post(
+                'https://open.tiktokapis.com/v2/oauth/token/',
+                [
+                    'client_key'    => (string) config('services.tiktok.client_key'),
+                    'client_secret' => (string) config('services.tiktok.client_secret'),
+                    'code'          => $code,
+                    'grant_type'    => 'authorization_code',
+                    'redirect_uri'  => $this->redirectUri(),
+                ],
+            );
+        } catch (ConnectionException) {
+            throw SocialOAuthRefused::exchangeFailed('TikTok');
+        }
+
+        if ($response->failed()) {
+            throw SocialOAuthRefused::exchangeFailed('TikTok');
+        }
+
+        $access  = $response->json('access_token') ?? $response->json('data.access_token');
+        $refresh = $response->json('refresh_token') ?? $response->json('data.refresh_token');
+        $openId  = $response->json('open_id') ?? $response->json('data.open_id');
+
+        if (! is_string($access) || $access === '') {
+            throw SocialOAuthRefused::exchangeFailed('TikTok');
+        }
+
+        if (! is_string($refresh) || $refresh === '') {
+            throw SocialOAuthRefused::noLastingPermission('TikTok');
+        }
+
+        return new SocialOAuthGrant(
+            accessToken: $access,
+            refreshToken: $refresh,
+            expiresIn: is_numeric($response->json('expires_in') ?? $response->json('data.expires_in'))
+                ? (int) ($response->json('expires_in') ?? $response->json('data.expires_in'))
+                : null,
+            extra: is_string($openId) ? ['open_id' => $openId] : [],
+        );
+    }
+
+    public function identify(SocialOAuthGrant $grant): array
+    {
+        try {
+            $response = Http::withToken($grant->accessToken)
+                ->timeout(self::TIMEOUT)
+                ->get('https://open.tiktokapis.com/v2/user/info/', [
+                    'fields' => 'open_id,display_name,username',
+                ]);
+        } catch (ConnectionException) {
+            throw SocialOAuthRefused::unidentified('TikTok');
+        }
+
+        $user = $response->json('data.user') ?? [];
+        $id = trim((string) ($user['open_id'] ?? $grant->extra['open_id'] ?? ''));
+        $name = trim((string) ($user['display_name'] ?? ''));
+        $username = trim((string) ($user['username'] ?? ''));
+
+        if ($id === '') {
+            throw SocialOAuthRefused::unidentified('TikTok');
+        }
+
+        return [new SocialAccount($id, $name !== '' ? $name : ($username !== '' ? $username : $id), $username !== '' ? $username : null)];
+    }
+}

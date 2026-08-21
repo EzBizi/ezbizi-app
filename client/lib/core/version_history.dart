@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0058',
+      date: '21 Aug 2026',
+      items: [
+        'Social Media Accounts can connect Pinterest, Facebook Pages, '
+            'Instagram, Threads, LinkedIn, TikTok, YouTube and X the same '
+            'way Email signs in. Bluesky uses a handle and an app password. '
+            'A network that is not set up on this installation says why, '
+            'instead of failing.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0057',
       date: '21 Aug 2026',
       items: [

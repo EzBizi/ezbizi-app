@@ -39,21 +39,19 @@ Replace the placeholder `SocialMediaTab` with chips **Posts** and **Accounts**. 
 
 ### Task 2 — Provider catalogue + notReadyBecause
 
-PHP enum `SocialProvider`, registry with labels and `notReadyBecause()` from env (Facebook app id missing → sentence). `GET /api/v1/social/providers`. Client Accounts tab lists them. Connect button uses the sentence, not a spinner into a 500.
-
-**Verify:** feature test with empty env; feature test with fake env.
+**Done 21 Aug.** PHP enum `SocialProvider`, registry with labels and `notReadyBecause()` from env. `GET /api/v1/social/providers`. Client Accounts tab lists the server catalogue.
 
 ### Task 3 — Connections table + list
 
-Migration `social_connections` + grants. XOR scope. List for the current view-scope (hide sibling-company connections, like inboxes v0.0.0041). Encrypted token columns. Never in JSON.
+**Done 21 Aug.** Migration `social_connections`. XOR scope. List for the current view-scope (hide sibling-company connections, like inboxes v0.0.0041). Org-level pages ARE visible down into a company/franchise (owner lock, unlike inboxes). Encrypted token columns. Never in JSON.
 
-**Verify:** Facebook on A-1 Chimney is listed for A-1 Chimney and for the organization view, **absent** on Premier Garage (Settings and Posts sidebar). Copy the inbox company-scope tests.
+### Task 4 — Pinterest OAuth popup (first available network)
 
-### Task 4 — Facebook OAuth popup (sandbox)
+Pinterest Trial is approved, so this is the first Connect that can actually finish. Facebook remains Task 6/7 after Meta Tech Provider.
 
-`POST .../facebook/start` + callback. Popup pattern from Email Google. Store refresh/page token. Connection row `connected`. Test users only.
+`POST .../pinterest/start` + public HTML callback + status poll. Popup pattern from Email Google. Store refresh token. Connection row `connected`, bound to the current view.
 
-**Verify:** feature test with HTTP fake; manual sandbox on localhost.
+**Verify:** feature test with HTTP fake. Live Connect needs `PINTEREST_CLIENT_ID` / `_SECRET` on the box `.env` and redirect `https://app.ezbizi.com/api/v1/social/pinterest/callback` on the Trial app. Never put tokens in git or chat.
 
 ### Task 5 — Compose + per-target queue (no live publish)
 

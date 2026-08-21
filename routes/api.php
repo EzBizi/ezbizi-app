@@ -28,6 +28,10 @@ use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\MailboxesController;
 use App\Http\Controllers\Api\MailboxMessagesController;
 use App\Http\Controllers\Api\MarketingController;
+use App\Http\Controllers\Api\BlueskyConnectController;
+use App\Http\Controllers\Api\SocialAuthController;
+use App\Http\Controllers\Api\SocialConnectionsController;
+use App\Http\Controllers\Api\SocialProvidersController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\PasswordController;
@@ -194,6 +198,11 @@ Route::get('v1/email/google/callback', [GoogleMailAuthController::class, 'callba
 Route::get('v1/email/microsoft/callback', [MicrosoftMailAuthController::class, 'callback'])
     ->middleware('throttle:30,1')
     ->name('email.microsoft.callback');
+
+Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callback'])
+    ->middleware('throttle:30,1')
+    ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x')
+    ->name('social.callback');
 
 Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
     ->middleware('throttle:60,1');
@@ -452,6 +461,14 @@ Route::prefix('v1')
         // it from nothing: a role the organization has not granted the tab to is
         // refused here in a sentence, like everywhere else.
         Route::get('marketing/newsletter', [MarketingController::class, 'newsletter']);
+
+        Route::get('social/providers', [SocialProvidersController::class, 'index']);
+        Route::get('social/connections', [SocialConnectionsController::class, 'index']);
+        Route::post('social/bluesky/connect', [BlueskyConnectController::class, 'store']);
+        Route::post('social/{network}/start', [SocialAuthController::class, 'start'])
+            ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x');
+        Route::get('social/{network}/status', [SocialAuthController::class, 'status'])
+            ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x');
 
         // ── Inspection Builder ───────────────────────────────────
         //

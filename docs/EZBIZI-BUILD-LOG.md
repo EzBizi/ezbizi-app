@@ -342,3 +342,15 @@ image is now an HTML `<img>`, and the domain is the registrable one
 blue check unless DMARC failed on that message.
 
 Client `v0.0.0057`.
+
+---
+
+## 2026-08-21 — Social Connect for every network
+
+Accounts can finish a sign-in for Pinterest, Facebook Pages, Instagram,
+Threads, LinkedIn, TikTok, YouTube and X (same popup as Gmail). Bluesky
+is a handle and an app password; the password is not stored. A network
+without an app on this installation says so. Tokens never leave the
+server. Compose and publish are still later.
+
+Client `v0.0.0058`.

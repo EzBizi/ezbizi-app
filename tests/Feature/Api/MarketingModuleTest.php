@@ -49,15 +49,20 @@ class MarketingModuleTest extends TestCase
         $this->assertNotNull($module, 'Marketing is not in the registry, so it has no tab at all.');
         $this->assertSame('Marketing', $module->label);
 
-        // `view` and nothing else. There is no newsletter to write and none to
-        // send, so a `create` or a `send` here would be a switch on the roles
-        // screen granting a capability the software does not have.
-        $this->assertSame(['marketing.view'], $module->permissionKeys());
+        // Reaching the tab is `view`. Connecting a page is `edit`. A `send`
+        // for Newsletter is still not declared — that would grant a capability
+        // the software does not have.
+        $this->assertSame(['marketing.view', 'marketing.edit'], $module->permissionKeys());
 
         $this->assertContains(
             'marketing.view',
             app(ModuleRegistry::class)->allPermissionKeys(),
             'The permission the tab is gated on is not one the sync command would ever create.',
+        );
+        $this->assertContains(
+            'marketing.edit',
+            app(ModuleRegistry::class)->allPermissionKeys(),
+            'Connecting a page is not a permission the sync command would ever create.',
         );
     }
 
@@ -79,6 +84,10 @@ class MarketingModuleTest extends TestCase
         $this->assertSame('Marketing', $marketing['label']);
         $this->assertContains(
             'marketing.view',
+            collect($marketing['actions'])->pluck('key')->all(),
+        );
+        $this->assertContains(
+            'marketing.edit',
             collect($marketing['actions'])->pluck('key')->all(),
         );
     }

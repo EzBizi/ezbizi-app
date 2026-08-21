@@ -836,19 +836,14 @@ class ModuleServiceProvider extends ServiceProvider
              * through `marketing.view` like every other module, and an
              * organization that grants it to nobody has no Marketing tab.
              *
-             * ── `view` only, and that is the whole authority there is ──
+             * ── `view` and `edit` ────────────────────────────────
              *
-             * A permission with no code behind it enforces nothing (see
-             * ModuleRegistry) and shows up on the roles screen as a switch that
-             * grants a capability the software does not have. Reaching the tab is
-             * the only act that exists today, so it is the only action declared.
-             *
-             * Writing a newsletter and SENDING one will be two more, and separate
-             * from each other for the reason `customers.export` is separate from
-             * `customers.view`: drafting something and putting it in front of
+             * Reaching the tab is `view`. Connecting a page is `edit`, the same
+             * split Email uses for looking at inboxes versus signing one in.
+             * Publishing will use `edit` as well. A `send` for Newsletter is
+             * still not declared: drafting something and putting it in front of
              * every customer on the books are different sizes of authority, and
-             * only the second is irreversible. Adding them then is one line here
-             * and the roles editor picks them up with nothing else edited.
+             * only the second is irreversible.
              *
              * ── No subject, and the reason is not HR's ──────────
              *
@@ -866,7 +861,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key:     'marketing',
                 label:   'Marketing',
-                actions: ['view'],
+                actions: ['view', 'edit'],
                 triggers: [
                     /*
                      * Both are declared as never raised, because nothing sends a

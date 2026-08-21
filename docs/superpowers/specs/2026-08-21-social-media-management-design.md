@@ -76,7 +76,7 @@ Nine names already on the shell. v1 **first wave** is the five App Review needs:
 | `threads` | Threads profile | yes |
 | `linkedin` | Company Page and/or member, as the LinkedIn app allows | yes |
 | `tiktok` | TikTok account (Login Kit + Content Posting) | yes |
-| `pinterest` | Pinterest (Trial already approved) | after first wave |
+| `pinterest` | Pinterest (Trial already approved) | **first available** — Connect built 21 Aug |
 | `youtube` | YouTube channel | after |
 | `x` | X | after (paid API) |
 | `bluesky` | Bluesky | after (no console) |

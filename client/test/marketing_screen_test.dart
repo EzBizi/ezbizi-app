@@ -96,7 +96,50 @@ void main() {
 
       expect(find.text('Pinterest'), findsOneWidget);
       expect(find.text('Facebook Page'), findsOneWidget);
-      expect(find.textContaining('API tier not chosen'), findsOneWidget);
+      expect(find.textContaining('no X app'), findsOneWidget);
+      expect(find.textContaining('EzBizi has no Pinterest'), findsOneWidget);
+    });
+
+    testWidgets('Pinterest Connect stays off until the installation is ready', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler());
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Connect a page to Everdoors'));
+      await tester.pumpAndSettle();
+
+      final connect = tester.widget<FilledButton>(
+        find.descendant(
+          of: find.widgetWithText(ListTile, 'Pinterest'),
+          matching: find.widgetWithText(FilledButton, 'Connect'),
+        ),
+      );
+      expect(connect.onPressed, isNull);
+    });
+
+    testWidgets('Pinterest Connect is enabled when the catalogue says it is usable', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler(pinterestUsable: true));
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Connect a page to Everdoors'));
+      await tester.pumpAndSettle();
+
+      final connect = tester.widget<FilledButton>(
+        find.descendant(
+          of: find.widgetWithText(ListTile, 'Pinterest'),
+          matching: find.widgetWithText(FilledButton, 'Connect'),
+        ),
+      );
+      expect(connect.onPressed, isNotNull);
     });
 
     testWidgets('Posts lays out on a 375-point window without overflowing', (
@@ -407,6 +450,7 @@ MockClientHandler _handler({
   int status = 200,
   String message = 'Marketing is unavailable.',
   bool sentIsRaised = false,
+  bool pinterestUsable = false,
   List<Map<String, Object?>>? triggers,
   List<Map<String, Object?>>? actions,
 }) {
@@ -459,6 +503,46 @@ MockClientHandler _handler({
       return status == 200
           ? _json({'data': surface})
           : _json({'message': message}, status);
+    }
+
+    if (path.endsWith('/social/providers')) {
+      return _json({
+        'data': [
+          {
+            'value': 'facebook_page',
+            'label': 'Facebook Page',
+            'usable': false,
+            'unusable_because':
+                'EzBizi has no Meta app set up on this installation yet.',
+            'connects_by': 'sign_in',
+            'start_path': '/social/facebook/start',
+          },
+          {
+            'value': 'pinterest',
+            'label': 'Pinterest',
+            'usable': pinterestUsable,
+            'unusable_because': pinterestUsable
+                ? null
+                : 'EzBizi has no Pinterest connection set up on this '
+                    'installation yet.',
+            'connects_by': 'sign_in',
+            'start_path': '/social/pinterest/start',
+          },
+          {
+            'value': 'x',
+            'label': 'X',
+            'usable': false,
+            'unusable_because':
+                'EzBizi has no X app set up on this installation yet.',
+            'connects_by': 'sign_in',
+            'start_path': '/social/x/start',
+          },
+        ],
+      });
+    }
+
+    if (path.endsWith('/social/connections')) {
+      return _json({'data': <Map<String, Object?>>[]});
     }
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);
