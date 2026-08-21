@@ -28,6 +28,8 @@ use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\VehicleAssignmentsController;
 use App\Http\Controllers\Api\VehicleInsuranceController;
 use App\Http\Controllers\Api\VehicleOwnershipController;
+use App\Http\Controllers\Api\VehiclePaymentsController;
+use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\MailboxesController;
 use App\Http\Controllers\Api\MailboxMessagesController;
@@ -227,6 +229,10 @@ Route::prefix('v1')
         Route::post('vehicles/{vehicle}/unassign', [VehicleAssignmentsController::class, 'unassign']);
         Route::post('vehicles/{vehicle}/ownership', [VehicleOwnershipController::class, 'store']);
         Route::post('vehicles/{vehicle}/insurance', [VehicleInsuranceController::class, 'store']);
+        Route::get('vehicles/{vehicle}/service', [VehicleServiceController::class, 'index']);
+        Route::post('vehicles/{vehicle}/service', [VehicleServiceController::class, 'store']);
+        Route::get('vehicles/{vehicle}/payments', [VehiclePaymentsController::class, 'index']);
+        Route::post('vehicles/{vehicle}/payments', [VehiclePaymentsController::class, 'store']);
         Route::apiResource('vehicles', VehiclesController::class);
 
         // ── The shape of the business (§3) ───────────────────────
