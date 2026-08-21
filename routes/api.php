@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
+use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\MailboxesController;
 use App\Http\Controllers\Api\MailboxMessagesController;
 use App\Http\Controllers\Api\MarketingController;
@@ -216,6 +217,7 @@ Route::prefix('v1')
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
 
         Route::apiResource('jobs', JobsController::class);
+        Route::apiResource('vehicles', VehiclesController::class);
 
         // ── The shape of the business (§3) ───────────────────────
         //
