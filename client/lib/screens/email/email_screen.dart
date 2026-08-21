@@ -107,6 +107,7 @@ class _EmailScreenState extends State<EmailScreen> {
   List<MessageHeader> _messages = const [];
   int _page = 1;
   int _lastPage = 1;
+  String? _nextCursor;
   bool _fetching = false;
   String? _pageError;
 
@@ -183,26 +184,33 @@ class _EmailScreenState extends State<EmailScreen> {
     if (_selected != null) _loadMessages();
   }
 
-  Future<void> _loadMessages({int page = 1}) async {
+  Future<void> _loadMessages({int page = 1, String? cursor}) async {
     final mailbox = _selected;
 
     if (mailbox == null) return;
-    if (page > 1 && _fetching) return;
+    final appending = (cursor != null && cursor.isNotEmpty) || page > 1;
+    if (appending && _fetching) return;
 
     final request = ++_listRequest;
 
     setState(() {
       // A spinner only when there is nothing to keep — AsyncBody's rule.
-      _loadingList = page == 1 && _messages.isEmpty;
+      _loadingList = !appending && _messages.isEmpty;
       _fetching = true;
       _listError = null;
       _pageError = null;
     });
 
-    final response = await widget.api.get(
-      '/email/mailboxes/${mailbox.id}/messages',
-      {'page': '$page'},
-    );
+    final query = <String, String>{};
+    if (cursor != null && cursor.isNotEmpty) {
+      query['cursor'] = cursor;
+    } else if (page > 1) {
+      query['page'] = '$page';
+    }
+
+    final response = query.isEmpty
+        ? await widget.api.get('/email/mailboxes/${mailbox.id}/messages')
+        : await widget.api.get('/email/mailboxes/${mailbox.id}/messages', query);
 
     if (!mounted || request != _listRequest) return;
 
@@ -218,7 +226,7 @@ class _EmailScreenState extends State<EmailScreen> {
         // must never be drawn as an empty list: "no mail" is a sentence nobody
         // investigates, and a shared inbox that silently stops delivering is a
         // customer who never got an answer.
-        if (page == 1) {
+        if (!appending) {
           _listError = response.message;
         } else {
           _pageError = response.message;
@@ -226,19 +234,49 @@ class _EmailScreenState extends State<EmailScreen> {
         return;
       }
 
-      final data = response.data;
-
-      final rows = [
-        for (final entry in (data is List ? data : const []))
-          if (entry is Map<String, dynamic>) MessageHeader.fromJson(entry),
-      ];
-
-      _messages = page == 1 ? rows : [..._messages, ...rows];
-
-      final meta = response.body['meta'] as Map<String, dynamic>?;
-      _page = meta?['page'] as int? ?? page;
-      _lastPage = meta?['last_page'] as int? ?? _page;
+      final parsed = _messagePage(response.data, response.body['meta']);
+      _messages = appending ? [..._messages, ...parsed.rows] : parsed.rows;
+      _page = parsed.page;
+      _lastPage = parsed.lastPage;
+      _nextCursor = parsed.nextCursor;
     });
+  }
+
+  /// Live API: `{ messages, next_cursor }`. Tests / older assumption: a list
+  /// plus `meta.page`. Both have to produce the same rows.
+  ({List<MessageHeader> rows, int page, int lastPage, String? nextCursor})
+  _messagePage(Object? data, Object? meta) {
+    final metaMap = meta is Map<String, dynamic> ? meta : const <String, dynamic>{};
+
+    if (data is List) {
+      final page = metaMap['page'] as int? ?? 1;
+      final last = metaMap['last_page'] as int? ?? page;
+      return (
+        rows: [
+          for (final entry in data)
+            if (entry is Map<String, dynamic>) MessageHeader.fromJson(entry),
+        ],
+        page: page,
+        lastPage: last,
+        nextCursor: null,
+      );
+    }
+
+    if (data is Map<String, dynamic>) {
+      final messages = data['messages'];
+      final next = data['next_cursor'] as String?;
+      return (
+        rows: [
+          for (final entry in (messages is List ? messages : const []))
+            if (entry is Map<String, dynamic>) MessageHeader.fromJson(entry),
+        ],
+        page: 1,
+        lastPage: (next != null && next.isNotEmpty) ? 2 : 1,
+        nextCursor: (next != null && next.isNotEmpty) ? next : null,
+      );
+    }
+
+    return (rows: const [], page: 1, lastPage: 1, nextCursor: null);
   }
 
   /// Open one message. The body is fetched now, because it was never held.
@@ -326,6 +364,7 @@ class _EmailScreenState extends State<EmailScreen> {
       _pageError = null;
       _page = 1;
       _lastPage = 1;
+      _nextCursor = null;
       _openId = null;
       _open = null;
       _messageError = null;
@@ -542,10 +581,12 @@ class _EmailScreenState extends State<EmailScreen> {
     onOpen: (header) => _openMessage(header.id),
     meId: widget.session.me!.id,
     formats: widget.session.me!.display,
-    more: _page < _lastPage,
+    more: _nextCursor != null || _page < _lastPage,
     fetching: _fetching,
     pageError: _pageError,
-    onMore: () => _loadMessages(page: _page + 1),
+    onMore: () => _nextCursor != null
+        ? _loadMessages(cursor: _nextCursor)
+        : _loadMessages(page: _page + 1),
   );
 
   Widget _message(Mailbox mailbox) {

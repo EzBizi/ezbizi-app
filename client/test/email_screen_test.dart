@@ -394,6 +394,68 @@ void main() {
           'one’s name.',
     );
   });
+
+  testWidgets('the live API envelope is mail, not an empty inbox', (
+    tester,
+  ) async {
+    // Production answers `{ data: { messages, next_cursor } }` with
+    // from_name / snippet / sent_at, not the list-plus-page the first
+    // screen assumed. Reading that as "not a list" drew "Nothing in
+    // development@ezbizi.com right now" over 201 real messages.
+    await _pump(tester, (request) async {
+      final path = request.url.path;
+
+      if (path.endsWith('/email/mailboxes')) {
+        return _json({
+          'data': [
+            {
+              'id': 'mb-1',
+              'address': 'info@a-1chimney.com',
+              'display_name': 'Info',
+              'may_read': true,
+              'read_state_shared': true,
+            },
+          ],
+        });
+      }
+
+      if (path.endsWith('/messages')) {
+        return _json({
+          'data': {
+            'messages': [
+              {
+                'id': 'm-1',
+                'from_name': 'Ana Reis',
+                'from_address': 'ana@example.com',
+                'subject': 'Chimney sweep quote',
+                'snippet': 'Could somebody look at the flue this week?',
+                'sent_at': '2026-08-11T09:14:00Z',
+                'unread_at_provider': true,
+                'has_attachments': true,
+                'seen_by': ['Front desk'],
+              },
+            ],
+            'next_cursor': null,
+            'approximate_total': 1,
+          },
+          'meta': {'cache_seconds': 60},
+        });
+      }
+
+      if (path.contains('/messages/')) {
+        return _json({
+          'data': _detail('mb-1', 'm-1'),
+        });
+      }
+
+      return _json({'message': 'Unexpected ${request.method} $path'}, 500);
+    });
+
+    expect(find.text('Nothing in info@a-1chimney.com right now.'), findsNothing);
+    expect(find.text('Chimney sweep quote'), findsOneWidget);
+    expect(find.text('Ana Reis <ana@example.com>'), findsOneWidget);
+    expect(find.text('Info'), findsWidgets);
+  });
 }
 
 // ── driving the screen ─────────────────────────────────────────────

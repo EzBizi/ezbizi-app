@@ -92,6 +92,18 @@ final class ReplyComposer
     }
 
     /**
+     * The Subject a reply will carry, as the open-message payload tells the client.
+     *
+     * Public because the screen must print the same subject the composer will
+     * put on the wire. Duplicating the Re: rule at the controller is how the
+     * two drift.
+     */
+    public function subjectForReply(string $original): string
+    {
+        return $this->subject($original);
+    }
+
+    /**
      * `Re:` once, never twice.
      *
      * Case-insensitive, because a customer's mail program may have written

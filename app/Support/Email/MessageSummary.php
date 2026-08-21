@@ -81,11 +81,18 @@ final class MessageSummary
             'subject'     => $this->subject,
             'from_name'   => $this->fromName,
             'from_address' => $this->fromAddress,
+            'from'        => [
+                'name'    => $this->fromName,
+                'address' => $this->fromAddress,
+            ],
             'to'          => array_values($this->to),
             'sent_at'     => $this->sentAt?->toIso8601String(),
+            'received_at' => $this->sentAt?->toIso8601String(),
             'snippet'     => $this->snippet,
+            'preview'     => $this->snippet,
             'has_attachments' => $this->hasAttachments,
             'unread_at_provider' => $this->unreadAtProvider,
+            'unread'      => $this->unreadAtProvider,
 
             /*
              * Names, and it is a list rather than a count.

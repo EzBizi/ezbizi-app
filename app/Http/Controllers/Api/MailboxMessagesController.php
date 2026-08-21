@@ -14,6 +14,7 @@ use App\Support\Email\MailboxReaders;
 use App\Support\Email\MessagePage;
 use App\Support\Email\MessageSummary;
 use App\Support\Email\ReadState;
+use App\Support\Email\ReplyComposer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -151,6 +152,22 @@ class MailboxMessagesController extends Controller
             'data' => [
                 ...$detail->toArray(),
                 'seen_by' => $seen[$detail->summary->id] ?? [],
+                /*
+                 * The address a reply will go out AS, stated here so the client
+                 * never has to guess. "info replies as info" is a property of
+                 * the mailbox, not of whichever inbox the screen thinks is
+                 * selected — a stale selection is how a customer gets an
+                 * answer from bookings@.
+                 */
+                'reply' => [
+                    'as' => [
+                        'address' => $mailbox->address,
+                        'name'    => $mailbox->display_name,
+                    ],
+                    'to' => array_values(array_filter([$detail->summary->fromAddress])),
+                    'subject' => app(ReplyComposer::class)
+                        ->subjectForReply($detail->summary->subject),
+                ],
             ],
             'meta' => ['mailbox' => $this->mailboxHeader($mailbox)],
         ]);

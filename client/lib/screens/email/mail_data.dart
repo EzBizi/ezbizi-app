@@ -106,15 +106,19 @@ class Mailbox {
   factory Mailbox.fromJson(Map<String, dynamic> json) => Mailbox(
     id: '${json['id']}',
     address: json['address'] as String? ?? '',
-    label: json['label'] as String? ?? '',
+    label: json['label'] as String? ?? json['display_name'] as String? ?? '',
     unread: json['unread'] as int? ?? 0,
     // Absent means the server did not resolve the setting, and the safe
     // direction is private: drawing "Seen by Marta" in an organization that
     // asked for private read state would leak what somebody read, and not
     // drawing it in one that asked for shared costs an indicator.
-    sharedRead: json['shared_read'] == true,
-    canReply: json['can_reply'] == true,
-    replyRefusal: json['reply_refusal'] as String?,
+    // `read_state_shared` is the Settings-tab name for the same fact.
+    sharedRead: json['shared_read'] == true || json['read_state_shared'] == true,
+    // No separate reply permission: if they may open it they may answer.
+    canReply: json['can_reply'] == true ||
+        (json['can_reply'] == null && json['may_read'] == true),
+    replyRefusal: json['reply_refusal'] as String? ??
+        json['may_read_reason'] as String?,
   );
 }
 
@@ -204,12 +208,13 @@ class MessageHeader {
 
     return MessageHeader(
       id: '${json['id']}',
-      fromName: from['name'] as String? ?? '',
-      fromAddress: from['address'] as String? ?? '',
+      fromName: from['name'] as String? ?? json['from_name'] as String? ?? '',
+      fromAddress:
+          from['address'] as String? ?? json['from_address'] as String? ?? '',
       subject: json['subject'] as String? ?? '',
-      preview: json['preview'] as String? ?? '',
-      receivedAt: json['received_at'] as String?,
-      unread: json['unread'] == true,
+      preview: json['preview'] as String? ?? json['snippet'] as String? ?? '',
+      receivedAt: json['received_at'] as String? ?? json['sent_at'] as String?,
+      unread: json['unread'] == true || json['unread_at_provider'] == true,
       hasAttachments: json['has_attachments'] == true,
       seenBy: readSeenBy(json['seen_by']),
     );
@@ -292,10 +297,11 @@ class MessageDetail {
     return MessageDetail(
       id: '${json['id']}',
       subject: json['subject'] as String? ?? '',
-      fromName: from['name'] as String? ?? '',
-      fromAddress: from['address'] as String? ?? '',
+      fromName: from['name'] as String? ?? json['from_name'] as String? ?? '',
+      fromAddress:
+          from['address'] as String? ?? json['from_address'] as String? ?? '',
       to: _addresses(json['to']),
-      receivedAt: json['received_at'] as String?,
+      receivedAt: json['received_at'] as String? ?? json['sent_at'] as String?,
       seenBy: readSeenBy(json['seen_by']),
       blocks: readMailBlocks(json['blocks']),
       attachments: [
@@ -310,10 +316,24 @@ class MessageDetail {
   }
 }
 
-List<SeenBy> readSeenBy(Object? json) => [
-  for (final entry in (json as List? ?? const []))
-    if (entry is Map<String, dynamic>) SeenBy.fromJson(entry),
-];
+List<SeenBy> readSeenBy(Object? json) {
+  final people = <SeenBy>[];
+
+  for (final entry in (json as List? ?? const [])) {
+    if (entry is Map<String, dynamic>) {
+      people.add(SeenBy.fromJson(entry));
+      continue;
+    }
+
+    // Live API: a list of names (or "You" for the reader). "You" is already
+    // the server leaving the reader out of the sentence colleagues see.
+    if (entry is String && entry.isNotEmpty && entry != 'You') {
+      people.add(SeenBy(id: entry, name: entry));
+    }
+  }
+
+  return people;
+}
 
 List<String> _addresses(Object? json) => [
   for (final entry in (json as List? ?? const []))

@@ -554,11 +554,12 @@ class MailboxesApiTest extends TestCase
             ->assertOk()->json('data.0');
 
         $this->assertSame([
-            'id', 'address', 'display_name', 'provider', 'provider_label',
+            'id', 'address', 'display_name', 'label', 'provider', 'provider_label',
             'scope_type', 'scope_id', 'status', 'status_reason', 'last_reached_at',
             'can_be_opened', 'unavailable_reason', 'mail_server',
             'may_read', 'may_read_reason', 'may_manage',
             'read_state_shared', 'read_state_note',
+            'shared_read', 'can_reply', 'reply_refusal',
         ], array_keys($row));
 
         // Present and null, which is not the same as absent: null says "this has

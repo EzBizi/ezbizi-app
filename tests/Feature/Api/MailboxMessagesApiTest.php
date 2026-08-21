@@ -866,6 +866,13 @@ class MailboxMessagesApiTest extends TestCase
         $kinds = array_column($body['blocks'], 'kind');
 
         $this->assertContains(BlockKind::BlockedImage->value, $kinds);
+
+        // The address a reply goes out as is the inbox, stated on the
+        // payload so the client does not have to remember which mailbox
+        // it selected.
+        $this->assertSame('info@a-1chimney.com', $body['reply']['as']['address']);
+        $this->assertSame('Info', $body['reply']['as']['name']);
+        $this->assertSame('Re: Quote for a sweep', $body['reply']['subject']);
     }
 
     // ══ 6. THE CACHE IS A CACHE ══════════════════════════════════

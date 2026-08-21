@@ -489,6 +489,8 @@ class MailboxesController extends Controller
             'id'           => $mailbox->getKey(),
             'address'      => $mailbox->address,
             'display_name' => $mailbox->display_name,
+            // Inbox tab reads `label`; Settings reads `display_name`. Same fact.
+            'label'        => $mailbox->display_name,
             'provider'     => $mailbox->provider,
             'provider_label' => $mailbox->providerEnum()?->label(),
 
@@ -561,6 +563,15 @@ class MailboxesController extends Controller
 
             'read_state_shared' => $this->readState->isShared($mailbox),
             'read_state_note'   => $this->readState->explain($mailbox),
+
+            /*
+             * Inbox-tab names for the same facts. There is no separate "may
+             * reply" permission: an inbox somebody can read and not answer is
+             * not a shared inbox. `can_reply` is therefore `may_read`.
+             */
+            'shared_read'   => $this->readState->isShared($mailbox),
+            'can_reply'     => $readRefusal === null,
+            'reply_refusal' => $readRefusal,
         ];
     }
 
