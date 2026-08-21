@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0057',
+      date: '21 Aug 2026',
+      items: [
+        'Sender icons load the brand logo — Apple is the apple, not a '
+            'letter A. Verified brands get a blue check, like Gmail.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0056',
       date: '21 Aug 2026',
       items: [

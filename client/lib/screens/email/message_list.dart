@@ -5,6 +5,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import 'mail_data.dart';
+import 'sender_brand.dart';
 
 /// What is in the inbox — headers, and nothing else.
 ///
@@ -284,18 +285,35 @@ class MessageListPane extends StatelessWidget {
                 color: theme.colorScheme.onPrimary,
               ),
             )
-          : SenderAvatar(name: message.fromName, email: message.fromAddress),
+          : SenderAvatar(
+              name: message.fromName,
+              email: message.fromAddress,
+              authenticated: message.authenticated,
+            ),
     );
   }
 }
 
 /// Gmail-style sender mark: a letter on a colour, or the site's icon when
 /// Google's favicon service has one for that domain (Apple, Google Cloud).
+///
+/// The image is an HTML `<img>` on web ([WebHtmlElementStrategy.prefer]).
+/// CanvasKit cannot decode `google.com/s2/favicons` (no CORS), so the
+/// letter was all anybody saw. The blue check is Gmail's verified mark
+/// for known brands whose mail was not reported as failing DMARC.
 class SenderAvatar extends StatelessWidget {
-  const SenderAvatar({super.key, required this.name, required this.email});
+  const SenderAvatar({
+    super.key,
+    required this.name,
+    required this.email,
+    this.authenticated,
+  });
 
   final String name;
   final String email;
+
+  /// DMARC for this message, if the provider said. Null when it did not.
+  final bool? authenticated;
 
   static const _palette = [
     Color(0xFF1A73E8),
@@ -323,18 +341,11 @@ class SenderAvatar extends StatelessWidget {
     return _palette[hash % _palette.length];
   }
 
-  String? get _faviconUrl {
-    final at = email.lastIndexOf('@');
-    if (at < 0 || at == email.length - 1) return null;
-    final domain = email.substring(at + 1).toLowerCase();
-    if (domain.isEmpty || !domain.contains('.')) return null;
-    return 'https://www.google.com/s2/favicons?domain=$domain&sz=64';
-  }
-
   @override
   Widget build(BuildContext context) {
     final letter = _letter;
-    final url = _faviconUrl;
+    final url = SenderBrand.faviconUrl(email);
+    final verified = SenderBrand.verified(email, authenticated: authenticated);
     final fallback = CircleAvatar(
       radius: 18,
       backgroundColor: _color,
@@ -348,22 +359,64 @@ class SenderAvatar extends StatelessWidget {
       ),
     );
 
-    if (url == null || !kIsWeb) return fallback;
+    Widget mark = fallback;
 
-    return ClipOval(
-      child: SizedBox(
-        width: 36,
-        height: 36,
-        child: Image.network(
-          url,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => fallback,
-          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-            if (wasSynchronouslyLoaded || frame != null) return child;
-            return fallback;
-          },
+    if (url != null && kIsWeb) {
+      mark = ClipOval(
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Image.network(
+            url,
+            fit: BoxFit.cover,
+            webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+            errorBuilder: (_, _, _) => fallback,
+            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+              if (wasSynchronouslyLoaded || frame != null) return child;
+              return fallback;
+            },
+          ),
         ),
+      );
+    }
+
+    if (!verified) return mark;
+
+    return SizedBox(
+      width: 36,
+      height: 36,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          mark,
+          const Positioned(
+            right: -1,
+            bottom: -1,
+            child: Tooltip(
+              message: 'Verified sender',
+              child: _VerifiedDot(),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+class _VerifiedDot extends StatelessWidget {
+  const _VerifiedDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 14,
+      height: 14,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A73E8),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 1.5),
+      ),
+      child: const Icon(Icons.check, size: 8, color: Colors.white),
     );
   }
 }

@@ -261,7 +261,7 @@ final class GmailMailboxReader implements MailboxReader
             $messages[] = $this->mapper->threadSummary(
                 $this->get($mailbox, self::API.'/threads/'.rawurlencode($id), [
                     'format'          => 'metadata',
-                    'metadataHeaders' => ['From', 'To', 'Subject', 'Date'],
+                    'metadataHeaders' => ['From', 'To', 'Subject', 'Date', 'Authentication-Results'],
                 ]),
             );
         }
@@ -605,7 +605,7 @@ final class GmailMailboxReader implements MailboxReader
         foreach ($ids as $id) {
             $summaries[] = $this->mapper->summary($this->get($mailbox, self::API."/messages/{$id}", [
                 'format'          => 'metadata',
-                'metadataHeaders' => ['From', 'To', 'Subject', 'Date'],
+                'metadataHeaders' => ['From', 'To', 'Subject', 'Date', 'Authentication-Results'],
             ]));
         }
 

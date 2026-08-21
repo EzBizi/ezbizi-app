@@ -1312,7 +1312,10 @@ class _MessageView extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SenderAvatar(name: part.fromName, email: part.fromAddress),
+                SenderAvatar(
+                  name: part.fromName,
+                  email: part.fromAddress,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(

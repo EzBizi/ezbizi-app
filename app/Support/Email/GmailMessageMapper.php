@@ -70,6 +70,7 @@ final class GmailMessageMapper
              * EzBizi, and the shared inbox cares about the second.
              */
             unreadAtProvider: in_array('UNREAD', (array) ($payload['labelIds'] ?? []), strict: true),
+            fromAuthenticated: $this->dmarcPassed($headers['authentication-results'] ?? ''),
         );
     }
 
@@ -135,6 +136,7 @@ final class GmailMessageMapper
             hasAttachments: $attached,
             unreadAtProvider: $unread,
             messageCount: count($messages),
+            fromAuthenticated: $row->fromAuthenticated,
         );
     }
 
@@ -217,6 +219,30 @@ final class GmailMessageMapper
         }
 
         return $out;
+    }
+
+    /**
+     * Gmail's Authentication-Results, when we asked for the header.
+     *
+     * `dmarc=pass` is what lets Gmail put a verified mark on a brand.
+     * `dmarc=fail` is a spoof. Anything else (missing, none, bestguess) is
+     * "we do not know", not a pass.
+     */
+    private function dmarcPassed(string $results): ?bool
+    {
+        if ($results === '') {
+            return null;
+        }
+
+        if (preg_match('/\bdmarc\s*=\s*pass\b/i', $results) === 1) {
+            return true;
+        }
+
+        if (preg_match('/\bdmarc\s*=\s*fail\b/i', $results) === 1) {
+            return false;
+        }
+
+        return null;
     }
 
     /**

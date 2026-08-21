@@ -192,6 +192,7 @@ class MessageHeader {
     this.messageCount = 1,
     this.mailboxId = '',
     this.mailboxAddress = '',
+    this.authenticated,
   });
 
   final String id;
@@ -221,6 +222,9 @@ class MessageHeader {
   /// single-inbox list, where the bar already names it.
   final String mailboxAddress;
 
+  /// DMARC for this message, if the provider said. Null when it did not.
+  final bool? authenticated;
+
   /// Who it is from, in one line: their name where there is one, and the
   /// address where there is not. Never the name alone with the address thrown
   /// away — in a shared inbox the address is half of knowing who is writing.
@@ -239,6 +243,7 @@ class MessageHeader {
     messageCount: messageCount,
     mailboxId: mailboxId,
     mailboxAddress: mailboxAddress,
+    authenticated: authenticated,
   );
 
   factory MessageHeader.fromJson(
@@ -265,6 +270,11 @@ class MessageHeader {
       mailboxAddress: mailbox?.address ??
           json['mailbox_address'] as String? ??
           '',
+      authenticated: json['from_authenticated'] == true
+          ? true
+          : json['from_authenticated'] == false
+          ? false
+          : null,
     );
   }
 }

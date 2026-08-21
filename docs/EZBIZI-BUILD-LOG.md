@@ -329,3 +329,16 @@ goes out as the inbox it came to. One mailbox that cannot be read does
 not empty the rest — its sentence sits above the mail from the others.
 
 Client `v0.0.0056`.
+
+---
+
+## 2026-08-21 — brand logos and the verified check
+
+List avatars asked Google's favicon service and then drew the image
+through CanvasKit, which cannot decode a cross-origin PNG with no CORS
+headers — so Apple, Google and the rest stayed a coloured letter. The
+image is now an HTML `<img>`, and the domain is the registrable one
+(`email.apple.com` → `apple.com`). Known verified brands get Gmail's
+blue check unless DMARC failed on that message.
+
+Client `v0.0.0057`.

@@ -58,6 +58,28 @@ class EmailGmailMappingTest extends TestCase
         $this->assertSame('Quote please', $summary->subject);
         $this->assertSame(['info@a-1chimney.com', 'sales@a-1chimney.com'], $summary->to);
         $this->assertTrue($summary->unreadAtProvider);
+        $this->assertNull($summary->fromAuthenticated);
+    }
+
+    public function test_dmarc_pass_is_published_as_authenticated(): void
+    {
+        $summary = $this->mapper->summary($this->payload([
+            ['name' => 'From', 'value' => 'Apple Business <hello@email.apple.com>'],
+            ['name' => 'Authentication-Results', 'value' => 'mx.google.com; dkim=pass header.i=@apple.com; dmarc=pass header.from=apple.com'],
+        ]));
+
+        $this->assertTrue($summary->fromAuthenticated);
+        $this->assertSame('hello@email.apple.com', $summary->fromAddress);
+    }
+
+    public function test_dmarc_fail_is_not_authenticated(): void
+    {
+        $summary = $this->mapper->summary($this->payload([
+            ['name' => 'From', 'value' => 'Apple Business <hello@email.apple.com>'],
+            ['name' => 'Authentication-Results', 'value' => 'mx.google.com; dmarc=fail'],
+        ]));
+
+        $this->assertFalse($summary->fromAuthenticated);
     }
 
     /**

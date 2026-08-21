@@ -54,11 +54,11 @@ void main() {
 
     expect(find.byType(VersionHistoryPanel), findsOneWidget);
     expect(find.text('What\'s been built'), findsOneWidget);
-    expect(find.text('v0.0.0056'), findsOneWidget);
-    expect(find.textContaining('All inboxes combines every mailbox'), findsOneWidget);
+    expect(find.text('v0.0.0057'), findsOneWidget);
+    expect(find.textContaining('Sender icons load the brand logo'), findsOneWidget);
 
-    // Newest above oldest: the 0056 heading is above the first-build heading.
-    final newest = tester.getTopLeft(find.text('v0.0.0056'));
+    // Newest above oldest: the 0057 heading is above the first-build heading.
+    final newest = tester.getTopLeft(find.text('v0.0.0057'));
     final oldest = tester.getTopLeft(find.text('v0.0.0001'));
     expect(newest.dy, lessThan(oldest.dy));
   });
