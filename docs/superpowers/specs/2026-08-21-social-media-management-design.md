@@ -101,7 +101,7 @@ Marketing chips: Newsletter · **Social Media Management**. Inside SMM, two chip
 |---|---|---|
 | Pages | ~220px | Connections **in this view**. Checkboxes are the publish targets. Connect at the bottom. |
 | Composer | flex | One post. Publish now / Schedule. Disabled with a sentence if nothing in the sidebar is usable. |
-| Calendar | ~340px+ | **This week** on top, **this month** below, in the **view’s** timezone. Drops from Schedule land here, one chip per target. |
+| Calendar | ~340px+ | **Weekly Calendar** (this week, no arrows) on top, **Monthly Calendar** below with previous/next, in the **view’s** timezone. Day cells are square. Drops from Schedule land here, one chip per target. |
 
 **Accounts** chip: catalogue + connect + disconnect. No composer.
 

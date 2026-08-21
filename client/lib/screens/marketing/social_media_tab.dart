@@ -340,23 +340,18 @@ class _CalendarsColumn extends StatefulWidget {
 }
 
 class _CalendarsColumnState extends State<_CalendarsColumn> {
-  late DateTime _cursor;
+  late DateTime _month;
 
   @override
   void initState() {
     super.initState();
-    _cursor = _CalendarsColumn._dateOnly(DateTime.now());
-  }
-
-  DateTime get _monday => _CalendarsColumn.mondayOf(_cursor);
-
-  void _shiftWeek(int weeks) {
-    setState(() => _cursor = _cursor.add(Duration(days: 7 * weeks)));
+    final now = DateTime.now();
+    _month = DateTime(now.year, now.month, 1);
   }
 
   void _shiftMonth(int months) {
     setState(() {
-      _cursor = DateTime(_cursor.year, _cursor.month + months, 1);
+      _month = DateTime(_month.year, _month.month + months, 1);
     });
   }
 
@@ -365,14 +360,10 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _WeekCard(
-          monday: _monday,
-          onPrevious: () => _shiftWeek(-1),
-          onNext: () => _shiftWeek(1),
-        ),
+        const _WeekCard(),
         const SizedBox(height: 12),
         _MonthCard(
-          month: DateTime(_cursor.year, _cursor.month, 1),
+          month: _month,
           onPrevious: () => _shiftMonth(-1),
           onNext: () => _shiftMonth(1),
         ),
@@ -382,35 +373,26 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
 }
 
 class _WeekCard extends StatelessWidget {
-  const _WeekCard({
-    required this.monday,
-    required this.onPrevious,
-    required this.onNext,
-  });
-
-  final DateTime monday;
-  final VoidCallback onPrevious;
-  final VoidCallback onNext;
+  const _WeekCard();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final today = _CalendarsColumn._dateOnly(DateTime.now());
+    final monday = _CalendarsColumn.mondayOf(today);
 
     return DashboardCard(
-      title: 'This week',
+      title: 'Weekly Calendar',
       icon: Icons.calendar_today_outlined,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const DashboardNote('Only posts for pages this view can see.'),
           const SizedBox(height: 8),
-          _PeriodNav(
-            label: _CalendarsColumn.weekRange(monday),
-            previousTooltip: 'Previous week',
-            nextTooltip: 'Next week',
-            onPrevious: onPrevious,
-            onNext: onNext,
+          Text(
+            _CalendarsColumn.weekRange(monday),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleSmall,
           ),
           const SizedBox(height: 8),
           _WeekdayHeader(theme: theme),
@@ -421,7 +403,7 @@ class _WeekCard extends StatelessWidget {
                 children: [
                   for (var i = 0; i < 7; i++)
                     _DayCell(
-                      height: 96,
+                      height: 88,
                       theme: theme,
                       label: '${monday.add(Duration(days: i)).day}',
                       highlight: monday.add(Duration(days: i)) == today,
@@ -458,7 +440,7 @@ class _MonthCard extends StatelessWidget {
     final rows = (cells / 7).ceil();
 
     return DashboardCard(
-      title: 'This month',
+      title: 'Monthly Calendar',
       icon: Icons.calendar_view_month_outlined,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -506,12 +488,12 @@ class _MonthCard extends StatelessWidget {
   ) {
     final day = index - leading + 1;
     if (day < 1 || day > daysInMonth) {
-      return _DayCell(height: 64, theme: theme, empty: true);
+      return _DayCell(theme: theme, square: true, empty: true);
     }
     final date = DateTime(month.year, month.month, day);
     return _DayCell(
-      height: 64,
       theme: theme,
+      square: true,
       label: '$day',
       highlight: date == today,
     );
@@ -588,14 +570,16 @@ class _WeekdayHeader extends StatelessWidget {
 
 class _DayCell extends StatelessWidget {
   const _DayCell({
-    required this.height,
     required this.theme,
+    this.height,
+    this.square = false,
     this.label,
     this.highlight = false,
     this.empty = false,
   });
 
-  final double height;
+  final double? height;
+  final bool square;
   final ThemeData theme;
   final String? label;
   final bool highlight;
@@ -603,9 +587,8 @@ class _DayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      margin: const EdgeInsets.only(right: 3, bottom: 3),
+    final box = Container(
+      height: square ? null : height,
       decoration: BoxDecoration(
         color: empty
             ? theme.colorScheme.surface
@@ -618,7 +601,7 @@ class _DayCell extends StatelessWidget {
         ),
       ),
       alignment: Alignment.topLeft,
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(6),
       child: label == null
           ? null
           : Text(
@@ -631,6 +614,13 @@ class _DayCell extends StatelessWidget {
               ),
             ),
     );
+
+    final padded = Padding(
+      padding: const EdgeInsets.only(right: 3, bottom: 3),
+      child: square ? AspectRatio(aspectRatio: 1, child: box) : box,
+    );
+
+    return padded;
   }
 }
 

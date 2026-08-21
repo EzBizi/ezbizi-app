@@ -60,8 +60,8 @@ void main() {
       expect(find.widgetWithText(ChoiceChip, 'Accounts'), findsOneWidget);
       expect(find.text('Pages'), findsOneWidget);
       expect(find.text('Compose'), findsOneWidget);
-      expect(find.text('This week'), findsOneWidget);
-      expect(find.text('This month'), findsOneWidget);
+      expect(find.text('Weekly Calendar'), findsOneWidget);
+      expect(find.text('Monthly Calendar'), findsOneWidget);
       expect(find.text('Publish now'), findsOneWidget);
       expect(find.text('Not built yet'), findsNothing);
     });
@@ -93,24 +93,19 @@ void main() {
       expect(find.text(previousMonth), findsOneWidget);
     });
 
-    testWidgets('the week calendar can be moved back and forth', (
-      tester,
-    ) async {
+    testWidgets('the week calendar stays on this week', (tester) async {
       await _pumpScreen(tester, _handler());
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
 
-      final monday = _mondayOf(DateTime.now());
-      final thisRange = _weekRange(monday);
-      final nextRange = _weekRange(monday.add(const Duration(days: 7)));
+      expect(find.byTooltip('Previous week'), findsNothing);
+      expect(find.byTooltip('Next week'), findsNothing);
+      expect(find.text(_weekRange(_mondayOf(DateTime.now()))), findsOneWidget);
 
-      expect(find.text(thisRange), findsOneWidget);
-
-      await tester.tap(find.byTooltip('Next week'));
+      await tester.tap(find.byTooltip('Next month'));
       await tester.pumpAndSettle();
-      expect(find.text(nextRange), findsOneWidget);
-      expect(find.text(thisRange), findsNothing);
+      expect(find.text(_weekRange(_mondayOf(DateTime.now()))), findsOneWidget);
     });
 
     testWidgets('Publish now is disabled until this view has a page', (
@@ -202,8 +197,8 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.text('Compose'), findsOneWidget);
-      expect(find.text('This week'), findsOneWidget);
-      expect(find.text('This month'), findsOneWidget);
+      expect(find.text('Weekly Calendar'), findsOneWidget);
+      expect(find.text('Monthly Calendar'), findsOneWidget);
     });
 
     testWidgets('it says what Newsletter will be', (tester) async {

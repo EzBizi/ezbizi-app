@@ -357,6 +357,16 @@ Client `v0.0.0060`.
 
 ---
 
+## 2026-08-21 — Weekly and Monthly calendars
+
+Posts calendars are named Weekly Calendar and Monthly Calendar. The week
+is this week, with no arrows. Month days are square cells, still with
+previous and next.
+
+Client `v0.0.0061`.
+
+---
+
 ## 2026-08-21 — Social Connect for every network
 
 Accounts can finish a sign-in for Pinterest, Facebook Pages, Instagram,
