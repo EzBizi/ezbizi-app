@@ -8,6 +8,8 @@ use App\Support\Fleet\VehicleBodyType;
 use App\Support\Fleet\VehicleFuelType;
 use App\Support\Fleet\VehicleName;
 use App\Support\Fleet\VehicleStatus;
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
 use Database\Factories\VehicleFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -27,8 +29,18 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'vin', 'colour', 'body_type', 'fuel_type', 'odometer_miles',
     'next_service_on', 'next_service_miles', 'status',
 ])]
-class Vehicle extends Model
+class Vehicle extends Model implements StatesRetention
 {
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::forever(
+            'The register of vans the company ran. Sold and returned stay on the row as '
+            .'statuses rather than disappearing, because who held a vehicle when something '
+            .'happened is still a question after the van is gone. Removing the organization '
+            .'takes the row. Empty mistakes can still be hard-deleted by hand.'
+        );
+    }
+
     /** @use HasFactory<VehicleFactory> */
     use HasFactory;
     use HasUuids;

@@ -9,6 +9,8 @@ use App\Support\Fleet\VehicleOwnershipKind;
 use App\Support\Fleet\VehiclePaymentMethod;
 use App\Support\Fleet\VehicleRatePeriod;
 use App\Support\Fleet\VehicleRentalTerms;
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
 use Database\Factories\VehicleOwnershipPeriodFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -26,8 +28,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'rental_deposit_cents', 'rental_account_number', 'rental_payment_terms',
     'rental_payment_method',
 ])]
-class VehicleOwnershipPeriod extends Model
+class VehicleOwnershipPeriod extends Model implements StatesRetention
 {
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::withParent(
+            'Each owned or rented stretch hangs off its vehicle. Removing the vehicle '
+            .'takes the periods. There is no age at which an old lease stops being the '
+            .'answer to who held the van that year.'
+        );
+    }
+
     /** @use HasFactory<VehicleOwnershipPeriodFactory> */
     use HasFactory;
     use HasUuids;

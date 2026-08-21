@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use App\Models\Concerns\HasAttachments;
 use App\Support\Fleet\VehiclePremiumPeriod;
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
 use Database\Factories\VehicleInsurancePolicyFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -19,8 +21,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'vehicle_id', 'carrier', 'policy_number', 'coverage', 'started_on',
     'expires_on', 'ended_on', 'premium_cents', 'premium_period',
 ])]
-class VehicleInsurancePolicy extends Model
+class VehicleInsurancePolicy extends Model implements StatesRetention
 {
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::withParent(
+            'A policy period is evidence that a van was covered on a given day. It '
+            .'goes when the vehicle goes. Expiry is a date on the row, not a reason '
+            .'to delete the history.'
+        );
+    }
+
     /** @use HasFactory<VehicleInsurancePolicyFactory> */
     use HasFactory;
     use HasUuids;
