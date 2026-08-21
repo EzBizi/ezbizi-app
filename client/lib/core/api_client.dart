@@ -211,8 +211,9 @@ class ApiClient {
     String path,
     String field,
     String filename,
-    List<int> bytes,
-  ) async {
+    List<int> bytes, {
+    Map<String, String>? fields,
+  }) async {
     try {
       final request = http.MultipartRequest('POST', Uri.parse('$_root/api/v1$path'))
         ..headers['Accept'] = 'application/json'
@@ -224,6 +225,8 @@ class ApiClient {
         // boundary and `MultipartRequest.finalize` writes that header itself.
         ..headers.addAll(_identity)
         ..files.add(http.MultipartFile.fromBytes(field, bytes, filename: filename));
+
+      if (fields != null) request.fields.addAll(fields);
 
       if (_token != null) request.headers['Authorization'] = 'Bearer $_token';
 

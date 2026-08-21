@@ -8,3 +8,5 @@ Future<PickedFile?> pickText() async => null;
 void clearQuery() {}
 
 Future<PickedBytes?> pickImage() async => null;
+
+Future<PickedBytes?> pickBytes({String accept = ''}) async => null;

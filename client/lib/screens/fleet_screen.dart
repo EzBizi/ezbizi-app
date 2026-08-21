@@ -5,9 +5,9 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/async_body.dart';
 import '../widgets/refused.dart';
-import '../widgets/tag.dart';
 import 'fleet/add_vehicle_pane.dart';
 import 'fleet/vehicle_list.dart';
+import 'fleet/vehicle_pane.dart';
 
 /// Fleet Management (spec §11).
 ///
@@ -302,108 +302,23 @@ class _FleetScreenState extends State<FleetScreen> {
     final vehicle = _open;
     if (vehicle == null) return const SizedBox.shrink();
 
-    return _VehiclePreview(
+    return VehiclePane(
+      api: widget.api,
+      session: widget.session,
       vehicle: vehicle,
       showBack: showBack,
       onBack: _clearPane,
+      onChanged: (updated) {
+        setState(() {
+          _open = updated;
+          _selectedId = updated['id'] as String?;
+        });
+        _load();
+      },
+      onDeleted: () {
+        _clearPane();
+        _load();
+      },
     );
   }
-}
-
-/// Enough of a vehicle to fill the 75% pane until Task 15's cards land.
-///
-/// Opening a row has to split the tab (or take the whole phone). The cards —
-/// identity, assignment, ledgers, photos — are a later commit. Assign is not
-/// drawn here on purpose: without `assign` it must not appear, and this pane
-/// is not the place that hands over the keys.
-class _VehiclePreview extends StatelessWidget {
-  const _VehiclePreview({
-    required this.vehicle,
-    required this.showBack,
-    required this.onBack,
-  });
-
-  final Map<String, dynamic> vehicle;
-  final bool showBack;
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final ownership = vehicle['ownership'];
-    final kind = ownership is Map ? ownership['kind'] as String? : null;
-    final assignment = vehicle['assignment'];
-    final user = assignment is Map ? assignment['user'] : null;
-    final driver = user is Map ? user['name'] as String? : null;
-    final company = vehicle['company'];
-    final franchise = vehicle['franchise'];
-    final status = vehicle['status'] as String? ?? '';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(showBack ? 8 : 20, 12, 20, 8),
-          child: Row(
-            children: [
-              if (showBack)
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back to the list',
-                  onPressed: onBack,
-                ),
-              Expanded(
-                child: Text(
-                  vehicle['label'] as String? ?? 'Unidentified vehicle',
-                  style: theme.textTheme.titleMedium,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-            children: [
-              Wrap(
-                spacing: 0,
-                runSpacing: 8,
-                children: [
-                  if (status.isNotEmpty)
-                    Tag(
-                      _statusLabel(status),
-                      warn:
-                          status == 'out_of_service' ||
-                          status == 'sold' ||
-                          status == 'returned',
-                    ),
-                  if (kind != null) Tag(kind == 'rented' ? 'Rented' : 'Owned'),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                [
-                  vehicle['number'],
-                  if (company is Map) company['name'],
-                  franchise is Map ? franchise['name'] : 'Company pool',
-                  driver ?? 'Nobody has the keys',
-                ].where((p) => p != null && '$p'.isNotEmpty).join(' · '),
-                style: theme.textTheme.bodyMedium,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  static String _statusLabel(String status) => switch (status) {
-    'in_shop' => 'In shop',
-    'out_of_service' => 'Out of service',
-    'sold' => 'Sold',
-    'returned' => 'Returned',
-    'active' => 'Active',
-    _ => status,
-  };
 }

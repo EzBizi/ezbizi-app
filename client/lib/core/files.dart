@@ -23,6 +23,13 @@ class Files {
 
   /// Ask for an image and return its bytes.
   static Future<PickedBytes?> pickImage() => impl.pickImage();
+
+  /// Ask for any file the OS picker will give us, as bytes.
+  ///
+  /// Papers on a period, visit or payment are PDFs as often as pictures, and
+  /// reading them as text would corrupt them the same way a photo would.
+  static Future<PickedBytes?> pickBytes({String accept = ''}) =>
+      impl.pickBytes(accept: accept);
 }
 
 class PickedFile {

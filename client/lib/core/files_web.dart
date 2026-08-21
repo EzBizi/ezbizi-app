@@ -82,12 +82,16 @@ void clearQuery() {
 ///
 /// Separate from pickText because a photo read as text is corrupted the moment
 /// it touches a String — the bytes have to stay bytes the whole way.
-Future<PickedBytes?> pickImage() {
+Future<PickedBytes?> pickImage() =>
+    pickBytes(accept: 'image/jpeg,image/png,image/webp');
+
+/// Any file, as bytes. [accept] is the input's accept list, or empty for all.
+Future<PickedBytes?> pickBytes({String accept = ''}) {
   final completer = Completer<PickedBytes?>();
 
   final input = web.document.createElement('input') as web.HTMLInputElement
-    ..type = 'file'
-    ..accept = 'image/jpeg,image/png,image/webp';
+    ..type = 'file';
+  if (accept.isNotEmpty) input.accept = accept;
 
   input.onchange = (web.Event _) {
     final file = input.files?.item(0);

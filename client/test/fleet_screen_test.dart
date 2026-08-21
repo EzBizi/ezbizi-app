@@ -335,6 +335,30 @@ MockClientHandler _handler({
       });
     }
 
+    if (RegExp(r'/vehicles/[^/]+$').hasMatch(path)) {
+      final id = path.split('/').last;
+      Map<String, dynamic>? match;
+      for (final v in vehicles) {
+        if (v['id'] == id) {
+          match = v;
+          break;
+        }
+      }
+      match ??= vehicles.isEmpty ? null : vehicles.first;
+      if (match != null) return _json({'data': match});
+    }
+
+    if (path.endsWith('/attachments')) {
+      return _json({
+        'data': <Map<String, dynamic>>[],
+        'limits': {
+          'max_kilobytes': 20480,
+          'max_readable': '20 MB',
+          'extensions': ['pdf', 'jpg', 'png'],
+        },
+      });
+    }
+
     return _json({'message': 'Nothing stubbed for $path.'}, 500);
   };
 }
