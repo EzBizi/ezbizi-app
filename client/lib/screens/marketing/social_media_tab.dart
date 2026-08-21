@@ -163,12 +163,12 @@ class _PostsPane extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(width: 240, child: pages),
+              SizedBox(width: 220, child: pages),
               const SizedBox(width: 10),
-              Expanded(flex: 5, child: compose),
+              Expanded(flex: 4, child: compose),
               const SizedBox(width: 10),
               Expanded(
-                flex: 6,
+                flex: 7,
                 child: ListView(
                   children: const [_CalendarsColumn()],
                 ),
@@ -281,30 +281,121 @@ class _ComposeColumn extends StatelessWidget {
   }
 }
 
-class _CalendarsColumn extends StatelessWidget {
+class _CalendarsColumn extends StatefulWidget {
   const _CalendarsColumn();
 
   static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+  static const _monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+
+  static const _shortMonths = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  static DateTime mondayOf(DateTime d) {
+    final day = _dateOnly(d);
+    return day.subtract(Duration(days: day.weekday - DateTime.monday));
+  }
+
+  static String monthTitle(DateTime d) =>
+      '${_monthNames[d.month - 1]} ${d.year}';
+
+  static String weekRange(DateTime monday) {
+    final sunday = monday.add(const Duration(days: 6));
+    if (monday.month == sunday.month) {
+      return '${monday.day}–${sunday.day} ${_shortMonths[monday.month - 1]}';
+    }
+    return '${monday.day} ${_shortMonths[monday.month - 1]} – '
+        '${sunday.day} ${_shortMonths[sunday.month - 1]}';
+  }
+
+  @override
+  State<_CalendarsColumn> createState() => _CalendarsColumnState();
+}
+
+class _CalendarsColumnState extends State<_CalendarsColumn> {
+  late DateTime _cursor;
+
+  @override
+  void initState() {
+    super.initState();
+    _cursor = _CalendarsColumn._dateOnly(DateTime.now());
+  }
+
+  DateTime get _monday => _CalendarsColumn.mondayOf(_cursor);
+
+  void _shiftWeek(int weeks) {
+    setState(() => _cursor = _cursor.add(Duration(days: 7 * weeks)));
+  }
+
+  void _shiftMonth(int months) {
+    setState(() {
+      _cursor = DateTime(_cursor.year, _cursor.month + months, 1);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _WeekCard(),
-        SizedBox(height: 12),
-        _MonthCard(),
+        _WeekCard(
+          monday: _monday,
+          onPrevious: () => _shiftWeek(-1),
+          onNext: () => _shiftWeek(1),
+        ),
+        const SizedBox(height: 12),
+        _MonthCard(
+          month: DateTime(_cursor.year, _cursor.month, 1),
+          onPrevious: () => _shiftMonth(-1),
+          onNext: () => _shiftMonth(1),
+        ),
       ],
     );
   }
 }
 
 class _WeekCard extends StatelessWidget {
-  const _WeekCard();
+  const _WeekCard({
+    required this.monday,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final DateTime monday;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final today = _CalendarsColumn._dateOnly(DateTime.now());
 
     return DashboardCard(
       title: 'This week',
@@ -313,14 +404,28 @@ class _WeekCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const DashboardNote('Only posts for pages this view can see.'),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          _PeriodNav(
+            label: _CalendarsColumn.weekRange(monday),
+            previousTooltip: 'Previous week',
+            nextTooltip: 'Next week',
+            onPrevious: onPrevious,
+            onNext: onNext,
+          ),
+          const SizedBox(height: 8),
           _WeekdayHeader(theme: theme),
           Table(
+            defaultColumnWidth: const FlexColumnWidth(),
             children: [
               TableRow(
                 children: [
                   for (var i = 0; i < 7; i++)
-                    _DayCell(height: 72, theme: theme),
+                    _DayCell(
+                      height: 96,
+                      theme: theme,
+                      label: '${monday.add(Duration(days: i)).day}',
+                      highlight: monday.add(Duration(days: i)) == today,
+                    ),
                 ],
               ),
             ],
@@ -332,14 +437,22 @@ class _WeekCard extends StatelessWidget {
 }
 
 class _MonthCard extends StatelessWidget {
-  const _MonthCard();
+  const _MonthCard({
+    required this.month,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final DateTime month;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final now = DateTime.now();
-    final first = DateTime(now.year, now.month, 1);
-    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    final today = _CalendarsColumn._dateOnly(DateTime.now());
+    final first = DateTime(month.year, month.month, 1);
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
     final leading = first.weekday - DateTime.monday;
     final cells = leading + daysInMonth;
     final rows = (cells / 7).ceil();
@@ -350,16 +463,30 @@ class _MonthCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(_monthTitle(now), style: theme.textTheme.titleSmall),
+          _PeriodNav(
+            label: _CalendarsColumn.monthTitle(month),
+            previousTooltip: 'Previous month',
+            nextTooltip: 'Next month',
+            onPrevious: onPrevious,
+            onNext: onNext,
+          ),
           const SizedBox(height: 8),
           _WeekdayHeader(theme: theme),
           Table(
+            defaultColumnWidth: const FlexColumnWidth(),
             children: [
               for (var r = 0; r < rows; r++)
                 TableRow(
                   children: [
                     for (var c = 0; c < 7; c++)
-                      _monthCell(theme, now, leading, daysInMonth, r * 7 + c),
+                      _monthCell(
+                        theme,
+                        today,
+                        month,
+                        leading,
+                        daysInMonth,
+                        r * 7 + c,
+                      ),
                   ],
                 ),
             ],
@@ -369,30 +496,69 @@ class _MonthCard extends StatelessWidget {
     );
   }
 
-  static String _monthTitle(DateTime now) {
-    const names = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
-    ];
-    return '${names[now.month - 1]} ${now.year}';
-  }
-
   static Widget _monthCell(
     ThemeData theme,
-    DateTime now,
+    DateTime today,
+    DateTime month,
     int leading,
     int daysInMonth,
     int index,
   ) {
     final day = index - leading + 1;
     if (day < 1 || day > daysInMonth) {
-      return _DayCell(height: 36, theme: theme, empty: true);
+      return _DayCell(height: 64, theme: theme, empty: true);
     }
+    final date = DateTime(month.year, month.month, day);
     return _DayCell(
-      height: 36,
+      height: 64,
       theme: theme,
       label: '$day',
-      highlight: day == now.day,
+      highlight: date == today,
+    );
+  }
+}
+
+class _PeriodNav extends StatelessWidget {
+  const _PeriodNav({
+    required this.label,
+    required this.previousTooltip,
+    required this.nextTooltip,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final String label;
+  final String previousTooltip;
+  final String nextTooltip;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Row(
+      children: [
+        IconButton(
+          tooltip: previousTooltip,
+          visualDensity: VisualDensity.compact,
+          onPressed: onPrevious,
+          icon: const Icon(Icons.chevron_left),
+        ),
+        Expanded(
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleSmall,
+          ),
+        ),
+        IconButton(
+          tooltip: nextTooltip,
+          visualDensity: VisualDensity.compact,
+          onPressed: onNext,
+          icon: const Icon(Icons.chevron_right),
+        ),
+      ],
     );
   }
 }
@@ -439,7 +605,7 @@ class _DayCell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: height,
-      margin: const EdgeInsets.only(right: 4, bottom: 4),
+      margin: const EdgeInsets.only(right: 3, bottom: 3),
       decoration: BoxDecoration(
         color: empty
             ? theme.colorScheme.surface

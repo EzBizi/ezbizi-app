@@ -354,3 +354,14 @@ without an app on this installation says so. Tokens never leave the
 server. Compose and publish are still later.
 
 Client `v0.0.0058`.
+
+---
+
+## 2026-08-21 — Social calendars, wider days and month arrows
+
+The Posts calendars were a strip of skinny empty boxes stuck on this
+week and this month. Day cells are taller, the calendar pane takes more
+of the row, week days show their dates, and both calendars have previous
+and next.
+
+Client `v0.0.0059`.

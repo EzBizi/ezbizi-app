@@ -66,6 +66,53 @@ void main() {
       expect(find.text('Not built yet'), findsNothing);
     });
 
+    testWidgets('the month calendar can be moved back and forth', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler());
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+
+      final now = DateTime.now();
+      final thisMonth = _monthTitle(now);
+      final nextMonth = _monthTitle(DateTime(now.year, now.month + 1, 1));
+      final previousMonth = _monthTitle(DateTime(now.year, now.month - 1, 1));
+
+      expect(find.text(thisMonth), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Next month'));
+      await tester.pumpAndSettle();
+      expect(find.text(nextMonth), findsOneWidget);
+      expect(find.text(thisMonth), findsNothing);
+
+      await tester.tap(find.byTooltip('Previous month'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Previous month'));
+      await tester.pumpAndSettle();
+      expect(find.text(previousMonth), findsOneWidget);
+    });
+
+    testWidgets('the week calendar can be moved back and forth', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler());
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+
+      final monday = _mondayOf(DateTime.now());
+      final thisRange = _weekRange(monday);
+      final nextRange = _weekRange(monday.add(const Duration(days: 7)));
+
+      expect(find.text(thisRange), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Next week'));
+      await tester.pumpAndSettle();
+      expect(find.text(nextRange), findsOneWidget);
+      expect(find.text(thisRange), findsNothing);
+    });
+
     testWidgets('Publish now is disabled until this view has a page', (
       tester,
     ) async {
@@ -586,3 +633,49 @@ const _me = {
   'companies': <Map<String, Object?>>[],
   'franchises': <Map<String, Object?>>[],
 };
+
+const _monthNames = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+const _shortMonths = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+String _monthTitle(DateTime d) => '${_monthNames[d.month - 1]} ${d.year}';
+
+DateTime _mondayOf(DateTime d) {
+  final day = DateTime(d.year, d.month, d.day);
+  return day.subtract(Duration(days: day.weekday - DateTime.monday));
+}
+
+String _weekRange(DateTime monday) {
+  final sunday = monday.add(const Duration(days: 7 - 1));
+  if (monday.month == sunday.month) {
+    return '${monday.day}–${sunday.day} ${_shortMonths[monday.month - 1]}';
+  }
+  return '${monday.day} ${_shortMonths[monday.month - 1]} – '
+      '${sunday.day} ${_shortMonths[sunday.month - 1]}';
+}
