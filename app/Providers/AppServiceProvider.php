@@ -15,6 +15,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Multiple backed enums in one file (PSR-4 would only map VehicleEnums).
+        require_once app_path('Support/Fleet/VehicleEnums.php');
+
         // One instance per process — see plan §5.1
         $this->app->singleton(\App\Support\Tenancy\TenantContext::class);
 
