@@ -9,11 +9,14 @@ use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
- * Web Management, Phone and Fleet Management — tabs that can be granted, and are not built.
+ * Web Management and Phone — tabs that can be granted, and are not built.
  *
  * Being new exempts them from nothing (§4). They exist so an organization can
  * turn the destination on or off, and so the sidebar is not a second list
  * that has to be remembered when the work behind them lands.
+ *
+ * Fleet Management left this set when it gained assign / financials and a
+ * vehicle automation surface; see FleetModuleTest.
  */
 class ComingSoonModulesTest extends TestCase
 {
@@ -26,7 +29,6 @@ class ComingSoonModulesTest extends TestCase
         return [
             ['web_management', 'Web Management'],
             ['phone', 'Phone'],
-            ['fleet_management', 'Fleet Management'],
         ];
     }
 

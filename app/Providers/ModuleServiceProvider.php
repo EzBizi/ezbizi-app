@@ -8,6 +8,7 @@ use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\Organization;
 use App\Models\User;
+use App\Models\Vehicle;
 use App\Support\Modules\ActionDefinition;
 use App\Support\Modules\AutomationSubject;
 use App\Support\Modules\ModuleDefinition;
@@ -952,12 +953,11 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
-             * Web Management, Phone and Fleet Management — declared so they
-             * can be granted, and not built. Same shape as Marketing on the
-             * day it arrived:
-             * a tab permission, a screen that says what is coming, and no
-             * action that would show up on Roles as a switch for work the
-             * software cannot do.
+             * Web Management and Phone — declared so they can be granted, and
+             * not built. Same shape as Marketing on the day it arrived: a tab
+             * permission, a screen that says what is coming, and no action that
+             * would show up on Roles as a switch for work the software cannot
+             * do.
              *
              * Exempt from automation until there is a record an event could
              * be about. Inventing `website.published` or `call.ended` before
@@ -984,13 +984,124 @@ class ModuleServiceProvider extends ServiceProvider
                     .'rule could fire on and nothing a rule could change.',
             ),
 
+            /*
+             * Fleet Management — vehicles (owned or rented), keys, insurance,
+             * service, and money. The tab is one list with filters; ledgers hang
+             * off the vehicle rather than becoming destinations of their own.
+             *
+             * Extra actions beyond CRUD:
+             *   assign     — hand keys over / take them back
+             *   financials — see and change amounts and payments
+             *
+             * Service visits travel with `edit`. Amounts never travel with it.
+             *
+             * Every trigger is declared isRaised: false until Task 13 emits them
+             * (and insurance_expiring / service_due stay unraised — no sweep in
+             * this plan). ModuleRegistryTest holds that claim to the source.
+             */
             new ModuleDefinition(
                 key:     'fleet_management',
                 label:   'Fleet Management',
-                actions: ['view'],
-                automationExemptBecause:
-                    'Vehicles and assignments are not built, so there is no '
-                    .'event a rule could fire on and nothing a rule could change.',
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'assign', 'financials'],
+                subject: new AutomationSubject(Vehicle::class, 'Vehicle'),
+                triggers: [
+                    new TriggerDefinition(
+                        key:   'vehicle.created',
+                        label: 'Vehicle added',
+                        description: 'A vehicle was added to the fleet.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'vehicle.updated',
+                        label: 'Vehicle updated',
+                        description: 'Identity, franchise, odometer or next-due was saved. A '
+                            .'change of status, assignment, or a ledger does NOT raise this — '
+                            .'those have their own events.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'vehicle.status_changed',
+                        label: 'Status changed',
+                        description: 'A vehicle moved from one status to another. It carries '
+                            .'the old status as well as the new one.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'vehicle.assigned',
+                        label: 'Keys handed over',
+                        description: 'Somebody was given the keys to a vehicle.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'vehicle.unassigned',
+                        label: 'Keys taken back',
+                        description: 'The open assignment ended and nobody holds the keys.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'vehicle.ownership_started',
+                        label: 'Ownership period started',
+                        description: 'A new owned or rented period opened on the vehicle.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'vehicle.insurance_started',
+                        label: 'Insurance policy started',
+                        description: 'A new insurance policy period opened on the vehicle.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'vehicle.service_logged',
+                        label: 'Service logged',
+                        description: 'A service visit was saved against the vehicle.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'vehicle.payment_recorded',
+                        label: 'Payment recorded',
+                        description: 'A payment was recorded against the vehicle.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'vehicle.insurance_expiring',
+                        label: 'Insurance expiring',
+                        description: 'An open policy expires inside thirty days. No sweep '
+                            .'raises this yet.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'vehicle.service_due',
+                        label: 'Service due',
+                        description: 'Next-due date or mileage was crossed. No sweep raises '
+                            .'this yet.',
+                        isRaised: false,
+                    ),
+                ],
+                automationActions: [
+                    new ActionDefinition(
+                        key:   'vehicle.assign_to_user',
+                        label: 'Assign it to somebody',
+                        description: 'Hands the keys to a person who works in the vehicle’s '
+                            .'company.',
+                    ),
+                    new ActionDefinition(
+                        key:   'vehicle.unassign',
+                        label: 'Take the keys back',
+                        description: 'Ends the open assignment so nobody holds the keys.',
+                    ),
+                    new ActionDefinition(
+                        key:   'vehicle.change_status',
+                        label: 'Change the status',
+                        description: 'Moves a vehicle to a different status. "Update a field" '
+                            .'can already do this by setting the status field.',
+                    ),
+                    new ActionDefinition(
+                        key:   'vehicle.update_field',
+                        label: 'Update a field',
+                        description: 'Sets one non-money field on the vehicle that triggered '
+                            .'the rule: plate, odometer, next-due, colour, or status.',
+                    ),
+                ],
             ),
 
             /*
