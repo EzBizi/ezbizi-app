@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0067',
+      date: '21 Aug 2026',
+      items: [
+        'Contracts can keep or drop a clause from the answers, draw headings '
+            'and tables, and name home and business addresses. Checklists of '
+            'tools merge as a table on the signed page.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0066',
       date: '21 Aug 2026',
       items: [
