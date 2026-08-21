@@ -99,6 +99,11 @@ final class RecordingMailboxReader implements MailboxReader
         $this->recording($mailbox, fn () => $this->inner->reply($mailbox, $messageId, $body));
     }
 
+    public function trash(Mailbox $mailbox, string $messageId): void
+    {
+        $this->recording($mailbox, fn () => $this->inner->trash($mailbox, $messageId));
+    }
+
     /**
      * Both watch calls, recorded exactly like the four above.
      *

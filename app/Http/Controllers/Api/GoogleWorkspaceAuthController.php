@@ -71,6 +71,7 @@ class GoogleWorkspaceAuthController extends Controller
                     'scopes' => [
                         GoogleOAuth::SCOPE_READ,
                         GoogleOAuth::SCOPE_SEND,
+                        GoogleOAuth::SCOPE_MODIFY,
                         GoogleWorkspace::SCOPE_DIRECTORY,
                     ],
                     'setup_steps' => $row->status === GoogleWorkspaceConnection::STATUS_PENDING

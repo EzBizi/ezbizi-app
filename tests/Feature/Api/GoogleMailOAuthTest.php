@@ -277,13 +277,10 @@ class GoogleMailOAuthTest extends TestCase
         $this->assertSame('S256', $query['code_challenge_method'] ?? null);
         $this->assertNotEmpty($query['code_challenge'] ?? '');
 
-        // Exactly two scopes, and exactly these two. Compared as a set so the
-        // order Google is sent them in is not what this test is about.
         $this->assertEqualsCanonicalizing(
-            [GoogleOAuth::SCOPE_READ, GoogleOAuth::SCOPE_SEND],
+            [GoogleOAuth::SCOPE_READ, GoogleOAuth::SCOPE_SEND, GoogleOAuth::SCOPE_MODIFY],
             explode(' ', $query['scope']),
-            'The scopes asked for are not read-and-send. A wider one would let a stolen '
-            .'refresh token delete somebody\'s mail rather than only read it.',
+            'The scopes asked for are not read, send and modify (Trash).',
         );
 
         $this->assertSame(self::ADDRESS, $query['login_hint'] ?? null);

@@ -87,6 +87,14 @@ interface MailboxReader
     public function reply(Mailbox $mailbox, string $messageId, string $body): void;
 
     /**
+     * Move this message (and its thread, where the provider groups) to Trash.
+     *
+     * @throws CannotReadMailbox  when the mailbox cannot be opened at all
+     * @throws CannotChangeMail   when this connection cannot bin mail
+     */
+    public function trash(Mailbox $mailbox, string $messageId): void;
+
+    /**
      * Where this mailbox is RIGHT NOW, without looking at a single message.
      *
      * ═══════════════════════════════════════════════════════════════

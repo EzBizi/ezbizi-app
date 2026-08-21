@@ -241,6 +241,13 @@ final class MicrosoftMailboxReader implements MailboxReader
         );
     }
 
+    public function trash(Mailbox $mailbox, string $messageId): void
+    {
+        throw new CannotChangeMail(
+            'Deleting mail from an Outlook inbox is not available yet. Nothing has been deleted.',
+        );
+    }
+
     /**
      * @param  array<string, string>  $query
      * @param  array<string, string>  $headers

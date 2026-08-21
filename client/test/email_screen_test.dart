@@ -111,6 +111,21 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('ticking a sender mark selects the row for bulk actions', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(), size: const Size(1400, 900));
+
+    expect(find.byType(SenderAvatar), findsWidgets);
+
+    await tester.tap(find.byType(SenderAvatar).first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 selected'), findsOneWidget);
+    expect(find.byTooltip('Delete'), findsOneWidget);
+    expect(find.byTooltip('Mark as read'), findsOneWidget);
+  });
+
   testWidgets('the list has a search bar and Gmail labels', (tester) async {
     await _pump(tester, _handler(), size: const Size(1400, 900));
 
@@ -482,7 +497,7 @@ void main() {
 
     expect(find.text('Nothing in info@a-1chimney.com right now.'), findsNothing);
     expect(find.text('Chimney sweep quote'), findsOneWidget);
-    expect(find.text('Ana Reis <ana@example.com>'), findsOneWidget);
+    expect(find.text('Ana Reis'), findsOneWidget);
     expect(find.text('Info'), findsWidgets);
   });
 }
@@ -577,6 +592,16 @@ MockClientHandler _handler({
       });
     }
 
+    if (path.endsWith('/bulk')) {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      return _json({
+        'data': {
+          'ids': body['ids'],
+          'action': body['action'],
+        },
+      });
+    }
+
     if (path.endsWith('/seen')) {
       return _json({
         'data': {'message_id': parts.last, 'seen_by': <Object>[], 'shared': true},
@@ -584,11 +609,7 @@ MockClientHandler _handler({
     }
 
     if (request.method == 'DELETE' && parts.contains('messages')) {
-      return _json({
-        'message':
-            'Deleting a message would throw it away for everyone who shares this inbox. '
-            'This connection can read and reply, not bin mail.',
-      }, 422);
+      return _json({'data': {'id': parts.last}});
     }
 
     // .../mailboxes/{mailbox}/messages

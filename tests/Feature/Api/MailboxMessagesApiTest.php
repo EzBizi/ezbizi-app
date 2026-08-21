@@ -59,6 +59,7 @@ class MailboxMessagesApiTest extends TestCase
         parent::setUp();
 
         FakeMailboxReader::$replies = [];
+        FakeMailboxReader::$trashed = [];
         FakeMailboxReader::$page    = null;
     }
 
@@ -497,8 +498,30 @@ class MailboxMessagesApiTest extends TestCase
 
         $this->signedInAs($clerk)
             ->deleteJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1")
-            ->assertStatus(422)
-            ->assertJsonPath('message', fn (string $m) => str_contains($m, 'not bin mail'));
+            ->assertOk()
+            ->assertJsonPath('data.id', 'm-1');
+
+        $this->assertSame(['m-1'], FakeMailboxReader::$trashed);
+    }
+
+    public function test_bulk_trash_bins_every_ticked_id(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $this->grant($t, $mailbox, 'Clerk');
+
+        $this->signedInAs($clerk)
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/bulk", [
+                'action' => 'trash',
+                'ids'    => ['m-1', 'm-2'],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.ids', ['m-1', 'm-2']);
+
+        $this->assertSame(['m-1', 'm-2'], FakeMailboxReader::$trashed);
     }
 
     // ══ 3. SEEN, SHARED OR PRIVATE ═══════════════════════════════
@@ -1151,6 +1174,14 @@ class FakeMailboxReader implements MailboxReader
     public function reply(Mailbox $mailbox, string $messageId, string $body): void
     {
         self::$replies[] = ['message' => $messageId, 'body' => $body];
+    }
+
+    /** @var string[] */
+    public static array $trashed = [];
+
+    public function trash(Mailbox $mailbox, string $messageId): void
+    {
+        self::$trashed[] = $messageId;
     }
 
     /**

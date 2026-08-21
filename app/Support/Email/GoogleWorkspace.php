@@ -117,12 +117,18 @@ final class GoogleWorkspace
     /**
      * @throws CannotReadMailbox
      */
-    public function gmailAccessToken(Mailbox $mailbox): string
+    public function gmailAccessToken(Mailbox $mailbox, bool $canModify = false): string
     {
         $this->assertCanOpen($mailbox);
 
         try {
-            return $this->impersonate($mailbox->address, [GoogleOAuth::SCOPE_READ, GoogleOAuth::SCOPE_SEND]);
+            $scopes = [GoogleOAuth::SCOPE_READ, GoogleOAuth::SCOPE_SEND];
+
+            if ($canModify) {
+                $scopes[] = GoogleOAuth::SCOPE_MODIFY;
+            }
+
+            return $this->impersonate($mailbox->address, $scopes);
         } catch (GoogleWorkspaceRefused $e) {
             throw CannotReadMailbox::credentialRejected($mailbox, $e->getMessage());
         }
@@ -509,7 +515,8 @@ final class GoogleWorkspace
     {
         $id = $this->clientIdForAdminConsole() ?? '';
 
-        $scopes = GoogleOAuth::SCOPE_READ."\n".GoogleOAuth::SCOPE_SEND."\n".self::SCOPE_DIRECTORY;
+        $scopes = GoogleOAuth::SCOPE_READ."\n".GoogleOAuth::SCOPE_SEND."\n"
+            .GoogleOAuth::SCOPE_MODIFY."\n".self::SCOPE_DIRECTORY;
 
         return [
             [
@@ -525,8 +532,8 @@ final class GoogleWorkspace
                 'copy'   => $id === '' ? null : $id,
             ],
             [
-                'title'  => 'Allow these three scopes',
-                'detail' => 'Paste all three, one per line or separated by commas. Do not add any others.',
+                'title'  => 'Allow these four scopes',
+                'detail' => 'Paste all four, one per line or separated by commas. The extra one is gmail.modify, so a thread can be moved to Trash from EzBizi. Do not add mail.google.com.',
                 'url'    => null,
                 'copy'   => $scopes,
             ],

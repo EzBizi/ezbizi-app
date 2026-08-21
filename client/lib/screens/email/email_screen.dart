@@ -128,6 +128,7 @@ class _EmailScreenState extends State<EmailScreen> {
   String _submittedSearch = '';
   String _folder = 'INBOX';
   bool _unreadOnly = false;
+  Set<String> _checked = {};
 
   _Pane _pane = _Pane.messages;
 
@@ -393,6 +394,7 @@ class _EmailScreenState extends State<EmailScreen> {
       _unreadOnly = false;
       _submittedSearch = '';
       _search.clear();
+      _checked = {};
     });
 
     _loadMessages();
@@ -426,8 +428,29 @@ class _EmailScreenState extends State<EmailScreen> {
       _pane = _Pane.messages;
       _messages = const [];
       _loadingList = true;
+      _checked = {};
     });
     _loadMessages();
+  }
+
+  void _toggleChecked(MessageHeader message) {
+    setState(() {
+      final next = {..._checked};
+      if (!next.remove(message.id)) {
+        next.add(message.id);
+      }
+      _checked = next;
+    });
+  }
+
+  void _toggleCheckedAll() {
+    setState(() {
+      if (_checked.length == _messages.length) {
+        _checked = {};
+      } else {
+        _checked = {for (final row in _messages) row.id};
+      }
+    });
   }
 
   /// Why replying is not offered, or null when it is.
@@ -660,23 +683,25 @@ class _EmailScreenState extends State<EmailScreen> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Wrap(
-            spacing: 8,
-            children: [
-              FilterChip(
-                label: const Text('Unread'),
-                selected: _unreadOnly,
-                onSelected: (selected) {
-                  setState(() {
-                    _unreadOnly = selected;
-                    _openId = null;
-                    _open = null;
-                  });
-                  _loadMessages();
-                },
-              ),
-            ],
-          ),
+          child: _checked.isEmpty
+              ? Wrap(
+                  spacing: 8,
+                  children: [
+                    FilterChip(
+                      label: const Text('Unread'),
+                      selected: _unreadOnly,
+                      onSelected: (selected) {
+                        setState(() {
+                          _unreadOnly = selected;
+                          _openId = null;
+                          _open = null;
+                        });
+                        _loadMessages();
+                      },
+                    ),
+                  ],
+                )
+              : _bulkBar(mailbox),
         ),
         const Divider(height: 1),
         Expanded(child: _list(mailbox)),
@@ -700,7 +725,98 @@ class _EmailScreenState extends State<EmailScreen> {
     onMore: () => _nextCursor != null
         ? _loadMessages(cursor: _nextCursor)
         : _loadMessages(page: _page + 1),
+    checkedIds: _checked,
+    onToggleChecked: _toggleChecked,
   );
+
+  Widget _bulkBar(Mailbox mailbox) {
+    return Row(
+      children: [
+        IconButton(
+          tooltip: _checked.length == _messages.length
+              ? 'Clear selection'
+              : 'Select all on this page',
+          icon: Icon(
+            _checked.length == _messages.length
+                ? Icons.check_box
+                : Icons.check_box_outline_blank,
+          ),
+          onPressed: _toggleCheckedAll,
+        ),
+        Text('${_checked.length} selected'),
+        const SizedBox(width: 8),
+        IconButton(
+          tooltip: 'Delete',
+          icon: const Icon(Icons.delete_outline),
+          onPressed: () => _bulk(mailbox, 'trash'),
+        ),
+        IconButton(
+          tooltip: 'Mark as read',
+          icon: const Icon(Icons.mark_email_read_outlined),
+          onPressed: () => _bulk(mailbox, 'seen'),
+        ),
+        IconButton(
+          tooltip: 'Mark as unread',
+          icon: const Icon(Icons.mark_email_unread_outlined),
+          onPressed: () => _bulk(mailbox, 'unseen'),
+        ),
+        IconButton(
+          tooltip: 'Clear selection',
+          icon: const Icon(Icons.close),
+          onPressed: () => setState(() => _checked = {}),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _bulk(Mailbox mailbox, String action) async {
+    final ids = _checked.toList();
+    if (ids.isEmpty) return;
+
+    final response = await widget.api.post(
+      '/email/mailboxes/${mailbox.id}/messages/bulk',
+      {'action': action, 'ids': ids},
+    );
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(response.message)),
+      );
+      return;
+    }
+
+    setState(() {
+      if (action == 'trash') {
+        _messages = [
+          for (final row in _messages)
+            if (!_checked.contains(row.id)) row,
+        ];
+      } else {
+        final unread = action == 'unseen';
+        _messages = [
+          for (final row in _messages)
+            if (!_checked.contains(row.id))
+              row
+            else
+              MessageHeader(
+                id: row.id,
+                fromName: row.fromName,
+                fromAddress: row.fromAddress,
+                subject: row.subject,
+                preview: row.preview,
+                receivedAt: row.receivedAt,
+                unread: unread,
+                hasAttachments: row.hasAttachments,
+                seenBy: row.seenBy,
+                messageCount: row.messageCount,
+              ),
+        ];
+      }
+      _checked = {};
+    });
+  }
 
   Widget _message(Mailbox mailbox) {
     // White, like the page Gmail puts mail on — not the app's grey chrome

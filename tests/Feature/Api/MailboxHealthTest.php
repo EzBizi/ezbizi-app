@@ -830,6 +830,11 @@ class ScriptedMailboxReader implements MailboxReader
         $this->answerOrFail();
     }
 
+    public function trash(Mailbox $mailbox, string $messageId): void
+    {
+        $this->answerOrFail();
+    }
+
     /**
      * The two watch calls, and they fail exactly like the other four.
      *

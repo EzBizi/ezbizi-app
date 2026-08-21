@@ -35,17 +35,9 @@ use Illuminate\Support\Str;
  *  WHAT IS DELIBERATELY NOT ASKED FOR, and what each would have cost:
  *
  *    `https://mail.google.com/` — the full-account scope. It includes
- *      permanently deleting mail and administering the account. This
- *      module deletes nothing, ever. Holding it would mean a stolen
- *      refresh token could empty somebody's mailbox rather than only
- *      read it.
- *
- *    `gmail.modify` — read plus write. It is the obvious "one scope
- *      instead of two" simplification and it is refused on purpose:
- *      it permits changing labels and moving messages to the bin, and
- *      this module marks nothing at Google. Read state is EzBizi's own
- *      `message_seen` table precisely so that opening a shared inbox
- *      here does not mark anything read in Gmail for everybody else.
+ *      permanently deleting mail and administering the account. Holding
+ *      it would mean a stolen refresh token could empty somebody's
+ *      mailbox. `gmail.modify` (Trash, labels) is asked for instead.
  *
  *    `openid` / `email` / `profile` — the conventional way to learn
  *      who signed in. Not asked for, because `users.getProfile`
@@ -74,6 +66,15 @@ final class GoogleOAuth
 
     /** Send as this mailbox. Cannot read, label or delete anything. */
     public const SCOPE_SEND = 'https://www.googleapis.com/auth/gmail.send';
+
+    /**
+     * Move mail to Trash and change labels. Not permanent delete.
+     *
+     * Asked for because the owner wanted Gmail's delete control on a
+     * shared inbox. A stolen refresh token can bin mail; it cannot empty
+     * the account the way `mail.google.com` could.
+     */
+    public const SCOPE_MODIFY = 'https://www.googleapis.com/auth/gmail.modify';
 
     /**
      * The path Google redirects back to, as a LITERAL rather than a route
@@ -200,7 +201,7 @@ final class GoogleOAuth
             'client_id'     => (string) config('services.google_mail.client_id'),
             'redirect_uri'  => $this->redirectUri(),
             'response_type' => 'code',
-            'scope'         => implode(' ', [self::SCOPE_READ, self::SCOPE_SEND]),
+            'scope'         => implode(' ', [self::SCOPE_READ, self::SCOPE_SEND, self::SCOPE_MODIFY]),
 
             /*
              * The two parameters without which this whole module cannot work

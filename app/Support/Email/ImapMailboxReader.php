@@ -253,6 +253,13 @@ final class ImapMailboxReader implements MailboxReader
      * stated so that an off-by-one is a syntax the code does not contain. It is
      * also literally what the server volunteers as UIDNEXT.
      */
+    public function trash(Mailbox $mailbox, string $messageId): void
+    {
+        throw new CannotChangeMail(
+            'Deleting mail from an IMAP inbox is not available yet. Nothing has been deleted.',
+        );
+    }
+
     public function currentMark(Mailbox $mailbox): string
     {
         return $this->withConnection($mailbox, function (ImapConnection $imap) use ($mailbox) {

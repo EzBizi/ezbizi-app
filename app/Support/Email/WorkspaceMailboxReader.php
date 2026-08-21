@@ -66,6 +66,13 @@ final class WorkspaceMailboxReader implements MailboxReader
         $this->gmail->reply($mailbox, $messageId, $body);
     }
 
+    public function trash(Mailbox $mailbox, string $messageId): void
+    {
+        $this->workspace->assertCanOpen($mailbox);
+
+        $this->gmail->trash($mailbox, $messageId);
+    }
+
     public function currentMark(Mailbox $mailbox): string
     {
         $this->workspace->assertCanOpen($mailbox);

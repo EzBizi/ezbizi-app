@@ -286,3 +286,18 @@ mark read/unread. Delete is refused with a sentence: this connection can
 read and reply, not bin mail for everyone who shares the inbox.
 
 Client `v0.0.0051`.
+
+---
+
+## 2026-08-21 — bulk mail, sender icons, Trash
+
+Tick a sender mark to select; a bar offers delete, mark read, mark unread
+for the ticked rows. The list shows a coloured letter, or the site's icon
+when Google's favicon service has one for that domain.
+
+Delete bins the Gmail thread. That needs `gmail.modify` in Google Admin
+domain-wide delegation (a fourth scope). Listing still uses read+send, so
+a missing modify scope cannot take the inbox down — only delete is
+refused, in a sentence.
+
+Client `v0.0.0052`.

@@ -586,6 +586,7 @@ class GoogleWorkspaceTest extends TestCase
         $this->assertSame('1234567890', $steps[1]['copy']);
         $this->assertStringContainsString('gmail.readonly', $steps[2]['copy']);
         $this->assertStringContainsString('gmail.send', $steps[2]['copy']);
+        $this->assertStringContainsString('gmail.modify', $steps[2]['copy']);
         $this->assertStringContainsString('admin.directory.user.readonly', $steps[2]['copy']);
     }
 

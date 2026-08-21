@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0052',
+      date: '21 Aug 2026',
+      items: [
+        'Tick several emails at once to delete, mark read or unread. '
+            'Sender icons show on the list — a letter, or the logo when '
+            'the domain has one. Delete now bins the thread in Gmail, '
+            'once Google Admin allows gmail.modify.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0051',
       date: '21 Aug 2026',
       items: [

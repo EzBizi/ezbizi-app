@@ -1106,6 +1106,8 @@ class WatchedInbox implements MailboxReader
 
     public function reply(Mailbox $mailbox, string $messageId, string $body): void {}
 
+    public function trash(Mailbox $mailbox, string $messageId): void {}
+
     public function isConfigured(Mailbox $mailbox): bool
     {
         return self::$unavailable === null;

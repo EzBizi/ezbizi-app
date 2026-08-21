@@ -6,6 +6,7 @@ use App\Models\Mailbox;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Email\CannotChangeMail;
 use App\Support\Email\CannotReachHost;
 use App\Support\Email\CannotReadMailbox;
 use App\Support\Email\EmailPictureLoader;
@@ -376,19 +377,68 @@ class MailboxMessagesController extends Controller
     /**
      * DELETE /api/v1/email/mailboxes/{mailbox}/messages/{message}
      *
-     * Binning at the provider would throw the mail away for everyone who
-     * shares the inbox, and this connection was granted read and send, not
-     * modify. The button is on the screen so the refusal is visible rather
-     * than the control missing with no explanation.
+     * The thread goes to the provider's Trash. A shared inbox's bin is
+     * shared: everybody who can open this address no longer sees it.
      */
     public function destroy(Request $request, Mailbox $mailbox, string $message): JsonResponse
     {
         $this->assertMayRead($request->user(), $mailbox, 'open this inbox');
 
-        return response()->json([
-            'message' => 'Deleting a message would throw it away for everyone who shares this inbox. '
-                .'This connection can read and reply, not bin mail.',
-        ], 422);
+        try {
+            $this->readers->for($mailbox)->trash($mailbox, $message);
+        } catch (CannotReadMailbox $e) {
+            return $this->refused($e);
+        } catch (CannotChangeMail $e) {
+            return response()->json(['message' => $e->getMessage()], $e->status());
+        }
+
+        $this->cache->forget($mailbox);
+
+        return response()->json(['data' => ['id' => $message]]);
+    }
+
+    /**
+     * POST /api/v1/email/mailboxes/{mailbox}/messages/bulk
+     *
+     * One round trip for a handful of ticks: trash, or this person's seen
+     * mark. Caps at 50 so a mis-click cannot empty a mailbox in one go.
+     */
+    public function bulk(Request $request, Mailbox $mailbox): JsonResponse
+    {
+        $user = $request->user();
+
+        $this->assertMayRead($user, $mailbox, 'open this inbox');
+
+        $input = $request->validate([
+            'action' => ['required', 'in:trash,seen,unseen'],
+            'ids'    => ['required', 'array', 'min:1', 'max:50'],
+            'ids.*'  => ['string', 'max:256'],
+        ]);
+
+        $ids = array_values(array_unique($input['ids']));
+        $reader = $this->readers->for($mailbox);
+        $done = [];
+
+        try {
+            foreach ($ids as $id) {
+                match ($input['action']) {
+                    'trash'  => $reader->trash($mailbox, $id),
+                    'seen'   => $this->readState->markSeen($mailbox, $id, $user),
+                    'unseen' => $this->readState->forgetSeen($mailbox, $id, $user),
+                };
+                $done[] = $id;
+            }
+        } catch (CannotReadMailbox $e) {
+            return $this->refused($e);
+        } catch (CannotChangeMail $e) {
+            return response()->json(['message' => $e->getMessage()], $e->status());
+        }
+
+        if ($input['action'] === 'trash') {
+            $this->cache->forget($mailbox);
+        }
+
+        return response()->json(['data' => ['ids' => $done, 'action' => $input['action']]]);
     }
 
     // ── shared bits ──────────────────────────────────────────────

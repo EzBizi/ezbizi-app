@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../core/timestamps.dart';
@@ -26,6 +27,8 @@ class MessageListPane extends StatelessWidget {
     required this.fetching,
     required this.pageError,
     required this.onMore,
+    this.checkedIds = const {},
+    this.onToggleChecked,
   });
 
   final Mailbox mailbox;
@@ -57,6 +60,11 @@ class MessageListPane extends StatelessWidget {
   final bool fetching;
   final String? pageError;
   final VoidCallback onMore;
+
+  /// Ticked rows, for bulk actions. Empty means none.
+  final Set<String> checkedIds;
+
+  final ValueChanged<MessageHeader>? onToggleChecked;
 
   @override
   Widget build(BuildContext context) {
@@ -114,6 +122,7 @@ class MessageListPane extends StatelessWidget {
   Widget _row(BuildContext context, MessageHeader message) {
     final theme = Theme.of(context);
     final selected = message.id == selectedId;
+    final checked = checkedIds.contains(message.id);
 
     // Decision 8. When the organization chose private read state, who has
     // opened what is nobody else's business and the line is not drawn at all —
@@ -123,7 +132,7 @@ class MessageListPane extends StatelessWidget {
         : null;
 
     return Material(
-      color: selected
+      color: selected || checked
           ? theme.colorScheme.primary.withValues(alpha: 0.08)
           : Colors.transparent,
       borderRadius: BorderRadius.circular(10),
@@ -132,7 +141,13 @@ class MessageListPane extends StatelessWidget {
         onTap: () => onOpen(message),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Column(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _leading(context, message, checked),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -140,7 +155,9 @@ class MessageListPane extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      message.from,
+                      message.fromName.isNotEmpty
+                          ? message.fromName
+                          : message.fromAddress,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
@@ -211,7 +228,110 @@ class MessageListPane extends StatelessWidget {
                 SeenByLine(sentence: seen),
               ],
             ],
+                ),
+              ),
+            ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _leading(BuildContext context, MessageHeader message, bool checked) {
+    final onToggleChecked = this.onToggleChecked;
+    final theme = Theme.of(context);
+
+    return InkWell(
+      customBorder: const CircleBorder(),
+      onTap: onToggleChecked == null ? null : () => onToggleChecked(message),
+      child: checked
+          ? CircleAvatar(
+              radius: 18,
+              backgroundColor: theme.colorScheme.primary,
+              child: Icon(
+                Icons.check,
+                size: 20,
+                color: theme.colorScheme.onPrimary,
+              ),
+            )
+          : SenderAvatar(name: message.fromName, email: message.fromAddress),
+    );
+  }
+}
+
+/// Gmail-style sender mark: a letter on a colour, or the site's icon when
+/// Google's favicon service has one for that domain (Apple, Google Cloud).
+class SenderAvatar extends StatelessWidget {
+  const SenderAvatar({super.key, required this.name, required this.email});
+
+  final String name;
+  final String email;
+
+  static const _palette = [
+    Color(0xFF1A73E8),
+    Color(0xFFD93025),
+    Color(0xFF188038),
+    Color(0xFFF9AB00),
+    Color(0xFF9334E6),
+    Color(0xFF1967D2),
+    Color(0xFFE37400),
+    Color(0xFF12B5CB),
+  ];
+
+  String get _letter {
+    final source = name.trim().isNotEmpty ? name.trim() : email.trim();
+    if (source.isEmpty) return '?';
+    return source[0].toUpperCase();
+  }
+
+  Color get _color {
+    final key = email.isNotEmpty ? email : name;
+    var hash = 0;
+    for (final unit in key.codeUnits) {
+      hash = (hash + unit) & 0x7fffffff;
+    }
+    return _palette[hash % _palette.length];
+  }
+
+  String? get _faviconUrl {
+    final at = email.lastIndexOf('@');
+    if (at < 0 || at == email.length - 1) return null;
+    final domain = email.substring(at + 1).toLowerCase();
+    if (domain.isEmpty || !domain.contains('.')) return null;
+    return 'https://www.google.com/s2/favicons?domain=$domain&sz=64';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final letter = _letter;
+    final url = _faviconUrl;
+    final fallback = CircleAvatar(
+      radius: 18,
+      backgroundColor: _color,
+      child: Text(
+        letter,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+          fontSize: 16,
+        ),
+      ),
+    );
+
+    if (url == null || !kIsWeb) return fallback;
+
+    return ClipOval(
+      child: SizedBox(
+        width: 36,
+        height: 36,
+        child: Image.network(
+          url,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => fallback,
+          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+            if (wasSynchronouslyLoaded || frame != null) return child;
+            return fallback;
+          },
         ),
       ),
     );

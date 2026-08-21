@@ -633,6 +633,37 @@ final class GmailMailboxReader implements MailboxReader
     }
 
     /**
+     * Move the thread to Trash — Gmail's own bin, not a local hide.
+     *
+     * The whole conversation goes, because the list is threads. Binning one
+     * message and leaving the other four WhatsApp templates in the inbox
+     * would look like delete had failed.
+     */
+    public function trash(Mailbox $mailbox, string $messageId): void
+    {
+        try {
+            $meta = $this->get($mailbox, self::API.'/messages/'.rawurlencode($messageId), [
+                'format'          => 'metadata',
+                'metadataHeaders' => ['From'],
+            ]);
+            $threadId = (string) ($meta['threadId'] ?? $messageId);
+
+            $this->postModify(
+                $mailbox,
+                self::API.'/threads/'.rawurlencode($threadId).'/trash',
+                [],
+            );
+        } catch (CannotReadMailbox) {
+            throw new CannotChangeMail(
+                'Mail cannot be deleted from here until Google allows EzBizi to '
+                .'move messages to Trash (gmail.modify). Add that scope in Google '
+                .'Admin domain-wide delegation, or reconnect this inbox and allow '
+                .'it on the consent screen. Nothing has been deleted.',
+            );
+        }
+    }
+
+    /**
      * Gmail's header list as a lower-cased map, for threading.
      *
      * The same shape GmailMessageMapper builds internally, and duplicated here
@@ -708,10 +739,10 @@ final class GmailMailboxReader implements MailboxReader
      *   cached value away and mints a fresh one before deciding anything is
      *   wrong. So the worst a stale entry can cost is one extra round trip.
      */
-    private function accessToken(Mailbox $mailbox): string
+    private function accessToken(Mailbox $mailbox, bool $modify = false): string
     {
         if ($mailbox->providerEnum() === MailboxProvider::GmailWorkspace) {
-            return $this->workspace->gmailAccessToken($mailbox);
+            return $this->workspace->gmailAccessToken($mailbox, $modify);
         }
 
         $this->assertUsable($mailbox);
@@ -914,6 +945,29 @@ final class GmailMailboxReader implements MailboxReader
         return $this->send($mailbox, fn (string $token) => Http::withToken($token)
             ->timeout(self::TIMEOUT)
             ->post($url, $payload));
+    }
+
+    /**
+     * A write — Trash — with a token that includes gmail.modify.
+     *
+     * Listing still uses the read+send token so a missing modify scope
+     * cannot take the inbox down. Only this path asks for it.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function postModify(Mailbox $mailbox, string $url, array $payload): array
+    {
+        $token = $this->accessToken($mailbox, modify: true);
+
+        $response = Http::withToken($token)
+            ->timeout(self::TIMEOUT)
+            ->post($url, $payload);
+
+        if ($response->failed()) {
+            throw $this->apiFailure($mailbox, $response);
+        }
+
+        return $response->json() ?? [];
     }
 
     /**

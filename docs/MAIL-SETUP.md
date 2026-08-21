@@ -68,20 +68,19 @@ https://app.ezbizi.com/api/v1/email/google/callback
 
 ### 4. The scopes it will ask for
 
-Only two, and the consent screen will name them:
+The consent screen names these:
 
 | Scope | Why |
 |---|---|
-| `gmail.readonly` | Listing, reading and searching a mailbox. Also covers `users.getProfile`, which is how EzBizi checks the account signed in with is the address being connected. |
+| `gmail.readonly` | Listing, reading and searching a mailbox. Also covers `users.getProfile`. |
 | `gmail.send` | The reply path, and nothing else. |
+| `gmail.modify` | Move a thread to Trash from EzBizi. Not permanent delete. |
 
-Deliberately **not** requested, so nobody adds them thinking it will help:
+Deliberately **not** requested:
 
 - `https://mail.google.com/` — full account, including permanent deletion.
-- `gmail.modify` — the tempting one-scope simplification. It permits labelling
-  and binning. EzBizi marks nothing at Google: read state is its own
-  `message_seen` table, precisely so that opening a shared inbox here does not
-  mark a message read in Gmail for everybody else in the company.
+
+Opening a message in EzBizi still does not mark it read in Gmail. That is EzBizi's own `message_seen` table, so colleagues are not marked as having read it at Google.
 
 ### 5. Two environment variables, then deploy
 
@@ -140,11 +139,11 @@ version.
 ```
 https://www.googleapis.com/auth/gmail.readonly
 https://www.googleapis.com/auth/gmail.send
+https://www.googleapis.com/auth/gmail.modify
 https://www.googleapis.com/auth/admin.directory.user.readonly
 ```
 
-Do not add `mail.google.com` or `gmail.modify`. Same reasons as the per-inbox
-flow: EzBizi must not delete or label mail at Google.
+Do not add `mail.google.com` (permanent delete / admin). `gmail.modify` is Trash.
 
 ### Environment variables on the app box
 
