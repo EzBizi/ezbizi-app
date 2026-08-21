@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import '../core/build_info.dart';
+import 'version_history_panel.dart';
 
-/// The version, small and out of the way.
+/// The version, small and out of the way — and the door into what shipped.
 ///
 /// Shown on the sign-in screen and at the foot of the sidebar — the two places
 /// somebody already is when they wonder whether the app has updated. Quiet
 /// enough to ignore for months and specific enough to settle the question in
 /// one glance when it matters.
+///
+/// Tapping it opens [VersionHistoryPanel]: each version, what it did, when.
+/// That list is how we remember. The tooltip still names the exact bundle.
 class BuildStamp extends StatelessWidget {
   const BuildStamp({super.key, this.onDark = false});
 
@@ -20,16 +24,26 @@ class BuildStamp extends StatelessWidget {
         : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7);
 
     return Tooltip(
-      message: BuildInfo.full,
-      child: Text(
-        BuildInfo.short,
-        style: TextStyle(
-          fontSize: 11,
-          color: colour,
-          // Tabular figures so the string does not jitter between builds — it
-          // sits in the corner of every screen and a number that shifts width
-          // draws the eye for no reason.
-          fontFeatures: const [FontFeature.tabularFigures()],
+      message: '${BuildInfo.full}\nOpen what\'s been built',
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: () => showVersionHistory(context),
+          borderRadius: BorderRadius.circular(4),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+            child: Text(
+              BuildInfo.short,
+              style: TextStyle(
+                fontSize: 11,
+                color: colour,
+                // Tabular figures so the string does not jitter between builds — it
+                // sits in the corner of every screen and a number that shifts width
+                // draws the eye for no reason.
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
         ),
       ),
     );

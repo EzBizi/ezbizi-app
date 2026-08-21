@@ -1014,7 +1014,8 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
               ),
             ],
 
-            // The version, at the very foot of the sidebar.
+            // The version, at the very foot of the sidebar. Tapping it opens
+            // what shipped in each build — the memory for "when did we do that".
             //
             // Only when expanded: at 80px it would truncate, and half a build
             // id is worse than none — it invites people to compare the wrong
