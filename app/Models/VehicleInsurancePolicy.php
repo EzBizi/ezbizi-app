@@ -1,0 +1,45 @@
+<?php
+
+namespace App\Models;
+
+use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\HasAttachments;
+use App\Support\Fleet\VehiclePremiumPeriod;
+use Database\Factories\VehicleInsurancePolicyFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+/**
+ * One insurance policy period on a vehicle. Open = `ended_on` null (at most one).
+ */
+#[Fillable([
+    'vehicle_id', 'carrier', 'policy_number', 'coverage', 'started_on',
+    'expires_on', 'ended_on', 'premium_cents', 'premium_period',
+])]
+class VehicleInsurancePolicy extends Model
+{
+    /** @use HasFactory<VehicleInsurancePolicyFactory> */
+    use HasFactory;
+    use HasUuids;
+    use BelongsToTenant;
+    use HasAttachments;
+
+    protected function casts(): array
+    {
+        return [
+            'started_on' => 'date',
+            'expires_on' => 'date',
+            'ended_on' => 'date',
+            'premium_cents' => 'integer',
+            'premium_period' => VehiclePremiumPeriod::class,
+        ];
+    }
+
+    public function vehicle(): BelongsTo
+    {
+        return $this->belongsTo(Vehicle::class);
+    }
+}
