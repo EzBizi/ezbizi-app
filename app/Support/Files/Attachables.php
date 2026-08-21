@@ -4,6 +4,11 @@ namespace App\Support\Files;
 
 use App\Models\Job;
 use App\Models\Onboarding;
+use App\Models\Vehicle;
+use App\Models\VehicleInsurancePolicy;
+use App\Models\VehicleOwnershipPeriod;
+use App\Models\VehiclePayment;
+use App\Models\VehicleServiceVisit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\In;
@@ -85,6 +90,11 @@ final class Attachables
              * without holding an HR permission at all.
              */
             'onboardings' => Onboarding::class,
+            'vehicles' => Vehicle::class,
+            'vehicle_ownership_periods' => VehicleOwnershipPeriod::class,
+            'vehicle_insurance_policies' => VehicleInsurancePolicy::class,
+            'vehicle_service_visits' => VehicleServiceVisit::class,
+            'vehicle_payments' => VehiclePayment::class,
         ];
     }
 
