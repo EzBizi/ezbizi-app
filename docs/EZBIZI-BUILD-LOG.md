@@ -468,3 +468,16 @@ declared markup (#, **, lists, tables) that we turn into HTML;
 checklist fields that merge as a table. The catalog is eleven
 templates, one per role, with hourly/salary/raise as sections. Client
 `v0.0.0067`.
+
+---
+
+## 2026-08-21 — Fleet Management
+
+The coming-soon tab is a register. A vehicle is owned or rented (never
+both at once), has insurance and service ledgers, can be assigned to a
+person, and keeps photos on the vehicle and papers on the period, visit,
+or payment they belong to. Money is a permission, not a column everyone
+sees. Two overlapping deploys used to wipe `/opt/ezbizi-test/bootstrap`
+mid-suite; the gate now waits on a lock.
+
+Release `20260821204600`. Client `v0.0.0066` (this build `v0.0.0067`).
