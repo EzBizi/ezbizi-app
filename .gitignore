@@ -24,6 +24,8 @@ oauth2*.json
 !/storage/**/.gitkeep
 
 # ── local ─────────────────────────────────────────────
+.superpowers/
+.worktrees/
 .cursor/agent-mail-stall.json
 __pycache__/
 *.pyc
