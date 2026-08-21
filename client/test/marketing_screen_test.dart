@@ -61,6 +61,7 @@ void main() {
       expect(find.text('Pages'), findsOneWidget);
       expect(find.text('Compose'), findsOneWidget);
       expect(find.text('This week'), findsOneWidget);
+      expect(find.text('This month'), findsOneWidget);
       expect(find.text('Publish now'), findsOneWidget);
       expect(find.text('Not built yet'), findsNothing);
     });
@@ -112,6 +113,7 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('Compose'), findsOneWidget);
       expect(find.text('This week'), findsOneWidget);
+      expect(find.text('This month'), findsOneWidget);
     });
 
     testWidgets('it says what Newsletter will be', (tester) async {

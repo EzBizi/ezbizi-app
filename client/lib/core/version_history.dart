@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0054',
+      date: '21 Aug 2026',
+      items: [
+        'Social Media Posts shows the whole month under this week, '
+            'so a scheduled post is visible on both the week strip and '
+            'the month grid.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0053',
       date: '21 Aug 2026',
       items: [

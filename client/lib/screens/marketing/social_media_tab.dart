@@ -68,7 +68,7 @@ class _PostsPane extends StatelessWidget {
         final stack = constraints.maxWidth < _stackBelow;
         final pages = _PagesColumn(viewName: viewName);
         final compose = _ComposeColumn(viewName: viewName);
-        final calendar = const _CalendarColumn();
+        final calendars = const _CalendarsColumn();
 
         if (stack) {
           return ListView(
@@ -78,7 +78,7 @@ class _PostsPane extends StatelessWidget {
               const SizedBox(height: 12),
               compose,
               const SizedBox(height: 12),
-              calendar,
+              calendars,
             ],
           );
         }
@@ -92,7 +92,14 @@ class _PostsPane extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(flex: 5, child: compose),
               const SizedBox(width: 10),
-              Expanded(flex: 6, child: calendar),
+              Expanded(
+                flex: 6,
+                child: ListView(
+                  children: const [
+                    _CalendarsColumn(),
+                  ],
+                ),
+              ),
             ],
           ),
         );
@@ -186,10 +193,26 @@ class _ComposeColumn extends StatelessWidget {
   }
 }
 
-class _CalendarColumn extends StatelessWidget {
-  const _CalendarColumn();
+class _CalendarsColumn extends StatelessWidget {
+  const _CalendarsColumn();
 
   static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _WeekCard(),
+        SizedBox(height: 12),
+        _MonthCard(),
+      ],
+    );
+  }
+}
+
+class _WeekCard extends StatelessWidget {
+  const _WeekCard();
 
   @override
   Widget build(BuildContext context) {
@@ -205,38 +228,170 @@ class _CalendarColumn extends StatelessWidget {
             'Only posts for pages this view can see.',
           ),
           const SizedBox(height: 12),
+          _WeekdayHeader(theme: theme),
           Table(
             children: [
               TableRow(
                 children: [
-                  for (final day in _days)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Text(
-                        day,
-                        style: theme.textTheme.labelSmall,
-                      ),
-                    ),
-                ],
-              ),
-              TableRow(
-                children: [
-                  for (final _ in _days)
-                    Container(
-                      height: 72,
-                      margin: const EdgeInsets.only(right: 4),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerLowest,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: theme.dividerColor),
-                      ),
-                    ),
+                  for (var i = 0; i < 7; i++)
+                    _DayCell(height: 72, theme: theme),
                 ],
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+}
+
+class _MonthCard extends StatelessWidget {
+  const _MonthCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final now = DateTime.now();
+    final first = DateTime(now.year, now.month, 1);
+    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    final leading = first.weekday - DateTime.monday;
+    final cells = leading + daysInMonth;
+    final rows = (cells / 7).ceil();
+
+    return DashboardCard(
+      title: 'This month',
+      icon: Icons.calendar_view_month_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            _monthTitle(now),
+            style: theme.textTheme.titleSmall,
+          ),
+          const SizedBox(height: 8),
+          _WeekdayHeader(theme: theme),
+          Table(
+            children: [
+              for (var r = 0; r < rows; r++)
+                TableRow(
+                  children: [
+                    for (var c = 0; c < 7; c++)
+                      _monthCell(theme, now, leading, daysInMonth, r * 7 + c),
+                  ],
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _monthTitle(DateTime now) {
+    const names = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return '${names[now.month - 1]} ${now.year}';
+  }
+
+  static Widget _monthCell(
+    ThemeData theme,
+    DateTime now,
+    int leading,
+    int daysInMonth,
+    int index,
+  ) {
+    final day = index - leading + 1;
+    if (day < 1 || day > daysInMonth) {
+      return _DayCell(height: 36, theme: theme, empty: true);
+    }
+    final isToday = day == now.day;
+    return _DayCell(
+      height: 36,
+      theme: theme,
+      label: '$day',
+      highlight: isToday,
+    );
+  }
+}
+
+class _WeekdayHeader extends StatelessWidget {
+  const _WeekdayHeader({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Table(
+      children: [
+        TableRow(
+          children: [
+            for (final day in _CalendarsColumn._days)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(day, style: theme.textTheme.labelSmall),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _DayCell extends StatelessWidget {
+  const _DayCell({
+    required this.height,
+    required this.theme,
+    this.label,
+    this.highlight = false,
+    this.empty = false,
+  });
+
+  final double height;
+  final ThemeData theme;
+  final String? label;
+  final bool highlight;
+  final bool empty;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      margin: const EdgeInsets.only(right: 4, bottom: 4),
+      decoration: BoxDecoration(
+        color: empty
+            ? theme.colorScheme.surface
+            : highlight
+                ? theme.colorScheme.primary.withValues(alpha: 0.12)
+                : theme.colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: highlight ? theme.colorScheme.primary : theme.dividerColor,
+        ),
+      ),
+      alignment: Alignment.topLeft,
+      padding: const EdgeInsets.all(4),
+      child: label == null
+          ? null
+          : Text(
+              label!,
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: highlight ? FontWeight.w700 : FontWeight.w500,
+                color: highlight
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface,
+              ),
+            ),
     );
   }
 }
