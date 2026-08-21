@@ -17,8 +17,8 @@ rather than for trying harder.
 | Server panel | https://srv.ezbizi.com (Webmin) |
 | Stack | Laravel 13 · PHP 8.4 · MySQL 8 · Flutter web client |
 <!-- numbers:start -->
-| Tests | 1486 backend · 708 client. Both gated on deploy: nothing ships if either is red. |
-| Client version | `v0.0.0050` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
+| Tests | 1487 backend · 709 client. Both gated on deploy: nothing ships if either is red. |
+| Client version | `v0.0.0051` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
 | Production data | **1 organization(s) · 5 companies · 14 franchises · 5 users · 0 customers · 0 jobs.** Counted 2026-08-21 against the live database by `scripts/status-numbers.sh`, not typed. |
 | Permissions in production | **50 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
 <!-- numbers:end -->
