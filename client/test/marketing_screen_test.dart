@@ -201,6 +201,38 @@ void main() {
       expect(find.text('Monthly Calendar'), findsOneWidget);
     });
 
+    testWidgets(
+      'the month calendar fits a 1400×900 Posts pane without scrolling',
+      (tester) async {
+        await _pumpScreen(tester, _handler(), size: const Size(1400, 900));
+
+        await tester.tap(
+          find.widgetWithText(ChoiceChip, 'Social Media Management'),
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+
+        final now = DateTime.now();
+        final lastDay = DateTime(now.year, now.month + 1, 0).day;
+        final first = find.byKey(const Key('month-day-1'));
+        final last = find.byKey(Key('month-day-$lastDay'));
+
+        expect(first, findsOneWidget);
+        expect(last, findsOneWidget);
+
+        expect(tester.getRect(first).top, greaterThanOrEqualTo(0));
+        expect(tester.getRect(last).bottom, lessThanOrEqualTo(900));
+
+        final cell = tester.getSize(first);
+        expect(
+          (cell.width - cell.height).abs(),
+          lessThan(1),
+          reason: 'Month days stayed square while shrinking to fit the pane.',
+        );
+      },
+    );
+
     testWidgets('it says what Newsletter will be', (tester) async {
       await _pumpTab(tester, _handler());
 

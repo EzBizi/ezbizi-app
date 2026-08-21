@@ -42,6 +42,7 @@ class DashboardCard extends StatelessWidget {
     required this.child,
     this.badge,
     this.controls,
+    this.expand = false,
   });
 
   /// The panel's name, as the server labelled it.
@@ -67,6 +68,13 @@ class DashboardCard extends StatelessWidget {
   /// does nothing.
   final Widget? controls;
 
+  /// Fill the parent and give [child] the height under the header.
+  ///
+  /// Off by default: a card in a list must size to its contents. Turn it on
+  /// when the parent is already a bounded slot (an `Expanded` pane) and the
+  /// body should use the leftover space rather than grow past it.
+  final bool expand;
+
   /// Padding inside the card, on every side.
   static const double padding = 16;
 
@@ -85,52 +93,56 @@ class DashboardCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    final body = Padding(
+      padding: const EdgeInsets.all(padding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              // Everything in this row that carries TEXT can be squeezed,
+              // and the only things that cannot are the icon and the
+              // controls, which have a size of their own. That is what
+              // makes the header safe on a phone (R7): the fixed part is
+              // 26 points plus three 48-point controls — two move buttons
+              // and a grip — so a long title or a long badge shortens
+              // instead of running off the card.
+              //
+              // Nesting the title and its badge in a row of their own read
+              // better and overflowed a 375-point window by 37 points — a
+              // badge that is not flexible has no space to be squeezed out
+              // of, so the pair grew past the card rather than shrinking.
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleMedium,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (badge != null) Flexible(child: badge!),
+              ?controls,
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (expand) Expanded(child: child) else child,
+        ],
+      ),
+    );
+
     return Material(
       color: theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radius),
         side: BorderSide(color: EzBiziTheme.edge(context)),
       ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: minimumHeight),
-        child: Padding(
-          padding: const EdgeInsets.all(padding),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 8),
-                  // Everything in this row that carries TEXT can be squeezed,
-                  // and the only things that cannot are the icon and the
-                  // controls, which have a size of their own. That is what
-                  // makes the header safe on a phone (R7): the fixed part is
-                  // 26 points plus three 48-point controls — two move buttons
-                  // and a grip — so a long title or a long badge shortens
-                  // instead of running off the card.
-                  //
-                  // Nesting the title and its badge in a row of their own read
-                  // better and overflowed a 375-point window by 37 points — a
-                  // badge that is not flexible has no space to be squeezed out
-                  // of, so the pair grew past the card rather than shrinking.
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: theme.textTheme.titleMedium,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (badge != null) Flexible(child: badge!),
-                  ?controls,
-                ],
-              ),
-              const SizedBox(height: 12),
-              child,
-            ],
-          ),
-        ),
-      ),
+      child: expand
+          ? SizedBox.expand(child: body)
+          : ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: minimumHeight),
+              child: body,
+            ),
     );
   }
 }

@@ -357,6 +357,16 @@ Client `v0.0.0060`.
 
 ---
 
+## 2026-08-21 — Month squares fit the Posts pane
+
+Monthly Calendar day cells stay square but shrink to the remaining
+height of the Posts pane, so days 1–31 are on screen with no vertical
+scroll. Weekly Calendar is unchanged: this week, no arrows.
+
+Client `v0.0.0062`.
+
+---
+
 ## 2026-08-21 — Weekly and Monthly calendars
 
 Posts calendars are named Weekly Calendar and Monthly Calendar. The week
