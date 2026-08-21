@@ -224,9 +224,10 @@ final class DocumentRenderer
             values: array_replace(
                 $this->answerValues($fields, $identity, $answers),
                 ContractFacts::values(
-                    organizationName: $organization,
-                    contractName:     $name,
-                    version:          (int) $version->version,
+                    organizationName:    $organization,
+                    organizationAddress: (string) ($onboarding->organization->address ?? ''),
+                    contractName:        $name,
+                    version:             (int) $version->version,
                     /*
                      * The day the paperwork was drawn up, and never `now()`.
                      *
@@ -274,6 +275,7 @@ final class DocumentRenderer
         FieldSet $fields,
         ?string $body,
         ?string $coverPng = null,
+        string $organizationAddress = '',
     ): string {
         return $this->document(
             organizationName: $organizationName,
@@ -285,10 +287,11 @@ final class DocumentRenderer
             // exist yet, so there is nothing stored to read it off.
             coverPng:         $coverPng,
             values: MergeTags::samples($fields, ContractFacts::values(
-                organizationName: $organizationName,
-                contractName:     $contractName,
-                version:          $version,
-                date:             now()->toDateString(),
+                organizationName:    $organizationName,
+                organizationAddress: $organizationAddress,
+                contractName:        $contractName,
+                version:             $version,
+                date:                now()->toDateString(),
             )),
         );
     }
@@ -595,9 +598,13 @@ final class DocumentRenderer
                 continue;
             }
 
+            $answer = $byKey->get($field->key);
             $values[$field->key] = new MergeValue(
                 $field->label,
-                $this->answerText($field, $byKey->get($field->key)),
+                $this->answerText($field, $answer),
+                html: $field->type === FieldType::CHECKLIST
+                    ? ChecklistTable::html($field, $answer?->value)
+                    : null,
             );
         }
 
@@ -625,8 +632,9 @@ final class DocumentRenderer
         return match ($field->type) {
             // A file answer is an attachment id, which means nothing to a reader.
             // The document says one was given; the file is on the record.
-            FieldType::FILE => 'A file was provided and is attached to this record.',
-            default         => (string) $value,
+            FieldType::FILE      => 'A file was provided and is attached to this record.',
+            FieldType::CHECKLIST => ChecklistTable::summary($field, $value),
+            default              => (string) $value,
         };
     }
 
@@ -701,6 +709,13 @@ final class DocumentRenderer
     private const AGREEMENT_STYLE = <<<'CSS'
     .agreement{margin:2.4em 0}
     .agreement p{margin:0 0 1em}
+    .agreement h2{font-size:15px;letter-spacing:.06em;margin:1.6em 0 .6em;text-transform:uppercase}
+    .agreement h3{font-size:14px;margin:1.2em 0 .4em}
+    .agreement h4{font-size:13px;margin:1em 0 .3em}
+    .agreement ul{margin:0 0 1em;padding-left:1.2em}
+    .agreement table{width:100%;border-collapse:collapse;margin:0 0 1em;font-size:13px}
+    .agreement th,.agreement td{border:1px solid #333;padding:.35em .5em;text-align:left;vertical-align:top}
+    .agreement th{font-weight:bold}
     .unanswered{font-style:italic}
     .unresolved{font-family:monospace;font-weight:bold}
     CSS;

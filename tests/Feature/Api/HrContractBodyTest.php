@@ -780,7 +780,11 @@ class HrContractBodyTest extends TestCase
         $this->assertSame('{{', $catalogue['open']);
         $this->assertSame('}}', $catalogue['close']);
         $this->assertSame(
-            ['organization.name', 'contract.name', 'contract.version', 'document.date'],
+            [
+                'organization.name', 'organization.address',
+                'contract.name', 'contract.version',
+                'document.date', 'document.day', 'document.month', 'document.year',
+            ],
             array_column($catalogue['facts'], 'key'),
         );
 
@@ -831,6 +835,8 @@ class HrContractBodyTest extends TestCase
             $this->field(['key' => 'starts', 'label' => 'Start date', 'type' => 'date', 'required' => false]),
             $this->field(['key' => 'shift', 'label' => 'Shift', 'type' => 'choice',
                 'options' => ['Day', 'Night'], 'required' => false]),
+            $this->field(['key' => 'kit', 'label' => 'Kit', 'type' => 'checklist',
+                'options' => ['Bag', 'Drill'], 'required' => false]),
             $this->field(['key' => 'passport', 'label' => 'Passport', 'type' => 'file',
                 'filled_by' => 'employee', 'required' => false]),
             $this->signatureField(),
@@ -1261,6 +1267,7 @@ class HrContractBodyTest extends TestCase
             'token'         => $token,
             'password'      => 'a-real-password',
             'phone'         => '+34 600 000 000',
+            'address'       => '1 Test Street',
             'date_of_birth' => '1990-04-03',
         ])->assertCreated();
     }

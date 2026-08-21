@@ -85,12 +85,13 @@ final class CommonCore
         'middle_name'   => ['label' => 'Middle name',   'is' => 'their middle name'],
         'last_name'     => ['label' => 'Last name',     'is' => 'their last name'],
         'phone'         => ['label' => 'Phone number',  'is' => 'their phone number'],
+        'address'       => ['label' => 'Home address',  'is' => 'their home address'],
         'date_of_birth' => ['label' => 'Date of birth', 'is' => 'their date of birth'],
         'gender'        => ['label' => 'Gender',        'is' => 'their gender'],
     ];
 
     /**
-     * The six onboarding ACTUALLY asks, and whether each is required.
+     * The seven onboarding ACTUALLY asks, and whether each is required.
      *
      * `RESERVED` is the larger list — every identity column the profile owns, so
      * that a template cannot declare a second home for any of them. This is the
@@ -162,6 +163,7 @@ final class CommonCore
         'middle_name'   => false,
         'last_name'     => true,
         'phone'         => true,
+        'address'       => true,
         'date_of_birth' => true,
     ];
 

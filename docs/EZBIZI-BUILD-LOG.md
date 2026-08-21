@@ -455,3 +455,16 @@ php artisan hr:publish-onboarding-catalog "{organization name}"
 
 `--dry-run` lists; `--replace` publishes a new version when the name
 already exists. Chimney-trade wording stays opt-in.
+
+---
+
+## 2026-08-21 — Contract grammar grows sections, markup, addresses, checklists
+
+The A-1 import showed six gaps. They are EzBizi features now, not A-1
+imports: home address on the profile; business address on the
+organization; document.day/month/year from the paperwork date; body
+sections `{{#key}}` that drop a clause when the answer is blank;
+declared markup (#, **, lists, tables) that we turn into HTML;
+checklist fields that merge as a table. The catalog is eleven
+templates, one per role, with hourly/salary/raise as sections. Client
+`v0.0.0067`.

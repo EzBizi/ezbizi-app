@@ -34,7 +34,7 @@ use Laravel\Sanctum\HasApiTokens;
  * when an address matches more than one account.
  */
 #[Fillable(['organization_id', 'role_id', 'name', 'email', 'password', 'is_active',
-    'first_name', 'middle_name', 'last_name', 'phone', 'gender', 'date_of_birth',
+    'first_name', 'middle_name', 'last_name', 'phone', 'address', 'gender', 'date_of_birth',
 ])]
 #[Hidden(['password', 'remember_token', 'totp_secret', 'pending_totp_secret', 'recovery_codes'])]
 class User extends Authenticatable implements HoldsPersonalData
@@ -99,6 +99,9 @@ class User extends Authenticatable implements HoldsPersonalData
                 Erasure::erase('removed-{ref}@invalid')),
             new PersonalDataEntry('phone', PersonalDataEntry::CONTACT,
                 'Reaching a colleague about work in progress.',
+                Erasure::erase()),
+            new PersonalDataEntry('address', PersonalDataEntry::CONTACT,
+                'Their home address, asked at onboarding because employment agreements name it.',
                 Erasure::erase()),
             new PersonalDataEntry('date_of_birth', PersonalDataEntry::IDENTITY,
                 'Asked at onboarding because contracts and payroll need it. Deliberately '

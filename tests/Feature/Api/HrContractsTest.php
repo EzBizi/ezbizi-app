@@ -163,7 +163,7 @@ class HrContractsTest extends TestCase
          */
         foreach ([
             'email', 'first_name', 'middle_name', 'last_name',
-            'phone', 'date_of_birth', 'gender', 'name',
+            'phone', 'address', 'date_of_birth', 'gender', 'name',
         ] as $key) {
             $this->signedInAs($alpha['admin'])
                 ->postJson('/api/v1/hr/contracts', [
@@ -250,6 +250,7 @@ class HrContractsTest extends TestCase
             ->json('data.field_types'))->keyBy('key');
 
         $this->assertTrue($types['choice']['takes_options']);
+        $this->assertTrue($types['checklist']['takes_options']);
 
         foreach (['text', 'number', 'date', 'file', 'signature'] as $key) {
             $this->assertFalse($types[$key]['takes_options'], "{$key} does not take options.");
@@ -295,7 +296,7 @@ class HrContractsTest extends TestCase
                 'filled_by' => $key === FieldType::SIGNATURE
                     ? FilledBy::EMPLOYEE
                     : FilledBy::EITHER,
-                'options'   => $key === FieldType::CHOICE ? ['One'] : [],
+                'options'   => FieldType::takesOptions($key) ? ['One'] : [],
             ]]));
 
             $this->assertSame(

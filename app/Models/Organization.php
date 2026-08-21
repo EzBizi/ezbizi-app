@@ -21,7 +21,7 @@ class Organization extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'name', 'slug', 'reporting_currency', 'franchise_label',
+        'name', 'slug', 'address', 'reporting_currency', 'franchise_label',
         'trial_ends_at', 'is_active', 'is_demo', 'logo_path', 'logo_aspect',
     ];
 

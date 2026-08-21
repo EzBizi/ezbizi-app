@@ -1087,8 +1087,9 @@ class HrContractsController extends Controller
                 // Off the contract rather than off the session: the document
                 // names the business the AGREEMENT belongs to, and `assertMine`
                 // has already established those are the same one.
-                organizationName: (string) $contract->organization->name,
-                contractName:     (string) $contract->name,
+                organizationName:    (string) $contract->organization->name,
+                organizationAddress: (string) ($contract->organization->address ?? ''),
+                contractName:        (string) $contract->name,
                 version:          $version,
                 fields:           $fields,
                 body:             $body,

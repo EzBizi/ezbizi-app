@@ -10,7 +10,7 @@ namespace App\Support\Contracts;
  * those is a question anybody should be made to declare as a field: the business
  * already has a name, the template already has one, and asking an employee to
  * type today's date into a form is asking them to maintain a value the system
- * knows. So these four resolve out of the record itself.
+ * knows. So these resolve out of the record itself.
  *
  * ── The dot is the whole reason these are safe ───────────────────
  *
@@ -43,10 +43,14 @@ namespace App\Support\Contracts;
  */
 final class ContractFacts
 {
-    public const ORGANIZATION_NAME = 'organization.name';
-    public const CONTRACT_NAME     = 'contract.name';
-    public const CONTRACT_VERSION  = 'contract.version';
-    public const DOCUMENT_DATE     = 'document.date';
+    public const ORGANIZATION_NAME    = 'organization.name';
+    public const ORGANIZATION_ADDRESS = 'organization.address';
+    public const CONTRACT_NAME        = 'contract.name';
+    public const CONTRACT_VERSION     = 'contract.version';
+    public const DOCUMENT_DATE        = 'document.date';
+    public const DOCUMENT_DAY         = 'document.day';
+    public const DOCUMENT_MONTH       = 'document.month';
+    public const DOCUMENT_YEAR        = 'document.year';
 
     /**
      * key => what to call it, and what it IS.
@@ -62,6 +66,10 @@ final class ContractFacts
             'label' => 'Business name',
             'is'    => 'the name of the business this agreement is with',
         ],
+        self::ORGANIZATION_ADDRESS => [
+            'label' => 'Business address',
+            'is'    => 'the address of the business this agreement is with, as set for the organization',
+        ],
         self::CONTRACT_NAME => [
             'label' => 'Contract name',
             'is'    => 'what this template is called',
@@ -75,6 +83,28 @@ final class ContractFacts
             'is'    => 'the day the paperwork was drawn up, written as YYYY-MM-DD — not the day '
                 .'it was signed, which is recorded against each signature instead',
         ],
+        self::DOCUMENT_DAY => [
+            'label' => 'Day of this document',
+            'is'    => 'the day-of-month of the paperwork date, as a number — the same day as '
+                .'document.date, never the day it was signed',
+        ],
+        self::DOCUMENT_MONTH => [
+            'label' => 'Month of this document',
+            'is'    => 'the month name of the paperwork date in English — the same day as '
+                .'document.date, never the day it was signed',
+        ],
+        self::DOCUMENT_YEAR => [
+            'label' => 'Year of this document',
+            'is'    => 'the four-digit year of the paperwork date — the same day as '
+                .'document.date, never the day it was signed',
+        ],
+    ];
+
+    /** English month names, so a document does not change with the server locale. */
+    private const MONTHS = [
+        1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
+        5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
+        9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December',
     ];
 
     /** @return string[] */
@@ -99,7 +129,7 @@ final class ContractFacts
     }
 
     /**
-     * The four, ready to merge.
+     * The facts, ready to merge.
      *
      * Every caller passes values it already has rather than this class reading
      * anything, for the reason DocumentRenderer states about the common core: a
@@ -119,12 +149,45 @@ final class ContractFacts
         string $contractName,
         int $version,
         string $date,
+        string $organizationAddress = '',
     ): array {
+        [$day, $month, $year] = self::dateParts($date);
+
         return [
-            self::ORGANIZATION_NAME => new MergeValue(self::labelFor(self::ORGANIZATION_NAME), $organizationName),
-            self::CONTRACT_NAME     => new MergeValue(self::labelFor(self::CONTRACT_NAME), $contractName),
-            self::CONTRACT_VERSION  => new MergeValue(self::labelFor(self::CONTRACT_VERSION), (string) $version),
-            self::DOCUMENT_DATE     => new MergeValue(self::labelFor(self::DOCUMENT_DATE), $date),
+            self::ORGANIZATION_NAME    => new MergeValue(self::labelFor(self::ORGANIZATION_NAME), self::present($organizationName)),
+            self::ORGANIZATION_ADDRESS => new MergeValue(self::labelFor(self::ORGANIZATION_ADDRESS), self::present($organizationAddress)),
+            self::CONTRACT_NAME        => new MergeValue(self::labelFor(self::CONTRACT_NAME), self::present($contractName)),
+            self::CONTRACT_VERSION     => new MergeValue(self::labelFor(self::CONTRACT_VERSION), (string) $version),
+            self::DOCUMENT_DATE        => new MergeValue(self::labelFor(self::DOCUMENT_DATE), self::present($date)),
+            self::DOCUMENT_DAY         => new MergeValue(self::labelFor(self::DOCUMENT_DAY), $day),
+            self::DOCUMENT_MONTH       => new MergeValue(self::labelFor(self::DOCUMENT_MONTH), $month),
+            self::DOCUMENT_YEAR        => new MergeValue(self::labelFor(self::DOCUMENT_YEAR), $year),
         ];
+    }
+
+    /**
+     * @return array{0: ?string, 1: ?string, 2: ?string} day, month name, year
+     */
+    private static function dateParts(string $date): array
+    {
+        if (! preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $m)) {
+            return [null, null, null];
+        }
+
+        $month = (int) $m[2];
+        $day   = (int) $m[3];
+
+        if ($month < 1 || $month > 12 || $day < 1 || $day > 31) {
+            return [null, null, null];
+        }
+
+        return [(string) $day, self::MONTHS[$month], $m[1]];
+    }
+
+    private static function present(string $value): ?string
+    {
+        $value = trim($value);
+
+        return $value === '' ? null : $value;
     }
 }

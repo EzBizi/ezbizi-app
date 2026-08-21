@@ -114,7 +114,10 @@ final class MergeTags
      * The key half is `[a-z][a-z0-9_]*` — FieldSet's rule for a field key,
      * written the same way — with one optional dotted segment for the facts.
      */
-    private const TAG = '\{\{[ \t]*([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]+)?)[ \t]*\}\}';
+    /** A field key, or a dotted fact / choice-option. */
+    private const KEY = '[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]+)?';
+
+    private const TAG = '\{\{[ \t]*('.self::KEY.')[ \t]*\}\}';
 
     /**
      * ONE SCANNER, AND IT MATCHES A STRAY `{{` AS WELL AS A TAG.
@@ -142,7 +145,18 @@ final class MergeTags
      * Group 1 is set only on the tag branch. Its absence is how a caller tells the
      * two apart, and that is the whole protocol.
      */
-    private const SCAN = '/'.self::TAG.'|\{\{/';
+    /**
+     * Value tags, section open `{{#key}}`, section close `{{/key}}`, and stray `{{`.
+     *
+     * Sections keep or drop a clause from the published body. They are still
+     * `{{ }}` so they cannot appear in legal prose by accident, and they are
+     * still lower-case keys. A choice option is named as `field.option_slug`
+     * (`{{#pay_basis.hourly}}`) so it cannot collide with a field key (no dots)
+     * or a fact (facts use organization / contract / document).
+     *
+     * Named groups so open, close and value do not steal each other's capture.
+     */
+    private const SCAN = '/\{\{[ \t]*(?:#(?<open>'.self::KEY.')|\/(?<close>'.self::KEY.')|(?<value>'.self::KEY.'))[ \t]*\}\}|\{\{/';
 
     /**
      * The same shape with capitals allowed, used ONLY to explain a refusal.
@@ -187,7 +201,7 @@ final class MergeTags
      * The one walk over the grammar. `null` for the key means the delimiter did
      * not open a tag — see SCAN for why that is one pattern's job and not two.
      *
-     * @return list<array{0: string|null, 1: int}>
+     * @return list<array{key: string|null, offset: int, kind: 'value'|'open'|'close'|'stray'}>
      */
     private static function scan(string $body): array
     {
@@ -198,12 +212,20 @@ final class MergeTags
         $found = [];
 
         foreach ($matches as $match) {
-            // Group 1 is absent on the stray branch, and `''` can never be a key
-            // — the pattern requires a letter — so both spellings mean the same
-            // thing and neither can be confused with a real one.
-            $key = ($match[1][0] ?? '') === '' ? null : $match[1][0];
+            $open  = $match['open'][0] ?? '';
+            $close = $match['close'][0] ?? '';
+            $value = $match['value'][0] ?? '';
+            $at    = $match[0][1];
 
-            $found[] = [$key, $match[0][1]];
+            if ($open !== '') {
+                $found[] = ['key' => $open, 'offset' => $at, 'kind' => 'open'];
+            } elseif ($close !== '') {
+                $found[] = ['key' => $close, 'offset' => $at, 'kind' => 'close'];
+            } elseif ($value !== '') {
+                $found[] = ['key' => $value, 'offset' => $at, 'kind' => 'value'];
+            } else {
+                $found[] = ['key' => null, 'offset' => $at, 'kind' => 'stray'];
+            }
         }
 
         return $found;
@@ -243,11 +265,44 @@ final class MergeTags
         $problems = [];
         $seen     = [];
         $extra    = 0;
+        $stack    = [];
 
-        foreach (self::scan($body) as [$key, $at]) {
-            if ($key === null) {
+        foreach (self::scan($body) as $token) {
+            $key = $token['key'];
+            $at  = $token['offset'];
+
+            if ($token['kind'] === 'stray' || $key === null) {
                 self::report($problems, $extra, $seen, self::malformedRefusal($body, $at, $fields));
 
+                continue;
+            }
+
+            if ($token['kind'] === 'open') {
+                $refusal = self::sectionRefusal($key, $fields);
+                if ($refusal !== null) {
+                    self::report($problems, $extra, $seen, $refusal);
+                }
+                $stack[] = $key;
+                continue;
+            }
+
+            if ($token['kind'] === 'close') {
+                $open = array_pop($stack);
+                if ($open === null) {
+                    self::report($problems, $extra, $seen, sprintf(
+                        '%s/%s%s closes a section that was never opened. Every closing tag needs '
+                        .'a matching %s#%s%s around the clause it belongs to.',
+                        self::OPEN, $key, self::CLOSE, self::OPEN, $key, self::CLOSE,
+                    ));
+                    continue;
+                }
+                if ($open !== $key) {
+                    self::report($problems, $extra, $seen, sprintf(
+                        '%s/%s%s closes %s#%s%s. Section tags nest, and the closer has to name '
+                        .'the same key the opener did.',
+                        self::OPEN, $key, self::CLOSE, self::OPEN, $open, self::CLOSE,
+                    ));
+                }
                 continue;
             }
 
@@ -256,6 +311,15 @@ final class MergeTags
             if ($refusal !== null) {
                 self::report($problems, $extra, $seen, $refusal);
             }
+        }
+
+        foreach ($stack as $open) {
+            self::report($problems, $extra, $seen, sprintf(
+                '%s#%s%s opens a section that never closes. Add %s/%s%s after the clause, or '
+                .'the wording cannot be published — a half-open section would silently eat the '
+                .'rest of the agreement.',
+                self::OPEN, $open, self::CLOSE, self::OPEN, $open, self::CLOSE,
+            ));
         }
 
         if ($problems === []) {
@@ -399,6 +463,59 @@ final class MergeTags
     }
 
     /**
+     * Why this cannot open or close a section, or null if it can.
+     *
+     * A section names the same three sources a value tag does, plus one more:
+     * `field.option` on a choice, meaning "keep this clause when that option
+     * was picked". The option is a slug of the option text (lower-case, non
+     * letters to underscores), so `Hourly` and `hourly` are the same name.
+     */
+    private static function sectionRefusal(string $key, FieldSet $fields): ?string
+    {
+        if (ContractFacts::claims($key) || CommonCore::isAsked($key)) {
+            return null;
+        }
+
+        if (self::refusalFor($key, $fields) === null) {
+            return null;
+        }
+
+        if (! str_contains($key, '.')) {
+            return self::refusalFor($key, $fields);
+        }
+
+        [$fieldKey, $option] = explode('.', $key, 2);
+        $field = $fields->keyed()[$fieldKey] ?? null;
+
+        if ($field === null || $field->type !== FieldType::CHOICE || $field->retired) {
+            return sprintf(
+                '%s#%s%s names a choice option, but %s is not a live "one of a list" field '
+                .'on this template. A section like this keeps a clause when a particular '
+                .'answer is picked. Add that field as a choice, or drop the section.',
+                self::OPEN, $key, self::CLOSE, self::OPEN.$fieldKey.self::CLOSE,
+            );
+        }
+
+        foreach ($field->options as $label) {
+            if (self::optionSlug($label) === $option) {
+                return null;
+            }
+        }
+
+        return sprintf(
+            '%s#%s%s names an option %s does not offer. The choices are: %s.',
+            self::OPEN, $key, self::CLOSE, $field->label, implode(', ', $field->options),
+        );
+    }
+
+    public static function optionSlug(string $option): string
+    {
+        $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '_', $option) ?? '');
+
+        return trim($slug, '_');
+    }
+
+    /**
      * The refusal for a `{{` that does not open a tag, quoting what is there.
      *
      * Quoted back rather than described, because "there is a malformed tag" sends
@@ -539,45 +656,25 @@ final class MergeTags
     public static function render(string $body, array $values): string
     {
         $escaped = self::e($body);
-
-        // Blank lines separate paragraphs — "blank" including a line of spaces,
-        // because a line somebody left a stray tab on is still a blank line to
-        // the person who typed it.
-        $blocks = preg_split('/(?:\R[ \t]*){2,}/u', $escaped);
-
-        if ($blocks === false) {
-            throw self::pcreFailed('split into paragraphs');
-        }
-
-        $out = [];
-
-        foreach ($blocks as $block) {
-            $block = trim($block);
-
-            if ($block === '') {
-                continue;
-            }
-
-            $broken = preg_replace('/\R/u', '<br>', $block);
-
-            if ($broken === null) {
-                throw self::pcreFailed('broken into lines');
-            }
-
-            $out[] = '<p>'.$broken.'</p>';
-        }
-
-        $html = implode("\n", $out);
+        $cut     = self::expandSections($escaped, $values);
+        $html    = BodyMarkup::html($cut);
 
         $merged = preg_replace_callback(
-            // The same pattern validate() walks. A stray `{{` reaches here as a
-            // match with no group 1 and is written back exactly as it was — the
-            // renderer resolving something the validator never inspected is the
-            // gap SCAN exists to close.
+            // Value tags only. Section markers have already been expanded;
+            // a leftover `{{#` would mean expandSections failed, and writing
+            // it back is better than inventing a term.
             self::SCAN,
-            fn (array $m) => ($m[1] ?? '') === ''
-                ? $m[0]
-                : self::resolveOne($m[1], $values),
+            function (array $m) use ($values) {
+                $open  = $m['open'] ?? '';
+                $close = $m['close'] ?? '';
+                $value = $m['value'] ?? '';
+
+                if ($value !== '') {
+                    return self::resolveOne($value, $values);
+                }
+
+                return $m[0];
+            },
             $html,
         );
 
@@ -647,11 +744,76 @@ final class MergeTags
             return '<span class="unresolved">'.self::OPEN.self::e($key).self::CLOSE.'</span>';
         }
 
+        if ($value->html !== null) {
+            return $value->html;
+        }
+
         if ($value->isBlank()) {
             return '<span class="unanswered">['.self::e($value->label).' not provided]</span>';
         }
 
         return self::e($value->value);
+    }
+
+    /**
+     * Keep or drop `{{#key}}…{{/key}}` blocks according to the answers.
+     *
+     * Innermost first so a raise clause that says "per hour" only on an hourly
+     * hire can nest. A dropped block leaves no hole — surrounding blank lines
+     * collapse. A kept block is the inner text, still carrying its value tags.
+     */
+    private static function expandSections(string $body, array $values): string
+    {
+        $pattern = '/\{\{[ \t]*#('.self::KEY.')[ \t]*\}\}((?:(?!\{\{[ \t]*[#\/]).)*)\{\{[ \t]*\/\1[ \t]*\}\}/s';
+        $guard   = 0;
+
+        while (preg_match($pattern, $body) === 1) {
+            if (++$guard > 1000) {
+                throw self::pcreFailed('expanded sections');
+            }
+
+            $replaced = preg_replace_callback(
+                $pattern,
+                function (array $m) use ($values) {
+                    return self::sectionKeeps($m[1], $values) ? $m[2] : '';
+                },
+                $body,
+                1,
+            );
+
+            if ($replaced === null) {
+                throw self::pcreFailed('expanded sections');
+            }
+
+            $body = $replaced;
+        }
+
+        $body = preg_replace("/\n{3,}/", "\n\n", $body) ?? $body;
+
+        return $body;
+    }
+
+    /**
+     * @param  array<string, MergeValue>  $values
+     */
+    private static function sectionKeeps(string $key, array $values): bool
+    {
+        if (isset($values[$key]) && ! $values[$key]->isBlank()) {
+            return true;
+        }
+
+        if (! str_contains($key, '.')) {
+            return false;
+        }
+
+        [$fieldKey, $option] = explode('.', $key, 2);
+        $value = $values[$fieldKey] ?? null;
+
+        if ($value === null || $value->isBlank()) {
+            return false;
+        }
+
+        return self::optionSlug((string) $value->value) === $option;
     }
 
     // ── what the editor is told ──────────────────────────────────

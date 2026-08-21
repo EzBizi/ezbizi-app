@@ -167,19 +167,18 @@ they are cheap to design in and brutal to retrofit.
 
 ## Adapted A-1 role templates
 
-The eleven A-1 Tools onboarding agreements (extracted 2026-08-21) are catalog
-data, not a change to merge grammar. `App\Support\Hr\OnboardingCatalog` compiles
-them into EzBizi templates: `{{first_name}} {{last_name}}`,
-`{{organization.name}}`, `{{document.date}}`, and per-template fields. A-1's
-clause-deletion tags (`hourly_only`, `raise_only`, `raise_unit`) are not fields
-— each W-2 role is four templates (hourly/salary × raise/no-raise). Publish into
-a tenant with `php artisan hr:publish-onboarding-catalog "{organization name}"`.
-New signups do not inherit them.
+The eleven A-1 Tools onboarding agreements are catalog data. Publish with
+`php artisan hr:publish-onboarding-catalog "{organization name}"`. New signups
+do not inherit them.
 
-What we did **not** add to EzBizi to make the import prettier: body conditionals,
-an organization-address fact, a profile address, signing-date parts, markdown,
-or fillable tables. Checklists became plain lists; signatures are signature
-fields.
+EzBizi now owns the capabilities those files needed, in this grammar:
+
+- **Home address** is common core (`{{address}}`), on the profile.
+- **Business address** is `{{organization.address}}`, set under Settings.
+- **Paperwork date parts** `{{document.day}}` `{{document.month}}` `{{document.year}}` are the same day as `{{document.date}}`, never the signing time.
+- **Sections** `{{#field}}…{{/field}}` keep a clause when that field is filled; `{{#pay_basis.hourly}}` keeps it when a choice is that option.
+- **Declared markup** the renderer owns: `#` headings, `**bold**`, `-` lists, `|` tables. Author HTML is still escaped.
+- **Checklist** field type: items with quantity and received date, merged as a table we drew.
 
 ## Still open
 

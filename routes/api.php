@@ -40,6 +40,7 @@ use App\Http\Controllers\Api\SocialConnectionsController;
 use App\Http\Controllers\Api\SocialProvidersController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
+use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
@@ -304,6 +305,7 @@ Route::prefix('v1')
         | it.
         */
         Route::put('organization/canvas', [OrganizationCanvasController::class, 'save']);
+        Route::patch('organization', [OrganizationProfileController::class, 'update']);
 
         // ── Branding (§12) ───────────────────────────────────────
         //
@@ -924,6 +926,7 @@ Route::prefix('v1')
                     'organization' => [
                         'id'              => $user->organization->id,
                         'name'            => $user->organization->name,
+                        'address'         => $user->organization->address,
                         'franchise_label' => $user->organization->franchise_label,
                         'is_read_only'    => $user->organization->isReadOnly(),
                     ],

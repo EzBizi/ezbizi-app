@@ -31,6 +31,7 @@ class _IdentityCardState extends State<IdentityCard> {
   final _middle = TextEditingController();
   final _last = TextEditingController();
   final _phone = TextEditingController();
+  final _address = TextEditingController();
   final _gender = TextEditingController();
 
   DateTime? _dob;
@@ -58,7 +59,7 @@ class _IdentityCardState extends State<IdentityCard> {
 
   @override
   void dispose() {
-    for (final c in [_first, _middle, _last, _phone, _gender]) {
+    for (final c in [_first, _middle, _last, _phone, _address, _gender]) {
       c.dispose();
     }
     super.dispose();
@@ -82,6 +83,7 @@ class _IdentityCardState extends State<IdentityCard> {
       _middle.text = b['middle_name'] as String? ?? '';
       _last.text = b['last_name'] as String? ?? '';
       _phone.text = b['phone'] as String? ?? '';
+      _address.text = b['address'] as String? ?? '';
       _gender.text = b['gender'] as String? ?? '';
       _email = b['email'] as String? ?? '';
       _hasAvatar = b['has_avatar'] == true;
@@ -105,6 +107,7 @@ class _IdentityCardState extends State<IdentityCard> {
       // impossible to empty once filled.
       'middle_name': _middle.text.trim().isEmpty ? null : _middle.text.trim(),
       'phone': _phone.text.trim().isEmpty ? null : _phone.text.trim(),
+      'address': _address.text.trim().isEmpty ? null : _address.text.trim(),
       'gender': _gender.text.trim().isEmpty ? null : _gender.text.trim(),
       'date_of_birth': _dob?.toIso8601String().split('T').first,
     });
@@ -273,6 +276,8 @@ class _IdentityCardState extends State<IdentityCard> {
                           Expanded(child: _field(_phone, 'Phone number')),
                         ],
                       ),
+                      const SizedBox(height: 12),
+                      _field(_address, 'Home address', maxLines: 2),
                     ],
                   ),
                 ),
@@ -360,15 +365,17 @@ class _IdentityCardState extends State<IdentityCard> {
     );
   }
 
-  Widget _field(TextEditingController c, String label) => TextField(
-    controller: c,
-    decoration: InputDecoration(
-      labelText: label,
-      isDense: true,
-      border: const OutlineInputBorder(),
-    ),
-    onChanged: (_) => setState(() {}),
-  );
+  Widget _field(TextEditingController c, String label, {int maxLines = 1}) =>
+      TextField(
+        controller: c,
+        maxLines: maxLines,
+        decoration: InputDecoration(
+          labelText: label,
+          isDense: true,
+          border: const OutlineInputBorder(),
+        ),
+        onChanged: (_) => setState(() {}),
+      );
 
   /// A text field with suggestions, not a dropdown.
   ///

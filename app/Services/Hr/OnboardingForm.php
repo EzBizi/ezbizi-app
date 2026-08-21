@@ -6,6 +6,7 @@ use App\Models\Attachment;
 use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
 use App\Models\User;
+use App\Support\Contracts\ChecklistTable;
 use App\Support\Contracts\CommonCore;
 use App\Support\Contracts\FieldDefinition;
 use App\Support\Contracts\FieldType;
@@ -94,6 +95,7 @@ class OnboardingForm
                 'middle_name'   => $user->middle_name,
                 'last_name'     => $user->last_name,
                 'phone'         => $user->phone,
+                'address'       => $user->address,
                 'date_of_birth' => $user->date_of_birth?->toDateString(),
             ];
         }
@@ -104,6 +106,7 @@ class OnboardingForm
             'middle_name'   => null,
             'last_name'     => $invitation?->last_name,
             'phone'         => null,
+            'address'       => null,
             'date_of_birth' => null,
         ];
     }
@@ -341,6 +344,15 @@ class OnboardingForm
             return null;
         }
 
+        if ($field->type === FieldType::CHECKLIST) {
+            if (is_string($raw)) {
+                $decoded = json_decode($raw, true);
+                $raw = is_array($decoded) ? $decoded : $raw;
+            }
+
+            return $this->checklistValue($field, $raw, $at, $errors);
+        }
+
         if (! is_scalar($raw)) {
             $errors[$at] = sprintf("'%s' was sent as a list or an object. An answer is one "
                 .'value.', $field->label);
@@ -399,6 +411,68 @@ class OnboardingForm
 
             return null;
         }
+    }
+
+    private function checklistValue(FieldDefinition $field, mixed $raw, string $at, array &$errors): ?string
+    {
+        if (! is_array($raw)) {
+            $errors[$at] = sprintf(
+                "'%s' is a checklist. Send a list of items, each with a quantity and a received date.",
+                $field->label,
+            );
+
+            return null;
+        }
+
+        $allowed = array_fill_keys($field->options, true);
+        $rows    = [];
+
+        foreach ($raw as $i => $row) {
+            if (! is_array($row) || ! is_string($row['item'] ?? null)) {
+                $errors[$at] = sprintf("'%s' row %d needs an item from the list.", $field->label, $i + 1);
+
+                return null;
+            }
+
+            $item = $row['item'];
+
+            if (! isset($allowed[$item])) {
+                $errors[$at] = sprintf(
+                    "'%s' is not on '%s'. The list is part of the pinned template.",
+                    $item, $field->label,
+                );
+
+                return null;
+            }
+
+            $qty = is_scalar($row['quantity'] ?? null) ? trim((string) $row['quantity']) : '';
+            $got = is_scalar($row['received'] ?? null) ? trim((string) $row['received']) : '';
+
+            if ($got !== '') {
+                try {
+                    $got = Carbon::createFromFormat('Y-m-d', $got)->toDateString();
+                } catch (\Throwable) {
+                    $errors[$at] = sprintf(
+                        "The received date for '%s' must be YYYY-MM-DD.",
+                        $item,
+                    );
+
+                    return null;
+                }
+            }
+
+            $rows[] = ['item' => $item, 'quantity' => $qty, 'received' => $got];
+        }
+
+        $json = ChecklistTable::encode($rows);
+
+        if (mb_strlen($json) > self::MAX_VALUE_LENGTH) {
+            $errors[$at] = sprintf("'%s' is too large to store as an answer.", $field->label);
+
+            return null;
+        }
+
+        return $json;
     }
 
     private function choiceValue(FieldDefinition $field, string $value, string $at, array &$errors): ?string
@@ -475,6 +549,7 @@ class OnboardingForm
         // through.
         $max = match ($key) {
             'first_name', 'middle_name', 'last_name' => 60,
+            'address'                                => 500,
             default                                  => 40,
         };
 

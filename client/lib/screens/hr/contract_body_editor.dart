@@ -576,7 +576,9 @@ class ContractWriting extends StatelessWidget {
     return '${example.isEmpty ? 'This Employment Agreement is made between…' : 'This Employment Agreement is made on $example between…'}'
         '\n\n'
         'Write the contract here. Click any of the fields above to drop it in '
-        'where the cursor is.';
+        'where the cursor is. Headings start a line with #, **bold**, lists with '
+        '- , tables with |. Wrap a clause in {{#field}} … {{/field}} to keep it '
+        'only when that field is filled, or {{#pay_basis.hourly}} for a choice.';
   }
 
   /// Everything that can be dropped into the text, grouped by where it comes

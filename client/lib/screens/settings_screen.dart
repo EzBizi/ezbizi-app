@@ -129,6 +129,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// [_sendingIdentityCard] for why that draws nothing at all.
   Map<String, dynamic>? _sendingIdentity;
 
+  final TextEditingController _businessAddress = TextEditingController();
+  bool _savingAddress = false;
+
   final TextEditingController _search = TextEditingController();
   _Filter _filter = _Filter.all;
 
@@ -160,6 +163,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Filtering is the only thing typing does, so a listener is the whole
     // wiring — no submit button, no debounce. Thirty rows do not need one.
     _search.addListener(() => setState(() {}));
+    _businessAddress.text = widget.session.me?.organization.address ?? '';
     _load();
     _loadDataAnswers();
     _loadSendingIdentity();
@@ -211,6 +215,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _search.dispose();
+    _businessAddress.dispose();
     super.dispose();
   }
 
@@ -625,6 +630,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+        ?_businessAddressCard(context),
         ?sendingIdentity,
         ?organizationData,
       ],
@@ -654,6 +660,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// works, is worse than one that appears a moment later; and against a build
   /// whose server half has not landed, silence beats a form promising to save
   /// something into a route that is not there.
+  Widget? _businessAddressCard(BuildContext context) {
+    if (_scopeType != 'organization' || _filter != _Filter.all) {
+      return null;
+    }
+    if (!(widget.session.me?.can('organizations.edit') ?? false)) {
+      return null;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 22),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Business address',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Printed on contracts as the address of this business.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _businessAddress,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: _savingAddress ? null : _saveBusinessAddress,
+                  child: Text(_savingAddress ? 'Saving…' : 'Save address'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveBusinessAddress() async {
+    setState(() => _savingAddress = true);
+    final response = await widget.api.patch('/organization', {
+      'address': _businessAddress.text.trim().isEmpty
+          ? null
+          : _businessAddress.text.trim(),
+    });
+    if (!mounted) return;
+    setState(() => _savingAddress = false);
+    if (response.ok) {
+      await widget.session.refresh();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Business address saved.')),
+        );
+      }
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(response.message)),
+      );
+    }
+  }
+
   Widget? _sendingIdentityCard() {
     if (_sendingIdentity == null ||
         _filter != _Filter.all ||

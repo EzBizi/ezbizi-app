@@ -1140,6 +1140,7 @@ class HrOnboardingTest extends TestCase
             'token'         => $token,
             'password'      => 'a-real-password',
             'phone'         => '+34 600 000 000',
+            'address'       => '1 Test Street',
             'date_of_birth' => '1990-04-03',
         ])->assertCreated();
     }

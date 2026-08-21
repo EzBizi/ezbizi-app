@@ -36,6 +36,14 @@ final class MergeValue
          * a document ends up with a gap that reads as a term.
          */
         public readonly ?string $value,
+        /**
+         * Markup THIS APPLICATION produced for this value, already escaped.
+         *
+         * A checklist merges as a table we drew, not as a JSON string. Tenant
+         * input never lands here — only HTML generated from answers we already
+         * validated. Null means resolve as escaped text, the ordinary path.
+         */
+        public readonly ?string $html = null,
     ) {}
 
     public function isBlank(): bool

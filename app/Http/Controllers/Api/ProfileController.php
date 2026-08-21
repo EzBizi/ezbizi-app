@@ -55,6 +55,7 @@ class ProfileController extends Controller
             'middle_name' => ['sometimes', 'nullable', 'string', 'max:60'],
             'last_name'   => ['sometimes', 'required', 'string', 'max:60'],
             'phone'       => ['sometimes', 'nullable', 'string', 'max:40'],
+            'address'     => ['sometimes', 'nullable', 'string', 'max:500'],
 
             // Free text, not an `in:` rule. A closed list is wrong for somebody
             // and then needs a deploy to fix; the client suggests the common
@@ -69,7 +70,7 @@ class ProfileController extends Controller
 
         $before = $user->only([
             'name', 'first_name', 'middle_name', 'last_name',
-            'phone', 'gender', 'date_of_birth',
+            'phone', 'address', 'gender', 'date_of_birth',
         ]);
 
         $user->fill($input);
@@ -190,6 +191,7 @@ class ProfileController extends Controller
             'middle_name'   => $user->middle_name,
             'last_name'     => $user->last_name,
             'phone'         => $user->phone,
+            'address'       => $user->address,
             'gender'        => $user->gender,
             'date_of_birth' => $user->date_of_birth?->toDateString(),
             'has_avatar'    => $user->avatar_path !== null,

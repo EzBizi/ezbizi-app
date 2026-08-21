@@ -67,4 +67,56 @@ final class SourceCompiler
 
         return trim($source)."\n";
     }
+
+    /**
+     * Turn compile-time markers into live merge sections.
+     *
+     * The catalog used to split hourly/salary/raise into separate templates
+     * because EzBizi could not drop a clause. It can now. These markers never
+     * reach a stored version — they become `{{#pay_basis.hourly}}` and
+     * `{{#raise_amount}}`, which MergeTags keeps or deletes from the answers.
+     */
+    public static function toLiveSections(string $source): string
+    {
+        $map = [
+            self::HOURLY => 'pay_basis.hourly',
+            self::SALARY => 'pay_basis.salary',
+            self::RAISE  => 'raise_amount',
+        ];
+
+        $pattern = '/<<([a-z]+)>>((?:(?!<<[a-z]+>>|<<\/[a-z]+>>).)*)<<\/\1>>/s';
+        $guard   = 0;
+
+        while (preg_match($pattern, $source, $match, PREG_OFFSET_CAPTURE) === 1) {
+            if (++$guard > 1000) {
+                throw new RuntimeException(
+                    'Onboarding catalog source did not finish compiling. A section marker is probably unclosed.',
+                );
+            }
+
+            $flag = $match[1][0];
+
+            if (! isset($map[$flag])) {
+                throw new RuntimeException(sprintf(
+                    "Onboarding catalog source has a section '%s' this compiler does not keep or drop.",
+                    $flag,
+                ));
+            }
+
+            $key         = $map[$flag];
+            $replacement = '{{#'.$key.'}}'.$match[2][0].'{{/'.$key.'}}';
+            $source      = substr_replace($source, $replacement, $match[0][1], strlen($match[0][0]));
+        }
+
+        if (str_contains($source, '<<')) {
+            throw new RuntimeException(
+                'Onboarding catalog source still has section markers after compile.',
+            );
+        }
+
+        $source = str_replace('{{employer_address}}', '{{organization.address}}', $source);
+        $source = preg_replace("/\n{3,}/", "\n\n", $source) ?? $source;
+
+        return trim($source)."\n";
+    }
 }

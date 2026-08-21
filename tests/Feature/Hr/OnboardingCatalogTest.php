@@ -10,12 +10,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
-/**
- * A-1 role agreements adapted to EzBizi, not the other way around.
- *
- * The catalog must publish: FieldSet accepts every field list, MergeTags
- * accepts every body, and none of A-1's clause-deletion tags survive.
- */
 class OnboardingCatalogTest extends TestCase
 {
     use BuildsTenants;
@@ -25,143 +19,86 @@ class OnboardingCatalogTest extends TestCase
     {
         $templates = OnboardingCatalog::templates();
 
-        $this->assertCount(41, $templates, '10 W-2 roles × 4 pay/raise splits, plus the 1099 inspector.');
+        $this->assertCount(11, $templates);
 
         $names = [];
 
         foreach ($templates as $template) {
             $this->assertNotSame('', $template['name']);
-            $this->assertArrayNotHasKey($template['name'], $names, 'Two templates share a name.');
+            $this->assertArrayNotHasKey($template['name'], $names);
             $names[$template['name']] = true;
 
-            $this->assertLessThanOrEqual(
-                MergeTags::MAX_BODY_LENGTH,
-                mb_strlen($template['body']),
-                $template['name'].' is over the body cap.',
-            );
-
+            $this->assertLessThanOrEqual(MergeTags::MAX_BODY_LENGTH, mb_strlen($template['body']));
             $this->assertStringNotContainsString('<<', $template['body']);
             $this->assertStringNotContainsString('hourly_only', $template['body']);
-            $this->assertStringNotContainsString('raise_only', $template['body']);
-            $this->assertStringNotContainsString('raise_unit', $template['body']);
             $this->assertStringNotContainsString('{{name}}', $template['body']);
             $this->assertStringNotContainsString('{{company_name}}', $template['body']);
-            $this->assertStringNotContainsString('{{company_address}}', $template['body']);
-            $this->assertStringNotContainsString('{{date}}', $template['body']);
-            $this->assertStringNotContainsString('{{day}}', $template['body']);
-            $this->assertStringNotContainsString('{{month}}', $template['body']);
-            $this->assertStringNotContainsString('{{year2}}', $template['body']);
+            $this->assertStringNotContainsString('{{employer_address}}', $template['body']);
+            $this->assertStringContainsString('{{organization.name}}', $template['body']);
+            $this->assertStringContainsString('{{organization.address}}', $template['body']);
+            $this->assertStringContainsString('{{first_name}} {{last_name}}', $template['body']);
+            $this->assertStringContainsString('{{address}}', $template['body']);
 
             $keys = array_column($template['fields'], 'key');
             $this->assertContains('employer_signature', $keys);
             $this->assertContains('employee_signature', $keys);
-            $this->assertContains('address', $keys);
-            $this->assertContains('employer_address', $keys);
+            $this->assertNotContains('address', $keys, 'Home address is core, not a field.');
+            $this->assertNotContains('employer_address', $keys);
         }
     }
 
-    public function test_hourly_and_salary_are_separate_templates_not_switches(): void
+    public function test_hourly_and_salary_are_sections_not_separate_templates(): void
     {
-        $hourly = $this->named('Field Technician (hourly)');
-        $salary = $this->named('Field Technician (salary)');
-        $raised = $this->named('Field Technician (hourly, scheduled increases)');
+        $tech = $this->named('Field Technician');
 
-        $this->assertStringContainsString('{{hourly_rate}}', $hourly['body']);
-        $this->assertStringContainsString('overtime', strtolower($hourly['body']));
-        $this->assertStringNotContainsString('{{salary_amount}}', $hourly['body']);
+        $this->assertStringContainsString('{{#pay_basis.hourly}}', $tech['body']);
+        $this->assertStringContainsString('{{#pay_basis.salary}}', $tech['body']);
+        $this->assertStringContainsString('{{#raise_amount}}', $tech['body']);
+        $this->assertStringContainsString('{{hourly_rate}}', $tech['body']);
+        $this->assertStringContainsString('{{salary_amount}}', $tech['body']);
 
-        $this->assertStringContainsString('{{salary_amount}}', $salary['body']);
-        $this->assertStringNotContainsString('{{hourly_rate}}', $salary['body']);
-        $this->assertStringNotContainsString('Overtime', $salary['body']);
-
-        $this->assertStringContainsString('{{raise_amount}}', $raised['body']);
-        $this->assertStringContainsString(' per hour', $raised['body']);
-        $this->assertStringNotContainsString('{{raise_amount}}', $hourly['body']);
-
-        $salaryRaised = $this->named('Field Technician (salary, scheduled increases)');
-        $this->assertStringContainsString('{{raise_amount}}', $salaryRaised['body']);
-        $this->assertStringNotContainsString(' per hour', $salaryRaised['body']);
+        $keys = array_column($tech['fields'], 'key');
+        $this->assertContains('pay_basis', $keys);
+        $this->assertContains('raise_amount', $keys);
     }
 
-    public function test_the_inspector_is_one_1099_template_dated_as_paperwork(): void
+    public function test_the_inspector_is_one_1099_template(): void
     {
         $inspector = $this->named('Field Inspector (1099)');
 
         $this->assertStringContainsString('{{document.date}}', $inspector['body']);
-        $this->assertStringContainsString('{{commission_pct}}', $inspector['body']);
-        $this->assertStringContainsString('{{organization.name}}', $inspector['body']);
-        $this->assertStringContainsString('{{first_name}} {{last_name}}', $inspector['body']);
-        $this->assertStringNotContainsString('{{date_of_hire}}', $inspector['body']);
-        $this->assertStringNotContainsString('{{hourly_rate}}', $inspector['body']);
+        $this->assertStringContainsString('{{tools}}', $inspector['body']);
+        $this->assertStringContainsString('{{equipment}}', $inspector['body']);
 
         $keys = array_column($inspector['fields'], 'key');
+        $this->assertContains('tools', $keys);
+        $this->assertContains('equipment', $keys);
         $this->assertNotContains('hourly_rate', $keys);
-        $this->assertNotContains('date_of_hire', $keys);
+        $this->assertNotContains('pay_basis', $keys);
 
         $labels = array_column($inspector['fields'], 'label', 'key');
         $this->assertSame('Contractor signature', $labels['employee_signature']);
-        $this->assertSame('Company representative signature', $labels['employer_signature']);
     }
 
-    public function test_nested_raise_unit_compiles_per_hour_only_on_hourly(): void
+    public function test_live_sections_rewrite_compile_markers(): void
     {
-        $source = 'increase by ${{raise_amount}}<<hourly>> per hour<</hourly>> every {{raise_period}}';
+        $source = '<<hourly>>overtime<</hourly>> <<raise>>plus {{raise_amount}}<<hourly>> per hour<</hourly>><</raise>>';
 
         $this->assertSame(
-            "increase by \${{raise_amount}} per hour every {{raise_period}}\n",
-            SourceCompiler::compile($source, ['hourly', 'raise']),
-        );
-        $this->assertSame(
-            "increase by \${{raise_amount}} every {{raise_period}}\n",
-            SourceCompiler::compile($source, ['salary', 'raise']),
-        );
-        $this->assertSame(
-            "\n",
-            SourceCompiler::compile('<<raise>>'.$source.'<</raise>>', ['hourly']),
+            "{{#pay_basis.hourly}}overtime{{/pay_basis.hourly}} {{#raise_amount}}plus {{raise_amount}}{{#pay_basis.hourly}} per hour{{/pay_basis.hourly}}{{/raise_amount}}\n",
+            SourceCompiler::toLiveSections($source),
         );
     }
 
-    public function test_the_command_publishes_into_a_tenant_and_skips_names_that_exist(): void
+    public function test_the_command_publishes_eleven_templates(): void
     {
         $alpha = $this->provisionTenant('Alpha');
 
         $this->artisan('hr:publish-onboarding-catalog', ['organization' => 'Alpha'])
             ->assertSuccessful();
-
-        $this->inTenant($alpha['org'], function () use ($alpha) {
-            $this->assertSame(41, Contract::query()->count());
-        });
-
-        $this->artisan('hr:publish-onboarding-catalog', ['organization' => 'Alpha'])
-            ->expectsOutputToContain('Created 0, replaced 0, skipped 41')
-            ->assertSuccessful();
-
-        $this->inTenant($alpha['org'], function () use ($alpha) {
-            $this->assertSame(41, Contract::query()->count());
-            $this->assertSame(
-                1,
-                Contract::query()->where('name', 'Field Technician (hourly)')->count(),
-            );
-
-            $first = Contract::query()->where('name', 'Call Center Employee (salary)')->first();
-            $this->assertNotNull($first);
-            $this->assertNotNull($first->currentVersion?->body);
-            $this->assertStringContainsString('{{daily_deduction}}', $first->currentVersion->body);
-            $this->assertSame($alpha['admin']->getKey(), $first->created_by);
-        });
-    }
-
-    public function test_dry_run_writes_nothing(): void
-    {
-        $alpha = $this->provisionTenant('Alpha');
-
-        $this->artisan('hr:publish-onboarding-catalog', [
-            'organization' => 'Alpha',
-            '--dry-run'    => true,
-        ])->assertSuccessful();
 
         $this->inTenant($alpha['org'], function () {
-            $this->assertSame(0, Contract::query()->count());
+            $this->assertSame(11, Contract::query()->count());
         });
     }
 

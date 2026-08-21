@@ -226,6 +226,13 @@ class _ContractFormPreviewState extends State<ContractFormPreview> {
     }
 
     return switch (type) {
+      'checklist' => _box(
+        context,
+        Text(
+          options.isEmpty ? 'No items yet' : '${options.length} items, quantity and date',
+          style: theme.textTheme.bodyMedium,
+        ),
+      ),
       'choice' => _box(
         context,
         Row(

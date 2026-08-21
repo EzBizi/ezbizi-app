@@ -78,9 +78,28 @@ final class FieldLibrary
             ),
             'raise_amount' => self::field(
                 'raise_amount', 'Scheduled increase amount', FieldType::NUMBER, FilledBy::EMPLOYER,
+                required: false,
             ),
             'raise_period' => self::field(
                 'raise_period', 'Scheduled increase interval', FieldType::TEXT, FilledBy::EMPLOYER,
+                required: false,
+            ),
+            'pay_basis' => [
+                'key'       => 'pay_basis',
+                'label'     => 'Pay basis',
+                'type'      => FieldType::CHOICE,
+                'options'   => ['hourly', 'salary'],
+                'filled_by' => FilledBy::EMPLOYER,
+                'required'  => true,
+                'sensitive' => false,
+                'retired'   => false,
+                'is_expiry' => false,
+            ],
+            'tools' => self::checklist(
+                'tools', 'Tools issued', self::TOOLS, FilledBy::EMPLOYER,
+            ),
+            'equipment' => self::checklist(
+                'equipment', 'Equipment issued', self::EQUIPMENT, FilledBy::EMPLOYER,
             ),
             'work_days' => self::field(
                 'work_days', 'Work days', FieldType::TEXT, FilledBy::EMPLOYER,
@@ -109,15 +128,50 @@ final class FieldLibrary
     /**
      * @return array<string, mixed>
      */
-    private static function field(string $key, string $label, string $type, string $filledBy): array
+    private const TOOLS = [
+        'Tool Bag', 'Tool Box', 'Plastic Crate', 'Extension cord', 'Grinder',
+        'Circular Saw', 'Impact Drill', 'Drill', "2x Drill's Batteries",
+        "Drill Battery's Charger", 'Drill & Impact Bits', 'Concrete Drill Bit',
+        'Steel Cutter', 'Wrench', '2x Pipe Wrenches', 'Combined Wrench Set',
+        'Hammer', 'Crimping tool', 'Locking Plier', 'Alligator Plier',
+        'Tape Measure', 'Flashlight', 'Headlight', 'Lighter', 'Knife',
+        'Gas Flange Key', 'Caulking Gun', 'Multimeter', 'Gas Leak Detector',
+        'Hand brush', 'Wire hand brush', 'Trowel', 'Concrete Mixer Rod',
+        'Bricks Jointer', 'Chisel',
+    ];
+
+    private const EQUIPMENT = [
+        'Vacuum', 'Rods Holder Bag', 'Sweeping Brush', 'Sweeping Rod Handle',
+        'Big Ladder', 'Small Ladder', 'Drone Set', 'Scope camera', 'Drop Cloth',
+        'Gloves', 'Helmet', 'Belt', 'Goggles', 'Dust Pan',
+    ];
+
+    /**
+     * @param  string[]  $items
+     * @return array<string, mixed>
+     */
+    private static function checklist(string $key, string $label, array $items, string $filledBy): array
     {
+        $row = self::field($key, $label, FieldType::CHECKLIST, $filledBy, required: false);
+        $row['options'] = $items;
+
+        return $row;
+    }
+
+    private static function field(
+        string $key,
+        string $label,
+        string $type,
+        string $filledBy,
+        bool $required = true,
+    ): array {
         return [
             'key'       => $key,
             'label'     => $label,
             'type'      => $type,
             'options'   => [],
             'filled_by' => $filledBy,
-            'required'  => true,
+            'required'  => $required,
             'sensitive' => false,
             'retired'   => false,
             'is_expiry' => false,

@@ -142,9 +142,7 @@ final class OnboardingCatalog
         $out = [];
 
         foreach (self::ROLES as $slug => $role) {
-            foreach (self::variantsFor($role) as $variant) {
-                $out[] = self::build($slug, $role, $variant);
-            }
+            $out[] = self::build($slug, $role);
         }
 
         return $out;
@@ -152,58 +150,9 @@ final class OnboardingCatalog
 
     /**
      * @param  array{name: string, description: string, signer: string, pay: string, raise: bool}  $role
-     * @return list<array{pay: string|null, raise: bool, keep: string[], name_suffix: string, description_suffix: string}>
-     */
-    private static function variantsFor(array $role): array
-    {
-        if ($role['pay'] === 'none') {
-            return [[
-                'pay'                => null,
-                'raise'              => false,
-                'keep'               => [],
-                'name_suffix'        => '',
-                'description_suffix' => '',
-            ]];
-        }
-
-        $out = [];
-
-        foreach ([SourceCompiler::HOURLY, SourceCompiler::SALARY] as $pay) {
-            $raiseChoices = $role['raise'] ? [false, true] : [false];
-
-            foreach ($raiseChoices as $raise) {
-                $keep = [$pay];
-                if ($raise) {
-                    $keep[] = SourceCompiler::RAISE;
-                }
-
-                $payLabel = $pay === SourceCompiler::HOURLY ? 'hourly' : 'salary';
-                $name     = $raise
-                    ? " ({$payLabel}, scheduled increases)"
-                    : " ({$payLabel})";
-                $desc     = $raise
-                    ? " Paid {$payLabel}, with a scheduled increase in the first twelve months."
-                    : " Paid {$payLabel}, with no scheduled increase clause.";
-
-                $out[] = [
-                    'pay'                => $pay,
-                    'raise'              => $raise,
-                    'keep'               => $keep,
-                    'name_suffix'        => $name,
-                    'description_suffix' => $desc,
-                ];
-            }
-        }
-
-        return $out;
-    }
-
-    /**
-     * @param  array{name: string, description: string, signer: string, pay: string, raise: bool}  $role
-     * @param  array{pay: string|null, raise: bool, keep: string[], name_suffix: string, description_suffix: string}  $variant
      * @return array{slug: string, name: string, description: string, fields: array<int, array<string, mixed>>, body: string}
      */
-    private static function build(string $slug, array $role, array $variant): array
+    private static function build(string $slug, array $role): array
     {
         $path = resource_path("hr/onboarding-catalog/{$slug}.src.txt");
 
@@ -217,9 +166,9 @@ final class OnboardingCatalog
             throw new RuntimeException("Onboarding catalog source unreadable: {$slug}.");
         }
 
-        $body   = SourceCompiler::compile($source, $variant['keep']);
+        $body   = SourceCompiler::toLiveSections($source);
         $body   = MergeTags::normalise($body);
-        $fields = self::fieldsFor($body, $role['signer']);
+        $fields = self::fieldsFor($body, $role['signer'], $role['pay'] === 'split');
 
         if ($body === null) {
             throw new RuntimeException("Onboarding catalog compiled an empty body for {$slug}.");
@@ -230,8 +179,8 @@ final class OnboardingCatalog
 
         return [
             'slug'        => $slug,
-            'name'        => $role['name'].$variant['name_suffix'],
-            'description' => $role['description'].$variant['description_suffix'],
+            'name'        => $role['name'],
+            'description' => $role['description'],
             'fields'      => $set->toArray(),
             'body'        => $body,
         ];
@@ -240,17 +189,28 @@ final class OnboardingCatalog
     /**
      * @return list<array<string, mixed>>
      */
-    private static function fieldsFor(?string $body, string $signer): array
+    private static function fieldsFor(?string $body, string $signer, bool $splitPay): array
     {
         $named = [];
 
-        if ($body !== null && preg_match_all('/\{\{([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]+)?)\}\}/', $body, $matches) > 0) {
+        if ($body !== null && preg_match_all(
+            '/\{\{[ \t]*[#\/]?([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]+)?)[ \t]*\}\}/',
+            $body,
+            $matches,
+        ) > 0) {
             foreach ($matches[1] as $key) {
                 if (CommonCore::claims($key) || ContractFacts::claims($key)) {
                     continue;
                 }
+                if (str_contains($key, '.')) {
+                    $key = explode('.', $key, 2)[0];
+                }
                 $named[$key] = true;
             }
+        }
+
+        if ($splitPay) {
+            $named['pay_basis'] = true;
         }
 
         $fields = [];

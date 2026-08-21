@@ -528,12 +528,12 @@ class HrContractCoverAndCoreTest extends TestCase
         // Still refused to a template — every one of the eight.
         $this->assertSame([
             'email', 'name', 'first_name', 'middle_name', 'last_name',
-            'phone', 'date_of_birth', 'gender',
+            'phone', 'address', 'date_of_birth', 'gender',
         ], $reserved->keys()->all());
 
-        // But only six are asked, and gender is not one of them any more.
+        // Gender is reserved without being asked; address is asked.
         $this->assertSame(
-            ['email', 'first_name', 'middle_name', 'last_name', 'phone', 'date_of_birth'],
+            ['email', 'first_name', 'middle_name', 'last_name', 'phone', 'address', 'date_of_birth'],
             $core,
         );
 
@@ -896,6 +896,7 @@ class HrContractCoverAndCoreTest extends TestCase
             'token'         => $token,
             'password'      => 'a-real-password',
             'phone'         => '+34 600 000 000',
+            'address'       => '1 Test Street',
             'date_of_birth' => '1990-04-03',
         ])->assertCreated();
     }

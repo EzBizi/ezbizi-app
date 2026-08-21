@@ -23,6 +23,7 @@ final class FieldType
     public const NUMBER    = 'number';
     public const DATE      = 'date';
     public const CHOICE    = 'choice';
+    public const CHECKLIST = 'checklist';
     public const FILE      = 'file';
     public const SIGNATURE = 'signature';
 
@@ -32,6 +33,7 @@ final class FieldType
         self::NUMBER    => 'Number',
         self::DATE      => 'Date',
         self::CHOICE    => 'One of a list',
+        self::CHECKLIST => 'A checklist of items',
         self::FILE      => 'A file they upload',
         self::SIGNATURE => 'A signature',
     ];
@@ -53,7 +55,8 @@ final class FieldType
      * and the client reads it. Adding a type that takes options is then one line.
      */
     private const TAKES_OPTIONS = [
-        self::CHOICE => true,
+        self::CHOICE    => true,
+        self::CHECKLIST => true,
     ];
 
     /**

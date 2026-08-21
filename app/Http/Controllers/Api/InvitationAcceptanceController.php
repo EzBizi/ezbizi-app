@@ -216,6 +216,7 @@ class InvitationAcceptanceController extends Controller
             'first_name'    => ['nullable', 'string', 'max:120'],
             'last_name'     => ['nullable', 'string', 'max:120'],
             'phone'         => ['nullable', 'string', 'max:40'],
+            'address'       => ['nullable', 'string', 'max:500'],
             'date_of_birth' => ['nullable', 'date'],
             'gender'        => ['nullable', 'string', 'max:40'],
         ]);
@@ -352,6 +353,7 @@ class InvitationAcceptanceController extends Controller
             'first_name'    => $first,
             'last_name'     => $last,
             'phone'         => $input['phone'] ?? null,
+            'address'       => $input['address'] ?? null,
             'date_of_birth' => $input['date_of_birth'] ?? null,
             'gender'        => $input['gender'] ?? null,
         ]);

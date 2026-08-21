@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -953,6 +955,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
     }
 
     return switch (field.type) {
+      'checklist' => _checklist(question, enabled: enabled),
       'choice' => DropdownButtonFormField<String>(
         key: answerKey(field.key),
         initialValue: _chosen(question),
@@ -998,6 +1001,98 @@ class _OnboardingFormState extends State<OnboardingForm> {
         numeric: field.type == 'number',
       ),
     };
+  }
+
+  Widget _checklist(OnboardingQuestion question, {required bool enabled}) {
+    final items = question.field.options;
+    final rows = _checklistRows(question);
+
+    return Column(
+      children: [
+        for (final item in items)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Expanded(child: Text(item)),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 72,
+                  child: TextField(
+                    enabled: enabled,
+                    controller: TextEditingController(text: rows[item]?['quantity'] ?? ''),
+                    decoration: const InputDecoration(
+                      labelText: 'Qty',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) => _setChecklistCell(question, item, 'quantity', value),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 130,
+                  child: TextField(
+                    enabled: enabled,
+                    controller: TextEditingController(text: rows[item]?['received'] ?? ''),
+                    decoration: const InputDecoration(
+                      labelText: 'Received',
+                      hintText: 'YYYY-MM-DD',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) => _setChecklistCell(question, item, 'received', value),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Map<String, Map<String, String>> _checklistRows(OnboardingQuestion question) {
+    final raw = _pending[question.key] ?? question.value;
+    if (raw.isEmpty) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return {
+          for (final row in decoded.whereType<Map>())
+            if (row['item'] is String)
+              row['item'] as String: {
+                'quantity': '${row['quantity'] ?? ''}',
+                'received': '${row['received'] ?? ''}',
+              },
+        };
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  void _setChecklistCell(
+    OnboardingQuestion question,
+    String item,
+    String cell,
+    String value,
+  ) {
+    final rows = {
+      for (final option in question.field.options)
+        option: Map<String, String>.from(
+          _checklistRows(question)[option] ?? {'quantity': '', 'received': ''},
+        ),
+    };
+    rows[item]![cell] = value;
+    setState(() {
+      _pending[question.key] = jsonEncode([
+        for (final option in question.field.options)
+          {
+            'item': option,
+            'quantity': rows[option]!['quantity'] ?? '',
+            'received': rows[option]!['received'] ?? '',
+          },
+      ]);
+    });
   }
 
   String? _chosen(OnboardingQuestion question) {

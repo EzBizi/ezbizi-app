@@ -642,6 +642,7 @@ class OrganizationSummary {
     required this.name,
     required this.franchiseLabel,
     required this.isReadOnly,
+    this.address,
   });
 
   final String id;
@@ -651,12 +652,16 @@ class OrganizationSummary {
   final String franchiseLabel;
   final bool isReadOnly;
 
+  /// The business address a contract merges as organization.address.
+  final String? address;
+
   factory OrganizationSummary.fromJson(Map<String, dynamic> json) =>
       OrganizationSummary(
         id: json['id'] as String,
         name: json['name'] as String,
         franchiseLabel: json['franchise_label'] as String? ?? 'Franchise',
         isReadOnly: json['is_read_only'] as bool? ?? false,
+        address: json['address'] as String?,
       );
 }
 
