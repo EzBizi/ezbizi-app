@@ -140,7 +140,11 @@ scp deploy/nginx-dev.ezbizi.com.conf app:/tmp/ && ssh app 'sudo cp /tmp/nginx-de
 
 `scripts/deploy.sh` extracts `git archive main` there and runs the suite against
 `ezbizi_testing`. It has its own `storage/`, its own `.env.testing`, and **no `.env` at
-all**.
+all**. The extract takes `flock` on `/opt/ezbizi-test/.deploy-gate.lock` first:
+two overlapping deploys used to `rm -rf bootstrap` while the other was still in
+phpunit, and the first then failed 200+ tests with `Failed opening required
+bootstrap/app.php`. The test database is shared, so they cannot run in parallel
+anyway. The lock waits up to an hour.
 
 That last part is the point of the whole arrangement. It used to live in
 `/var/www/ezbizi` alongside the production `.env`, and Laravel falls back to `.env` when

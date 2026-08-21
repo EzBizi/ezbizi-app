@@ -45,6 +45,13 @@ BACKEND_OUT=$(git archive main | ssh "$REMOTE" '
   # /opt, not /var/www. The sandbox holds dev dependencies and a full Laravel
   # tree; sitting it beside the production .env is what let `--env=testing` fall
   # back to production and wipe it. There is no .env here at all.
+  mkdir -p /opt/ezbizi-test
+  # Two deploys sharing this directory is how bootstrap/app.php vanished
+  # mid-suite: the second `rm -rf bootstrap` while the first was still in
+  # phpunit. The test database is shared too, so they cannot run in parallel
+  # even in separate trees. Wait rather than wipe.
+  exec 9>/opt/ezbizi-test/.deploy-gate.lock
+  flock -w 3600 9 || { echo "sandbox gate locked by another deploy — wait and retry"; exit 1; }
   cd /opt/ezbizi-test
   # Removed files must disappear too, or a deleted class keeps passing.
   #
