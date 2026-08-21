@@ -79,6 +79,23 @@ void main() {
     expect(blocks.single.text, 'Your appointment is confirmed.');
   });
 
+  test('a picture keeps its token and its description', () {
+    final blocks = readMailBlocks([
+      {
+        'kind': 'image',
+        'alt': 'Everdoors banner',
+        'src': 'sealed-token',
+        'spans': [
+          {'text': 'Everdoors banner'},
+        ],
+      },
+    ]);
+
+    expect(blocks.single.kind, MailBlockKind.image);
+    expect(blocks.single.alt, 'Everdoors banner');
+    expect(blocks.single.src, 'sealed-token');
+  });
+
   test('a blocked image keeps what it was and where it would have come from',
       () {
     final blocks = readMailBlocks([
@@ -87,7 +104,6 @@ void main() {
         'alt': 'Everdoors banner',
         'host': 'trk.example.com',
       },
-      // No description, which is the usual case for a tracking pixel.
       {'kind': 'blocked_image'},
     ]);
 

@@ -1,5 +1,9 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
+import '../../core/api_client.dart';
 import 'message_blocks.dart';
 
 /// The message, drawn from blocks.
@@ -17,9 +21,16 @@ import 'message_blocks.dart';
 /// organization that runs dark (§12) gets a dark message rather than a sheet of
 /// white in the middle of their screen.
 class MessageBody extends StatelessWidget {
-  const MessageBody({super.key, required this.blocks});
+  const MessageBody({
+    super.key,
+    required this.blocks,
+    this.api,
+    this.picturePath,
+  });
 
   final List<MailBlock> blocks;
+  final ApiClient? api;
+  final String? picturePath;
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +61,15 @@ class MessageBody extends StatelessWidget {
       MailBlockKind.rule => const Padding(
         padding: EdgeInsets.symmetric(vertical: 16),
         child: Divider(height: 1),
+      ),
+      MailBlockKind.image => Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: _MailPicture(
+          alt: block.alt,
+          src: block.src,
+          api: api,
+          picturePath: picturePath,
+        ),
       ),
       MailBlockKind.blockedImage => Padding(
         padding: const EdgeInsets.only(top: 12),
@@ -162,22 +182,114 @@ class _Quote extends StatelessWidget {
   }
 }
 
-/// Where a picture was, and why it is not there.
-///
-/// ── Two reasons, and only one of them is privacy ────────────────
-///
-/// A remote image in an email is a tracking pixel: fetching it tells whoever
-/// sent the message that it was opened, by an address that receives customer
-/// mail, at a time. That is the reason most people know.
-///
-/// The other is that the fetch would be made BY OUR SERVER, to a host a
-/// stranger chose, which is server-side request forgery — the same class of
-/// problem as a tenant-supplied IMAP host, and the reason the sanitiser strips
-/// the image rather than proxying it.
-///
-/// So there is no "load images" control here, and there is not going to be one.
-/// A button offering to fetch would be offering to do the thing the design
-/// refuses; this says what happened and stops.
+/// A picture from the message, fetched through our origin.
+class _MailPicture extends StatefulWidget {
+  const _MailPicture({
+    required this.alt,
+    required this.src,
+    required this.api,
+    required this.picturePath,
+  });
+
+  final String? alt;
+  final String? src;
+  final ApiClient? api;
+  final String? picturePath;
+
+  @override
+  State<_MailPicture> createState() => _MailPictureState();
+}
+
+class _MailPictureState extends State<_MailPicture> {
+  Uint8List? _bytes;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final src = widget.src;
+    if (src != null && src.startsWith('data:image/')) {
+      _bytes = _decodeDataUri(src);
+      _failed = _bytes == null;
+      return;
+    }
+    _load();
+  }
+
+  Uint8List? _decodeDataUri(String src) {
+    final comma = src.indexOf(',');
+    if (comma < 0) return null;
+    try {
+      return Uint8List.fromList(base64Decode(src.substring(comma + 1)));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  void didUpdateWidget(_MailPicture old) {
+    super.didUpdateWidget(old);
+    if (old.src != widget.src || old.picturePath != widget.picturePath) {
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    final src = widget.src;
+    if (src == null || src.isEmpty) {
+      setState(() => _failed = true);
+      return;
+    }
+
+    if (src.startsWith('data:image/')) {
+      final bytes = _decodeDataUri(src);
+      setState(() {
+        _bytes = bytes;
+        _failed = bytes == null;
+      });
+      return;
+    }
+
+    final api = widget.api;
+    final path = widget.picturePath;
+    if (api == null || path == null) {
+      setState(() => _failed = true);
+      return;
+    }
+
+    final bytes = await api.getBytes(
+      '$path?src=${Uri.encodeQueryComponent(src)}',
+    );
+    if (!mounted) return;
+    setState(() {
+      _bytes = bytes == null ? null : Uint8List.fromList(bytes);
+      _failed = bytes == null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = _bytes;
+    if (bytes != null && bytes.isNotEmpty) {
+      return Image.memory(
+        bytes,
+        filterQuality: FilterQuality.medium,
+        semanticLabel: widget.alt,
+      );
+    }
+
+    if (_failed) {
+      return _BlockedImage(alt: widget.alt, host: null);
+    }
+
+    return const SizedBox(
+      height: 48,
+      child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))),
+    );
+  }
+}
+
+/// Where a picture was, and it could not be retrieved.
 class _BlockedImage extends StatelessWidget {
   const _BlockedImage({required this.alt, required this.host});
 
@@ -210,13 +322,9 @@ class _BlockedImage extends StatelessWidget {
               // is often the whole of what was lost.
               [
                 alt == null
-                    ? 'A picture here was not loaded.'
-                    : 'A picture here was not loaded — “$alt”.',
-                host == null
-                    ? 'Fetching it would tell whoever sent this that the '
-                          'message was opened.'
-                    : 'It sits on $host, and fetching it would tell whoever '
-                          'sent this that the message was opened.',
+                    ? 'A picture here could not be shown.'
+                    : 'A picture here could not be shown — “$alt”.',
+                if (host != null) 'It sits on $host.',
               ].join(' '),
               style: Theme.of(context).textTheme.bodyMedium,
             ),

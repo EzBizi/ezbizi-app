@@ -45,14 +45,19 @@ enum BlockKind: string
     case Rule = 'rule';
 
     /**
-     * An image that was NOT fetched, standing where the image was.
+     * A picture that will be shown, fetched through EzBizi's origin.
      *
-     * The decision is that remote images are never loaded — see
-     * {@see BodySanitiser} for the two separate reasons. Something has to be
-     * drawn in its place all the same, because a message that silently loses its
-     * pictures reads as a broken message rather than as a protected one. The
-     * spans carry the alt text where there is one, and the client says plainly
-     * that an image was not loaded.
+     * The original URL never goes to the client — see {@see PictureTokens}.
+     * A `src` that could not be turned into a fetch stays {@see BlockedImage}.
+     */
+    case Image = 'image';
+
+    /**
+     * An image that could not be turned into a fetch.
+     *
+     * Pictures load. This is the leftover for a `src` that is not http(s), cid,
+     * or a data URI of an image — so there is nothing safe to retrieve. The
+     * spans carry the alt text.
      */
     case BlockedImage = 'blocked_image';
 

@@ -48,6 +48,18 @@ final class MessageDetail
         public readonly bool $imagesBlocked = false,
     ) {}
 
+    /** @param  Block[]  $blocks */
+    public function withBlocks(array $blocks): self
+    {
+        return new self(
+            $this->summary,
+            $blocks,
+            $this->attachments,
+            $this->seenBy,
+            $this->imagesBlocked,
+        );
+    }
+
     public function toArray(): array
     {
         return [
@@ -64,9 +76,7 @@ final class MessageDetail
              * told only "images blocked" assumes a setting they can turn off.
              */
             'images_blocked_reason' => $this->imagesBlocked
-                ? 'Pictures in this message were not loaded. A picture in an email is fetched '
-                    .'from the sender\'s own server, which tells them the moment you open the '
-                    .'message and where from — so EzBizi does not fetch them. The text is all here.'
+                ? 'A picture in this message could not be shown. The rest of the message is here.'
                 : null,
         ];
     }

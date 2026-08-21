@@ -320,42 +320,24 @@ void main() {
     expect(find.textContaining('each role is then given'), findsOneWidget);
   });
 
-  // ── the body: blocks, and the picture that was refused ───────────
+  // ── the body: blocks, and the picture ────────────────────────────
 
-  /// Remote images are a tracking pixel AND an SSRF vector — the fetch would be
-  /// made by our server, to a host a stranger chose. So the sentence goes where
-  /// the picture was, and nothing offers to go and get it.
-  testWidgets('a blocked picture is explained where it was, and nothing '
-      'offers to fetch it', (tester) async {
+  testWidgets('a picture in the message is drawn, and nothing offers a '
+      'separate fetch', (tester) async {
     await _pump(tester, _handler());
     await _tap(tester, find.text('Chimney sweep quote').first);
 
-    expect(find.textContaining('was not loaded'), findsOneWidget);
-    expect(
-      find.textContaining('trk.example.com'),
-      findsOneWidget,
-      reason: 'Where it would have been fetched from is half of why it was '
-          'not.',
-    );
-    expect(find.textContaining('Everdoors banner'), findsOneWidget);
-
-    // The CONTROL: the rest of the message did render, so the sentence is a
-    // picture being explained rather than a body that failed to draw.
+    expect(find.byType(Image), findsOneWidget);
     expect(find.textContaining('look at'), findsWidgets);
 
-    // `bySubtype`, not `byType`. This assertion was written with `byType` and
-    // was worth nothing: byType matches the exact runtime type, so a TextButton
-    // added to the blocked-image note sailed straight through a search for
-    // ButtonStyleButton. It was caught by adding that button on purpose and
-    // watching the test stay green.
     expect(
       find.descendant(
         of: find.byType(MessageBody),
         matching: find.bySubtype<ButtonStyleButton>(),
       ),
       findsNothing,
-      reason: 'A control in the body can only be offering to load the image, '
-          'and fetching it is the thing the design refuses to do.',
+      reason: 'A control in the body would be offering to load the image, '
+          'and the picture is already being fetched through our origin.',
     );
   });
 
@@ -702,9 +684,12 @@ const List<Map<String, Object?>> _blocks = [
     ],
   },
   {
-    'kind': 'blocked_image',
+    'kind': 'image',
     'alt': 'Everdoors banner',
-    'host': 'trk.example.com',
+    // 1×1 png. A data URI is already the bytes — the client draws it
+    // without a second request, which is what this test can exercise.
+    'src':
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   },
   {
     'kind': 'paragraph',

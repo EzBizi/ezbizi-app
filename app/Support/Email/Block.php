@@ -28,7 +28,22 @@ final class Block
          * become three hundred levels of indent on somebody's phone.
          */
         public readonly int $depth = 0,
+
+        /**
+         * A picture's source, on {@see BlockKind::Image} only.
+         *
+         * Before {@see PictureTokens::seal} this is the original http(s)/cid
+         * URL or a `data:` URI. After seal, http(s) and cid are an encrypted
+         * token. Raw http(s)/cid are omitted from {@see toArray} so a forgotten
+         * seal cannot publish a sender-chosen URL.
+         */
+        public readonly ?string $src = null,
     ) {}
+
+    public function withSrc(string $src): self
+    {
+        return new self($this->kind, $this->spans, $this->depth, $src);
+    }
 
     public static function paragraph(array $spans, int $depth = 0): self
     {
@@ -56,10 +71,25 @@ final class Block
 
     public function toArray(): array
     {
-        return [
+        $row = [
             'kind'  => $this->kind->value,
             'depth' => $this->depth,
             'spans' => array_map(fn (Span $s) => $s->toArray(), $this->spans),
         ];
+
+        if ($this->kind === BlockKind::Image && $this->src !== null && $this->publishableSrc()) {
+            $row['src'] = $this->src;
+        }
+
+        return $row;
+    }
+
+    /** Raw sender URLs stay off the wire until they have been sealed. */
+    private function publishableSrc(): bool
+    {
+        $src = strtolower($this->src ?? '');
+
+        return str_starts_with($src, 'data:')
+            || (! str_contains($src, '://') && ! str_starts_with($src, 'cid:'));
     }
 }

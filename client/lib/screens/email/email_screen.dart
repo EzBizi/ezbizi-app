@@ -618,6 +618,7 @@ class _EmailScreenState extends State<EmailScreen> {
               formats: widget.session.me!.display,
               refusal: _replyRefusal(mailbox, _open!),
               onReply: () => _reply(mailbox, _open!),
+              api: widget.api,
             ),
     );
   }
@@ -632,6 +633,7 @@ class _MessageView extends StatelessWidget {
     required this.formats,
     required this.refusal,
     required this.onReply,
+    required this.api,
   });
 
   final Mailbox mailbox;
@@ -640,6 +642,7 @@ class _MessageView extends StatelessWidget {
   final DisplayFormats formats;
   final String? refusal;
   final VoidCallback onReply;
+  final ApiClient api;
 
   @override
   Widget build(BuildContext context) {
@@ -701,7 +704,12 @@ class _MessageView extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                MessageBody(blocks: message.blocks),
+                MessageBody(
+                  blocks: message.blocks,
+                  api: api,
+                  picturePath:
+                      '/email/mailboxes/${mailbox.id}/messages/${message.id}/picture',
+                ),
                 if (message.attachments.isNotEmpty) _attachments(context),
               ],
             ),

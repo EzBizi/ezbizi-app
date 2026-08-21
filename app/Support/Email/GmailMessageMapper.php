@@ -341,6 +341,49 @@ final class GmailMessageMapper
         return $this->attachments($part) !== [];
     }
 
+    /**
+     * The MIME part whose Content-ID is this cid, at any depth.
+     *
+     * @param  array<string, mixed>  $part
+     * @return array<string, mixed>|null
+     */
+    public function partByContentId(array $part, string $contentId): ?array
+    {
+        $want = strtolower(trim($contentId, ' <>'));
+
+        foreach ((array) ($part['headers'] ?? []) as $header) {
+            if (! is_array($header)) {
+                continue;
+            }
+
+            $name = strtolower((string) ($header['name'] ?? ''));
+
+            if ($name !== 'content-id') {
+                continue;
+            }
+
+            $have = strtolower(trim((string) ($header['value'] ?? ''), ' <>'));
+
+            if ($have !== '' && $have === $want) {
+                return $part;
+            }
+        }
+
+        foreach ((array) ($part['parts'] ?? []) as $child) {
+            if (! is_array($child)) {
+                continue;
+            }
+
+            $found = $this->partByContentId($child, $contentId);
+
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
     /** @param  Block[]  $blocks */
     private function mentionsBlockedImage(array $blocks): bool
     {

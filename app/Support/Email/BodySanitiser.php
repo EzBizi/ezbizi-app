@@ -56,27 +56,17 @@ use DOMText;
  *  is nowhere in the output to put a tag.
  * ═══════════════════════════════════════════════════════════════════
  *
- * ── Remote images are never fetched, for two reasons ─────────────
+ * ── Pictures load, through us, never from the sender's URL ───────
  *
- * The first is the reader's: a remote image in an email is a TRACKING PIXEL.
- * Fetching it tells the sender that this message was opened, at what time, from
- * what address — and for a shared inbox that is worse than for a personal one,
- * because it also reveals the business's working hours and its office IP to
- * anybody who mails it, including whoever is deciding whether the address is
- * worth spamming.
- *
- * The second is ours, and it is the same threat {@see RemoteHostGuard} exists
- * for: an `<img src>` is an outbound request to a host the message's AUTHOR
- * chose. `<img src="http://169.254.169.254/latest/meta-data/iam/security-
- * credentials/">` in a message body is an attempt to make our server fetch its
- * own cloud credentials. It does not matter that an image request would not
- * usually leak the response — a server that can be made to issue requests from
- * inside its own network is the whole of SSRF, and the answer is not to fetch.
- *
- * So an image becomes {@see BlockKind::BlockedImage} carrying its alt text, and
- * the client says on screen that an image was not loaded. Saying so is part of
- * the decision rather than a nicety: a message that quietly loses its pictures
- * looks broken, and somebody will go looking for the bug.
+ * An `<img src>` is still an outbound request to a host the sender chose.
+ * `<img src="http://169.254.169.254/latest/meta-data/iam/security-credentials/">`
+ * is still an attempt to make our server fetch its own cloud credentials.
+ * The browser must not see that URL, and our server must not dial a private
+ * address. So a fetchable picture becomes {@see BlockKind::Image} with the
+ * original URL held only in PHP; {@see PictureTokens} encrypts it before the
+ * wire, and {@see RemotePictureFetcher} dials the address
+ * {@see RemoteHostGuard} approved. A `src` that is not http(s), cid or a
+ * data URI of an image stays {@see BlockKind::BlockedImage}.
  *
  * ── What is dropped, whole ───────────────────────────────────────
  *
@@ -99,9 +89,10 @@ use DOMText;
  * ── Event handlers and styles are not stripped. They are unread ──
  *
  * There is no `onerror` removal step in this file, and looking for one is the
- * wrong mental model. This walker reads exactly two attributes in the entire
- * document — `href` on a link and `alt` on an image — and constructs output from
- * text and a small enum. `onerror`, `onload`, `style`, `srcset`, `formaction`
+ * wrong mental model. This walker reads three attributes in the entire
+ * document — `href` on a link, `alt` and `src` on an image — and constructs
+ * output from text and a small enum. `src` is judged by {@see safeImageSrc}.
+ * `onerror`, `onload`, `style`, `srcset`, `formaction`
  * and every attribute nobody has invented yet are not stripped, blocked or
  * filtered: they are never looked at, and there is no field in {@see Span} or
  * {@see Block} that could carry one if they were. That is a stronger guarantee
@@ -201,6 +192,9 @@ final class BodySanitiser
 
     /** A URL longer than this is not a destination anybody typed. */
     public const MAX_HREF_LENGTH = 2048;
+
+    /** A data URI larger than this is not a picture, it is a payload. */
+    public const MAX_DATA_URI_BYTES = 307200;
 
     /** @var Block[] */
     private array $blocks = [];
@@ -432,9 +426,9 @@ final class BodySanitiser
 
             case $tag === 'img':
                 $this->flush($depth);
-                $this->push(new Block(
-                    BlockKind::BlockedImage,
-                    [new Span($this->clean($node->getAttribute('alt')))],
+                $this->push($this->imageBlock(
+                    $this->clean($node->getAttribute('alt')),
+                    $node->getAttribute('src'),
                     $depth,
                 ));
 
@@ -669,6 +663,113 @@ final class BodySanitiser
      * somebody else's email could legitimately mean, so there is no case to
      * weigh.
      */
+    private function imageBlock(string $alt, string $rawSrc, int $depth): Block
+    {
+        $src = $this->safeImageSrc($rawSrc);
+        $spans = $alt === '' ? [] : [new Span($alt)];
+
+        if ($src === null) {
+            return new Block(BlockKind::BlockedImage, $spans, $depth);
+        }
+
+        return new Block(BlockKind::Image, $spans, $depth, $src);
+    }
+
+    /**
+     * A picture we can retrieve, or null.
+     *
+     * Same two-step judgement as {@see safeHref}: the parser has already
+     * decoded entities, then everything unprintable is stripped, then the
+     * scheme is compared to an allowlist. Relative URLs are refused. A
+     * literal private IP is refused here without DNS, so
+     * `http://169.254.169.254/...` never becomes an Image token.
+     *
+     * `cid:` is a reference to a part of THIS message, not a host, so it
+     * is kept. A `data:image/...` URI is the bytes themselves, capped.
+     */
+    private function safeImageSrc(string $raw): ?string
+    {
+        $url = (string) preg_replace('/[\x00-\x20\x7F]|\s/u', '', $raw);
+
+        if ($url === '' || strlen($url) > self::MAX_HREF_LENGTH) {
+            return null;
+        }
+
+        if (str_starts_with(strtolower($url), 'cid:')) {
+            $cid = trim(substr($url, 4), '<>');
+
+            return $cid === '' ? null : 'cid:'.$cid;
+        }
+
+        if (preg_match('#^data:image/(jpeg|jpg|png|gif|webp);base64,#i', $url) === 1) {
+            $comma = strpos($url, ',');
+
+            if ($comma === false) {
+                return null;
+            }
+
+            $payload = substr($url, $comma + 1);
+
+            if ($payload === '' || strlen($payload) > self::MAX_DATA_URI_BYTES) {
+                return null;
+            }
+
+            return $url;
+        }
+
+        if (! preg_match('#^([a-z][a-z0-9+.\-]*):#i', $url, $found)) {
+            return null;
+        }
+
+        $scheme = strtolower($found[1]);
+
+        if (! in_array($scheme, ['http', 'https'], strict: true)) {
+            return null;
+        }
+
+        $host = parse_url($url, PHP_URL_HOST);
+
+        if (! is_string($host) || $host === '') {
+            return null;
+        }
+
+        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+            foreach (['169.254.169.254', '127.0.0.1', '0.0.0.0', '::1'] as $banned) {
+                if (strcasecmp($host, $banned) === 0) {
+                    return null;
+                }
+            }
+
+            $packed = @inet_pton($host);
+
+            if ($packed === false) {
+                return null;
+            }
+
+            // Same private ranges the host guard uses, judged on the literal
+            // so we never mint a token whose decryption is 10.x or 192.168.x.
+            if (strlen($packed) === 4) {
+                $long = unpack('N', $packed)[1];
+                foreach ([
+                    [0x00000000, 8],  // 0.0.0.0/8
+                    [0x0A000000, 8],  // 10/8
+                    [0x64400000, 10], // 100.64/10
+                    [0x7F000000, 8],  // 127/8
+                    [0xA9FE0000, 16], // 169.254/16
+                    [0xAC100000, 12], // 172.16/12
+                    [0xC0A80000, 16], // 192.168/16
+                ] as [$net, $bits]) {
+                    $mask = -1 << (32 - $bits);
+                    if (($long & $mask) === ($net & $mask)) {
+                        return null;
+                    }
+                }
+            }
+        }
+
+        return $url;
+    }
+
     private function safeHref(string $raw): ?string
     {
         // Whitespace, NULs and every other control character, wherever they sit.

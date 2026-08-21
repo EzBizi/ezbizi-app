@@ -327,21 +327,25 @@ class EmailSanitiserTest extends TestCase
         $this->assertStringNotContainsString('security-credentials', $this->wire($blocks));
     }
 
-    public function test_an_ordinary_remote_image_is_also_never_fetched(): void
+    public function test_an_ordinary_remote_image_becomes_a_picture_whose_url_stays_off_the_wire(): void
     {
         $blocks = $this->sanitiser->sanitise(
-            '<p>Newsletter</p><img src="https://tracker.example.net/open.gif?to=info@a-1chimney.com">'
+            '<p>Newsletter</p><img src="https://cdn.example.net/logo.png" alt="Logo">'
         );
 
         $this->assertSame(
-            [BlockKind::Paragraph, BlockKind::BlockedImage],
+            [BlockKind::Paragraph, BlockKind::Image],
             array_map(fn (Block $b) => $b->kind, $blocks),
         );
 
-        // The tracking pixel's URL carries the recipient's address. Publishing
-        // it would hand the client everything it needs to complete the fetch the
-        // server declined.
-        $this->assertStringNotContainsString('tracker.example.net', $this->wire($blocks));
+        $this->assertSame('https://cdn.example.net/logo.png', $blocks[1]->src);
+        $this->assertSame('Logo', $blocks[1]->text());
+
+        // The sender's URL is on the PHP object until PictureTokens seals it.
+        // It must not appear on the serialised block — that is what the
+        // client would otherwise fetch itself.
+        $this->assertStringNotContainsString('cdn.example.net', $this->wire($blocks));
+        $this->assertArrayNotHasKey('src', $blocks[1]->toArray());
     }
 
     // ── the parser's own traps ───────────────────────────────────

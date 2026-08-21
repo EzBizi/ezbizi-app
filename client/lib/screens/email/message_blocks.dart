@@ -38,7 +38,7 @@ import 'package:flutter/foundation.dart';
 /// server refused to fetch, which is a fact about privacy rather than an error,
 /// and it is a block of its own so the screen can say so IN PLACE rather than
 /// leaving a gap where something used to be.
-enum MailBlockKind { paragraph, heading, quote, rule, blockedImage }
+enum MailBlockKind { paragraph, heading, quote, rule, image, blockedImage }
 
 /// A run of text with the same treatment.
 @immutable
@@ -67,21 +67,27 @@ class MailSpan {
 /// One paragraph, heading, quote, rule or blocked image.
 @immutable
 class MailBlock {
-  const MailBlock(this.kind, {this.spans = const [], this.alt, this.host});
+  const MailBlock(
+    this.kind, {
+    this.spans = const [],
+    this.alt,
+    this.host,
+    this.src,
+  });
 
   final MailBlockKind kind;
   final List<MailSpan> spans;
 
   /// The image's own description, when the message carried one.
-  /// [MailBlockKind.blockedImage] only; null everywhere else.
   final String? alt;
 
-  /// The host the image would have been fetched FROM.
-  ///
-  /// It is the useful half of the URL for the sentence the screen writes —
-  /// "it sits on trk.example.com" — and it is deliberately not the full
-  /// address, because nothing here has any business assembling one.
+  /// The host a picture that could not be fetched would have come from.
+  /// [MailBlockKind.blockedImage] only.
   final String? host;
+
+  /// Where to get the picture. A `data:` URI, or a token for our proxy.
+  /// Never a sender-chosen http(s) URL.
+  final String? src;
 
   String get text => spans.map((span) => span.text).join();
 }
@@ -116,6 +122,17 @@ List<MailBlock> readMailBlocks(Object? json) {
 
     if (kind == 'rule') {
       blocks.add(const MailBlock(MailBlockKind.rule));
+      continue;
+    }
+
+    if (kind == 'image') {
+      blocks.add(
+        MailBlock(
+          MailBlockKind.image,
+          alt: _string(entry['alt']) ?? _spanText(entry['spans']),
+          src: _string(entry['src']),
+        ),
+      );
       continue;
     }
 
@@ -174,3 +191,12 @@ List<MailSpan> _spans(Object? json) {
 /// a key the server filled in with nothing and means the same as its absence.
 String? _string(Object? value) =>
     value is String && value.isNotEmpty ? value : null;
+
+String? _spanText(Object? json) {
+  if (json is! List) return null;
+  final text = [
+    for (final entry in json)
+      if (entry is Map && entry['text'] is String) entry['text'] as String,
+  ].join();
+  return text.isEmpty ? null : text;
+}

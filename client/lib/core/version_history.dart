@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0046',
+      date: '21 Aug 2026',
+      items: [
+        'Pictures in Email are shown. They are fetched through EzBizi, '
+            'not from the sender\'s address.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0045',
       date: '21 Aug 2026',
       items: [

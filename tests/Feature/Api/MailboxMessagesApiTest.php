@@ -23,6 +23,8 @@ use App\Support\Email\ReplyComposer;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Http;
 use ReflectionMethod;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -861,7 +863,7 @@ class MailboxMessagesApiTest extends TestCase
 
         // And the reader is told why the pictures are missing, in words.
         $this->assertTrue($body['images_blocked']);
-        $this->assertStringContainsString('sender\'s own server', $body['images_blocked_reason']);
+        $this->assertStringContainsString('could not be shown', $body['images_blocked_reason']);
 
         $kinds = array_column($body['blocks'], 'kind');
 
@@ -873,6 +875,71 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertSame('info@a-1chimney.com', $body['reply']['as']['address']);
         $this->assertSame('Info', $body['reply']['as']['name']);
         $this->assertSame('Re: Quote for a sweep', $body['reply']['subject']);
+    }
+
+    public function test_a_remote_picture_is_sealed_so_the_senders_url_is_not_on_the_wire(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $this->grant($t, $mailbox, 'Clerk');
+
+        FakeMailboxReader::$detail = new MessageDetail(
+            summary: $this->summary(),
+            blocks: (new BodySanitiser)->sanitise(
+                '<p>Hi</p><img src="https://cdn.example.net/logo.png" alt="Logo">'
+            ),
+        );
+
+        $body = $this->signedInAs($clerk)
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1")
+            ->assertOk()->json('data');
+
+        $this->assertSame('image', $body['blocks'][1]['kind']);
+        $this->assertNotEmpty($body['blocks'][1]['src']);
+        $this->assertStringNotContainsString('cdn.example.net', json_encode($body));
+        $this->assertFalse($body['images_blocked']);
+    }
+
+    public function test_a_picture_is_fetched_through_this_origin(): void
+    {
+        $this->withFakeProvider();
+
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', true);
+        Http::fake([
+            'http://93.184.216.34/*' => Http::response($png, 200, ['Content-Type' => 'image/png']),
+        ]);
+
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $this->grant($t, $mailbox, 'Clerk');
+
+        $token = Crypt::encryptString('http://93.184.216.34/logo.png');
+
+        $this->signedInAs($clerk)
+            ->get("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/picture?src=".urlencode($token))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+    }
+
+    public function test_a_picture_pointed_at_the_metadata_endpoint_is_not_fetched(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $this->grant($t, $mailbox, 'Clerk');
+
+        $token = Crypt::encryptString('http://169.254.169.254/latest/meta-data/');
+
+        $this->signedInAs($clerk)
+            ->get("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/picture?src=".urlencode($token))
+            ->assertNotFound();
     }
 
     // ══ 6. THE CACHE IS A CACHE ══════════════════════════════════

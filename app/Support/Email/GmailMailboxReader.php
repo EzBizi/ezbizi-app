@@ -261,6 +261,73 @@ final class GmailMailboxReader implements MailboxReader
         );
     }
 
+    /**
+     * A CID picture attached to this message, as bytes.
+     *
+     * Not on {@see MailboxReader}: a missing logo is not a dead inbox, and
+     * putting it on the interface would force every provider to pretend. IMAP
+     * and Microsoft 404 until they implement this; Gmail already has the part.
+     */
+    public function inlineImage(Mailbox $mailbox, string $messageId, string $contentId): EmailPicture
+    {
+        $payload = $this->get(
+            $mailbox,
+            self::API.'/messages/'.rawurlencode($messageId),
+            ['format' => 'full'],
+        );
+
+        $part = $this->mapper->partByContentId($payload['payload'] ?? [], $contentId);
+
+        if ($part === null) {
+            throw new PictureUnavailable('That picture could not be loaded.');
+        }
+
+        $mime = strtolower((string) ($part['mimeType'] ?? 'application/octet-stream'));
+        $data = $part['body']['data'] ?? null;
+
+        if (is_string($data) && $data !== '') {
+            return new EmailPicture($this->decodeAttachment($data), $mime);
+        }
+
+        $attachmentId = $part['body']['attachmentId'] ?? null;
+
+        if (! is_string($attachmentId) || $attachmentId === '') {
+            throw new PictureUnavailable('That picture could not be loaded.');
+        }
+
+        $attachment = $this->get(
+            $mailbox,
+            self::API.'/messages/'.rawurlencode($messageId).'/attachments/'.rawurlencode($attachmentId),
+            [],
+        );
+
+        $bytes = $attachment['data'] ?? null;
+
+        if (! is_string($bytes) || $bytes === '') {
+            throw new PictureUnavailable('That picture could not be loaded.');
+        }
+
+        return new EmailPicture($this->decodeAttachment($bytes), $mime);
+    }
+
+    private function decodeAttachment(string $data): string
+    {
+        $translated = strtr($data, '-_', '+/');
+        $padding = strlen($translated) % 4;
+
+        if ($padding > 0) {
+            $translated .= str_repeat('=', 4 - $padding);
+        }
+
+        $decoded = base64_decode($translated, strict: false);
+
+        if ($decoded === false || $decoded === '') {
+            throw new PictureUnavailable('That picture could not be loaded.');
+        }
+
+        return $decoded;
+    }
+
     // ── watching ─────────────────────────────────────────────────
 
     /**

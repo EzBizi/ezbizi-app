@@ -8,11 +8,14 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Email\CannotReachHost;
 use App\Support\Email\CannotReadMailbox;
+use App\Support\Email\EmailPictureLoader;
 use App\Support\Email\HeaderCache;
 use App\Support\Email\MailboxAccess;
 use App\Support\Email\MailboxReaders;
 use App\Support\Email\MessagePage;
 use App\Support\Email\MessageSummary;
+use App\Support\Email\PictureTokens;
+use App\Support\Email\PictureUnavailable;
 use App\Support\Email\ReadState;
 use App\Support\Email\ReplyComposer;
 use Illuminate\Http\JsonResponse;
@@ -55,6 +58,8 @@ class MailboxMessagesController extends Controller
         private readonly HeaderCache $cache,
         private readonly AuditLogger $audit,
         private readonly EventEmitter $events,
+        private readonly PictureTokens $pictures,
+        private readonly EmailPictureLoader $pictureLoader,
     ) {}
 
     /**
@@ -143,6 +148,8 @@ class MailboxMessagesController extends Controller
         } catch (CannotReadMailbox $e) {
             return $this->refused($e);
         }
+
+        $detail = $detail->withBlocks($this->pictures->seal($detail->blocks));
 
         $this->readState->markSeen($mailbox, $detail->summary->id, $user);
 
@@ -243,6 +250,36 @@ class MailboxMessagesController extends Controller
                 .'you, so their answer comes back here where everybody can see it.',
                 $mailbox->address,
             ),
+        ]);
+    }
+
+    /**
+     * GET /api/v1/email/mailboxes/{mailbox}/messages/{message}/picture
+     *
+     * The original URL is an encrypted token on the block. This origin fetches
+     * it, after the host guard, so the browser never dials a host the sender
+     * chose. A failure is a missing picture, not a dead inbox.
+     */
+    public function picture(Request $request, Mailbox $mailbox, string $message): Response
+    {
+        $this->assertMayRead($request->user(), $mailbox, 'open this inbox');
+
+        $token = (string) $request->query('src', '');
+
+        if ($token === '' || strlen($token) > 8192) {
+            return response()->json(['message' => 'That picture could not be loaded.'], 404);
+        }
+
+        try {
+            $picture = $this->pictureLoader->load($mailbox, $message, $token);
+        } catch (PictureUnavailable|CannotReachHost|CannotReadMailbox|\App\Support\Email\GoogleWorkspaceRefused) {
+            return response()->json(['message' => 'That picture could not be loaded.'], 404);
+        }
+
+        return response($picture->bytes, 200, [
+            'Content-Type'  => $picture->mime,
+            'Cache-Control' => 'private, max-age=300',
+            'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 
