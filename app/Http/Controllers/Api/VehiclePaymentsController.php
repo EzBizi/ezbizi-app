@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Vehicle;
 use App\Models\VehiclePayment;
+use App\Support\Automations\EventEmitter;
 use App\Support\Fleet\VehiclePaymentCategory;
 use App\Support\Fleet\VehiclePaymentMethod;
 use Illuminate\Http\JsonResponse;
@@ -16,10 +17,14 @@ use Illuminate\Validation\ValidationException;
  * Record and list payments on a vehicle (spec §6.5, §8).
  *
  * Authorize financials (list omitted entirely without it). Optional link to
- * exactly one of ownership / insurance / service on this vehicle. No emit.
+ * exactly one of ownership / insurance / service on this vehicle.
  */
 class VehiclePaymentsController extends Controller
 {
+    public function __construct(
+        private readonly EventEmitter $events,
+    ) {}
+
     /** GET /api/v1/vehicles/{vehicle}/payments */
     public function index(Request $request, Vehicle $vehicle): JsonResponse
     {
@@ -75,7 +80,7 @@ class VehiclePaymentsController extends Controller
         }
 
         $payment = DB::transaction(function () use ($vehicle, $input) {
-            return VehiclePayment::create([
+            $payment = VehiclePayment::create([
                 'vehicle_id' => $vehicle->getKey(),
                 'category' => $input['category'],
                 'amount_cents' => $input['amount_cents'],
@@ -86,6 +91,17 @@ class VehiclePaymentsController extends Controller
                 'insurance_policy_id' => $input['insurance_policy_id'] ?? null,
                 'service_visit_id' => $input['service_visit_id'] ?? null,
             ]);
+
+            $this->events->emit('vehicle.payment_recorded', $vehicle, [
+                'after' => [
+                    'category' => $payment->category->value,
+                    'amount_cents' => $payment->amount_cents,
+                    'occurred_on' => $payment->occurred_on?->toDateString(),
+                    'method' => $payment->method->value,
+                ],
+            ]);
+
+            return $payment;
         });
 
         return response()->json([

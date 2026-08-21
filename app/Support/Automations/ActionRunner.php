@@ -3,7 +3,12 @@
 namespace App\Support\Automations;
 
 use App\Models\AutomationEvent;
+use App\Models\Job;
+use App\Models\Vehicle;
+use App\Support\Fleet\VehicleStatus;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
 /**
@@ -84,6 +89,13 @@ class ActionRunner
             'state'         => 'State',
             'postal_code'   => 'Postal code',
         ],
+        \App\Models\Vehicle::class => [
+            'plate'              => 'Plate',
+            'colour'             => 'Colour',
+            'odometer_miles'     => 'Odometer (miles)',
+            'next_service_on'    => 'Next service date',
+            'next_service_miles' => 'Next service miles',
+        ],
     ];
 
     /**
@@ -148,9 +160,10 @@ class ActionRunner
         }
 
         return match ($type) {
-            'update_field' => $this->updateField($action, $event, $subject),
-            'webhook'      => $this->callWebhook($action, $event, $subject),
-            'notify'       => $this->notify($action, $event, $subject),
+            'update_field'  => $this->updateField($action, $event, $subject),
+            'change_status' => $this->changeStatus($action, $event, $subject),
+            'webhook'       => $this->callWebhook($action, $event, $subject),
+            'notify'        => $this->notify($action, $event, $subject),
 
             default => throw new InvalidArgumentException(
                 "Unknown automation action '{$type}'. Actions are declared by modules "
@@ -239,6 +252,117 @@ class ActionRunner
             'type'   => 'update_field',
             'ok'     => true,
             'detail' => "{$field}: ".json_encode($before).' → '.json_encode($value),
+        ];
+    }
+
+    /**
+     * Move a record to a named status.
+     *
+     * Jobs already allow this via update_field. Vehicles go through
+     * VehicleStatus::apply so a rule cannot mark a rental sold without the same
+     * 422 a person saving would see.
+     */
+    private function changeStatus(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        if ($subject === null) {
+            return ['type' => 'change_status', 'ok' => false, 'detail' => 'The record no longer exists.'];
+        }
+
+        $value = $action['value'] ?? $action['status'] ?? null;
+
+        if ($value === null) {
+            throw new InvalidArgumentException('change_status needs a status.');
+        }
+
+        if ($subject instanceof Job) {
+            $result = $this->updateField(
+                ['field' => 'status', 'value' => $value],
+                $event,
+                $subject,
+            );
+            $result['type'] = 'change_status';
+
+            return $result;
+        }
+
+        if (! $subject instanceof Vehicle) {
+            return [
+                'type'   => 'change_status',
+                'ok'     => false,
+                'detail' => 'A rule cannot change the status of that record.',
+            ];
+        }
+
+        $next = VehicleStatus::tryFrom((string) $value);
+
+        if ($next === null) {
+            return [
+                'type'   => 'change_status',
+                'ok'     => false,
+                'detail' => "'{$value}' is not a vehicle status.",
+            ];
+        }
+
+        $before = $subject->status;
+
+        if ($before === $next) {
+            return [
+                'type'   => 'change_status',
+                'ok'     => true,
+                'detail' => "status was already {$next->value}.",
+            ];
+        }
+
+        $buyingBack = $before->isEnded() && $next->isOnRoad();
+
+        try {
+            DB::transaction(function () use ($subject, $next, $before, $action, $event, $buyingBack) {
+                VehicleStatus::apply($subject, $next, $action['ownership'] ?? null);
+
+                $this->audit->log(
+                    action: 'vehicle.updated_by_automation',
+                    target: $subject,
+                    changes: [
+                        'before' => ['status' => $before->value],
+                        'after'  => ['status' => $next->value],
+                    ],
+                    metadata: ['caused_by_event' => $event->getKey(), 'trigger' => $event->event_key],
+                );
+
+                $subject->save();
+
+                $payload = [
+                    'old'    => $before->value,
+                    'new'    => $next->value,
+                    'before' => ['status' => $before->value],
+                    'after'  => ['status' => $next->value],
+                ];
+
+                $this->emitter->emit('vehicle.status_changed', $subject, $payload, causedBy: $event);
+
+                if ($buyingBack) {
+                    $period = $subject->openOwnership();
+                    if ($period !== null) {
+                        $this->emitter->emit('vehicle.ownership_started', $subject, [
+                            'after' => [
+                                'kind' => $period->kind->value,
+                                'counterparty' => $period->counterparty,
+                                'started_on' => $period->started_on?->toDateString(),
+                            ],
+                        ], causedBy: $event);
+                    }
+                }
+            });
+        } catch (ValidationException $e) {
+            $message = collect($e->errors())->flatten()->first() ?? $e->getMessage();
+
+            return ['type' => 'change_status', 'ok' => false, 'detail' => $message];
+        }
+
+        return [
+            'type'   => 'change_status',
+            'ok'     => true,
+            'detail' => 'status: '.json_encode($before->value).' → '.json_encode($next->value),
         ];
     }
 

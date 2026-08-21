@@ -410,7 +410,7 @@ class AutomationsApiTest extends TestCase
         $this->assertStringContainsString('cannot set any field on Company', $message);
         // And points at the records that CAN be changed, read off the registry
         // rather than written into the sentence.
-        $this->assertStringContainsString('a Customer or a Job', $message);
+        $this->assertStringContainsString('a Customer, a Job or a Vehicle', $message);
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Vehicle;
 use App\Models\VehicleInsurancePolicy;
+use App\Support\Automations\EventEmitter;
 use App\Support\Fleet\VehicleFinancials;
 use App\Support\Fleet\VehiclePremiumPeriod;
 use Illuminate\Http\JsonResponse;
@@ -14,10 +15,14 @@ use Illuminate\Validation\Rule;
 /**
  * Start a new insurance policy by closing the open row (spec §6.2).
  *
- * Money keys without financials are ignored, not refused. No automation emit.
+ * Money keys without financials are ignored, not refused.
  */
 class VehicleInsuranceController extends Controller
 {
+    public function __construct(
+        private readonly EventEmitter $events,
+    ) {}
+
     /** POST /api/v1/vehicles/{vehicle}/insurance */
     public function store(Request $request, Vehicle $vehicle): JsonResponse
     {
@@ -46,7 +51,7 @@ class VehicleInsuranceController extends Controller
                 $open->save();
             }
 
-            return VehicleInsurancePolicy::create([
+            $policy = VehicleInsurancePolicy::create([
                 'vehicle_id' => $vehicle->getKey(),
                 'carrier' => $input['carrier'],
                 'policy_number' => $input['policy_number'] ?? null,
@@ -56,6 +61,17 @@ class VehicleInsuranceController extends Controller
                 'premium_cents' => $input['premium_cents'] ?? null,
                 'premium_period' => $input['premium_period'] ?? null,
             ]);
+
+            $this->events->emit('vehicle.insurance_started', $vehicle, [
+                'after' => [
+                    'carrier' => $policy->carrier,
+                    'policy_number' => $policy->policy_number,
+                    'started_on' => $policy->started_on?->toDateString(),
+                    'expires_on' => $policy->expires_on?->toDateString(),
+                ],
+            ]);
+
+            return $policy;
         });
 
         return response()->json([

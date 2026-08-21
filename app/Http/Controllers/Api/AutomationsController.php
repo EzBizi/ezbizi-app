@@ -42,7 +42,7 @@ use Symfony\Component\HttpFoundation\Response;
 class AutomationsController extends Controller
 {
     /** What ActionRunner can actually perform. The validator agrees with this. */
-    private const IMPLEMENTED_ACTIONS = ['update_field', 'webhook', 'notify'];
+    private const IMPLEMENTED_ACTIONS = ['update_field', 'change_status', 'webhook', 'notify'];
 
     public function __construct(
         private readonly ModuleRegistry $registry,
@@ -196,6 +196,7 @@ class AutomationsController extends Controller
                 // declared intent, not a usable action.
                 'action_types' => [
                     ['key' => 'update_field', 'label' => 'Update a field'],
+                    ['key' => 'change_status', 'label' => 'Change the status'],
                     ['key' => 'webhook', 'label' => 'Call a webhook'],
                     ['key' => 'notify', 'label' => 'Send a notification'],
                 ],
@@ -851,6 +852,12 @@ class AutomationsController extends Controller
         if ($type === 'notify' && blank($action['message'] ?? null)) {
             throw ValidationException::withMessages([
                 "actions.{$index}.message" => 'What should the notification say?',
+            ]);
+        }
+
+        if ($type === 'change_status' && blank($action['value'] ?? $action['status'] ?? null)) {
+            throw ValidationException::withMessages([
+                "actions.{$index}.value" => 'Which status should it move to?',
             ]);
         }
     }

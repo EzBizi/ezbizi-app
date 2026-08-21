@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Vehicle;
 use App\Models\VehicleServiceVisit;
+use App\Support\Automations\EventEmitter;
 use App\Support\Fleet\VehicleServiceKind;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,10 +14,14 @@ use Illuminate\Validation\Rule;
 /**
  * Log a service visit; higher odometer and next-due write through (spec §6.4).
  *
- * Authorize update. No automation emit here.
+ * Authorize update. Odometer / next-due write-through does not raise vehicle.updated.
  */
 class VehicleServiceController extends Controller
 {
+    public function __construct(
+        private readonly EventEmitter $events,
+    ) {}
+
     /** GET /api/v1/vehicles/{vehicle}/service */
     public function index(Request $request, Vehicle $vehicle): JsonResponse
     {
@@ -81,6 +86,15 @@ class VehicleServiceController extends Controller
             if ($dirty) {
                 $vehicle->save();
             }
+
+            $this->events->emit('vehicle.service_logged', $vehicle, [
+                'after' => [
+                    'kind' => $visit->kind->value,
+                    'occurred_on' => $visit->occurred_on?->toDateString(),
+                    'odometer_miles' => $visit->odometer_miles,
+                    'performed_by' => $visit->performed_by,
+                ],
+            ]);
 
             return $visit;
         });

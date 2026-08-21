@@ -11,8 +11,8 @@ use App\Models\VehicleInsurancePolicy;
 use App\Models\VehicleOwnershipPeriod;
 use App\Models\VehiclePayment;
 use App\Models\VehicleServiceVisit;
+use App\Support\Automations\EventEmitter;
 use App\Support\Fleet\VehicleBodyType;
-use App\Support\Fleet\VehicleEndedReason;
 use App\Support\Fleet\VehicleFinancials;
 use App\Support\Fleet\VehicleFuelType;
 use App\Support\Fleet\VehicleOwnershipKind;
@@ -42,9 +42,17 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class VehiclesController extends Controller
 {
+    /** @var list<string> */
+    private const UPDATED_FIELDS = [
+        'year', 'make', 'model', 'plate', 'vin', 'colour',
+        'body_type', 'fuel_type', 'franchise_id',
+        'odometer_miles', 'next_service_on', 'next_service_miles',
+    ];
+
     public function __construct(
         private readonly RecordNumberGenerator $numbers,
         private readonly TenantContext $tenant,
+        private readonly EventEmitter $events,
     ) {}
 
     /**
@@ -205,7 +213,7 @@ class VehiclesController extends Controller
             ]);
 
             $ownership = $input['ownership'];
-            VehicleOwnershipPeriod::create([
+            $period = VehicleOwnershipPeriod::create([
                 'vehicle_id' => $vehicle->getKey(),
                 'kind' => $ownership['kind'],
                 'counterparty' => $ownership['counterparty'] ?? null,
@@ -222,6 +230,17 @@ class VehiclesController extends Controller
                 'rental_account_number' => $ownership['rental_account_number'] ?? null,
                 'rental_payment_terms' => $ownership['rental_payment_terms'] ?? null,
                 'rental_payment_method' => $ownership['rental_payment_method'] ?? null,
+            ]);
+
+            $this->events->emit('vehicle.created', $vehicle, [
+                'after' => $this->scalars($vehicle->only([
+                    'status', 'plate', 'vin', 'year', 'make', 'model', 'colour',
+                    'body_type', 'fuel_type', 'franchise_id', 'company_id',
+                    'odometer_miles', 'next_service_on', 'next_service_miles',
+                ])),
+            ]);
+            $this->events->emit('vehicle.ownership_started', $vehicle, [
+                'after' => $this->ownershipStartedPayload($period),
             ]);
 
             return $vehicle;
@@ -269,24 +288,49 @@ class VehiclesController extends Controller
         $ownershipInput = $input['ownership'] ?? null;
         unset($input['ownership']);
 
-        $this->assertStatusTransition($vehicle, $currentStatus, $nextStatus, $ownershipInput);
+        $buyingBack = $currentStatus->isEnded() && $nextStatus->isOnRoad();
 
-        DB::transaction(function () use ($vehicle, $input, $currentStatus, $nextStatus, $ownershipInput) {
-            if ($nextStatus === VehicleStatus::Sold && $currentStatus !== VehicleStatus::Sold) {
-                $this->closeOpenOwnership($vehicle, VehicleEndedReason::Sold);
-            }
-
-            if ($nextStatus === VehicleStatus::Returned && $currentStatus !== VehicleStatus::Returned) {
-                $this->closeOpenOwnership($vehicle, VehicleEndedReason::Returned);
-            }
-
-            if ($this->isEndedStatus($currentStatus) && $this->isOnRoadStatus($nextStatus)) {
-                /** @var array<string, mixed> $ownershipInput */
-                $this->openOwnershipPeriod($vehicle, $ownershipInput);
-            }
+        DB::transaction(function () use ($vehicle, $input, $nextStatus, $ownershipInput, $buyingBack) {
+            VehicleStatus::apply($vehicle, $nextStatus, $ownershipInput);
 
             $vehicle->fill($input);
+
+            $changed = $vehicle->getDirty();
+            $before = array_intersect_key($vehicle->getOriginal(), $changed);
+
             $vehicle->save();
+
+            if ($changed === []) {
+                return;
+            }
+
+            $updated = array_intersect_key($changed, array_flip(self::UPDATED_FIELDS));
+            if ($updated !== []) {
+                $this->events->emit('vehicle.updated', $vehicle, [
+                    'before' => $this->scalars(array_intersect_key($before, $updated)),
+                    'after' => $this->scalars($updated),
+                ]);
+            }
+
+            if (array_key_exists('status', $changed)) {
+                $old = $this->scalar($before['status'] ?? null);
+                $new = $this->scalar($changed['status']);
+                $this->events->emit('vehicle.status_changed', $vehicle, [
+                    'old' => $old,
+                    'new' => $new,
+                    'before' => ['status' => $old],
+                    'after' => ['status' => $new],
+                ]);
+            }
+
+            if ($buyingBack) {
+                $period = $vehicle->openOwnership();
+                if ($period !== null) {
+                    $this->events->emit('vehicle.ownership_started', $vehicle, [
+                        'after' => $this->ownershipStartedPayload($period),
+                    ]);
+                }
+            }
         });
 
         return response()->json([
@@ -406,98 +450,36 @@ class VehiclesController extends Controller
         ];
     }
 
+    /** @return array{kind: string, counterparty: ?string, started_on: ?string} */
+    private function ownershipStartedPayload(VehicleOwnershipPeriod $period): array
+    {
+        return [
+            'kind' => $period->kind->value,
+            'counterparty' => $period->counterparty,
+            'started_on' => $period->started_on?->toDateString(),
+        ];
+    }
+
     /**
-     * @param  array<string, mixed>|null  $ownershipInput
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
      */
-    private function assertStatusTransition(
-        Vehicle $vehicle,
-        VehicleStatus $current,
-        VehicleStatus $next,
-        ?array $ownershipInput,
-    ): void {
-        $becomingSold = $next === VehicleStatus::Sold && $current !== VehicleStatus::Sold;
-        $becomingReturned = $next === VehicleStatus::Returned && $current !== VehicleStatus::Returned;
-        $buyingBack = $this->isEndedStatus($current) && $this->isOnRoadStatus($next);
-        $ownershipPresent = $ownershipInput !== null;
-
-        if ($becomingSold) {
-            $open = $vehicle->openOwnership();
-            if ($open === null || $open->kind !== VehicleOwnershipKind::Owned) {
-                throw ValidationException::withMessages([
-                    'status' => 'Sold is for a vehicle the company owns. Return a rental instead.',
-                ]);
-            }
-        }
-
-        if ($becomingReturned) {
-            $open = $vehicle->openOwnership();
-            if ($open === null || $open->kind !== VehicleOwnershipKind::Rented) {
-                throw ValidationException::withMessages([
-                    'status' => 'Return is for a rental. Mark an owned vehicle sold instead.',
-                ]);
-            }
-        }
-
-        if ($buyingBack && ! $ownershipPresent) {
-            throw ValidationException::withMessages([
-                'ownership' => 'A vehicle has to be owned or rented. Say which, then save.',
-            ]);
-        }
-
-        if ($ownershipPresent && ! $buyingBack) {
-            throw ValidationException::withMessages([
-                'ownership' => 'A new ownership period belongs with bringing the vehicle back on the road.',
-            ]);
-        }
+    private function scalars(array $attributes): array
+    {
+        return array_map(fn (mixed $value) => $this->scalar($value), $attributes);
     }
 
-    private function closeOpenOwnership(Vehicle $vehicle, VehicleEndedReason $reason): void
+    private function scalar(mixed $value): mixed
     {
-        $open = $vehicle->openOwnership();
-        if ($open === null) {
-            return;
+        if ($value instanceof \BackedEnum) {
+            return $value->value;
         }
 
-        $open->ended_on = now()->toDateString();
-        $open->ended_reason = $reason;
-        $open->save();
-    }
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d');
+        }
 
-    /** @param  array<string, mixed>  $ownership */
-    private function openOwnershipPeriod(Vehicle $vehicle, array $ownership): void
-    {
-        VehicleOwnershipPeriod::create([
-            'vehicle_id' => $vehicle->getKey(),
-            'kind' => $ownership['kind'],
-            'counterparty' => $ownership['counterparty'] ?? null,
-            'started_on' => $ownership['started_on'] ?? now()->toDateString(),
-            'purchase_price_cents' => $ownership['purchase_price_cents'] ?? null,
-            'lienholder' => $ownership['lienholder'] ?? null,
-            'loan_account' => $ownership['loan_account'] ?? null,
-            'loan_monthly_payment_cents' => $ownership['loan_monthly_payment_cents'] ?? null,
-            'loan_payoff_date' => $ownership['loan_payoff_date'] ?? null,
-            'transport_cost_cents' => $ownership['transport_cost_cents'] ?? null,
-            'rental_rate_cents' => $ownership['rental_rate_cents'] ?? null,
-            'rental_rate_period' => $ownership['rental_rate_period'] ?? null,
-            'rental_deposit_cents' => $ownership['rental_deposit_cents'] ?? null,
-            'rental_account_number' => $ownership['rental_account_number'] ?? null,
-            'rental_payment_terms' => $ownership['rental_payment_terms'] ?? null,
-            'rental_payment_method' => $ownership['rental_payment_method'] ?? null,
-        ]);
-    }
-
-    private function isEndedStatus(VehicleStatus $status): bool
-    {
-        return $status === VehicleStatus::Sold || $status === VehicleStatus::Returned;
-    }
-
-    private function isOnRoadStatus(VehicleStatus $status): bool
-    {
-        return in_array($status, [
-            VehicleStatus::Active,
-            VehicleStatus::InShop,
-            VehicleStatus::OutOfService,
-        ], true);
+        return $value;
     }
 
     /** @return array<string, mixed> */

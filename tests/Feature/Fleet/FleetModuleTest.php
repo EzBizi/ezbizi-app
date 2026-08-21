@@ -10,8 +10,8 @@ use Tests\TestCase;
 /**
  * Fleet Management — real module declaration (assign, financials, vehicle automations).
  *
- * Triggers stay isRaised: false until Task 13 emits them. insurance_expiring and
- * service_due stay unraised (no sweep in this plan).
+ * Clock triggers stay unraised (no sweep in this plan). The rest are raised from
+ * the write path; FleetAutomationsTest watches the outbox.
  */
 class FleetModuleTest extends TestCase
 {
@@ -61,19 +61,21 @@ class FleetModuleTest extends TestCase
         );
     }
 
-    public function test_every_declared_vehicle_event_is_marked_as_not_raised_yet(): void
+    public function test_only_the_clock_triggers_stay_unraised(): void
     {
         $module = app(ModuleRegistry::class)->get(self::MODULE);
 
         $this->assertNotEmpty($module->triggers);
 
+        $notRaised = [];
         foreach ($module->triggers as $trigger) {
-            $this->assertFalse(
-                $trigger->isRaised,
-                "'{$trigger->key}' claims something raises it.",
-            );
             $this->assertStringStartsWith('vehicle.', $trigger->key);
+            if (! $trigger->isRaised) {
+                $notRaised[] = $trigger->key;
+            }
         }
+
+        $this->assertSame(['vehicle.insurance_expiring', 'vehicle.service_due'], $notRaised);
     }
 
     public function test_automation_actions_are_declared_for_assign_status_and_fields(): void

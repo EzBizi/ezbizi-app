@@ -401,7 +401,7 @@ class ModuleServiceProvider extends ServiceProvider
              * and be refused at save. The refusal is a sentence and it says why.
              * Nothing is lost beyond that, because no field on any of the three
              * is writable by a rule in the first place — ActionRunner::WRITABLE
-             * holds Job and Customer and nothing else, deliberately: an
+             * holds Job, Customer and Vehicle and nothing else, deliberately: an
              * invitation's role, an onboarding's answers and a published
              * version's fields are each governed by an endpoint that checks
              * something a bare field write would skip.
@@ -995,9 +995,8 @@ class ModuleServiceProvider extends ServiceProvider
              *
              * Service visits travel with `edit`. Amounts never travel with it.
              *
-             * Every trigger is declared isRaised: false until Task 13 emits them
-             * (and insurance_expiring / service_due stay unraised — no sweep in
-             * this plan). ModuleRegistryTest holds that claim to the source.
+             * insurance_expiring / service_due stay unraised — no sweep in this
+             * plan. ModuleRegistryTest holds that claim to the source.
              */
             new ModuleDefinition(
                 key:     'fleet_management',
@@ -1009,7 +1008,6 @@ class ModuleServiceProvider extends ServiceProvider
                         key:   'vehicle.created',
                         label: 'Vehicle added',
                         description: 'A vehicle was added to the fleet.',
-                        isRaised: false,
                     ),
                     new TriggerDefinition(
                         key:   'vehicle.updated',
@@ -1017,50 +1015,42 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Identity, franchise, odometer or next-due was saved. A '
                             .'change of status, assignment, or a ledger does NOT raise this — '
                             .'those have their own events.',
-                        isRaised: false,
                     ),
                     new TriggerDefinition(
                         key:   'vehicle.status_changed',
                         label: 'Status changed',
                         description: 'A vehicle moved from one status to another. It carries '
                             .'the old status as well as the new one.',
-                        isRaised: false,
                     ),
                     new TriggerDefinition(
                         key:   'vehicle.assigned',
                         label: 'Keys handed over',
                         description: 'Somebody was given the keys to a vehicle.',
-                        isRaised: false,
                     ),
                     new TriggerDefinition(
                         key:   'vehicle.unassigned',
                         label: 'Keys taken back',
                         description: 'The open assignment ended and nobody holds the keys.',
-                        isRaised: false,
                     ),
                     new TriggerDefinition(
                         key:   'vehicle.ownership_started',
                         label: 'Ownership period started',
                         description: 'A new owned or rented period opened on the vehicle.',
-                        isRaised: false,
                     ),
                     new TriggerDefinition(
                         key:   'vehicle.insurance_started',
                         label: 'Insurance policy started',
                         description: 'A new insurance policy period opened on the vehicle.',
-                        isRaised: false,
                     ),
                     new TriggerDefinition(
                         key:   'vehicle.service_logged',
                         label: 'Service logged',
                         description: 'A service visit was saved against the vehicle.',
-                        isRaised: false,
                     ),
                     new TriggerDefinition(
                         key:   'vehicle.payment_recorded',
                         label: 'Payment recorded',
                         description: 'A payment was recorded against the vehicle.',
-                        isRaised: false,
                     ),
                     new TriggerDefinition(
                         key:   'vehicle.insurance_expiring',
@@ -1092,14 +1082,14 @@ class ModuleServiceProvider extends ServiceProvider
                     new ActionDefinition(
                         key:   'vehicle.change_status',
                         label: 'Change the status',
-                        description: 'Moves a vehicle to a different status. "Update a field" '
-                            .'can already do this by setting the status field.',
+                        description: 'Moves a vehicle to a different status. Sold and returned '
+                            .'close the open ownership period, the same way a person saving would.',
                     ),
                     new ActionDefinition(
                         key:   'vehicle.update_field',
                         label: 'Update a field',
                         description: 'Sets one non-money field on the vehicle that triggered '
-                            .'the rule: plate, odometer, next-due, colour, or status.',
+                            .'the rule: plate, colour, odometer, or next-due.',
                     ),
                 ],
             ),

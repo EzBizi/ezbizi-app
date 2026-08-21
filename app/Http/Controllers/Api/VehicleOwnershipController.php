@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Vehicle;
 use App\Models\VehicleOwnershipPeriod;
+use App\Support\Automations\EventEmitter;
 use App\Support\Fleet\VehicleEndedReason;
 use App\Support\Fleet\VehicleFinancials;
 use App\Support\Fleet\VehicleOwnershipKind;
@@ -21,10 +22,14 @@ use Symfony\Component\HttpFoundation\Response;
  * Start a new ownership period by closing the open row (spec §6.1).
  *
  * Sold/returned vehicles must buy back via vehicle update (Task 7), not here.
- * Money keys without financials are ignored, not refused. No automation emit.
+ * Money keys without financials are ignored, not refused.
  */
 class VehicleOwnershipController extends Controller
 {
+    public function __construct(
+        private readonly EventEmitter $events,
+    ) {}
+
     /** POST /api/v1/vehicles/{vehicle}/ownership */
     public function store(Request $request, Vehicle $vehicle): JsonResponse
     {
@@ -75,7 +80,7 @@ class VehicleOwnershipController extends Controller
                 $open->save();
             }
 
-            return VehicleOwnershipPeriod::create([
+            $period = VehicleOwnershipPeriod::create([
                 'vehicle_id' => $vehicle->getKey(),
                 'kind' => $input['kind'],
                 'counterparty' => $input['counterparty'] ?? null,
@@ -93,6 +98,16 @@ class VehicleOwnershipController extends Controller
                 'rental_payment_terms' => $input['rental_payment_terms'] ?? null,
                 'rental_payment_method' => $input['rental_payment_method'] ?? null,
             ]);
+
+            $this->events->emit('vehicle.ownership_started', $vehicle, [
+                'after' => [
+                    'kind' => $period->kind->value,
+                    'counterparty' => $period->counterparty,
+                    'started_on' => $period->started_on?->toDateString(),
+                ],
+            ]);
+
+            return $period;
         });
 
         return response()->json([

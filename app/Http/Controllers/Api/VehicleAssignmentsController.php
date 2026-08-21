@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\VehicleAssignment;
 use App\Support\Access\Refusal;
+use App\Support\Automations\EventEmitter;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,12 +19,13 @@ use Symfony\Component\HttpFoundation\Response;
  * Hand keys to a person in the company subtree, or take them back (spec §6.3).
  *
  * Assign while someone already holds them closes the open row and inserts the
- * new one in one transaction. No automation emit here.
+ * new one in one transaction. That raises vehicle.unassigned then vehicle.assigned.
  */
 class VehicleAssignmentsController extends Controller
 {
     public function __construct(
         private readonly TenantContext $tenant,
+        private readonly EventEmitter $events,
     ) {}
 
     /**
@@ -91,15 +93,25 @@ class VehicleAssignmentsController extends Controller
             if ($open !== null) {
                 $open->released_at = now();
                 $open->save();
+                $this->events->emit('vehicle.unassigned', $vehicle, [
+                    'before' => ['user_id' => $open->user_id],
+                    'after' => ['user_id' => null],
+                ]);
             }
 
-            return VehicleAssignment::create([
+            $assignment = VehicleAssignment::create([
                 'vehicle_id' => $vehicle->getKey(),
                 'user_id' => $assignee->getKey(),
                 'assigned_at' => now(),
                 'released_at' => null,
                 'note' => $input['note'] ?? null,
             ]);
+
+            $this->events->emit('vehicle.assigned', $vehicle, [
+                'after' => ['user_id' => $assignee->getKey()],
+            ]);
+
+            return $assignment;
         });
 
         return response()->json([
@@ -121,8 +133,14 @@ class VehicleAssignmentsController extends Controller
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $open->released_at = now();
-        $open->save();
+        DB::transaction(function () use ($vehicle, $open) {
+            $open->released_at = now();
+            $open->save();
+            $this->events->emit('vehicle.unassigned', $vehicle, [
+                'before' => ['user_id' => $open->user_id],
+                'after' => ['user_id' => null],
+            ]);
+        });
 
         return response()->json([
             'data' => [
