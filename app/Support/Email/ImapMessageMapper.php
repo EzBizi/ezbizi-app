@@ -104,11 +104,12 @@ final class ImapMessageMapper
         /*
          * HTML through `sanitise`, plain text through `sanitiseText`, and the
          * choice is made from the part's own subtype rather than by sniffing the
-         * bytes. There is no third branch and no path that returns markup: both
-         * of these return Block[], and {@see MessageDetail} has nowhere to put a
-         * string of HTML even if one were produced.
+         * bytes. Blocks are the fallback body. The HTML part is also kept as
+         * `$sourceHtml` for Gmail-close display; it is not published until
+         * {@see HtmlEmailSanitiser} has purified it.
          */
-        $blocks = $part !== null && strcasecmp($part['subtype'], 'html') === 0
+        $isHtml = $part !== null && strcasecmp($part['subtype'], 'html') === 0;
+        $blocks = $isHtml
             ? $this->sanitiser->sanitise($text)
             : $this->sanitiser->sanitiseText($text);
 
@@ -117,6 +118,7 @@ final class ImapMessageMapper
             blocks: $blocks,
             attachments: $this->attachments($fetched['bodystructure'] ?? null),
             imagesBlocked: $this->mentionsBlockedImage($blocks),
+            sourceHtml: $isHtml ? $text : null,
         );
     }
 

@@ -5,14 +5,14 @@ namespace App\Support\Email;
 /**
  * One message, opened — the header plus a body that has already been sanitised.
  *
- * ── The body is blocks, not markup, all the way in ───────────────
+ * ── Blocks are still the fallback; HTML is Gmail-close display ───
  *
- * The type of `$blocks` is what enforces the decision rather than a rule
- * somebody has to remember: there is no `string $html` on this object, so a
- * reader implementation cannot hand raw markup up to a controller "just for
- * now". A provider adapter fetches whatever the provider gives it, runs it
- * through {@see BodySanitiser}, and constructs this. Whatever markup arrived
- * stops there.
+ * `$blocks` is the reading-order structure {@see BodySanitiser} produces,
+ * and it is what a non-web client draws. `$sourceHtml` is the raw HTML
+ * part the provider returned — it is never published. `$html` is set only
+ * after {@see HtmlEmailSanitiser} has purified it, inlined pictures, and
+ * wrapped it as a document. {@see toArray()} sends `$html`, never
+ * `$sourceHtml`.
  *
  * ── Attachments are LISTED and not fetched ───────────────────────
  *
@@ -46,6 +46,21 @@ final class MessageDetail
          * every logo in a newsletter signature.
          */
         public readonly bool $imagesBlocked = false,
+
+        /**
+         * Sanitised HTML for Gmail-close display, or null when the message
+         * was only plain text. Never raw markup from the sender — see
+         * {@see HtmlEmailSanitiser}. Published on the wire.
+         */
+        public readonly ?string $html = null,
+
+        /**
+         * The HTML part the provider returned, before purify. Never
+         * published — {@see toArray()} has no key for it. The controller
+         * hands this to {@see HtmlEmailSanitiser::prepare} and puts the
+         * result in `$html`.
+         */
+        public readonly ?string $sourceHtml = null,
     ) {}
 
     /** @param  Block[]  $blocks */
@@ -57,6 +72,21 @@ final class MessageDetail
             $this->attachments,
             $this->seenBy,
             $this->imagesBlocked,
+            $this->html,
+            $this->sourceHtml,
+        );
+    }
+
+    public function withHtml(?string $html): self
+    {
+        return new self(
+            $this->summary,
+            $this->blocks,
+            $this->attachments,
+            $this->seenBy,
+            $this->imagesBlocked,
+            $html,
+            sourceHtml: null,
         );
     }
 
@@ -65,6 +95,7 @@ final class MessageDetail
         return [
             ...$this->summary->withSeenBy($this->seenBy)->toArray(),
             'blocks'      => array_map(fn (Block $b) => $b->toArray(), $this->blocks),
+            'html'        => $this->html,
             'attachments' => array_values($this->attachments),
 
             'images_blocked' => $this->imagesBlocked,

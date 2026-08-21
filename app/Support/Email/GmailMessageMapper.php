@@ -83,8 +83,9 @@ final class GmailMessageMapper
      * the text part of a marketing message is routinely empty, a stub, or a
      * link farm, and a business reading customer mail would see a worse version
      * of every message for a safety property {@see BodySanitiser} already
-     * provides. The HTML never survives contact with this class in any case: it
-     * becomes blocks, and there is nowhere in the output for markup to be.
+     * provides. Blocks are still produced. The raw HTML part is carried as
+     * `$sourceHtml` so {@see HtmlEmailSanitiser} can build a Gmail-close
+     * document; it is not published.
      *
      * @param  array<string, mixed>  $payload
      */
@@ -116,6 +117,7 @@ final class GmailMessageMapper
             blocks: $blocks,
             attachments: $this->attachments($body),
             imagesBlocked: $this->mentionsBlockedImage($blocks),
+            sourceHtml: $html,
         );
     }
 

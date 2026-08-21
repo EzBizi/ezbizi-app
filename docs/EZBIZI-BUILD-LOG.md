@@ -233,3 +233,21 @@ reduced to a safe character set, which cannot produce unparseable JSON whatever
 a database is called.
 
 323 tests. Deployed as `20260806144221`.
+
+---
+
+## 2026-08-21 — HTML mail, as Gmail shows it
+
+The block body was a safety property: hostile HTML became a reading-order
+stack, so a newsletter of tables, sized pictures and buttons stacked as a
+column of images. The owner asked for the view to be as close as possible to
+Gmail, and said changing how mail is displayed was allowed.
+
+Opened HTML is now purified (tables, classes, inline CSS; no script, no
+forms, no CSS `url()`), pictures are fetched through EzBizi and inlined as
+data URIs, and the web client draws that document in a sandboxed iframe
+(`srcdoc`, no scripts, no same-origin). Blocks remain the fallback for
+plain text and for anything that is not the web app. Raw markup is never
+on the wire — it sits on `$sourceHtml` until the sanitiser has run.
+
+Client `v0.0.0048`.

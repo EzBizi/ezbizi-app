@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -10,6 +11,7 @@ import '../../widgets/tab_bar_like.dart';
 import 'mail_data.dart';
 import 'mailbox_rail.dart';
 import 'message_body.dart';
+import 'message_html.dart';
 import 'message_list.dart';
 import 'reply_panel.dart';
 import 'settings_tab.dart';
@@ -699,23 +701,32 @@ class _MessageView extends StatelessWidget {
         ),
         const Divider(height: 1),
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                MessageBody(
-                  blocks: message.blocks,
-                  api: api,
-                  picturePath:
-                      '/email/mailboxes/${mailbox.id}/messages/${message.id}/picture',
-                ),
-                if (message.attachments.isNotEmpty) _attachments(context),
-              ],
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _body(mailbox, message)),
+              if (message.attachments.isNotEmpty) _attachments(context),
+            ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _body(Mailbox mailbox, MessageDetail message) {
+    final html = message.html;
+    if (kIsWeb && html != null && html.isNotEmpty) {
+      return MessageHtmlView(html: html);
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+      child: MessageBody(
+        blocks: message.blocks,
+        api: api,
+        picturePath:
+            '/email/mailboxes/${mailbox.id}/messages/${message.id}/picture',
+      ),
     );
   }
 

@@ -253,6 +253,7 @@ class MessageDetail {
     required this.receivedAt,
     required this.seenBy,
     required this.blocks,
+    this.html,
     required this.attachments,
     required this.replyAs,
     required this.replyToName,
@@ -268,8 +269,12 @@ class MessageDetail {
   final String? receivedAt;
   final List<SeenBy> seenBy;
 
-  /// The body, sanitised into blocks. Never markup — see message_blocks.dart.
+  /// Fallback body when there is no HTML (plain text, or a non-web build).
   final List<MailBlock> blocks;
+
+  /// Sanitised HTML, Gmail-close. Null when the message was only plain text.
+  /// Drawn in a sandboxed iframe — never parsed as Flutter widgets.
+  final String? html;
 
   final List<MailAttachment> attachments;
 
@@ -304,6 +309,7 @@ class MessageDetail {
       receivedAt: json['received_at'] as String? ?? json['sent_at'] as String?,
       seenBy: readSeenBy(json['seen_by']),
       blocks: readMailBlocks(json['blocks']),
+      html: json['html'] as String?,
       attachments: [
         for (final entry in (json['attachments'] as List? ?? const []))
           if (entry is Map<String, dynamic>) MailAttachment.fromJson(entry),

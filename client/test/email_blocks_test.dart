@@ -1,3 +1,4 @@
+import 'package:ezbizi_client/screens/email/mail_data.dart';
 import 'package:ezbizi_client/screens/email/message_blocks.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -183,5 +184,32 @@ void main() {
       blocks.single.spans.single.link,
       'https://not-your-bank.example.com/x',
     );
+  });
+
+  test('sanitised html on the opened message is kept as a string', () {
+    final detail = MessageDetail.fromJson({
+      'id': 'm-1',
+      'subject': 'Trial',
+      'from': {'name': 'Google Cloud', 'address': 'cloud@google.com'},
+      'blocks': [
+        {
+          'kind': 'paragraph',
+          'spans': [
+            {'text': 'fallback'},
+          ],
+        },
+      ],
+      'html':
+          '<!DOCTYPE html><html><body><table width="600"><tr><td>Hello</td></tr></table></body></html>',
+      'reply': {
+        'as': {'address': 'info@example.com', 'name': 'Info'},
+        'to': ['cloud@google.com'],
+        'subject': 'Re: Trial',
+      },
+    });
+
+    expect(detail.html, contains('<table'));
+    expect(detail.html, contains('Hello'));
+    expect(detail.blocks.single.text, 'fallback');
   });
 }

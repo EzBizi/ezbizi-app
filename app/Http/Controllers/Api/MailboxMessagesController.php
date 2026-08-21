@@ -10,6 +10,7 @@ use App\Support\Email\CannotReachHost;
 use App\Support\Email\CannotReadMailbox;
 use App\Support\Email\EmailPictureLoader;
 use App\Support\Email\HeaderCache;
+use App\Support\Email\HtmlEmailSanitiser;
 use App\Support\Email\MailboxAccess;
 use App\Support\Email\MailboxReaders;
 use App\Support\Email\MessagePage;
@@ -60,6 +61,7 @@ class MailboxMessagesController extends Controller
         private readonly EventEmitter $events,
         private readonly PictureTokens $pictures,
         private readonly EmailPictureLoader $pictureLoader,
+        private readonly HtmlEmailSanitiser $htmlMail,
     ) {}
 
     /**
@@ -150,6 +152,14 @@ class MailboxMessagesController extends Controller
         }
 
         $detail = $detail->withBlocks($this->pictures->seal($detail->blocks));
+
+        $source = $detail->sourceHtml ?? $detail->html;
+
+        if (is_string($source) && $source !== '') {
+            $detail = $detail->withHtml(
+                $this->htmlMail->prepare($source, $mailbox, $message),
+            );
+        }
 
         $this->readState->markSeen($mailbox, $detail->summary->id, $user);
 

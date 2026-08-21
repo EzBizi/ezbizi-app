@@ -68,6 +68,7 @@ final class MicrosoftMessageMapper
             blocks: $blocks,
             attachments: $this->attachments($payload),
             imagesBlocked: $this->mentionsBlockedImage($blocks),
+            sourceHtml: $html !== '' ? $html : null,
         );
     }
 

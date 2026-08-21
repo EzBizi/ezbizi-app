@@ -877,6 +877,37 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertSame('Re: Quote for a sweep', $body['reply']['subject']);
     }
 
+    public function test_html_mail_keeps_its_layout_and_drops_script(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $this->grant($t, $mailbox, 'Clerk');
+
+        FakeMailboxReader::$detail = new MessageDetail(
+            summary: $this->summary(),
+            blocks: (new BodySanitiser)->sanitise('<p>Hello</p>'),
+            sourceHtml: '<p>Hello</p><script>alert(1)</script>'
+                .'<table width="600"><tr><td>Cell</td></tr></table>',
+        );
+
+        $body = $this->signedInAs($clerk)
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1")
+            ->assertOk()->json('data');
+
+        $html = $body['html'] ?? '';
+
+        $this->assertStringContainsString('<table', $html);
+        $this->assertStringContainsString('Cell', $html);
+        $this->assertStringContainsString('<!DOCTYPE html>', $html);
+        $this->assertStringContainsString('max-width:100%', $html);
+        $this->assertStringNotContainsString('<script', $html);
+        $this->assertStringNotContainsString('alert', $html);
+        $this->assertArrayNotHasKey('source_html', $body);
+    }
+
     public function test_a_remote_picture_is_sealed_so_the_senders_url_is_not_on_the_wire(): void
     {
         $this->withFakeProvider();

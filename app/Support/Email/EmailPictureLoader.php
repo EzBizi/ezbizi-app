@@ -23,8 +23,11 @@ final class EmailPictureLoader
 
     public function load(Mailbox $mailbox, string $messageId, string $token): EmailPicture
     {
-        $src = $this->tokens->reveal($token);
+        return $this->loadSrc($mailbox, $messageId, $this->tokens->reveal($token));
+    }
 
+    public function loadSrc(Mailbox $mailbox, string $messageId, string $src): EmailPicture
+    {
         if (str_starts_with(strtolower($src), 'cid:')) {
             return $this->cid($mailbox, $messageId, substr($src, 4));
         }

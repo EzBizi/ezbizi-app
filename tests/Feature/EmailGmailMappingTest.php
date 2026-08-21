@@ -190,6 +190,13 @@ class EmailGmailMappingTest extends TestCase
         $this->assertStringNotContainsString('alert', $wire);
         $this->assertStringNotContainsString('<script', $wire);
 
+        // Raw HTML is held for the sanitiser and is not on the published
+        // payload — that is how a script in the part cannot reach a client
+        // that serialises the mapper's own object.
+        $this->assertStringContainsString('<p>The real body</p>', (string) $detail->sourceHtml);
+        $this->assertNull($detail->html);
+        $this->assertArrayNotHasKey('source_html', $detail->toArray());
+
         // The attachment is LISTED and not fetched — and its handle is not
         // published, so no client can build a download this application has not
         // decided how to serve.
