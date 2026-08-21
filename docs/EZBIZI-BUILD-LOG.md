@@ -316,3 +316,16 @@ pads 20/24/32px. Tapping a file streams it through this origin with a
 sealed token — Decision 2 still holds: nothing is stored.
 
 Client `v0.0.0055`.
+
+---
+
+## 2026-08-21 — All inboxes
+
+Three shared inboxes meant picking one and missing the others. All inboxes
+is now the first row when there is more than one, the landing view, and a
+single list merged by date. Each row names the inbox the mail arrived in.
+Opening it puts that address on THE INBOX YOU ARE IN, so a reply still
+goes out as the inbox it came to. One mailbox that cannot be read does
+not empty the rest — its sentence sits above the mail from the others.
+
+Client `v0.0.0056`.

@@ -56,8 +56,9 @@ void main() {
         'list and on the message', (tester) async {
       await _pump(tester, _handler(), size: Size(width, 900));
 
-      expect(find.text('THE INBOX YOU ARE IN'), findsOneWidget);
+      expect(find.text('ALL INBOXES'), findsWidgets);
       expect(find.text('info@a-1chimney.com'), findsWidgets);
+      expect(find.text('bookings@a-1chimney.com'), findsWidgets);
 
       await _tap(tester, find.text('Chimney sweep quote').first);
 
@@ -109,6 +110,28 @@ void main() {
     expect(find.byType(MailboxRail), findsOneWidget);
     expect(find.text('bookings@a-1chimney.com'), findsWidgets);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('all inboxes shows mail from every inbox on one list', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(), size: const Size(1400, 900));
+
+    expect(find.text('All inboxes'), findsOneWidget);
+    expect(find.text('Chimney sweep quote'), findsOneWidget);
+    expect(find.text('Booking for Friday'), findsOneWidget);
+
+    await _tap(tester, find.text('Booking for Friday').first);
+
+    expect(find.text('THE INBOX YOU ARE IN'), findsOneWidget);
+    expect(
+      find.text('bookings@a-1chimney.com'),
+      findsWidgets,
+      reason:
+          'A combined list that opens a mail without naming its inbox is '
+          'how a reply goes out as the wrong address.',
+    );
+    expect(find.textContaining('Reply as bookings@a-1chimney.com'), findsOneWidget);
   });
 
   testWidgets('ticking a sender mark selects the row for bulk actions', (

@@ -190,6 +190,8 @@ class MessageHeader {
     required this.hasAttachments,
     required this.seenBy,
     this.messageCount = 1,
+    this.mailboxId = '',
+    this.mailboxAddress = '',
   });
 
   final String id;
@@ -211,12 +213,38 @@ class MessageHeader {
   /// How many messages are in this conversation. 1 is a lone mail.
   final int messageCount;
 
+  /// Which inbox this row belongs to. Set on every list, so All inboxes
+  /// can open, reply and delete against the right mailbox.
+  final String mailboxId;
+
+  /// The address of that inbox, for the combined list. Empty on a
+  /// single-inbox list, where the bar already names it.
+  final String mailboxAddress;
+
   /// Who it is from, in one line: their name where there is one, and the
   /// address where there is not. Never the name alone with the address thrown
   /// away — in a shared inbox the address is half of knowing who is writing.
   String get from => fromName.isEmpty ? fromAddress : '$fromName <$fromAddress>';
 
-  factory MessageHeader.fromJson(Map<String, dynamic> json) {
+  MessageHeader copyWith({bool? unread}) => MessageHeader(
+    id: id,
+    fromName: fromName,
+    fromAddress: fromAddress,
+    subject: subject,
+    preview: preview,
+    receivedAt: receivedAt,
+    unread: unread ?? this.unread,
+    hasAttachments: hasAttachments,
+    seenBy: seenBy,
+    messageCount: messageCount,
+    mailboxId: mailboxId,
+    mailboxAddress: mailboxAddress,
+  );
+
+  factory MessageHeader.fromJson(
+    Map<String, dynamic> json, {
+    Mailbox? mailbox,
+  }) {
     final from = json['from'] as Map<String, dynamic>? ?? const {};
 
     return MessageHeader(
@@ -233,6 +261,10 @@ class MessageHeader {
       messageCount: json['message_count'] is int
           ? json['message_count'] as int
           : int.tryParse('${json['message_count'] ?? 1}') ?? 1,
+      mailboxId: mailbox?.id ?? '${json['mailbox_id'] ?? ''}',
+      mailboxAddress: mailbox?.address ??
+          json['mailbox_address'] as String? ??
+          '',
     );
   }
 }

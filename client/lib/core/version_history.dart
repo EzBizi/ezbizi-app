@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0056',
+      date: '21 Aug 2026',
+      items: [
+        'All inboxes combines every mailbox you can open into one list. '
+            'Opening a mail still names that inbox, so a reply cannot go '
+            'out as the wrong address.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0055',
       date: '21 Aug 2026',
       items: [

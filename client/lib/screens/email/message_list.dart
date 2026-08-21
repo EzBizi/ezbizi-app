@@ -29,6 +29,9 @@ class MessageListPane extends StatelessWidget {
     required this.onMore,
     this.checkedIds = const {},
     this.onToggleChecked,
+    this.mailboxes = const [],
+    this.showMailboxOnRow = false,
+    this.emptyLabel,
   });
 
   final Mailbox mailbox;
@@ -66,6 +69,16 @@ class MessageListPane extends StatelessWidget {
 
   final ValueChanged<MessageHeader>? onToggleChecked;
 
+  /// All inboxes this list may name, so a combined row can use that
+  /// mailbox's shared-read setting rather than the pane's.
+  final List<Mailbox> mailboxes;
+
+  /// Combined list: say which inbox the row arrived in.
+  final bool showMailboxOnRow;
+
+  /// Empty-state wording. Combined view is "any inbox", not one address.
+  final String? emptyLabel;
+
   @override
   Widget build(BuildContext context) {
     return AsyncBody(
@@ -77,7 +90,7 @@ class MessageListPane extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'Nothing in ${mailbox.address} right now.',
+                  'Nothing in ${emptyLabel ?? mailbox.address} right now.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
@@ -127,7 +140,8 @@ class MessageListPane extends StatelessWidget {
     // Decision 8. When the organization chose private read state, who has
     // opened what is nobody else's business and the line is not drawn at all —
     // not drawn empty, not drawn greyed.
-    final seen = mailbox.sharedRead
+    final owner = _owner(message);
+    final seen = owner.sharedRead
         ? seenBySentence(message.seenBy, meId)
         : null;
 
@@ -223,6 +237,15 @@ class MessageListPane extends StatelessWidget {
                   style: theme.textTheme.bodyMedium,
                 ),
               ],
+              if (showMailboxOnRow && message.mailboxAddress.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  message.mailboxAddress,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
               if (seen != null) ...[
                 const SizedBox(height: 6),
                 SeenByLine(sentence: seen),
@@ -235,6 +258,13 @@ class MessageListPane extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Mailbox _owner(MessageHeader message) {
+    for (final mailbox in mailboxes) {
+      if (mailbox.id == message.mailboxId) return mailbox;
+    }
+    return mailbox;
   }
 
   Widget _leading(BuildContext context, MessageHeader message, bool checked) {

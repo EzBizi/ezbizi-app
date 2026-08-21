@@ -102,6 +102,13 @@ class _EmailScreenState extends State<EmailScreen> {
   List<Mailbox> _mailboxes = const [];
   Mailbox? _selected;
 
+  /// Combined list of every inbox this person can open.
+  bool _allInboxes = false;
+  final Map<String, String?> _cursorByMailbox = {};
+  final Map<String, int> _pageByMailbox = {};
+  final Map<String, int> _lastPageByMailbox = {};
+  List<String> _combinedNotes = const [];
+
   bool _loadingList = true;
   String? _listError;
   List<MessageHeader> _messages = const [];
@@ -184,19 +191,25 @@ class _EmailScreenState extends State<EmailScreen> {
           if (entry is Map<String, dynamic>) Mailbox.fromJson(entry),
       ];
 
-      // Landing in the first one rather than on a chooser: an inbox is named on
-      // screen at all times, so there is no ambiguity about where you are, and
-      // a screen whose first act is to ask a question nobody has an opinion
-      // about is a screen with an extra step in it. Nothing can be SENT without
-      // passing the address twice more.
-      _selected = _mailboxes.isEmpty ? null : _mailboxes.first;
+      // Two or more inboxes land on All inboxes so mail in the second
+      // one is not hidden behind a pick. One inbox is that inbox —
+      // combining it would be a second name for the same list.
+      _allInboxes = _mailboxes.length > 1;
+      _selected = _allInboxes || _mailboxes.isEmpty ? null : _mailboxes.first;
       _pane = _Pane.messages;
     });
 
-    if (_selected != null) _loadMessages();
+    if (_allInboxes || _selected != null) _loadMessages();
   }
 
   Future<void> _loadMessages({int page = 1, String? cursor}) async {
+    if (_allInboxes) {
+      await _loadAll(
+        append: (cursor != null && cursor.isNotEmpty) || page > 1,
+      );
+      return;
+    }
+
     final mailbox = _selected;
 
     if (mailbox == null) return;
@@ -255,7 +268,11 @@ class _EmailScreenState extends State<EmailScreen> {
         return;
       }
 
-      final parsed = _messagePage(response.data, response.body['meta']);
+      final parsed = _messagePage(
+        response.data,
+        response.body['meta'],
+        mailbox: mailbox,
+      );
       _messages = appending ? [..._messages, ...parsed.rows] : parsed.rows;
       _page = parsed.page;
       _lastPage = parsed.lastPage;
@@ -266,7 +283,7 @@ class _EmailScreenState extends State<EmailScreen> {
   /// Live API: `{ messages, next_cursor }`. Tests / older assumption: a list
   /// plus `meta.page`. Both have to produce the same rows.
   ({List<MessageHeader> rows, int page, int lastPage, String? nextCursor})
-  _messagePage(Object? data, Object? meta) {
+  _messagePage(Object? data, Object? meta, {Mailbox? mailbox}) {
     final metaMap = meta is Map<String, dynamic> ? meta : const <String, dynamic>{};
 
     if (data is List) {
@@ -275,7 +292,8 @@ class _EmailScreenState extends State<EmailScreen> {
       return (
         rows: [
           for (final entry in data)
-            if (entry is Map<String, dynamic>) MessageHeader.fromJson(entry),
+            if (entry is Map<String, dynamic>)
+              MessageHeader.fromJson(entry, mailbox: mailbox),
         ],
         page: page,
         lastPage: last,
@@ -289,7 +307,8 @@ class _EmailScreenState extends State<EmailScreen> {
       return (
         rows: [
           for (final entry in (messages is List ? messages : const []))
-            if (entry is Map<String, dynamic>) MessageHeader.fromJson(entry),
+            if (entry is Map<String, dynamic>)
+              MessageHeader.fromJson(entry, mailbox: mailbox),
         ],
         page: 1,
         lastPage: (next != null && next.isNotEmpty) ? 2 : 1,
@@ -300,18 +319,174 @@ class _EmailScreenState extends State<EmailScreen> {
     return (rows: const [], page: 1, lastPage: 1, nextCursor: null);
   }
 
+  Future<void> _loadAll({required bool append}) async {
+    if (_mailboxes.isEmpty) return;
+    if (append && _fetching) return;
+
+    final request = ++_listRequest;
+
+    setState(() {
+      _loadingList = !append && _messages.isEmpty;
+      _fetching = true;
+      _listError = null;
+      _pageError = null;
+      if (!append) {
+        _combinedNotes = const [];
+        _cursorByMailbox.clear();
+        _pageByMailbox.clear();
+        _lastPageByMailbox.clear();
+      }
+    });
+
+    final targets = [
+      for (final mailbox in _mailboxes)
+        if (_folder == 'INBOX' || mailbox.isGmail)
+          if (!append || _mailboxHasMore(mailbox.id)) mailbox,
+    ];
+
+    if (targets.isEmpty) {
+      if (!mounted || request != _listRequest) return;
+      setState(() {
+        _loadingList = false;
+        _fetching = false;
+        if (!append) _messages = const [];
+        _nextCursor = null;
+      });
+      return;
+    }
+
+    final results = await Future.wait(
+      targets.map((mailbox) async {
+        final query = <String, String>{};
+        if (append) {
+          final cursor = _cursorByMailbox[mailbox.id];
+          if (cursor != null && cursor.isNotEmpty) {
+            query['cursor'] = cursor;
+          } else {
+            query['page'] = '${(_pageByMailbox[mailbox.id] ?? 1) + 1}';
+          }
+        }
+        if (_submittedSearch.isNotEmpty) {
+          query['search'] = _submittedSearch;
+        }
+        if (_folder != 'INBOX' && mailbox.isGmail) {
+          query['label'] = _folder;
+        }
+        if (_unreadOnly) {
+          query['unread'] = '1';
+        }
+
+        final response = query.isEmpty
+            ? await widget.api.get('/email/mailboxes/${mailbox.id}/messages')
+            : await widget.api.get(
+                '/email/mailboxes/${mailbox.id}/messages',
+                query,
+              );
+
+        return (mailbox: mailbox, response: response);
+      }),
+    );
+
+    if (!mounted || request != _listRequest) return;
+
+    final rows = <MessageHeader>[if (append) ..._messages];
+    final notes = <String>[if (append) ..._combinedNotes];
+    var anyOk = false;
+
+    for (final result in results) {
+      final mailbox = result.mailbox;
+      final response = result.response;
+
+      if (!response.ok) {
+        final sentence = response.message;
+        if (!notes.contains(sentence)) notes.add(sentence);
+        continue;
+      }
+
+      anyOk = true;
+      final parsed = _messagePage(
+        response.data,
+        response.body['meta'],
+        mailbox: mailbox,
+      );
+      rows.addAll(parsed.rows);
+      _cursorByMailbox[mailbox.id] = parsed.nextCursor;
+      _pageByMailbox[mailbox.id] = parsed.page;
+      _lastPageByMailbox[mailbox.id] = parsed.lastPage;
+    }
+
+    rows.sort(_byNewest);
+    final unique = <MessageHeader>[];
+    final seen = <String>{};
+    for (final row in rows) {
+      if (seen.add('${row.mailboxId}:${row.id}')) unique.add(row);
+    }
+
+    setState(() {
+      _loadingList = false;
+      _fetching = false;
+      _combinedNotes = notes;
+      if (!anyOk) {
+        _listError = notes.join('\n');
+        if (!append) _messages = const [];
+        return;
+      }
+      _messages = unique;
+      _nextCursor = _combinedHasMore() ? 'more' : null;
+      _page = 1;
+      _lastPage = _nextCursor == null ? 1 : 2;
+    });
+  }
+
+  bool _mailboxHasMore(String id) {
+    final cursor = _cursorByMailbox[id];
+    if (cursor != null && cursor.isNotEmpty) return true;
+
+    return (_pageByMailbox[id] ?? 1) < (_lastPageByMailbox[id] ?? 1);
+  }
+
+  bool _combinedHasMore() =>
+      _mailboxes.any((mailbox) => _mailboxHasMore(mailbox.id));
+
+  int _byNewest(MessageHeader a, MessageHeader b) {
+    final at = DateTime.tryParse(a.receivedAt ?? '');
+    final bt = DateTime.tryParse(b.receivedAt ?? '');
+    if (at == null && bt == null) return 0;
+    if (at == null) return 1;
+    if (bt == null) return -1;
+    return bt.compareTo(at);
+  }
+
+  Mailbox? _mailboxById(String id) {
+    for (final mailbox in _mailboxes) {
+      if (mailbox.id == id) return mailbox;
+    }
+    return null;
+  }
+
+  Mailbox? _mailboxForOpen() {
+    if (_openId == null) return _selected;
+    for (final row in _messages) {
+      if (row.id == _openId) {
+        return _mailboxById(row.mailboxId) ?? _selected;
+      }
+    }
+    return _selected;
+  }
+
   /// Open one message. The body is fetched now, because it was never held.
   ///
   /// Opening is also what records the read: the server notes it on this
   /// request, which is what puts "Seen by" on somebody else's screen. There is
   /// deliberately no second call announcing it — two ways of saying the same
   /// thing is two states that can disagree.
-  Future<void> _openMessage(String id) async {
-    final mailbox = _selected;
+  Future<void> _openMessage(MessageHeader header) async {
+    final mailbox = _mailboxById(header.mailboxId) ?? _selected;
 
     if (mailbox == null) return;
 
     final request = ++_messageRequest;
+    final id = header.id;
 
     setState(() {
       _openId = id;
@@ -344,21 +519,10 @@ class _EmailScreenState extends State<EmailScreen> {
         // scroll somebody back to the top of it.
         _messages = [
           for (final row in _messages)
-            if (row.id != id)
-              row
+            if (row.id == id && row.mailboxId == header.mailboxId)
+              row.copyWith(unread: false)
             else
-              MessageHeader(
-                id: row.id,
-                fromName: row.fromName,
-                fromAddress: row.fromAddress,
-                subject: row.subject,
-                preview: row.preview,
-                receivedAt: row.receivedAt,
-                unread: false,
-                hasAttachments: row.hasAttachments,
-                seenBy: row.seenBy,
-                messageCount: row.messageCount,
-              ),
+              row,
         ];
       } else {
         _messageError = 'That message came back in a shape this app could not '
@@ -367,13 +531,50 @@ class _EmailScreenState extends State<EmailScreen> {
     });
   }
 
-  void _select(Mailbox mailbox) {
-    if (mailbox.id == _selected?.id) {
+  void _selectAll() {
+    if (_allInboxes) {
       setState(() => _pane = _Pane.messages);
       return;
     }
 
     setState(() {
+      _allInboxes = true;
+      _selected = null;
+      _pane = _Pane.messages;
+
+      _messages = const [];
+      _loadingList = true;
+      _listError = null;
+      _pageError = null;
+      _page = 1;
+      _lastPage = 1;
+      _nextCursor = null;
+      _openId = null;
+      _open = null;
+      _messageError = null;
+      _loadingMessage = false;
+      _folder = 'INBOX';
+      _unreadOnly = false;
+      _submittedSearch = '';
+      _search.clear();
+      _checked = {};
+      _combinedNotes = const [];
+      _cursorByMailbox.clear();
+      _pageByMailbox.clear();
+      _lastPageByMailbox.clear();
+    });
+
+    _loadMessages();
+  }
+
+  void _select(Mailbox mailbox) {
+    if (!_allInboxes && mailbox.id == _selected?.id) {
+      setState(() => _pane = _Pane.messages);
+      return;
+    }
+
+    setState(() {
+      _allInboxes = false;
       _selected = mailbox;
       _pane = _Pane.messages;
 
@@ -396,6 +597,10 @@ class _EmailScreenState extends State<EmailScreen> {
       _submittedSearch = '';
       _search.clear();
       _checked = {};
+      _combinedNotes = const [];
+      _cursorByMailbox.clear();
+      _pageByMailbox.clear();
+      _lastPageByMailbox.clear();
     });
 
     _loadMessages();
@@ -597,13 +802,20 @@ class _EmailScreenState extends State<EmailScreen> {
   );
 
   Widget _panes(bool wide) {
-    final mailbox = _selected!;
+    final openMailbox = _mailboxForOpen();
+    final listMailbox = _selected ?? _mailboxes.first;
+    final barMailbox = _openId != null ? openMailbox : _selected;
+    final combinedBar = _allInboxes && _openId == null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         InboxBar(
-          mailbox: mailbox,
+          mailbox: barMailbox,
+          allInboxes: combinedBar,
+          allAddresses: [
+            for (final mailbox in _mailboxes) mailbox.address,
+          ],
           // Back from the list to the inboxes, on a narrow screen. Back
           // from a message is on the reading toolbar, like Gmail.
           onBack: wide || _pane != _Pane.messages || _openId != null
@@ -612,12 +824,16 @@ class _EmailScreenState extends State<EmailScreen> {
           backTooltip: 'Back to the inboxes',
         ),
         const Divider(height: 1),
-        Expanded(child: wide ? _wide(mailbox) : _narrow(mailbox)),
+        Expanded(
+          child: wide
+              ? _wide(listMailbox, openMailbox)
+              : _narrow(listMailbox, openMailbox),
+        ),
       ],
     );
   }
 
-  Widget _wide(Mailbox mailbox) => Row(
+  Widget _wide(Mailbox listMailbox, Mailbox? openMailbox) => Row(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       SizedBox(width: _railWidth, child: _rail()),
@@ -625,22 +841,27 @@ class _EmailScreenState extends State<EmailScreen> {
       // Gmail: the list OR the message, never both. A preview column beside
       // the list is the thing that squeezed every mail into half a pane.
       Expanded(
-        child: _openId != null ? _message(mailbox) : _listColumn(mailbox),
+        child: _openId != null
+            ? _message(openMailbox ?? listMailbox)
+            : _listColumn(listMailbox),
       ),
     ],
   );
 
   /// One pane, and only the one on screen is built.
-  Widget _narrow(Mailbox mailbox) => switch (_pane) {
-    _Pane.inboxes => _rail(),
-    _Pane.messages => _listColumn(mailbox),
-    _Pane.message => _message(mailbox),
-  };
+  Widget _narrow(Mailbox listMailbox, Mailbox? openMailbox) =>
+      switch (_pane) {
+        _Pane.inboxes => _rail(),
+        _Pane.messages => _listColumn(listMailbox),
+        _Pane.message => _message(openMailbox ?? listMailbox),
+      };
 
   Widget _rail() => MailboxRail(
     mailboxes: _mailboxes,
     selectedId: _selected?.id,
     onSelected: _select,
+    allSelected: _allInboxes,
+    onSelectAll: _mailboxes.length > 1 ? _selectAll : null,
     selectedFolder: _folder,
     onFolderSelected: _selectFolder,
   );
@@ -704,6 +925,13 @@ class _EmailScreenState extends State<EmailScreen> {
                 )
               : _bulkBar(mailbox),
         ),
+        if (_listError == null && _combinedNotes.isNotEmpty) ...[
+          for (final note in _combinedNotes)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(note, style: theme.textTheme.bodyMedium),
+            ),
+        ],
         const Divider(height: 1),
         Expanded(child: _list(mailbox)),
       ],
@@ -717,7 +945,7 @@ class _EmailScreenState extends State<EmailScreen> {
     error: _listError,
     onRetry: _loadMessages,
     selectedId: _openId,
-    onOpen: (header) => _openMessage(header.id),
+    onOpen: _openMessage,
     meId: widget.session.me!.id,
     formats: widget.session.me!.display,
     more: _nextCursor != null || _page < _lastPage,
@@ -728,6 +956,9 @@ class _EmailScreenState extends State<EmailScreen> {
         : _loadMessages(page: _page + 1),
     checkedIds: _checked,
     onToggleChecked: _toggleChecked,
+    mailboxes: _mailboxes,
+    showMailboxOnRow: _allInboxes,
+    emptyLabel: _allInboxes ? 'any inbox' : null,
   );
 
   Widget _bulkBar(Mailbox mailbox) {
@@ -774,16 +1005,32 @@ class _EmailScreenState extends State<EmailScreen> {
     final ids = _checked.toList();
     if (ids.isEmpty) return;
 
-    final response = await widget.api.post(
-      '/email/mailboxes/${mailbox.id}/messages/bulk',
-      {'action': action, 'ids': ids},
-    );
+    final groups = <String, List<String>>{};
+    for (final row in _messages) {
+      if (!_checked.contains(row.id)) continue;
+      final mailboxId = row.mailboxId.isEmpty ? mailbox.id : row.mailboxId;
+      groups.putIfAbsent(mailboxId, () => []).add(row.id);
+    }
+    if (groups.isEmpty) {
+      groups[mailbox.id] = ids;
+    }
 
-    if (!mounted) return;
+    String? refusal;
+    for (final entry in groups.entries) {
+      final response = await widget.api.post(
+        '/email/mailboxes/${entry.key}/messages/bulk',
+        {'action': action, 'ids': entry.value},
+      );
+      if (!mounted) return;
+      if (!response.ok) {
+        refusal = response.message;
+        break;
+      }
+    }
 
-    if (!response.ok) {
+    if (refusal != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response.message)),
+        SnackBar(content: Text(refusal)),
       );
       return;
     }
@@ -801,18 +1048,7 @@ class _EmailScreenState extends State<EmailScreen> {
             if (!_checked.contains(row.id))
               row
             else
-              MessageHeader(
-                id: row.id,
-                fromName: row.fromName,
-                fromAddress: row.fromAddress,
-                subject: row.subject,
-                preview: row.preview,
-                receivedAt: row.receivedAt,
-                unread: unread,
-                hasAttachments: row.hasAttachments,
-                seenBy: row.seenBy,
-                messageCount: row.messageCount,
-              ),
+              row.copyWith(unread: unread),
         ];
       }
       _checked = {};
@@ -844,7 +1080,14 @@ class _EmailScreenState extends State<EmailScreen> {
                 : AsyncBody(
                     loading: _loadingMessage,
                     error: _messageError,
-                    onRetry: () => _openMessage(_openId!),
+                    onRetry: () {
+                      for (final row in _messages) {
+                        if (row.id == _openId) {
+                          _openMessage(row);
+                          return;
+                        }
+                      }
+                    },
                     child: _open == null
                         ? const SizedBox.shrink()
                         : _MessageView(
@@ -914,21 +1157,7 @@ class _EmailScreenState extends State<EmailScreen> {
     setState(() {
       _messages = [
         for (final row in _messages)
-          if (row.id != id)
-            row
-          else
-            MessageHeader(
-              id: row.id,
-              fromName: row.fromName,
-              fromAddress: row.fromAddress,
-              subject: row.subject,
-              preview: row.preview,
-              receivedAt: row.receivedAt,
-              unread: !seen,
-              hasAttachments: row.hasAttachments,
-              seenBy: row.seenBy,
-              messageCount: row.messageCount,
-            ),
+          if (row.id != id) row else row.copyWith(unread: !seen),
       ];
     });
   }
