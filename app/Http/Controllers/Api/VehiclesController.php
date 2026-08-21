@@ -20,8 +20,11 @@ use App\Support\Fleet\VehiclePaymentMethod;
 use App\Support\Fleet\VehicleRatePeriod;
 use App\Support\Fleet\VehicleRentalTerms;
 use App\Support\Fleet\VehicleStatus;
+use App\Support\Fleet\VehicleVisibility;
 use App\Support\Numbering\RecordNumberGenerator;
+use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,12 +33,12 @@ use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Fleet register — create, show, update, destroy (spec §5, §8).
+ * Fleet register — list, create, show, update, destroy (spec §5, §8, §11).
  *
  * Create is one transaction: vehicle + first ownership period. Sold/returned
  * close the open ownership on the same save; buy-back needs status + ownership
  * together. Money is stripped on every read unless the caller holds
- * fleet_management.financials.
+ * fleet_management.financials. List always applies VehicleVisibility.
  */
 class VehiclesController extends Controller
 {
@@ -56,6 +59,107 @@ class VehiclesController extends Controller
     {
         return Rule::exists($table, 'id')
             ->where('organization_id', $this->tenant->idOrFail());
+    }
+
+    /** GET /api/v1/vehicles */
+    public function index(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Vehicle::class);
+
+        $user = $request->user();
+        $scope = ViewScope::forUser($user);
+
+        $query = VehicleVisibility::constrain(Vehicle::query(), $user, $scope);
+
+        $statuses = $this->requestedStatuses($request);
+        $query->whereIn('status', $statuses);
+
+        if (filled($request->query('search'))) {
+            $term = trim((string) $request->query('search'));
+            $like = '%'.$term.'%';
+            $query->where(function (Builder $inner) use ($like): void {
+                $inner->where('label', 'like', $like)
+                    ->orWhere('plate', 'like', $like)
+                    ->orWhere('vin', 'like', $like)
+                    ->orWhere('number', 'like', $like)
+                    ->orWhereHas('assignments', function (Builder $a) use ($like): void {
+                        $a->whereNull('released_at')
+                            ->whereHas('user', fn (Builder $u) => $u->where('name', 'like', $like));
+                    });
+            });
+        }
+
+        if (filled($request->query('ownership'))) {
+            $kind = (string) $request->query('ownership');
+            $query->whereHas('ownershipPeriods', function (Builder $p) use ($kind): void {
+                $p->whereNull('ended_on')->where('kind', $kind);
+            });
+        }
+
+        if ($request->boolean('unassigned')) {
+            $query->whereDoesntHave('assignments', fn (Builder $a) => $a->whereNull('released_at'));
+        }
+
+        if ($request->boolean('due_soon')) {
+            $within = now()->addDays(30)->toDateString();
+            $query->where(function (Builder $inner) use ($within): void {
+                $inner->where(function (Builder $date) use ($within): void {
+                    $date->whereNotNull('next_service_on')
+                        ->whereDate('next_service_on', '<=', $within);
+                })->orWhere(function (Builder $miles): void {
+                    $miles->whereNotNull('next_service_miles')
+                        ->whereNotNull('odometer_miles')
+                        ->whereRaw('odometer_miles >= next_service_miles - 500');
+                });
+            });
+        }
+
+        $vehicles = $query
+            ->orderBy('label')
+            ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+
+        return response()->json([
+            'data' => collect($vehicles->items())->map(
+                fn (Vehicle $v) => $this->present($v, $user),
+            ),
+            'meta' => [
+                'total' => $vehicles->total(),
+                'per_page' => $vehicles->perPage(),
+                'current_page' => $vehicles->currentPage(),
+                'last_page' => $vehicles->lastPage(),
+            ],
+        ]);
+    }
+
+    /**
+     * Status filter from `status[]` or a comma list. When the client sends
+     * none, the active fleet only — sold/returned stay hidden.
+     *
+     * @return list<string>
+     */
+    private function requestedStatuses(Request $request): array
+    {
+        $raw = $request->query('status');
+
+        $parsed = match (true) {
+            $raw === null, $raw === '', $raw === [] => [],
+            is_string($raw) => array_values(array_filter(array_map('trim', explode(',', $raw)))),
+            is_array($raw) => array_values(array_filter(array_map(
+                static fn ($s) => is_string($s) ? trim($s) : '',
+                $raw,
+            ))),
+            default => [],
+        };
+
+        if ($parsed === []) {
+            return [
+                VehicleStatus::Active->value,
+                VehicleStatus::InShop->value,
+                VehicleStatus::OutOfService->value,
+            ];
+        }
+
+        return $parsed;
     }
 
     /** POST /api/v1/vehicles */
