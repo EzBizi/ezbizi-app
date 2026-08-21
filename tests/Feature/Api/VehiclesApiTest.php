@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\Vehicle;
 use App\Models\VehicleOwnershipPeriod;
 use App\Models\VehiclePayment;
+use App\Models\VehicleServiceVisit;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -129,5 +130,112 @@ class VehiclesApiTest extends TestCase
         $this->assertArrayHasKey('payments', $kept);
         $this->assertNotEmpty($kept['payments']);
         $this->assertSame(1_200_000, $kept['ownership']['purchase_price_cents']);
+    }
+
+    public function test_sold_refuses_rental_and_closes_owned_period(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        $rental = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $vehicle = Vehicle::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'status' => 'active',
+            ]);
+            VehicleOwnershipPeriod::factory()->create([
+                'vehicle_id' => $vehicle->id,
+                'kind' => 'rented',
+                'counterparty' => 'Lease Co',
+            ]);
+
+            return $vehicle;
+        });
+
+        $this->signedInAs($admin)
+            ->patchJson('/api/v1/vehicles/'.$rental->id, ['status' => 'sold'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['status'])
+            ->assertJsonFragment([
+                'status' => ['Sold is for a vehicle the company owns. Return a rental instead.'],
+            ]);
+
+        $owned = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $vehicle = Vehicle::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'status' => 'active',
+            ]);
+            VehicleOwnershipPeriod::factory()->create([
+                'vehicle_id' => $vehicle->id,
+                'kind' => 'owned',
+                'counterparty' => 'Dealer Co',
+            ]);
+
+            return $vehicle;
+        });
+
+        $sold = $this->signedInAs($admin)
+            ->patchJson('/api/v1/vehicles/'.$owned->id, ['status' => 'sold'])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame('sold', $sold['status']);
+        $this->assertNull($sold['ownership']);
+        $this->assertSame('sold', $sold['ownership_periods'][0]['ended_reason']);
+        $this->assertSame(now()->toDateString(), $sold['ownership_periods'][0]['ended_on']);
+
+        $this->inTenant($tenant['org'], function () use ($owned) {
+            $period = VehicleOwnershipPeriod::query()
+                ->where('vehicle_id', $owned->id)
+                ->first();
+            $this->assertNotNull($period->ended_on);
+            $this->assertSame('sold', $period->ended_reason->value);
+            $this->assertNull($owned->fresh()->openOwnership());
+        });
+    }
+
+    public function test_delete_refuses_history_and_removes_empty_vehicle(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        $withVisit = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $vehicle = Vehicle::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+            ]);
+            VehicleServiceVisit::factory()->create([
+                'vehicle_id' => $vehicle->id,
+            ]);
+
+            return $vehicle;
+        });
+
+        $this->signedInAs($admin)
+            ->deleteJson('/api/v1/vehicles/'.$withVisit->id)
+            ->assertStatus(422)
+            ->assertJsonFragment([
+                'message' => 'This vehicle has history, so it cannot be removed. Mark it sold or returned instead.',
+            ]);
+
+        $this->inTenant($tenant['org'], function () use ($withVisit) {
+            $this->assertTrue(Vehicle::query()->whereKey($withVisit->id)->exists());
+        });
+
+        $empty = $this->inTenant($tenant['org'], function () use ($tenant) {
+            return Vehicle::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+            ]);
+        });
+
+        $this->signedInAs($admin)
+            ->deleteJson('/api/v1/vehicles/'.$empty->id)
+            ->assertNoContent();
+
+        $this->inTenant($tenant['org'], function () use ($empty) {
+            $this->assertFalse(Vehicle::query()->whereKey($empty->id)->exists());
+        });
     }
 }
