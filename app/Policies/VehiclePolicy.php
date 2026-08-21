@@ -79,7 +79,9 @@ class VehiclePolicy
     public function assign(User $user, Vehicle $vehicle): Response
     {
         if (! $user->hasPermission('fleet_management.assign')) {
-            return Refusal::permission('assign a vehicle');
+            return Response::deny(
+                'You can view this vehicle, but you cannot hand over the keys.',
+            );
         }
 
         return $this->within($user, $vehicle, 'assign this vehicle');

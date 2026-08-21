@@ -36,7 +36,10 @@ class VehiclePolicyTest extends TestCase
         $this->inTenant($tenant['org'], function () use ($viewer, $assigner, $vehicle) {
             $denied = Gate::forUser($viewer->fresh())->inspect('assign', $vehicle);
             $this->assertTrue($denied->denied());
-            $this->assertStringContainsString('role', (string) $denied->message());
+            $this->assertSame(
+                'You can view this vehicle, but you cannot hand over the keys.',
+                $denied->message(),
+            );
 
             $allowed = Gate::forUser($assigner->fresh())->inspect('assign', $vehicle);
             $this->assertTrue($allowed->allowed());

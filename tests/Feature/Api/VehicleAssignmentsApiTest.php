@@ -38,7 +38,10 @@ class VehicleAssignmentsApiTest extends TestCase
             ->postJson('/api/v1/vehicles/'.$vehicle->id.'/assignments', [
                 'user_id' => $driver->id,
             ])
-            ->assertForbidden();
+            ->assertForbidden()
+            ->assertJsonFragment([
+                'message' => 'You can view this vehicle, but you cannot hand over the keys.',
+            ]);
     }
 
     public function test_assign_sibling_company_user_is_refused(): void
