@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0053',
+      date: '21 Aug 2026',
+      items: [
+        'Social Media Management is a Posts tab: pages on the left, '
+            'compose in the middle, a week calendar on the right. '
+            'Accounts is where a page will be connected. Publish stays '
+            'off until this view has a page.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0052',
       date: '21 Aug 2026',
       items: [

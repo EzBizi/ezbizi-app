@@ -56,12 +56,62 @@ void main() {
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Social Media Management'), findsWidgets);
-      expect(find.text('Connected accounts'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Posts'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Accounts'), findsOneWidget);
+      expect(find.text('Pages'), findsOneWidget);
       expect(find.text('Compose'), findsOneWidget);
+      expect(find.text('This week'), findsOneWidget);
       expect(find.text('Publish now'), findsOneWidget);
-      expect(find.text('Pinterest'), findsOneWidget);
       expect(find.text('Not built yet'), findsNothing);
+    });
+
+    testWidgets('Publish now is disabled until this view has a page', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler());
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+
+      final publish = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Publish now'),
+      );
+      expect(publish.onPressed, isNull);
+      expect(
+        find.textContaining('nowhere to publish'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Accounts lists the catalogue without hiding unreadiness', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler());
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pinterest'), findsOneWidget);
+      expect(find.text('Facebook Page'), findsOneWidget);
+      expect(find.textContaining('API tier not chosen'), findsOneWidget);
+    });
+
+    testWidgets('Posts lays out on a 375-point window without overflowing', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler(), size: const Size(375, 2400));
+
+      await tester.ensureVisible(
+        find.widgetWithText(ChoiceChip, 'Social Media Management'),
+      );
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Compose'), findsOneWidget);
+      expect(find.text('This week'), findsOneWidget);
     });
 
     testWidgets('it says what Newsletter will be', (tester) async {
