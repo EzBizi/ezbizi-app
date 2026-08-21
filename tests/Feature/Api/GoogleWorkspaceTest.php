@@ -588,6 +588,48 @@ class GoogleWorkspaceTest extends TestCase
         $this->assertStringContainsString('gmail.send', $steps[2]['copy']);
         $this->assertStringContainsString('gmail.modify', $steps[2]['copy']);
         $this->assertStringContainsString('admin.directory.user.readonly', $steps[2]['copy']);
+        $this->assertSame('pending', $body['connections'][0]['health']['status']);
+    }
+
+    public function test_connected_workspace_names_a_missing_modify_scope(): void
+    {
+        $this->withSigningKey();
+        Http::fake(function ($request) {
+            if (! str_contains($request->url(), 'oauth2.googleapis.com/token')) {
+                return Http::response(['error' => 'unexpected'], 500);
+            }
+
+            $jwt = (string) $request['assertion'];
+            $parts = explode('.', $jwt);
+            $json = base64_decode(strtr($parts[1] ?? '', '-_', '+/'), true);
+            $payload = is_string($json) ? json_decode($json, true) : [];
+            $scope = is_array($payload) ? (string) ($payload['scope'] ?? '') : '';
+
+            if (str_contains($scope, 'gmail.modify')) {
+                return Http::response(['error' => 'unauthorized_client'], 401);
+            }
+
+            return Http::response(['access_token' => 'ya29.x'], 200);
+        });
+
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+
+        $body = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/email/workspace')
+            ->assertOk()->json('data.connections.0');
+
+        $health = $body['health'];
+        $this->assertSame('needs_attention', $health['status']);
+        $this->assertTrue($health['probed']);
+        $this->assertStringContainsString('gmail.modify', $health['summary']);
+        $this->assertNotEmpty($body['setup_steps']);
+
+        $byId = collect($health['scopes'])->keyBy('id');
+        $this->assertTrue($byId['gmail.readonly']['ok']);
+        $this->assertTrue($byId['gmail.send']['ok']);
+        $this->assertFalse($byId['gmail.modify']['ok']);
+        $this->assertTrue($byId['directory']['ok']);
     }
 
     private function lookingAt(\App\Models\User $user, string $type, string $id): void

@@ -36,8 +36,9 @@ use RuntimeException;
  *
  * Directory listing impersonates the saved admin address with
  * `admin.directory.user.readonly`. Mail impersonates the mailbox address
- * with the same two Gmail scopes the per-inbox flow asks for, and nothing
- * else — see {@see GoogleOAuth} for why those two and not `gmail.modify`.
+ * with `gmail.readonly` and `gmail.send`. Trash asks for `gmail.modify`
+ * on that path only, so a missing fourth scope cannot take the inbox
+ * down. {@see scopeHealth} is what Settings uses to name a missing one.
  */
 final class GoogleWorkspace
 {
@@ -509,14 +510,178 @@ final class GoogleWorkspace
     }
 
     /**
+     * The four scopes Google Admin must allow on this client.
+     *
+     * @return list<array{id: string, scope: string, label: string, detail: string}>
+     */
+    public function requiredScopes(): array
+    {
+        return [
+            [
+                'id'     => 'gmail.readonly',
+                'scope'  => GoogleOAuth::SCOPE_READ,
+                'label'  => 'Read mail',
+                'detail' => 'List and open messages in the shared inboxes.',
+            ],
+            [
+                'id'     => 'gmail.send',
+                'scope'  => GoogleOAuth::SCOPE_SEND,
+                'label'  => 'Send mail',
+                'detail' => 'Replies go out as the inbox, not as the person typing.',
+            ],
+            [
+                'id'     => 'gmail.modify',
+                'scope'  => GoogleOAuth::SCOPE_MODIFY,
+                'label'  => 'Move to Trash',
+                'detail' => 'Delete on EzBizi bins the thread in Gmail. Without this, listing still works.',
+            ],
+            [
+                'id'     => 'directory',
+                'scope'  => self::SCOPE_DIRECTORY,
+                'label'  => 'List addresses',
+                'detail' => 'The directory of users and aliases, so a shared inbox can be picked.',
+            ],
+        ];
+    }
+
+    /**
+     * Whether each required scope is actually granted in Google Admin.
+     *
+     * A missing `gmail.modify` is not a dead Workspace: listing still uses
+     * read+send. The card has to say so, or "connected" reads as "Trash
+     * works" and it does not.
+     *
+     * @return array{
+     *     status: string,
+     *     summary: string,
+     *     probed: bool,
+     *     scopes: list<array{id: string, scope: string, label: string, detail: string, ok: bool}>
+     * }
+     */
+    public function scopeHealth(GoogleWorkspaceConnection $connection): array
+    {
+        $catalog = $this->requiredScopes();
+
+        if ($connection->status !== GoogleWorkspaceConnection::STATUS_CONNECTED) {
+            return $this->healthFrom($catalog, granted: [], pending: true, probed: false);
+        }
+
+        if (! $this->canProbe()) {
+            // phpunit's dummy PEM is not a key. Assume granted so a settings
+            // test that is not about scopes is not a live Google call.
+            return $this->healthFrom(
+                $catalog,
+                granted: array_column($catalog, 'scope'),
+                pending: false,
+                probed: false,
+            );
+        }
+
+        $granted = [];
+
+        foreach ($catalog as $item) {
+            if ($this->canImpersonate($connection->admin_email, [$item['scope']])) {
+                $granted[] = $item['scope'];
+            }
+        }
+
+        return $this->healthFrom($catalog, $granted, pending: false, probed: true);
+    }
+
+    /**
+     * @param  list<array{id: string, scope: string, label: string, detail: string}>  $catalog
+     * @param  string[]  $granted
+     * @return array{
+     *     status: string,
+     *     summary: string,
+     *     probed: bool,
+     *     scopes: list<array{id: string, scope: string, label: string, detail: string, ok: bool}>
+     * }
+     */
+    private function healthFrom(array $catalog, array $granted, bool $pending, bool $probed): array
+    {
+        $scopes = [];
+        $missing = [];
+
+        foreach ($catalog as $item) {
+            $ok = in_array($item['scope'], $granted, true);
+            $scopes[] = [...$item, 'ok' => $ok];
+            if (! $ok) {
+                $missing[] = $item['id'];
+            }
+        }
+
+        if ($pending) {
+            return [
+                'status'  => 'pending',
+                'summary' => $this->pendingReason(),
+                'probed'  => false,
+                'scopes'  => $scopes,
+            ];
+        }
+
+        if ($missing === []) {
+            return [
+                'status'  => 'ok',
+                'summary' => 'All four Google Admin scopes are granted. Mail, send, Trash and the directory can all run.',
+                'probed'  => $probed,
+                'scopes'  => $scopes,
+            ];
+        }
+
+        $names = implode(', ', $missing);
+
+        return [
+            'status'  => 'needs_attention',
+            'summary' => count($missing) === 1 && $missing[0] === 'gmail.modify'
+                ? 'Mail can be read and sent. Trash cannot run until Google Admin allows gmail.modify.'
+                : 'Missing in Google Admin: '.$names.'. Add them on domain-wide delegation, then return here.',
+            'probed'  => $probed,
+            'scopes'  => $scopes,
+        ];
+    }
+
+    private function canProbe(): bool
+    {
+        if ($this->notReadyBecause() !== null) {
+            return false;
+        }
+
+        $key = $this->privateKey();
+
+        // Catalogue tests use a placeholder PEM that cannot sign. A real
+        // key is thousands of characters. Calling Google with the dummy
+        // would throw, and calling Google from phpunit without Http::fake
+        // would hang the deploy gate.
+        if ($key === null || strlen($key) < 200) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  string[]  $scopes
+     */
+    private function canImpersonate(string $subject, array $scopes): bool
+    {
+        try {
+            $this->impersonate($subject, $scopes);
+
+            return true;
+        } catch (GoogleWorkspaceRefused|CannotReadMailbox|\RuntimeException) {
+            return false;
+        }
+    }
+
+    /**
      * @return list<array{title: string, detail: string, url: ?string, copy: ?string}>
      */
     public function setupSteps(): array
     {
         $id = $this->clientIdForAdminConsole() ?? '';
 
-        $scopes = GoogleOAuth::SCOPE_READ."\n".GoogleOAuth::SCOPE_SEND."\n"
-            .GoogleOAuth::SCOPE_MODIFY."\n".self::SCOPE_DIRECTORY;
+        $scopes = implode("\n", array_column($this->requiredScopes(), 'scope'));
 
         return [
             [

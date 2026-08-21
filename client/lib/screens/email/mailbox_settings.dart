@@ -302,6 +302,7 @@ class WorkspaceLink {
     required this.clientIdForAdminConsole,
     required this.scopes,
     required this.setupSteps,
+    this.health,
   });
 
   final String domain;
@@ -315,6 +316,7 @@ class WorkspaceLink {
   final String? clientIdForAdminConsole;
   final List<String> scopes;
   final List<WorkspaceSetupStep> setupSteps;
+  final WorkspaceHealth? health;
 
   bool get connected => status == 'connected';
 
@@ -338,7 +340,61 @@ class WorkspaceLink {
       for (final step in json['setup_steps'] as List? ?? const [])
         if (step is Map<String, dynamic>) WorkspaceSetupStep.fromJson(step),
     ],
+    health: json['health'] is Map<String, dynamic>
+        ? WorkspaceHealth.fromJson(json['health'] as Map<String, dynamic>)
+        : null,
   );
+}
+
+@immutable
+class WorkspaceHealth {
+  const WorkspaceHealth({
+    required this.status,
+    required this.summary,
+    required this.scopes,
+  });
+
+  /// `ok`, `needs_attention`, or `pending`.
+  final String status;
+  final String summary;
+  final List<WorkspaceScopeCheck> scopes;
+
+  bool get needsAttention => status == 'needs_attention';
+
+  bool get ok => status == 'ok';
+
+  factory WorkspaceHealth.fromJson(Map<String, dynamic> json) =>
+      WorkspaceHealth(
+        status: json['status'] as String? ?? '',
+        summary: json['summary'] as String? ?? '',
+        scopes: [
+          for (final row in json['scopes'] as List? ?? const [])
+            if (row is Map<String, dynamic>) WorkspaceScopeCheck.fromJson(row),
+        ],
+      );
+}
+
+@immutable
+class WorkspaceScopeCheck {
+  const WorkspaceScopeCheck({
+    required this.id,
+    required this.label,
+    required this.detail,
+    required this.ok,
+  });
+
+  final String id;
+  final String label;
+  final String detail;
+  final bool ok;
+
+  factory WorkspaceScopeCheck.fromJson(Map<String, dynamic> json) =>
+      WorkspaceScopeCheck(
+        id: json['id'] as String? ?? '',
+        label: json['label'] as String? ?? '',
+        detail: json['detail'] as String? ?? '',
+        ok: json['ok'] == true,
+      );
 }
 
 @immutable

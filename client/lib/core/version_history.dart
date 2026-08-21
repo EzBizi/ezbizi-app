@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0060',
+      date: '21 Aug 2026',
+      items: [
+        'Email settings shows Workspace health: which Google Admin '
+            'scopes are granted, and which still need adding — Trash '
+            'is gmail.modify.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0059',
       date: '21 Aug 2026',
       items: [

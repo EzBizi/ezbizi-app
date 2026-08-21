@@ -345,6 +345,18 @@ Client `v0.0.0057`.
 
 ---
 
+## 2026-08-21 — Workspace scope health
+
+A Workspace that could list mail still said "connected" when Google
+Admin had not granted `gmail.modify`, so Trash failed in a sentence
+with no explanation on Settings. The connected card now probes each
+of the four domain-wide scopes and lists them: granted or missing.
+When one is missing the Google Admin steps stay on the card.
+
+Client `v0.0.0060`.
+
+---
+
 ## 2026-08-21 — Social Connect for every network
 
 Accounts can finish a sign-in for Pinterest, Facebook Pages, Instagram,

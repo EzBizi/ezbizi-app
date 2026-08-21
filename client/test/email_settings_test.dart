@@ -175,6 +175,105 @@ void main() {
     );
   });
 
+  testWidgets('a connected Workspace names a missing Trash scope', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        workspaceUsable: true,
+        workspace: {
+          'can_connect': false,
+          'view': {
+            'type': 'company',
+            'id': 'co-1',
+            'label': 'A1 Chimney',
+          },
+          'connections': [
+            {
+              'domain': 'a-1chimney.com',
+              'admin_email': 'it-admin@a-1chimney.com',
+              'status': 'connected',
+              'status_reason': null,
+              'scope_type': 'company',
+              'scope_id': 'co-1',
+              'scope_label': 'A1 Chimney',
+              'is_current_view': true,
+              'client_id_for_admin_console': '117502255825060957159',
+              'scopes': const [
+                'https://www.googleapis.com/auth/gmail.readonly',
+                'https://www.googleapis.com/auth/gmail.send',
+                'https://www.googleapis.com/auth/gmail.modify',
+                'https://www.googleapis.com/auth/admin.directory.user.readonly',
+              ],
+              'health': {
+                'status': 'needs_attention',
+                'summary':
+                    'Mail can be read and sent. Trash cannot run until Google Admin allows gmail.modify.',
+                'probed': true,
+                'scopes': const [
+                  {
+                    'id': 'gmail.readonly',
+                    'label': 'Read mail',
+                    'detail': 'List and open messages.',
+                    'ok': true,
+                  },
+                  {
+                    'id': 'gmail.send',
+                    'label': 'Send mail',
+                    'detail': 'Replies go out as the inbox.',
+                    'ok': true,
+                  },
+                  {
+                    'id': 'gmail.modify',
+                    'label': 'Move to Trash',
+                    'detail':
+                        'Delete on EzBizi bins the thread in Gmail. Without this, listing still works.',
+                    'ok': false,
+                  },
+                  {
+                    'id': 'directory',
+                    'label': 'List addresses',
+                    'detail': 'The directory of users and aliases.',
+                    'ok': true,
+                  },
+                ],
+              },
+              'setup_steps': const [
+                {
+                  'title': 'Open Google Admin',
+                  'detail':
+                      'Sign in as a Super Admin of this company\'s Workspace.',
+                  'url':
+                      'https://admin.google.com/ac/owl/domainwidedelegation',
+                  'copy': null,
+                },
+                {
+                  'title': 'Allow these four scopes',
+                  'detail': 'Paste all four. The extra one is gmail.modify.',
+                  'url': null,
+                  'copy':
+                      'https://www.googleapis.com/auth/gmail.modify',
+                },
+              ],
+            },
+          ],
+        },
+      ),
+    );
+
+    await _openSettings(tester);
+
+    expect(find.text('Health'), findsOneWidget);
+    expect(find.text('Move to Trash'), findsOneWidget);
+    expect(
+      find.textContaining('Trash cannot run until Google Admin allows gmail.modify'),
+      findsOneWidget,
+    );
+    expect(find.text('To-do in Google Admin'), findsOneWidget);
+    expect(find.text('Open Google Admin'), findsWidgets);
+  });
+
   // ── what a row says ────────────────────────────────────────────
 
   testWidgets('a broken inbox says what went wrong and when it last worked', (
