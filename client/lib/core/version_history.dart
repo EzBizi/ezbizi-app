@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0063',
+      date: '21 Aug 2026',
+      items: [
+        'Connect Workspace can install EzBizi from Google in one Allow, '
+            'instead of pasting scopes, once the Marketplace listing is live.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0062',
       date: '21 Aug 2026',
       items: [

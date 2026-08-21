@@ -75,6 +75,11 @@ return [
         'workspace_client_email' => env('GOOGLE_MAIL_WORKSPACE_CLIENT_EMAIL'),
         'workspace_private_key'  => env('GOOGLE_MAIL_WORKSPACE_PRIVATE_KEY'),
         'workspace_client_id'    => env('GOOGLE_MAIL_WORKSPACE_CLIENT_ID'),
+
+        // Google Workspace Marketplace listing. When set, Email settings
+        // offers Admin install instead of (or before) pasting DWD scopes.
+        // Empty until the listing exists. Public + Admin-only. See MAIL-SETUP.md.
+        'marketplace_listing_url' => env('GOOGLE_MAIL_MARKETPLACE_URL'),
     ],
 
     /*

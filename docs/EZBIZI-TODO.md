@@ -58,12 +58,13 @@ Per-inbox Gmail OAuth (`GOOGLE_MAIL_CLIENT_ID` / `_SECRET`) is still required �
 an administrator proves they run the domain. The service account is what opens listed
 mailboxes afterwards.
 
-**Google Cloud** — https://console.cloud.google.com/
+**Google Cloud** — https://console.cloud.google.com/  as **development@ezbizi.com**, project `ezbizi-506117`.
 
-1. Enable **Gmail API** https://console.cloud.google.com/apis/library/gmail.googleapis.com and **Admin SDK API** https://console.cloud.google.com/apis/library/admin.googleapis.com
-2. OAuth consent — **Internal** if every inbox is one Workspace (A-1 Chimney). External is a weeks-long Google review. https://console.cloud.google.com/auth/overview
-3. Credentials → **OAuth client ID**, type **Web application**. Redirect URI, character for character: `https://app.ezbizi.com/api/v1/email/google/callback` — https://console.cloud.google.com/apis/credentials
+1. Enable **Gmail API**, **Admin SDK API**, and **Google Workspace Marketplace SDK** (Marketplace SDK is on).
+2. OAuth consent — **External** if customer Workspaces will install from the Marketplace (Google review). Internal only works inside ezbizi.com. https://console.cloud.google.com/auth/overview?project=ezbizi-506117
+3. Credentials → **OAuth client ID**, type **Web application**. Redirect URI, character for character: `https://app.ezbizi.com/api/v1/email/google/callback` — https://console.cloud.google.com/apis/credentials?project=ezbizi-506117
 4. Same page → **service account**. Copy the email (`…@….iam.gserviceaccount.com`), the numeric **Unique ID** (what Admin asks for, not `….apps.googleusercontent.com`), and a JSON key's private key.
+5. **Marketplace listing (preferred install):** App configuration **Public + Admin only**, web app `https://app.ezbizi.com`, the four scopes below. Do not save as Private — that cannot be changed. Store listing uses `assets/marketplace/` icons, `https://www.ezbizi.com/terms/`, `https://www.ezbizi.com/privacy/`. Then `GOOGLE_MAIL_MARKETPLACE_URL` on the box. https://console.cloud.google.com/apis/api/appsmarket-component.googleapis.com/googleapps_sdk_oauth?project=ezbizi-506117
 
 **Google Admin** (the customer's Workspace) — https://admin.google.com/ac/owl/domainwidedelegation
 

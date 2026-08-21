@@ -397,3 +397,17 @@ of the row, week days show their dates, and both calendars have previous
 and next.
 
 Client `v0.0.0059`.
+
+---
+
+## 2026-08-21 — Workspace Marketplace install
+
+Connect Workspace still has the Super Admin prove they run the domain.
+The four Google Admin scopes can then be granted by **Admin install** on
+a Marketplace listing, instead of pasting Unique ID and scope URLs.
+The listing is Public + Admin-only on Cloud project `ezbizi-506117`.
+Google must review a public listing before customer domains can install.
+Until `GOOGLE_MAIL_MARKETPLACE_URL` is on the box, Settings keeps the
+paste-scopes fallback. Marketplace SDK is enabled.
+
+Client `v0.0.0063`.

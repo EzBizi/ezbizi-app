@@ -464,23 +464,36 @@ class _WorkspaceCard extends StatelessWidget {
               _DelegationGuide(steps: link!.setupSteps),
             ],
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: linked
-                  ? Refused(
-                      reason: connectRefusal,
-                      child: OutlinedButton(
-                        onPressed: connectRefusal == null ? onDisconnect : null,
-                        child: const Text('Disconnect Workspace'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (linked &&
+                    (pending || (link?.health?.needsAttention ?? false)) &&
+                    (link!.marketplaceListingUrl ?? '').isNotEmpty)
+                  FilledButton(
+                    onPressed: () =>
+                        openExternalUrl(link!.marketplaceListingUrl!),
+                    child: const Text('Install EzBizi in Google'),
+                  ),
+                linked
+                    ? Refused(
+                        reason: connectRefusal,
+                        child: OutlinedButton(
+                          onPressed: connectRefusal == null
+                              ? onDisconnect
+                              : null,
+                          child: const Text('Disconnect Workspace'),
+                        ),
+                      )
+                    : Refused(
+                        reason: connectRefusal,
+                        child: FilledButton(
+                          onPressed: connectRefusal == null ? onConnect : null,
+                          child: const Text('Connect Workspace'),
+                        ),
                       ),
-                    )
-                  : Refused(
-                      reason: connectRefusal,
-                      child: FilledButton(
-                        onPressed: connectRefusal == null ? onConnect : null,
-                        child: const Text('Connect Workspace'),
-                      ),
-                    ),
+              ],
             ),
           ],
         ),
@@ -599,7 +612,11 @@ class _GuideStep extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: TextButton(
                     onPressed: () => openExternalUrl(step.url!),
-                    child: const Text('Open Google Admin'),
+                    child: Text(
+                      step.url!.contains('workspace.google.com/marketplace')
+                          ? 'Install in Google'
+                          : 'Open Google Admin',
+                    ),
                   ),
                 ),
               ],

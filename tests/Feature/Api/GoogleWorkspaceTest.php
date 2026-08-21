@@ -589,6 +589,41 @@ class GoogleWorkspaceTest extends TestCase
         $this->assertStringContainsString('gmail.modify', $steps[2]['copy']);
         $this->assertStringContainsString('admin.directory.user.readonly', $steps[2]['copy']);
         $this->assertSame('pending', $body['connections'][0]['health']['status']);
+        $this->assertNull($body['marketplace_listing_url']);
+    }
+
+    public function test_a_marketplace_listing_is_the_first_install_step(): void
+    {
+        $this->withServiceAccount();
+        config([
+            'services.google_mail.marketplace_listing_url' =>
+                'https://workspace.google.com/marketplace/app/ezbizi/247590132639',
+        ]);
+        Http::fake(['*' => Http::response(['error' => 'unauthorized_client'], 401)]);
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+        $this->inTenant($t['org'], function () {
+            GoogleWorkspaceConnection::query()->update([
+                'status'        => GoogleWorkspaceConnection::STATUS_PENDING,
+                'status_reason' => 'waiting',
+            ]);
+        });
+
+        $body = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/email/workspace')
+            ->assertOk()->json('data');
+
+        $this->assertSame(
+            'https://workspace.google.com/marketplace/app/ezbizi/247590132639',
+            $body['marketplace_listing_url'],
+        );
+        $steps = $body['connections'][0]['setup_steps'];
+        $this->assertSame('Install EzBizi in Google', $steps[0]['title']);
+        $this->assertSame(
+            'https://workspace.google.com/marketplace/app/ezbizi/247590132639',
+            $steps[0]['url'],
+        );
+        $this->assertStringContainsString('gmail.modify', json_encode($steps));
     }
 
     public function test_connected_workspace_names_a_missing_modify_scope(): void

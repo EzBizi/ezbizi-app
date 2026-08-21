@@ -57,6 +57,7 @@ class GoogleWorkspaceAuthController extends Controller
                     fn (GoogleWorkspaceConnection $row) => $row->scope_type === $target['type']
                         && $row->scope_id === $target['id'],
                 ),
+                'marketplace_listing_url' => $this->workspace->marketplaceListingUrl(),
                 'connections' => $listed->map(function (GoogleWorkspaceConnection $row) use ($target) {
                     $health = $this->workspace->scopeHealth($row);
                     $needsGuide = $row->status === GoogleWorkspaceConnection::STATUS_PENDING
@@ -73,6 +74,7 @@ class GoogleWorkspaceAuthController extends Controller
                         'is_current_view' => $row->scope_type === $target['type']
                             && $row->scope_id === $target['id'],
                         'client_id_for_admin_console' => $this->workspace->clientIdForAdminConsole(),
+                        'marketplace_listing_url' => $this->workspace->marketplaceListingUrl(),
                         'scopes' => array_column($this->workspace->requiredScopes(), 'scope'),
                         'health' => $health,
                         'setup_steps' => $needsGuide ? $this->workspace->setupSteps() : [],

@@ -682,13 +682,31 @@ final class GoogleWorkspace
         $id = $this->clientIdForAdminConsole() ?? '';
 
         $scopes = implode("\n", array_column($this->requiredScopes(), 'scope'));
+        $listing = $this->marketplaceListingUrl();
 
-        return [
+        $install = $listing === null ? [] : [
             [
-                'title'  => 'Open Google Admin',
-                'detail' => 'Sign in as a Super Admin of this company\'s Workspace, then open Domain-wide delegation.',
-                'url'    => 'https://admin.google.com/ac/owl/domainwidedelegation',
+                'title'  => 'Install EzBizi in Google',
+                'detail' => 'Sign in as a Super Admin of this company\'s Workspace. Open the listing, choose Admin install, then Allow. That grants the four scopes — no Unique ID to paste.',
+                'url'    => $listing,
                 'copy'   => null,
+            ],
+            [
+                'title'  => 'Return here',
+                'detail' => 'Come back to Email → Settings. EzBizi checks again when this page loads. If Health still shows a gap, use the fallback below.',
+                'url'    => null,
+                'copy'   => null,
+            ],
+        ];
+
+        $fallback = [
+            [
+                'title'  => $listing === null ? 'Open Google Admin' : 'Or paste the client in Google Admin',
+                'detail' => $listing === null
+                    ? 'Sign in as a Super Admin of this company\'s Workspace, then open Domain-wide delegation.'
+                    : 'Only if Install is not available yet. Open Domain-wide delegation, Add new, paste this client ID.',
+                'url'    => 'https://admin.google.com/ac/owl/domainwidedelegation',
+                'copy'   => $listing === null ? null : ($id === '' ? null : $id),
             ],
             [
                 'title'  => 'Add a new API client',
@@ -709,6 +727,15 @@ final class GoogleWorkspace
                 'copy'   => null,
             ],
         ];
+
+        if ($listing !== null) {
+            // Skip the duplicate "Add a new API client" — the ID is already
+            // on the fallback first step.
+            unset($fallback[1]);
+            $fallback = array_values($fallback);
+        }
+
+        return [...$install, ...$fallback];
     }
 
     public function clientIdForAdminConsole(): ?string
@@ -716,6 +743,30 @@ final class GoogleWorkspace
         $id = config('services.google_mail.workspace_client_id');
 
         return is_string($id) && $id !== '' ? $id : null;
+    }
+
+    /**
+     * The Marketplace store page, when this installation has one.
+     *
+     * Empty until Google has a listing. A Super Admin who opens it can
+     * Admin-install EzBizi for their domain — that is what grants the four
+     * scopes without pasting them. Private listings only work inside
+     * ezbizi.com; customer domains need a public listing.
+     */
+    public function marketplaceListingUrl(): ?string
+    {
+        $url = config('services.google_mail.marketplace_listing_url');
+
+        if (! is_string($url) || $url === '') {
+            return null;
+        }
+
+        if (! str_starts_with($url, 'https://workspace.google.com/marketplace/')
+            && ! str_starts_with($url, 'https://workspace.google.com/marketplace')) {
+            return null;
+        }
+
+        return $url;
     }
 
     /**

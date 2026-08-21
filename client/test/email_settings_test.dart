@@ -274,6 +274,69 @@ void main() {
     expect(find.text('Open Google Admin'), findsWidgets);
   });
 
+  testWidgets('a Workspace with a Marketplace listing offers Install in Google', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        workspaceUsable: true,
+        workspace: {
+          'can_connect': false,
+          'marketplace_listing_url':
+              'https://workspace.google.com/marketplace/app/ezbizi/1',
+          'view': {
+            'type': 'company',
+            'id': 'co-1',
+            'label': 'A1 Chimney',
+          },
+          'connections': [
+            {
+              'domain': 'a-1chimney.com',
+              'admin_email': 'it-admin@a-1chimney.com',
+              'status': 'connected',
+              'status_reason': null,
+              'scope_type': 'company',
+              'scope_id': 'co-1',
+              'scope_label': 'A1 Chimney',
+              'is_current_view': true,
+              'marketplace_listing_url':
+                  'https://workspace.google.com/marketplace/app/ezbizi/1',
+              'health': {
+                'status': 'needs_attention',
+                'summary':
+                    'Mail can be read and sent. Trash cannot run until Google Admin allows gmail.modify.',
+                'probed': true,
+                'scopes': const [
+                  {
+                    'id': 'gmail.modify',
+                    'label': 'Move to Trash',
+                    'detail': 'Add this in Google Admin.',
+                    'ok': false,
+                  },
+                ],
+              },
+              'setup_steps': const [
+                {
+                  'title': 'Install EzBizi in Google',
+                  'detail': 'Admin install, then Allow.',
+                  'url':
+                      'https://workspace.google.com/marketplace/app/ezbizi/1',
+                  'copy': null,
+                },
+              ],
+            },
+          ],
+        },
+      ),
+    );
+
+    await _openSettings(tester);
+
+    expect(find.text('Install EzBizi in Google'), findsWidgets);
+    expect(find.text('Install in Google'), findsOneWidget);
+  });
+
   // ── what a row says ────────────────────────────────────────────
 
   testWidgets('a broken inbox says what went wrong and when it last worked', (

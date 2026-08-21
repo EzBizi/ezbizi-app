@@ -303,6 +303,7 @@ class WorkspaceLink {
     required this.scopes,
     required this.setupSteps,
     this.health,
+    this.marketplaceListingUrl,
   });
 
   final String domain;
@@ -317,6 +318,7 @@ class WorkspaceLink {
   final List<String> scopes;
   final List<WorkspaceSetupStep> setupSteps;
   final WorkspaceHealth? health;
+  final String? marketplaceListingUrl;
 
   bool get connected => status == 'connected';
 
@@ -343,6 +345,7 @@ class WorkspaceLink {
     health: json['health'] is Map<String, dynamic>
         ? WorkspaceHealth.fromJson(json['health'] as Map<String, dynamic>)
         : null,
+    marketplaceListingUrl: json['marketplace_listing_url'] as String?,
   );
 }
 
@@ -426,17 +429,20 @@ class WorkspaceSettings {
     required this.canConnect,
     required this.viewLabel,
     required this.connections,
+    this.marketplaceListingUrl,
   });
 
   final bool canConnect;
   final String viewLabel;
   final List<WorkspaceLink> connections;
+  final String? marketplaceListingUrl;
 
   factory WorkspaceSettings.fromJson(Map<String, dynamic> json) =>
       WorkspaceSettings(
         canConnect: json['can_connect'] == true,
         viewLabel: (json['view'] as Map<String, dynamic>?)?['label'] as String? ??
             '',
+        marketplaceListingUrl: json['marketplace_listing_url'] as String?,
         connections: [
           for (final row in json['connections'] as List? ?? const [])
             if (row is Map<String, dynamic>) WorkspaceLink.fromJson(row),
