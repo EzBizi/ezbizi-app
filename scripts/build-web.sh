@@ -54,26 +54,29 @@ echo "→ building v${VERSION} · ${COMMIT}"
 cp client/web/sw-kill.js client/build/web/flutter_service_worker.js
 
 # MaterialIcons is NOT content-hashed. Flutter writes the same filename every
-# build and tree-shakes a different subset into it. nginx's "hashed assets are
-# immutable" rule does not apply, and a browser that kept the previous subset
-# draws empty boxes for any icon this build added — which is how Web Management,
-# Phone and Fleet Management shipped without glyphs. The version in the filename
-# makes the next load a different URL.
-python - "$VERSION" <<'PY'
+# build and tree-shakes a different subset into it. A browser that kept the
+# previous subset draws empty boxes for any icon this build added.
+#
+# BUILD_ID in the filename, not VERSION: VERSION is bumped by hand and two
+# deploys of the same number would reuse the URL with different glyphs.
+# FontManifest.json itself must not be cached (nginx exact-match no-cache);
+# renaming the font is what makes a leftover cached manifest miss instead of
+# silently drawing the old subset.
+python - "$COMMIT" <<'PY'
 import json, sys
 from pathlib import Path
 
-version = sys.argv[1]
+build_id = sys.argv[1]
 root = Path('client/build/web/assets')
 src = root / 'fonts' / 'MaterialIcons-Regular.otf'
-dst = root / 'fonts' / f'MaterialIcons-Regular.{version}.otf'
+dst = root / 'fonts' / f'MaterialIcons-Regular.{build_id}.otf'
 if not src.is_file():
     raise SystemExit(f'missing {src}')
 src.replace(dst)
 manifest_path = root / 'FontManifest.json'
 manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
 old = 'fonts/MaterialIcons-Regular.otf'
-new = f'fonts/MaterialIcons-Regular.{version}.otf'
+new = f'fonts/MaterialIcons-Regular.{build_id}.otf'
 changed = 0
 for family in manifest:
     for font in family.get('fonts', []):

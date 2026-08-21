@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0044',
+      date: '21 Aug 2026',
+      items: [
+        'Sidebar icons stay after a deploy. A tab that was already open '
+            'picks up the current set on the next load — no need for a '
+            'private window.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0043',
       date: '21 Aug 2026',
       items: [

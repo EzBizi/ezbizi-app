@@ -108,6 +108,44 @@
     }
   </script>
 
-  <script src="flutter_bootstrap.js" async></script>
+  <script>
+    // FontManifest.json was served as Cache-Control: public, immutable for
+    // 30 days. Flutter does not hash it. A browser that loaded the app before
+    // the icon font was renamed still has a manifest pointing at
+    // MaterialIcons-Regular.otf — which is gone, so nginx used to return this
+    // page as the "font", and every Material icon became an empty box.
+    // Incognito looked fine because it had no cache.
+    //
+    // index.html itself is no-cache, so this runs for everybody. cache:reload
+    // replaces the poisoned copy in the HTTP cache before the engine reads
+    // it. Then we load the bootstrap. A 2s timeout still starts the app if
+    // the refetch hangs, rather than leaving a blank page.
+    (function () {
+      var started = false;
+      function start() {
+        if (started) return;
+        started = true;
+        var s = document.createElement('script');
+        s.src = 'flutter_bootstrap.js';
+        s.async = true;
+        document.body.appendChild(s);
+      }
+
+      var timeout = setTimeout(start, 2000);
+      var manifests = [
+        'assets/FontManifest.json',
+        'assets/AssetManifest.bin.json'
+      ];
+      Promise.all(manifests.map(function (url) {
+        return fetch(url, { cache: 'reload' }).catch(function () {});
+      })).then(function () {
+        clearTimeout(timeout);
+        start();
+      }).catch(function () {
+        clearTimeout(timeout);
+        start();
+      });
+    })();
+  </script>
 </body>
 </html>

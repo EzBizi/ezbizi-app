@@ -174,6 +174,15 @@ base UI, so they are recorded here rather than fixed piecemeal.
 
 ## Done
 
+- ✅ **Sidebar icons no longer vanish for a regular (cached) session** — *2026-08-21.*
+  `FontManifest.json` was on the "hashed assets are immutable" nginx list even though
+  Flutter does not hash it. A browser that had loaded the app kept a 30-day copy
+  pointing at `MaterialIcons-Regular.otf`; that file is renamed per build, and the
+  SPA fallback then served `index.html` as the font. Incognito looked fine. Exact
+  no-cache for the manifests, missing `/assets/` 404s, and `index.html` (already
+  no-cache) refetches the manifest before the engine starts so a tab that was
+  already open unsticks on the next load.
+
 - ✅ **Customers and Jobs screens finished** — *2026-08-19.* A customer row is no longer a dead end (detail, address, deactivate, delete, reassign-owner). A job can be opened, edited, deleted, searched and filtered. A failed customer search in the job form says the request failed.
 
 - ✅ **Inspection module built** — *2026-08-19.* Companies design named inspections in Builder,
