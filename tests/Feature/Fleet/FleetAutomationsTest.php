@@ -301,6 +301,89 @@ class FleetAutomationsTest extends TestCase
         });
     }
 
+    public function test_http_buy_back_still_records_money_on_the_new_period(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $vehicle = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $vehicle = Vehicle::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'status' => VehicleStatus::Sold,
+            ]);
+            VehicleOwnershipPeriod::factory()->create([
+                'vehicle_id' => $vehicle->id,
+                'kind' => 'owned',
+                'ended_on' => now()->subDay()->toDateString(),
+                'ended_reason' => 'sold',
+            ]);
+
+            return $vehicle;
+        });
+
+        $this->signedInAs($tenant['admin'])
+            ->patchJson('/api/v1/vehicles/'.$vehicle->id, [
+                'status' => 'active',
+                'ownership' => [
+                    'kind' => 'owned',
+                    'counterparty' => 'Auction',
+                    'purchase_price_cents' => 1_500_000,
+                    'loan_account' => 'HTTP-ACC-1',
+                    'lienholder' => 'Big Bank',
+                ],
+            ])
+            ->assertOk();
+
+        $this->inTenant($tenant['org'], function () use ($vehicle) {
+            $open = $vehicle->fresh()->openOwnership();
+            $this->assertSame('owned', $open?->kind->value);
+            $this->assertSame('Auction', $open?->counterparty);
+            $this->assertSame(1_500_000, $open?->purchase_price_cents);
+            $this->assertSame('HTTP-ACC-1', $open?->loan_account);
+            $this->assertSame('Big Bank', $open?->lienholder);
+        });
+    }
+
+    public function test_apply_buy_back_drops_money_and_loan_account_from_the_period(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $vehicle = Vehicle::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'status' => VehicleStatus::Sold,
+            ]);
+            VehicleOwnershipPeriod::factory()->create([
+                'vehicle_id' => $vehicle->id,
+                'kind' => 'owned',
+                'ended_on' => now()->subDay()->toDateString(),
+                'ended_reason' => 'sold',
+            ]);
+
+            VehicleStatus::apply($vehicle, VehicleStatus::Active, [
+                'kind' => 'owned',
+                'counterparty' => 'Auction',
+                'started_on' => now()->toDateString(),
+                'purchase_price_cents' => 9_999_999,
+                'loan_account' => 'SECRET-ACC-99',
+                'lienholder' => 'Shadow Bank',
+                'loan_monthly_payment_cents' => 12_000,
+                'rental_rate_cents' => 4_000,
+            ]);
+            $vehicle->save();
+
+            $open = $vehicle->fresh()->openOwnership();
+            $this->assertSame('owned', $open?->kind->value);
+            $this->assertSame('Auction', $open?->counterparty);
+            $this->assertNull($open?->purchase_price_cents);
+            $this->assertNull($open?->loan_account);
+            $this->assertNull($open?->lienholder);
+            $this->assertNull($open?->loan_monthly_payment_cents);
+            $this->assertNull($open?->rental_rate_cents);
+        });
+    }
+
     public function test_every_raised_fleet_trigger_is_emitted_and_the_clock_ones_are_not(): void
     {
         $module = app(ModuleRegistry::class)->get('fleet_management');

@@ -855,11 +855,60 @@ class AutomationsController extends Controller
             ]);
         }
 
-        if ($type === 'change_status' && blank($action['value'] ?? $action['status'] ?? null)) {
-            throw ValidationException::withMessages([
-                "actions.{$index}.value" => 'Which status should it move to?',
-            ]);
+        if ($type === 'change_status') {
+            if (blank($action['value'] ?? $action['status'] ?? null)) {
+                throw ValidationException::withMessages([
+                    "actions.{$index}.value" => 'Which status should it move to?',
+                ]);
+            }
+
+            $this->assertStatusChangeable($index, $triggerKey);
         }
+    }
+
+    /**
+     * change_status is generic, the way update_field is. The engine only runs
+     * it for a Job or a Vehicle, so a Customer (or HR) rule that saved one
+     * would fail on every run. Same gate as assertFieldWritable: the TRIGGER's
+     * subject, against ActionRunner's own list.
+     */
+    private function assertStatusChangeable(int $index, ?string $triggerKey): void
+    {
+        $subject = $this->registry->subjectOfTrigger((string) $triggerKey);
+
+        if (ActionRunner::canChangeStatus($subject?->model)) {
+            return;
+        }
+
+        $record = $subject?->label ?? 'the record this rule reacts to';
+
+        throw ValidationException::withMessages([
+            "actions.{$index}.type" => sprintf(
+                'A rule cannot change the status of %s. Only %s can.',
+                $record,
+                $this->subjectsThatCanChangeStatus(),
+            ),
+        ]);
+    }
+
+    /** "a Job or a Vehicle" — read off ActionRunner, same as writable fields. */
+    private function subjectsThatCanChangeStatus(): string
+    {
+        $labels = [];
+
+        foreach ($this->registry->all() as $module) {
+            if ($module->subject !== null && ActionRunner::canChangeStatus($module->subject->model)) {
+                $labels[] = 'a '.$module->subject->label;
+            }
+        }
+
+        if ($labels === []) {
+            return 'nothing';
+        }
+
+        $last = array_pop($labels);
+
+        return $labels === [] ? $last : implode(', ', $labels).' or '.$last;
     }
 
     /**

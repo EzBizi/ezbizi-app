@@ -414,6 +414,43 @@ class AutomationsApiTest extends TestCase
     }
 
     /**
+     * change_status is generic, so the catalogue will offer it under any trigger
+     * whose module declared it. The engine only runs it for a Job or a Vehicle.
+     * Saving it against a Customer would look configured and fail on every run.
+     */
+    public function test_change_status_on_a_record_that_cannot_change_status_is_refused_at_save(): void
+    {
+        $response = $this->as()->postJson('/api/v1/automations', [
+            'name'        => 'Status the customer',
+            'trigger_key' => 'customer.created',
+            'actions'     => [['type' => 'change_status', 'value' => 'active']],
+        ])->assertStatus(422);
+
+        $message = (string) ($response->json('errors')['actions.0.type'][0] ?? '');
+
+        $this->assertNotSame('', $message, 'The rule was refused without saying anything.');
+        $this->assertStringContainsString('cannot change the status of Customer', $message);
+        $this->assertStringContainsString('Job', $message);
+        $this->assertStringContainsString('Vehicle', $message);
+        $this->assertStringNotContainsString('customer.created', $message);
+    }
+
+    public function test_change_status_on_a_job_or_vehicle_still_saves(): void
+    {
+        $this->as()->postJson('/api/v1/automations', [
+            'name'        => 'Close the job',
+            'trigger_key' => 'job.status_changed',
+            'actions'     => [['type' => 'change_status', 'value' => 'completed']],
+        ])->assertCreated();
+
+        $this->as()->postJson('/api/v1/automations', [
+            'name'        => 'Park the van',
+            'trigger_key' => 'vehicle.created',
+            'actions'     => [['type' => 'change_status', 'value' => 'in_shop']],
+        ])->assertCreated();
+    }
+
+    /**
      * An edit is checked against the trigger the rule already has.
      *
      * A PATCH may not carry `trigger_key` at all, so the subject has to come off

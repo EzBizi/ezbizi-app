@@ -115,6 +115,21 @@ class ActionRunner
     }
 
     /**
+     * Which records a rule may move to a named status.
+     *
+     * Jobs already allow it via update_field. Vehicles go through
+     * VehicleStatus::apply. Anything else returns a result at run time, so the
+     * save-time check has to ask the same question or a Customer rule would
+     * save and fail on every run.
+     *
+     * @param  class-string|null  $model
+     */
+    public static function canChangeStatus(?string $model): bool
+    {
+        return $model === Job::class || $model === Vehicle::class;
+    }
+
+    /**
      * Field changes that mean something more specific than "updated".
      *
      * The controllers emit these; an automated change must emit them too, or

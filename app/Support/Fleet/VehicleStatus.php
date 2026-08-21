@@ -106,7 +106,13 @@ enum VehicleStatus: string
         $open->save();
     }
 
-    /** @param  array<string, mixed>  $ownership */
+    /**
+     * Kind, counterparty, started_on only. Cents, lienholder and loan_account
+     * belong on the HTTP buy-back, which copies them after apply from the
+     * vehicle validator. A rule payload must not plant money on the period.
+     *
+     * @param  array<string, mixed>  $ownership
+     */
     private static function openOwnershipPeriod(Vehicle $vehicle, array $ownership): void
     {
         VehicleOwnershipPeriod::create([
@@ -114,18 +120,6 @@ enum VehicleStatus: string
             'kind' => $ownership['kind'],
             'counterparty' => $ownership['counterparty'] ?? null,
             'started_on' => $ownership['started_on'] ?? now()->toDateString(),
-            'purchase_price_cents' => $ownership['purchase_price_cents'] ?? null,
-            'lienholder' => $ownership['lienholder'] ?? null,
-            'loan_account' => $ownership['loan_account'] ?? null,
-            'loan_monthly_payment_cents' => $ownership['loan_monthly_payment_cents'] ?? null,
-            'loan_payoff_date' => $ownership['loan_payoff_date'] ?? null,
-            'transport_cost_cents' => $ownership['transport_cost_cents'] ?? null,
-            'rental_rate_cents' => $ownership['rental_rate_cents'] ?? null,
-            'rental_rate_period' => $ownership['rental_rate_period'] ?? null,
-            'rental_deposit_cents' => $ownership['rental_deposit_cents'] ?? null,
-            'rental_account_number' => $ownership['rental_account_number'] ?? null,
-            'rental_payment_terms' => $ownership['rental_payment_terms'] ?? null,
-            'rental_payment_method' => $ownership['rental_payment_method'] ?? null,
         ]);
     }
 }

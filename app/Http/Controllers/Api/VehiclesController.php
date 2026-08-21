@@ -293,6 +293,10 @@ class VehiclesController extends Controller
         DB::transaction(function () use ($vehicle, $input, $nextStatus, $ownershipInput, $buyingBack) {
             VehicleStatus::apply($vehicle, $nextStatus, $ownershipInput);
 
+            if ($buyingBack && $ownershipInput !== null) {
+                $this->copyHttpOwnershipMoney($vehicle->openOwnership(), $ownershipInput);
+            }
+
             $vehicle->fill($input);
 
             $changed = $vehicle->getDirty();
@@ -448,6 +452,33 @@ class VehiclesController extends Controller
             'ownership.kind.required' => 'A vehicle has to be owned or rented. Say which, then save.',
             'ownership.kind.required_with' => 'A vehicle has to be owned or rented. Say which, then save.',
         ];
+    }
+
+    /**
+     * Apply only writes kind / counterparty / started_on. The HTTP buy-back
+     * still takes money through the vehicle validator, so copy those keys here.
+     *
+     * @param  array<string, mixed>  $ownership
+     */
+    private function copyHttpOwnershipMoney(?VehicleOwnershipPeriod $period, array $ownership): void
+    {
+        if ($period === null) {
+            return;
+        }
+
+        $money = [];
+        foreach (VehicleFinancials::keys() as $key) {
+            if (array_key_exists($key, $ownership)) {
+                $money[$key] = $ownership[$key];
+            }
+        }
+
+        if ($money === []) {
+            return;
+        }
+
+        $period->fill($money);
+        $period->save();
     }
 
     /** @return array{kind: string, counterparty: ?string, started_on: ?string} */
