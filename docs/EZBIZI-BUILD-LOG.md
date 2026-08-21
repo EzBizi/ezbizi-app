@@ -434,3 +434,24 @@ matching Weekly Calendar, and still fit on screen with no vertical
 scroll.
 
 Client `v0.0.0065`.
+
+---
+
+## 2026-08-21 — A-1 onboarding contracts adapted to the HR builder
+
+Eleven A-1 Tools role agreements are now EzBizi catalog templates. Mapping
+follows this platform: `{{name}}` became first and last name,
+`{{company_name}}` became `{{organization.name}}`, hire date is a field,
+paperwork date is `{{document.date}}`, home and business addresses are
+fields. Hourly vs salary and raise vs no-raise are separate templates —
+A-1's clause-deletion tags were not imported as fields. Forty-one
+templates validate through FieldSet and MergeTags.
+
+Publish into a tenant (not on signup):
+
+```
+php artisan hr:publish-onboarding-catalog "{organization name}"
+```
+
+`--dry-run` lists; `--replace` publishes a new version when the name
+already exists. Chimney-trade wording stays opt-in.

@@ -165,6 +165,22 @@ signed PDF would sit outside every backup that covers customer data).
 details are precisely the data those exist for, and §9's own argument is that
 they are cheap to design in and brutal to retrofit.
 
+## Adapted A-1 role templates
+
+The eleven A-1 Tools onboarding agreements (extracted 2026-08-21) are catalog
+data, not a change to merge grammar. `App\Support\Hr\OnboardingCatalog` compiles
+them into EzBizi templates: `{{first_name}} {{last_name}}`,
+`{{organization.name}}`, `{{document.date}}`, and per-template fields. A-1's
+clause-deletion tags (`hourly_only`, `raise_only`, `raise_unit`) are not fields
+— each W-2 role is four templates (hourly/salary × raise/no-raise). Publish into
+a tenant with `php artisan hr:publish-onboarding-catalog "{organization name}"`.
+New signups do not inherit them.
+
+What we did **not** add to EzBizi to make the import prettier: body conditionals,
+an organization-address fact, a profile address, signing-date parts, markdown,
+or fillable tables. Checklists became plain lists; signatures are signature
+fields.
+
 ## Still open
 
 - Whether an employee may change their own bank account without an administrator
