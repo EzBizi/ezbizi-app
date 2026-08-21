@@ -424,3 +424,13 @@ move the selection. A path this role cannot reach falls back rather
 than 403ing.
 
 Client `v0.0.0064`.
+
+---
+
+## 2026-08-21 — Month calendar uses the full width
+
+Monthly Calendar day cells span all seven columns across the pane,
+matching Weekly Calendar, and still fit on screen with no vertical
+scroll.
+
+Client `v0.0.0065`.

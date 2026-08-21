@@ -224,11 +224,22 @@ void main() {
         expect(tester.getRect(first).top, greaterThanOrEqualTo(0));
         expect(tester.getRect(last).bottom, lessThanOrEqualTo(900));
 
-        final cell = tester.getSize(first);
+        final card = tester.getRect(
+          find.ancestor(
+            of: find.text('Monthly Calendar'),
+            matching: find.byType(DashboardCard),
+          ),
+        );
+        final grid = tester.getRect(find.byKey(const Key('month-grid')));
         expect(
-          (cell.width - cell.height).abs(),
-          lessThan(1),
-          reason: 'Month days stayed square while shrinking to fit the pane.',
+          grid.left,
+          closeTo(card.left + DashboardCard.padding, 2),
+          reason: 'The month grid should start at the card’s left padding.',
+        );
+        expect(
+          grid.right,
+          closeTo(card.right - DashboardCard.padding, 2),
+          reason: 'The month grid should use the full card width, like the week.',
         );
       },
     );

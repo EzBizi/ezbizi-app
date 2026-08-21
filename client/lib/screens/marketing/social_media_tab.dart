@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -438,8 +437,6 @@ class _MonthCard extends StatelessWidget {
   final VoidCallback onNext;
   final bool fill;
 
-  static const _weekdayHeaderHeight = 28.0;
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -465,24 +462,39 @@ class _MonthCard extends StatelessWidget {
             onNext: onNext,
           ),
           const SizedBox(height: 8),
+          _WeekdayHeader(theme: theme),
           if (fill)
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  return _fittedGrid(
-                    theme: theme,
-                    today: today,
-                    leading: leading,
-                    daysInMonth: daysInMonth,
-                    rows: rows,
-                    maxWidth: constraints.maxWidth,
-                    maxHeight: constraints.maxHeight,
+                  final rowHeight = rows == 0
+                      ? constraints.maxHeight
+                      : constraints.maxHeight / rows;
+                  return Table(
+                    key: const Key('month-grid'),
+                    defaultColumnWidth: const FlexColumnWidth(),
+                    children: [
+                      for (var r = 0; r < rows; r++)
+                        TableRow(
+                          children: [
+                            for (var c = 0; c < 7; c++)
+                              _monthCell(
+                                theme,
+                                today,
+                                month,
+                                leading,
+                                daysInMonth,
+                                r * 7 + c,
+                                height: rowHeight,
+                              ),
+                          ],
+                        ),
+                    ],
                   );
                 },
               ),
             )
-          else ...[
-            _WeekdayHeader(theme: theme),
+          else
             Table(
               defaultColumnWidth: const FlexColumnWidth(),
               children: [
@@ -502,61 +514,7 @@ class _MonthCard extends StatelessWidget {
                   ),
               ],
             ),
-          ],
         ],
-      ),
-    );
-  }
-
-  Widget _fittedGrid({
-    required ThemeData theme,
-    required DateTime today,
-    required int leading,
-    required int daysInMonth,
-    required int rows,
-    required double maxWidth,
-    required double maxHeight,
-  }) {
-    final forDays = math.max(0.0, maxHeight - _weekdayHeaderHeight);
-    final stride = math.min(
-      maxWidth / 7,
-      rows == 0 ? maxWidth / 7 : forDays / rows,
-    );
-
-    return Align(
-      alignment: Alignment.topLeft,
-      child: SizedBox(
-        width: stride * 7,
-        height: _weekdayHeaderHeight + stride * rows,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              height: _weekdayHeaderHeight,
-              child: _WeekdayHeader(theme: theme),
-            ),
-            Table(
-              defaultColumnWidth: const FlexColumnWidth(),
-              children: [
-                for (var r = 0; r < rows; r++)
-                  TableRow(
-                    children: [
-                      for (var c = 0; c < 7; c++)
-                        _monthCell(
-                          theme,
-                          today,
-                          month,
-                          leading,
-                          daysInMonth,
-                          r * 7 + c,
-                          size: stride,
-                        ),
-                    ],
-                  ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -568,18 +526,23 @@ class _MonthCard extends StatelessWidget {
     int leading,
     int daysInMonth,
     int index, {
-    double? size,
+    double? height,
   }) {
     final day = index - leading + 1;
     if (day < 1 || day > daysInMonth) {
-      return _DayCell(theme: theme, square: true, empty: true, size: size);
+      return _DayCell(
+        theme: theme,
+        square: height == null,
+        empty: true,
+        height: height,
+      );
     }
     final date = DateTime(month.year, month.month, day);
     return _DayCell(
       key: Key('month-day-$day'),
       theme: theme,
-      square: true,
-      size: size,
+      square: height == null,
+      height: height,
       label: '$day',
       highlight: date == today,
     );
@@ -659,7 +622,6 @@ class _DayCell extends StatelessWidget {
     super.key,
     required this.theme,
     this.height,
-    this.size,
     this.square = false,
     this.label,
     this.highlight = false,
@@ -667,7 +629,6 @@ class _DayCell extends StatelessWidget {
   });
 
   final double? height;
-  final double? size;
   final bool square;
   final ThemeData theme;
   final String? label;
@@ -677,7 +638,6 @@ class _DayCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final box = Container(
-      height: size != null ? null : (square ? null : height),
       decoration: BoxDecoration(
         color: empty
             ? theme.colorScheme.surface
@@ -709,8 +669,8 @@ class _DayCell extends StatelessWidget {
       child: box,
     );
 
-    if (size != null) {
-      return SizedBox(width: size, height: size, child: padded);
+    if (height != null) {
+      return SizedBox(height: height, child: padded);
     }
 
     if (square) {

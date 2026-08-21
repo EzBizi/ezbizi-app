@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0065',
+      date: '21 Aug 2026',
+      items: [
+        'Social Media Monthly Calendar uses the full pane width, '
+            'the same as Weekly Calendar, and still fits without scrolling.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0064',
       date: '21 Aug 2026',
       items: [
