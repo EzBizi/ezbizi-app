@@ -357,6 +357,37 @@ final class GmailMailboxReader implements MailboxReader
         return new EmailPicture($this->decodeAttachment($bytes), $mime);
     }
 
+    public const MAX_ATTACHMENT_BYTES = 15_728_640;
+
+    /**
+     * An attached file, fetched live and not stored.
+     *
+     * Same Gmail attachment endpoint as CID pictures. The filename lives on
+     * the sealed token the client already holds, so this returns bytes + mime.
+     */
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
+    {
+        $attachment = $this->get(
+            $mailbox,
+            self::API.'/messages/'.rawurlencode($messageId).'/attachments/'.rawurlencode($attachmentId),
+            [],
+        );
+
+        $bytes = $attachment['data'] ?? null;
+
+        if (! is_string($bytes) || $bytes === '') {
+            throw new PictureUnavailable('That file could not be loaded.');
+        }
+
+        $decoded = $this->decodeAttachment($bytes);
+
+        if (strlen($decoded) > self::MAX_ATTACHMENT_BYTES) {
+            throw new PictureUnavailable('That file is too large to open here.');
+        }
+
+        return new EmailPicture($decoded, 'application/octet-stream');
+    }
+
     private function decodeAttachment(string $data): string
     {
         $translated = strtr($data, '-_', '+/');

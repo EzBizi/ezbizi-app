@@ -145,7 +145,7 @@ final class HtmlEmailSanitiser
             // it asked (capped at the pane), pictures shrinking with it.
             // border-collapse is NOT forced — cellspacing is how a lot of
             // mail makes gaps, and collapsing them stacks the columns.
-            .'html,body{margin:0;padding:0;background:#fff;color:#202124;'
+            .'html,body{margin:0;padding:20px 24px 32px;background:#fff;color:#202124;'
             .'font-family:Arial,Helvetica,sans-serif;font-size:small;line-height:1.5;}'
             .'img{max-width:100%;height:auto;}'
             .'table{max-width:100%;}'

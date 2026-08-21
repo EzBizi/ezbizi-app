@@ -327,6 +327,72 @@ class MailboxMessagesController extends Controller
     }
 
     /**
+     * GET /api/v1/email/mailboxes/{mailbox}/messages/{message}/file
+     *
+     * The attachment handle is an encrypted token. Bytes are fetched live
+     * and not stored. The filename on the token is the one we put on
+     * Content-Disposition — never a path the sender wrote into a header.
+     */
+    public function file(Request $request, Mailbox $mailbox, string $message): Response
+    {
+        $this->assertMayRead($request->user(), $mailbox, 'open this inbox');
+
+        $token = (string) $request->query('src', '');
+
+        if ($token === '' || strlen($token) > 8192) {
+            return response()->json(['message' => 'That file could not be loaded.'], 404);
+        }
+
+        try {
+            [$target, $attachmentId] = $this->attachmentHandle(
+                $this->pictures->reveal($token),
+                $message,
+            );
+        } catch (PictureUnavailable) {
+            return response()->json(['message' => 'That file could not be loaded.'], 404);
+        }
+
+        try {
+            $file = $this->readers->for($mailbox)->downloadAttachment($mailbox, $target, $attachmentId);
+        } catch (PictureUnavailable|CannotReachHost|CannotReadMailbox|\App\Support\Email\GoogleWorkspaceRefused) {
+            return response()->json(['message' => 'That file could not be loaded.'], 404);
+        }
+
+        $name = $this->safeDownloadName($request->query('name', 'attachment'));
+
+        return response($file->bytes, 200, [
+            'Content-Type' => $file->mime,
+            'Content-Disposition' => 'attachment; filename="'.$name.'"',
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    /**
+     * @return array{0: string, 1: string} message id, attachment id
+     */
+    private function attachmentHandle(string $revealed, string $urlMessage): array
+    {
+        if (str_contains($revealed, "\n")) {
+            [$left, $right] = explode("\n", $revealed, 2);
+            if ($left !== '' && $right !== '') {
+                return [$left, $right];
+            }
+        }
+
+        return [$urlMessage, $revealed];
+    }
+
+    private function safeDownloadName(mixed $name): string
+    {
+        $name = is_string($name) ? $name : 'attachment';
+        $name = str_replace(['"', "\r", "\n", '/', '\\'], '', $name);
+        $name = trim($name);
+
+        return $name === '' ? 'attachment' : substr($name, 0, 180);
+    }
+
+    /**
      * POST /api/v1/email/mailboxes/{mailbox}/messages/{message}/seen
      *
      * For the case opening does not cover: somebody who has read a message in

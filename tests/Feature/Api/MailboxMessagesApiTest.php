@@ -14,6 +14,7 @@ use App\Support\Email\Block;
 use App\Support\Email\BlockKind;
 use App\Support\Email\BodySanitiser;
 use App\Support\Email\CannotReadMailbox;
+use App\Support\Email\EmailPicture;
 use App\Support\Email\MailboxReader;
 use App\Support\Email\MailboxReaders;
 use App\Support\Email\MessageDetail;
@@ -58,9 +59,11 @@ class MailboxMessagesApiTest extends TestCase
     {
         parent::setUp();
 
-        FakeMailboxReader::$replies = [];
-        FakeMailboxReader::$trashed = [];
-        FakeMailboxReader::$page    = null;
+        FakeMailboxReader::$replies   = [];
+        FakeMailboxReader::$trashed   = [];
+        FakeMailboxReader::$downloads = [];
+        FakeMailboxReader::$page      = null;
+        FakeMailboxReader::$detail    = null;
     }
 
     /** @param array{org: \App\Models\Organization} $tenant */
@@ -1044,6 +1047,67 @@ class MailboxMessagesApiTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_an_attachment_is_streamed_and_not_stored(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $this->grant($t, $mailbox, 'Clerk');
+
+        $token = Crypt::encryptString("m-1\natt-1");
+
+        $this->signedInAs($clerk)
+            ->get("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/file?src=".urlencode($token).'&name=invoice.pdf')
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png')
+            ->assertHeader('Content-Disposition', 'attachment; filename="invoice.pdf"')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+
+        $this->assertSame(
+            [['message' => 'm-1', 'attachment' => 'att-1']],
+            FakeMailboxReader::$downloads,
+        );
+    }
+
+    public function test_a_forged_attachment_token_is_not_fetched(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $this->grant($t, $mailbox, 'Clerk');
+
+        $this->signedInAs($clerk)
+            ->get("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/file?src=not-a-token")
+            ->assertNotFound();
+
+        $this->assertSame([], FakeMailboxReader::$downloads);
+    }
+
+    public function test_a_filename_cannot_carry_a_path_or_a_quote(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $this->grant($t, $mailbox, 'Clerk');
+
+        $token = Crypt::encryptString("m-1\natt-1");
+
+        $response = $this->signedInAs($clerk)
+            ->get("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/file?src=".urlencode($token).'&name='.urlencode('../quote".pdf'))
+            ->assertOk();
+
+        $this->assertSame(
+            'attachment; filename="..quote.pdf"',
+            $response->headers->get('Content-Disposition'),
+        );
+    }
+
     // ══ 6. THE CACHE IS A CACHE ══════════════════════════════════
 
     /**
@@ -1182,6 +1246,16 @@ class FakeMailboxReader implements MailboxReader
     public function trash(Mailbox $mailbox, string $messageId): void
     {
         self::$trashed[] = $messageId;
+    }
+
+    /** @var array<int, array{message: string, attachment: string}> */
+    public static array $downloads = [];
+
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
+    {
+        self::$downloads[] = ['message' => $messageId, 'attachment' => $attachmentId];
+
+        return new EmailPicture('file-bytes', 'image/png');
     }
 
     /**

@@ -260,6 +260,11 @@ final class ImapMailboxReader implements MailboxReader
         );
     }
 
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
+    {
+        throw new PictureUnavailable('That file could not be loaded.');
+    }
+
     public function currentMark(Mailbox $mailbox): string
     {
         return $this->withConnection($mailbox, function (ImapConnection $imap) use ($mailbox) {

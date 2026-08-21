@@ -95,6 +95,14 @@ interface MailboxReader
     public function trash(Mailbox $mailbox, string $messageId): void;
 
     /**
+     * One attached file, as bytes. Never stored.
+     *
+     * @throws PictureUnavailable when the part is missing or too large
+     * @throws CannotReadMailbox
+     */
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture;
+
+    /**
      * Where this mailbox is RIGHT NOW, without looking at a single message.
      *
      * ═══════════════════════════════════════════════════════════════

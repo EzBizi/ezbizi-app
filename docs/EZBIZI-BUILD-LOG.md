@@ -301,3 +301,18 @@ a missing modify scope cannot take the inbox down — only delete is
 refused, in a sentence.
 
 Client `v0.0.0052`.
+
+---
+
+## 2026-08-21 — open-mail icon, padding, attachments
+
+The list had sender icons; the open message did not. Simple HTML (a
+Gmail "thanks for lunch" with no layout tables) sat flush against the
+iframe edge because wrap padding was 0. Attachments were named and not
+downloadable.
+
+The reading pane now draws the same letter/logo next to From. Wrap CSS
+pads 20/24/32px. Tapping a file streams it through this origin with a
+sealed token — Decision 2 still holds: nothing is stored.
+
+Client `v0.0.0055`.

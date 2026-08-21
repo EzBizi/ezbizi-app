@@ -237,23 +237,26 @@ class MessageHeader {
   }
 }
 
-/// A file that came with the message, named but not held.
+/// A file that came with the message.
 ///
-/// Attachments are not stored (decision 2) and this window does not download
-/// them. Naming them anyway is the honest half: a message whose only content is
-/// a quote PDF would otherwise read as an empty email.
+/// Bytes are not stored here. [token] is the sealed handle the download
+/// endpoint needs; without it the row is a name only.
 @immutable
 class MailAttachment {
-  const MailAttachment({required this.name, required this.size});
+  const MailAttachment({required this.name, required this.size, this.token});
 
   final String name;
 
   /// Bytes, or null where the provider did not say.
   final int? size;
 
+  /// Sealed attachment id. Null when this connection cannot fetch the file.
+  final String? token;
+
   factory MailAttachment.fromJson(Map<String, dynamic> json) => MailAttachment(
     name: json['name'] as String? ?? '',
-    size: json['size'] as int?,
+    size: json['size'] as int? ?? json['bytes'] as int?,
+    token: json['token'] as String?,
   );
 }
 

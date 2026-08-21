@@ -365,15 +365,13 @@ final class GmailMessageMapper
     }
 
     /**
-     * Attachments LISTED, never fetched — decision 2.
+     * Attachments LISTED here; the bytes are fetched when opened.
      *
-     * A part is an attachment when it has a filename. `attachmentId` is
-     * deliberately NOT published: it is the handle a download would use, and
-     * publishing it would invite a client to build a download this application
-     * has not decided how to serve safely.
+     * A part is an attachment when it has a filename. `id` is Gmail's
+     * handle and is sealed before it is published — {@see MessageDetail::toArray}.
      *
      * @param  array<string, mixed>  $part
-     * @return array<int, array{name: string, mime: string, bytes: int}>
+     * @return array<int, array{name: string, mime: string, bytes: int, id: string}>
      */
     private function attachments(array $part): array
     {
@@ -383,13 +381,10 @@ final class GmailMessageMapper
 
         if ($filename !== '') {
             $out[] = [
-                // The filename is the sender's text. It is published as a plain
-                // string that a client draws as a label — never used to open,
-                // save or name anything, so a `../../etc/passwd` in it is a
-                // funny-looking label and nothing more.
                 'name'  => $this->line($filename),
                 'mime'  => $this->line((string) ($part['mimeType'] ?? 'application/octet-stream')),
                 'bytes' => (int) ($part['body']['size'] ?? 0),
+                'id'    => (string) ($part['body']['attachmentId'] ?? ''),
             ];
         }
 

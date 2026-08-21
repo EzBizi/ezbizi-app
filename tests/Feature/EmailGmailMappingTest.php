@@ -197,15 +197,18 @@ class EmailGmailMappingTest extends TestCase
         $this->assertNull($detail->html);
         $this->assertArrayNotHasKey('source_html', $detail->toArray());
 
-        // The attachment is LISTED and not fetched — and its handle is not
-        // published, so no client can build a download this application has not
-        // decided how to serve.
-        $this->assertSame(
-            [['name' => 'invoice.pdf', 'mime' => 'application/pdf', 'bytes' => 20480]],
-            $detail->attachments,
-        );
+        // The attachment is listed, and its handle is sealed so Gmail's
+        // attachmentId is not on the wire. The token carries the message id
+        // as well, so a file on an older thread part still fetches the
+        // right Gmail message.
+        $this->assertSame('invoice.pdf', $detail->attachments[0]['name']);
+        $this->assertSame('application/pdf', $detail->attachments[0]['mime']);
+        $this->assertSame(20480, $detail->attachments[0]['bytes']);
 
+        $token = $detail->toArray()['attachments'][0]['token'];
+        $this->assertIsString($token);
         $this->assertStringNotContainsString('att-1', $wire);
+        $this->assertSame("m-1\natt-1", \Illuminate\Support\Facades\Crypt::decryptString($token));
         $this->assertTrue($detail->summary->hasAttachments);
     }
 

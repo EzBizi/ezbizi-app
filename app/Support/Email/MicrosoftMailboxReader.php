@@ -248,6 +248,11 @@ final class MicrosoftMailboxReader implements MailboxReader
         );
     }
 
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
+    {
+        throw new PictureUnavailable('That file could not be loaded.');
+    }
+
     /**
      * @param  array<string, string>  $query
      * @param  array<string, string>  $headers

@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Support\Email\Arrivals;
 use App\Support\Email\Block;
 use App\Support\Email\CannotReachHost;
+use App\Support\Email\EmailPicture;
 use App\Support\Email\CannotReadMailbox;
 use App\Support\Email\GmailMailboxReader;
 use App\Support\Email\MailboxFault;
@@ -833,6 +834,13 @@ class ScriptedMailboxReader implements MailboxReader
     public function trash(Mailbox $mailbox, string $messageId): void
     {
         $this->answerOrFail();
+    }
+
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
+    {
+        $this->answerOrFail();
+
+        return new EmailPicture('x', 'image/png');
     }
 
     /**

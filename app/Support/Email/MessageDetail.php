@@ -2,6 +2,8 @@
 
 namespace App\Support\Email;
 
+use Illuminate\Support\Facades\Crypt;
+
 /**
  * One message, opened — the header plus a body that has already been sanitised.
  *
@@ -14,21 +16,21 @@ namespace App\Support\Email;
  * wrapped it as a document. {@see toArray()} sends `$html`, never
  * `$sourceHtml`.
  *
- * ── Attachments are LISTED and not fetched ───────────────────────
+ * ── Attachments are listed, and fetched live on demand ───────────
  *
- * Decision 2 says bodies and attachments are never stored, and the list is how a
+ * Decision 2 says bodies and attachments are never stored. The list is how a
  * reader still knows there is a file without one being written to disk here.
- * What is published per attachment is the name, the type the provider claims and
- * the size — enough to say "there is a 2 MB PDF called invoice.pdf". Downloading
- * it is a separate act against the provider, and it is not built: doing it
- * safely means streaming somebody else's file through our origin with the right
- * headers, and that is a decision of its own rather than a line of code.
+ * What is published per attachment is the name, the type, the size, and a
+ * sealed token. The token is the message id, a newline, and the
+ * attachment id, encrypted — Gmail's handle never crosses the wire.
+ * Download is a GET through this origin that streams the bytes and
+ * forgets them.
  */
 final class MessageDetail
 {
     /**
      * @param  Block[]  $blocks
-     * @param  array<int, array{name: string, mime: string, bytes: int}>  $attachments
+     * @param  array<int, array{name: string, mime: string, bytes: int, id?: string}>  $attachments
      * @param  string[]  $seenBy
      */
     public function __construct(
@@ -122,7 +124,18 @@ final class MessageDetail
             ...$this->summary->withSeenBy($this->seenBy)->toArray(),
             'blocks'      => array_map(fn (Block $b) => $b->toArray(), $this->blocks),
             'html'        => $this->html,
-            'attachments' => array_values($this->attachments),
+            'attachments' => array_map(function (array $file): array {
+                $id = (string) ($file['id'] ?? '');
+                $handle = $id === '' ? '' : $this->summary->id."\n".$id;
+
+                return [
+                    'name'  => $file['name'],
+                    'mime'  => $file['mime'] ?? 'application/octet-stream',
+                    'bytes' => $file['bytes'] ?? $file['size'] ?? 0,
+                    // `{messageId}\n{attachmentId}`, sealed. Never the raw handle.
+                    'token' => $handle === '' ? null : Crypt::encryptString($handle),
+                ];
+            }, array_values($this->attachments)),
 
             'images_blocked' => $this->imagesBlocked,
 

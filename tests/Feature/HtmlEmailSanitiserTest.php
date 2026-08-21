@@ -88,6 +88,7 @@ class HtmlEmailSanitiserTest extends TestCase
 
         $this->assertStringContainsString('<!DOCTYPE html>', $out);
         $this->assertStringContainsString('background:#fff', $out);
+        $this->assertStringContainsString('padding:20px 24px 32px', $out);
         $this->assertStringContainsString('img{max-width:100%;height:auto;}', $out);
         $this->assertStringContainsString('<p>Hi</p>', $out);
     }

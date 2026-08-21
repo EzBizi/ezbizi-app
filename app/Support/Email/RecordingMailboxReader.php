@@ -104,6 +104,11 @@ final class RecordingMailboxReader implements MailboxReader
         $this->recording($mailbox, fn () => $this->inner->trash($mailbox, $messageId));
     }
 
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
+    {
+        return $this->recording($mailbox, fn () => $this->inner->downloadAttachment($mailbox, $messageId, $attachmentId));
+    }
+
     /**
      * Both watch calls, recorded exactly like the four above.
      *

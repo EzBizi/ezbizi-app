@@ -406,6 +406,41 @@ void main() {
   /// The link is drawn with its address beside it and does not open anything.
   /// "Click here" over an address nobody can see is how phishing arrives, and
   /// this module is a window onto mail from strangers.
+  testWidgets('the open message shows the sender icon', (tester) async {
+    await _pump(tester, _handler(), size: const Size(1400, 900));
+    await _tap(tester, find.text('Chimney sweep quote').first);
+
+    expect(find.byType(MessageListPane), findsNothing);
+    expect(
+      find.byType(SenderAvatar),
+      findsOneWidget,
+      reason: 'The list has icons and the open mail did not.',
+    );
+  });
+
+  testWidgets('an attachment is named and can be downloaded', (tester) async {
+    String? fileUrl;
+
+    await _pump(
+      tester,
+      _handler(onFile: (url) => fileUrl = url),
+      size: const Size(1400, 900),
+    );
+    await _tap(tester, find.text('Chimney sweep quote').first);
+
+    expect(find.text('ATTACHMENTS'), findsOneWidget);
+    expect(find.textContaining('flue.jpg'), findsOneWidget);
+
+    await _tap(tester, find.textContaining('flue.jpg'));
+
+    expect(
+      fileUrl,
+      contains('/email/mailboxes/mb-1/messages/m-1/file'),
+    );
+    expect(fileUrl, contains('src=sealed-att'));
+    expect(fileUrl, contains('name=flue.jpg'));
+  });
+
   testWidgets('a link shows where it goes', (tester) async {
     await _pump(tester, _handler());
     await _tap(tester, find.text('Chimney sweep quote').first);
@@ -562,10 +597,21 @@ MockClientHandler _handler({
   String listMessage = 'Unavailable.',
   List<Map<String, Object?>>? mailboxes,
   void Function(String path, Map<String, dynamic> body)? onReply,
+  void Function(String url)? onFile,
 }) {
   return (request) async {
     final path = request.url.path;
     final parts = path.split('/').where((part) => part.isNotEmpty).toList();
+
+    if (path.endsWith('/file')) {
+      onFile?.call(request.url.toString());
+
+      return http.Response(
+        'file-bytes',
+        200,
+        headers: {'content-type': 'application/octet-stream'},
+      );
+    }
 
     if (path.endsWith('/email/mailboxes')) {
       return _json({
@@ -759,7 +805,7 @@ Map<String, Object?> _detail(String mailboxId, String messageId) {
     'blocks': messageId == 'm-1' ? _blocks : _plainBlocks,
     'attachments': messageId == 'm-1'
         ? [
-            {'name': 'flue.jpg', 'size': 184320},
+            {'name': 'flue.jpg', 'size': 184320, 'token': 'sealed-att'},
           ]
         : const [],
     'reply': {

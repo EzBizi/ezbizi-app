@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
@@ -990,23 +991,39 @@ class _MessageView extends StatelessWidget {
                 message.subject.isEmpty ? 'No subject' : message.subject,
                 style: theme.textTheme.headlineMedium?.copyWith(fontSize: 21),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 12),
               if (message.thread.length > 1)
                 Text(
                   '${message.thread.length} messages',
                   style: theme.textTheme.bodyMedium,
                 )
-              else ...[
-                Text(
-                  'From ${message.from}',
-                  style: theme.textTheme.bodyMedium,
+              else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SenderAvatar(
+                      name: message.fromName,
+                      email: message.fromAddress,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            message.from,
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                          Text(
+                            'To ${message.to.isEmpty ? mailbox.address : message.to.join(', ')} · '
+                            '${formatStamp(message.receivedAt, 'No date', formats: formats)}',
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
-                  'To ${message.to.isEmpty ? mailbox.address : message.to.join(', ')} · '
-                  '${formatStamp(message.receivedAt, 'No date', formats: formats)}',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ],
               if (seen != null) ...[
                 const SizedBox(height: 8),
                 SeenByLine(sentence: seen),
@@ -1039,7 +1056,7 @@ class _MessageView extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(child: _conversation(mailbox, message)),
-              if (message.attachments.isNotEmpty) _attachments(context),
+              if (_files.isNotEmpty) _attachments(context),
             ],
           ),
         ),
@@ -1063,10 +1080,28 @@ class _MessageView extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(part.from, style: theme.textTheme.titleSmall),
-            Text(
-              formatStamp(part.receivedAt, 'No date', formats: formats),
-              style: theme.textTheme.bodySmall,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SenderAvatar(name: part.fromName, email: part.fromAddress),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(part.from, style: theme.textTheme.titleSmall),
+                      Text(
+                        formatStamp(
+                          part.receivedAt,
+                          'No date',
+                          formats: formats,
+                        ),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             SizedBox(height: 420, child: _body(mailbox, part)),
@@ -1093,55 +1128,100 @@ class _MessageView extends StatelessWidget {
     );
   }
 
-  /// What came with the message, named and not held.
+  /// Files on this message, or on every part of the conversation.
   ///
-  /// Decision 2 again: nothing is stored, so there is nothing to open from
-  /// here. Listing the names anyway is what stops a message whose whole content
-  /// is a quote PDF from reading as an empty one.
+  /// Decision 2: nothing is stored. A tap streams the bytes through EzBizi
+  /// and offers them as a download. A name with no token is listed only.
+  List<MailAttachment> get _files {
+    if (message.thread.isEmpty) return message.attachments;
+
+    return [for (final part in message.thread) ...part.attachments];
+  }
+
   Widget _attachments(BuildContext context) {
     final theme = Theme.of(context);
+    final files = _files;
 
     return Padding(
-      padding: const EdgeInsets.only(top: 22),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Divider(height: 1),
           const SizedBox(height: 14),
-          Text('CAME WITH IT', style: theme.textTheme.labelSmall),
+          Text('ATTACHMENTS', style: theme.textTheme.labelSmall),
           const SizedBox(height: 8),
-          for (final file in message.attachments)
+          for (final file in files)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.attach_file,
-                    size: 15,
-                    color: theme.textTheme.bodySmall?.color,
+              child: InkWell(
+                onTap: file.token == null
+                    ? null
+                    : () => _downloadAttachment(context, file),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.attach_file,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          file.size == null
+                              ? file.name
+                              : '${file.name} · ${_size(file.size!)}',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: file.token == null
+                                ? null
+                                : theme.colorScheme.primary,
+                            decoration: file.token == null
+                                ? null
+                                : TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                      if (file.token != null)
+                        Icon(
+                          Icons.download_outlined,
+                          size: 18,
+                          color: theme.colorScheme.primary,
+                        ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      file.size == null
-                          ? file.name
-                          : '${file.name} · ${_size(file.size!)}',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
-          const SizedBox(height: 6),
-          Text(
-            'Attachments stay with the mail provider. This window lists what '
-            'arrived and does not download it.',
-            style: theme.textTheme.bodySmall,
-          ),
         ],
       ),
     );
+  }
+
+  Future<void> _downloadAttachment(
+    BuildContext context,
+    MailAttachment file,
+  ) async {
+    final token = file.token;
+    if (token == null) return;
+
+    final bytes = await api.getBytes(
+      '/email/mailboxes/${mailbox.id}/messages/${message.id}/file'
+      '?src=${Uri.encodeComponent(token)}'
+      '&name=${Uri.encodeComponent(file.name)}',
+    );
+
+    if (!context.mounted) return;
+
+    if (bytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('That file could not be loaded.')),
+      );
+      return;
+    }
+
+    Files.download(file.name, bytes);
   }
 
   /// Bytes, in the units a person reads. Rounded rather than exact — the

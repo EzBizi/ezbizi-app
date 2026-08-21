@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0055',
+      date: '21 Aug 2026',
+      items: [
+        'The open email shows the sender icon, same as the list. '
+            'Simple mail is padded off the edge of the page. '
+            'Attachments can be downloaded — streamed live, not stored.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0054',
       date: '21 Aug 2026',
       items: [

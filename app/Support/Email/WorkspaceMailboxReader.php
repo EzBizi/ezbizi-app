@@ -73,6 +73,13 @@ final class WorkspaceMailboxReader implements MailboxReader
         $this->gmail->trash($mailbox, $messageId);
     }
 
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
+    {
+        $this->workspace->assertCanOpen($mailbox);
+
+        return $this->gmail->downloadAttachment($mailbox, $messageId, $attachmentId);
+    }
+
     public function currentMark(Mailbox $mailbox): string
     {
         $this->workspace->assertCanOpen($mailbox);

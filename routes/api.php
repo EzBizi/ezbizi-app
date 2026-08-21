@@ -587,6 +587,8 @@ Route::prefix('v1')
         Route::get('email/mailboxes/{mailbox}/messages/{message}', [MailboxMessagesController::class, 'show']);
         Route::get('email/mailboxes/{mailbox}/messages/{message}/picture',
             [MailboxMessagesController::class, 'picture']);
+        Route::get('email/mailboxes/{mailbox}/messages/{message}/file',
+            [MailboxMessagesController::class, 'file']);
         Route::post('email/mailboxes/{mailbox}/messages/{message}/reply',
             [MailboxMessagesController::class, 'reply']);
         Route::post('email/mailboxes/{mailbox}/messages/{message}/seen',
