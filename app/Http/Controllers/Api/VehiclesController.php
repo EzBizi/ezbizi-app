@@ -188,6 +188,12 @@ class VehiclesController extends Controller
 
         $this->authorize('create', [Vehicle::class, $company, $franchise]);
 
+        if (! $request->user()->hasPermission('fleet_management.financials')) {
+            foreach (VehicleFinancials::keys() as $key) {
+                unset($input['ownership'][$key]);
+            }
+        }
+
         $vehicle = DB::transaction(function () use ($input, $company, $franchise) {
             $number = $this->numbers->next(
                 RecordNumberGenerator::VEHICLES,
@@ -290,11 +296,15 @@ class VehiclesController extends Controller
 
         $buyingBack = $currentStatus->isEnded() && $nextStatus->isOnRoad();
 
-        DB::transaction(function () use ($vehicle, $input, $nextStatus, $ownershipInput, $buyingBack) {
+        DB::transaction(function () use ($request, $vehicle, $input, $nextStatus, $ownershipInput, $buyingBack) {
             VehicleStatus::apply($vehicle, $nextStatus, $ownershipInput);
 
             if ($buyingBack && $ownershipInput !== null) {
-                $this->copyHttpOwnershipMoney($vehicle->openOwnership(), $ownershipInput);
+                $this->copyHttpOwnershipMoney(
+                    $vehicle->openOwnership(),
+                    $ownershipInput,
+                    $request->user(),
+                );
             }
 
             $vehicle->fill($input);
@@ -456,13 +466,21 @@ class VehiclesController extends Controller
 
     /**
      * Apply only writes kind / counterparty / started_on. The HTTP buy-back
-     * still takes money through the vehicle validator, so copy those keys here.
+     * still takes money through the vehicle validator, so copy those keys here
+     * when the caller holds fleet_management.financials.
      *
      * @param  array<string, mixed>  $ownership
      */
-    private function copyHttpOwnershipMoney(?VehicleOwnershipPeriod $period, array $ownership): void
-    {
+    private function copyHttpOwnershipMoney(
+        ?VehicleOwnershipPeriod $period,
+        array $ownership,
+        User $user,
+    ): void {
         if ($period === null) {
+            return;
+        }
+
+        if (! $user->hasPermission('fleet_management.financials')) {
             return;
         }
 

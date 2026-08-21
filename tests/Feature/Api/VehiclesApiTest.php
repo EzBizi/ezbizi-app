@@ -75,6 +75,98 @@ class VehiclesApiTest extends TestCase
             ]);
     }
 
+    public function test_create_ignores_ownership_money_without_financials(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $creator = $this->userWithRole($tenant, 'Creator', [
+            'fleet_management.view',
+            'fleet_management.create',
+            'fleet_management.edit',
+        ]);
+
+        $created = $this->signedInAs($creator)
+            ->postJson('/api/v1/vehicles', [
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'year' => 2022,
+                'make' => 'Ford',
+                'model' => 'Transit',
+                'body_type' => 'van',
+                'fuel_type' => 'gas',
+                'ownership' => [
+                    'kind' => 'owned',
+                    'counterparty' => 'Dealer Co',
+                    'purchase_price_cents' => 2_500_000,
+                    'lienholder' => 'Big Bank',
+                    'loan_account' => 'LOAN-1',
+                ],
+            ])
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertSame('Dealer Co', $created['ownership']['counterparty'] ?? null);
+        $this->assertArrayNotHasKey('purchase_price_cents', $created['ownership'] ?? []);
+        $this->assertArrayNotHasKey('lienholder', $created['ownership'] ?? []);
+        $this->assertArrayNotHasKey('loan_account', $created['ownership'] ?? []);
+
+        $this->inTenant($tenant['org'], function () use ($created) {
+            $period = VehicleOwnershipPeriod::query()
+                ->where('vehicle_id', $created['id'])
+                ->first();
+            $this->assertSame('Dealer Co', $period?->counterparty);
+            $this->assertNull($period?->purchase_price_cents);
+            $this->assertNull($period?->lienholder);
+            $this->assertNull($period?->loan_account);
+        });
+    }
+
+    public function test_http_buy_back_ignores_ownership_money_without_financials(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->userWithRole($tenant, 'Editor', [
+            'fleet_management.view',
+            'fleet_management.edit',
+        ]);
+
+        $vehicle = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $vehicle = Vehicle::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'status' => 'sold',
+            ]);
+            VehicleOwnershipPeriod::factory()->create([
+                'vehicle_id' => $vehicle->id,
+                'kind' => 'owned',
+                'ended_on' => now()->subDay()->toDateString(),
+                'ended_reason' => 'sold',
+            ]);
+
+            return $vehicle;
+        });
+
+        $this->signedInAs($editor)
+            ->patchJson('/api/v1/vehicles/'.$vehicle->id, [
+                'status' => 'active',
+                'ownership' => [
+                    'kind' => 'owned',
+                    'counterparty' => 'Auction',
+                    'purchase_price_cents' => 1_500_000,
+                    'loan_account' => 'HTTP-ACC-1',
+                    'lienholder' => 'Big Bank',
+                ],
+            ])
+            ->assertOk();
+
+        $this->inTenant($tenant['org'], function () use ($vehicle) {
+            $open = $vehicle->fresh()->openOwnership();
+            $this->assertSame('owned', $open?->kind->value);
+            $this->assertSame('Auction', $open?->counterparty);
+            $this->assertNull($open?->purchase_price_cents);
+            $this->assertNull($open?->loan_account);
+            $this->assertNull($open?->lienholder);
+        });
+    }
+
     public function test_show_strips_money_and_payments_without_financials(): void
     {
         $tenant = $this->provisionTenant('Alpha');
