@@ -12,7 +12,7 @@ nginx vhosts are **not** swapped by the hook. After a change under `deploy/nginx
 
 ```bash
 sudo cp deploy/nginx-security-headers.conf /etc/nginx/snippets/ezbizi-security-headers.conf
-sudo cp deploy/nginx-app.ezbizi.com.conf /etc/nginx/sites-available/
+sudo cp deploy/nginx-app.ezbizi.com.conf /etc/nginx/sites-available/app.ezbizi.com.conf
 sudo cp deploy/nginx-dev.ezbizi.com.conf /etc/nginx/sites-available/dev.ezbizi.com.conf
 sudo cp deploy/nginx-wildcard-subdomains.conf /etc/nginx/conf.d/wildcard_subdomains.conf
 sudo nginx -t && sudo systemctl reload nginx
