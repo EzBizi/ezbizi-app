@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
+use App\Http\Controllers\Api\VehicleAssignmentsController;
 use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\MailboxesController;
 use App\Http\Controllers\Api\MailboxMessagesController;
@@ -217,6 +218,11 @@ Route::prefix('v1')
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
 
         Route::apiResource('jobs', JobsController::class);
+
+        // drivers before {vehicle} so the literal path is not captured as an id
+        Route::get('vehicles/drivers', [VehicleAssignmentsController::class, 'drivers']);
+        Route::post('vehicles/{vehicle}/assignments', [VehicleAssignmentsController::class, 'store']);
+        Route::post('vehicles/{vehicle}/unassign', [VehicleAssignmentsController::class, 'unassign']);
         Route::apiResource('vehicles', VehiclesController::class);
 
         // ── The shape of the business (§3) ───────────────────────
