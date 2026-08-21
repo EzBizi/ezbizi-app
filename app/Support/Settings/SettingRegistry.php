@@ -384,6 +384,10 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_STRING, default: 'JOB-',
             ),
             new SettingDefinition(
+                key: 'numbering.vehicle_prefix', label: 'Vehicle number prefix',
+                type: SettingDefinition::TYPE_STRING, default: 'V-',
+            ),
+            new SettingDefinition(
                 key: 'numbering.invoice_prefix', label: 'Invoice number prefix',
                 type: SettingDefinition::TYPE_STRING, default: 'INV-',
                 notYetInEffect: 'Takes effect when invoicing ships. Job numbers already use '

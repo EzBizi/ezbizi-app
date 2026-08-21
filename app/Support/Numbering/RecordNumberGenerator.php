@@ -2,7 +2,9 @@
 
 namespace App\Support\Numbering;
 
+use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\Organization;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +20,8 @@ use Illuminate\Support\Facades\DB;
  * Customers are shared org-wide (§5.2), so two franchises numbering from 1 would
  * produce two different people called C-00001 in one search result. Jobs are not
  * shared, but they roll up: an organization-level list showing two JOB-00001 is
- * the same confusion one level higher.
+ * the same confusion one level higher. Vehicles follow the same rule: a pool
+ * van has no franchise, and an org list must never show two V-00001.
  *
  * Invoices will be different. §5.2 flags that they belong to a legal selling
  * entity, and the settings registry notes that a shared sequence interleaves two
@@ -36,6 +39,7 @@ class RecordNumberGenerator
 {
     public const CUSTOMERS = 'customer';
     public const JOBS      = 'job';
+    public const VEHICLES  = 'vehicle';
 
     public function __construct(
         private readonly TenantContext $tenant,
@@ -43,11 +47,14 @@ class RecordNumberGenerator
     ) {}
 
     /**
-     * @param  Franchise  $scope  where the FORMAT is read from — prefix, padding
-     *                            and year are franchise-overridable (§6). Only the
-     *                            format; the sequence itself stays organization-wide.
+     * @param  Organization|Company|Franchise  $scope  where the FORMAT is read
+     *                                                 from — prefix, padding and
+     *                                                 year cascade (§6). Pool
+     *                                                 vehicles pass a company.
+     *                                                 Only the format; the
+     *                                                 sequence stays organization-wide.
      */
-    public function next(string $sequenceKey, Franchise $scope): string
+    public function next(string $sequenceKey, Organization|Company|Franchise $scope): string
     {
         $organizationId = $this->tenant->idOrFail();
 
@@ -95,7 +102,7 @@ class RecordNumberGenerator
         return $this->format($sequenceKey, $scope, $value);
     }
 
-    private function format(string $sequenceKey, Franchise $scope, int $value): string
+    private function format(string $sequenceKey, Organization|Company|Franchise $scope, int $value): string
     {
         $prefix = match ($sequenceKey) {
             self::JOBS      => (string) $this->settings->get('numbering.job_prefix', $scope),
@@ -104,6 +111,7 @@ class RecordNumberGenerator
             // a fourth silently, customers use a plain 'C-'; add a setting when
             // somebody actually wants to change it.
             self::CUSTOMERS => 'C-',
+            self::VEHICLES  => (string) $this->settings->get('numbering.vehicle_prefix', $scope),
             default         => '',
         };
 
