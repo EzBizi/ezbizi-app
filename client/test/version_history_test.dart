@@ -54,11 +54,11 @@ void main() {
 
     expect(find.byType(VersionHistoryPanel), findsOneWidget);
     expect(find.text('What\'s been built'), findsOneWidget);
-    expect(find.text('v0.0.0063'), findsOneWidget);
-    expect(find.textContaining('install EzBizi from Google in one Allow'), findsOneWidget);
+    expect(find.text('v0.0.0064'), findsOneWidget);
+    expect(find.textContaining('Reloading the app keeps you where you were'), findsOneWidget);
 
-    // Newest above oldest: the 0063 heading is above the first-build heading.
-    final newest = tester.getTopLeft(find.text('v0.0.0063'));
+    // Newest above oldest: the 0064 heading is above the first-build heading.
+    final newest = tester.getTopLeft(find.text('v0.0.0064'));
     final oldest = tester.getTopLeft(find.text('v0.0.0001'));
     expect(newest.dy, lessThan(oldest.dy));
   });

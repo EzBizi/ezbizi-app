@@ -411,3 +411,16 @@ Until `GOOGLE_MAIL_MARKETPLACE_URL` is on the box, Settings keeps the
 paste-scopes fallback. Marketplace SDK is enabled.
 
 Client `v0.0.0063`.
+
+---
+
+## 2026-08-21 — Place survives a reload
+
+The signed-in shell kept the current tab only in memory, so a refresh
+on Marketing always opened Dashboard. nginx already served index.html
+for deep links. The address bar is now the memory: `/marketing`,
+`/settings`, `/account`, and the other destinations. Back and forward
+move the selection. A path this role cannot reach falls back rather
+than 403ing.
+
+Client `v0.0.0064`.

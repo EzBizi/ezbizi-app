@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0064',
+      date: '21 Aug 2026',
+      items: [
+        'Reloading the app keeps you where you were. Marketing stays '
+            'Marketing, Settings stays Settings — the address bar holds '
+            'the place, so a refresh is not a trip back to Dashboard.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0063',
       date: '21 Aug 2026',
       items: [

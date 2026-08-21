@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/address.dart';
 import '../../core/staff_session.dart';
 import '../../core/theme.dart';
 import '../../widgets/enrolment_dialog.dart';
@@ -17,9 +18,10 @@ import 'staff_accounts_screen.dart';
 /// organization at all — the server puts them in platform scope, deliberately
 /// distinct from "no tenant set", so a bug cannot pass for staff access.
 class StaffShell extends StatefulWidget {
-  const StaffShell({super.key, required this.staff});
+  const StaffShell({super.key, required this.staff, this.address});
 
   final StaffSession staff;
+  final Address? address;
 
   @override
   State<StaffShell> createState() => _StaffShellState();
@@ -27,6 +29,55 @@ class StaffShell extends StatefulWidget {
 
 class _StaffShellState extends State<StaffShell> {
   int _index = 0;
+  void Function()? _stopListening;
+
+  @override
+  void initState() {
+    super.initState();
+    _apply(widget.address?.path);
+    _stopListening = widget.address?.listen((path) {
+      if (!mounted) return;
+      setState(() => _apply(path));
+    });
+  }
+
+  @override
+  void dispose() {
+    _stopListening?.call();
+    super.dispose();
+  }
+
+  void _apply(String? path) {
+    final id = Address.idOf(path ?? '');
+    if (id == null) return;
+    final at = _ids.indexWhere((candidate) => candidate == id);
+    if (at >= 0) _index = at;
+  }
+
+  void _go(int index) {
+    setState(() => _index = index);
+    final ids = _visibleIds;
+    if (index >= 0 && index < ids.length) {
+      widget.address?.push(Address.pathOf(ids[index]));
+    }
+  }
+
+  List<String> get _visibleIds {
+    final me = widget.staff.me;
+    return [
+      for (final id in _ids)
+        if (id != 'staff' || (me?.isLead ?? false)) id,
+    ];
+  }
+
+  static const _ids = [
+    'organizations',
+    'modules',
+    'client-versions',
+    'client-access',
+    'health',
+    'staff',
+  ];
 
   Future<void> _signOut() async {
     await widget.staff.api.post('/staff/auth/logout', {});
@@ -91,11 +142,13 @@ class _StaffShellState extends State<StaffShell> {
         'Organizations',
         Icons.apartment_outlined,
         OrganizationsScreen(staff: widget.staff),
+        id: 'organizations',
       ),
       _Destination(
         'Modules',
         Icons.toggle_on_outlined,
         ModulesScreen(staff: widget.staff),
+        id: 'modules',
       ),
       // Beside Modules because it is the same kind of control — a platform-wide
       // switch owned by staff that changes what every organization experiences
@@ -106,16 +159,19 @@ class _StaffShellState extends State<StaffShell> {
         'Client versions',
         Icons.devices_outlined,
         ClientVersionsScreen(staff: widget.staff),
+        id: 'client-versions',
       ),
       _Destination(
         'Client access',
         Icons.history_outlined,
         ImpersonationsScreen(staff: widget.staff),
+        id: 'client-access',
       ),
       _Destination(
         'Health',
         Icons.favorite_outline,
         HealthScreen(staff: widget.staff),
+        id: 'health',
       ),
       // Lead Developer only. The server refuses either way; hiding it keeps a
       // Developer from clicking into a wall.
@@ -124,10 +180,18 @@ class _StaffShellState extends State<StaffShell> {
           'Staff',
           Icons.badge_outlined,
           StaffAccountsScreen(staff: widget.staff),
+          id: 'staff',
         ),
     ];
 
     final index = _index.clamp(0, destinations.length - 1);
+    final shown = Address.pathOf(destinations[index].id);
+    if (widget.address != null && widget.address!.path != shown) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.address?.replace(shown);
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -216,7 +280,7 @@ class _StaffShellState extends State<StaffShell> {
                 if (wide)
                   NavigationRail(
                     selectedIndex: index,
-                    onDestinationSelected: (i) => setState(() => _index = i),
+                    onDestinationSelected: _go,
                     labelType: NavigationRailLabelType.all,
                     destinations: destinations
                         .map(
@@ -238,7 +302,7 @@ class _StaffShellState extends State<StaffShell> {
           ? null
           : NavigationBar(
               selectedIndex: index,
-              onDestinationSelected: (i) => setState(() => _index = i),
+              onDestinationSelected: _go,
               destinations: destinations
                   .map(
                     (d) => NavigationDestination(
@@ -291,10 +355,13 @@ class _Banner extends StatelessWidget {
 }
 
 class _Destination {
-  const _Destination(this.label, this.icon, this.screen);
+  const _Destination(this.label, this.icon, this.screen, {String? id})
+    : id = id ?? label;
+
   final String label;
   final IconData icon;
   final Widget screen;
+  final String id;
 }
 
 /// Re-proving both factors before binding a new one.
