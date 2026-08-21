@@ -9,6 +9,7 @@ use App\Models\Mailbox;
 use App\Models\Organization;
 use App\Support\Email\Arrivals;
 use App\Support\Email\CannotReadMailbox;
+use App\Support\Email\EmailPicture;
 use App\Support\Email\MailboxReader;
 use App\Support\Email\MailboxReaders;
 use App\Support\Email\MailboxWatcher;
@@ -1089,12 +1090,12 @@ class WatchedInbox implements MailboxReader
 
     // ── the rest of the interface, which this file is not about ──
 
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         return new MessagePage($this->contents($mailbox));
     }
 
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         return new MessagePage([]);
     }
@@ -1105,6 +1106,13 @@ class WatchedInbox implements MailboxReader
     }
 
     public function reply(Mailbox $mailbox, string $messageId, string $body): void {}
+
+    public function trash(Mailbox $mailbox, string $messageId): void {}
+
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
+    {
+        return new EmailPicture('x', 'image/png');
+    }
 
     public function isConfigured(Mailbox $mailbox): bool
     {

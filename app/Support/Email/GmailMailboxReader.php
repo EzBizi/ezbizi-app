@@ -185,9 +185,9 @@ final class GmailMailboxReader implements MailboxReader
 
     // ── reading ──────────────────────────────────────────────────
 
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->page($mailbox, ['labelIds' => 'INBOX'], $cursor, $limit);
+        return $this->page($mailbox, ['labelIds' => $this->folder($label)], $cursor, $limit);
     }
 
     /**
@@ -203,9 +203,22 @@ final class GmailMailboxReader implements MailboxReader
      * class, which is what stops a search term containing `&` becoming a second
      * parameter.
      */
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->page($mailbox, ['q' => $query], $cursor, $limit);
+        return $this->page($mailbox, [
+            'q' => $query,
+            'labelIds' => $this->folder($label),
+        ], $cursor, $limit);
+    }
+
+    /** Gmail's own folder ids. Anything else is Inbox, not a guessed label. */
+    private function folder(string $label): string
+    {
+        $name = strtoupper($label);
+
+        return in_array($name, ['INBOX', 'STARRED', 'SENT', 'DRAFT', 'TRASH', 'SPAM'], true)
+            ? $name
+            : 'INBOX';
     }
 
     /**
@@ -248,7 +261,7 @@ final class GmailMailboxReader implements MailboxReader
             $messages[] = $this->mapper->threadSummary(
                 $this->get($mailbox, self::API.'/threads/'.rawurlencode($id), [
                     'format'          => 'metadata',
-                    'metadataHeaders' => ['From', 'To', 'Subject', 'Date'],
+                    'metadataHeaders' => ['From', 'To', 'Subject', 'Date', 'Authentication-Results'],
                 ]),
             );
         }
@@ -342,6 +355,37 @@ final class GmailMailboxReader implements MailboxReader
         }
 
         return new EmailPicture($this->decodeAttachment($bytes), $mime);
+    }
+
+    public const MAX_ATTACHMENT_BYTES = 15_728_640;
+
+    /**
+     * An attached file, fetched live and not stored.
+     *
+     * Same Gmail attachment endpoint as CID pictures. The filename lives on
+     * the sealed token the client already holds, so this returns bytes + mime.
+     */
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
+    {
+        $attachment = $this->get(
+            $mailbox,
+            self::API.'/messages/'.rawurlencode($messageId).'/attachments/'.rawurlencode($attachmentId),
+            [],
+        );
+
+        $bytes = $attachment['data'] ?? null;
+
+        if (! is_string($bytes) || $bytes === '') {
+            throw new PictureUnavailable('That file could not be loaded.');
+        }
+
+        $decoded = $this->decodeAttachment($bytes);
+
+        if (strlen($decoded) > self::MAX_ATTACHMENT_BYTES) {
+            throw new PictureUnavailable('That file is too large to open here.');
+        }
+
+        return new EmailPicture($decoded, 'application/octet-stream');
     }
 
     private function decodeAttachment(string $data): string
@@ -561,7 +605,7 @@ final class GmailMailboxReader implements MailboxReader
         foreach ($ids as $id) {
             $summaries[] = $this->mapper->summary($this->get($mailbox, self::API."/messages/{$id}", [
                 'format'          => 'metadata',
-                'metadataHeaders' => ['From', 'To', 'Subject', 'Date'],
+                'metadataHeaders' => ['From', 'To', 'Subject', 'Date', 'Authentication-Results'],
             ]));
         }
 
@@ -617,6 +661,37 @@ final class GmailMailboxReader implements MailboxReader
                 $body,
             ),
         ]);
+    }
+
+    /**
+     * Move the thread to Trash — Gmail's own bin, not a local hide.
+     *
+     * The whole conversation goes, because the list is threads. Binning one
+     * message and leaving the other four WhatsApp templates in the inbox
+     * would look like delete had failed.
+     */
+    public function trash(Mailbox $mailbox, string $messageId): void
+    {
+        try {
+            $meta = $this->get($mailbox, self::API.'/messages/'.rawurlencode($messageId), [
+                'format'          => 'metadata',
+                'metadataHeaders' => ['From'],
+            ]);
+            $threadId = (string) ($meta['threadId'] ?? $messageId);
+
+            $this->postModify(
+                $mailbox,
+                self::API.'/threads/'.rawurlencode($threadId).'/trash',
+                [],
+            );
+        } catch (CannotReadMailbox) {
+            throw new CannotChangeMail(
+                'Mail cannot be deleted from here until Google allows EzBizi to '
+                .'move messages to Trash (gmail.modify). Add that scope in Google '
+                .'Admin domain-wide delegation, or reconnect this inbox and allow '
+                .'it on the consent screen. Nothing has been deleted.',
+            );
+        }
     }
 
     /**
@@ -695,10 +770,10 @@ final class GmailMailboxReader implements MailboxReader
      *   cached value away and mints a fresh one before deciding anything is
      *   wrong. So the worst a stale entry can cost is one extra round trip.
      */
-    private function accessToken(Mailbox $mailbox): string
+    private function accessToken(Mailbox $mailbox, bool $modify = false): string
     {
         if ($mailbox->providerEnum() === MailboxProvider::GmailWorkspace) {
-            return $this->workspace->gmailAccessToken($mailbox);
+            return $this->workspace->gmailAccessToken($mailbox, $modify);
         }
 
         $this->assertUsable($mailbox);
@@ -901,6 +976,29 @@ final class GmailMailboxReader implements MailboxReader
         return $this->send($mailbox, fn (string $token) => Http::withToken($token)
             ->timeout(self::TIMEOUT)
             ->post($url, $payload));
+    }
+
+    /**
+     * A write — Trash — with a token that includes gmail.modify.
+     *
+     * Listing still uses the read+send token so a missing modify scope
+     * cannot take the inbox down. Only this path asks for it.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function postModify(Mailbox $mailbox, string $url, array $payload): array
+    {
+        $token = $this->accessToken($mailbox, modify: true);
+
+        $response = Http::withToken($token)
+            ->timeout(self::TIMEOUT)
+            ->post($url, $payload);
+
+        if ($response->failed()) {
+            throw $this->apiFailure($mailbox, $response);
+        }
+
+        return $response->json() ?? [];
     }
 
     /**

@@ -56,13 +56,193 @@ void main() {
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Social Media Management'), findsWidgets);
-      expect(find.text('Connected accounts'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Posts'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Accounts'), findsOneWidget);
+      expect(find.text('Pages'), findsOneWidget);
       expect(find.text('Compose'), findsOneWidget);
+      expect(find.text('Weekly Calendar'), findsOneWidget);
+      expect(find.text('Monthly Calendar'), findsOneWidget);
       expect(find.text('Publish now'), findsOneWidget);
-      expect(find.text('Pinterest'), findsOneWidget);
       expect(find.text('Not built yet'), findsNothing);
     });
+
+    testWidgets('the month calendar can be moved back and forth', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler());
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+
+      final now = DateTime.now();
+      final thisMonth = _monthTitle(now);
+      final nextMonth = _monthTitle(DateTime(now.year, now.month + 1, 1));
+      final previousMonth = _monthTitle(DateTime(now.year, now.month - 1, 1));
+
+      expect(find.text(thisMonth), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Next month'));
+      await tester.pumpAndSettle();
+      expect(find.text(nextMonth), findsOneWidget);
+      expect(find.text(thisMonth), findsNothing);
+
+      await tester.tap(find.byTooltip('Previous month'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Previous month'));
+      await tester.pumpAndSettle();
+      expect(find.text(previousMonth), findsOneWidget);
+    });
+
+    testWidgets('the week calendar stays on this week', (tester) async {
+      await _pumpScreen(tester, _handler());
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Previous week'), findsNothing);
+      expect(find.byTooltip('Next week'), findsNothing);
+      expect(find.text(_weekRange(_mondayOf(DateTime.now()))), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Next month'));
+      await tester.pumpAndSettle();
+      expect(find.text(_weekRange(_mondayOf(DateTime.now()))), findsOneWidget);
+    });
+
+    testWidgets('Publish now is disabled until this view has a page', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler());
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+
+      final publish = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Publish now'),
+      );
+      expect(publish.onPressed, isNull);
+      expect(
+        find.textContaining('nowhere to publish'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Accounts lists the catalogue without hiding unreadiness', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler());
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pinterest'), findsOneWidget);
+      expect(find.text('Facebook Page'), findsOneWidget);
+      expect(find.textContaining('no X app'), findsOneWidget);
+      expect(find.textContaining('EzBizi has no Pinterest'), findsOneWidget);
+    });
+
+    testWidgets('Pinterest Connect stays off until the installation is ready', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler());
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Connect a page to Everdoors'));
+      await tester.pumpAndSettle();
+
+      final connect = tester.widget<FilledButton>(
+        find.descendant(
+          of: find.widgetWithText(ListTile, 'Pinterest'),
+          matching: find.widgetWithText(FilledButton, 'Connect'),
+        ),
+      );
+      expect(connect.onPressed, isNull);
+    });
+
+    testWidgets('Pinterest Connect is enabled when the catalogue says it is usable', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler(pinterestUsable: true));
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Connect a page to Everdoors'));
+      await tester.pumpAndSettle();
+
+      final connect = tester.widget<FilledButton>(
+        find.descendant(
+          of: find.widgetWithText(ListTile, 'Pinterest'),
+          matching: find.widgetWithText(FilledButton, 'Connect'),
+        ),
+      );
+      expect(connect.onPressed, isNotNull);
+    });
+
+    testWidgets('Posts lays out on a 375-point window without overflowing', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler(), size: const Size(375, 2400));
+
+      await tester.ensureVisible(
+        find.widgetWithText(ChoiceChip, 'Social Media Management'),
+      );
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Compose'), findsOneWidget);
+      expect(find.text('Weekly Calendar'), findsOneWidget);
+      expect(find.text('Monthly Calendar'), findsOneWidget);
+    });
+
+    testWidgets(
+      'the month calendar fits a 1400×900 Posts pane without scrolling',
+      (tester) async {
+        await _pumpScreen(tester, _handler(), size: const Size(1400, 900));
+
+        await tester.tap(
+          find.widgetWithText(ChoiceChip, 'Social Media Management'),
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+
+        final now = DateTime.now();
+        final lastDay = DateTime(now.year, now.month + 1, 0).day;
+        final first = find.byKey(const Key('month-day-1'));
+        final last = find.byKey(Key('month-day-$lastDay'));
+
+        expect(first, findsOneWidget);
+        expect(last, findsOneWidget);
+
+        expect(tester.getRect(first).top, greaterThanOrEqualTo(0));
+        expect(tester.getRect(last).bottom, lessThanOrEqualTo(900));
+
+        final card = tester.getRect(
+          find.ancestor(
+            of: find.text('Monthly Calendar'),
+            matching: find.byType(DashboardCard),
+          ),
+        );
+        final grid = tester.getRect(find.byKey(const Key('month-grid')));
+        expect(
+          grid.left,
+          closeTo(card.left + DashboardCard.padding, 2),
+          reason: 'The month grid should start at the card’s left padding.',
+        );
+        expect(
+          grid.right,
+          closeTo(card.right - DashboardCard.padding, 2),
+          reason: 'The month grid should use the full card width, like the week.',
+        );
+      },
+    );
 
     testWidgets('it says what Newsletter will be', (tester) async {
       await _pumpTab(tester, _handler());
@@ -355,6 +535,7 @@ MockClientHandler _handler({
   int status = 200,
   String message = 'Marketing is unavailable.',
   bool sentIsRaised = false,
+  bool pinterestUsable = false,
   List<Map<String, Object?>>? triggers,
   List<Map<String, Object?>>? actions,
 }) {
@@ -409,6 +590,46 @@ MockClientHandler _handler({
           : _json({'message': message}, status);
     }
 
+    if (path.endsWith('/social/providers')) {
+      return _json({
+        'data': [
+          {
+            'value': 'facebook_page',
+            'label': 'Facebook Page',
+            'usable': false,
+            'unusable_because':
+                'EzBizi has no Meta app set up on this installation yet.',
+            'connects_by': 'sign_in',
+            'start_path': '/social/facebook/start',
+          },
+          {
+            'value': 'pinterest',
+            'label': 'Pinterest',
+            'usable': pinterestUsable,
+            'unusable_because': pinterestUsable
+                ? null
+                : 'EzBizi has no Pinterest connection set up on this '
+                    'installation yet.',
+            'connects_by': 'sign_in',
+            'start_path': '/social/pinterest/start',
+          },
+          {
+            'value': 'x',
+            'label': 'X',
+            'usable': false,
+            'unusable_because':
+                'EzBizi has no X app set up on this installation yet.',
+            'connects_by': 'sign_in',
+            'start_path': '/social/x/start',
+          },
+        ],
+      });
+    }
+
+    if (path.endsWith('/social/connections')) {
+      return _json({'data': <Map<String, Object?>>[]});
+    }
+
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);
   };
 }
@@ -450,3 +671,49 @@ const _me = {
   'companies': <Map<String, Object?>>[],
   'franchises': <Map<String, Object?>>[],
 };
+
+const _monthNames = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+const _shortMonths = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+String _monthTitle(DateTime d) => '${_monthNames[d.month - 1]} ${d.year}';
+
+DateTime _mondayOf(DateTime d) {
+  final day = DateTime(d.year, d.month, d.day);
+  return day.subtract(Duration(days: day.weekday - DateTime.monday));
+}
+
+String _weekRange(DateTime monday) {
+  final sunday = monday.add(const Duration(days: 7 - 1));
+  if (monday.month == sunday.month) {
+    return '${monday.day}–${sunday.day} ${_shortMonths[monday.month - 1]}';
+  }
+  return '${monday.day} ${_shortMonths[monday.month - 1]} – '
+      '${sunday.day} ${_shortMonths[sunday.month - 1]}';
+}

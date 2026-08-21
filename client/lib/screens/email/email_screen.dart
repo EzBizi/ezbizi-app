@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
@@ -77,22 +78,19 @@ class EmailScreen extends StatefulWidget {
 enum _Pane { inboxes, messages, message }
 
 class _EmailScreenState extends State<EmailScreen> {
-  /// Above this the three panes sit side by side; below it there is one.
+  /// Above this the inbox rail sits beside the list (or the open mail);
+  /// below it there is one pane at a time.
   ///
   /// ── R7, and the measurement behind the number ───────────────
   ///
-  /// List-plus-detail is the layout that breaks worst on a phone, and this one
-  /// is list-plus-list-plus-detail. Three columns at 375px are three unusable
-  /// columns; at 700 — a tablet held upright, and a browser window somebody has
-  /// dragged narrow — the message list is down to about 200px, which is a
-  /// subject line every three words.
+  /// Gmail is rail-plus-content, not list-plus-preview. A third column at
+  /// 375px is unusable; at 700 the list used to shrink to a subject every
+  /// three words beside a preview. The list now takes the whole content
+  /// pane, and opening a message replaces it.
   ///
-  /// 1000 is where the three of them still have room to be read: 260 for the
-  /// inboxes leaves 740 to split between a list of subjects and the message
-  /// itself. Below it, one pane at a time with the inbox named above it, and
-  /// the panes that are not on screen are NOT BUILT — an off-screen column is
-  /// still a column that lays out, overflows and is read aloud by a screen
-  /// reader.
+  /// 1000 is where the rail (260) still leaves a readable list. Below it,
+  /// one pane at a time with the inbox named above it, and the panes that
+  /// are not on screen are NOT BUILT.
   static const double _splitAbove = 1000;
 
   /// The inbox rail's width on a wide screen. Enough for an address on one or
@@ -103,6 +101,13 @@ class _EmailScreenState extends State<EmailScreen> {
   String? _mailboxesError;
   List<Mailbox> _mailboxes = const [];
   Mailbox? _selected;
+
+  /// Combined list of every inbox this person can open.
+  bool _allInboxes = false;
+  final Map<String, String?> _cursorByMailbox = {};
+  final Map<String, int> _pageByMailbox = {};
+  final Map<String, int> _lastPageByMailbox = {};
+  List<String> _combinedNotes = const [];
 
   bool _loadingList = true;
   String? _listError;
@@ -127,6 +132,12 @@ class _EmailScreenState extends State<EmailScreen> {
   String? _messageError;
   int _messageRequest = 0;
 
+  final TextEditingController _search = TextEditingController();
+  String _submittedSearch = '';
+  String _folder = 'INBOX';
+  bool _unreadOnly = false;
+  Set<String> _checked = {};
+
   _Pane _pane = _Pane.messages;
 
   /// Inbox's place in the strip below, and where this module opens.
@@ -147,6 +158,12 @@ class _EmailScreenState extends State<EmailScreen> {
   void initState() {
     super.initState();
     _loadMailboxes();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
   Future<void> _loadMailboxes() async {
@@ -174,19 +191,25 @@ class _EmailScreenState extends State<EmailScreen> {
           if (entry is Map<String, dynamic>) Mailbox.fromJson(entry),
       ];
 
-      // Landing in the first one rather than on a chooser: an inbox is named on
-      // screen at all times, so there is no ambiguity about where you are, and
-      // a screen whose first act is to ask a question nobody has an opinion
-      // about is a screen with an extra step in it. Nothing can be SENT without
-      // passing the address twice more.
-      _selected = _mailboxes.isEmpty ? null : _mailboxes.first;
+      // Two or more inboxes land on All inboxes so mail in the second
+      // one is not hidden behind a pick. One inbox is that inbox —
+      // combining it would be a second name for the same list.
+      _allInboxes = _mailboxes.length > 1;
+      _selected = _allInboxes || _mailboxes.isEmpty ? null : _mailboxes.first;
       _pane = _Pane.messages;
     });
 
-    if (_selected != null) _loadMessages();
+    if (_allInboxes || _selected != null) _loadMessages();
   }
 
   Future<void> _loadMessages({int page = 1, String? cursor}) async {
+    if (_allInboxes) {
+      await _loadAll(
+        append: (cursor != null && cursor.isNotEmpty) || page > 1,
+      );
+      return;
+    }
+
     final mailbox = _selected;
 
     if (mailbox == null) return;
@@ -208,6 +231,15 @@ class _EmailScreenState extends State<EmailScreen> {
       query['cursor'] = cursor;
     } else if (page > 1) {
       query['page'] = '$page';
+    }
+    if (_submittedSearch.isNotEmpty) {
+      query['search'] = _submittedSearch;
+    }
+    if (_folder != 'INBOX') {
+      query['label'] = _folder;
+    }
+    if (_unreadOnly) {
+      query['unread'] = '1';
     }
 
     final response = query.isEmpty
@@ -236,7 +268,11 @@ class _EmailScreenState extends State<EmailScreen> {
         return;
       }
 
-      final parsed = _messagePage(response.data, response.body['meta']);
+      final parsed = _messagePage(
+        response.data,
+        response.body['meta'],
+        mailbox: mailbox,
+      );
       _messages = appending ? [..._messages, ...parsed.rows] : parsed.rows;
       _page = parsed.page;
       _lastPage = parsed.lastPage;
@@ -247,7 +283,7 @@ class _EmailScreenState extends State<EmailScreen> {
   /// Live API: `{ messages, next_cursor }`. Tests / older assumption: a list
   /// plus `meta.page`. Both have to produce the same rows.
   ({List<MessageHeader> rows, int page, int lastPage, String? nextCursor})
-  _messagePage(Object? data, Object? meta) {
+  _messagePage(Object? data, Object? meta, {Mailbox? mailbox}) {
     final metaMap = meta is Map<String, dynamic> ? meta : const <String, dynamic>{};
 
     if (data is List) {
@@ -256,7 +292,8 @@ class _EmailScreenState extends State<EmailScreen> {
       return (
         rows: [
           for (final entry in data)
-            if (entry is Map<String, dynamic>) MessageHeader.fromJson(entry),
+            if (entry is Map<String, dynamic>)
+              MessageHeader.fromJson(entry, mailbox: mailbox),
         ],
         page: page,
         lastPage: last,
@@ -270,7 +307,8 @@ class _EmailScreenState extends State<EmailScreen> {
       return (
         rows: [
           for (final entry in (messages is List ? messages : const []))
-            if (entry is Map<String, dynamic>) MessageHeader.fromJson(entry),
+            if (entry is Map<String, dynamic>)
+              MessageHeader.fromJson(entry, mailbox: mailbox),
         ],
         page: 1,
         lastPage: (next != null && next.isNotEmpty) ? 2 : 1,
@@ -281,18 +319,174 @@ class _EmailScreenState extends State<EmailScreen> {
     return (rows: const [], page: 1, lastPage: 1, nextCursor: null);
   }
 
+  Future<void> _loadAll({required bool append}) async {
+    if (_mailboxes.isEmpty) return;
+    if (append && _fetching) return;
+
+    final request = ++_listRequest;
+
+    setState(() {
+      _loadingList = !append && _messages.isEmpty;
+      _fetching = true;
+      _listError = null;
+      _pageError = null;
+      if (!append) {
+        _combinedNotes = const [];
+        _cursorByMailbox.clear();
+        _pageByMailbox.clear();
+        _lastPageByMailbox.clear();
+      }
+    });
+
+    final targets = [
+      for (final mailbox in _mailboxes)
+        if (_folder == 'INBOX' || mailbox.isGmail)
+          if (!append || _mailboxHasMore(mailbox.id)) mailbox,
+    ];
+
+    if (targets.isEmpty) {
+      if (!mounted || request != _listRequest) return;
+      setState(() {
+        _loadingList = false;
+        _fetching = false;
+        if (!append) _messages = const [];
+        _nextCursor = null;
+      });
+      return;
+    }
+
+    final results = await Future.wait(
+      targets.map((mailbox) async {
+        final query = <String, String>{};
+        if (append) {
+          final cursor = _cursorByMailbox[mailbox.id];
+          if (cursor != null && cursor.isNotEmpty) {
+            query['cursor'] = cursor;
+          } else {
+            query['page'] = '${(_pageByMailbox[mailbox.id] ?? 1) + 1}';
+          }
+        }
+        if (_submittedSearch.isNotEmpty) {
+          query['search'] = _submittedSearch;
+        }
+        if (_folder != 'INBOX' && mailbox.isGmail) {
+          query['label'] = _folder;
+        }
+        if (_unreadOnly) {
+          query['unread'] = '1';
+        }
+
+        final response = query.isEmpty
+            ? await widget.api.get('/email/mailboxes/${mailbox.id}/messages')
+            : await widget.api.get(
+                '/email/mailboxes/${mailbox.id}/messages',
+                query,
+              );
+
+        return (mailbox: mailbox, response: response);
+      }),
+    );
+
+    if (!mounted || request != _listRequest) return;
+
+    final rows = <MessageHeader>[if (append) ..._messages];
+    final notes = <String>[if (append) ..._combinedNotes];
+    var anyOk = false;
+
+    for (final result in results) {
+      final mailbox = result.mailbox;
+      final response = result.response;
+
+      if (!response.ok) {
+        final sentence = response.message;
+        if (!notes.contains(sentence)) notes.add(sentence);
+        continue;
+      }
+
+      anyOk = true;
+      final parsed = _messagePage(
+        response.data,
+        response.body['meta'],
+        mailbox: mailbox,
+      );
+      rows.addAll(parsed.rows);
+      _cursorByMailbox[mailbox.id] = parsed.nextCursor;
+      _pageByMailbox[mailbox.id] = parsed.page;
+      _lastPageByMailbox[mailbox.id] = parsed.lastPage;
+    }
+
+    rows.sort(_byNewest);
+    final unique = <MessageHeader>[];
+    final seen = <String>{};
+    for (final row in rows) {
+      if (seen.add('${row.mailboxId}:${row.id}')) unique.add(row);
+    }
+
+    setState(() {
+      _loadingList = false;
+      _fetching = false;
+      _combinedNotes = notes;
+      if (!anyOk) {
+        _listError = notes.join('\n');
+        if (!append) _messages = const [];
+        return;
+      }
+      _messages = unique;
+      _nextCursor = _combinedHasMore() ? 'more' : null;
+      _page = 1;
+      _lastPage = _nextCursor == null ? 1 : 2;
+    });
+  }
+
+  bool _mailboxHasMore(String id) {
+    final cursor = _cursorByMailbox[id];
+    if (cursor != null && cursor.isNotEmpty) return true;
+
+    return (_pageByMailbox[id] ?? 1) < (_lastPageByMailbox[id] ?? 1);
+  }
+
+  bool _combinedHasMore() =>
+      _mailboxes.any((mailbox) => _mailboxHasMore(mailbox.id));
+
+  int _byNewest(MessageHeader a, MessageHeader b) {
+    final at = DateTime.tryParse(a.receivedAt ?? '');
+    final bt = DateTime.tryParse(b.receivedAt ?? '');
+    if (at == null && bt == null) return 0;
+    if (at == null) return 1;
+    if (bt == null) return -1;
+    return bt.compareTo(at);
+  }
+
+  Mailbox? _mailboxById(String id) {
+    for (final mailbox in _mailboxes) {
+      if (mailbox.id == id) return mailbox;
+    }
+    return null;
+  }
+
+  Mailbox? _mailboxForOpen() {
+    if (_openId == null) return _selected;
+    for (final row in _messages) {
+      if (row.id == _openId) {
+        return _mailboxById(row.mailboxId) ?? _selected;
+      }
+    }
+    return _selected;
+  }
+
   /// Open one message. The body is fetched now, because it was never held.
   ///
   /// Opening is also what records the read: the server notes it on this
   /// request, which is what puts "Seen by" on somebody else's screen. There is
   /// deliberately no second call announcing it — two ways of saying the same
   /// thing is two states that can disagree.
-  Future<void> _openMessage(String id) async {
-    final mailbox = _selected;
+  Future<void> _openMessage(MessageHeader header) async {
+    final mailbox = _mailboxById(header.mailboxId) ?? _selected;
 
     if (mailbox == null) return;
 
     final request = ++_messageRequest;
+    final id = header.id;
 
     setState(() {
       _openId = id;
@@ -325,21 +519,10 @@ class _EmailScreenState extends State<EmailScreen> {
         // scroll somebody back to the top of it.
         _messages = [
           for (final row in _messages)
-            if (row.id != id)
-              row
+            if (row.id == id && row.mailboxId == header.mailboxId)
+              row.copyWith(unread: false)
             else
-              MessageHeader(
-                id: row.id,
-                fromName: row.fromName,
-                fromAddress: row.fromAddress,
-                subject: row.subject,
-                preview: row.preview,
-                receivedAt: row.receivedAt,
-                unread: false,
-                hasAttachments: row.hasAttachments,
-                seenBy: row.seenBy,
-                messageCount: row.messageCount,
-              ),
+              row,
         ];
       } else {
         _messageError = 'That message came back in a shape this app could not '
@@ -348,13 +531,50 @@ class _EmailScreenState extends State<EmailScreen> {
     });
   }
 
-  void _select(Mailbox mailbox) {
-    if (mailbox.id == _selected?.id) {
+  void _selectAll() {
+    if (_allInboxes) {
       setState(() => _pane = _Pane.messages);
       return;
     }
 
     setState(() {
+      _allInboxes = true;
+      _selected = null;
+      _pane = _Pane.messages;
+
+      _messages = const [];
+      _loadingList = true;
+      _listError = null;
+      _pageError = null;
+      _page = 1;
+      _lastPage = 1;
+      _nextCursor = null;
+      _openId = null;
+      _open = null;
+      _messageError = null;
+      _loadingMessage = false;
+      _folder = 'INBOX';
+      _unreadOnly = false;
+      _submittedSearch = '';
+      _search.clear();
+      _checked = {};
+      _combinedNotes = const [];
+      _cursorByMailbox.clear();
+      _pageByMailbox.clear();
+      _lastPageByMailbox.clear();
+    });
+
+    _loadMessages();
+  }
+
+  void _select(Mailbox mailbox) {
+    if (!_allInboxes && mailbox.id == _selected?.id) {
+      setState(() => _pane = _Pane.messages);
+      return;
+    }
+
+    setState(() {
+      _allInboxes = false;
       _selected = mailbox;
       _pane = _Pane.messages;
 
@@ -372,9 +592,71 @@ class _EmailScreenState extends State<EmailScreen> {
       _open = null;
       _messageError = null;
       _loadingMessage = false;
+      _folder = 'INBOX';
+      _unreadOnly = false;
+      _submittedSearch = '';
+      _search.clear();
+      _checked = {};
+      _combinedNotes = const [];
+      _cursorByMailbox.clear();
+      _pageByMailbox.clear();
+      _lastPageByMailbox.clear();
     });
 
     _loadMessages();
+  }
+
+  void _closeMessage() {
+    setState(() {
+      _openId = null;
+      _open = null;
+      _messageError = null;
+      _pane = _Pane.messages;
+    });
+  }
+
+  void _runSearch(String value) {
+    setState(() {
+      _submittedSearch = value.trim();
+      _openId = null;
+      _open = null;
+      _pane = _Pane.messages;
+    });
+    _loadMessages();
+  }
+
+  void _selectFolder(String folder) {
+    if (folder == _folder) return;
+    setState(() {
+      _folder = folder;
+      _openId = null;
+      _open = null;
+      _pane = _Pane.messages;
+      _messages = const [];
+      _loadingList = true;
+      _checked = {};
+    });
+    _loadMessages();
+  }
+
+  void _toggleChecked(MessageHeader message) {
+    setState(() {
+      final next = {..._checked};
+      if (!next.remove(message.id)) {
+        next.add(message.id);
+      }
+      _checked = next;
+    });
+  }
+
+  void _toggleCheckedAll() {
+    setState(() {
+      if (_checked.length == _messages.length) {
+        _checked = {};
+      } else {
+        _checked = {for (final row in _messages) row.id};
+      }
+    });
   }
 
   /// Why replying is not offered, or null when it is.
@@ -520,59 +802,141 @@ class _EmailScreenState extends State<EmailScreen> {
   );
 
   Widget _panes(bool wide) {
-    final mailbox = _selected!;
+    final openMailbox = _mailboxForOpen();
+    final listMailbox = _selected ?? _mailboxes.first;
+    final barMailbox = _openId != null ? openMailbox : _selected;
+    final combinedBar = _allInboxes && _openId == null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         InboxBar(
-          mailbox: mailbox,
-          // On a wide screen every pane is already on screen, so there is
-          // nothing to go back to and a back arrow would be a control that
-          // moves nothing.
-          onBack: wide || _pane == _Pane.inboxes
+          mailbox: barMailbox,
+          allInboxes: combinedBar,
+          allAddresses: [
+            for (final mailbox in _mailboxes) mailbox.address,
+          ],
+          // Back from the list to the inboxes, on a narrow screen. Back
+          // from a message is on the reading toolbar, like Gmail.
+          onBack: wide || _pane != _Pane.messages || _openId != null
               ? null
-              : () => setState(
-                  () => _pane = _pane == _Pane.message
-                      ? _Pane.messages
-                      : _Pane.inboxes,
-                ),
-          backTooltip: _pane == _Pane.message
-              ? 'Back to the messages'
-              : 'Back to the inboxes',
+              : () => setState(() => _pane = _Pane.inboxes),
+          backTooltip: 'Back to the inboxes',
         ),
         const Divider(height: 1),
-        Expanded(child: wide ? _wide(mailbox) : _narrow(mailbox)),
+        Expanded(
+          child: wide
+              ? _wide(listMailbox, openMailbox)
+              : _narrow(listMailbox, openMailbox),
+        ),
       ],
     );
   }
 
-  Widget _wide(Mailbox mailbox) => Row(
+  Widget _wide(Mailbox listMailbox, Mailbox? openMailbox) => Row(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       SizedBox(width: _railWidth, child: _rail()),
       const VerticalDivider(width: 1, thickness: 1),
-      // The subjects and the message, at 2:3. A subject list needs less room
-      // than the thing being read, and both need more than a third of what is
-      // left once the inboxes have their column.
-      Expanded(flex: 2, child: _list(mailbox)),
-      const VerticalDivider(width: 1, thickness: 1),
-      Expanded(flex: 3, child: _message(mailbox)),
+      // Gmail: the list OR the message, never both. A preview column beside
+      // the list is the thing that squeezed every mail into half a pane.
+      Expanded(
+        child: _openId != null
+            ? _message(openMailbox ?? listMailbox)
+            : _listColumn(listMailbox),
+      ),
     ],
   );
 
   /// One pane, and only the one on screen is built.
-  Widget _narrow(Mailbox mailbox) => switch (_pane) {
-    _Pane.inboxes => _rail(),
-    _Pane.messages => _list(mailbox),
-    _Pane.message => _message(mailbox),
-  };
+  Widget _narrow(Mailbox listMailbox, Mailbox? openMailbox) =>
+      switch (_pane) {
+        _Pane.inboxes => _rail(),
+        _Pane.messages => _listColumn(listMailbox),
+        _Pane.message => _message(openMailbox ?? listMailbox),
+      };
 
   Widget _rail() => MailboxRail(
     mailboxes: _mailboxes,
     selectedId: _selected?.id,
     onSelected: _select,
+    allSelected: _allInboxes,
+    onSelectAll: _mailboxes.length > 1 ? _selectAll : null,
+    selectedFolder: _folder,
+    onFolderSelected: _selectFolder,
   );
+
+  Widget _listColumn(Mailbox mailbox) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: TextField(
+            controller: _search,
+            textInputAction: TextInputAction.search,
+            onSubmitted: _runSearch,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              hintText: 'Search mail',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: _submittedSearch.isNotEmpty || _search.text.isNotEmpty
+                  ? IconButton(
+                      tooltip: 'Clear search',
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () {
+                        _search.clear();
+                        _runSearch('');
+                      },
+                    )
+                  : null,
+              isDense: true,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(24),
+                borderSide: BorderSide.none,
+              ),
+              filled: true,
+              fillColor: theme.colorScheme.surfaceContainerHighest
+                  .withValues(alpha: 0.5),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: _checked.isEmpty
+              ? Wrap(
+                  spacing: 8,
+                  children: [
+                    FilterChip(
+                      label: const Text('Unread'),
+                      selected: _unreadOnly,
+                      onSelected: (selected) {
+                        setState(() {
+                          _unreadOnly = selected;
+                          _openId = null;
+                          _open = null;
+                        });
+                        _loadMessages();
+                      },
+                    ),
+                  ],
+                )
+              : _bulkBar(mailbox),
+        ),
+        if (_listError == null && _combinedNotes.isNotEmpty) ...[
+          for (final note in _combinedNotes)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(note, style: theme.textTheme.bodyMedium),
+            ),
+        ],
+        const Divider(height: 1),
+        Expanded(child: _list(mailbox)),
+      ],
+    );
+  }
 
   Widget _list(Mailbox mailbox) => MessageListPane(
     mailbox: mailbox,
@@ -581,7 +945,7 @@ class _EmailScreenState extends State<EmailScreen> {
     error: _listError,
     onRetry: _loadMessages,
     selectedId: _openId,
-    onOpen: (header) => _openMessage(header.id),
+    onOpen: _openMessage,
     meId: widget.session.me!.id,
     formats: widget.session.me!.display,
     more: _nextCursor != null || _page < _lastPage,
@@ -590,7 +954,106 @@ class _EmailScreenState extends State<EmailScreen> {
     onMore: () => _nextCursor != null
         ? _loadMessages(cursor: _nextCursor)
         : _loadMessages(page: _page + 1),
+    checkedIds: _checked,
+    onToggleChecked: _toggleChecked,
+    mailboxes: _mailboxes,
+    showMailboxOnRow: _allInboxes,
+    emptyLabel: _allInboxes ? 'any inbox' : null,
   );
+
+  Widget _bulkBar(Mailbox mailbox) {
+    return Row(
+      children: [
+        IconButton(
+          tooltip: _checked.length == _messages.length
+              ? 'Clear selection'
+              : 'Select all on this page',
+          icon: Icon(
+            _checked.length == _messages.length
+                ? Icons.check_box
+                : Icons.check_box_outline_blank,
+          ),
+          onPressed: _toggleCheckedAll,
+        ),
+        Text('${_checked.length} selected'),
+        const SizedBox(width: 8),
+        IconButton(
+          tooltip: 'Delete',
+          icon: const Icon(Icons.delete_outline),
+          onPressed: () => _bulk(mailbox, 'trash'),
+        ),
+        IconButton(
+          tooltip: 'Mark as read',
+          icon: const Icon(Icons.mark_email_read_outlined),
+          onPressed: () => _bulk(mailbox, 'seen'),
+        ),
+        IconButton(
+          tooltip: 'Mark as unread',
+          icon: const Icon(Icons.mark_email_unread_outlined),
+          onPressed: () => _bulk(mailbox, 'unseen'),
+        ),
+        IconButton(
+          tooltip: 'Clear selection',
+          icon: const Icon(Icons.close),
+          onPressed: () => setState(() => _checked = {}),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _bulk(Mailbox mailbox, String action) async {
+    final ids = _checked.toList();
+    if (ids.isEmpty) return;
+
+    final groups = <String, List<String>>{};
+    for (final row in _messages) {
+      if (!_checked.contains(row.id)) continue;
+      final mailboxId = row.mailboxId.isEmpty ? mailbox.id : row.mailboxId;
+      groups.putIfAbsent(mailboxId, () => []).add(row.id);
+    }
+    if (groups.isEmpty) {
+      groups[mailbox.id] = ids;
+    }
+
+    String? refusal;
+    for (final entry in groups.entries) {
+      final response = await widget.api.post(
+        '/email/mailboxes/${entry.key}/messages/bulk',
+        {'action': action, 'ids': entry.value},
+      );
+      if (!mounted) return;
+      if (!response.ok) {
+        refusal = response.message;
+        break;
+      }
+    }
+
+    if (refusal != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(refusal)),
+      );
+      return;
+    }
+
+    setState(() {
+      if (action == 'trash') {
+        _messages = [
+          for (final row in _messages)
+            if (!_checked.contains(row.id)) row,
+        ];
+      } else {
+        final unread = action == 'unseen';
+        _messages = [
+          for (final row in _messages)
+            if (!_checked.contains(row.id))
+              row
+            else
+              row.copyWith(unread: unread),
+        ];
+      }
+      _checked = {};
+    });
+  }
 
   Widget _message(Mailbox mailbox) {
     // White, like the page Gmail puts mail on — not the app's grey chrome
@@ -598,37 +1061,125 @@ class _EmailScreenState extends State<EmailScreen> {
     // beside the iframe and made the preview look like a card on a tint.
     return ColoredBox(
       color: Colors.white,
-      child: _openId == null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'Pick a message to read it.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ),
-            )
-          : AsyncBody(
-              loading: _loadingMessage,
-              error: _messageError,
-              // The id is enough to ask again, so retrying does not depend on
-              // the row still being in the list — a "Try again" that quietly
-              // did nothing because the list had been refetched underneath it
-              // is a dead end.
-              onRetry: () => _openMessage(_openId!),
-              child: _open == null
-                  ? const SizedBox.shrink()
-                  : _MessageView(
-                      mailbox: mailbox,
-                      message: _open!,
-                      meId: widget.session.me!.id,
-                      formats: widget.session.me!.display,
-                      refusal: _replyRefusal(mailbox, _open!),
-                      onReply: () => _reply(mailbox, _open!),
-                      api: widget.api,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _readingBar(mailbox),
+          const Divider(height: 1),
+          Expanded(
+            child: _openId == null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'Pick a message to read it.',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
                     ),
-            ),
+                  )
+                : AsyncBody(
+                    loading: _loadingMessage,
+                    error: _messageError,
+                    onRetry: () {
+                      for (final row in _messages) {
+                        if (row.id == _openId) {
+                          _openMessage(row);
+                          return;
+                        }
+                      }
+                    },
+                    child: _open == null
+                        ? const SizedBox.shrink()
+                        : _MessageView(
+                            mailbox: mailbox,
+                            message: _open!,
+                            meId: widget.session.me!.id,
+                            formats: widget.session.me!.display,
+                            refusal: _replyRefusal(mailbox, _open!),
+                            onReply: () => _reply(mailbox, _open!),
+                            api: widget.api,
+                          ),
+                  ),
+          ),
+        ],
+      ),
     );
+  }
+
+  Widget _readingBar(Mailbox mailbox) {
+    final unread = _openId == null
+        ? false
+        : _messages.any((row) => row.id == _openId && row.unread);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Back to the messages',
+            icon: const Icon(Icons.arrow_back),
+            onPressed: _closeMessage,
+          ),
+          IconButton(
+            tooltip: 'Delete',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: _openId == null ? null : () => _trash(mailbox, _openId!),
+          ),
+          IconButton(
+            tooltip: unread ? 'Mark as read' : 'Mark as unread',
+            icon: Icon(unread ? Icons.mark_email_read_outlined : Icons.mark_email_unread_outlined),
+            onPressed: _openId == null
+                ? null
+                : () => unread
+                    ? _setSeen(mailbox, _openId!, seen: true)
+                    : _setSeen(mailbox, _openId!, seen: false),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _setSeen(Mailbox mailbox, String id, {required bool seen}) async {
+    final path = '/email/mailboxes/${mailbox.id}/messages/$id/seen';
+    final response = seen
+        ? await widget.api.post(path, const {})
+        : await widget.api.delete(path);
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(response.message)),
+      );
+      return;
+    }
+
+    setState(() {
+      _messages = [
+        for (final row in _messages)
+          if (row.id != id) row else row.copyWith(unread: !seen),
+      ];
+    });
+  }
+
+  Future<void> _trash(Mailbox mailbox, String id) async {
+    final response = await widget.api.delete(
+      '/email/mailboxes/${mailbox.id}/messages/$id',
+    );
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(response.message)),
+      );
+      return;
+    }
+
+    setState(() {
+      _messages = [for (final row in _messages) if (row.id != id) row];
+    });
+    _closeMessage();
   }
 }
 
@@ -669,23 +1220,39 @@ class _MessageView extends StatelessWidget {
                 message.subject.isEmpty ? 'No subject' : message.subject,
                 style: theme.textTheme.headlineMedium?.copyWith(fontSize: 21),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 12),
               if (message.thread.length > 1)
                 Text(
                   '${message.thread.length} messages',
                   style: theme.textTheme.bodyMedium,
                 )
-              else ...[
-                Text(
-                  'From ${message.from}',
-                  style: theme.textTheme.bodyMedium,
+              else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SenderAvatar(
+                      name: message.fromName,
+                      email: message.fromAddress,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            message.from,
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                          Text(
+                            'To ${message.to.isEmpty ? mailbox.address : message.to.join(', ')} · '
+                            '${formatStamp(message.receivedAt, 'No date', formats: formats)}',
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
-                  'To ${message.to.isEmpty ? mailbox.address : message.to.join(', ')} · '
-                  '${formatStamp(message.receivedAt, 'No date', formats: formats)}',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ],
               if (seen != null) ...[
                 const SizedBox(height: 8),
                 SeenByLine(sentence: seen),
@@ -718,7 +1285,7 @@ class _MessageView extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(child: _conversation(mailbox, message)),
-              if (message.attachments.isNotEmpty) _attachments(context),
+              if (_files.isNotEmpty) _attachments(context),
             ],
           ),
         ),
@@ -742,10 +1309,31 @@ class _MessageView extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(part.from, style: theme.textTheme.titleSmall),
-            Text(
-              formatStamp(part.receivedAt, 'No date', formats: formats),
-              style: theme.textTheme.bodySmall,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SenderAvatar(
+                  name: part.fromName,
+                  email: part.fromAddress,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(part.from, style: theme.textTheme.titleSmall),
+                      Text(
+                        formatStamp(
+                          part.receivedAt,
+                          'No date',
+                          formats: formats,
+                        ),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             SizedBox(height: 420, child: _body(mailbox, part)),
@@ -772,55 +1360,100 @@ class _MessageView extends StatelessWidget {
     );
   }
 
-  /// What came with the message, named and not held.
+  /// Files on this message, or on every part of the conversation.
   ///
-  /// Decision 2 again: nothing is stored, so there is nothing to open from
-  /// here. Listing the names anyway is what stops a message whose whole content
-  /// is a quote PDF from reading as an empty one.
+  /// Decision 2: nothing is stored. A tap streams the bytes through EzBizi
+  /// and offers them as a download. A name with no token is listed only.
+  List<MailAttachment> get _files {
+    if (message.thread.isEmpty) return message.attachments;
+
+    return [for (final part in message.thread) ...part.attachments];
+  }
+
   Widget _attachments(BuildContext context) {
     final theme = Theme.of(context);
+    final files = _files;
 
     return Padding(
-      padding: const EdgeInsets.only(top: 22),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Divider(height: 1),
           const SizedBox(height: 14),
-          Text('CAME WITH IT', style: theme.textTheme.labelSmall),
+          Text('ATTACHMENTS', style: theme.textTheme.labelSmall),
           const SizedBox(height: 8),
-          for (final file in message.attachments)
+          for (final file in files)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.attach_file,
-                    size: 15,
-                    color: theme.textTheme.bodySmall?.color,
+              child: InkWell(
+                onTap: file.token == null
+                    ? null
+                    : () => _downloadAttachment(context, file),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.attach_file,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          file.size == null
+                              ? file.name
+                              : '${file.name} · ${_size(file.size!)}',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: file.token == null
+                                ? null
+                                : theme.colorScheme.primary,
+                            decoration: file.token == null
+                                ? null
+                                : TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                      if (file.token != null)
+                        Icon(
+                          Icons.download_outlined,
+                          size: 18,
+                          color: theme.colorScheme.primary,
+                        ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      file.size == null
-                          ? file.name
-                          : '${file.name} · ${_size(file.size!)}',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
-          const SizedBox(height: 6),
-          Text(
-            'Attachments stay with the mail provider. This window lists what '
-            'arrived and does not download it.',
-            style: theme.textTheme.bodySmall,
-          ),
         ],
       ),
     );
+  }
+
+  Future<void> _downloadAttachment(
+    BuildContext context,
+    MailAttachment file,
+  ) async {
+    final token = file.token;
+    if (token == null) return;
+
+    final bytes = await api.getBytes(
+      '/email/mailboxes/${mailbox.id}/messages/${message.id}/file'
+      '?src=${Uri.encodeComponent(token)}'
+      '&name=${Uri.encodeComponent(file.name)}',
+    );
+
+    if (!context.mounted) return;
+
+    if (bytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('That file could not be loaded.')),
+      );
+      return;
+    }
+
+    Files.download(file.name, bytes);
   }
 
   /// Bytes, in the units a person reads. Rounded rather than exact — the

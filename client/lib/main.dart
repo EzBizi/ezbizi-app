@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'core/address.dart';
 import 'core/api_client.dart';
 import 'core/contracts.dart';
 import 'core/deployment.dart';
@@ -46,6 +47,7 @@ class _EzBiziAppState extends State<EzBiziApp> {
 
   late final ApiClient _staffApi = ApiClient();
   late final StaffSession _staffSession = StaffSession(_staffApi);
+  final Address _address = Address.platform();
 
   /// Decided by the host the browser asked for, once, at launch. There is no
   /// switching between the two faces at runtime — a customer host has no staff
@@ -187,7 +189,7 @@ class _EzBiziAppState extends State<EzBiziApp> {
 
     if (_face == AppFace.staff) {
       return _staffSession.signedIn
-          ? StaffShell(staff: _staffSession)
+          ? StaffShell(staff: _staffSession, address: _address)
           : StaffLoginScreen(staff: _staffSession);
     }
 
@@ -241,7 +243,7 @@ class _EzBiziAppState extends State<EzBiziApp> {
       // LATER build does, and by then it is right.
       _signingUp = false;
 
-      return HomeShell(api: _api, session: _session);
+      return HomeShell(api: _api, session: _session, address: _address);
     }
 
     if (_signingUp) {
@@ -295,10 +297,19 @@ class _EzBiziAppState extends State<EzBiziApp> {
 /// See core/module_screens.dart for the only part that stays in code — which
 /// widget draws which module — and why that is not the same list.
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key, required this.api, required this.session});
+  const HomeShell({
+    super.key,
+    required this.api,
+    required this.session,
+    this.address,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// The address bar, so a reload opens the same place. Null in tests that
+  /// are only asking which destinations exist.
+  final Address? address;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -310,6 +321,66 @@ enum _Rail { modules, pinned, staff, profile }
 
 class _HomeShellState extends State<HomeShell> {
   _Rail _rail = _Rail.modules;
+  void Function()? _stopListening;
+
+  @override
+  void initState() {
+    super.initState();
+    _apply(widget.address?.path);
+    _stopListening = widget.address?.listen((path) {
+      if (!mounted) return;
+      setState(() => _apply(path));
+    });
+  }
+
+  @override
+  void dispose() {
+    _stopListening?.call();
+    super.dispose();
+  }
+
+  /// Read the path into [_rail] / [_selected]. Unknown or empty paths leave
+  /// the selection as it is; [build] falls back to the first reachable
+  /// destination and rewrites the URL to match.
+  void _apply(String? path) {
+    final id = Address.idOf(path ?? '');
+    if (id == null) return;
+
+    if (id == 'account') {
+      _rail = _Rail.profile;
+      _selected = null;
+      return;
+    }
+
+    if (id == 'organization' || id == 'settings') {
+      _rail = _Rail.pinned;
+      _selected = id;
+      return;
+    }
+
+    if (id == 'development') {
+      _rail = _Rail.staff;
+      _selected = id;
+      return;
+    }
+
+    _rail = _Rail.modules;
+    _selected = id;
+  }
+
+  String _pathFor(_Rail rail, String? id) {
+    if (rail == _Rail.profile || id == null || id.isEmpty) return '/account';
+    return Address.pathOf(id);
+  }
+
+  void _syncShown(String path) {
+    final address = widget.address;
+    if (address == null || address.path == path) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.address?.replace(path);
+    });
+  }
 
   /// WHICH destination within that group, by id — a module key, or a pinned
   /// destination's own name. Null means "whatever comes first".
@@ -334,6 +405,7 @@ class _HomeShellState extends State<HomeShell> {
   void _show(_Rail rail, String id) => setState(() {
     _rail = rail;
     _selected = id;
+    widget.address?.push(_pathFor(rail, id));
   });
 
   /// "Your account" is reached from the avatar, not from a rail, so it has no
@@ -341,6 +413,7 @@ class _HomeShellState extends State<HomeShell> {
   void _showProfile() => setState(() {
     _rail = _Rail.profile;
     _selected = null;
+    widget.address?.push('/account');
   });
 
   Future<void> _signOut() async {
@@ -437,6 +510,7 @@ class _HomeShellState extends State<HomeShell> {
         'Organization',
         Icons.hub_outlined,
         OrganizationScreen(api: widget.api, session: widget.session),
+        id: 'organization',
       ),
       // Settings, and the organization's roles behind a second tab of it —
       // see settings_shell.dart for why roles belong here rather than in the
@@ -445,6 +519,7 @@ class _HomeShellState extends State<HomeShell> {
         UiStrings.t('shell.settings'),
         Icons.settings_outlined,
         SettingsShell(api: widget.api, session: widget.session),
+        id: 'settings',
       ),
     ];
 
@@ -466,6 +541,7 @@ class _HomeShellState extends State<HomeShell> {
           'Development',
           Icons.terminal_outlined,
           DevelopmentScreen(session: widget.session),
+          id: 'development',
         ),
     ];
 
@@ -499,6 +575,17 @@ class _HomeShellState extends State<HomeShell> {
         ? null
         : resolve(destinations, _Rail.modules) ??
               (destinations.isEmpty ? null : 0);
+
+    final shownId = showingProfile
+        ? 'account'
+        : pinnedIndex != null
+            ? pinned[pinnedIndex].id
+            : staffIndex != null
+                ? staffOnly[staffIndex].id
+                : railIndex != null
+                    ? destinations[railIndex].id
+                    : 'account';
+    _syncShown(Address.pathOf(shownId));
 
     return Scaffold(
       // The top bar belongs to the CHROME, not to the page.

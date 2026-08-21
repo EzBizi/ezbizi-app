@@ -57,26 +57,29 @@ class GoogleWorkspaceAuthController extends Controller
                     fn (GoogleWorkspaceConnection $row) => $row->scope_type === $target['type']
                         && $row->scope_id === $target['id'],
                 ),
-                'connections' => $listed->map(fn (GoogleWorkspaceConnection $row) => [
-                    'domain'      => $row->domain,
-                    'admin_email' => $row->admin_email,
-                    'status'      => $row->status,
-                    'status_reason' => $row->status_reason,
-                    'scope_type'  => $row->scope_type,
-                    'scope_id'    => $row->scope_id,
-                    'scope_label' => $this->workspace->scopeLabel($row),
-                    'is_current_view' => $row->scope_type === $target['type']
-                        && $row->scope_id === $target['id'],
-                    'client_id_for_admin_console' => $this->workspace->clientIdForAdminConsole(),
-                    'scopes' => [
-                        GoogleOAuth::SCOPE_READ,
-                        GoogleOAuth::SCOPE_SEND,
-                        GoogleWorkspace::SCOPE_DIRECTORY,
-                    ],
-                    'setup_steps' => $row->status === GoogleWorkspaceConnection::STATUS_PENDING
-                        ? $this->workspace->setupSteps()
-                        : [],
-                ])->values(),
+                'marketplace_listing_url' => $this->workspace->marketplaceListingUrl(),
+                'connections' => $listed->map(function (GoogleWorkspaceConnection $row) use ($target) {
+                    $health = $this->workspace->scopeHealth($row);
+                    $needsGuide = $row->status === GoogleWorkspaceConnection::STATUS_PENDING
+                        || $health['status'] === 'needs_attention';
+
+                    return [
+                        'domain'      => $row->domain,
+                        'admin_email' => $row->admin_email,
+                        'status'      => $row->status,
+                        'status_reason' => $row->status_reason,
+                        'scope_type'  => $row->scope_type,
+                        'scope_id'    => $row->scope_id,
+                        'scope_label' => $this->workspace->scopeLabel($row),
+                        'is_current_view' => $row->scope_type === $target['type']
+                            && $row->scope_id === $target['id'],
+                        'client_id_for_admin_console' => $this->workspace->clientIdForAdminConsole(),
+                        'marketplace_listing_url' => $this->workspace->marketplaceListingUrl(),
+                        'scopes' => array_column($this->workspace->requiredScopes(), 'scope'),
+                        'health' => $health,
+                        'setup_steps' => $needsGuide ? $this->workspace->setupSteps() : [],
+                    ];
+                })->values(),
             ],
         ]);
     }

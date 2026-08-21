@@ -79,14 +79,14 @@ final class RecordingMailboxReader implements MailboxReader
 
     // ── the four calls that reach the provider ───────────────────
 
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->recording($mailbox, fn () => $this->inner->list($mailbox, $cursor, $limit));
+        return $this->recording($mailbox, fn () => $this->inner->list($mailbox, $cursor, $limit, $label));
     }
 
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->recording($mailbox, fn () => $this->inner->search($mailbox, $query, $cursor, $limit));
+        return $this->recording($mailbox, fn () => $this->inner->search($mailbox, $query, $cursor, $limit, $label));
     }
 
     public function open(Mailbox $mailbox, string $messageId): MessageDetail
@@ -97,6 +97,16 @@ final class RecordingMailboxReader implements MailboxReader
     public function reply(Mailbox $mailbox, string $messageId, string $body): void
     {
         $this->recording($mailbox, fn () => $this->inner->reply($mailbox, $messageId, $body));
+    }
+
+    public function trash(Mailbox $mailbox, string $messageId): void
+    {
+        $this->recording($mailbox, fn () => $this->inner->trash($mailbox, $messageId));
+    }
+
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
+    {
+        return $this->recording($mailbox, fn () => $this->inner->downloadAttachment($mailbox, $messageId, $attachmentId));
     }
 
     /**

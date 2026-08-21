@@ -42,7 +42,7 @@ class _MarketingScreenState extends State<MarketingScreen> {
     (
       'Social Media Management',
       Icons.share_outlined,
-      () => SocialMediaTab(session: widget.session),
+      () => SocialMediaTab(api: widget.api, session: widget.session),
     ),
   ];
 

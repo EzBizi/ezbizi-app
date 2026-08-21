@@ -69,6 +69,12 @@ final class MessageSummary
          * "WhatsApp Business  5".
          */
         public readonly int $messageCount = 1,
+
+        /**
+         * Whether this From domain passed DMARC, when the provider said.
+         * Null when it did not say (IMAP) or the header was missing.
+         */
+        public readonly ?bool $fromAuthenticated = null,
     ) {}
 
     /**
@@ -80,6 +86,7 @@ final class MessageSummary
             $this->id, $this->threadId, $this->subject, $this->fromName, $this->fromAddress,
             $this->to, $this->sentAt, $this->snippet, $this->hasAttachments,
             $this->unreadAtProvider, $seenBy, $this->messageCount,
+            $this->fromAuthenticated,
         );
     }
 
@@ -104,6 +111,7 @@ final class MessageSummary
             'unread_at_provider' => $this->unreadAtProvider,
             'unread'      => $this->unreadAtProvider,
             'message_count' => max(1, $this->messageCount),
+            'from_authenticated' => $this->fromAuthenticated,
 
             /*
              * Names, and it is a list rather than a count.

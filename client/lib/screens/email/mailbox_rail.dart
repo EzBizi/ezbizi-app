@@ -18,12 +18,21 @@ import 'mail_data.dart';
 class InboxBar extends StatelessWidget {
   const InboxBar({
     super.key,
-    required this.mailbox,
+    this.mailbox,
+    this.allInboxes = false,
+    this.allAddresses = const [],
     this.onBack,
     this.backTooltip,
   });
 
-  final Mailbox mailbox;
+  final Mailbox? mailbox;
+
+  /// Combined view: mail from every inbox this person can open.
+  final bool allInboxes;
+
+  /// Addresses named on the combined bar, so it still says whose mail
+  /// is on screen when there is no single inbox.
+  final List<String> allAddresses;
 
   /// Where the back control goes, on the widths that have one pane. Null on a
   /// wide screen, where nothing has been left behind to go back to.
@@ -37,6 +46,7 @@ class InboxBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final onBack = this.onBack;
+    final mailbox = this.mailbox;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(onBack == null ? 20 : 6, 12, 20, 12),
@@ -48,13 +58,20 @@ class InboxBar extends StatelessWidget {
               tooltip: backTooltip ?? 'Back',
               onPressed: onBack,
             ),
-          Icon(Icons.inbox_outlined, size: 20, color: theme.colorScheme.primary),
+          Icon(
+            allInboxes ? Icons.all_inbox : Icons.inbox_outlined,
+            size: 20,
+            color: theme.colorScheme.primary,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('THE INBOX YOU ARE IN', style: theme.textTheme.labelSmall),
+                Text(
+                  allInboxes ? 'ALL INBOXES' : 'THE INBOX YOU ARE IN',
+                  style: theme.textTheme.labelSmall,
+                ),
                 const SizedBox(height: 2),
                 // A Wrap rather than a Row: an address and a nickname side by
                 // side at 375px is the arrangement that overflows, and dropping
@@ -63,9 +80,20 @@ class InboxBar extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   spacing: 8,
                   children: [
-                    Text(mailbox.address, style: theme.textTheme.titleMedium),
-                    if (mailbox.label.isNotEmpty)
-                      Text(mailbox.label, style: theme.textTheme.bodyMedium),
+                    if (allInboxes)
+                      for (final address in allAddresses)
+                        Text(address, style: theme.textTheme.titleMedium)
+                    else if (mailbox != null) ...[
+                      Text(
+                        mailbox.address,
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      if (mailbox.label.isNotEmpty)
+                        Text(
+                          mailbox.label,
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                    ],
                   ],
                 ),
               ],
@@ -83,111 +111,264 @@ class InboxBar extends StatelessWidget {
 /// One widget for both, rather than a rail and a separate chooser page: they
 /// are the same list making the same choice, and two of them is two places for
 /// the selected state to be drawn differently.
+/// Gmail folders for one mailbox — Inbox, Starred, Sent, and the rest.
+///
+/// Only drawn when the mailbox is Gmail. IMAP has no such list, and inventing
+/// one would be a second Inbox under another name.
+class MailFolder {
+  const MailFolder({
+    required this.id,
+    required this.label,
+    required this.icon,
+  });
+
+  final String id;
+  final String label;
+  final IconData icon;
+}
+
+const List<MailFolder> gmailFolders = [
+  MailFolder(id: 'INBOX', label: 'Inbox', icon: Icons.inbox_outlined),
+  MailFolder(id: 'STARRED', label: 'Starred', icon: Icons.star_outline),
+  MailFolder(id: 'SENT', label: 'Sent', icon: Icons.send_outlined),
+  MailFolder(id: 'DRAFT', label: 'Drafts', icon: Icons.drafts_outlined),
+  MailFolder(id: 'TRASH', label: 'Trash', icon: Icons.delete_outline),
+  MailFolder(id: 'SPAM', label: 'Spam', icon: Icons.report_outlined),
+];
+
 class MailboxRail extends StatelessWidget {
   const MailboxRail({
     super.key,
     required this.mailboxes,
     required this.selectedId,
     required this.onSelected,
+    this.allSelected = false,
+    this.onSelectAll,
+    this.selectedFolder = 'INBOX',
+    this.onFolderSelected,
   });
 
   final List<Mailbox> mailboxes;
   final String? selectedId;
   final ValueChanged<Mailbox> onSelected;
 
+  /// Combined list of every inbox this person can open. Only offered
+  /// when there is more than one — combining one inbox is that inbox.
+  final bool allSelected;
+  final VoidCallback? onSelectAll;
+
+  final String selectedFolder;
+  final ValueChanged<String>? onFolderSelected;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    Mailbox? selected;
+    for (final mailbox in mailboxes) {
+      if (mailbox.id == selectedId) {
+        selected = mailbox;
+        break;
+      }
+    }
+    final anyGmail = mailboxes.any((mailbox) => mailbox.isGmail);
+    final folders = (allSelected && anyGmail) || (selected != null && selected.isGmail)
+        ? gmailFolders
+        : const <MailFolder>[];
+    final showAll = mailboxes.length > 1 && onSelectAll != null;
 
-    return ListView.builder(
+    return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-      itemCount: mailboxes.length + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return Padding(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 10),
+          child: Text('INBOXES', style: theme.textTheme.labelSmall),
+        ),
+        if (showAll) _allRow(context),
+        for (final mailbox in mailboxes) _mailboxRow(context, mailbox),
+        if (folders.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Padding(
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 10),
-            child: Text('INBOXES', style: theme.textTheme.labelSmall),
-          );
-        }
+            child: Text('LABELS', style: theme.textTheme.labelSmall),
+          ),
+          for (final folder in folders) _folderRow(context, folder),
+        ],
+      ],
+    );
+  }
 
-        final mailbox = mailboxes[index - 1];
-        final selected = mailbox.id == selectedId;
+  Widget _allRow(BuildContext context) {
+    final theme = Theme.of(context);
+    final unread = mailboxes.fold<int>(0, (sum, mailbox) => sum + mailbox.unread);
 
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: Material(
-            color: selected
-                ? theme.colorScheme.primary.withValues(alpha: 0.10)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: () => onSelected(mailbox),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            mailbox.address,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              // Selection carried by weight and a tint, never by
-                              // colour alone — the same rule the rest of the app
-                              // follows for a state somebody has to notice.
-                              fontWeight: selected
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                            ),
-                          ),
-                          if (mailbox.label.isNotEmpty)
-                            Text(
-                              mailbox.label,
-                              style: theme.textTheme.bodyMedium,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                        ],
-                      ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: allSelected
+            ? theme.colorScheme.primary.withValues(alpha: 0.10)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onSelectAll,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.all_inbox,
+                  size: 18,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'All inboxes',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: allSelected ? FontWeight.w700 : FontWeight.w500,
                     ),
-                    if (mailbox.unread > 0) ...[
-                      const SizedBox(width: 8),
-                      // The number, with the word beside it in the tooltip:
-                      // a bare badge is a colour-only state to anybody using a
-                      // screen reader.
-                      Tooltip(
-                        message: '${mailbox.unread} unread',
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            '${mailbox.unread}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: theme.colorScheme.onPrimary,
-                            ),
-                          ),
+                  ),
+                ),
+                if (unread > 0) ...[
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: '$unread unread',
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '$unread',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.onPrimary,
                         ),
                       ),
-                    ],
-                  ],
-                ),
-              ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
-        );
-      },
+        ),
+      ),
+    );
+  }
+
+  Widget _mailboxRow(BuildContext context, Mailbox mailbox) {
+    final theme = Theme.of(context);
+    final selected = !allSelected && mailbox.id == selectedId;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: selected
+            ? theme.colorScheme.primary.withValues(alpha: 0.10)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => onSelected(mailbox),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        mailbox.address,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                      ),
+                      if (mailbox.label.isNotEmpty)
+                        Text(
+                          mailbox.label,
+                          style: theme.textTheme.bodyMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+                if (mailbox.unread > 0) ...[
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: '${mailbox.unread} unread',
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${mailbox.unread}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.onPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _folderRow(BuildContext context, MailFolder folder) {
+    final theme = Theme.of(context);
+    final selected = folder.id == selectedFolder;
+    final onFolderSelected = this.onFolderSelected;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Material(
+        color: selected
+            ? theme.colorScheme.primary.withValues(alpha: 0.10)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onFolderSelected == null ? null : () => onFolderSelected(folder.id),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Icon(folder.icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    folder.label,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

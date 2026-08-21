@@ -56,8 +56,9 @@ void main() {
         'list and on the message', (tester) async {
       await _pump(tester, _handler(), size: Size(width, 900));
 
-      expect(find.text('THE INBOX YOU ARE IN'), findsOneWidget);
+      expect(find.text('ALL INBOXES'), findsWidgets);
       expect(find.text('info@a-1chimney.com'), findsWidgets);
+      expect(find.text('bookings@a-1chimney.com'), findsWidgets);
 
       await _tap(tester, find.text('Chimney sweep quote').first);
 
@@ -111,18 +112,74 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('at 1400px the inboxes, the list and the message are side by '
-      'side', (tester) async {
+  testWidgets('all inboxes shows mail from every inbox on one list', (
+    tester,
+  ) async {
     await _pump(tester, _handler(), size: const Size(1400, 900));
+
+    expect(find.text('All inboxes'), findsOneWidget);
+    expect(find.text('Chimney sweep quote'), findsOneWidget);
+    expect(find.text('Booking for Friday'), findsOneWidget);
+
+    await _tap(tester, find.text('Booking for Friday').first);
+
+    expect(find.text('THE INBOX YOU ARE IN'), findsOneWidget);
+    expect(
+      find.text('bookings@a-1chimney.com'),
+      findsWidgets,
+      reason:
+          'A combined list that opens a mail without naming its inbox is '
+          'how a reply goes out as the wrong address.',
+    );
+    expect(find.textContaining('Reply as bookings@a-1chimney.com'), findsOneWidget);
+  });
+
+  testWidgets('ticking a sender mark selects the row for bulk actions', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(), size: const Size(1400, 900));
+
+    expect(find.byType(SenderAvatar), findsWidgets);
+
+    await tester.tap(find.byType(SenderAvatar).first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 selected'), findsOneWidget);
+    expect(find.byTooltip('Delete'), findsOneWidget);
+    expect(find.byTooltip('Mark as read'), findsOneWidget);
+  });
+
+  testWidgets('the list has a search bar and Gmail labels', (tester) async {
+    await _pump(tester, _handler(), size: const Size(1400, 900));
+
+    expect(find.text('Search mail'), findsOneWidget);
+    expect(find.text('Unread'), findsOneWidget);
+    expect(find.text('LABELS'), findsOneWidget);
+    expect(find.text('Starred'), findsOneWidget);
+    expect(find.text('Sent'), findsOneWidget);
+  });
+
+  testWidgets('at 1400px opening a message replaces the list', (tester) async {
+    await _pump(tester, _handler(), size: const Size(1400, 900));
+
+    expect(find.byType(MailboxRail), findsOneWidget);
+    expect(find.byType(MessageListPane), findsOneWidget);
+    expect(find.text('Search mail'), findsOneWidget);
 
     await _tap(tester, find.text('Chimney sweep quote').first);
 
-    final rail = tester.getRect(find.byType(MailboxRail));
-    final list = tester.getRect(find.byType(MessageListPane));
-    final message = tester.getRect(find.byType(MessageBody));
+    expect(
+      find.byType(MessageListPane),
+      findsNothing,
+      reason: 'Gmail does not keep the list beside the mail. The list has to '
+          'go so the message can use the space.',
+    );
+    expect(find.byType(MessageBody), findsOneWidget);
+    expect(find.byType(MailboxRail), findsOneWidget);
+    expect(find.byTooltip('Back to the messages'), findsOneWidget);
 
-    expect(rail.right, lessThanOrEqualTo(list.left + 1));
-    expect(list.right, lessThanOrEqualTo(message.left + 1));
+    await _tap(tester, find.byTooltip('Back to the messages'));
+    expect(find.byType(MessageListPane), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -140,7 +197,7 @@ void main() {
 
     expect(
       find.text('Seen by Marta Vieira'),
-      findsNWidgets(2),
+      findsOneWidget,
       reason: 'The row said somebody was on this and the open message did '
           'not, which is where the second reply gets written.',
     );
@@ -372,6 +429,41 @@ void main() {
   /// The link is drawn with its address beside it and does not open anything.
   /// "Click here" over an address nobody can see is how phishing arrives, and
   /// this module is a window onto mail from strangers.
+  testWidgets('the open message shows the sender icon', (tester) async {
+    await _pump(tester, _handler(), size: const Size(1400, 900));
+    await _tap(tester, find.text('Chimney sweep quote').first);
+
+    expect(find.byType(MessageListPane), findsNothing);
+    expect(
+      find.byType(SenderAvatar),
+      findsOneWidget,
+      reason: 'The list has icons and the open mail did not.',
+    );
+  });
+
+  testWidgets('an attachment is named and can be downloaded', (tester) async {
+    String? fileUrl;
+
+    await _pump(
+      tester,
+      _handler(onFile: (url) => fileUrl = url),
+      size: const Size(1400, 900),
+    );
+    await _tap(tester, find.text('Chimney sweep quote').first);
+
+    expect(find.text('ATTACHMENTS'), findsOneWidget);
+    expect(find.textContaining('flue.jpg'), findsOneWidget);
+
+    await _tap(tester, find.textContaining('flue.jpg'));
+
+    expect(
+      fileUrl,
+      contains('/email/mailboxes/mb-1/messages/m-1/file'),
+    );
+    expect(fileUrl, contains('src=sealed-att'));
+    expect(fileUrl, contains('name=flue.jpg'));
+  });
+
   testWidgets('a link shows where it goes', (tester) async {
     await _pump(tester, _handler());
     await _tap(tester, find.text('Chimney sweep quote').first);
@@ -396,7 +488,7 @@ void main() {
     await _tap(tester, find.text('bookings@a-1chimney.com').first);
 
     expect(find.byType(MessageBody), findsNothing);
-    expect(find.text('Pick a message to read it.'), findsOneWidget);
+    expect(find.text('Booking for Friday'), findsOneWidget);
     expect(
       find.text('Chimney sweep quote'),
       findsNothing,
@@ -463,7 +555,7 @@ void main() {
 
     expect(find.text('Nothing in info@a-1chimney.com right now.'), findsNothing);
     expect(find.text('Chimney sweep quote'), findsOneWidget);
-    expect(find.text('Ana Reis <ana@example.com>'), findsOneWidget);
+    expect(find.text('Ana Reis'), findsOneWidget);
     expect(find.text('Info'), findsWidgets);
   });
 }
@@ -528,10 +620,21 @@ MockClientHandler _handler({
   String listMessage = 'Unavailable.',
   List<Map<String, Object?>>? mailboxes,
   void Function(String path, Map<String, dynamic> body)? onReply,
+  void Function(String url)? onFile,
 }) {
   return (request) async {
     final path = request.url.path;
     final parts = path.split('/').where((part) => part.isNotEmpty).toList();
+
+    if (path.endsWith('/file')) {
+      onFile?.call(request.url.toString());
+
+      return http.Response(
+        'file-bytes',
+        200,
+        headers: {'content-type': 'application/octet-stream'},
+      );
+    }
 
     if (path.endsWith('/email/mailboxes')) {
       return _json({
@@ -556,6 +659,26 @@ MockClientHandler _handler({
           'from': _addressOf(parts[parts.length - 4]),
         },
       });
+    }
+
+    if (path.endsWith('/bulk')) {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      return _json({
+        'data': {
+          'ids': body['ids'],
+          'action': body['action'],
+        },
+      });
+    }
+
+    if (path.endsWith('/seen')) {
+      return _json({
+        'data': {'message_id': parts.last, 'seen_by': <Object>[], 'shared': true},
+      });
+    }
+
+    if (request.method == 'DELETE' && parts.contains('messages')) {
+      return _json({'data': {'id': parts.last}});
     }
 
     // .../mailboxes/{mailbox}/messages
@@ -606,6 +729,7 @@ List<Map<String, Object?>> _mailboxes({
     'id': 'mb-1',
     'address': 'info@a-1chimney.com',
     'label': 'Info',
+    'provider': 'gmail_workspace',
     'unread': 2,
     'shared_read': sharedRead,
     'can_reply': canReply,
@@ -615,6 +739,7 @@ List<Map<String, Object?>> _mailboxes({
     'id': 'mb-2',
     'address': 'bookings@a-1chimney.com',
     'label': 'Bookings',
+    'provider': 'gmail_workspace',
     'unread': 0,
     'shared_read': sharedRead,
     'can_reply': canReply,
@@ -703,7 +828,7 @@ Map<String, Object?> _detail(String mailboxId, String messageId) {
     'blocks': messageId == 'm-1' ? _blocks : _plainBlocks,
     'attachments': messageId == 'm-1'
         ? [
-            {'name': 'flue.jpg', 'size': 184320},
+            {'name': 'flue.jpg', 'size': 184320, 'token': 'sealed-att'},
           ]
         : const [],
     'reply': {

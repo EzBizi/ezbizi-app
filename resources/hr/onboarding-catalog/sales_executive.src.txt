@@ -1,0 +1,198 @@
+This Sales Executive Employment Agreement ("Agreement") is entered into between:
+
+Company: {{organization.name}}
+Company Address: {{employer_address}}
+Employee Name: {{first_name}} {{last_name}}
+Employee Address: {{address}}
+In consideration of the mutual promises and covenants contained herein, and for other good and valuable consideration, the receipt and sufficiency of which are hereby acknowledged, the Employer and Employee (collectively, the "Parties") agree as follows:
+
+1. EMPLOYMENT DETAILS
+
+Date of Hire: {{date_of_hire}}
+Job Title: {{job_title}}
+
+Employment Type: W-2 Employee
+
+<<hourly>>Hourly Rate: ${{hourly_rate}} per hour<</hourly>>
+
+<<salary>>Salary: ${{salary_amount}} per {{salary_period}}<</salary>>
+
+Employment is considered at-will unless otherwise specified in a separate written agreement. Either party may terminate employment at any time in accordance with applicable state laws.
+
+2. POSITION & DUTIES
+
+The Employee is hired as a Sales Executive to convert estimates into booked jobs through proactive follow-up and over-the-phone sales, and to support customers and the team through the sales and financing process. The Employee agrees to perform all assigned duties faithfully, diligently, and to the best of the Employee's abilities, and to comply with all company policies, procedures, and standard operating procedures (SOPs).
+
+Job Responsibilities
+
+The Sales Executive's responsibilities include, but are not limited to:
+
+• Follow up on estimates provided to customers to convert them into booked jobs
+• Conduct over-the-phone sales and close pending opportunities
+• Manage and handle all sales-related calls, inquiries, and follow-ups
+• Assist clients and the field team with financing options and related paperwork
+• Maintain accurate records of sales activity, follow-ups, and outcomes in the CRM
+• Meet or exceed the sales targets and conversion goals set by the Company
+• Coordinate with the field and office teams to ensure a smooth handoff from sale to service
+• Perform additional sales and administrative tasks as reasonably assigned
+The Employee is expected to maintain professional conduct and represent the {{organization.name}} brand positively in every customer interaction. Strong communication, organization, attention to detail, and a customer-first attitude are required.
+
+3. COMPENSATION
+
+(a) Base Pay
+
+<<hourly>>The Employee shall receive a base hourly rate of ${{hourly_rate}} per hour, payable in accordance with the Employer's regular payroll schedule (weekly). All compensation is subject to applicable federal and state tax withholdings and deductions.<</hourly>>
+
+<<salary>>The Employee shall receive a fixed salary of ${{salary_amount}} per {{salary_period}}, payable in accordance with the Employer's regular payroll schedule. All compensation is subject to applicable federal and state tax withholdings and deductions.
+
+If the Employee is absent from work on any scheduled workday, the corresponding daily amount will be deducted from the Employee's salary for that pay period. The daily rate for purposes of this deduction is ${{daily_deduction}} per day.<</salary>>
+
+(b) Performance Bonus
+
+The Employee may be eligible for performance-based bonuses tied to measurable office performance metrics, including but not limited to: appointments booked, lead-to-job conversion rate, average customer satisfaction score, and successful complaint resolution. The specific terms, thresholds, and amounts of any performance bonus shall be communicated to the Employee separately by the Employer and may be updated from time to time at the Employer's sole discretion with reasonable notice to the Employee.
+
+<<hourly>>(c) Overtime
+
+In accordance with the Fair Labor Standards Act (FLSA) and applicable state law, any hours worked in excess of forty (40) hours per workweek shall be compensated at one and one-half (1.5x) times the Employee's regular hourly rate. Overtime must be pre-approved by a supervisor unless required by operational necessity.<</hourly>>
+
+(d) Payment Schedule
+
+Payments will be issued weekly via direct deposit, typically processed on Mondays or Tuesdays. All payments are subject to applicable federal, state, and local tax withholdings.
+
+<<raise>>(e) Scheduled Pay Increases
+
+The Employee's base pay shall increase by ${{raise_amount}}<<hourly>> per hour<</hourly>> every {{raise_period}} during the first twelve (12) months of employment, provided the Employee remains in good standing and meets performance expectations. Increases are cumulative and take effect on the first full pay period following each interval. Any increase beyond the first twelve (12) months shall be at the sole discretion of the Employer based on performance reviews.<</raise>>
+
+4. WORK SCHEDULE
+
+The Employee's standard work schedule is as follows:
+
+Work Days: {{work_days}}
+
+Work Hours: {{work_hours}}
+
+Lunch Break: {{lunch_break}}
+
+The Employee is expected to be punctual, present at the office for the full scheduled shift, and prompt in responding to communications throughout the workday. The schedule may be adjusted by the Employer with reasonable notice based on operational needs.
+
+5. PAID HOLIDAYS & TIME OFF
+
+• The Company provides paid Jewish and U.S. holidays when the Employee is scheduled to be off. The Company will notify the Employee of the applicable holiday dates in advance.
+• Employees who choose to work on eligible holidays, when offered by the Company, may receive additional bonus opportunities.
+• All time off must be scheduled and approved in advance by the Employee's supervisor, except in cases of emergency or illness, in which case the Employee shall notify the Employer as soon as reasonably practicable.
+
+6. COMPUTER AND ACTIVITY MONITORING
+
+The Employee acknowledges and agrees that the Company reserves the right to monitor, access, and record any activity conducted on company-owned computers, devices, phone systems, and software at any time. This includes, but is not limited to, internet usage, software applications, email communications, recorded phone calls, and any other digital activity.
+
+The Employee understands that there is no expectation of privacy when using company equipment, networks, or phone lines, and such monitoring may occur without prior notice. All data generated on company equipment remains the property of the Employer.
+
+Call Recording
+
+The Employee acknowledges that all inbound and outbound calls handled on behalf of the Company may be recorded for quality assurance, training, dispute resolution, and compliance purposes. The Employee consents to such recording as a condition of employment.
+
+7. CONFIDENTIALITY
+
+The Employee acknowledges that during the course of employment, the Employee may have access to confidential and proprietary information belonging to the Employer, including but not limited to: customer lists, contact information, pricing structures, business strategies, marketing plans, operational procedures, financial data, software systems, and trade secrets (collectively, "Confidential Information").
+
+The Employee agrees to:
+
+• Not disclose, publish, or otherwise share any Confidential Information with any third party during or after employment without the prior written consent of the Employer.
+• Not use any Confidential Information for personal benefit or for the benefit of any third party.
+• Return all Confidential Information, documents, materials, keys, equipment, and company property upon termination of employment.
+• The obligations set forth in this Section shall survive the termination of this Agreement and remain in effect indefinitely.
+
+8. PROHIBITION OF JOB DIVERSION & MISUSE OF COMPANY RESOURCES
+
+(a) Prohibition of Job Diversion
+
+The Employee is strictly prohibited from diverting, redirecting, or referring any customer, lead, or job opportunity away from {{organization.name}} to themselves personally, to any other employee, or to any third party. All leads, inquiries, and customer relationships generated during the course of employment belong exclusively to the Company.
+
+(b) Prohibition of Theft and Financial Misconduct
+
+The Employee shall not engage in any form of theft, embezzlement, or financial misconduct, including but not limited to:
+
+• Misappropriating customer payments, deposits, or company funds
+• Falsifying invoices, time records, customer notes, or any other company documentation
+• Issuing unauthorized refunds, discounts, or credits
+• Sharing customer payment information outside of authorized payment processing channels
+
+(c) Remedies and Right to Legal Action
+
+The Employee acknowledges that any violation of this Section constitutes a material breach of this Agreement and may result in:
+
+• Immediate termination of employment without notice
+• The Company's right to pursue civil litigation against the Employee for the recovery of all damages, lost revenue, and profits resulting from the Employee's unauthorized activities
+• The Company's right to seek injunctive relief to prevent ongoing or further violations
+• The Company's right to report criminal conduct (including theft, embezzlement, or fraud) to the appropriate law enforcement authorities for criminal prosecution
+• Recovery of all reasonable attorneys' fees, court costs, and expenses incurred by the Company in enforcing this Section
+
+9. NON-SOLICITATION
+
+(a) Non-Solicitation
+
+For a period of one (1) year following termination, the Employee agrees not to:
+
+• Solicit, contact, or attempt to divert any customer or client of the Employer with whom the Employee had contact during employment
+• Solicit, recruit, or encourage any employee of the Employer to leave their employment
+• Solicit any past {{organization.name}} vendors or staff
+
+(b) Remedies
+
+The Employee acknowledges that a breach of this Section would cause irreparable harm to the Employer. In the event of a breach or threatened breach, the Employer shall be entitled to seek injunctive relief and pursue civil litigation, including monetary damages and reasonable attorneys' fees.
+
+10. USE OF IMAGE AND LIKENESS
+
+The Employee authorizes the Employer to use the Employee's name, photograph, and likeness for legitimate business purposes, including but not limited to: the company website, internal systems, employee directories, marketing materials, social media, and related business platforms. This authorization remains in effect during and after the term of employment unless revoked in writing by the Employee.
+
+11. COMPANY PROPERTY & EQUIPMENT
+
+Any computers, headsets, phones, keys, devices, software credentials, or other property issued to the Employee by the Employer remain the sole property of the Employer and must be returned in good condition (reasonable wear and tear excepted) upon termination of employment. The Employee shall be financially responsible for any loss of or damage to company property caused by negligence or intentional misconduct.
+
+12. TERMINATION
+
+(a) Notice of Resignation
+
+The Employee must provide at least two (2) weeks' written notice prior to leaving the Company.
+
+(b) At-Will Termination
+
+The Employer may terminate the Employee at any time, with or without cause. The Employer reserves the right to provide pay in lieu of notice at its sole discretion.
+
+(c) Immediate Termination
+
+The Employer may terminate the Employee immediately and without notice for any of the following reasons:
+
+• Dishonesty, fraud, theft, or embezzlement
+• Gross misconduct or insubordination
+• Violation of company policies or safety procedures
+• Unauthorized disclosure of Confidential Information
+• Conviction of or plea to a felony or crime of moral turpitude
+• Failure to perform assigned duties after written warning
+• Being under the influence of drugs or alcohol during working hours
+• Damage to company property, equipment, or reputation
+• Diverting company business or violating any provision of Section 8
+
+(d) Final Pay
+
+Upon termination, the Employee shall receive all earned wages and any accrued but unused benefits to the extent required by applicable state law. Any outstanding performance bonuses for verified results shall be paid on the next regular payroll cycle following termination.
+
+13. DISPUTE RESOLUTION
+
+Any dispute or claim arising out of or relating to this Agreement shall first be submitted to good faith mediation. If mediation is unsuccessful, the dispute shall be resolved by binding arbitration in accordance with the rules of the American Arbitration Association, conducted in {{county}} County, State of {{state}}. The prevailing party in any arbitration or legal proceeding shall be entitled to recover reasonable attorneys' fees and costs.
+
+14. GOVERNING LAW
+
+This Agreement shall be governed by and construed in accordance with the laws of the State of {{state}}, without regard to its conflict of law principles.
+
+15. SEVERABILITY
+
+If any provision of this Agreement is found to be invalid, illegal, or unenforceable by a court of competent jurisdiction, the remaining provisions shall continue in full force and effect. The invalid provision shall be modified to the minimum extent necessary to make it enforceable while preserving the Parties' original intent.
+
+16. ENTIRE AGREEMENT
+
+This Agreement constitutes the entire understanding between the Parties with respect to the Employee's employment and supersedes all prior negotiations, representations, and agreements, whether written or oral. This Agreement may not be modified except by a written instrument signed by both Parties.
+
+ACKNOWLEDGMENT & SIGNATURES
+
+By signing below, both Parties acknowledge that they have read, understood, and agree to all the terms and conditions set forth in this Agreement.

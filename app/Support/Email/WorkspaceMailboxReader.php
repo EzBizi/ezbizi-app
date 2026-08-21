@@ -38,18 +38,18 @@ final class WorkspaceMailboxReader implements MailboxReader
         return $this->unavailableBecause($mailbox) === null;
     }
 
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         $this->workspace->assertCanOpen($mailbox);
 
-        return $this->gmail->list($mailbox, $cursor, $limit);
+        return $this->gmail->list($mailbox, $cursor, $limit, $label);
     }
 
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         $this->workspace->assertCanOpen($mailbox);
 
-        return $this->gmail->search($mailbox, $query, $cursor, $limit);
+        return $this->gmail->search($mailbox, $query, $cursor, $limit, $label);
     }
 
     public function open(Mailbox $mailbox, string $messageId): MessageDetail
@@ -64,6 +64,20 @@ final class WorkspaceMailboxReader implements MailboxReader
         $this->workspace->assertCanOpen($mailbox);
 
         $this->gmail->reply($mailbox, $messageId, $body);
+    }
+
+    public function trash(Mailbox $mailbox, string $messageId): void
+    {
+        $this->workspace->assertCanOpen($mailbox);
+
+        $this->gmail->trash($mailbox, $messageId);
+    }
+
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
+    {
+        $this->workspace->assertCanOpen($mailbox);
+
+        return $this->gmail->downloadAttachment($mailbox, $messageId, $attachmentId);
     }
 
     public function currentMark(Mailbox $mailbox): string

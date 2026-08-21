@@ -273,3 +273,185 @@ margins around the iframe looked like a card on a tint. Gmail's mail is a
 white page. The right panel is now painted white.
 
 Client `v0.0.0050`.
+
+---
+
+## 2026-08-21 — Email UI like Gmail
+
+The three-column layout (inboxes, list, preview) is gone. The list fills
+the content pane; opening a message replaces it; Back returns to the list.
+Search, an Unread filter, and Gmail folders (Inbox, Starred, Sent, Drafts,
+Trash, Spam) sit on the list. The reading toolbar has Back, Delete, and
+mark read/unread. Delete is refused with a sentence: this connection can
+read and reply, not bin mail for everyone who shares the inbox.
+
+Client `v0.0.0051`.
+
+---
+
+## 2026-08-21 — bulk mail, sender icons, Trash
+
+Tick a sender mark to select; a bar offers delete, mark read, mark unread
+for the ticked rows. The list shows a coloured letter, or the site's icon
+when Google's favicon service has one for that domain.
+
+Delete bins the Gmail thread. That needs `gmail.modify` in Google Admin
+domain-wide delegation (a fourth scope). Listing still uses read+send, so
+a missing modify scope cannot take the inbox down — only delete is
+refused, in a sentence.
+
+Client `v0.0.0052`.
+
+---
+
+## 2026-08-21 — open-mail icon, padding, attachments
+
+The list had sender icons; the open message did not. Simple HTML (a
+Gmail "thanks for lunch" with no layout tables) sat flush against the
+iframe edge because wrap padding was 0. Attachments were named and not
+downloadable.
+
+The reading pane now draws the same letter/logo next to From. Wrap CSS
+pads 20/24/32px. Tapping a file streams it through this origin with a
+sealed token — Decision 2 still holds: nothing is stored.
+
+Client `v0.0.0055`.
+
+---
+
+## 2026-08-21 — All inboxes
+
+Three shared inboxes meant picking one and missing the others. All inboxes
+is now the first row when there is more than one, the landing view, and a
+single list merged by date. Each row names the inbox the mail arrived in.
+Opening it puts that address on THE INBOX YOU ARE IN, so a reply still
+goes out as the inbox it came to. One mailbox that cannot be read does
+not empty the rest — its sentence sits above the mail from the others.
+
+Client `v0.0.0056`.
+
+---
+
+## 2026-08-21 — brand logos and the verified check
+
+List avatars asked Google's favicon service and then drew the image
+through CanvasKit, which cannot decode a cross-origin PNG with no CORS
+headers — so Apple, Google and the rest stayed a coloured letter. The
+image is now an HTML `<img>`, and the domain is the registrable one
+(`email.apple.com` → `apple.com`). Known verified brands get Gmail's
+blue check unless DMARC failed on that message.
+
+Client `v0.0.0057`.
+
+---
+
+## 2026-08-21 — Workspace scope health
+
+A Workspace that could list mail still said "connected" when Google
+Admin had not granted `gmail.modify`, so Trash failed in a sentence
+with no explanation on Settings. The connected card now probes each
+of the four domain-wide scopes and lists them: granted or missing.
+When one is missing the Google Admin steps stay on the card.
+
+Client `v0.0.0060`.
+
+---
+
+## 2026-08-21 — Month squares fit the Posts pane
+
+Monthly Calendar day cells stay square but shrink to the remaining
+height of the Posts pane, so days 1–31 are on screen with no vertical
+scroll. Weekly Calendar is unchanged: this week, no arrows.
+
+Client `v0.0.0062`.
+
+---
+
+## 2026-08-21 — Weekly and Monthly calendars
+
+Posts calendars are named Weekly Calendar and Monthly Calendar. The week
+is this week, with no arrows. Month days are square cells, still with
+previous and next.
+
+Client `v0.0.0061`.
+
+---
+
+## 2026-08-21 — Social Connect for every network
+
+Accounts can finish a sign-in for Pinterest, Facebook Pages, Instagram,
+Threads, LinkedIn, TikTok, YouTube and X (same popup as Gmail). Bluesky
+is a handle and an app password; the password is not stored. A network
+without an app on this installation says so. Tokens never leave the
+server. Compose and publish are still later.
+
+Client `v0.0.0058`.
+
+---
+
+## 2026-08-21 — Social calendars, wider days and month arrows
+
+The Posts calendars were a strip of skinny empty boxes stuck on this
+week and this month. Day cells are taller, the calendar pane takes more
+of the row, week days show their dates, and both calendars have previous
+and next.
+
+Client `v0.0.0059`.
+
+---
+
+## 2026-08-21 — Workspace Marketplace install
+
+Connect Workspace still has the Super Admin prove they run the domain.
+The four Google Admin scopes can then be granted by **Admin install** on
+a Marketplace listing, instead of pasting Unique ID and scope URLs.
+The listing is Public + Admin-only on Cloud project `ezbizi-506117`.
+Google must review a public listing before customer domains can install.
+Until `GOOGLE_MAIL_MARKETPLACE_URL` is on the box, Settings keeps the
+paste-scopes fallback. Marketplace SDK is enabled.
+
+Client `v0.0.0063`.
+
+---
+
+## 2026-08-21 — Place survives a reload
+
+The signed-in shell kept the current tab only in memory, so a refresh
+on Marketing always opened Dashboard. nginx already served index.html
+for deep links. The address bar is now the memory: `/marketing`,
+`/settings`, `/account`, and the other destinations. Back and forward
+move the selection. A path this role cannot reach falls back rather
+than 403ing.
+
+Client `v0.0.0064`.
+
+---
+
+## 2026-08-21 — Month calendar uses the full width
+
+Monthly Calendar day cells span all seven columns across the pane,
+matching Weekly Calendar, and still fit on screen with no vertical
+scroll.
+
+Client `v0.0.0065`.
+
+---
+
+## 2026-08-21 — A-1 onboarding contracts adapted to the HR builder
+
+Eleven A-1 Tools role agreements are now EzBizi catalog templates. Mapping
+follows this platform: `{{name}}` became first and last name,
+`{{company_name}}` became `{{organization.name}}`, hire date is a field,
+paperwork date is `{{document.date}}`, home and business addresses are
+fields. Hourly vs salary and raise vs no-raise are separate templates —
+A-1's clause-deletion tags were not imported as fields. Forty-one
+templates validate through FieldSet and MergeTags.
+
+Publish into a tenant (not on signup):
+
+```
+php artisan hr:publish-onboarding-catalog "{organization name}"
+```
+
+`--dry-run` lists; `--replace` publishes a new version when the name
+already exists. Chimney-trade wording stays opt-in.

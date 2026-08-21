@@ -48,14 +48,14 @@ interface MailboxReader
      * @throws CannotReadMailbox when the mailbox cannot be opened — never an
      *                           empty page standing in for a failure
      */
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage;
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage;
 
     /**
      * The provider's own search, over the whole mailbox.
      *
      * @throws CannotReadMailbox
      */
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage;
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage;
 
     /**
      * One message, opened — with the body already turned into blocks.
@@ -85,6 +85,22 @@ interface MailboxReader
      * @throws CannotReachHost    when the SMTP host fails the same guard the IMAP host does
      */
     public function reply(Mailbox $mailbox, string $messageId, string $body): void;
+
+    /**
+     * Move this message (and its thread, where the provider groups) to Trash.
+     *
+     * @throws CannotReadMailbox  when the mailbox cannot be opened at all
+     * @throws CannotChangeMail   when this connection cannot bin mail
+     */
+    public function trash(Mailbox $mailbox, string $messageId): void;
+
+    /**
+     * One attached file, as bytes. Never stored.
+     *
+     * @throws PictureUnavailable when the part is missing or too large
+     * @throws CannotReadMailbox
+     */
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture;
 
     /**
      * Where this mailbox is RIGHT NOW, without looking at a single message.

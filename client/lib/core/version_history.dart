@@ -8,12 +8,147 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0051',
+      version: '0.0.0066',
       date: '21 Aug 2026',
       items: [
         'Fleet is a register of the company\'s vehicles: owned and rented '
             'periods, insurance, service, and who has the keys. Payments stay '
             'hidden without financials.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0065',
+      date: '21 Aug 2026',
+      items: [
+        'Social Media Monthly Calendar uses the full pane width, '
+            'the same as Weekly Calendar, and still fits without scrolling.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0064',
+      date: '21 Aug 2026',
+      items: [
+        'Reloading the app keeps you where you were. Marketing stays '
+            'Marketing, Settings stays Settings — the address bar holds '
+            'the place, so a refresh is not a trip back to Dashboard.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0063',
+      date: '21 Aug 2026',
+      items: [
+        'Connect Workspace can install EzBizi from Google in one Allow, '
+            'instead of pasting scopes, once the Marketplace listing is live.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0062',
+      date: '21 Aug 2026',
+      items: [
+        'Social Media Monthly Calendar squares shrink to fit the pane, '
+            'so the whole month is on screen without scrolling.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0061',
+      date: '21 Aug 2026',
+      items: [
+        'Social Media Posts is Weekly Calendar and Monthly Calendar. '
+            'The week stays on this week. Month days are square, with '
+            'arrows to move months.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0060',
+      date: '21 Aug 2026',
+      items: [
+        'Email settings shows Workspace health: which Google Admin '
+            'scopes are granted, and which still need adding — Trash '
+            'is gmail.modify.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0059',
+      date: '21 Aug 2026',
+      items: [
+        'The Social Media calendars have wider day boxes, and arrows to '
+            'move to the previous or next week and month.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0058',
+      date: '21 Aug 2026',
+      items: [
+        'Social Media Accounts can connect Pinterest, Facebook Pages, '
+            'Instagram, Threads, LinkedIn, TikTok, YouTube and X the same '
+            'way Email signs in. Bluesky uses a handle and an app password. '
+            'A network that is not set up on this installation says why, '
+            'instead of failing.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0057',
+      date: '21 Aug 2026',
+      items: [
+        'Sender icons load the brand logo — Apple is the apple, not a '
+            'letter A. Verified brands get a blue check, like Gmail.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0056',
+      date: '21 Aug 2026',
+      items: [
+        'All inboxes combines every mailbox you can open into one list. '
+            'Opening a mail still names that inbox, so a reply cannot go '
+            'out as the wrong address.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0055',
+      date: '21 Aug 2026',
+      items: [
+        'The open email shows the sender icon, same as the list. '
+            'Simple mail is padded off the edge of the page. '
+            'Attachments can be downloaded — streamed live, not stored.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0054',
+      date: '21 Aug 2026',
+      items: [
+        'Social Media Posts shows the whole month under this week, '
+            'so a scheduled post is visible on both the week strip and '
+            'the month grid.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0053',
+      date: '21 Aug 2026',
+      items: [
+        'Social Media Management is a Posts tab: pages on the left, '
+            'compose in the middle, a week calendar on the right. '
+            'Accounts is where a page will be connected. Publish stays '
+            'off until this view has a page.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0052',
+      date: '21 Aug 2026',
+      items: [
+        'Tick several emails at once to delete, mark read or unread. '
+            'Sender icons show on the list — a letter, or the logo when '
+            'the domain has one. Delete now bins the thread in Gmail, '
+            'once Google Admin allows gmail.modify.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0051',
+      date: '21 Aug 2026',
+      items: [
+        'Email matches Gmail\'s two views: the list fills the pane, '
+            'opening a mail replaces it, and a search bar plus labels '
+            'sit on the list. Back, delete and read/unread are on the '
+            'reading toolbar.',
       ],
     ),
     VersionRelease(

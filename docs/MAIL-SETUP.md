@@ -68,20 +68,19 @@ https://app.ezbizi.com/api/v1/email/google/callback
 
 ### 4. The scopes it will ask for
 
-Only two, and the consent screen will name them:
+The consent screen names these:
 
 | Scope | Why |
 |---|---|
-| `gmail.readonly` | Listing, reading and searching a mailbox. Also covers `users.getProfile`, which is how EzBizi checks the account signed in with is the address being connected. |
+| `gmail.readonly` | Listing, reading and searching a mailbox. Also covers `users.getProfile`. |
 | `gmail.send` | The reply path, and nothing else. |
+| `gmail.modify` | Move a thread to Trash from EzBizi. Not permanent delete. |
 
-Deliberately **not** requested, so nobody adds them thinking it will help:
+Deliberately **not** requested:
 
 - `https://mail.google.com/` — full account, including permanent deletion.
-- `gmail.modify` — the tempting one-scope simplification. It permits labelling
-  and binning. EzBizi marks nothing at Google: read state is its own
-  `message_seen` table, precisely so that opening a shared inbox here does not
-  mark a message read in Gmail for everybody else in the company.
+
+Opening a message in EzBizi still does not mark it read in Gmail. That is EzBizi's own `message_seen` table, so colleagues are not marked as having read it at Google.
 
 ### 5. Two environment variables, then deploy
 
@@ -124,6 +123,39 @@ impersonates **only the addresses somebody picks from the Directory** (info@,
 jobs@). Personal mailboxes are not imported. Google Groups are not in this
 version.
 
+### Preferred: Google Workspace Marketplace Admin install
+
+Pasting scopes in Domain-wide delegation is the fallback. The path that does
+not ask a Super Admin to paste URLs is a **Marketplace listing**: they open
+the listing, **Admin install**, **Allow**. Google grants the four scopes as
+part of that install.
+
+The Marketplace SDK is enabled on Cloud project `ezbizi-506117`
+(`development@ezbizi.com`). A **public** listing still needs Google's review
+before a customer domain can install it. **Do not save visibility as Private**
+— that setting cannot be changed later, and a private listing only works
+inside ezbizi.com.
+
+Console, signed in as `development@ezbizi.com`:
+
+1. App configuration (Public, Admin only, Web app `https://app.ezbizi.com`, the four Gmail/Directory scopes):
+   https://console.cloud.google.com/apis/api/appsmarket-component.googleapis.com/googleapps_sdk_oauth?project=ezbizi-506117
+2. Store listing (name EzBizi, icons in `assets/marketplace/`, terms `https://www.ezbizi.com/terms/`, privacy `https://www.ezbizi.com/privacy/`, support `https://www.ezbizi.com/`):
+   https://console.cloud.google.com/apis/api/appsmarket-component.googleapis.com/googleapps_sdk_publish?project=ezbizi-506117
+3. OAuth consent must be **External** and include the same four scopes:
+   https://console.cloud.google.com/auth/overview?project=ezbizi-506117
+
+When the listing URL exists, put it on the box:
+
+```
+GOOGLE_MAIL_MARKETPLACE_URL=https://workspace.google.com/marketplace/app/...
+```
+
+Email → Settings then offers **Install EzBizi in Google**. Health still names
+any scope that did not land.
+
+### Fallback: paste the client in Domain-wide delegation
+
 ### What has to exist besides the OAuth client above
 
 1. In the same Google Cloud project, create a **service account**. Enable the
@@ -140,11 +172,11 @@ version.
 ```
 https://www.googleapis.com/auth/gmail.readonly
 https://www.googleapis.com/auth/gmail.send
+https://www.googleapis.com/auth/gmail.modify
 https://www.googleapis.com/auth/admin.directory.user.readonly
 ```
 
-Do not add `mail.google.com` or `gmail.modify`. Same reasons as the per-inbox
-flow: EzBizi must not delete or label mail at Google.
+Do not add `mail.google.com` (permanent delete / admin). `gmail.modify` is Trash.
 
 ### Environment variables on the app box
 

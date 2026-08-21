@@ -454,32 +454,107 @@ class _WorkspaceCard extends StatelessWidget {
                       'shared addresses like info@ from the directory.',
               style: theme.textTheme.bodyMedium,
             ),
-            if (pending && link!.setupSteps.isNotEmpty) ...[
+            if (link?.health != null) ...[
+              const SizedBox(height: 16),
+              _WorkspaceHealth(health: link!.health!),
+            ],
+            if ((pending || (link?.health?.needsAttention ?? false)) &&
+                link!.setupSteps.isNotEmpty) ...[
               const SizedBox(height: 16),
               _DelegationGuide(steps: link!.setupSteps),
             ],
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: linked
-                  ? Refused(
-                      reason: connectRefusal,
-                      child: OutlinedButton(
-                        onPressed: connectRefusal == null ? onDisconnect : null,
-                        child: const Text('Disconnect Workspace'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (linked &&
+                    (pending || (link?.health?.needsAttention ?? false)) &&
+                    (link!.marketplaceListingUrl ?? '').isNotEmpty)
+                  FilledButton(
+                    onPressed: () =>
+                        openExternalUrl(link!.marketplaceListingUrl!),
+                    child: const Text('Install EzBizi in Google'),
+                  ),
+                linked
+                    ? Refused(
+                        reason: connectRefusal,
+                        child: OutlinedButton(
+                          onPressed: connectRefusal == null
+                              ? onDisconnect
+                              : null,
+                          child: const Text('Disconnect Workspace'),
+                        ),
+                      )
+                    : Refused(
+                        reason: connectRefusal,
+                        child: FilledButton(
+                          onPressed: connectRefusal == null ? onConnect : null,
+                          child: const Text('Connect Workspace'),
+                        ),
                       ),
-                    )
-                  : Refused(
-                      reason: connectRefusal,
-                      child: FilledButton(
-                        onPressed: connectRefusal == null ? onConnect : null,
-                        child: const Text('Connect Workspace'),
-                      ),
-                    ),
+              ],
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _WorkspaceHealth extends StatelessWidget {
+  const _WorkspaceHealth({required this.health});
+
+  final WorkspaceHealth health;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final okColor = const Color(0xFF188038);
+    final warnColor = const Color(0xFFE37400);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Health', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 4),
+        Text(
+          health.summary,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: health.ok ? okColor : (health.needsAttention ? warnColor : null),
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (final scope in health.scopes)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  scope.ok ? Icons.check_circle : Icons.error_outline,
+                  size: 18,
+                  color: scope.ok ? okColor : warnColor,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        scope.label,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(scope.detail, style: theme.textTheme.bodySmall),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
@@ -537,7 +612,11 @@ class _GuideStep extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: TextButton(
                     onPressed: () => openExternalUrl(step.url!),
-                    child: const Text('Open Google Admin'),
+                    child: Text(
+                      step.url!.contains('workspace.google.com/marketplace')
+                          ? 'Install in Google'
+                          : 'Open Google Admin',
+                    ),
                   ),
                 ),
               ],

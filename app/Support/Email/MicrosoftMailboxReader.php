@@ -65,7 +65,7 @@ final class MicrosoftMailboxReader implements MailboxReader
         return null;
     }
 
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         return $this->page($mailbox, self::INBOX, [
             '$select'   => self::LIST_SELECT,
@@ -75,7 +75,7 @@ final class MicrosoftMailboxReader implements MailboxReader
         ]);
     }
 
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         return $this->page($mailbox, self::GRAPH.'/me/messages', [
             '$search' => '"'.$query.'"',
@@ -239,6 +239,18 @@ final class MicrosoftMailboxReader implements MailboxReader
             self::GRAPH.'/me/messages/'.rawurlencode($messageId).'/reply',
             ['comment' => $body],
         );
+    }
+
+    public function trash(Mailbox $mailbox, string $messageId): void
+    {
+        throw new CannotChangeMail(
+            'Deleting mail from an Outlook inbox is not available yet. Nothing has been deleted.',
+        );
+    }
+
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
+    {
+        throw new PictureUnavailable('That file could not be loaded.');
     }
 
     /**

@@ -17,10 +17,10 @@ rather than for trying harder.
 | Server panel | https://srv.ezbizi.com (Webmin) |
 | Stack | Laravel 13 · PHP 8.4 · MySQL 8 · Flutter web client |
 <!-- numbers:start -->
-| Tests | 1486 backend · 708 client. Both gated on deploy: nothing ships if either is red. |
-| Client version | `v0.0.0050` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
+| Tests | 1536 backend · 737 client. Both gated on deploy: nothing ships if either is red. |
+| Client version | `v0.0.0065` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
 | Production data | **1 organization(s) · 5 companies · 14 franchises · 5 users · 0 customers · 0 jobs.** Counted 2026-08-21 against the live database by `scripts/status-numbers.sh`, not typed. |
-| Permissions in production | **50 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
+| Permissions in production | **51 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
 <!-- numbers:end -->
 
 ## Build phases (§18 of the build plan)
@@ -31,7 +31,7 @@ rather than for trying harder.
 | 1 — decision records | Captured as docblocks in the code rather than separate pages. Deliberate: a decision written beside the code it constrains is read; one in a folder is not. |
 | 2 — foundation + vertical slice | Done. Organizations → Companies → Franchises → Users, Customers → Jobs. |
 | 3 — cross-cutting | **Done.** Automation engine, notifications, staff control plane, subscription enforcement, import/export. |
-| 4 — expansion | **Dashboards done** — a widget registry with per-user layouts, so a new number is a class rather than a client release. A1 Tools modules next, one at a time. **Inspection is live** as release `20260819130615` (2026-08-19). Builder publishes written-once versions; Generated Reports are frozen, searchable and archivable; New Inspection is a personal draft that submits to a report. Named inspections are granted per role the way inboxes are. Spec `docs/superpowers/specs/2026-08-18-inspection-design.md`, plan `docs/superpowers/plans/2026-08-18-inspection.md`. Five tables migrated, five `inspection.*` permissions synced (47 total), health-checked as `www-data` before the symlink swap. Administrator holds the tab implicitly. Other roles see it only after a grant on Roles, and only start a named inspection they have been offered. |
+| 4 — expansion | **Dashboards done** — a widget registry with per-user layouts, so a new number is a class rather than a client release. A1 Tools modules next, one at a time. **Inspection is live** as release `20260819130615` (2026-08-19). Builder publishes written-once versions; Generated Reports are frozen, searchable and archivable; New Inspection is a personal draft that submits to a report. Named inspections are granted per role the way inboxes are. Spec `docs/superpowers/specs/2026-08-18-inspection-design.md`, plan `docs/superpowers/plans/2026-08-18-inspection.md`. Five tables migrated, five `inspection.*` permissions synced (47 total), health-checked as `www-data` before the symlink swap. Administrator holds the tab implicitly. Other roles see it only after a grant on Roles, and only start a named inspection they have been offered. **Social Media Management** Posts layout is live. Monthly Calendar fills the pane width and height so the whole month is on screen (v0.0.0065). Connect for all nine networks: one `social_sign_ins` table, per-network OAuth start/callback/status (Facebook Pages, Instagram Login, Threads, LinkedIn, TikTok, Pinterest, YouTube, X). Bluesky is handle + app password. Catalogue is usable when the matching env is on the box; missing env is a sentence, not a 500. Live Connect still needs each console’s redirect URI and keys on `.env` — never in git. Compose/publish is still later. **Place survives a reload** (v0.0.0064): the address bar holds the current destination, so refreshing Marketing does not dump you on Dashboard. **HR contract catalog:** the eleven A-1 Tools onboarding agreements are adapted to EzBizi merge tags and live as 41 publishable templates (hourly/salary × raise/no-raise, plus the 1099 inspector). `php artisan hr:publish-onboarding-catalog "{organization name}"` loads them into a tenant; they are not auto-installed. |
 
 ## Standing hazards
 

@@ -1,0 +1,272 @@
+Terms & Responsibilities
+
+{{organization.name}} – Independent Contractor Acknowledgment
+
+This Agreement outlines the responsibilities and expectations for Field Inspectors engaged with {{organization.name}} as independent contractors under 1099 status.
+
+CONTRACTOR AGREEMENT
+
+This Contractor Agreement (“Agreement”) is made and entered into on {{document.date}}, by and between:
+
+Company Name: {{organization.name}}
+Company Address: {{employer_address}}
+Contractor Name: {{first_name}} {{last_name}}
+Contractor Address: {{address}}
+
+POSITION & DUTIES
+
+The Contractor is engaged for the position of:
+
+Job Title – Field Inspector
+
+The Contractor shall perform the duties and responsibilities customarily associated with this role, including but not limited to inspections, estimates, customer communication, and reporting, as coordinated with {{organization.name}}.
+
+The Contractor agrees to comply with all company policies, procedures, and service standards while performing services on behalf of {{organization.name}}.
+
+TRAINING REQUIREMENT
+
+Training is not required for Contractors who can demonstrate sufficient prior experience in chimney inspection, sweep, repair, or related home services to the Company's reasonable satisfaction.
+
+If, at the Company's sole discretion, the Contractor requires training prior to being assigned to independent field work, the training period shall be two (2) weeks in duration and shall cover company procedures, inspection techniques, repair standards, CRM usage, and customer service expectations.
+
+Unpaid Training Period: The Contractor acknowledges and agrees that any training period required under this Section shall be unpaid. No compensation, commission, hourly pay, stipend, or reimbursement of any kind shall be owed by the Company to the Contractor for the duration of the training period.
+
+COMPENSATION
+
+The Contractor shall receive a commission of:
+
+Commission Rate: {{commission_pct}} % per completed job
+
+
+
+Payments will be issued weekly via wire transfer, typically on Mondays or Tuesdays.
+
+Pay will increase by an additional 5% commission after two (2) months of continuous engagement. This increase schedule applies only to newly engaged Contractors who begin at a commission rate of twenty percent (20%) or less. Contractors engaged at a commission rate of twenty-five percent (25%) or higher do not receive automatic commission increases.
+
+Commission Rate Adjustments
+
+Commission is calculated from job profit, not gross revenue. Job profit equals the gross revenue of the job minus approved labor, material, and other direct project costs, determined before commissions are calculated.
+
+Contractor commission is subject to the following deductions under specific circumstances:
+
+• 5% Deduction – Office-Closed Estimates: A 5% deduction will apply if an estimate provided by the Contractor is not closed within seven (7) days and is later closed by the office estimate manager through follow-up and phone sales. In this case, the office closer will receive the 5% commission from the Contractor's original commission.
+
+Bonuses
+
+The Company may announce weekly bonus programs. Additional bonuses and compensation may also be awarded based on employee performance.
+
+COMPANY FINES
+
+The Contractor may be subject to the following fines, each charged at up to $100 per occurrence at the Company's discretion, for violations that affect company operations, customer satisfaction, or legal protection:
+
+• Client cancellation due to lack of communication
+• No-call / no-show for a scheduled job
+• Failure to attend a scheduled Zoom meeting
+• Customer leaves a negative review due to poor service or unprofessional behavior, and the Company was unable to resolve or recover the situation
+• Missing inspection report
+• Closing a job without completing required checklist items (e.g., missing client signature, missing photos), especially if it results in a dispute, chargeback, or stopped payment
+
+VEHICLE & EQUIPMENT RESPONSIBILITY
+
+The Contractor acknowledges receipt of a company vehicle and agrees to:
+
+• Conduct a full inspection upon receipt and sign off on its condition.
+• Be fully responsible for maintaining proper treatment of the vehicle.
+• Wash the vehicle at least twice per month to ensure it remains clean and presentable while in service.
+Insurance Deduction: Contractor agrees to a $75 weekly deduction from compensation to cover company vehicle insurance.
+
+In the event of an at-fault accident, the Contractor will be responsible for a deductible between $500 and $1,000, depending on the incident.
+
+TOOLS & EQUIPMENT
+
+The Contractor will receive a full set of tools (itemized in the attached checklists) and must sign a confirmation of receipt.
+
+The Contractor is responsible for:
+
+• Replacing any missing tool at their own expense.
+• Keeping all tools clean and well-maintained, including vacuum equipment and brushes.
+• Performing maintenance such as brush replacements, when approved by the manager.
+• Ensuring that the Contractor never arrives at a client's home with dirty or unprofessional equipment.
+
+UNIFORMS
+
+The Contractor will receive:
+
+• 3 polos
+• 1 jacket
+• 1 hat
+The Contractor is responsible for replacing any lost or damaged uniform items at the following prices:
+
+• Polo: $25
+• Jacket: $85
+• Hat: $20
+
+WORK SCHEDULE & JOB ACCEPTANCE
+
+The Field Inspector operates on a random and flexible schedule. Jobs will be assigned by the office and sent to the Field Inspector for review. Each job will include an appointment window that has been pre-scheduled with the client.
+
+The Field Inspector has the discretion to accept or decline assigned jobs. Once a job is accepted and confirmed, it becomes the full responsibility of the Field Inspector to complete in accordance with company standards and client expectations.
+
+Prompt response to office communication is required when reviewing assigned job opportunities.
+
+JOB SCHEDULING, COMMUNICATION & BEHAVIOR
+
+For every accepted job, the Contractor must:
+
+• Notify the client with an ETA before the appointment window.
+• Inform the office if there is no answer from the client before the appointment time.
+Any missed appointment caused by failure to follow these steps may result in a fine.
+
+QUALITY ASSURANCE & REDO POLICY
+
+The Contractor is expected to perform every job at a top-quality standard.
+
+This section applies only where the Contractor personally performs the work. Where another crew or repair team performs the work, responsibility for that workmanship belongs to the performing team.
+
+In the case of poor workmanship personally performed by the Contractor:
+
+• The Contractor must return and redo the job at no additional charge.
+• If the client refuses to have the Contractor return, the Contractor will cover the labor cost of another technician assigned to complete the redo.
+• If the Contractor is unavailable (e.g., vacation), the Contractor will be financially responsible for the redo cost.
+
+PAYMENT HANDLING & CASH POLICY
+
+The Company does not accept cash unless in emergency situations where the client has no alternative payment method.
+
+In such cases, the Contractor must:
+
+• Deposit the cash into the Company's bank account, or
+• Wire/Zelle the funds to the Company immediately.
+
+Sales Tax Collection
+
+The Contractor is responsible for charging sales tax where required. If tax is not charged due to Contractor error, the Contractor will be liable for payment of the missing amount from their own earnings.
+
+Credit Card Processing
+
+All payments must be collected using credit card tap/swipe. Manual entries are prohibited unless necessary. Credit card processing fees may only be charged in states where permitted by applicable law.
+
+DOCUMENTATION & CLOSING PROCEDURES
+
+The Contractor must:
+
+• Upload the inspection report, before and after photos, and all job documentation into Workiz.
+• Send the closing link to the company group chat immediately after job completion.
+If any of the following are missing — signatures, photos, report, or estimate — the Contractor may be subject to a fine.
+
+Client Signature Requirement
+
+The Contractor must collect client signatures at all three stages:
+
+• Inspection Report
+• Estimate Approval
+• Invoice Completion
+This is critical to protect the Company against disputes, chargebacks, and legal claims.
+
+NOTICE OF RESIGNATION
+
+The Contractor must provide at least thirty (30) days' written notice prior to ending the engagement with the Company.
+
+NON-COMPETE CLAUSE
+
+This clause applies only if the Company has provided training to the Contractor. Where it applies, the Contractor agrees to a ninety (90) day non-compete following their departure from {{organization.name}}.
+
+During this period, the Contractor shall not:
+
+• Start or work for any competing chimney or HVAC business; or
+• Solicit any past {{organization.name}} clients, vendors, or staff.
+Legal Enforcement: Breach of this clause may result in injunctive relief and civil litigation, including monetary damages.
+
+The Contractor acknowledges that this clause is necessary to protect {{organization.name}}'s investment in training, client base, and proprietary systems, and agrees that it shall be interpreted to the maximum extent permitted by applicable law.
+
+FIELD MONITORING & RECORDING
+
+The Employee acknowledges and agrees that the Company may monitor and record the Employee while performing work in the field, including communications with clients by telephone or in person. Such monitoring and recording are conducted solely for quality assurance, training, service improvement, safety, compliance, and operational verification. The Employee consents to such monitoring and recording as a condition of engagement.
+
+VEHICLE TRACKING & DRIVING RESPONSIBILITY
+
+The Contractor acknowledges that company vehicles are GPS-tracked at all times. The Contractor is responsible for any fines, violations, or tolls resulting from their driving behavior.
+
+USE OF IMAGE FOR MARKETING
+
+The Contractor grants permission for {{organization.name}} to use photos or videos of the Contractor taken on the job for marketing or promotional purposes.
+
+INDEPENDENT CONTRACTOR & INSURANCE
+
+The Field Inspector is engaged as an Independent Contractor and is not an employee of the Company.
+
+The Field Inspector is not covered under the Company's workers' compensation insurance.
+
+The Company provides liability insurance coverage applicable to the services performed; however, the Field Inspector is responsible for maintaining any additional insurance coverage deemed necessary, including but not limited to personal injury or disability coverage.
+
+As an Independent Contractor, the Field Inspector further agrees:
+
+• To be solely responsible for paying their own federal, state, and local taxes.
+• That {{organization.name}} will issue a 1099 form annually.
+
+FINAL PAYMENT HOLD FOR RISK PROTECTION
+
+To protect the Company against potential post-engagement liabilities — such as customer disputes, stop payments, chargebacks, or job redos — {{organization.name}} will retain a portion of the Contractor's earnings upon notice of departure.
+
+• An amount between $1,000 and $3,000 will be withheld for up to sixty (60) days after the Contractor's last working day.
+• After 60 days, the remaining balance will be released and paid to the Contractor.
+• If any deductions are made during this period (e.g., for redos, disputes, or fines), the Contractor will receive a detailed breakdown report outlining the reason for each deduction.
+
+Tools Checklist
+
+• Tool Bag
+• Tool Box
+• Plastic Crate
+• Extension cord
+• Grinder
+• Circular Saw
+• Impact Drill
+• Drill
+• 2x Drill's Batteries
+• Drill Battery's Charger
+• Drill & Impact Bits
+• Concrete Drill Bit
+• Steel Cutter
+• Wrench
+• 2x Pipe Wrenches
+• Combined Wrench Set
+• Hammer
+• Crimping tool
+• Locking Plier
+• Alligator Plier
+• Tape Measure
+• Flashlight
+• Headlight
+• Lighter
+• Knife
+• Gas Flange Key
+• Caulking Gun
+• Multimeter
+• Gas Leak Detector
+• Hand brush
+• Wire hand brush
+• Trowel
+• Concrete Mixer Rod
+• Bricks Jointer
+• Chisel
+
+Equipment Checklist
+
+• Vacuum
+• Rods Holder Bag
+• Sweeping Brush
+• Sweeping Rod Handle
+• Big Ladder
+• Small Ladder
+• Drone Set
+• Scope camera
+• Drop Cloth
+• Gloves
+• Helmet
+• Belt
+• Goggles
+• Dust Pan
+
+ACKNOWLEDGMENT & SIGNATURES
+
+By signing below, both parties acknowledge that they have read, understood, and agree to the terms of this Agreement.

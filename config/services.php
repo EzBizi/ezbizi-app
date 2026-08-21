@@ -75,6 +75,11 @@ return [
         'workspace_client_email' => env('GOOGLE_MAIL_WORKSPACE_CLIENT_EMAIL'),
         'workspace_private_key'  => env('GOOGLE_MAIL_WORKSPACE_PRIVATE_KEY'),
         'workspace_client_id'    => env('GOOGLE_MAIL_WORKSPACE_CLIENT_ID'),
+
+        // Google Workspace Marketplace listing. When set, Email settings
+        // offers Admin install instead of (or before) pasting DWD scopes.
+        // Empty until the listing exists. Public + Admin-only. See MAIL-SETUP.md.
+        'marketplace_listing_url' => env('GOOGLE_MAIL_MARKETPLACE_URL'),
     ],
 
     /*
@@ -92,6 +97,69 @@ return [
         'client_secret' => env('MICROSOFT_MAIL_CLIENT_SECRET'),
         'redirect' => env('MICROSOFT_MAIL_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/email/microsoft/callback',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Pinterest, for tenant pin accounts
+    |--------------------------------------------------------------------------
+    |
+    | One OAuth app for the installation, never a per-tenant value. Redirect
+    | URI defaults to this application's callback on APP_URL. PinterestOAuth
+    | refuses anything that is not that path, so a Host header cannot move it.
+    |
+    | Trial access is what makes this the first network that can actually
+    | connect. Ads scopes are not requested.
+    |
+    */
+    'pinterest' => [
+        'client_id'     => env('PINTEREST_CLIENT_ID'),
+        'client_secret' => env('PINTEREST_CLIENT_SECRET'),
+        'redirect' => env('PINTEREST_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/pinterest/callback',
+    ],
+
+    /*
+    | One Meta app for Facebook Pages, Instagram professional, and Threads.
+    | Three redirect URIs, registered character for character. No ads, no Messenger.
+    */
+    'meta' => [
+        'client_id'     => env('META_APP_ID'),
+        'client_secret' => env('META_APP_SECRET'),
+        'facebook_redirect' => env('META_FACEBOOK_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/facebook/callback',
+        'instagram_redirect' => env('META_INSTAGRAM_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/instagram/callback',
+        'threads_redirect' => env('META_THREADS_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/threads/callback',
+    ],
+
+    'linkedin' => [
+        'client_id'     => env('LINKEDIN_CLIENT_ID'),
+        'client_secret' => env('LINKEDIN_CLIENT_SECRET'),
+        'redirect' => env('LINKEDIN_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/linkedin/callback',
+    ],
+
+    'tiktok' => [
+        'client_key'    => env('TIKTOK_CLIENT_KEY'),
+        'client_secret' => env('TIKTOK_CLIENT_SECRET'),
+        'redirect' => env('TIKTOK_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/tiktok/callback',
+    ],
+
+    'youtube' => [
+        'client_id'     => env('YOUTUBE_CLIENT_ID'),
+        'client_secret' => env('YOUTUBE_CLIENT_SECRET'),
+        'redirect' => env('YOUTUBE_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/youtube/callback',
+    ],
+
+    'x' => [
+        'client_id'     => env('X_CLIENT_ID'),
+        'client_secret' => env('X_CLIENT_SECRET'),
+        'redirect' => env('X_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/x/callback',
     ],
 
 ];

@@ -1,9 +1,14 @@
 import 'dart:convert';
 
+import 'package:ezbizi_client/core/address.dart';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
+import 'package:ezbizi_client/screens/dashboard_screen.dart';
+import 'package:ezbizi_client/screens/marketing_screen.dart';
+import 'package:ezbizi_client/screens/profile_screen.dart';
+import 'package:ezbizi_client/screens/settings_shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -182,6 +187,123 @@ void main() {
     // way out of the screen they landed on.
     expect(_inSidebar('Settings'), findsOneWidget);
   });
+
+  /// Permanence. The selection used to live only in the widget, so a reload
+  /// of Marketing always opened Dashboard. nginx already serves index.html
+  /// for `/marketing`; the shell has to read that path.
+  testWidgets('opening /marketing lands on Marketing, not Dashboard', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    final address = Address(path: '/marketing');
+    await _pumpShell(
+      tester,
+      modules: [
+        _module('dashboard', 'Dashboard'),
+        _module('marketing', 'Marketing'),
+      ],
+      address: address,
+    );
+
+    expect(find.byType(MarketingScreen), findsOneWidget);
+    expect(find.byType(DashboardScreen), findsNothing);
+    expect(address.path, '/marketing');
+  });
+
+  testWidgets('tapping Marketing writes /marketing so a reload can find it', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    final address = Address(path: '/');
+    await _pumpShell(
+      tester,
+      modules: [
+        _module('dashboard', 'Dashboard'),
+        _module('marketing', 'Marketing'),
+      ],
+      address: address,
+    );
+
+    expect(find.byType(DashboardScreen), findsOneWidget);
+    expect(address.path, '/dashboard');
+
+    await tester.tap(_inSidebar('Marketing'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MarketingScreen), findsOneWidget);
+    expect(address.path, '/marketing');
+  });
+
+  testWidgets('Settings and Your account have paths of their own', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    final address = Address(path: '/settings');
+    await _pumpShell(
+      tester,
+      modules: [_module('dashboard', 'Dashboard')],
+      address: address,
+    );
+
+    expect(find.byType(SettingsShell), findsOneWidget);
+    expect(address.path, '/settings');
+
+    await tester.tap(
+      find.byTooltip('Your account — Jose Silva (jose@example.com)'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Your account').last);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ProfileScreen), findsOneWidget);
+    expect(address.path, '/account');
+  });
+
+  testWidgets('a path this role cannot reach falls back rather than 403ing', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    final address = Address(path: '/jobs');
+    await _pumpShell(
+      tester,
+      modules: [
+        _module('dashboard', 'Dashboard'),
+        _module('jobs', 'Jobs', reachable: false),
+      ],
+      address: address,
+    );
+
+    expect(find.byType(DashboardScreen), findsOneWidget);
+    expect(address.path, '/dashboard');
+  });
+
+  testWidgets('the back button restores the previous place', (tester) async {
+    _wide(tester);
+
+    final address = Address(path: '/dashboard');
+    await _pumpShell(
+      tester,
+      modules: [
+        _module('dashboard', 'Dashboard'),
+        _module('marketing', 'Marketing'),
+      ],
+      address: address,
+    );
+
+    await tester.tap(_inSidebar('Marketing'));
+    await tester.pumpAndSettle();
+    expect(find.byType(MarketingScreen), findsOneWidget);
+
+    address.popped('/dashboard');
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DashboardScreen), findsOneWidget);
+    expect(find.byType(MarketingScreen), findsNothing);
+  });
 }
 
 // ── harness ────────────────────────────────────────────────────────
@@ -203,6 +325,7 @@ Finder _inSidebar(String label) => find.descendant(
 Future<void> _pumpShell(
   WidgetTester tester, {
   required List<Map<String, dynamic>> modules,
+  Address? address,
 }) async {
   final api = ApiClient(client: MockClient((request) async {
     if (request.url.path.endsWith('/me')) return _json({'data': _me(modules)});
@@ -223,14 +346,15 @@ Future<void> _pumpShell(
     reason: 'The /me stub did not produce a session.',
   );
 
-  await _pump(tester, api, session);
+  await _pump(tester, api, session, address: address);
 }
 
 Future<void> _pump(
   WidgetTester tester,
   ApiClient api,
-  Session session,
-) async {
+  Session session, {
+  Address? address,
+}) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
@@ -240,7 +364,11 @@ Future<void> _pump(
       // different set of modules would never reach the screen.
       home: ListenableBuilder(
         listenable: session,
-        builder: (_, _) => HomeShell(api: api, session: session),
+        builder: (_, _) => HomeShell(
+          api: api,
+          session: session,
+          address: address,
+        ),
       ),
     ),
   );

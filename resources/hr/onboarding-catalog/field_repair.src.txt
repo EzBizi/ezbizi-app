@@ -1,0 +1,335 @@
+This Field Repair Team Employment Agreement ("Agreement") is entered into between:
+
+Company: {{organization.name}}
+Company Address: {{employer_address}}
+Employee Name: {{first_name}} {{last_name}}
+Employee Address: {{address}}
+In consideration of the mutual promises and covenants contained herein, and for other good and valuable consideration, the receipt and sufficiency of which are hereby acknowledged, the Employer and Employee (collectively, the "Parties") agree as follows:
+
+1. EMPLOYMENT DETAILS
+
+Date of Hire: {{date_of_hire}}
+Job Title: Field Repair Team Member
+
+Employment Type: W-2 Employee
+
+<<hourly>>Hourly Rate: ${{hourly_rate}} per hour<</hourly>>
+
+<<salary>>Salary: ${{salary_amount}} per {{salary_period}}<</salary>>
+
+Employment is considered at-will unless otherwise specified in a separate written agreement. Either party may terminate employment at any time in accordance with applicable state laws.
+
+2. POSITION & DUTIES
+
+The Employee is hired for the position of Field Repair Team Member and shall perform the duties and responsibilities as assigned by the Employer. The primary purpose of the Field Repair Team is to execute and complete repair, installation, and construction projects assigned by the Company to the highest standard of workmanship and professionalism.
+
+The Employee agrees to comply with all company policies, procedures, and standard operating procedures (SOPs).
+
+Job Responsibilities
+
+The Field Repair Team Member agrees to:
+
+• Complete all assigned repair, installation, and construction projects in accordance with company specifications, scopes of work, and timelines
+• Uphold a consistently high quality standard on every project, including craftsmanship, materials handling, and finish quality
+• Follow company repair standards, building codes, and safety protocols at all times
+• Communicate professionally with clients on site, including before, during, and after the project
+• Coordinate with the Project Manager regarding scheduling, parts, materials, and project updates
+• Submit project documentation, including photos and reports, before leaving the job site
+• Use the CRM and internal systems properly (Workiz, Monday.com, group chat, etc.)
+• Maintain clean, organized, and professional job sites — including daily cleanup, debris removal, and protection of customer property
+• Represent the company in a professional manner at all times
+
+3. COMPENSATION
+
+The Field Repair Team Member's compensation will be structured as follows:
+
+(a) Base Pay
+
+<<hourly>>The Employee shall be compensated on an hourly basis only, at a base hourly rate of ${{hourly_rate}} per hour. All compensation is subject to applicable federal and state tax withholdings and deductions.<</hourly>>
+
+<<salary>>The Employee shall receive a fixed salary of ${{salary_amount}} per {{salary_period}}, in lieu of an hourly wage. All compensation is subject to applicable federal and state tax withholdings and deductions.<</salary>>
+
+(b) Additional Bonuses & Upsell Commissions
+
+Additional bonuses may be awarded based on employee performance and will be announced by the Company from time to time. Employees may also earn additional commissions for approved upsells.
+
+<<hourly>>(c) Overtime
+
+In accordance with the Fair Labor Standards Act (FLSA) and applicable state law, any hours worked in excess of forty (40) hours per workweek shall be compensated at one and one-half (1.5x) times the Employee's regular hourly rate. Overtime must be pre-approved by a supervisor unless required by operational necessity.<</hourly>>
+
+(d) Paid Holidays & Time Off
+
+• The Company provides paid Jewish and U.S. holidays when the Employee is scheduled to be off. The Company will notify the Employee of upcoming holiday dates in advance.
+• Employees who choose to work on eligible holidays, when offered by the Company, may receive bonus opportunities.
+• The Employee may choose their own time off by providing at least fourteen (14) days' advance notice to the Company.
+
+(e) Payment Schedule
+
+Payments will be issued weekly via direct deposit, typically processed on Mondays or Tuesdays. All payments are subject to applicable federal, state, and local tax withholdings.
+
+<<raise>>(f) Scheduled Pay Increases
+
+The Employee's base pay shall increase by ${{raise_amount}}<<hourly>> per hour<</hourly>> every {{raise_period}} during the first twelve (12) months of employment, provided the Employee remains in good standing and meets performance expectations. Increases are cumulative and take effect on the first full pay period following each interval. Any increase beyond the first twelve (12) months shall be at the sole discretion of the Employer based on performance reviews.<</raise>>
+
+4. WORK SCHEDULE & AVAILABILITY
+
+Standard business hours for the Field Repair Team:
+
+• Monday – Friday: 8:00 AM – 4:00 PM
+• Saturday & Sunday: Off
+The Employee must remain available during these hours. Prompt response to office communication is required throughout the workday. The schedule may be adjusted by the Employer with reasonable notice based on operational needs, including occasional weekend or after-hours work for time-sensitive projects.
+
+Same-Day Project Completion: Every assigned project must be completed on the same day it is started. If the Employee has not finished the project by 4:00 PM, the Employee is still required to remain on the job site and continue working until the project is fully completed to company standards. The Employee may not leave an incomplete project to be finished the following day except with the express prior approval of the Project Manager.
+
+<<hourly>>Overtime for Same-Day Completion: Any hours worked beyond the standard schedule in order to complete a project the same day are compensated at the Employee's regular hourly rate. If completion of same-day work causes the Employee's total weekly hours to exceed forty (40), all hours worked beyond forty (40) shall be paid at the overtime rate of one and one-half (1.5x) the Employee's regular hourly rate, as required by the Fair Labor Standards Act (FLSA) and applicable state law.<</hourly>>
+
+5. VEHICLE, EQUIPMENT RESPONSIBILITY & ATTENDANCE
+
+(a) Clock-In / Clock-Out Requirement
+
+The Employee is required to clock in and clock out at the company office daily. Failure to properly clock in or clock out may result in disciplinary action. Accurate time records are essential for payroll processing and compliance with applicable labor laws.
+
+(b) Company Vehicle
+
+The Employee acknowledges receipt of a company vehicle and agrees to:
+
+• Conduct a full inspection upon receipt and sign off on its condition
+• Be fully responsible for the proper treatment and cleaning of the vehicle
+• Wash the vehicle at least twice per month to ensure it remains clean and presentable while in service
+Any costs incurred by the Employee for washing, cleaning, or maintaining the vehicle will be reimbursed by the Company.
+
+Company vehicles are GPS-tracked at all times.
+
+Gas & Fuel Policy
+
+All fuel expenses incurred in connection with the Employee's job duties and use of the company vehicle shall be paid in full by the Company. The Employee will be provided with a company fuel card (or reimbursed in full upon submission of fuel receipts) for all work-related fuel costs. The fuel card or reimbursement is strictly for business use; any personal use of the fuel card is prohibited and may result in disciplinary action up to and including termination.
+
+(c) Tools & Equipment
+
+The Employee will receive a full set of tools (to be itemized in the attached checklists) and must sign a confirmation of receipt. The Employee is responsible for:
+
+• Replacing any missing tool at their own expense
+• Keeping all tools clean and well-maintained, including vacuum equipment and brushes
+• Performing maintenance such as brush replacements, when approved by the manager
+• Ensuring no team member arrives at a client's home with dirty or unprofessional equipment
+
+6. UNIFORMS
+
+The Employee will receive the following uniform items:
+
+• 3 polo shirts
+• 1 jacket
+• 1 hat
+The Employee is expected to wear company-issued uniform items during all work hours and to keep them clean and presentable.
+
+7. JOB SCHEDULING, COMMUNICATION & BEHAVIOR
+
+The Employee must:
+
+• Notify the client with an ETA before the appointment window
+• Inform the office if there is no answer from the client before the appointment time
+• Provide the Project Manager with real-time updates on project progress, material needs, and any unexpected complications
+Any missed appointment caused by failure to follow these steps may result in disciplinary action.
+
+8. QUALITY ASSURANCE & REDO POLICY
+
+The Field Repair Team is held to a high standard of workmanship. Every project must be completed to a quality standard reflecting the Company's reputation.
+
+• The Employee is responsible only for workmanship failures directly caused by the Employee's own performance.
+• The Employee is not responsible for failures resulting from materials, manufacturer defects, weather conditions, or other causes outside the Employee's control.
+• Before any financial responsibility is imposed, the Company will provide up to three (3) forgiveness incidents for qualifying workmanship-related callbacks.
+• Where the Employee is responsible, the Employee must return and redo the work at no additional charge. If the client refuses to have the Employee return, the Company may assign another team member to complete the redo.
+Persistent quality issues, repeated callbacks, or failure to meet workmanship standards may result in disciplinary action up to and including termination.
+
+9. PAYMENT HANDLING & CASH POLICY
+
+The Company does not accept cash unless in emergency situations where the client has no alternative payment method. In such cases, the Employee must:
+
+• Deposit the cash into the company's bank account, or
+• Wire/Zelle the funds to the company immediately
+Before leaving the job site, the Employee must verify with management that payment has been successfully received, either by the Employee or by another team member.
+
+Sales Tax Collection
+
+The Employee is responsible for charging sales tax where required.
+
+Credit Card Processing
+
+All payments must be collected using credit card tap/swipe. Manual entries are prohibited unless necessary. Credit card processing fees may only be charged in states where permitted by applicable law.
+
+10. PROJECT PHOTO DOCUMENTATION
+
+The Employee is required to take multiple photos before, during, and after each project, and send them to the group chat with the Project Manager.
+
+11. COMPUTER AND ACTIVITY MONITORING
+
+The Employee acknowledges and agrees that the Company reserves the right to monitor, access, and record any activity conducted on company-owned computers, devices, vehicles, and systems at any time. This includes, but is not limited to, internet usage, software applications, email communications, GPS tracking on company vehicles, and any other digital activity.
+
+The Employee understands that there is no expectation of privacy when using company equipment or networks, and such monitoring may occur without prior notice. All data generated on company equipment remains the property of the Employer.
+
+Field Monitoring & Recording
+
+The Employee acknowledges and agrees that the Company is permitted to monitor and record the Employee while on the field during any communication with clients, whether by phone or in person. Such monitoring and recording is conducted solely for purposes of quality assurance, service improvement, training, and compliance verification. The Employee consents to such monitoring as a condition of employment.
+
+12. USE OF IMAGE AND LIKENESS
+
+The Employee authorizes the Employer to use the Employee's name, photograph, and likeness for legitimate business purposes, including but not limited to: the company website, internal systems, employee directories, marketing materials, social media, and related business platforms. This authorization remains in effect during and after the term of employment unless revoked in writing by the Employee.
+
+13. CONFIDENTIALITY
+
+The Employee acknowledges that during the course of employment, the Employee may have access to confidential and proprietary information belonging to the Employer, including but not limited to: customer lists, pricing structures, business strategies, marketing plans, operational procedures, financial data, software systems, and trade secrets (collectively, "Confidential Information").
+
+The Employee agrees to:
+
+• Not disclose, publish, or otherwise share any Confidential Information with any third party during or after employment without the prior written consent of the Employer.
+• Not use any Confidential Information for personal benefit or for the benefit of any third party.
+• Return all Confidential Information, documents, materials, keys, equipment, and company property upon termination of employment.
+• The obligations set forth in this Section shall survive the termination of this Agreement and remain in effect indefinitely.
+
+14. PROHIBITION OF SIDE JOBS, THEFT & MISUSE OF COMPANY RESOURCES
+
+(a) Prohibition of Side Jobs and Job Diversion
+
+The Employee is strictly prohibited from performing any chimney, fireplace, HVAC, masonry, or related home service or construction work outside of their duties for {{organization.name}}, whether for personal gain or for the benefit of any third party. This includes, but is not limited to:
+
+• Performing unauthorized or "off-the-books" work for clients, leads, or contacts obtained through or during the course of employment with {{organization.name}}
+• Diverting, redirecting, or referring any customer, lead, or project opportunity away from {{organization.name}} to the Employee personally or to any third party
+• Using company time, equipment, vehicles, tools, uniforms, or branding to perform work that is not authorized by the Company
+
+(b) Prohibition of Theft and Financial Misconduct
+
+The Employee shall not engage in any form of theft, embezzlement, or financial misconduct, including but not limited to:
+
+• Collecting payments from customers and failing to remit them to the Company
+• Accepting cash, tips, or other compensation from customers without proper documentation and disclosure to the Company
+• Falsifying invoices, estimates, time records, project reports, or any other company documentation
+• Misappropriating company funds, tools, equipment, materials, or any other company property
+
+(c) Misuse of Company Vehicles
+
+Company vehicles are provided exclusively for authorized business use. The Employee shall not use the company vehicle for any unauthorized purpose, including but not limited to performing side jobs, personal commercial activities, or any work not sanctioned by {{organization.name}}.
+
+(d) Remedies and Right to Legal Action
+
+The Employee acknowledges that any violation of this Section constitutes a material breach of this Agreement and may result in:
+
+• Immediate termination of employment without notice
+• The Company's right to pursue civil litigation against the Employee for the recovery of all damages, lost revenue, and profits resulting from the Employee's unauthorized activities
+• The Company's right to seek injunctive relief to prevent ongoing or further violations
+• The Company's right to report criminal conduct (including theft, embezzlement, or fraud) to the appropriate law enforcement authorities for criminal prosecution
+• Recovery of all reasonable attorneys' fees, court costs, and expenses incurred by the Company in enforcing this Section
+The Employee agrees that any revenue, payments, or compensation received from unauthorized side jobs or diverted work performed during the term of employment rightfully belongs to {{organization.name}}, and the Company shall be entitled to recover such amounts in full.
+
+15. NON-COMPETE & NON-SOLICITATION
+
+(a) Non-Compete
+
+This provision applies only if the Company has provided training to the Employee. Where it applies, then during the term of employment and for a period of ninety (90) days following the termination of employment (regardless of the reason for termination), the Employee agrees not to, directly or indirectly, engage in, become employed by, consult for, or have any ownership interest in any business that provides chimney, fireplace, HVAC, or similar home services within a fifty (50) mile radius of any {{organization.name}} operating location where the Employee was assigned.
+
+(b) Non-Solicitation
+
+For a period of two (2) years following termination, the Employee agrees not to:
+
+• Solicit, contact, or attempt to divert any customer or client of the Employer with whom the Employee had contact during employment
+• Solicit, recruit, or encourage any employee of the Employer to leave their employment
+• Solicit any past {{organization.name}} vendors or staff
+
+(c) Remedies
+
+The Employee acknowledges that a breach of this Section would cause irreparable harm to the Employer. In the event of a breach or threatened breach, the Employer shall be entitled to seek injunctive relief and pursue civil litigation, including monetary damages and reasonable attorneys' fees. The Employee acknowledges that this clause is necessary to protect {{organization.name}}'s investment in training, client base, and proprietary systems, and agrees that it shall be interpreted to the maximum extent permitted by applicable law.
+
+16. TERMINATION
+
+(a) Notice of Resignation
+
+The Employee must provide at least thirty (30) days' written notice prior to leaving the Company.
+
+(b) Immediate Termination
+
+The Employer may terminate the Employee immediately and without notice for any of the following reasons:
+
+• Dishonesty, fraud, theft, or embezzlement
+• Gross misconduct or insubordination
+• Violation of company policies or safety procedures
+• Unauthorized disclosure of Confidential Information
+• Conviction of or plea to a felony or crime of moral turpitude
+• Failure to perform assigned duties after written warning
+• Being under the influence of drugs or alcohol during working hours
+• Damage to company property, equipment, or reputation
+• Performing unauthorized side jobs or diverting company business (as outlined in Section 14)
+• Repeated quality failures, callbacks, or redos demonstrating inability to meet company workmanship standards
+
+17. DISPUTE RESOLUTION
+
+Any dispute or claim arising out of or relating to this Agreement shall first be submitted to good faith mediation. If mediation is unsuccessful, the dispute shall be resolved by binding arbitration in accordance with the rules of the American Arbitration Association, conducted in {{county}} County, State of {{state}}. The prevailing party in any arbitration or legal proceeding shall be entitled to recover reasonable attorneys' fees and costs.
+
+18. GOVERNING LAW
+
+This Agreement shall be governed by and construed in accordance with the laws of the State of {{state}}, without regard to its conflict of law principles.
+
+19. SEVERABILITY
+
+If any provision of this Agreement is found to be invalid, illegal, or unenforceable by a court of competent jurisdiction, the remaining provisions shall continue in full force and effect. The invalid provision shall be modified to the minimum extent necessary to make it enforceable while preserving the Parties' original intent.
+
+20. ENTIRE AGREEMENT
+
+This Agreement constitutes the entire understanding between the Parties with respect to the Employee's employment and supersedes all prior negotiations, representations, and agreements, whether written or oral. This Agreement may not be modified except by a written instrument signed by both Parties.
+
+ACKNOWLEDGMENT & SIGNATURES
+
+By signing below, both Parties acknowledge that they have read, understood, and agree to all the terms and conditions set forth in this Agreement.
+
+Tools Checklist
+
+• Tool Bag
+• Tool Box
+• Plastic Crate
+• Extension cord
+• Grinder
+• Circular Saw
+• Impact Drill
+• Drill
+• 2x Drill's Batteries
+• Drill Battery's Charger
+• Drill & Impact Bits
+• Concrete Drill Bit
+• Steel Cutter
+• Wrench
+• 2x Pipe Wrenches
+• Combined Wrench Set
+• Hammer
+• Crimping tool
+• Locking Plier
+• Alligator Plier
+• Tape Measure
+• Flashlight
+• Headlight
+• Lighter
+• Knife
+• Gas Flange Key
+• Caulking Gun
+• Multimeter
+• Gas Leak Detector
+• Hand brush
+• Wire hand brush
+• Trowel
+• Concrete Mixer Rod
+• Bricks Jointer
+• Chisel
+
+Equipment Checklist
+
+• Vacuum
+• Rods Holder Bag
+• Sweeping Brush
+• Sweeping Rod Handle
+• Big Ladder
+• Small Ladder
+• Drone Set
+• Scope camera
+• Drop Cloth
+• Gloves
+• Helmet
+• Belt
+• Goggles
+• Dust Pan

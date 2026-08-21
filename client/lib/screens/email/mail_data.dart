@@ -72,6 +72,7 @@ class Mailbox {
     required this.sharedRead,
     required this.canReply,
     required this.replyRefusal,
+    this.provider = '',
   });
 
   final String id;
@@ -103,6 +104,13 @@ class Mailbox {
   /// Why not, in the server's words. Null when [canReply] is true.
   final String? replyRefusal;
 
+  /// `gmail_oauth`, `gmail_workspace`, `imap`, `microsoft`.
+  final String provider;
+
+  /// Gmail folders (Starred, Sent, …) exist on this mailbox.
+  bool get isGmail =>
+      provider == 'gmail_oauth' || provider == 'gmail_workspace';
+
   factory Mailbox.fromJson(Map<String, dynamic> json) => Mailbox(
     id: '${json['id']}',
     address: json['address'] as String? ?? '',
@@ -119,6 +127,7 @@ class Mailbox {
         (json['can_reply'] == null && json['may_read'] == true),
     replyRefusal: json['reply_refusal'] as String? ??
         json['may_read_reason'] as String?,
+    provider: json['provider'] as String? ?? '',
   );
 }
 
@@ -181,6 +190,9 @@ class MessageHeader {
     required this.hasAttachments,
     required this.seenBy,
     this.messageCount = 1,
+    this.mailboxId = '',
+    this.mailboxAddress = '',
+    this.authenticated,
   });
 
   final String id;
@@ -202,12 +214,42 @@ class MessageHeader {
   /// How many messages are in this conversation. 1 is a lone mail.
   final int messageCount;
 
+  /// Which inbox this row belongs to. Set on every list, so All inboxes
+  /// can open, reply and delete against the right mailbox.
+  final String mailboxId;
+
+  /// The address of that inbox, for the combined list. Empty on a
+  /// single-inbox list, where the bar already names it.
+  final String mailboxAddress;
+
+  /// DMARC for this message, if the provider said. Null when it did not.
+  final bool? authenticated;
+
   /// Who it is from, in one line: their name where there is one, and the
   /// address where there is not. Never the name alone with the address thrown
   /// away — in a shared inbox the address is half of knowing who is writing.
   String get from => fromName.isEmpty ? fromAddress : '$fromName <$fromAddress>';
 
-  factory MessageHeader.fromJson(Map<String, dynamic> json) {
+  MessageHeader copyWith({bool? unread}) => MessageHeader(
+    id: id,
+    fromName: fromName,
+    fromAddress: fromAddress,
+    subject: subject,
+    preview: preview,
+    receivedAt: receivedAt,
+    unread: unread ?? this.unread,
+    hasAttachments: hasAttachments,
+    seenBy: seenBy,
+    messageCount: messageCount,
+    mailboxId: mailboxId,
+    mailboxAddress: mailboxAddress,
+    authenticated: authenticated,
+  );
+
+  factory MessageHeader.fromJson(
+    Map<String, dynamic> json, {
+    Mailbox? mailbox,
+  }) {
     final from = json['from'] as Map<String, dynamic>? ?? const {};
 
     return MessageHeader(
@@ -224,27 +266,39 @@ class MessageHeader {
       messageCount: json['message_count'] is int
           ? json['message_count'] as int
           : int.tryParse('${json['message_count'] ?? 1}') ?? 1,
+      mailboxId: mailbox?.id ?? '${json['mailbox_id'] ?? ''}',
+      mailboxAddress: mailbox?.address ??
+          json['mailbox_address'] as String? ??
+          '',
+      authenticated: json['from_authenticated'] == true
+          ? true
+          : json['from_authenticated'] == false
+          ? false
+          : null,
     );
   }
 }
 
-/// A file that came with the message, named but not held.
+/// A file that came with the message.
 ///
-/// Attachments are not stored (decision 2) and this window does not download
-/// them. Naming them anyway is the honest half: a message whose only content is
-/// a quote PDF would otherwise read as an empty email.
+/// Bytes are not stored here. [token] is the sealed handle the download
+/// endpoint needs; without it the row is a name only.
 @immutable
 class MailAttachment {
-  const MailAttachment({required this.name, required this.size});
+  const MailAttachment({required this.name, required this.size, this.token});
 
   final String name;
 
   /// Bytes, or null where the provider did not say.
   final int? size;
 
+  /// Sealed attachment id. Null when this connection cannot fetch the file.
+  final String? token;
+
   factory MailAttachment.fromJson(Map<String, dynamic> json) => MailAttachment(
     name: json['name'] as String? ?? '',
-    size: json['size'] as int?,
+    size: json['size'] as int? ?? json['bytes'] as int?,
+    token: json['token'] as String?,
   );
 }
 

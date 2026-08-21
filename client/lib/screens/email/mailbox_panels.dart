@@ -1753,9 +1753,11 @@ class _ConnectWorkspacePanelState extends State<ConnectWorkspacePanel> {
     return SidePanel(
       title: 'Connect Google Workspace',
       subtitle:
-          'A Workspace administrator signs in once for the company domain. '
-          'After that, pick shared inboxes like info@ from the directory — '
-          'do not import anyone\'s personal mailbox.',
+          'A Workspace administrator signs in once to prove they run the '
+          'domain. Google then asks them to Allow EzBizi for the company — '
+          'one click, not a list of scopes to paste. After that, pick shared '
+          'inboxes like info@ from the directory. Do not import anyone\'s '
+          'personal mailbox.',
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).maybePop(),

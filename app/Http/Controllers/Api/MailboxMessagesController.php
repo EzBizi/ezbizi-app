@@ -6,6 +6,7 @@ use App\Models\Mailbox;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Email\CannotChangeMail;
 use App\Support\Email\CannotReachHost;
 use App\Support\Email\CannotReadMailbox;
 use App\Support\Email\EmailPictureLoader;
@@ -83,30 +84,39 @@ class MailboxMessagesController extends Controller
             'search' => ['sometimes', 'nullable', 'string', 'max:500'],
             'cursor' => ['sometimes', 'nullable', 'string', 'max:2048'],
             'limit'  => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'label'  => ['sometimes', 'nullable', 'string', 'max:32'],
+            'unread' => ['sometimes', 'boolean'],
         ]);
 
         $reader = $this->readers->for($mailbox);
         $limit  = (int) ($input['limit'] ?? 25);
         $search = trim((string) ($input['search'] ?? ''));
         $cursor = $input['cursor'] ?? null;
+        $label  = strtoupper((string) ($input['label'] ?? 'INBOX'));
+        if ($request->boolean('unread')) {
+            $search = trim('is:unread '.$search);
+        }
 
         try {
-            $page = $search === ''
+            $page = $search === '' && $label === 'INBOX'
                 /*
-                 * Only the plain listing is cached.
+                 * Only the plain Inbox listing is cached.
                  *
                  * A search is a question whose answer changes with every message
                  * that arrives, and somebody searching a mailbox has usually
                  * just failed to find something — which is the worst possible
-                 * moment to be handed a minute-old answer.
+                 * moment to be handed a minute-old answer. A folder other than
+                 * Inbox is the same kind of question.
                  */
                 ? $this->cache->remember(
                     $mailbox,
                     $cursor,
                     $limit,
-                    fn () => $reader->list($mailbox, $cursor, $limit),
+                    fn () => $reader->list($mailbox, $cursor, $limit, $label),
                 )
-                : $reader->search($mailbox, $search, $cursor, $limit);
+                : ($search === ''
+                    ? $reader->list($mailbox, $cursor, $limit, $label)
+                    : $reader->search($mailbox, $search, $cursor, $limit, $label));
         } catch (CannotReadMailbox $e) {
             return $this->refused($e);
         }
@@ -317,6 +327,72 @@ class MailboxMessagesController extends Controller
     }
 
     /**
+     * GET /api/v1/email/mailboxes/{mailbox}/messages/{message}/file
+     *
+     * The attachment handle is an encrypted token. Bytes are fetched live
+     * and not stored. The filename on the token is the one we put on
+     * Content-Disposition — never a path the sender wrote into a header.
+     */
+    public function file(Request $request, Mailbox $mailbox, string $message): Response
+    {
+        $this->assertMayRead($request->user(), $mailbox, 'open this inbox');
+
+        $token = (string) $request->query('src', '');
+
+        if ($token === '' || strlen($token) > 8192) {
+            return response()->json(['message' => 'That file could not be loaded.'], 404);
+        }
+
+        try {
+            [$target, $attachmentId] = $this->attachmentHandle(
+                $this->pictures->reveal($token),
+                $message,
+            );
+        } catch (PictureUnavailable) {
+            return response()->json(['message' => 'That file could not be loaded.'], 404);
+        }
+
+        try {
+            $file = $this->readers->for($mailbox)->downloadAttachment($mailbox, $target, $attachmentId);
+        } catch (PictureUnavailable|CannotReachHost|CannotReadMailbox|\App\Support\Email\GoogleWorkspaceRefused) {
+            return response()->json(['message' => 'That file could not be loaded.'], 404);
+        }
+
+        $name = $this->safeDownloadName($request->query('name', 'attachment'));
+
+        return response($file->bytes, 200, [
+            'Content-Type' => $file->mime,
+            'Content-Disposition' => 'attachment; filename="'.$name.'"',
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    /**
+     * @return array{0: string, 1: string} message id, attachment id
+     */
+    private function attachmentHandle(string $revealed, string $urlMessage): array
+    {
+        if (str_contains($revealed, "\n")) {
+            [$left, $right] = explode("\n", $revealed, 2);
+            if ($left !== '' && $right !== '') {
+                return [$left, $right];
+            }
+        }
+
+        return [$urlMessage, $revealed];
+    }
+
+    private function safeDownloadName(mixed $name): string
+    {
+        $name = is_string($name) ? $name : 'attachment';
+        $name = str_replace(['"', "\r", "\n", '/', '\\'], '', $name);
+        $name = trim($name);
+
+        return $name === '' ? 'attachment' : substr($name, 0, 180);
+    }
+
+    /**
      * POST /api/v1/email/mailboxes/{mailbox}/messages/{message}/seen
      *
      * For the case opening does not cover: somebody who has read a message in
@@ -338,6 +414,97 @@ class MailboxMessagesController extends Controller
                 'shared'     => $this->readState->isShared($mailbox),
             ],
         ]);
+    }
+
+    /**
+     * DELETE /api/v1/email/mailboxes/{mailbox}/messages/{message}/seen
+     *
+     * "Mark as unread" for this person. Only their mark. A shared inbox's
+     * "Seen by Marta" is Marta's, and taking it off because somebody else
+     * clicked unread would be rewriting a fact they did not ask to rewrite.
+     */
+    public function unsee(Request $request, Mailbox $mailbox, string $message): JsonResponse
+    {
+        $user = $request->user();
+
+        $this->assertMayRead($user, $mailbox, 'mark a message in this inbox');
+
+        $this->readState->forgetSeen($mailbox, $message, $user);
+
+        return response()->json([
+            'data' => [
+                'message_id' => $message,
+                'seen_by'    => $this->readState->seenBy($mailbox, [$message], $user)[$message] ?? [],
+                'shared'     => $this->readState->isShared($mailbox),
+            ],
+        ]);
+    }
+
+    /**
+     * DELETE /api/v1/email/mailboxes/{mailbox}/messages/{message}
+     *
+     * The thread goes to the provider's Trash. A shared inbox's bin is
+     * shared: everybody who can open this address no longer sees it.
+     */
+    public function destroy(Request $request, Mailbox $mailbox, string $message): JsonResponse
+    {
+        $this->assertMayRead($request->user(), $mailbox, 'open this inbox');
+
+        try {
+            $this->readers->for($mailbox)->trash($mailbox, $message);
+        } catch (CannotReadMailbox $e) {
+            return $this->refused($e);
+        } catch (CannotChangeMail $e) {
+            return response()->json(['message' => $e->getMessage()], $e->status());
+        }
+
+        $this->cache->forget($mailbox);
+
+        return response()->json(['data' => ['id' => $message]]);
+    }
+
+    /**
+     * POST /api/v1/email/mailboxes/{mailbox}/messages/bulk
+     *
+     * One round trip for a handful of ticks: trash, or this person's seen
+     * mark. Caps at 50 so a mis-click cannot empty a mailbox in one go.
+     */
+    public function bulk(Request $request, Mailbox $mailbox): JsonResponse
+    {
+        $user = $request->user();
+
+        $this->assertMayRead($user, $mailbox, 'open this inbox');
+
+        $input = $request->validate([
+            'action' => ['required', 'in:trash,seen,unseen'],
+            'ids'    => ['required', 'array', 'min:1', 'max:50'],
+            'ids.*'  => ['string', 'max:256'],
+        ]);
+
+        $ids = array_values(array_unique($input['ids']));
+        $reader = $this->readers->for($mailbox);
+        $done = [];
+
+        try {
+            foreach ($ids as $id) {
+                match ($input['action']) {
+                    'trash'  => $reader->trash($mailbox, $id),
+                    'seen'   => $this->readState->markSeen($mailbox, $id, $user),
+                    'unseen' => $this->readState->forgetSeen($mailbox, $id, $user),
+                };
+                $done[] = $id;
+            }
+        } catch (CannotReadMailbox $e) {
+            return $this->refused($e);
+        } catch (CannotChangeMail $e) {
+            return response()->json(['message' => $e->getMessage()], $e->status());
+        }
+
+        if ($input['action'] === 'trash') {
+            $this->cache->forget($mailbox);
+        }
+
+        return response()->json(['data' => ['ids' => $done, 'action' => $input['action']]]);
     }
 
     // ── shared bits ──────────────────────────────────────────────

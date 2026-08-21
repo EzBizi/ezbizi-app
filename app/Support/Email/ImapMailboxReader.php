@@ -138,7 +138,7 @@ final class ImapMailboxReader implements MailboxReader
      * the wrong messages. It is refused instead, and the reader starts again
      * from the top.
      */
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         $limit = max(1, min($limit, self::MAX_PAGE));
 
@@ -183,7 +183,7 @@ final class ImapMailboxReader implements MailboxReader
      * becomes the VALUE of a `TEXT` criterion and never any part of the command
      * around it.
      */
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         $limit = max(1, min($limit, self::MAX_PAGE));
 
@@ -253,6 +253,18 @@ final class ImapMailboxReader implements MailboxReader
      * stated so that an off-by-one is a syntax the code does not contain. It is
      * also literally what the server volunteers as UIDNEXT.
      */
+    public function trash(Mailbox $mailbox, string $messageId): void
+    {
+        throw new CannotChangeMail(
+            'Deleting mail from an IMAP inbox is not available yet. Nothing has been deleted.',
+        );
+    }
+
+    public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
+    {
+        throw new PictureUnavailable('That file could not be loaded.');
+    }
+
     public function currentMark(Mailbox $mailbox): string
     {
         return $this->withConnection($mailbox, function (ImapConnection $imap) use ($mailbox) {
