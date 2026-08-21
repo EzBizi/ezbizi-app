@@ -76,6 +76,6 @@ void main() {
     await tester.tap(find.byType(BuildStamp));
     await tester.pumpAndSettle();
 
-    expect(find.text('Close What\'s been built'), findsOneWidget);
+    expect(find.byTooltip('Close What\'s been built'), findsOneWidget);
   });
 }
