@@ -320,6 +320,21 @@ void main() {
     expect(find.textContaining('each role is then given'), findsOneWidget);
   });
 
+  testWidgets('the open message sits on a white page', (tester) async {
+    await _pump(tester, _handler(), size: const Size(1400, 900));
+    await _tap(tester, find.text('Chimney sweep quote').first);
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is ColoredBox && widget.color == Colors.white,
+      ),
+      findsWidgets,
+      reason:
+          'The reading pane was the app grey, so the mail looked like a '
+          'card on a tint instead of a white page.',
+    );
+  });
+
   testWidgets('five messages in one conversation are one row with the count', (
     tester,
   ) async {

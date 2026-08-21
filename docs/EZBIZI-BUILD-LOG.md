@@ -263,3 +263,13 @@ other messages in it. IMAP is still one row per message — that protocol has
 no thread list.
 
 Client `v0.0.0049`.
+
+---
+
+## 2026-08-21 — reading pane is a white page
+
+The message column sat on the app grey (`#F5F8FA`), so the header and the
+margins around the iframe looked like a card on a tint. Gmail's mail is a
+white page. The right panel is now painted white.
+
+Client `v0.0.0050`.

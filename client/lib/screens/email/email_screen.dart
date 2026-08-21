@@ -593,35 +593,40 @@ class _EmailScreenState extends State<EmailScreen> {
   );
 
   Widget _message(Mailbox mailbox) {
-    if (_openId == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'Pick a message to read it.',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        ),
-      );
-    }
-
-    return AsyncBody(
-      loading: _loadingMessage,
-      error: _messageError,
-      // The id is enough to ask again, so retrying does not depend on the row
-      // still being in the list — a "Try again" that quietly did nothing
-      // because the list had been refetched underneath it is a dead end.
-      onRetry: () => _openMessage(_openId!),
-      child: _open == null
-          ? const SizedBox.shrink()
-          : _MessageView(
-              mailbox: mailbox,
-              message: _open!,
-              meId: widget.session.me!.id,
-              formats: widget.session.me!.display,
-              refusal: _replyRefusal(mailbox, _open!),
-              onReply: () => _reply(mailbox, _open!),
-              api: widget.api,
+    // White, like the page Gmail puts mail on — not the app's grey chrome
+    // (`scaffoldBackgroundColor`), which was showing around the header and
+    // beside the iframe and made the preview look like a card on a tint.
+    return ColoredBox(
+      color: Colors.white,
+      child: _openId == null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Pick a message to read it.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+            )
+          : AsyncBody(
+              loading: _loadingMessage,
+              error: _messageError,
+              // The id is enough to ask again, so retrying does not depend on
+              // the row still being in the list — a "Try again" that quietly
+              // did nothing because the list had been refetched underneath it
+              // is a dead end.
+              onRetry: () => _openMessage(_openId!),
+              child: _open == null
+                  ? const SizedBox.shrink()
+                  : _MessageView(
+                      mailbox: mailbox,
+                      message: _open!,
+                      meId: widget.session.me!.id,
+                      formats: widget.session.me!.display,
+                      refusal: _replyRefusal(mailbox, _open!),
+                      onReply: () => _reply(mailbox, _open!),
+                      api: widget.api,
+                    ),
             ),
     );
   }

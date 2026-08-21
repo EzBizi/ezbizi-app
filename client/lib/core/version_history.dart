@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0050',
+      date: '21 Aug 2026',
+      items: [
+        'The Email reading pane is a white page, like Gmail, not the '
+            'app\'s grey chrome around the message.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0049',
       date: '21 Aug 2026',
       items: [
