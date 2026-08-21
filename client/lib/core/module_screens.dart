@@ -6,6 +6,7 @@ import '../screens/dashboard_screen.dart';
 import '../screens/email/email_screen.dart';
 import '../screens/hr_screen.dart';
 import '../screens/inspection_screen.dart';
+import '../screens/fleet_screen.dart';
 import '../screens/jobs_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../widgets/coming_soon.dart';
@@ -95,14 +96,7 @@ final Map<String, ModuleScreen> moduleScreens = {
   ),
   'fleet_management': ModuleScreen(
     Icons.local_shipping_outlined,
-    (_, _) => const ComingSoonScreen(
-      title: 'Fleet Management',
-      icon: Icons.local_shipping_outlined,
-      what:
-          'Fleet Management is where the company will keep its vehicles, '
-          'who is driving them, and what is due on each one — next to the '
-          'jobs those vehicles go out on. The records are not here yet.',
-    ),
+    (api, session) => FleetScreen(api: api, session: session),
   ),
   'automations': ModuleScreen(
     Icons.bolt_outlined,
