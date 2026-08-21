@@ -6,10 +6,6 @@ use Symfony\Component\Console\Input\ArgvInput;
 
 define('LARAVEL_START', microtime(true));
 
-// vendor/ may be a junction; Composer's loader root then points at the other
-// tree and Application::inferBasePath() follows it. Pin this checkout.
-$_ENV['APP_BASE_PATH'] = $_SERVER['APP_BASE_PATH'] = __DIR__;
-
 // Register the Composer autoloader...
 require __DIR__.'/vendor/autoload.php';
 

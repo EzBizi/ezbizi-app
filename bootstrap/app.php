@@ -5,47 +5,6 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 
-/*
- * vendor/ may be a junction to another checkout. Composer's $baseDir and
- * optimized classmap then follow the real vendor path, so App\ resolves to
- * that tree. Prefer this checkout for both PSR-4 and classmap hits.
- */
-$appRoot = dirname(__DIR__);
-$composerLoader = require $appRoot.'/vendor/autoload.php';
-$composerLoader->addPsr4('App\\', $appRoot.'/app', prepend: true);
-$composerLoader->addPsr4('Database\\Factories\\', $appRoot.'/database/factories', prepend: true);
-$composerLoader->addPsr4('Database\\Seeders\\', $appRoot.'/database/seeders', prepend: true);
-
-$vendorReal = realpath($appRoot.'/vendor');
-$foreignRoot = $vendorReal !== false ? dirname($vendorReal) : null;
-if ($foreignRoot !== null && realpath($foreignRoot) !== realpath($appRoot)) {
-    $foreignNorm = str_replace('\\', '/', $foreignRoot);
-    $rewritten = [];
-    foreach ($composerLoader->getClassMap() as $class => $path) {
-        $real = realpath($path);
-        if ($real === false) {
-            continue;
-        }
-        $realNorm = str_replace('\\', '/', $real);
-        if (! str_starts_with($realNorm, $foreignNorm.'/')) {
-            continue;
-        }
-        $relative = substr($realNorm, strlen($foreignNorm));
-        if (! str_starts_with($relative, '/app/')
-            && ! str_starts_with($relative, '/database/')
-            && ! str_starts_with($relative, '/tests/')) {
-            continue;
-        }
-        $candidate = $appRoot.str_replace('/', DIRECTORY_SEPARATOR, $relative);
-        if (is_file($candidate)) {
-            $rewritten[$class] = $candidate;
-        }
-    }
-    if ($rewritten !== []) {
-        $composerLoader->addClassMap($rewritten);
-    }
-}
-
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
