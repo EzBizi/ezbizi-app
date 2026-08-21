@@ -72,6 +72,7 @@ class Mailbox {
     required this.sharedRead,
     required this.canReply,
     required this.replyRefusal,
+    this.provider = '',
   });
 
   final String id;
@@ -103,6 +104,13 @@ class Mailbox {
   /// Why not, in the server's words. Null when [canReply] is true.
   final String? replyRefusal;
 
+  /// `gmail_oauth`, `gmail_workspace`, `imap`, `microsoft`.
+  final String provider;
+
+  /// Gmail folders (Starred, Sent, …) exist on this mailbox.
+  bool get isGmail =>
+      provider == 'gmail_oauth' || provider == 'gmail_workspace';
+
   factory Mailbox.fromJson(Map<String, dynamic> json) => Mailbox(
     id: '${json['id']}',
     address: json['address'] as String? ?? '',
@@ -119,6 +127,7 @@ class Mailbox {
         (json['can_reply'] == null && json['may_read'] == true),
     replyRefusal: json['reply_refusal'] as String? ??
         json['may_read_reason'] as String?,
+    provider: json['provider'] as String? ?? '',
   );
 }
 

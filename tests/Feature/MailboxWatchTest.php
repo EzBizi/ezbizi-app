@@ -1089,12 +1089,12 @@ class WatchedInbox implements MailboxReader
 
     // ── the rest of the interface, which this file is not about ──
 
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         return new MessagePage($this->contents($mailbox));
     }
 
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         return new MessagePage([]);
     }

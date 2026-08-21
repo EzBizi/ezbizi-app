@@ -83,30 +83,39 @@ class MailboxMessagesController extends Controller
             'search' => ['sometimes', 'nullable', 'string', 'max:500'],
             'cursor' => ['sometimes', 'nullable', 'string', 'max:2048'],
             'limit'  => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'label'  => ['sometimes', 'nullable', 'string', 'max:32'],
+            'unread' => ['sometimes', 'boolean'],
         ]);
 
         $reader = $this->readers->for($mailbox);
         $limit  = (int) ($input['limit'] ?? 25);
         $search = trim((string) ($input['search'] ?? ''));
         $cursor = $input['cursor'] ?? null;
+        $label  = strtoupper((string) ($input['label'] ?? 'INBOX'));
+        if ($request->boolean('unread')) {
+            $search = trim('is:unread '.$search);
+        }
 
         try {
-            $page = $search === ''
+            $page = $search === '' && $label === 'INBOX'
                 /*
-                 * Only the plain listing is cached.
+                 * Only the plain Inbox listing is cached.
                  *
                  * A search is a question whose answer changes with every message
                  * that arrives, and somebody searching a mailbox has usually
                  * just failed to find something — which is the worst possible
-                 * moment to be handed a minute-old answer.
+                 * moment to be handed a minute-old answer. A folder other than
+                 * Inbox is the same kind of question.
                  */
                 ? $this->cache->remember(
                     $mailbox,
                     $cursor,
                     $limit,
-                    fn () => $reader->list($mailbox, $cursor, $limit),
+                    fn () => $reader->list($mailbox, $cursor, $limit, $label),
                 )
-                : $reader->search($mailbox, $search, $cursor, $limit);
+                : ($search === ''
+                    ? $reader->list($mailbox, $cursor, $limit, $label)
+                    : $reader->search($mailbox, $search, $cursor, $limit, $label));
         } catch (CannotReadMailbox $e) {
             return $this->refused($e);
         }
@@ -338,6 +347,48 @@ class MailboxMessagesController extends Controller
                 'shared'     => $this->readState->isShared($mailbox),
             ],
         ]);
+    }
+
+    /**
+     * DELETE /api/v1/email/mailboxes/{mailbox}/messages/{message}/seen
+     *
+     * "Mark as unread" for this person. Only their mark. A shared inbox's
+     * "Seen by Marta" is Marta's, and taking it off because somebody else
+     * clicked unread would be rewriting a fact they did not ask to rewrite.
+     */
+    public function unsee(Request $request, Mailbox $mailbox, string $message): JsonResponse
+    {
+        $user = $request->user();
+
+        $this->assertMayRead($user, $mailbox, 'mark a message in this inbox');
+
+        $this->readState->forgetSeen($mailbox, $message, $user);
+
+        return response()->json([
+            'data' => [
+                'message_id' => $message,
+                'seen_by'    => $this->readState->seenBy($mailbox, [$message], $user)[$message] ?? [],
+                'shared'     => $this->readState->isShared($mailbox),
+            ],
+        ]);
+    }
+
+    /**
+     * DELETE /api/v1/email/mailboxes/{mailbox}/messages/{message}
+     *
+     * Binning at the provider would throw the mail away for everyone who
+     * shares the inbox, and this connection was granted read and send, not
+     * modify. The button is on the screen so the refusal is visible rather
+     * than the control missing with no explanation.
+     */
+    public function destroy(Request $request, Mailbox $mailbox, string $message): JsonResponse
+    {
+        $this->assertMayRead($request->user(), $mailbox, 'open this inbox');
+
+        return response()->json([
+            'message' => 'Deleting a message would throw it away for everyone who shares this inbox. '
+                .'This connection can read and reply, not bin mail.',
+        ], 422);
     }
 
     // ── shared bits ──────────────────────────────────────────────

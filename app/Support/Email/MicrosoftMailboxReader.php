@@ -65,7 +65,7 @@ final class MicrosoftMailboxReader implements MailboxReader
         return null;
     }
 
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         return $this->page($mailbox, self::INBOX, [
             '$select'   => self::LIST_SELECT,
@@ -75,7 +75,7 @@ final class MicrosoftMailboxReader implements MailboxReader
         ]);
     }
 
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         return $this->page($mailbox, self::GRAPH.'/me/messages', [
             '$search' => '"'.$query.'"',

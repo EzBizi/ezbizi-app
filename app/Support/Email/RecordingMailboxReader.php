@@ -79,14 +79,14 @@ final class RecordingMailboxReader implements MailboxReader
 
     // ── the four calls that reach the provider ───────────────────
 
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->recording($mailbox, fn () => $this->inner->list($mailbox, $cursor, $limit));
+        return $this->recording($mailbox, fn () => $this->inner->list($mailbox, $cursor, $limit, $label));
     }
 
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->recording($mailbox, fn () => $this->inner->search($mailbox, $query, $cursor, $limit));
+        return $this->recording($mailbox, fn () => $this->inner->search($mailbox, $query, $cursor, $limit, $label));
     }
 
     public function open(Mailbox $mailbox, string $messageId): MessageDetail

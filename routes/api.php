@@ -590,6 +590,10 @@ Route::prefix('v1')
             [MailboxMessagesController::class, 'reply']);
         Route::post('email/mailboxes/{mailbox}/messages/{message}/seen',
             [MailboxMessagesController::class, 'markSeen']);
+        Route::delete('email/mailboxes/{mailbox}/messages/{message}/seen',
+            [MailboxMessagesController::class, 'unsee']);
+        Route::delete('email/mailboxes/{mailbox}/messages/{message}',
+            [MailboxMessagesController::class, 'destroy']);
 
         // ── Attachments (§9, §11) ────────────────────────────────
         //

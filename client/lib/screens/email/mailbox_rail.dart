@@ -83,111 +83,188 @@ class InboxBar extends StatelessWidget {
 /// One widget for both, rather than a rail and a separate chooser page: they
 /// are the same list making the same choice, and two of them is two places for
 /// the selected state to be drawn differently.
+/// Gmail folders for one mailbox — Inbox, Starred, Sent, and the rest.
+///
+/// Only drawn when the mailbox is Gmail. IMAP has no such list, and inventing
+/// one would be a second Inbox under another name.
+class MailFolder {
+  const MailFolder({
+    required this.id,
+    required this.label,
+    required this.icon,
+  });
+
+  final String id;
+  final String label;
+  final IconData icon;
+}
+
+const List<MailFolder> gmailFolders = [
+  MailFolder(id: 'INBOX', label: 'Inbox', icon: Icons.inbox_outlined),
+  MailFolder(id: 'STARRED', label: 'Starred', icon: Icons.star_outline),
+  MailFolder(id: 'SENT', label: 'Sent', icon: Icons.send_outlined),
+  MailFolder(id: 'DRAFT', label: 'Drafts', icon: Icons.drafts_outlined),
+  MailFolder(id: 'TRASH', label: 'Trash', icon: Icons.delete_outline),
+  MailFolder(id: 'SPAM', label: 'Spam', icon: Icons.report_outlined),
+];
+
 class MailboxRail extends StatelessWidget {
   const MailboxRail({
     super.key,
     required this.mailboxes,
     required this.selectedId,
     required this.onSelected,
+    this.selectedFolder = 'INBOX',
+    this.onFolderSelected,
   });
 
   final List<Mailbox> mailboxes;
   final String? selectedId;
   final ValueChanged<Mailbox> onSelected;
+  final String selectedFolder;
+  final ValueChanged<String>? onFolderSelected;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    Mailbox? selected;
+    for (final mailbox in mailboxes) {
+      if (mailbox.id == selectedId) {
+        selected = mailbox;
+        break;
+      }
+    }
+    final folders =
+        selected != null && selected.isGmail ? gmailFolders : const <MailFolder>[];
 
-    return ListView.builder(
+    return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-      itemCount: mailboxes.length + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return Padding(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 10),
+          child: Text('INBOXES', style: theme.textTheme.labelSmall),
+        ),
+        for (final mailbox in mailboxes) _mailboxRow(context, mailbox),
+        if (folders.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Padding(
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 10),
-            child: Text('INBOXES', style: theme.textTheme.labelSmall),
-          );
-        }
+            child: Text('LABELS', style: theme.textTheme.labelSmall),
+          ),
+          for (final folder in folders) _folderRow(context, folder),
+        ],
+      ],
+    );
+  }
 
-        final mailbox = mailboxes[index - 1];
-        final selected = mailbox.id == selectedId;
+  Widget _mailboxRow(BuildContext context, Mailbox mailbox) {
+    final theme = Theme.of(context);
+    final selected = mailbox.id == selectedId;
 
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: Material(
-            color: selected
-                ? theme.colorScheme.primary.withValues(alpha: 0.10)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: () => onSelected(mailbox),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            mailbox.address,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              // Selection carried by weight and a tint, never by
-                              // colour alone — the same rule the rest of the app
-                              // follows for a state somebody has to notice.
-                              fontWeight: selected
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                            ),
-                          ),
-                          if (mailbox.label.isNotEmpty)
-                            Text(
-                              mailbox.label,
-                              style: theme.textTheme.bodyMedium,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                        ],
-                      ),
-                    ),
-                    if (mailbox.unread > 0) ...[
-                      const SizedBox(width: 8),
-                      // The number, with the word beside it in the tooltip:
-                      // a bare badge is a colour-only state to anybody using a
-                      // screen reader.
-                      Tooltip(
-                        message: '${mailbox.unread} unread',
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            '${mailbox.unread}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: theme.colorScheme.onPrimary,
-                            ),
-                          ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: selected
+            ? theme.colorScheme.primary.withValues(alpha: 0.10)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => onSelected(mailbox),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        mailbox.address,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
                         ),
                       ),
+                      if (mailbox.label.isNotEmpty)
+                        Text(
+                          mailbox.label,
+                          style: theme.textTheme.bodyMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
+                if (mailbox.unread > 0) ...[
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: '${mailbox.unread} unread',
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${mailbox.unread}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.onPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
-        );
-      },
+        ),
+      ),
+    );
+  }
+
+  Widget _folderRow(BuildContext context, MailFolder folder) {
+    final theme = Theme.of(context);
+    final selected = folder.id == selectedFolder;
+    final onFolderSelected = this.onFolderSelected;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Material(
+        color: selected
+            ? theme.colorScheme.primary.withValues(alpha: 0.10)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onFolderSelected == null ? null : () => onFolderSelected(folder.id),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Icon(folder.icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    folder.label,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

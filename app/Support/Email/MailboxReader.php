@@ -48,14 +48,14 @@ interface MailboxReader
      * @throws CannotReadMailbox when the mailbox cannot be opened — never an
      *                           empty page standing in for a failure
      */
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage;
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage;
 
     /**
      * The provider's own search, over the whole mailbox.
      *
      * @throws CannotReadMailbox
      */
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage;
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage;
 
     /**
      * One message, opened — with the body already turned into blocks.

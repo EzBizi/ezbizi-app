@@ -804,14 +804,14 @@ class ScriptedMailboxReader implements MailboxReader
         }
     }
 
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         $this->answerOrFail();
 
         return new MessagePage([$this->summary()]);
     }
 
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         $this->answerOrFail();
 

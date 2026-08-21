@@ -111,18 +111,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('at 1400px the inboxes, the list and the message are side by '
-      'side', (tester) async {
+  testWidgets('the list has a search bar and Gmail labels', (tester) async {
     await _pump(tester, _handler(), size: const Size(1400, 900));
+
+    expect(find.text('Search mail'), findsOneWidget);
+    expect(find.text('Unread'), findsOneWidget);
+    expect(find.text('LABELS'), findsOneWidget);
+    expect(find.text('Starred'), findsOneWidget);
+    expect(find.text('Sent'), findsOneWidget);
+  });
+
+  testWidgets('at 1400px opening a message replaces the list', (tester) async {
+    await _pump(tester, _handler(), size: const Size(1400, 900));
+
+    expect(find.byType(MailboxRail), findsOneWidget);
+    expect(find.byType(MessageListPane), findsOneWidget);
+    expect(find.text('Search mail'), findsOneWidget);
 
     await _tap(tester, find.text('Chimney sweep quote').first);
 
-    final rail = tester.getRect(find.byType(MailboxRail));
-    final list = tester.getRect(find.byType(MessageListPane));
-    final message = tester.getRect(find.byType(MessageBody));
+    expect(
+      find.byType(MessageListPane),
+      findsNothing,
+      reason: 'Gmail does not keep the list beside the mail. The list has to '
+          'go so the message can use the space.',
+    );
+    expect(find.byType(MessageBody), findsOneWidget);
+    expect(find.byType(MailboxRail), findsOneWidget);
+    expect(find.byTooltip('Back to the messages'), findsOneWidget);
 
-    expect(rail.right, lessThanOrEqualTo(list.left + 1));
-    expect(list.right, lessThanOrEqualTo(message.left + 1));
+    await _tap(tester, find.byTooltip('Back to the messages'));
+    expect(find.byType(MessageListPane), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -140,7 +159,7 @@ void main() {
 
     expect(
       find.text('Seen by Marta Vieira'),
-      findsNWidgets(2),
+      findsOneWidget,
       reason: 'The row said somebody was on this and the open message did '
           'not, which is where the second reply gets written.',
     );
@@ -396,7 +415,7 @@ void main() {
     await _tap(tester, find.text('bookings@a-1chimney.com').first);
 
     expect(find.byType(MessageBody), findsNothing);
-    expect(find.text('Pick a message to read it.'), findsOneWidget);
+    expect(find.text('Booking for Friday'), findsOneWidget);
     expect(
       find.text('Chimney sweep quote'),
       findsNothing,
@@ -558,6 +577,20 @@ MockClientHandler _handler({
       });
     }
 
+    if (path.endsWith('/seen')) {
+      return _json({
+        'data': {'message_id': parts.last, 'seen_by': <Object>[], 'shared': true},
+      });
+    }
+
+    if (request.method == 'DELETE' && parts.contains('messages')) {
+      return _json({
+        'message':
+            'Deleting a message would throw it away for everyone who shares this inbox. '
+            'This connection can read and reply, not bin mail.',
+      }, 422);
+    }
+
     // .../mailboxes/{mailbox}/messages
     if (path.endsWith('/messages')) {
       if (listStatus != 200) return _json({'message': listMessage}, listStatus);
@@ -606,6 +639,7 @@ List<Map<String, Object?>> _mailboxes({
     'id': 'mb-1',
     'address': 'info@a-1chimney.com',
     'label': 'Info',
+    'provider': 'gmail_workspace',
     'unread': 2,
     'shared_read': sharedRead,
     'can_reply': canReply,
@@ -615,6 +649,7 @@ List<Map<String, Object?>> _mailboxes({
     'id': 'mb-2',
     'address': 'bookings@a-1chimney.com',
     'label': 'Bookings',
+    'provider': 'gmail_workspace',
     'unread': 0,
     'shared_read': sharedRead,
     'can_reply': canReply,

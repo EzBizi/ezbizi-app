@@ -92,6 +92,22 @@ final class ReadState
     }
 
     /**
+     * This person is no longer marked as having seen it.
+     *
+     * Only THEIR row. A shared inbox's "Seen by Marta" is Marta's mark, and
+     * taking it off for everybody because one person clicked unread would
+     * be rewriting history they did not ask to rewrite.
+     */
+    public function forgetSeen(Mailbox $mailbox, string $providerMessageId, User $user): void
+    {
+        MessageSeen::query()
+            ->where('mailbox_id', $mailbox->getKey())
+            ->where('provider_message_id', $providerMessageId)
+            ->where('user_id', $user->getKey())
+            ->delete();
+    }
+
+    /**
      * Who has seen each of these messages — the names the list prints.
      *
      * ── One query for the whole page ─────────────────────────────

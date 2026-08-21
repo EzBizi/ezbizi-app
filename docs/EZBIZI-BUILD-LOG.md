@@ -273,3 +273,16 @@ margins around the iframe looked like a card on a tint. Gmail's mail is a
 white page. The right panel is now painted white.
 
 Client `v0.0.0050`.
+
+---
+
+## 2026-08-21 — Email UI like Gmail
+
+The three-column layout (inboxes, list, preview) is gone. The list fills
+the content pane; opening a message replaces it; Back returns to the list.
+Search, an Unread filter, and Gmail folders (Inbox, Starred, Sent, Drafts,
+Trash, Spam) sit on the list. The reading toolbar has Back, Delete, and
+mark read/unread. Delete is refused with a sentence: this connection can
+read and reply, not bin mail for everyone who shares the inbox.
+
+Client `v0.0.0051`.

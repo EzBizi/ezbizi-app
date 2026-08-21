@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0051',
+      date: '21 Aug 2026',
+      items: [
+        'Email matches Gmail\'s two views: the list fills the pane, '
+            'opening a mail replaces it, and a search bar plus labels '
+            'sit on the list. Back, delete and read/unread are on the '
+            'reading toolbar.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0050',
       date: '21 Aug 2026',
       items: [

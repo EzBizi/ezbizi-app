@@ -185,9 +185,9 @@ final class GmailMailboxReader implements MailboxReader
 
     // ── reading ──────────────────────────────────────────────────
 
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->page($mailbox, ['labelIds' => 'INBOX'], $cursor, $limit);
+        return $this->page($mailbox, ['labelIds' => $this->folder($label)], $cursor, $limit);
     }
 
     /**
@@ -203,9 +203,22 @@ final class GmailMailboxReader implements MailboxReader
      * class, which is what stops a search term containing `&` becoming a second
      * parameter.
      */
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->page($mailbox, ['q' => $query], $cursor, $limit);
+        return $this->page($mailbox, [
+            'q' => $query,
+            'labelIds' => $this->folder($label),
+        ], $cursor, $limit);
+    }
+
+    /** Gmail's own folder ids. Anything else is Inbox, not a guessed label. */
+    private function folder(string $label): string
+    {
+        $name = strtoupper($label);
+
+        return in_array($name, ['INBOX', 'STARRED', 'SENT', 'DRAFT', 'TRASH', 'SPAM'], true)
+            ? $name
+            : 'INBOX';
     }
 
     /**

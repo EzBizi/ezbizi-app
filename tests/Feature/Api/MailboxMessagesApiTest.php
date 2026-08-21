@@ -486,6 +486,21 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertSame('WhatsApp Business Team', $row['from']['name']);
     }
 
+    public function test_deleting_a_message_is_refused_in_a_sentence(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $this->grant($t, $mailbox, 'Clerk');
+
+        $this->signedInAs($clerk)
+            ->deleteJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1")
+            ->assertStatus(422)
+            ->assertJsonPath('message', fn (string $m) => str_contains($m, 'not bin mail'));
+    }
+
     // ══ 3. SEEN, SHARED OR PRIVATE ═══════════════════════════════
 
     public function test_opening_a_message_records_who_looked_and_the_list_says_so(): void
@@ -1109,12 +1124,12 @@ class FakeMailboxReader implements MailboxReader
     /** @var string[] */
     public static array $searches = [];
 
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         return self::$page ?? new MessagePage([]);
     }
 
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         self::$searches[] = $query;
 

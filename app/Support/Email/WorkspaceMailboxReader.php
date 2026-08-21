@@ -38,18 +38,18 @@ final class WorkspaceMailboxReader implements MailboxReader
         return $this->unavailableBecause($mailbox) === null;
     }
 
-    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25): MessagePage
+    public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         $this->workspace->assertCanOpen($mailbox);
 
-        return $this->gmail->list($mailbox, $cursor, $limit);
+        return $this->gmail->list($mailbox, $cursor, $limit, $label);
     }
 
-    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25): MessagePage
+    public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         $this->workspace->assertCanOpen($mailbox);
 
-        return $this->gmail->search($mailbox, $query, $cursor, $limit);
+        return $this->gmail->search($mailbox, $query, $cursor, $limit, $label);
     }
 
     public function open(Mailbox $mailbox, string $messageId): MessageDetail
