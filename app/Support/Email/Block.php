@@ -38,11 +38,20 @@ final class Block
          * seal cannot publish a sender-chosen URL.
          */
         public readonly ?string $src = null,
+
+        /**
+         * Intended display size, from the message's own width/height (or
+         * max-width) — not the file's pixel size. A retina logo is often
+         * 1200px wide and meant to draw at 600. Null means "as wide as the
+         * pane, never larger than the file".
+         */
+        public readonly ?int $width = null,
+        public readonly ?int $height = null,
     ) {}
 
     public function withSrc(string $src): self
     {
-        return new self($this->kind, $this->spans, $this->depth, $src);
+        return new self($this->kind, $this->spans, $this->depth, $src, $this->width, $this->height);
     }
 
     public static function paragraph(array $spans, int $depth = 0): self
@@ -79,6 +88,15 @@ final class Block
 
         if ($this->kind === BlockKind::Image && $this->src !== null && $this->publishableSrc()) {
             $row['src'] = $this->src;
+        }
+
+        if ($this->kind === BlockKind::Image) {
+            if ($this->width !== null) {
+                $row['width'] = $this->width;
+            }
+            if ($this->height !== null) {
+                $row['height'] = $this->height;
+            }
         }
 
         return $row;

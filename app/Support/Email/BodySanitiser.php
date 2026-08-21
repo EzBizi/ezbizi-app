@@ -426,11 +426,16 @@ final class BodySanitiser
 
             case $tag === 'img':
                 $this->flush($depth);
-                $this->push($this->imageBlock(
+                $image = $this->imageBlock(
                     $this->clean($node->getAttribute('alt')),
                     $node->getAttribute('src'),
                     $depth,
-                ));
+                    $this->imageDimension($node, 'width'),
+                    $this->imageDimension($node, 'height'),
+                );
+                if ($image !== null) {
+                    $this->push($image);
+                }
 
                 return;
 
@@ -663,8 +668,18 @@ final class BodySanitiser
      * somebody else's email could legitimately mean, so there is no case to
      * weigh.
      */
-    private function imageBlock(string $alt, string $rawSrc, int $depth): Block
-    {
+    private function imageBlock(
+        string $alt,
+        string $rawSrc,
+        int $depth,
+        ?int $width,
+        ?int $height,
+    ): ?Block {
+        // A 1×1 "image" is a tracking pixel or a spacer, not a picture.
+        if ($width !== null && $width <= 2 && ($height === null || $height <= 2)) {
+            return null;
+        }
+
         $src = $this->safeImageSrc($rawSrc);
         $spans = $alt === '' ? [] : [new Span($alt)];
 
@@ -672,7 +687,61 @@ final class BodySanitiser
             return new Block(BlockKind::BlockedImage, $spans, $depth);
         }
 
-        return new Block(BlockKind::Image, $spans, $depth, $src);
+        return new Block(BlockKind::Image, $spans, $depth, $src, $width, $height);
+    }
+
+    /**
+     * Display size the message asked for, in CSS pixels.
+     *
+     * HTML mail sizes pictures with `width="140"` or `style="width:140px"`,
+     * while the file behind them is often 2× for retina. Drawing the file's
+     * pixel size is how a logo ate the pane. Percentages are ignored — the
+     * client already caps at the pane (`max-width: 100%`). Only a bare
+     * integer or `px` is accepted; nothing else from `style` is read.
+     */
+    private function imageDimension(\DOMElement $node, string $attr): ?int
+    {
+        $raw = trim($node->getAttribute($attr));
+        $fromAttr = $this->cssPixels($raw);
+
+        if ($fromAttr !== null) {
+            return $fromAttr;
+        }
+
+        $style = $node->getAttribute('style');
+
+        if ($style === '') {
+            return null;
+        }
+
+        if (preg_match('/(?:^|;)\s*'.preg_quote($attr, '/').'\s*:\s*([^;]+)/i', $style, $found) === 1) {
+            $fromStyle = $this->cssPixels(trim($found[1]));
+
+            if ($fromStyle !== null) {
+                return $fromStyle;
+            }
+        }
+
+        if ($attr === 'width' && preg_match('/(?:^|;)\s*max-width\s*:\s*([^;]+)/i', $style, $found) === 1) {
+            return $this->cssPixels(trim($found[1]));
+        }
+
+        return null;
+    }
+
+    private function cssPixels(string $raw): ?int
+    {
+        if ($raw === '' || strtolower($raw) === 'auto' || str_ends_with($raw, '%')) {
+            return null;
+        }
+
+        if (preg_match('/^(\d{1,4})(?:px)?$/i', $raw, $found) !== 1) {
+            return null;
+        }
+
+        $n = (int) $found[1];
+
+        return ($n >= 1 && $n <= 2000) ? $n : null;
     }
 
     /**

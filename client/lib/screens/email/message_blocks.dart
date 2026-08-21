@@ -73,6 +73,8 @@ class MailBlock {
     this.alt,
     this.host,
     this.src,
+    this.width,
+    this.height,
   });
 
   final MailBlockKind kind;
@@ -88,6 +90,11 @@ class MailBlock {
   /// Where to get the picture. A `data:` URI, or a token for our proxy.
   /// Never a sender-chosen http(s) URL.
   final String? src;
+
+  /// CSS pixels the message asked to draw at. Null = pane width, never
+  /// larger than the file (Gmail's `max-width: 100%`).
+  final int? width;
+  final int? height;
 
   String get text => spans.map((span) => span.text).join();
 }
@@ -131,6 +138,8 @@ List<MailBlock> readMailBlocks(Object? json) {
           MailBlockKind.image,
           alt: _string(entry['alt']) ?? _spanText(entry['spans']),
           src: _string(entry['src']),
+          width: _px(entry['width']),
+          height: _px(entry['height']),
         ),
       );
       continue;
@@ -191,6 +200,15 @@ List<MailSpan> _spans(Object? json) {
 /// a key the server filled in with nothing and means the same as its absence.
 String? _string(Object? value) =>
     value is String && value.isNotEmpty ? value : null;
+
+int? _px(Object? value) {
+  if (value is int && value >= 1 && value <= 2000) return value;
+  if (value is num) {
+    final n = value.round();
+    if (n >= 1 && n <= 2000) return n;
+  }
+  return null;
+}
 
 String? _spanText(Object? json) {
   if (json is! List) return null;

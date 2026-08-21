@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -63,10 +64,12 @@ class MessageBody extends StatelessWidget {
         child: Divider(height: 1),
       ),
       MailBlockKind.image => Padding(
-        padding: const EdgeInsets.only(top: 12),
+        padding: EdgeInsets.only(top: (block.width ?? 99) <= 48 ? 4 : 12),
         child: _MailPicture(
           alt: block.alt,
           src: block.src,
+          width: block.width,
+          height: block.height,
           api: api,
           picturePath: picturePath,
         ),
@@ -187,12 +190,16 @@ class _MailPicture extends StatefulWidget {
   const _MailPicture({
     required this.alt,
     required this.src,
+    required this.width,
+    required this.height,
     required this.api,
     required this.picturePath,
   });
 
   final String? alt;
   final String? src;
+  final int? width;
+  final int? height;
   final ApiClient? api;
   final String? picturePath;
 
@@ -271,10 +278,32 @@ class _MailPictureState extends State<_MailPicture> {
   Widget build(BuildContext context) {
     final bytes = _bytes;
     if (bytes != null && bytes.isNotEmpty) {
-      return Image.memory(
-        bytes,
-        filterQuality: FilterQuality.medium,
-        semanticLabel: widget.alt,
+      // Gmail draws at the HTML width, capped at the pane — never at the
+      // file's pixel size. A 1200px retina logo with width="600" must
+      // not fill a 500px column.
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final maxW = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : 600.0;
+          final asked = widget.width?.toDouble();
+          final w = asked == null ? maxW : math.min(asked, maxW);
+          final h = (asked != null &&
+                  widget.height != null &&
+                  asked > 0)
+              ? widget.height! * (w / asked)
+              : null;
+
+          return Image.memory(
+            bytes,
+            width: w,
+            height: h,
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            filterQuality: FilterQuality.medium,
+            semanticLabel: widget.alt,
+          );
+        },
       );
     }
 

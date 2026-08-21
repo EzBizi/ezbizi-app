@@ -96,6 +96,20 @@ void main() {
     expect(blocks.single.src, 'sealed-token');
   });
 
+  test('a picture keeps the width the message asked for', () {
+    final blocks = readMailBlocks([
+      {
+        'kind': 'image',
+        'src': 'sealed-token',
+        'width': 140,
+        'height': 40,
+      },
+    ]);
+
+    expect(blocks.single.width, 140);
+    expect(blocks.single.height, 40);
+  });
+
   test('a blocked image keeps what it was and where it would have come from',
       () {
     final blocks = readMailBlocks([

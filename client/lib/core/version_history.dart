@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0047',
+      date: '21 Aug 2026',
+      items: [
+        'Pictures in Email draw at the size the message asked for, not '
+            'the file\'s pixel size, so a logo no longer fills the pane.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0046',
       date: '21 Aug 2026',
       items: [

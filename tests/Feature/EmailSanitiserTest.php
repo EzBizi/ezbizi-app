@@ -348,6 +348,28 @@ class EmailSanitiserTest extends TestCase
         $this->assertArrayNotHasKey('src', $blocks[1]->toArray());
     }
 
+    public function test_a_picture_keeps_the_width_the_message_asked_for(): void
+    {
+        $blocks = $this->sanitiser->sanitise(
+            '<img src="https://cdn.example.net/logo.png" width="140" height="40" alt="Logo">'
+            .'<img src="https://cdn.example.net/hero.png" style="width: 600px; max-width: 100%;" alt="Hero">'
+            .'<img src="https://cdn.example.net/px.gif" width="1" height="1" alt="">'
+        );
+
+        $images = array_values(array_filter(
+            $blocks,
+            fn (Block $b) => $b->kind === BlockKind::Image,
+        ));
+
+        $this->assertCount(2, $images, 'the 1×1 spacer should not become a picture');
+        $this->assertSame(140, $images[0]->width);
+        $this->assertSame(40, $images[0]->height);
+        $this->assertSame(600, $images[1]->width);
+
+        $this->assertSame(140, $images[0]->toArray()['width']);
+        $this->assertSame(40, $images[0]->toArray()['height']);
+    }
+
     // ── the parser's own traps ───────────────────────────────────
 
     /**
