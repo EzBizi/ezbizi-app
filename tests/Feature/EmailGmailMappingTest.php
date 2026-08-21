@@ -288,4 +288,56 @@ class EmailGmailMappingTest extends TestCase
         $this->assertArrayHasKey('unread_at_provider', $row);
         $this->assertArrayHasKey('seen_by', $row);
     }
+
+    /**
+     * Five messages, one conversation — one list row, with the count.
+     *
+     * This is the Gmail inbox. Listing each message is how five WhatsApp
+     * templates become five rows; grouping on `threadId` is how they become
+     * one row that says 5.
+     */
+    public function test_a_thread_is_one_row_with_the_latest_message_and_a_count(): void
+    {
+        $thread = [
+            'id' => 't-wa',
+            'messages' => [
+                $this->threadMessage('m-1', '1000', 'WhatsApp Business Team <notification@facebookmail.com>', 'first', ['INBOX']),
+                $this->threadMessage('m-2', '2000', 'WhatsApp Business Team <notification@facebookmail.com>', 'second', ['INBOX']),
+                $this->threadMessage('m-3', '3000', 'WhatsApp Business Team <notification@facebookmail.com>', 'third', ['INBOX']),
+                $this->threadMessage('m-4', '4000', 'WhatsApp Business Team <notification@facebookmail.com>', 'fourth', ['INBOX']),
+                $this->threadMessage('m-5', '5000', 'WhatsApp Business Team <notification@facebookmail.com>', 'fifth', ['INBOX', 'UNREAD']),
+            ],
+        ];
+
+        $row = $this->mapper->threadSummary($thread);
+
+        $this->assertSame('m-5', $row->id);
+        $this->assertSame('t-wa', $row->threadId);
+        $this->assertSame(5, $row->messageCount);
+        $this->assertSame('WhatsApp Business Team', $row->fromName);
+        $this->assertSame('fifth', $row->snippet);
+        $this->assertTrue($row->unreadAtProvider);
+        $this->assertSame(5, $row->toArray()['message_count']);
+    }
+
+    /**
+     * @param  string[]  $labels
+     * @return array<string, mixed>
+     */
+    private function threadMessage(string $id, string $internalDate, string $from, string $snippet, array $labels): array
+    {
+        return [
+            'id' => $id,
+            'threadId' => 't-wa',
+            'internalDate' => $internalDate,
+            'snippet' => $snippet,
+            'labelIds' => $labels,
+            'payload' => [
+                'headers' => [
+                    ['name' => 'From', 'value' => $from],
+                    ['name' => 'Subject', 'value' => 'Your WhatsApp message template state has been changed'],
+                ],
+            ],
+        ];
+    }
 }

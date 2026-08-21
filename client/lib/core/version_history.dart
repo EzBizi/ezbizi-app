@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0049',
+      date: '21 Aug 2026',
+      items: [
+        'Gmail conversations stay one row in the inbox, with a count, '
+            'instead of repeating every message in the thread.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0048',
       date: '21 Aug 2026',
       items: [

@@ -51,7 +51,7 @@ class GoogleMailTokenRefreshTest extends TestCase
 
     private const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 
-    private const LISTING = 'gmail.googleapis.com/gmail/v1/users/me/messages*';
+    private const LISTING = 'gmail.googleapis.com/gmail/v1/users/me/threads*';
 
     protected function setUp(): void
     {
@@ -105,7 +105,7 @@ class GoogleMailTokenRefreshTest extends TestCase
             'oauth2.googleapis.com/token' => Http::response(
                 ['access_token' => 'an-access-token', 'expires_in' => 3599],
             ),
-            self::LISTING => Http::response(['messages' => [], 'resultSizeEstimate' => 0]),
+            self::LISTING => Http::response(['threads' => [], 'resultSizeEstimate' => 0]),
         ]);
 
         $t       = $this->provisionTenant('A1-Group');
@@ -144,7 +144,7 @@ class GoogleMailTokenRefreshTest extends TestCase
     {
         Http::fake([
             'oauth2.googleapis.com/token' => Http::response(['access_token' => 'an-access-token']),
-            self::LISTING => Http::response(['messages' => [], 'resultSizeEstimate' => 0]),
+            self::LISTING => Http::response(['threads' => [], 'resultSizeEstimate' => 0]),
         ]);
 
         $t       = $this->provisionTenant('A1-Group');
@@ -187,7 +187,7 @@ class GoogleMailTokenRefreshTest extends TestCase
 
             self::LISTING => Http::sequence()
                 ->push([], 401)
-                ->push(['messages' => [], 'resultSizeEstimate' => 0]),
+                ->push(['threads' => [], 'resultSizeEstimate' => 0]),
         ]);
 
         $t       = $this->provisionTenant('A1-Group');
@@ -200,7 +200,7 @@ class GoogleMailTokenRefreshTest extends TestCase
         $this->assertSame(2, $this->tokenRequests(),
             'The stale token was not replaced, so the read either failed or reused it.');
 
-        Http::assertSent(fn ($request) => str_contains($request->url(), '/users/me/messages')
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/users/me/threads')
             && $request->hasHeader('Authorization', 'Bearer the-fresh-one'));
 
         // The mailbox is not broken. This is the whole point: an expired access
@@ -221,7 +221,7 @@ class GoogleMailTokenRefreshTest extends TestCase
 
             self::LISTING => Http::sequence()
                 ->push([], 401)
-                ->push(['messages' => [], 'resultSizeEstimate' => 0]),
+                ->push(['threads' => [], 'resultSizeEstimate' => 0]),
         ]);
 
         $t       = $this->provisionTenant('A1-Group');
@@ -313,7 +313,7 @@ class GoogleMailTokenRefreshTest extends TestCase
 
         $this->assertSame(
             2,
-            Http::recorded(fn ($request) => str_contains($request->url(), '/users/me/messages'))->count(),
+            Http::recorded(fn ($request) => str_contains($request->url(), '/users/me/threads'))->count(),
             'The read was attempted more than twice.',
         );
     }

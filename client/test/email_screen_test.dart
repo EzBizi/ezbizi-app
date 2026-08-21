@@ -320,6 +320,19 @@ void main() {
     expect(find.textContaining('each role is then given'), findsOneWidget);
   });
 
+  testWidgets('five messages in one conversation are one row with the count', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(), size: const Size(1400, 900));
+
+    expect(find.textContaining('WhatsApp Business Team'), findsOneWidget);
+    expect(find.text('5'), findsOneWidget);
+    expect(
+      find.text('Your WhatsApp message template state has been changed'),
+      findsOneWidget,
+    );
+  });
+
   // ── the body: blocks, and the picture ────────────────────────────
 
   testWidgets('a picture in the message is drawn, and nothing offers a '
@@ -627,6 +640,20 @@ const Map<String, List<Map<String, Object?>>> _messages = {
       'seen_by': [
         {'id': 'u-1', 'name': 'Jose Silva'},
       ],
+    },
+    {
+      'id': 'm-wa',
+      'from': {
+        'name': 'WhatsApp Business Team',
+        'address': 'notification@facebookmail.com',
+      },
+      'subject': 'Your WhatsApp message template state has been changed',
+      'preview': 'Please see your template current state information.',
+      'received_at': '2026-08-21T10:31:00Z',
+      'unread': true,
+      'has_attachments': false,
+      'message_count': 5,
+      'seen_by': <Map<String, Object?>>[],
     },
   ],
   'mb-2': [

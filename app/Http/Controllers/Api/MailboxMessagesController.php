@@ -161,7 +161,30 @@ class MailboxMessagesController extends Controller
             );
         }
 
+        if ($detail->thread !== []) {
+            $prepared = [];
+
+            foreach ($detail->thread as $part) {
+                $part = $part->withBlocks($this->pictures->seal($part->blocks));
+                $partSource = $part->sourceHtml ?? $part->html;
+
+                if (is_string($partSource) && $partSource !== '') {
+                    $part = $part->withHtml(
+                        $this->htmlMail->prepare($partSource, $mailbox, $part->summary->id),
+                    );
+                }
+
+                $prepared[] = $part;
+            }
+
+            $detail = $detail->withThread($prepared);
+        }
+
         $this->readState->markSeen($mailbox, $detail->summary->id, $user);
+
+        foreach ($detail->thread as $part) {
+            $this->readState->markSeen($mailbox, $part->summary->id, $user);
+        }
 
         $seen = $this->readState->seenBy($mailbox, [$detail->summary->id], $user);
 

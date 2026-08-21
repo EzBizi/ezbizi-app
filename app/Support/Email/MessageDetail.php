@@ -61,6 +61,15 @@ final class MessageDetail
          * result in `$html`.
          */
         public readonly ?string $sourceHtml = null,
+
+        /**
+         * The other messages in this conversation, oldest first, when the
+         * provider grouped them. Empty for a lone message (IMAP today, or a
+         * Gmail mail that is the only one in its thread). Never nested.
+         *
+         * @var  MessageDetail[]
+         */
+        public readonly array $thread = [],
     ) {}
 
     /** @param  Block[]  $blocks */
@@ -74,6 +83,7 @@ final class MessageDetail
             $this->imagesBlocked,
             $this->html,
             $this->sourceHtml,
+            $this->thread,
         );
     }
 
@@ -87,6 +97,22 @@ final class MessageDetail
             $this->imagesBlocked,
             $html,
             sourceHtml: null,
+            thread: $this->thread,
+        );
+    }
+
+    /** @param  MessageDetail[]  $thread */
+    public function withThread(array $thread): self
+    {
+        return new self(
+            $this->summary,
+            $this->blocks,
+            $this->attachments,
+            $this->seenBy,
+            $this->imagesBlocked,
+            $this->html,
+            $this->sourceHtml,
+            $thread,
         );
     }
 
@@ -109,6 +135,13 @@ final class MessageDetail
             'images_blocked_reason' => $this->imagesBlocked
                 ? 'A picture in this message could not be shown. The rest of the message is here.'
                 : null,
+
+            'thread' => array_map(function (self $part): array {
+                $row = $part->toArray();
+                unset($row['thread']);
+
+                return $row;
+            }, $this->thread),
         ];
     }
 }

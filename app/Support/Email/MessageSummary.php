@@ -59,6 +59,16 @@ final class MessageSummary
         public readonly bool $unreadAtProvider = false,
 
         public readonly array $seenBy = [],
+
+        /**
+         * How many messages are in this conversation.
+         *
+         * Gmail groups; a list of messages does not. One is the honest
+         * default for a provider that has no thread (IMAP today). Greater
+         * than one is what puts the count on the row, the way Gmail draws
+         * "WhatsApp Business  5".
+         */
+        public readonly int $messageCount = 1,
     ) {}
 
     /**
@@ -69,7 +79,7 @@ final class MessageSummary
         return new self(
             $this->id, $this->threadId, $this->subject, $this->fromName, $this->fromAddress,
             $this->to, $this->sentAt, $this->snippet, $this->hasAttachments,
-            $this->unreadAtProvider, $seenBy,
+            $this->unreadAtProvider, $seenBy, $this->messageCount,
         );
     }
 
@@ -93,6 +103,7 @@ final class MessageSummary
             'has_attachments' => $this->hasAttachments,
             'unread_at_provider' => $this->unreadAtProvider,
             'unread'      => $this->unreadAtProvider,
+            'message_count' => max(1, $this->messageCount),
 
             /*
              * Names, and it is a list rather than a count.

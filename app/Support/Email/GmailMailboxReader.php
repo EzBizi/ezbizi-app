@@ -213,7 +213,13 @@ final class GmailMailboxReader implements MailboxReader
      */
     private function page(Mailbox $mailbox, array $parameters, ?string $cursor, int $limit): MessagePage
     {
-        $listing = $this->get($mailbox, self::API.'/messages', [
+        /*
+         * Threads, not messages. Gmail's inbox is one row per conversation;
+         * `users.messages.list` is every message, so five WhatsApp templates
+         * in one thread become five rows. `users.threads.list` is the call
+         * the Gmail UI itself makes.
+         */
+        $listing = $this->get($mailbox, self::API.'/threads', [
             ...$parameters,
             // Clamped here rather than trusted from the caller: a controller
             // validates it too, and a page size of 5000 against a third party's
@@ -224,7 +230,7 @@ final class GmailMailboxReader implements MailboxReader
 
         $messages = [];
 
-        foreach ((array) ($listing['messages'] ?? []) as $stub) {
+        foreach ((array) ($listing['threads'] ?? []) as $stub) {
             $id = is_array($stub) ? (string) ($stub['id'] ?? '') : '';
 
             if ($id === '') {
@@ -234,15 +240,17 @@ final class GmailMailboxReader implements MailboxReader
             /*
              * `format=metadata`, and the headers named explicitly.
              *
-             * A list must not download bodies: twenty-five messages with
+             * A list must not download bodies: twenty-five conversations with
              * attachments is megabytes over the wire to render twenty-five
              * lines of text. Naming the headers also means Google returns
              * roughly a kilobyte per message rather than every Received: hop.
              */
-            $messages[] = $this->mapper->summary($this->get($mailbox, self::API."/messages/{$id}", [
-                'format'         => 'metadata',
-                'metadataHeaders' => ['From', 'To', 'Subject', 'Date'],
-            ]));
+            $messages[] = $this->mapper->threadSummary(
+                $this->get($mailbox, self::API.'/threads/'.rawurlencode($id), [
+                    'format'          => 'metadata',
+                    'metadataHeaders' => ['From', 'To', 'Subject', 'Date'],
+                ]),
+            );
         }
 
         return new MessagePage(
@@ -256,9 +264,35 @@ final class GmailMailboxReader implements MailboxReader
 
     public function open(Mailbox $mailbox, string $messageId): MessageDetail
     {
-        return $this->mapper->detail(
+        $detail = $this->mapper->detail(
             $this->get($mailbox, self::API.'/messages/'.rawurlencode($messageId), ['format' => 'full'])
         );
+
+        $threadId = $detail->summary->threadId;
+
+        if ($threadId === null || $threadId === '') {
+            return $detail;
+        }
+
+        $thread = $this->get(
+            $mailbox,
+            self::API.'/threads/'.rawurlencode($threadId),
+            ['format' => 'full'],
+        );
+
+        $parts = [];
+
+        foreach ((array) ($thread['messages'] ?? []) as $row) {
+            if (is_array($row)) {
+                $parts[] = $this->mapper->detail($row);
+            }
+        }
+
+        if (count($parts) <= 1) {
+            return $detail;
+        }
+
+        return $detail->withThread($parts);
     }
 
     /**

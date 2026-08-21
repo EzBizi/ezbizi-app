@@ -74,6 +74,71 @@ final class GmailMessageMapper
     }
 
     /**
+     * One conversation, as a list row — Gmail's own grouping.
+     *
+     * The latest message is what the row shows (who, subject, snippet, date).
+     * The count is how many are in the thread. Unread if any one is unread,
+     * because a conversation with one new reply is a row you have not dealt
+     * with, not a row that is "mostly read".
+     *
+     * @param  array<string, mixed>  $thread  `users.threads.get` with metadata
+     */
+    public function threadSummary(array $thread): MessageSummary
+    {
+        $messages = [];
+
+        foreach ((array) ($thread['messages'] ?? []) as $row) {
+            if (is_array($row)) {
+                $messages[] = $row;
+            }
+        }
+
+        if ($messages === []) {
+            return $this->summary([
+                'id'       => (string) ($thread['id'] ?? ''),
+                'threadId' => (string) ($thread['id'] ?? ''),
+            ]);
+        }
+
+        $latest = $messages[0];
+
+        foreach ($messages as $row) {
+            if ((int) ($row['internalDate'] ?? 0) >= (int) ($latest['internalDate'] ?? 0)) {
+                $latest = $row;
+            }
+        }
+
+        $row = $this->summary($latest);
+
+        $unread = false;
+        $attached = false;
+
+        foreach ($messages as $one) {
+            if (in_array('UNREAD', (array) ($one['labelIds'] ?? []), true)) {
+                $unread = true;
+            }
+
+            if ($this->hasAttachments($one['payload'] ?? [])) {
+                $attached = true;
+            }
+        }
+
+        return new MessageSummary(
+            id: $row->id,
+            threadId: (string) ($thread['id'] ?? $row->threadId),
+            subject: $row->subject,
+            fromName: $row->fromName,
+            fromAddress: $row->fromAddress,
+            to: $row->to,
+            sentAt: $row->sentAt,
+            snippet: $row->snippet,
+            hasAttachments: $attached,
+            unreadAtProvider: $unread,
+            messageCount: count($messages),
+        );
+    }
+
+    /**
      * The whole message, with the body sanitised into blocks.
      *
      * ── HTML is preferred, and plain text is the fallback ────────

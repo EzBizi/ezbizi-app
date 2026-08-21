@@ -338,6 +338,7 @@ class _EmailScreenState extends State<EmailScreen> {
                 unread: false,
                 hasAttachments: row.hasAttachments,
                 seenBy: row.seenBy,
+                messageCount: row.messageCount,
               ),
         ];
       } else {
@@ -664,15 +665,22 @@ class _MessageView extends StatelessWidget {
                 style: theme.textTheme.headlineMedium?.copyWith(fontSize: 21),
               ),
               const SizedBox(height: 6),
-              Text(
-                'From ${message.from}',
-                style: theme.textTheme.bodyMedium,
-              ),
-              Text(
-                'To ${message.to.isEmpty ? mailbox.address : message.to.join(', ')} · '
-                '${formatStamp(message.receivedAt, 'No date', formats: formats)}',
-                style: theme.textTheme.bodyMedium,
-              ),
+              if (message.thread.length > 1)
+                Text(
+                  '${message.thread.length} messages',
+                  style: theme.textTheme.bodyMedium,
+                )
+              else ...[
+                Text(
+                  'From ${message.from}',
+                  style: theme.textTheme.bodyMedium,
+                ),
+                Text(
+                  'To ${message.to.isEmpty ? mailbox.address : message.to.join(', ')} · '
+                  '${formatStamp(message.receivedAt, 'No date', formats: formats)}',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
               if (seen != null) ...[
                 const SizedBox(height: 8),
                 SeenByLine(sentence: seen),
@@ -704,12 +712,41 @@ class _MessageView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: _body(mailbox, message)),
+              Expanded(child: _conversation(mailbox, message)),
               if (message.attachments.isNotEmpty) _attachments(context),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _conversation(Mailbox mailbox, MessageDetail message) {
+    if (message.thread.length <= 1) {
+      return _body(mailbox, message);
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+      itemCount: message.thread.length,
+      separatorBuilder: (_, _) => const Divider(height: 24),
+      itemBuilder: (context, index) {
+        final part = message.thread[index];
+        final theme = Theme.of(context);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(part.from, style: theme.textTheme.titleSmall),
+            Text(
+              formatStamp(part.receivedAt, 'No date', formats: formats),
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            SizedBox(height: 420, child: _body(mailbox, part)),
+          ],
+        );
+      },
     );
   }
 

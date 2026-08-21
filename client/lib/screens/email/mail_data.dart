@@ -180,6 +180,7 @@ class MessageHeader {
     required this.unread,
     required this.hasAttachments,
     required this.seenBy,
+    this.messageCount = 1,
   });
 
   final String id;
@@ -197,6 +198,9 @@ class MessageHeader {
   final bool unread;
   final bool hasAttachments;
   final List<SeenBy> seenBy;
+
+  /// How many messages are in this conversation. 1 is a lone mail.
+  final int messageCount;
 
   /// Who it is from, in one line: their name where there is one, and the
   /// address where there is not. Never the name alone with the address thrown
@@ -217,6 +221,9 @@ class MessageHeader {
       unread: json['unread'] == true || json['unread_at_provider'] == true,
       hasAttachments: json['has_attachments'] == true,
       seenBy: readSeenBy(json['seen_by']),
+      messageCount: json['message_count'] is int
+          ? json['message_count'] as int
+          : int.tryParse('${json['message_count'] ?? 1}') ?? 1,
     );
   }
 }
@@ -259,6 +266,7 @@ class MessageDetail {
     required this.replyToName,
     required this.replyTo,
     required this.replySubject,
+    this.thread = const [],
   });
 
   final String id;
@@ -292,6 +300,10 @@ class MessageDetail {
   final List<String> replyTo;
   final String? replySubject;
 
+  /// The other messages in this conversation, oldest first. Empty when
+  /// this is the only one.
+  final List<MessageDetail> thread;
+
   String get from => fromName.isEmpty ? fromAddress : '$fromName <$fromAddress>';
 
   factory MessageDetail.fromJson(Map<String, dynamic> json) {
@@ -318,6 +330,10 @@ class MessageDetail {
       replyToName: as['name'] as String?,
       replyTo: _addresses(reply['to']),
       replySubject: reply['subject'] as String?,
+      thread: [
+        for (final entry in (json['thread'] as List? ?? const []))
+          if (entry is Map<String, dynamic>) MessageDetail.fromJson(entry),
+      ],
     );
   }
 }

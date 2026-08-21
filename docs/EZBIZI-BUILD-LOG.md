@@ -251,3 +251,15 @@ plain text and for anything that is not the web app. Raw markup is never
 on the wire — it sits on `$sourceHtml` until the sanitiser has run.
 
 Client `v0.0.0048`.
+
+---
+
+## 2026-08-21 — Gmail threads in the inbox
+
+The list called `users.messages.list`, so five WhatsApp templates that Gmail
+shows as one conversation were five rows. It now calls `users.threads.list`,
+the row is the latest message plus a count, and opening a thread loads the
+other messages in it. IMAP is still one row per message — that protocol has
+no thread list.
+
+Client `v0.0.0049`.

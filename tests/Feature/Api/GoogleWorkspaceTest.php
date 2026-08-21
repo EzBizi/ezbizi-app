@@ -459,8 +459,8 @@ class GoogleWorkspaceTest extends TestCase
 
         Http::fake([
             'oauth2.googleapis.com/token' => Http::response(['access_token' => 'ya29.mail']),
-            'gmail.googleapis.com/gmail/v1/users/me/messages*' => Http::response([
-                'messages' => [],
+            'gmail.googleapis.com/gmail/v1/users/me/threads*' => Http::response([
+                'threads' => [],
                 'resultSizeEstimate' => 0,
             ]),
         ]);

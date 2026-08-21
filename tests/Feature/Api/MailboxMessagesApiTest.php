@@ -453,6 +453,39 @@ class MailboxMessagesApiTest extends TestCase
             ->assertJsonPath('message', fn (string $m) => str_contains($m, 'do not have permission'));
     }
 
+    public function test_a_thread_is_one_list_row_with_a_count(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $this->grant($t, $mailbox, 'Clerk');
+
+        FakeMailboxReader::$page = new MessagePage([
+            new MessageSummary(
+                id: 'm-5',
+                threadId: 't-wa',
+                subject: 'Your WhatsApp message template state has been changed',
+                fromName: 'WhatsApp Business Team',
+                fromAddress: 'notification@facebookmail.com',
+                to: ['info@a-1chimney.com'],
+                sentAt: Carbon::parse('2026-08-21 10:31:00'),
+                snippet: 'Please see your template current state information.',
+                messageCount: 5,
+            ),
+        ]);
+
+        $row = $this->signedInAs($clerk)
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")
+            ->assertOk()
+            ->json('data.messages.0');
+
+        $this->assertSame(5, $row['message_count']);
+        $this->assertSame('t-wa', $row['thread_id']);
+        $this->assertSame('WhatsApp Business Team', $row['from']['name']);
+    }
+
     // ══ 3. SEEN, SHARED OR PRIVATE ═══════════════════════════════
 
     public function test_opening_a_message_records_who_looked_and_the_list_says_so(): void

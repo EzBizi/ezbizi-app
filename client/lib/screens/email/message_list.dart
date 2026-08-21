@@ -151,6 +151,16 @@ class MessageListPane extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (message.messageCount > 1) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      '${message.messageCount}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: 8),
                   Text(
                     formatStamp(message.receivedAt, 'No date', formats: formats),
