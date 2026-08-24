@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Services\Organizations\ProvisionOrganization;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -136,8 +137,12 @@ class StructureTest extends TestCase
             $f = Franchise::where('name', 'Connecticut')->firstOrFail();
 
             // A business in one timezone should not have to restate it for
-            // every place it operates.
-            $this->assertSame($this->alpha['franchise']->timezone, $f->timezone);
+            // every place it operates. The value comes from the organization
+            // setting, not from whichever franchise was provisioned first.
+            $this->assertSame(
+                app(SettingsResolver::class)->get('timezone', $this->alpha['org']),
+                $f->timezone,
+            );
         });
     }
 
