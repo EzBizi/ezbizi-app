@@ -66,15 +66,20 @@ void main() {
 
     expect(sent, hasLength(1));
     expect(sent.single['period'], 'week');
-    expect((sent.single['glances'] as List).single['key'], 'hr');
-    expect((sent.single['glances'] as List).single['presentation'], 'bar');
+    expect(
+      [for (final g in sent.single['glances'] as List) g['key']],
+      ['hr', 'jobs', 'customers'],
+    );
+    expect(
+      (sent.single['glances'] as List).firstWhere((g) => g['key'] == 'hr')
+          ['presentation'],
+      'bar',
+    );
   });
 
-  /// The first save may name only `hr` — /me often has no `dashboard.glances`
-  /// yet. The PUT answers with the union the server stored. Forgetting that
-  /// means the next tap sends `{hr}` again, and saveLayout re-appends every
-  /// other module at its default, wiping Jobs options and any order already
-  /// on the server.
+  /// /me often has no `dashboard.glances` yet. The first save GETs the
+  /// dashboard and writes that list, so it does not name only `{hr}` and
+  /// drop Jobs options the server would then append at defaults.
   testWidgets('a second layout save keeps the glances the first one stored', (
     tester,
   ) async {
@@ -87,7 +92,7 @@ void main() {
 
     expect(
       [for (final g in sent.single['glances'] as List) g['key']],
-      ['hr'],
+      ['hr', 'jobs', 'customers'],
     );
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Quarter'));
@@ -114,8 +119,15 @@ void main() {
 
     expect(sent, hasLength(1));
     expect(sent.single.containsKey('period'), isFalse);
-    expect((sent.single['glances'] as List).single['key'], 'hr');
-    expect((sent.single['glances'] as List).single['presentation'], 'text');
+    expect(
+      [for (final g in sent.single['glances'] as List) g['key']],
+      ['hr', 'jobs', 'customers'],
+    );
+    expect(
+      (sent.single['glances'] as List).firstWhere((g) => g['key'] == 'hr')
+          ['presentation'],
+      'text',
+    );
   });
 
   testWidgets('one card cannot be dragged', (tester) async {
@@ -263,6 +275,27 @@ MockClientHandler _handler({
             {'key': 'jobs', 'presentation': 'pie'},
           if (!keys.contains('customers'))
             {'key': 'customers', 'presentation': 'line'},
+        ],
+      });
+    }
+
+    if (request.method == 'GET' &&
+        path.endsWith('/dashboard') &&
+        !path.endsWith('/hr/dashboard')) {
+      return _json({
+        'period': 'month',
+        'glances': [
+          {
+            'key': 'hr',
+            'presentation': presentation,
+            'options': <String, dynamic>{},
+          },
+          {'key': 'jobs', 'presentation': 'pie', 'options': <String, dynamic>{}},
+          {
+            'key': 'customers',
+            'presentation': 'line',
+            'options': <String, dynamic>{},
+          },
         ],
       });
     }

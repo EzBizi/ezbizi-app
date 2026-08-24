@@ -29,27 +29,83 @@ class DashboardChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final parsed = _readSlices(slices);
+    final colors = _palette(scheme);
     final painter = _DashboardChartPainter(
       presentation: presentation,
-      slices: _readSlices(slices),
+      slices: parsed,
       points: _readPoints(series),
-      colors: _palette(scheme),
+      colors: colors,
       track: scheme.outlineVariant,
       onLine: scheme.surface,
     );
 
     if (!painter.isDrawable) return const SizedBox.shrink();
 
+    final named = presentation == 'pie' || presentation == 'bar';
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Semantics(
         label: painter.semanticsLabel,
-        child: SizedBox(
-          height: height,
-          width: double.infinity,
-          child: CustomPaint(painter: painter),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: height,
+              width: double.infinity,
+              child: CustomPaint(painter: painter),
+            ),
+            if (named) ...[
+              const SizedBox(height: 8),
+              _SliceLegend(slices: parsed, colors: colors),
+            ],
+          ],
         ),
       ),
+    );
+  }
+}
+
+/// Labels from the payload, coloured with the same theme swatches as the chart.
+/// Totals stay on the wire; this does not add them up or print them.
+class _SliceLegend extends StatelessWidget {
+  const _SliceLegend({required this.slices, required this.colors});
+
+  final List<_Slice> slices;
+  final List<Color> colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 4,
+      children: [
+        for (var i = 0; i < slices.length; i++)
+          if (slices[i].label.isNotEmpty)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: colors[i % colors.length],
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  slices[i].label,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+      ],
     );
   }
 }
@@ -88,7 +144,9 @@ List<_Point> _readPoints(List<dynamic>? series) {
   final points = <_Point>[];
   for (final item in raw) {
     if (item is! Map) continue;
-    final at = DateTime.tryParse('${item['at'] ?? ''}');
+    final atRaw = '${item['at'] ?? ''}';
+    // Year buckets are `Y-m` (`2026-08`). DateTime.tryParse skips those.
+    final at = DateTime.tryParse(atRaw) ?? DateTime.tryParse('$atRaw-01');
     if (at == null) continue;
     points.add(_Point(at, (item['value'] as num?)?.toDouble() ?? 0));
   }

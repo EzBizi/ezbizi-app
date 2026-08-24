@@ -856,6 +856,21 @@ MockClientHandler _hr() {
       return _json({'ok': true});
     }
 
+    if (request.method == 'GET' &&
+        path.endsWith('/dashboard') &&
+        !path.endsWith('/hr/dashboard')) {
+      return _json({
+        'period': 'month',
+        'glances': [
+          {
+            'key': 'hr',
+            'presentation': 'bar',
+            'options': <String, dynamic>{},
+          },
+        ],
+      });
+    }
+
     if (path.endsWith('/hr/dashboard')) {
       return _json({
         'period': 'month',

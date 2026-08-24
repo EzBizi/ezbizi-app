@@ -118,4 +118,21 @@ class CustomersGlanceTest extends TestCase
         $week = app(CustomersGlance::class)->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'week'), [])->toArray();
         $this->assertFalse($week['data']['empty']);
     }
+
+    public function test_the_bar_gets_slices_from_the_same_buckets(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'America/New_York'));
+        $this->customer($this->alpha['franchise']);
+        $payload = app(CustomersGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'year'), []
+        )->toArray();
+
+        $points = $payload['data']['series'][0]['points'];
+        $slices = $payload['data']['slices'] ?? [];
+
+        $this->assertNotEmpty($slices);
+        $this->assertSame(array_column($points, 'at'), array_column($slices, 'label'));
+        $this->assertSame(array_column($points, 'value'), array_column($slices, 'total'));
+        $this->assertContains('2026-08', array_column($slices, 'label'));
+    }
 }

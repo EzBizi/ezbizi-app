@@ -136,6 +136,8 @@ class JobsGlanceTest extends TestCase
             'Choose which of your job statuses count as earned.',
             $payload['data']['sentences'] ?? [],
         );
+        $this->assertContains('scheduled', $payload['data']['status_choices'] ?? []);
+        $this->assertContains('completed', $payload['data']['status_choices'] ?? []);
     }
 
     public function test_the_pie_ignores_the_dashboard_period(): void

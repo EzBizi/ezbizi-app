@@ -101,33 +101,11 @@ class DashboardController extends Controller
 
         $input = $request->validate([
             'period' => ['sometimes', 'string', Rule::in(DashboardPeriod::VALUES)],
-            'glances' => ['present', 'array'],
+            'glances' => ['sometimes', 'array'],
             'glances.*.key' => ['required', 'string', 'max:64'],
             'glances.*.presentation' => ['sometimes', 'nullable', 'string', 'max:32'],
             'glances.*.options' => ['sometimes', 'array'],
         ]);
-
-        $seen = [];
-        $layout = [];
-
-        foreach ($input['glances'] as $entry) {
-            $key = $entry['key'];
-            if (isset($seen[$key])) {
-                continue;
-            }
-            $seen[$key] = true;
-            $layout[] = $this->storedEntry($entry, $this->registry->find($key, $user), $user);
-        }
-
-        foreach ($this->registry->availableTo($user) as $glance) {
-            if (isset($seen[$glance->key()])) {
-                continue;
-            }
-            $layout[] = [
-                'key' => $glance->key(),
-                'presentation' => $glance->defaultPresentation(),
-            ];
-        }
 
         $preferences = $user->preferences ?? [];
         if (! is_array($preferences)) {
@@ -138,13 +116,40 @@ class DashboardController extends Controller
             $preferences['dashboard.period'] = $input['period'];
         }
 
-        $preferences['dashboard.glances'] = $layout;
+        // Period-only saves must not replace the stored layout. Sending `{hr}`
+        // (or an empty list) appends every other module at defaults and drops
+        // Jobs earned statuses copied from the old widgets preference.
+        if (array_key_exists('glances', $input)) {
+            $seen = [];
+            $layout = [];
+
+            foreach ($input['glances'] as $entry) {
+                $key = $entry['key'];
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $layout[] = $this->storedEntry($entry, $this->registry->find($key, $user), $user);
+            }
+
+            foreach ($this->registry->availableTo($user) as $glance) {
+                if (isset($seen[$glance->key()])) {
+                    continue;
+                }
+                $layout[] = [
+                    'key' => $glance->key(),
+                    'presentation' => $glance->defaultPresentation(),
+                ];
+            }
+
+            $preferences['dashboard.glances'] = $layout;
+        }
 
         $user->forceFill(['preferences' => $preferences])->save();
 
         return [
             'period' => $preferences['dashboard.period'] ?? 'month',
-            'glances' => $layout,
+            'glances' => $preferences['dashboard.glances'] ?? [],
         ];
     }
 

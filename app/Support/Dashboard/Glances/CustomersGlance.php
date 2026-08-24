@@ -105,8 +105,13 @@ final class CustomersGlance implements Glance
                 ->count();
 
             $points = [];
+            $slices = [];
             foreach ($counts as $at => $value) {
                 $points[] = ['at' => $at, 'value' => $value];
+                // Bar (and pie, if ever offered) read slices, not series.
+                // Same buckets; label is the axis key so a year month stays
+                // readable (`2026-08`) without the client aggregating.
+                $slices[] = ['label' => $at, 'total' => $value];
             }
 
             return new GlancePayload(
@@ -125,6 +130,7 @@ final class CustomersGlance implements Glance
                             'points' => $points,
                         ],
                     ],
+                    'slices' => $slices,
                     'sentences' => [$sentence],
                     'organization_total' => $organizationTotal,
                 ],

@@ -540,6 +540,46 @@ class DashboardTest extends TestCase
         $this->assertSame(GlanceRegistry::ORDER, $keys);
     }
 
+    public function test_saving_only_the_period_does_not_replace_glances(): void
+    {
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'glances' => [['key' => 'jobs', 'presentation' => 'bar', 'options' => [
+                'earned_statuses' => ['completed'],
+            ]]],
+        ])->assertOk();
+
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'period' => 'week',
+        ])->assertOk();
+
+        $stored = collect($this->preferencesOf($this->alpha['admin'])['dashboard.glances'])
+            ->firstWhere('key', 'jobs');
+        $this->assertSame('bar', $stored['presentation']);
+        $this->assertSame(['completed'], $stored['options']['earned_statuses']);
+        $this->assertSame('week', $this->preferencesOf($this->alpha['admin'])['dashboard.period']);
+    }
+
+    public function test_a_period_save_does_not_drop_earned_statuses_copied_from_widgets(): void
+    {
+        $this->inTenant(fn () => User::withoutGlobalScopes()->find($this->alpha['admin']->id)
+            ->forceFill(['preferences' => ['dashboard.widgets' => [
+                ['key' => 'jobs.revenue', 'options' => ['statuses' => ['completed']]],
+            ]]])->save());
+
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'period' => 'year',
+        ])->assertOk();
+
+        $this->assertArrayNotHasKey(
+            'dashboard.glances',
+            $this->preferencesOf($this->alpha['admin']),
+        );
+
+        $jobs = collect($this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')->assertOk()->json('glances'))
+            ->firstWhere('key', 'jobs');
+        $this->assertSame(['completed'], $jobs['options']['earned_statuses'] ?? null);
+    }
+
     public function test_the_dashboard_echoes_the_chosen_period(): void
     {
         $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [

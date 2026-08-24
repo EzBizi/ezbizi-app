@@ -97,6 +97,82 @@ void main() {
     expect(find.byType(DashboardChart), findsOneWidget);
   });
 
+  testWidgets('a year series of Y-m buckets still draws', (tester) async {
+    await _pumpDashboard(
+      tester,
+      _glances(
+        presentation: 'line',
+        allowed: const ['line', 'bar', 'text'],
+        series: [
+          {
+            'label': 'Added',
+            'points': [
+              {'at': '2026-08', 'value': 2},
+              {'at': '2026-07', 'value': 1},
+            ],
+          },
+        ],
+        sentence: '3 new customers this year.',
+      ),
+    );
+
+    expect(find.byType(DashboardChart), findsOneWidget);
+  });
+
+  testWidgets('pie and bar name their slices', (tester) async {
+    await _pumpDashboard(
+      tester,
+      _glances(
+        presentation: 'pie',
+        slices: [
+          {'label': 'scheduled', 'total': 2},
+          {'label': 'completed', 'total': 1},
+        ],
+      ),
+    );
+
+    expect(
+      find.descendant(
+        of: find.byType(DashboardChart),
+        matching: find.text('scheduled'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(DashboardChart),
+        matching: find.text('completed'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('choosing an earned status writes it on the jobs glance', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await _pumpDashboard(
+      tester,
+      _glances(
+        presentation: 'pie',
+        slices: [
+          {'label': 'scheduled', 'total': 2},
+          {'label': 'completed', 'total': 1},
+        ],
+      ),
+      record: sent,
+    );
+
+    await tester.tap(find.widgetWithText(FilterChip, 'completed'));
+    await tester.pumpAndSettle();
+
+    expect(sent, isNotEmpty);
+    final jobs = (sent.last['glances'] as List).single;
+    expect(jobs['key'], 'jobs');
+    expect(jobs['options']['earned_statuses'], ['completed']);
+  });
+
   testWidgets('a line is drawn for series', (tester) async {
     await _pumpDashboard(
       tester,

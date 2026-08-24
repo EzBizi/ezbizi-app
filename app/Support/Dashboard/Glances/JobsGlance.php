@@ -67,6 +67,8 @@ final class JobsGlance implements Glance
             $byStatus = $this->jobsByStatus->resolve($user, ['include_finished' => true]);
             $total = (int) ($byStatus['total'] ?? 0);
 
+            $statusChoices = array_column($byStatus['rows'], 'status');
+
             if ($total === 0) {
                 return new GlancePayload(
                     key: $this->key(),
@@ -79,6 +81,7 @@ final class JobsGlance implements Glance
                     data: [
                         'empty' => true,
                         'sentence' => 'No jobs in reach.',
+                        'status_choices' => $statusChoices,
                     ],
                 );
             }
@@ -91,6 +94,7 @@ final class JobsGlance implements Glance
             $data = [
                 'empty' => false,
                 'slices' => $slices,
+                'status_choices' => $statusChoices,
             ];
             $sentences = [];
 

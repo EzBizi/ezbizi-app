@@ -75,10 +75,13 @@ class _DashboardTabState extends State<DashboardTab> {
 
     setState(() => _period = period);
 
-    final response = await widget.api.put('/dashboard/layout', {
-      'period': period,
-      'glances': _layoutGlances(),
-    });
+    final glances = await _glancesForSave();
+    if (!mounted) return;
+
+    final body = <String, dynamic>{'period': period};
+    if (glances != null) body['glances'] = glances;
+
+    final response = await widget.api.put('/dashboard/layout', body);
 
     if (!mounted) return;
 
@@ -87,7 +90,7 @@ class _DashboardTabState extends State<DashboardTab> {
         context,
       ).showSnackBar(SnackBar(content: Text(response.message)));
     } else {
-      _rememberLayout(response.body);
+      _rememberLayout(response.body, fallback: glances);
     }
 
     _load();
@@ -102,14 +105,25 @@ class _DashboardTabState extends State<DashboardTab> {
       _glance = {...current, 'presentation': presentation};
     });
 
+    final glances = await _glancesForSave(presentation: presentation);
+    if (!mounted) return;
+
+    if (glances == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not save how this box is drawn.')),
+      );
+      _load();
+      return;
+    }
+
     final response = await widget.api.put('/dashboard/layout', {
-      'glances': _layoutGlances(presentation: presentation),
+      'glances': glances,
     });
 
     if (!mounted) return;
 
     if (response.ok) {
-      _rememberLayout(response.body);
+      _rememberLayout(response.body, fallback: glances);
       return;
     }
 
@@ -124,12 +138,18 @@ class _DashboardTabState extends State<DashboardTab> {
   /// reachable modules this chip omitted. Without writing that into the
   /// session, the next tap sends `{hr}` again and saveLayout rebuilds the
   /// rest at defaults — wiping Jobs options and any order already saved.
-  void _rememberLayout(Map<String, dynamic> body) {
+  void _rememberLayout(
+    Map<String, dynamic> body, {
+    List<Map<String, dynamic>>? fallback,
+  }) {
     final glances = body['glances'];
-    if (glances is! List || glances.isEmpty) return;
+    final source = glances is List && glances.isNotEmpty
+        ? glances
+        : fallback;
+    if (source == null || source.isEmpty) return;
 
     widget.session.rememberPreference('dashboard.glances', [
-      for (final item in glances)
+      for (final item in source)
         if (item is Map)
           {
             'key': item['key'],
@@ -139,32 +159,50 @@ class _DashboardTabState extends State<DashboardTab> {
     ]);
   }
 
-  /// What this chip writes back. Prefer the session's stored layout so a
-  /// second save does not name only `hr`. If /me never carried
-  /// `dashboard.glances`, the first save still sends the one box and the
-  /// server appends the rest.
-  List<Map<String, dynamic>> _layoutGlances({String? presentation}) {
-    final chosen =
-        presentation ?? _glance?['presentation'] as String? ?? 'text';
-    final saved = widget.session.me?.preferences['dashboard.glances'];
+  /// Session layout if /me already has it; otherwise GET /dashboard so the
+  /// first save names every reachable box, not only `{hr}`. Null means omit
+  /// `glances` and write the period only.
+  Future<List<Map<String, dynamic>>?> _glancesForSave({
+    String? presentation,
+  }) async {
+    final fromSession = _layoutFromSession(presentation: presentation);
+    if (fromSession != null) return fromSession;
 
-    if (saved is List && saved.isNotEmpty) {
-      return [
-        for (final item in saved)
-          if (item is Map)
-            {
-              'key': item['key'],
-              'presentation': item['key'] == 'hr'
-                  ? chosen
-                  : (item['presentation'] ?? 'text'),
-              'options': item['options'] ?? <String, dynamic>{},
-            },
-      ];
-    }
+    final response = await widget.api.get('/dashboard');
+    if (!mounted || !response.ok) return null;
+
+    final glances = response.body['glances'];
+    if (glances is! List || glances.isEmpty) return null;
+
+    final layout = [
+      for (final item in glances)
+        if (item is Map) _entryFor(item, presentation: presentation),
+    ];
+    widget.session.rememberPreference('dashboard.glances', layout);
+    return layout;
+  }
+
+  List<Map<String, dynamic>>? _layoutFromSession({String? presentation}) {
+    final saved = widget.session.me?.preferences['dashboard.glances'];
+    if (saved is! List || saved.isEmpty) return null;
 
     return [
-      {'key': 'hr', 'presentation': chosen},
+      for (final item in saved)
+        if (item is Map) _entryFor(item, presentation: presentation),
     ];
+  }
+
+  Map<String, dynamic> _entryFor(Map item, {String? presentation}) {
+    final chosen =
+        presentation ?? _glance?['presentation'] as String? ?? 'text';
+
+    return {
+      'key': item['key'],
+      'presentation': item['key'] == 'hr'
+          ? chosen
+          : (item['presentation'] ?? 'text'),
+      'options': item['options'] ?? <String, dynamic>{},
+    };
   }
 
   Widget? _presentationMenu(Map<String, dynamic> glance) {
