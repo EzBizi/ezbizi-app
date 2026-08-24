@@ -6,6 +6,7 @@ use App\Models\Assignment;
 use App\Models\Franchise;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Models\VehicleInsurancePolicy;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glances\FleetGlance;
@@ -112,7 +113,22 @@ class FleetGlanceTest extends TestCase
 
     public function test_the_pie_ignores_the_dashboard_period(): void
     {
-        $this->taggedVehicle($this->alpha['franchise']);
+        $this->inTenant(fn () => Vehicle::factory()->create([
+            'company_id' => $this->alpha['company']->id,
+            'franchise_id' => $this->alpha['franchise']->id,
+            'status' => VehicleStatus::Active,
+            'next_service_on' => now()->subDay()->toDateString(),
+        ]));
+
+        $this->inTenant(fn () => VehicleInsurancePolicy::factory()->create([
+            'vehicle_id' => Vehicle::factory()->create([
+                'company_id' => $this->alpha['company']->id,
+                'franchise_id' => $this->alpha['franchise']->id,
+                'status' => VehicleStatus::Active,
+            ])->id,
+            'expires_on' => now()->addDay()->toDateString(),
+            'ended_on' => null,
+        ]));
 
         $week = app(FleetGlance::class)->resolve(
             $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'week'), []
@@ -122,5 +138,79 @@ class FleetGlanceTest extends TestCase
         )->toArray();
 
         $this->assertSame($week['data']['slices'], $year['data']['slices']);
+        $this->assertSame($week['data']['sentences'], $year['data']['sentences']);
+        $this->assertContains('1 vehicle needs service soon.', $week['data']['sentences']);
+        $this->assertContains('1 vehicle has insurance due soon.', $week['data']['sentences']);
+    }
+
+    public function test_service_due_matches_the_vehicle_list(): void
+    {
+        $this->inTenant(function () {
+            Vehicle::factory()->create([
+                'company_id' => $this->alpha['company']->id,
+                'franchise_id' => $this->alpha['franchise']->id,
+                'status' => VehicleStatus::Active,
+                'next_service_on' => now()->subDay()->toDateString(),
+            ]);
+
+            Vehicle::factory()->create([
+                'company_id' => $this->alpha['company']->id,
+                'franchise_id' => $this->alpha['franchise']->id,
+                'status' => VehicleStatus::Active,
+                'next_service_on' => now()->addDays(60)->toDateString(),
+            ]);
+
+            Vehicle::factory()->create([
+                'company_id' => $this->alpha['company']->id,
+                'franchise_id' => $this->alpha['franchise']->id,
+                'status' => VehicleStatus::Sold,
+                'next_service_on' => now()->subDay()->toDateString(),
+            ]);
+        });
+
+        $payload = app(FleetGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+        )->toArray();
+
+        $this->assertContains('1 vehicle needs service soon.', $payload['data']['sentences']);
+        $this->assertArrayNotHasKey('revenue', $payload['data']);
+        $this->assertArrayNotHasKey('amount_minor', $payload['data']);
+    }
+
+    public function test_insurance_due_counts_open_policies_within_thirty_days(): void
+    {
+        $this->inTenant(function () {
+            $openVehicle = Vehicle::factory()->create([
+                'company_id' => $this->alpha['company']->id,
+                'franchise_id' => $this->alpha['franchise']->id,
+                'status' => VehicleStatus::Active,
+            ]);
+
+            VehicleInsurancePolicy::factory()->create([
+                'vehicle_id' => $openVehicle->id,
+                'expires_on' => now()->addDay()->toDateString(),
+                'ended_on' => null,
+            ]);
+
+            $endedVehicle = Vehicle::factory()->create([
+                'company_id' => $this->alpha['company']->id,
+                'franchise_id' => $this->alpha['franchise']->id,
+                'status' => VehicleStatus::Active,
+            ]);
+
+            VehicleInsurancePolicy::factory()->create([
+                'vehicle_id' => $endedVehicle->id,
+                'expires_on' => now()->addDay()->toDateString(),
+                'ended_on' => now()->subDay()->toDateString(),
+            ]);
+        });
+
+        $payload = app(FleetGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+        )->toArray();
+
+        $this->assertContains('1 vehicle has insurance due soon.', $payload['data']['sentences']);
+        $this->assertArrayNotHasKey('revenue', $payload['data']);
+        $this->assertArrayNotHasKey('amount_minor', $payload['data']);
     }
 }

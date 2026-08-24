@@ -11,12 +11,14 @@ use App\Support\Fleet\VehicleStatus;
 use App\Support\Fleet\VehicleVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Fleet Management box: pie of VehicleStatus under VehicleVisibility (snapshot).
  *
  * Empty-at-zero once any vehicle exists so the board does not reorder as vans
- * move. Money stays off this box — financials live on the vehicle pane.
+ * move. Service / insurance due stay sentences. Money stays off this box —
+ * financials live on the vehicle pane.
  */
 final class FleetGlance implements Glance
 {
@@ -54,7 +56,9 @@ final class FleetGlance implements Glance
     {
         return app(TenantContext::class)->run($user->organization, function () use ($user) {
             $scope = ViewScope::forUser($user);
-            $counts = VehicleVisibility::constrain(Vehicle::query(), $user, $scope)
+            $base = VehicleVisibility::constrain(Vehicle::query(), $user, $scope);
+
+            $counts = (clone $base)
                 ->selectRaw('status, COUNT(*) as total')
                 ->groupBy('status')
                 ->pluck('total', 'status');
@@ -82,6 +86,30 @@ final class FleetGlance implements Glance
                 'total' => (int) ($counts[$status] ?? 0),
             ], VehicleStatus::values());
 
+            $data = [
+                'empty' => false,
+                'slices' => $slices,
+            ];
+
+            $sentences = [];
+            $serviceDue = $this->serviceDueCount(clone $base);
+            if ($serviceDue > 0) {
+                $sentences[] = $serviceDue === 1
+                    ? '1 vehicle needs service soon.'
+                    : "{$serviceDue} vehicles need service soon.";
+            }
+
+            $insuranceDue = $this->insuranceDueCount(clone $base);
+            if ($insuranceDue > 0) {
+                $sentences[] = $insuranceDue === 1
+                    ? '1 vehicle has insurance due soon.'
+                    : "{$insuranceDue} vehicles have insurance due soon.";
+            }
+
+            if ($sentences !== []) {
+                $data['sentences'] = $sentences;
+            }
+
             return new GlancePayload(
                 key: $this->key(),
                 label: $this->label(),
@@ -90,12 +118,42 @@ final class FleetGlance implements Glance
                 snapshot: $this->snapshot(),
                 comingSoon: false,
                 options: [],
-                data: [
-                    'empty' => false,
-                    'slices' => $slices,
-                ],
+                data: $data,
             );
         });
+    }
+
+    private function serviceDueCount(Builder $query): int
+    {
+        $within = now()->addDays(30)->toDateString();
+
+        return (int) $query
+            ->whereNotIn('status', [VehicleStatus::Sold, VehicleStatus::Returned])
+            ->where(function (Builder $inner) use ($within): void {
+                $inner->where(function (Builder $date) use ($within): void {
+                    $date->whereNotNull('next_service_on')
+                        ->whereDate('next_service_on', '<=', $within);
+                })->orWhere(function (Builder $miles): void {
+                    $miles->whereNotNull('next_service_miles')
+                        ->whereNotNull('odometer_miles')
+                        ->whereRaw('odometer_miles >= next_service_miles - 500');
+                });
+            })
+            ->count();
+    }
+
+    private function insuranceDueCount(Builder $query): int
+    {
+        $within = now()->addDays(30)->toDateString();
+
+        return (int) $query
+            ->whereNotIn('status', [VehicleStatus::Sold, VehicleStatus::Returned])
+            ->whereHas('insurancePolicies', function (Builder $policy) use ($within): void {
+                $policy->whereNull('ended_on')
+                    ->whereNotNull('expires_on')
+                    ->whereDate('expires_on', '<=', $within);
+            })
+            ->count();
     }
 
     private function statusLabel(string $status): string
