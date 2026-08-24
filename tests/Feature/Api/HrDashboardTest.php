@@ -133,20 +133,20 @@ class HrDashboardTest extends TestCase
             foreach (['North', 'South'] as $companyName) {
                 $company = Company::create([
                     'organization_id' => $this->alpha['org']->id,
-                    'name'            => $companyName,
-                    'is_active'       => true,
+                    'name' => $companyName,
+                    'is_active' => true,
                 ]);
 
                 Franchise::create([
                     'organization_id' => $this->alpha['org']->id,
-                    'company_id'      => $company->id,
-                    'name'            => 'Connecticut',
-                    'is_active'       => true,
+                    'company_id' => $company->id,
+                    'name' => 'Connecticut',
+                    'is_active' => true,
                 ]);
             }
         });
 
-        $rows   = $this->panels($this->alpha['admin'])['hr.headcount']['rows'];
+        $rows = $this->panels($this->alpha['admin'])['hr.headcount']['rows'];
         $titles = array_column($rows, 'title');
 
         $this->assertContains('North › Connecticut', $titles);
@@ -223,7 +223,7 @@ class HrDashboardTest extends TestCase
     {
         $second = $this->inTenant(fn () => Franchise::create([
             'organization_id' => $this->alpha['org']->id,
-            'company_id'      => $this->alpha['company']->id,
+            'company_id' => $this->alpha['company']->id,
             'name' => 'Second', 'is_active' => true,
         ]));
 
@@ -307,7 +307,7 @@ class HrDashboardTest extends TestCase
         // Sent a week ago, still live, never opened — the wrong-address case.
         $this->inTenant(fn () => Invitation::where('email', 'quiet@alpha.test')
             ->firstOrFail()->forceFill([
-                'sent_at'    => now()->subDays(7),
+                'sent_at' => now()->subDays(7),
                 'expires_at' => now()->addDays(7),
             ])->save());
 
@@ -421,22 +421,19 @@ class HrDashboardTest extends TestCase
      * One computation, two surfaces — the point of declaring these in the
      * shared registry rather than hand-building four cards.
      *
-     * Offered there, not switched on there: the main dashboard's default layout
-     * is a named subset that does not include them, which
-     * DashboardTest::test_a_newly_registered_widget_is_offered_rather_than_switched_on
-     * is the test for.
+     * The HR glance is on the main dashboard whenever the caller can open
+     * Human Resources. Task 8 replaces this tab's five panels with that same
+     * glance.
      */
     public function test_the_hr_widgets_are_also_offered_on_the_main_dashboard(): void
     {
         $keys = collect($this->as($this->alpha['admin'])
-            ->getJson('/api/v1/dashboard/catalogue')->assertOk()->json('widgets'))
+            ->getJson('/api/v1/dashboard/catalogue')->assertOk()->json('glances'))
             ->pluck('key')->all();
 
         // Somebody who wants headcount beside their revenue gets the same
-        // widget rather than a second one that counts slightly differently.
-        $this->assertContains('hr.headcount', $keys);
-        $this->assertContains('hr.starters_and_leavers', $keys);
-        $this->assertContains('hr.certifications', $keys);
+        // glance rather than a second one that counts slightly differently.
+        $this->assertContains('hr', $keys);
     }
 
     /**
@@ -480,17 +477,12 @@ class HrDashboardTest extends TestCase
         });
 
         $keys = collect($this->as($jobsOnly)
-            ->getJson('/api/v1/dashboard/catalogue')->assertOk()->json('widgets'))
+            ->getJson('/api/v1/dashboard/catalogue')->assertOk()->json('glances'))
             ->pluck('key')->all();
 
         // They can see a dashboard, and none of it is HR.
-        $this->assertContains('jobs.by_status', $keys);
-
-        foreach (['hr.headcount', 'hr.onboardings_in_flight',
-            'hr.invitations_stalled', 'hr.starters_and_leavers',
-            'hr.certifications'] as $hr) {
-            $this->assertNotContains($hr, $keys);
-        }
+        $this->assertContains('jobs', $keys);
+        $this->assertNotContains('hr', $keys);
     }
 
     // ── helpers ──────────────────────────────────────────────────
@@ -525,7 +517,7 @@ class HrDashboardTest extends TestCase
         return $this->inTenant(function () use ($name, $email, $franchiseId) {
             $user = User::create([
                 'organization_id' => $this->alpha['org']->id,
-                'role_id'         => $this->alpha['admin']->role_id,
+                'role_id' => $this->alpha['admin']->role_id,
                 'name' => $name, 'email' => $email,
                 'password' => 'a-real-password', 'is_active' => true,
             ]);
@@ -546,7 +538,7 @@ class HrDashboardTest extends TestCase
     {
         $franchise = $this->inTenant(fn () => Franchise::create([
             'organization_id' => $this->alpha['org']->id,
-            'company_id'      => $this->alpha['company']->id,
+            'company_id' => $this->alpha['company']->id,
             'name' => 'Second', 'is_active' => true,
         ]));
 
@@ -557,10 +549,10 @@ class HrDashboardTest extends TestCase
     private function invite(string $email): void
     {
         $this->as($this->alpha['admin'])->postJson('/api/v1/hr/invitations', [
-            'email'      => $email,
-            'role_id'    => $this->alpha['admin']->role_id,
+            'email' => $email,
+            'role_id' => $this->alpha['admin']->role_id,
             'scope_type' => 'franchise',
-            'scope_id'   => $this->alpha['franchise']->id,
+            'scope_id' => $this->alpha['franchise']->id,
         ])->assertCreated();
     }
 
@@ -577,19 +569,19 @@ class HrDashboardTest extends TestCase
 
             $version = ContractVersion::create([
                 'organization_id' => $this->alpha['org']->id,
-                'contract_id'     => $contract->id,
-                'version'         => ContractVersion::where('contract_id', $contract->id)->count() + 1,
-                'fields'          => [],
-                'created_by'      => $this->alpha['admin']->id,
+                'contract_id' => $contract->id,
+                'version' => ContractVersion::where('contract_id', $contract->id)->count() + 1,
+                'fields' => [],
+                'created_by' => $this->alpha['admin']->id,
             ]);
 
             return Onboarding::create([
-                'organization_id'     => $this->alpha['org']->id,
-                'invitation_id'       => Invitation::where('email', $email)->firstOrFail()->id,
+                'organization_id' => $this->alpha['org']->id,
+                'invitation_id' => Invitation::where('email', $email)->firstOrFail()->id,
                 'contract_version_id' => $version->id,
-                'status'              => $status,
-                'started_at'          => now()->subDays(2),
-                'started_by_user_id'  => $this->alpha['admin']->id,
+                'status' => $status,
+                'started_at' => now()->subDays(2),
+                'started_by_user_id' => $this->alpha['admin']->id,
             ]);
         });
     }
