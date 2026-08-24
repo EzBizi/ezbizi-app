@@ -40,6 +40,7 @@ class RecordNumberGenerator
     public const CUSTOMERS = 'customer';
     public const JOBS      = 'job';
     public const VEHICLES  = 'vehicle';
+    public const ITEMS     = 'inventory_item';
 
     public function __construct(
         private readonly TenantContext $tenant,
@@ -114,6 +115,7 @@ class RecordNumberGenerator
             // somebody actually wants to change it.
             self::CUSTOMERS => 'C-',
             self::VEHICLES  => (string) $this->settings->get('numbering.vehicle_prefix', $scope),
+            self::ITEMS     => (string) $this->settings->get('numbering.item_prefix', $scope),
             default         => '',
         };
 
