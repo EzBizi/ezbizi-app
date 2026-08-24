@@ -106,6 +106,19 @@ class OnboardingPolicy
     }
 
     /**
+     * Stopping one that has not become an agreement.
+     *
+     * `hr.create`, the same authority that started it and that withdraws an
+     * invitation. Taking paperwork back is the other half of issuing it, and
+     * the subject does not get this door — voiding their own contract would
+     * be them ending the ceremony, which is the employer's act.
+     */
+    public function cancel(User $user, Onboarding $onboarding): Response
+    {
+        return $this->employerResponse($user, $onboarding, 'hr.create', 'cancel this onboarding');
+    }
+
+    /**
      * Correcting a completed onboarding.
      *
      * Both sides may, which follows the plan's recommendation on the one

@@ -273,8 +273,10 @@ class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalD
     /**
      * The onboarding started against this invitation, if one has been.
      *
-     * `hasOne` and unique in the schema: an invitation is one person joining
-     * once. This is what finally gives `in_progress` a producer — see status().
+     * `hasOne` of the LIVE onboarding: cancelled starts do not occupy the
+     * invitation. The schema no longer unique-indexes `invitation_id` so a
+     * replacement can be started after a cancel; this relation is what
+     * `status()` and the start endpoint still treat as "one arrival".
      *
      * Eager-load it wherever invitations are listed. `status()` reads it, so a
      * list that does not will lazy-load one query per row; correct either way,
@@ -282,7 +284,10 @@ class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalD
      */
     public function onboarding(): HasOne
     {
-        return $this->hasOne(Onboarding::class);
+        return $this->hasOne(Onboarding::class)->ofMany(
+            ['started_at' => 'max'],
+            fn (Builder $q) => $q->where('status', '!=', Onboarding::CANCELLED),
+        );
     }
 
     public function assignedOrganization(): BelongsTo

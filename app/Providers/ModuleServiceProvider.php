@@ -530,6 +530,14 @@ class ModuleServiceProvider extends ServiceProvider
                             .'stays and a new revision sits beside it; this carries the revision '
                             .'number, which fields changed and the reason given.',
                     ),
+                    new TriggerDefinition(
+                        key:   'onboarding.cancelled',
+                        label: 'Onboarding cancelled',
+                        description: 'An onboarding was stopped before it was fully signed. The '
+                            .'row stays. It carries the contract name and the status it left, so '
+                            .'a rule can tell a form nobody had signed from one that was voided '
+                            .'mid-ceremony.',
+                    ),
 
                     /*
                      * ── Contracts ───────────────────────────────

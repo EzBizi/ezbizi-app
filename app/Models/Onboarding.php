@@ -63,11 +63,21 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
     /** Every signature the version asks for has been given. */
     public const COMPLETED = 'completed';
 
-    public const STATUSES = [self::IN_PROGRESS, self::SUBMITTED, self::COMPLETED];
+    /**
+     * Stopped before it became an agreement. The row stays, the form does not
+     * move, and the invitation is free for a new start — see the cancel
+     * endpoint. A fully signed onboarding cannot become this.
+     */
+    public const CANCELLED = 'cancelled';
+
+    public const STATUSES = [
+        self::IN_PROGRESS, self::SUBMITTED, self::COMPLETED, self::CANCELLED,
+    ];
 
     protected $fillable = [
         'organization_id', 'invitation_id', 'user_id', 'contract_version_id',
-        'status', 'started_at', 'submitted_at', 'completed_at', 'started_by_user_id',
+        'status', 'started_at', 'submitted_at', 'completed_at', 'cancelled_at',
+        'started_by_user_id',
     ];
 
     protected function casts(): array
@@ -76,6 +86,7 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
             'started_at'   => 'datetime',
             'submitted_at' => 'datetime',
             'completed_at' => 'datetime',
+            'cancelled_at' => 'datetime',
         ];
     }
 
@@ -118,10 +129,11 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
                 Erasure::keep('A foreign key to a DIFFERENT person — whoever at the '
                     .'employer began the paperwork. Erasing the subject must not remove the '
                     .'provenance of the record from somebody else.')),
-            new PersonalDataEntry('started_at, submitted_at, completed_at',
+            new PersonalDataEntry('started_at, submitted_at, completed_at, cancelled_at',
                 PersonalDataEntry::ACTIVITY,
                 'When each stage happened. Part of the evidentiary record: "when did I '
-                .'agree to this" is answered from here and from the signature.',
+                .'agree to this" is answered from here and from the signature. Cancelled '
+                .'is the act of stopping before there was an agreement.',
                 Erasure::keep('Timestamps, and the ones a signature is checked against. '
                     .'"When did I agree to this" is answered from here; a blank answer is '
                     .'not a private one, it is a broken contract record.')),
@@ -372,10 +384,18 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
         return $parties;
     }
 
-    /** Frozen: the form has been signed and only an amendment may change it. */
+    public function isCancelled(): bool
+    {
+        return $this->cancelled_at !== null || $this->status === self::CANCELLED;
+    }
+
+    /**
+     * Frozen: the form has been signed and only an amendment may change it,
+     * or it was cancelled and nothing on it moves.
+     */
     public function isFrozen(): bool
     {
-        return $this->submitted_at !== null;
+        return $this->submitted_at !== null || $this->isCancelled();
     }
 
     /**

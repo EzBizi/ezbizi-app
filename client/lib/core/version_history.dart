@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0075',
+      date: '24 Aug 2026',
+      items: [
+        'An onboarding that was started by mistake can be cancelled. The row '
+            'stays, and you can start a new one for them.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0074',
       date: '24 Aug 2026',
       items: [

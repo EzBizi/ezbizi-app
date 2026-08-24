@@ -483,6 +483,35 @@ void main() {
 
     // And the one that is done says so instead of counting to zero.
     expect(find.textContaining('Completed'), findsWidgets);
+
+    // In flight can be stopped; a signed agreement cannot.
+    expect(find.text('Cancel'), findsOneWidget);
+  });
+
+  testWidgets('an in-progress onboarding can be cancelled', (tester) async {
+    var cancelled = false;
+    await _pumpTab(tester, _handler(onCancel: () => cancelled = true));
+
+    await _tap(tester, find.text('Cancel'));
+    expect(find.text('Cancel this onboarding?'), findsOneWidget);
+
+    await _tap(tester, find.text('Keep it'));
+    expect(cancelled, isFalse);
+
+    await _tap(tester, find.text('Cancel'));
+    await _tap(tester, find.text('Cancel onboarding'));
+    expect(cancelled, isTrue);
+  });
+
+  testWidgets('a reader who may not start one cannot cancel one either', (
+    tester,
+  ) async {
+    await _pumpTab(tester, _handler(), permissions: const ['hr.view']);
+
+    final cancel = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, 'Cancel'),
+    );
+    expect(cancel.onPressed, isNull);
   });
 
   testWidgets('starting one picks the person and the contract, and opens it', (
@@ -777,6 +806,7 @@ MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onSign,
   void Function(Map<String, dynamic> body)? onReveal,
   void Function(Map<String, dynamic> body)? onStart,
+  void Function()? onCancel,
   int saveStatus = 200,
   int revealStatus = 200,
 }) {
@@ -822,6 +852,13 @@ MockClientHandler _handler({
     if (path.endsWith('/hr/onboardings/o-1/sign')) {
       onSign?.call(body);
       return _json({'data': seen});
+    }
+
+    if (request.method == 'DELETE' && path.contains('/hr/onboardings/')) {
+      onCancel?.call();
+      return _json({
+        'data': {...seen, 'status': 'cancelled'},
+      });
     }
 
     if (path.contains('/hr/onboardings/o-')) {

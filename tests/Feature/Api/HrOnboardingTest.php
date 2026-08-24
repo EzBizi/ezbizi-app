@@ -894,6 +894,50 @@ class HrOnboardingTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors('invitation_id');
     }
 
+    public function test_an_onboarding_can_be_cancelled_and_started_again(): void
+    {
+        [$alpha, $employee, $id] = $this->scenario();
+
+        $invitationId = $this->inTenant($alpha['org'], fn () => Onboarding::findOrFail($id)->invitation_id);
+        $replacement  = $this->aContract($alpha, 'A different contract');
+
+        $this->as($employee)->deleteJson("/api/v1/hr/onboardings/{$id}")
+            ->assertForbidden();
+
+        $this->as($alpha['admin'])->deleteJson("/api/v1/hr/onboardings/{$id}")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'cancelled');
+
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", [
+            'answers' => ['wage' => '18.50'],
+        ])->assertStatus(422)->assertJsonValidationErrors('onboarding');
+
+        $this->as($alpha['admin'])->deleteJson("/api/v1/hr/onboardings/{$id}")
+            ->assertStatus(422);
+
+        $next = $this->as($alpha['admin'])->postJson('/api/v1/hr/onboardings', [
+            'invitation_id' => $invitationId,
+            'contract_id'   => $replacement,
+        ])->assertCreated()->json('data.id');
+
+        $this->assertNotSame($id, $next);
+        $this->assertSame('in_progress', $this->form($alpha['admin'], $next)['status']);
+    }
+
+    public function test_a_fully_signed_onboarding_cannot_be_cancelled(): void
+    {
+        [$alpha, $employee, $id] = $this->completeForm();
+
+        $this->signAs($alpha['admin'], $id, 'employer_sign', 'Jose Silva');
+        $this->signAs($employee, $id, 'employee_sign', 'Marta Ruiz');
+
+        $this->assertSame('completed', $this->form($alpha['admin'], $id)['status']);
+
+        $this->as($alpha['admin'])->deleteJson("/api/v1/hr/onboardings/{$id}")
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('onboarding');
+    }
+
     /**
      * The version is pinned when the form begins.
      *

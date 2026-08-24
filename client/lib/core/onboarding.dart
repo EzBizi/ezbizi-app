@@ -57,6 +57,7 @@ class OnboardingSummary {
     required this.startedAt,
     required this.submittedAt,
     required this.completedAt,
+    this.cancelledAt,
   });
 
   final String id;
@@ -100,6 +101,7 @@ class OnboardingSummary {
   final String? startedAt;
   final String? submittedAt;
   final String? completedAt;
+  final String? cancelledAt;
 
   factory OnboardingSummary.fromJson(Map<String, dynamic> json) {
     final person = json['person'] as Map<String, dynamic>?;
@@ -129,6 +131,7 @@ class OnboardingSummary {
       startedAt: json['started_at'] as String?,
       submittedAt: json['submitted_at'] as String?,
       completedAt: json['completed_at'] as String?,
+      cancelledAt: json['cancelled_at'] as String?,
     );
   }
 
@@ -186,6 +189,7 @@ class Onboarding {
     required this.startedAt,
     required this.submittedAt,
     required this.completedAt,
+    this.cancelledAt,
   });
 
   final String id;
@@ -257,6 +261,7 @@ class Onboarding {
   final String? startedAt;
   final String? submittedAt;
   final String? completedAt;
+  final String? cancelledAt;
 
   /// Whether anybody may still type into this. Read off the questions rather
   /// than off [status], so a server that adds a status this build has never
@@ -341,6 +346,7 @@ class Onboarding {
       startedAt: json['started_at'] as String?,
       submittedAt: json['submitted_at'] as String?,
       completedAt: json['completed_at'] as String?,
+      cancelledAt: json['cancelled_at'] as String?,
     );
   }
 }
@@ -586,5 +592,6 @@ String onboardingStatusLabel(String status) => switch (status) {
   'in_progress' => 'In progress',
   'submitted' => 'Submitted',
   'completed' => 'Completed',
+  'cancelled' => 'Cancelled',
   _ => status,
 };

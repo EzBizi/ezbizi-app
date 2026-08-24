@@ -8,6 +8,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/load_more.dart';
+import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'onboarding_form.dart';
@@ -281,9 +282,25 @@ class _OnboardingTabState extends State<OnboardingTab> {
             ],
           ),
         ),
-        trailing: TextButton(
-          onPressed: () => setState(() => _open = row.id),
-          child: const Text('Open'),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_canCancel(row))
+              Refused(
+                reason: widget.session.me?.refusal(
+                  'hr.create',
+                  'cancel onboardings',
+                ),
+                child: TextButton(
+                  onPressed: _mayCreate ? () => _cancel(row) : null,
+                  child: const Text('Cancel'),
+                ),
+              ),
+            TextButton(
+              onPressed: () => setState(() => _open = row.id),
+              child: const Text('Open'),
+            ),
+          ],
         ),
         onTap: () => setState(() => _open = row.id),
       ),
@@ -308,6 +325,9 @@ class _OnboardingTabState extends State<OnboardingTab> {
   String _waitingOn(OnboardingSummary row) {
     String at(String? iso) => formatStamp(iso, '', formats: _formats);
 
+    if (row.status == 'cancelled' || row.cancelledAt != null) {
+      return 'Cancelled ${at(row.cancelledAt)}';
+    }
     if (row.completedAt != null) return 'Completed ${at(row.completedAt)}';
     if (row.submittedAt != null) return 'Submitted ${at(row.submittedAt)}';
 
@@ -346,6 +366,53 @@ class _OnboardingTabState extends State<OnboardingTab> {
     // contract is there to fill in their half, and making them find the new row
     // on a list they were already looking at is a step that buys nothing.
     setState(() => _open = started);
+
+    await _load();
+  }
+
+  bool _canCancel(OnboardingSummary row) =>
+      row.status == 'in_progress' || row.status == 'submitted';
+
+  Future<void> _cancel(OnboardingSummary row) async {
+    final who = row.personName.isEmpty ? row.personEmail : row.personName;
+    final confirmed = await showSidePanel<bool>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Cancel this onboarding?',
+        subtitle: who,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep it'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Cancel onboarding'),
+          ),
+        ],
+        child: const Text(
+          'The form stops. Answers already given stay on the record, and you '
+          'can start a new onboarding for them if that is still needed. A '
+          'fully signed agreement cannot be cancelled — amend it instead.',
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final response = await widget.api.delete('/hr/onboardings/${row.id}');
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(response.reason)),
+      );
+      return;
+    }
 
     await _load();
   }
@@ -455,8 +522,12 @@ class _StartPanelState extends State<_StartPanel> {
   /// rather than refuses: the list is paginated, so a match is proof and a miss
   /// is not. The server is what actually refuses, and its refusal is what gets
   /// shown.
-  bool _already(String? invitationId) => invitationId != null &&
-      widget.inFlight.any((row) => row.invitationId == invitationId);
+  bool _already(String? invitationId) =>
+      invitationId != null &&
+      widget.inFlight.any(
+        (row) =>
+            row.invitationId == invitationId && row.status != 'cancelled',
+      );
 
   bool get _complete => _invitationId != null && _contractId != null;
 

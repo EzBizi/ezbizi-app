@@ -435,6 +435,10 @@ Route::prefix('v1')
         Route::post('hr/onboardings', [HrOnboardingsController::class, 'store']);
         Route::get('hr/onboardings/{onboarding}', [HrOnboardingsController::class, 'show']);
         Route::patch('hr/onboardings/{onboarding}', [HrOnboardingsController::class, 'update']);
+        // The row stays. Same shape as withdrawing an invitation: DELETE is
+        // the act, cancelled is the status, and the record is how "we started
+        // this and changed our mind" remains answerable.
+        Route::delete('hr/onboardings/{onboarding}', [HrOnboardingsController::class, 'destroy']);
         Route::post('hr/onboardings/{onboarding}/sign', [HrOnboardingsController::class, 'sign']);
         Route::post('hr/onboardings/{onboarding}/amendments', [HrOnboardingsController::class, 'amend']);
         // The rendered document and its fingerprint — a preview before anything

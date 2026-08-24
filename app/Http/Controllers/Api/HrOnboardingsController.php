@@ -245,6 +245,19 @@ class HrOnboardingsController extends Controller
         }
 
         $onboarding = DB::transaction(function () use ($invitation, $version, $actor) {
+            $live = Onboarding::query()
+                ->where('invitation_id', $invitation->getKey())
+                ->where('status', '!=', Onboarding::CANCELLED)
+                ->lockForUpdate()
+                ->first();
+
+            if ($live !== null) {
+                throw ValidationException::withMessages(['invitation_id' =>
+                    'That invitation already has an onboarding in flight. Cancel it first '
+                    .'if you meant a different contract.',
+                ]);
+            }
+
             $onboarding = Onboarding::create([
                 'invitation_id'       => $invitation->getKey(),
                 // Set when the invitation has already been accepted. Null is the
@@ -300,6 +313,63 @@ class HrOnboardingsController extends Controller
     }
 
     /**
+     * DELETE /api/v1/hr/onboardings/{onboarding} — stop it.
+     *
+     * The row stays. Status becomes `cancelled`, which is its own word and not
+     * a delete: the organization changed its mind about this paperwork, and
+     * that is a different fact from never starting it. Deleting instead would
+     * erase that somebody was taken through a form at all.
+     *
+     * A fully signed agreement cannot be cancelled. That record is the
+     * contract; correcting it is an amendment. Anything short of that — still
+     * filling in, or signed on one side only — can be stopped, and the
+     * invitation is then free for a new start.
+     */
+    public function destroy(Request $request, Onboarding $onboarding): JsonResponse
+    {
+        $this->authorize('cancel', $onboarding);
+
+        if ($onboarding->isCancelled()) {
+            throw ValidationException::withMessages(['onboarding' =>
+                'That onboarding is already cancelled.',
+            ]);
+        }
+
+        if ($onboarding->status === Onboarding::COMPLETED || $onboarding->isFullySigned()) {
+            throw ValidationException::withMessages(['onboarding' =>
+                'That onboarding is fully signed, so it is an agreement — it cannot be '
+                .'cancelled. Correct it with an amendment if what was signed is wrong.',
+            ]);
+        }
+
+        $before = $onboarding->status;
+        $actor  = $request->user();
+
+        DB::transaction(function () use ($onboarding, $before, $actor) {
+            $onboarding->forceFill([
+                'status'       => Onboarding::CANCELLED,
+                'cancelled_at' => now(),
+            ])->save();
+
+            $this->audit->log('onboarding.cancelled', $onboarding, metadata: [
+                'from'     => $before,
+                'contract' => $onboarding->contractVersion?->contract?->name,
+            ]);
+
+            $this->events->emit('onboarding.cancelled', $onboarding, [
+                'before' => ['status' => $before],
+                'after'  => [
+                    'status'       => $onboarding->status,
+                    'cancelled_at' => $onboarding->cancelled_at?->toIso8601String(),
+                    'contract'     => $onboarding->contractVersion?->contract?->name,
+                ],
+            ], actor: $actor);
+        });
+
+        return response()->json(['data' => $this->detail($onboarding->fresh(), $actor)]);
+    }
+
+    /**
      * PATCH /api/v1/hr/onboardings/{onboarding} — save answers, either side.
      *
      * Partial is normal. What is refused is a field belonging to the other party,
@@ -309,6 +379,8 @@ class HrOnboardingsController extends Controller
     public function update(Request $request, Onboarding $onboarding): JsonResponse
     {
         $this->authorize('update', $onboarding);
+
+        $this->assertNotCancelled($onboarding);
 
         $actor = $request->user();
 
@@ -599,6 +671,8 @@ class HrOnboardingsController extends Controller
     {
         $this->authorize('update', $onboarding);
 
+        $this->assertNotCancelled($onboarding);
+
         $actor = $request->user();
 
         $input = $request->validate([
@@ -777,6 +851,8 @@ class HrOnboardingsController extends Controller
     public function amend(Request $request, Onboarding $onboarding): JsonResponse
     {
         $this->authorize('amend', $onboarding);
+
+        $this->assertNotCancelled($onboarding);
 
         $actor = $request->user();
 
@@ -1163,13 +1239,28 @@ class HrOnboardingsController extends Controller
 
     // ── shared ───────────────────────────────────────────────────
 
+    private function assertNotCancelled(Onboarding $onboarding): void
+    {
+        if ($onboarding->isCancelled()) {
+            throw ValidationException::withMessages(['onboarding' =>
+                'This onboarding was cancelled, so nothing on it can change. Start a new one '
+                .'if you still need the paperwork.',
+            ]);
+        }
+    }
+
     private function assertInvitationCanCarryAnOnboarding(Invitation $invitation): void
     {
         if ($invitation->onboarding !== null) {
+            $live = $invitation->onboarding;
+
             throw ValidationException::withMessages(['invitation_id' =>
-                'That invitation already has an onboarding. One arrival is one contract — a '
-                .'second one against the same invitation would be two agreements for one '
-                .'person with nothing saying which is real.',
+                $live->status === Onboarding::COMPLETED
+                    ? 'That invitation already produced a signed agreement. A second '
+                        .'onboarding against it would be two contracts for one arrival, with '
+                        .'nothing saying which is real.'
+                    : 'That invitation already has an onboarding in flight. Cancel it first '
+                        .'if you meant a different contract.',
             ]);
         }
 
@@ -1255,6 +1346,7 @@ class HrOnboardingsController extends Controller
             'started_at'    => $onboarding->started_at?->toIso8601String(),
             'submitted_at'  => $onboarding->submitted_at?->toIso8601String(),
             'completed_at'  => $onboarding->completed_at?->toIso8601String(),
+            'cancelled_at'  => $onboarding->cancelled_at?->toIso8601String(),
         ];
     }
 
