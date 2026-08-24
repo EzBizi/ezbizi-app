@@ -75,14 +75,29 @@ class SettingRegistryTest extends TestCase
         }
     }
 
-    public function test_timezone_is_an_iana_selector(): void
+    public function test_timezone_is_a_utc_offset_selector(): void
     {
         $timezone = $this->registry->getOrFail('timezone');
 
         $this->assertSame(SettingDefinition::TYPE_ENUM, $timezone->type);
-        $this->assertContains('America/New_York', $timezone->options);
+        $this->assertSame('Etc/GMT+5', $timezone->default);
         $this->assertContains('UTC', $timezone->options);
-        $this->assertSame('America/New York', $timezone->labelFor('America/New_York'));
+        $this->assertContains('Etc/GMT+5', $timezone->options);
+        $this->assertContains('Etc/GMT-3', $timezone->options);
+        $this->assertNotContains('America/New_York', $timezone->options);
+        $this->assertCount(27, $timezone->options);
+        $this->assertSame('UTC', $timezone->labelFor('UTC'));
+        $this->assertSame('UTC-5', $timezone->labelFor('Etc/GMT+5'));
+        $this->assertSame('UTC+3', $timezone->labelFor('Etc/GMT-3'));
+
+        foreach ($timezone->options as $id) {
+            $this->assertInstanceOf(\DateTimeZone::class, new \DateTimeZone($id), $id);
+        }
+
+        // POSIX inversion: Etc/GMT+5 is UTC-5, which Laravel's timezone rule
+        // and Carbon both accept for the franchise column.
+        $winter = new \DateTime('2026-01-15', new \DateTimeZone('Etc/GMT+5'));
+        $this->assertSame(-5 * 3600, $winter->getOffset());
     }
 
     public function test_every_setting_has_a_label(): void

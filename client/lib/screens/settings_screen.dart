@@ -1675,12 +1675,11 @@ List<_SettingChoice> _settingChoices(Object? raw) {
   ];
 }
 
-/// A closed list of answers — a menu, searchable when the list is long.
+/// A closed list of answers, drawn as the same outlined menu every time.
 ///
-/// Timezone is four hundred IANA names. Printing them in an ordinary
-/// dropdown is how "New York" becomes a typing exercise. Sixteen is
-/// enough that a person can still scan; past that the box takes a
-/// filter.
+/// DropdownButton has no border, so a row of them reads as floating labels.
+/// DropdownMenu is the outlined box timezone already used; every enum uses
+/// it so language, paper size and the rest sit in the same frame.
 class _EnumControl extends StatelessWidget {
   const _EnumControl({
     required this.value,
@@ -1693,8 +1692,6 @@ class _EnumControl extends StatelessWidget {
   final List<_SettingChoice> choices;
   final bool editable;
   final ValueChanged<Object> onChanged;
-
-  static const int _searchFrom = 16;
 
   @override
   Widget build(BuildContext context) {
@@ -1713,57 +1710,27 @@ class _EnumControl extends StatelessWidget {
       ...choices,
     ];
 
-    if (choices.length >= _searchFrom) {
-      return DropdownMenu<Object>(
-        initialSelection: selected is Object ? selected : null,
-        enabled: editable,
-        enableFilter: true,
-        requestFocusOnTap: editable,
-        width: 260,
-        dropdownMenuEntries: [
-          for (final choice in items)
-            DropdownMenuEntry(value: choice.value, label: choice.label),
-        ],
-        onSelected: editable
-            ? (picked) {
-                if (picked != null) onChanged(picked);
-              }
-            : null,
-      );
-    }
-
-    // Same widget the existing tests drive, when every value is a string.
-    if (items.every((choice) => choice.value is String)) {
-      return DropdownButton<String>(
-        value: selected is String ? selected : null,
-        underline: const SizedBox.shrink(),
-        onChanged: editable
-            ? (picked) {
-                if (picked != null) onChanged(picked);
-              }
-            : null,
-        items: [
-          for (final choice in items)
-            DropdownMenuItem(
-              value: choice.value as String,
-              child: Text(choice.label),
-            ),
-        ],
-      );
-    }
-
-    return DropdownButton<Object>(
-      value: selected is Object ? selected : null,
-      underline: const SizedBox.shrink(),
-      onChanged: editable
+    return DropdownMenu<Object>(
+      key: ValueKey(selected),
+      initialSelection: selected is Object ? selected : null,
+      enabled: editable,
+      enableFilter: false,
+      requestFocusOnTap: false,
+      width: 260,
+      inputDecorationTheme: const InputDecorationTheme(
+        border: OutlineInputBorder(),
+        isDense: true,
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      ),
+      dropdownMenuEntries: [
+        for (final choice in items)
+          DropdownMenuEntry(value: choice.value, label: choice.label),
+      ],
+      onSelected: editable
           ? (picked) {
               if (picked != null) onChanged(picked);
             }
           : null,
-      items: [
-        for (final choice in items)
-          DropdownMenuItem(value: choice.value, child: Text(choice.label)),
-      ],
     );
   }
 }

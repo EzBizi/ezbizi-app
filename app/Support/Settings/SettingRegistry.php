@@ -182,10 +182,10 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'timezone', label: 'Default timezone',
-                type: SettingDefinition::TYPE_ENUM, default: 'America/New_York',
+                type: SettingDefinition::TYPE_ENUM, default: 'Etc/GMT+5',
                 options: self::timezones(),
                 optionLabels: self::timezoneLabels(),
-                help: 'A franchise with its own timezone set overrides this.',
+                help: 'Hours from UTC. Clocks stay on this offset all year — there is no daylight saving. A franchise with its own timezone set overrides this.',
             ),
             new SettingDefinition(
                 key: 'date_format', label: 'Date format',
@@ -700,15 +700,17 @@ class SettingRegistry
     }
 
     /**
-     * IANA identifiers, which is what PHP and the franchise column already
-     * store. A typed box invited "EST" and "New York", neither of which is a
-     * timezone.
+     * Whole-hour UTC offsets, stored as IANA identifiers PHP already accepts.
+     *
+     * People pick UTC-5, not America/New_York. The franchise column and
+     * Laravel's `timezone` rule still need a real zone name, so the value on
+     * the wire is `UTC` or `Etc/GMT…` (POSIX sign: Etc/GMT+5 is UTC-5).
      *
      * @return list<string>
      */
     private static function timezones(): array
     {
-        return \DateTimeZone::listIdentifiers(\DateTimeZone::ALL);
+        return array_keys(self::timezoneLabels());
     }
 
     /**
@@ -718,10 +720,29 @@ class SettingRegistry
     {
         $labels = [];
 
-        foreach (self::timezones() as $zone) {
-            $labels[$zone] = str_replace('_', ' ', $zone);
+        foreach (range(-12, 14) as $hours) {
+            $labels[self::timezoneIdForOffset($hours)] = self::timezoneLabelForOffset($hours);
         }
 
         return $labels;
+    }
+
+    private static function timezoneIdForOffset(int $hours): string
+    {
+        if ($hours === 0) {
+            return 'UTC';
+        }
+
+        // POSIX: Etc/GMT+5 is UTC-5.
+        return 'Etc/GMT'.($hours > 0 ? '-' : '+').abs($hours);
+    }
+
+    private static function timezoneLabelForOffset(int $hours): string
+    {
+        if ($hours === 0) {
+            return 'UTC';
+        }
+
+        return 'UTC'.($hours > 0 ? '+' : '-').abs($hours);
     }
 }

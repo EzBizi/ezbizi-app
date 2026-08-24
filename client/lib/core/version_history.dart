@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0078',
+      date: '24 Aug 2026',
+      items: [
+        'Default timezone is hours from UTC (UTC-5, UTC, UTC+3), not a list '
+            'of cities. Every Settings selector uses the same outlined menu.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0077',
       date: '24 Aug 2026',
       items: [

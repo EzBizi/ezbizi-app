@@ -81,7 +81,7 @@ void main() {
     expect(reads, 1);
     expect(find.text('Inherited from Everdoors'), findsOneWidget);
 
-    await tester.tap(find.byType(DropdownButton<String>));
+    await tester.tap(find.byType(DropdownMenu<Object>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('24h').last);
     await tester.pump();
@@ -120,8 +120,8 @@ void main() {
     // comes from. Source is the half the client could not have worked out.
     expect(
       tester
-          .widget<DropdownButton<String>>(find.byType(DropdownButton<String>))
-          .value,
+          .widget<DropdownMenu<Object>>(find.byType(DropdownMenu<Object>))
+          .initialSelection,
       '24h',
     );
     expect(find.text('Set here'), findsOneWidget);
@@ -151,8 +151,10 @@ void main() {
       });
     });
 
-    expect(find.text('English'), findsOneWidget);
+    expect(find.text('English'), findsWidgets);
     expect(find.text('en'), findsNothing);
+    expect(find.byType(DropdownMenu<Object>), findsOneWidget);
+    expect(find.byType(DropdownButton<String>), findsNothing);
   });
 
   testWidgets(

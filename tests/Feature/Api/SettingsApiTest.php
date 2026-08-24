@@ -61,8 +61,20 @@ class SettingsApiTest extends TestCase
         $timezone = collect($response->json('data'))->firstWhere('key', 'timezone');
         $this->assertSame('enum', $timezone['type']);
         $this->assertContains(
+            'UTC',
+            array_column($timezone['options'], 'value'),
+        );
+        $this->assertContains(
+            'Etc/GMT+5',
+            array_column($timezone['options'], 'value'),
+        );
+        $this->assertNotContains(
             'America/New_York',
             array_column($timezone['options'], 'value'),
+        );
+        $this->assertSame(
+            ['value' => 'Etc/GMT+5', 'label' => 'UTC-5'],
+            collect($timezone['options'])->firstWhere('value', 'Etc/GMT+5'),
         );
     }
 
