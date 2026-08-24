@@ -183,6 +183,153 @@ void main() {
     expect(find.text('Connect your Twilio'), findsNothing);
     expect(find.text('Numbers'), findsOneWidget);
   });
+
+  testWidgets('Replace the key posts new keys and never deletes first', (
+    tester,
+  ) async {
+    Map<String, dynamic>? posted;
+    var deleted = false;
+
+    await _pump(
+      tester,
+      connections: [
+        {
+          'id': 'pc-1',
+          'organization_id': 'org-1',
+          'scope_type': 'organization',
+          'scope_id': 'org-1',
+          'kind': 'byo',
+          'account_sid': 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxa7c2',
+          'api_key_sid': 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          'twiml_app_sid': 'APcccccccccccccccccccccccccccccccc',
+          'status': 'connected',
+          'status_reason': null,
+        },
+      ],
+      onCreate: (body) => posted = body,
+      onDelete: () => deleted = true,
+    );
+
+    await _tap(tester, _tab('Settings'));
+    await _tap(tester, find.text('Replace the key'));
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Account SID'),
+      'ACdddddddddddddddddddddddddddddddd',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'API key SID'),
+      'SKeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'API secret'),
+      'replacement-secret',
+    );
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+
+    expect(deleted, isFalse);
+    expect(posted, {
+      'scope_type': 'organization',
+      'scope_id': 'org-1',
+      'kind': 'byo',
+      'account_sid': 'ACdddddddddddddddddddddddddddddddd',
+      'api_key_sid': 'SKeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+      'api_secret': 'replacement-secret',
+    });
+  });
+
+  testWidgets('Replace the key shows the server sentence on 409', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      connections: [
+        {
+          'id': 'pc-1',
+          'organization_id': 'org-1',
+          'scope_type': 'organization',
+          'scope_id': 'org-1',
+          'kind': 'byo',
+          'account_sid': 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxa7c2',
+          'api_key_sid': 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          'twiml_app_sid': 'APcccccccccccccccccccccccccccccccc',
+          'status': 'connected',
+          'status_reason': null,
+        },
+      ],
+      createStatus: 409,
+      createMessage:
+          'A phone connection is already set up for that place. Disconnect it before connecting another.',
+    );
+
+    await _tap(tester, _tab('Settings'));
+    await _tap(tester, find.text('Replace the key'));
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Account SID'),
+      'ACdddddddddddddddddddddddddddddddd',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'API key SID'),
+      'SKeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'API secret'),
+      'replacement-secret',
+    );
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+
+    expect(
+      find.text(
+        'A phone connection is already set up for that place. Disconnect it before connecting another.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'phone.view without phone.edit still opens Settings and Connect is refused',
+    (tester) async {
+      await _pump(tester, permissions: const ['phone.view']);
+
+      await _tap(tester, _tab('Settings'));
+
+      expect(find.text('Connect your Twilio'), findsWidgets);
+      expect(find.text('EzBizi will create a phone account'), findsWidgets);
+
+      final connect = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Connect your Twilio').first,
+      );
+      final create = tester.widget<OutlinedButton>(
+        find
+            .widgetWithText(OutlinedButton, 'EzBizi will create a phone account')
+            .first,
+      );
+      expect(connect.onPressed, isNull);
+      expect(create.onPressed, isNull);
+    },
+  );
+
+  testWidgets('EzBizi will create a phone account posts subaccount kind', (
+    tester,
+  ) async {
+    Map<String, dynamic>? posted;
+
+    await _pump(tester, onCreate: (body) => posted = body);
+
+    await _tap(tester, _tab('Settings'));
+    await _tap(tester, find.text('EzBizi will create a phone account').first);
+
+    expect(posted, {
+      'scope_type': 'organization',
+      'scope_id': 'org-1',
+      'kind': 'subaccount',
+    });
+  });
 }
 
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
@@ -213,7 +360,9 @@ Future<void> _pump(
   List<String> permissions = const ['phone.view', 'phone.edit'],
   List<Map<String, Object?>> connections = const [],
   int createStatus = 201,
+  String? createMessage,
   void Function(Map<String, dynamic> body)? onCreate,
+  void Function()? onDelete,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -225,7 +374,9 @@ Future<void> _pump(
         permissions: permissions,
         connections: connections,
         createStatus: createStatus,
+        createMessage: createMessage,
         onCreate: onCreate,
+        onDelete: onDelete,
       ),
     ),
   );
@@ -279,7 +430,9 @@ MockClientHandler _handler({
   List<String> permissions = const ['phone.view', 'phone.edit'],
   List<Map<String, Object?>> connections = const [],
   int createStatus = 201,
+  String? createMessage,
   void Function(Map<String, dynamic> body)? onCreate,
+  void Function()? onDelete,
 }) {
   return (request) async {
     final path = request.url.path;
@@ -294,13 +447,26 @@ MockClientHandler _handler({
       return _json({'data': connections});
     }
 
+    if (path.contains('/phone/connections/') && request.method == 'DELETE') {
+      onDelete?.call();
+      return _json({'message': 'deleted'}, 200);
+    }
+
     if (path.endsWith('/phone/connections') && request.method == 'POST') {
       onCreate?.call(jsonDecode(request.body) as Map<String, dynamic>);
       if (createStatus == 501) {
         return _json({
           'message':
+              createMessage ??
               'EzBizi has not been given a Twilio account to create phone service with.',
         }, 501);
+      }
+      if (createStatus == 409) {
+        return _json({
+          'message':
+              createMessage ??
+              'A phone connection is already set up for that place. Disconnect it before connecting another.',
+        }, 409);
       }
       return _json({
         'data': {

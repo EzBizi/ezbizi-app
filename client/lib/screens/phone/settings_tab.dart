@@ -181,21 +181,8 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       _notice = null;
     });
 
-    final existing = _connectionFor(place);
-    if (existing != null) {
-      final deleted = await widget.api.delete(
-        '/phone/connections/${existing.id}',
-      );
-      if (!mounted) return;
-      if (!deleted.ok) {
-        setState(() {
-          _saving = false;
-          _formError = deleted.reason;
-        });
-        return;
-      }
-    }
-
+    // POST only. Do not DELETE first — that would drop numbers, history and
+    // routing. Store returns 409 when a row already exists; show that sentence.
     final response = await widget.api.post('/phone/connections', {
       'scope_type': place.type,
       'scope_id': place.id,
@@ -210,7 +197,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     setState(() => _saving = false);
 
     if (!response.ok) {
-      setState(() => _formError = response.reason);
+      setState(() => _formError = response.message);
       return;
     }
 
