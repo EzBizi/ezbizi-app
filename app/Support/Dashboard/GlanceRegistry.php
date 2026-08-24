@@ -3,6 +3,7 @@
 namespace App\Support\Dashboard;
 
 use App\Models\User;
+use App\Support\Dashboard\Glances\CustomersGlance;
 use App\Support\Dashboard\Glances\JobsGlance;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Tenancy\TenantContext;
@@ -64,6 +65,7 @@ class GlanceRegistry
      * @var class-string<Glance>[]
      */
     private const GLANCES = [
+        CustomersGlance::class,
         JobsGlance::class,
     ];
 
