@@ -7,8 +7,12 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
+use App\Support\Dashboard\ComingSoonGlance;
 use App\Support\Dashboard\DashboardPeriod;
+use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\GlancePayload;
 use App\Support\Dashboard\GlanceRegistry;
+use App\Support\Modules\ModuleAvailability;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -116,5 +120,72 @@ class GlanceRegistryTest extends TestCase
     public function test_dashboard_is_not_a_glance(): void
     {
         $this->assertNull(app(GlanceRegistry::class)->find('dashboard', $this->alpha['admin']));
+    }
+
+    public function test_a_live_glance_wins_when_coming_soon_still_lists_the_same_key(): void
+    {
+        $registry = new class(app(ModuleAvailability::class)) extends GlanceRegistry
+        {
+            protected function liveClasses(): array
+            {
+                return [LiveInventoryStubGlance::class];
+            }
+        };
+
+        $glance = collect($registry->all())->first(
+            fn (Glance $g) => $g->key() === 'inventory',
+        );
+
+        $this->assertNotNull($glance);
+        $this->assertInstanceOf(LiveInventoryStubGlance::class, $glance);
+        $this->assertNotInstanceOf(ComingSoonGlance::class, $glance);
+    }
+}
+
+/** Minimal live glance used only to prove registry merge order. */
+final class LiveInventoryStubGlance implements Glance
+{
+    public function key(): string
+    {
+        return 'inventory';
+    }
+
+    public function label(): string
+    {
+        return 'Inventory';
+    }
+
+    public function permission(): string
+    {
+        return 'inventory.view';
+    }
+
+    public function allowedPresentations(): array
+    {
+        return ['pie'];
+    }
+
+    public function defaultPresentation(): string
+    {
+        return 'pie';
+    }
+
+    public function snapshot(): bool
+    {
+        return true;
+    }
+
+    public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
+    {
+        return new GlancePayload(
+            key: $this->key(),
+            label: $this->label(),
+            presentation: $this->defaultPresentation(),
+            allowedPresentations: $this->allowedPresentations(),
+            snapshot: $this->snapshot(),
+            comingSoon: false,
+            options: [],
+            data: ['empty' => true, 'sentences' => ['Live stub.']],
+        );
     }
 }

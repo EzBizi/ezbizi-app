@@ -72,13 +72,15 @@ class GlanceRegistry
     {
         $byKey = [];
 
-        foreach (self::GLANCES as $class) {
-            $glance = app($class);
-            $byKey[$glance->key()] = $glance;
+        // Coming soon first, live last — a live class must win if somebody
+        // registers it and forgets to drop the placeholder entry.
+        foreach ($this->comingSoon() as $key => $meta) {
+            $byKey[$key] = new ComingSoonGlance($key, $meta['label'], $meta['sentence']);
         }
 
-        foreach (self::COMING_SOON as $key => $meta) {
-            $byKey[$key] = new ComingSoonGlance($key, $meta['label'], $meta['sentence']);
+        foreach ($this->liveClasses() as $class) {
+            $glance = app($class);
+            $byKey[$glance->key()] = $glance;
         }
 
         $ordered = [];
@@ -90,6 +92,22 @@ class GlanceRegistry
         }
 
         return $ordered;
+    }
+
+    /**
+     * @return array<string, array{label: string, sentence: string}>
+     */
+    protected function comingSoon(): array
+    {
+        return self::COMING_SOON;
+    }
+
+    /**
+     * @return class-string<Glance>[]
+     */
+    protected function liveClasses(): array
+    {
+        return self::GLANCES;
     }
 
     /**
