@@ -45,6 +45,7 @@ namespace App\Support\Email;
  *   STARTTLS    encryption on port 143
  *   LOGIN       the only credential this provider has
  *   EXAMINE     open the mailbox READ-ONLY — see {@see examineInbox}
+ *   STATUS      unread in INBOX without selecting it — see {@see inboxUnseen}
  *   UID SEARCH  the provider's own search, over the whole mailbox
  *   UID FETCH   headers, structure, and one body part
  *   LOGOUT      say goodbye rather than dropping the socket
@@ -243,6 +244,32 @@ final class ImapConnection
         }
 
         return ['exists' => $exists, 'uidvalidity' => $uidvalidity, 'uidnext' => $uidnext];
+    }
+
+    /**
+     * Unread in INBOX, without selecting the mailbox and without listing mail.
+     *
+     * `STATUS INBOX (UNSEEN)` is the provider's own unread figure. EXAMINE
+     * reports EXISTS, which is everything, seen or not.
+     *
+     * @throws ImapFailure
+     */
+    public function inboxUnseen(): int
+    {
+        $result = $this->command('STATUS INBOX (UNSEEN)', tolerate: true);
+
+        if ($result['status'] !== 'OK') {
+            throw ImapFailure::misbehaved('The mail server would not say how many unread messages are in the INBOX.');
+        }
+
+        foreach ($result['raw'] as $line) {
+            if (preg_match('/^\*\s+STATUS\b/i', $line) === 1
+                && preg_match('/UNSEEN\s+(\d+)/i', $line, $match) === 1) {
+                return (int) $match[1];
+            }
+        }
+
+        throw ImapFailure::misbehaved('The mail server did not say how many unread messages are in the INBOX.');
     }
 
     /**

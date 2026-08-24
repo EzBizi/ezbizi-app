@@ -445,6 +445,26 @@ final class GmailMailboxReader implements MailboxReader
     }
 
     /**
+     * Gmail's own unread total for the mailbox — `users.getProfile`, no list.
+     *
+     * `messagesUnread` is the account-level unread count. Asking for it does
+     * not download a message; the same call already supplies {@see currentMark}.
+     */
+    public function unreadCount(Mailbox $mailbox): int
+    {
+        $profile = $this->get($mailbox, self::API.'/profile', []);
+
+        if (! array_key_exists('messagesUnread', $profile) || ! is_numeric($profile['messagesUnread'])) {
+            throw CannotReadMailbox::providerFaulty(
+                $mailbox,
+                'the mail service did not say how many unread messages there are',
+            );
+        }
+
+        return (int) $profile['messagesUnread'];
+    }
+
+    /**
      * Everything added to the INBOX since a history id.
      *
      * ═══════════════════════════════════════════════════════════════

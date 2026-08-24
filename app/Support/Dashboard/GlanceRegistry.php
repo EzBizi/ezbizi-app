@@ -5,6 +5,7 @@ namespace App\Support\Dashboard;
 use App\Models\User;
 use App\Support\Dashboard\Glances\AutomationsGlance;
 use App\Support\Dashboard\Glances\CustomersGlance;
+use App\Support\Dashboard\Glances\EmailGlance;
 use App\Support\Dashboard\Glances\FleetGlance;
 use App\Support\Dashboard\Glances\HrGlance;
 use App\Support\Dashboard\Glances\InspectionGlance;
@@ -74,6 +75,7 @@ class GlanceRegistry
         JobsGlance::class,
         InspectionGlance::class,
         FleetGlance::class,
+        EmailGlance::class,
         AutomationsGlance::class,
     ];
 

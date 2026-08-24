@@ -793,9 +793,20 @@ class ScriptedMailboxReader implements MailboxReader
 {
     public static ?Throwable $failWith = null;
 
+    public static int $unreadAsked = 0;
+
+    /** @var array<string, int> */
+    public static array $unread = [];
+
+    /** @var array<string, Throwable> */
+    public static array $failUnread = [];
+
     public static function reset(): void
     {
         self::$failWith = null;
+        self::$unreadAsked = 0;
+        self::$unread = [];
+        self::$failUnread = [];
     }
 
     private function answerOrFail(): void
@@ -864,6 +875,21 @@ class ScriptedMailboxReader implements MailboxReader
         $this->answerOrFail();
 
         return new Arrivals([$this->summary()], 'mark-2');
+    }
+
+    public function unreadCount(Mailbox $mailbox): int
+    {
+        self::$unreadAsked++;
+
+        $id = (string) $mailbox->getKey();
+
+        if (isset(self::$failUnread[$id])) {
+            throw self::$failUnread[$id];
+        }
+
+        $this->answerOrFail();
+
+        return self::$unread[$id] ?? 0;
     }
 
     public function isConfigured(Mailbox $mailbox): bool

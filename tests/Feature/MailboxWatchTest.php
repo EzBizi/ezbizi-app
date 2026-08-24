@@ -1128,6 +1128,11 @@ class WatchedInbox implements MailboxReader
     {
         return null;
     }
+
+    public function unreadCount(Mailbox $mailbox): int
+    {
+        return 0;
+    }
 }
 
 /**
