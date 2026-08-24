@@ -160,7 +160,9 @@ class HoursController extends Controller
     }
 
     /**
-     * Org connection plus company connections the caller can act on.
+     * Connections whose hours this caller may view — same rule as
+     * PhoneHoursSchedulePolicy::connectionReach (org connection needs an
+     * organization assignment; company callers only see their company rows).
      *
      * @return \Illuminate\Support\Collection<int, PhoneConnection>
      */
@@ -173,15 +175,8 @@ class HoursController extends Controller
         $companyIds = $user->reachableCompanies()->pluck('id')->all();
 
         return PhoneConnection::query()
-            ->where(function ($q) use ($user, $companyIds) {
-                $q->where(function ($inner) use ($user) {
-                    $inner->where('scope_type', PhoneConnection::SCOPE_ORGANIZATION)
-                        ->where('scope_id', $user->organization_id);
-                })->orWhere(function ($inner) use ($companyIds) {
-                    $inner->where('scope_type', PhoneConnection::SCOPE_COMPANY)
-                        ->whereIn('scope_id', $companyIds);
-                });
-            })
+            ->where('scope_type', PhoneConnection::SCOPE_COMPANY)
+            ->whereIn('scope_id', $companyIds)
             ->get();
     }
 

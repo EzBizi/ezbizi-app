@@ -2,9 +2,12 @@
 
 namespace Tests\Feature\Phone;
 
+use App\Models\Assignment;
 use App\Models\PhoneConnection;
 use App\Models\PhoneHoursSchedule;
 use App\Models\PhoneNumber;
+use App\Models\Role;
+use App\Models\User;
 use App\Support\Phone\HoursClock;
 use Carbon\Carbon;
 use DateTimeImmutable;
@@ -218,6 +221,89 @@ class HoursClockTest extends TestCase
         $message = (string) $response->json('message');
         $this->assertStringNotContainsString('PhoneHoursSchedule', $message);
         $this->assertStringNotContainsString('HoursClock', $message);
+    }
+
+    /**
+     * Index must use the same reach as view: company callers do not see
+     * schedules on the organization connection.
+     */
+    public function test_a_company_scoped_caller_does_not_list_org_connection_hours(): void
+    {
+        $t = $this->provisionTenant();
+
+        $companyUser = $this->inTenant($t['org'], function () use ($t) {
+            $role = Role::create([
+                'organization_id' => $t['org']->id,
+                'name' => 'Company phone',
+                'is_system' => false,
+            ]);
+            $role->syncPermissionKeys(['phone.view', 'phone.edit']);
+
+            $user = User::create([
+                'organization_id' => $t['org']->id,
+                'role_id' => $role->id,
+                'name' => 'Company phone',
+                'email' => 'company-phone@'.$t['org']->slug.'.test',
+                'password' => 'a-real-password',
+                'is_active' => true,
+            ]);
+
+            Assignment::create([
+                'organization_id' => $t['org']->id,
+                'user_id' => $user->id,
+                'assigned_company_id' => $t['company']->id,
+            ]);
+
+            return $user;
+        });
+
+        [$orgSchedule, $companySchedule] = $this->inTenant($t['org'], function () use ($t) {
+            $orgConnection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+            ]);
+            $companyConnection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_COMPANY,
+                'scope_id' => $t['company']->id,
+            ]);
+
+            $orgSchedule = PhoneHoursSchedule::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $orgConnection->id,
+                'name' => 'Org hours',
+                'timezone' => 'America/New_York',
+                'weeks' => ['mon' => [['09:00', '17:00']]],
+                'exceptions' => null,
+            ]);
+            $companySchedule = PhoneHoursSchedule::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $companyConnection->id,
+                'name' => 'Company hours',
+                'timezone' => 'America/Chicago',
+                'weeks' => ['mon' => [['09:00', '17:00']]],
+                'exceptions' => null,
+            ]);
+
+            return [$orgSchedule, $companySchedule];
+        });
+
+        $list = $this->signedInAs($companyUser)
+            ->getJson('/api/v1/phone/hours')
+            ->assertOk()
+            ->json('data');
+
+        $ids = array_column($list, 'id');
+        $this->assertContains($companySchedule->id, $ids);
+        $this->assertNotContains($orgSchedule->id, $ids);
+
+        $this->signedInAs($companyUser)
+            ->getJson('/api/v1/phone/hours/'.$orgSchedule->id)
+            ->assertForbidden();
+
+        $this->signedInAs($companyUser)
+            ->getJson('/api/v1/phone/hours/'.$companySchedule->id)
+            ->assertOk()
+            ->assertJsonPath('data.id', $companySchedule->id);
     }
 
     /**
