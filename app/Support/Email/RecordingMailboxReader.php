@@ -47,10 +47,10 @@ use App\Support\Tenancy\TenantContext;
  *   {@see unavailableBecause} pass straight through and record NOTHING — they
  *   make no call to the provider and therefore learn nothing about it.
  *
- * What does move it: `list`, `search`, `open`, `reply`, `currentMark` and
- * `arrivalsSince` RETURNING. Each is a completed round trip to the mail service
- * in which the stored credential was accepted, which is exactly what the column
- * claims.
+ * What does move it: `list`, `search`, `open`, `reply`, `currentMark`,
+ * `arrivalsSince` and `unreadCount` RETURNING. Each is a completed round trip
+ * to the mail service in which the stored credential was accepted, which is
+ * exactly what the column claims.
  *
  * `reply` is included on purpose. It is not a read, but it is proof of the same
  * fact — the mail service accepted our key and did what we asked — and an inbox
@@ -141,6 +141,11 @@ final class RecordingMailboxReader implements MailboxReader
     public function arrivalsSince(Mailbox $mailbox, string $mark, int $limit): Arrivals
     {
         return $this->recording($mailbox, fn () => $this->inner->arrivalsSince($mailbox, $mark, $limit));
+    }
+
+    public function unreadCount(Mailbox $mailbox): int
+    {
+        return $this->recording($mailbox, fn () => $this->inner->unreadCount($mailbox));
     }
 
     // ── the two that ask nothing of anybody ──────────────────────

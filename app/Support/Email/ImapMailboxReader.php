@@ -265,6 +265,11 @@ final class ImapMailboxReader implements MailboxReader
         throw new PictureUnavailable('That file could not be loaded.');
     }
 
+    public function unreadCount(Mailbox $mailbox): int
+    {
+        return $this->withConnection($mailbox, fn (ImapConnection $imap) => $imap->inboxUnseen());
+    }
+
     public function currentMark(Mailbox $mailbox): string
     {
         return $this->withConnection($mailbox, function (ImapConnection $imap) use ($mailbox) {

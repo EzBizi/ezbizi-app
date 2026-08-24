@@ -2,19 +2,18 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/dashboard_panels.dart';
 import '../core/session.dart';
-import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/dashboard_card.dart';
+import '../widgets/dashboard_chart.dart';
 import '../widgets/dashboard_grid.dart';
-import '../widgets/side_panel.dart';
+import '../widgets/tag.dart';
 
-/// The dashboard (plan §18 Phase 4).
+/// The dashboard: one box per reachable module, one period for the page.
 ///
-/// Every panel is rendered from what the server sends, and which panels exist is
-/// the user's own preference. There is no fixed list of cards in here — a widget
-/// added to the registry appears the next time this screen loads, without a
-/// client release. That is the standing rule ("nothing hardcoded") applied to
-/// the one screen where it is most tempting to break it.
+/// Every glance is rendered from what the server sends. There is no picker —
+/// a module you can open is a box, and a module that is not built yet still
+/// has one, tagged coming soon. A chart presentation draws the server's
+/// slices or series above the sentences; text is sentences only.
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key, required this.api, required this.session});
 
@@ -33,12 +32,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// A write here ends in a refresh, and the control that triggers it is no
   /// longer hidden behind a spinner, so two can be in flight together. Whichever
   /// answer lands LAST used to win regardless of which was asked for last, and
-  /// nothing was scheduled afterwards to correct it: the kill switch could sit
-  /// reading "Off" for a module that was on, until somebody navigated away.
+  /// nothing was scheduled afterwards to correct it.
   int _request = 0;
+  bool _loaded = false;
   String? _error;
-  List<Map<String, dynamic>> _panels = [];
-  List<Map<String, dynamic>> _catalogue = [];
+  String _period = 'month';
+  List<Map<String, dynamic>> _glances = [];
+
+  static const _periods = <(String, String)>[
+    ('week', 'Week'),
+    ('month', 'Month'),
+    ('quarter', 'Quarter'),
+    ('year', 'Year'),
+  ];
 
   @override
   void initState() {
@@ -50,96 +56,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final request = ++_request;
 
     setState(() {
-      // A spinner only when there is nothing to keep — see AsyncBody. Both
-      // collections, not just the panels: choosing NO panels is a legitimate
-      // answer, and an organization sitting on the empty state would otherwise
-      // have it — and the "Choose panels" button on it — replaced by a spinner
-      // every time the chooser saved. The catalogue is empty only before the
-      // first answer arrives, so together they say whether anything is loaded.
-      _loading = _panels.isEmpty && _catalogue.isEmpty;
+      // A spinner only when there is nothing to keep — see AsyncBody. An
+      // empty glances list is a legitimate answer (no modules in reach), so
+      // emptiness is not "still loading"; only a successful fetch is loaded.
+      // A failed first fetch must not count: Try again then has nothing to
+      // keep, and a spinner is the honest thing to draw.
+      _loading = !_loaded;
       _error = null;
     });
 
-    final results = await Future.wait([
-      widget.api.get('/dashboard'),
-      widget.api.get('/dashboard/catalogue'),
-    ]);
+    final response = await widget.api.get('/dashboard');
 
     // Superseded by a newer load — applying this would undo it.
     if (!mounted || request != _request) return;
 
     setState(() {
       _loading = false;
-      // Either failure is an error. The catalogue drives the chooser, and a
-      // silently empty one meant pressing Save wrote an empty layout — erasing
-      // the dashboard because a request nobody was told about had failed.
-      _error = results[0].ok
-          ? (results[1].ok ? null : results[1].message)
-          : results[0].message;
-      _panels = results[0].ok
-          ? (results[0].body['panels'] as List<dynamic>)
-                .cast<Map<String, dynamic>>()
-          : [];
-      _catalogue = results[1].ok
-          ? (results[1].body['widgets'] as List<dynamic>)
-                .cast<Map<String, dynamic>>()
-          : [];
+      if (!response.ok) {
+        _error = response.message;
+        return;
+      }
+      _loaded = true;
+      _error = null;
+      _period = response.body['period'] as String? ?? 'month';
+      _glances = (response.body['glances'] as List<dynamic>)
+          .cast<Map<String, dynamic>>();
     });
-  }
-
-  Future<void> _setLayout(List<Map<String, dynamic>> widgets) async {
-    final response = await widget.api.put('/dashboard/layout', {
-      'widgets': widgets,
-    });
-
-    if (!mounted) return;
-
-    if (!response.ok) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(response.message)));
-      return;
+    if (response.ok) {
+      _rememberLayout(response.body, fallback: _glances);
     }
-
-    _load();
   }
 
-  /// Put the panels in the order somebody just dragged them into, and remember
-  /// it.
-  ///
-  /// ── Where the order is kept, and why there ───────────────────────
-  ///
-  /// In the layout this screen already saves. `dashboard.widgets` is an ORDERED
-  /// list of `{key, options}` in the user's own preferences (§2.1 category 6),
-  /// and the server renders panels by walking it — so the order was already
-  /// stored, and the only thing missing was a way to change it and a client that
-  /// stopped throwing it away. A second preference holding "the order" would
-  /// have been the same fact written in two places, and the first disagreement
-  /// between them would be a dashboard that drew its panels in an order nobody
-  /// had chosen.
-  ///
-  /// ── Moved first, saved second ────────────────────────────────────
+  /// Put the glances in the order somebody just dragged them into, and remember
+  /// it. Period is left off: a reorder is not a change of window.
   ///
   /// The card moves on this frame. Waiting for a round trip would mean a card
   /// that stays put for as long as the network takes, which reads as a control
   /// that did not work — and invites a second drag. If the save fails the
-  /// message is shown and the screen is reloaded, which puts the panels back
+  /// message is shown and the screen is reloaded, which puts the boxes back
   /// where the server still has them rather than leaving a lie on screen.
   Future<void> _reorder(List<String> keys) async {
-    final byKey = {for (final panel in _panels) panel['key'] as String: panel};
+    final byKey = {
+      for (final glance in _glances) glance['key'] as String: glance,
+    };
 
     setState(() {
-      _panels = [
+      _glances = [
         for (final key in keys)
           if (byKey.containsKey(key)) byKey[key]!,
       ];
     });
 
     final response = await widget.api.put('/dashboard/layout', {
-      'widgets': [for (final panel in _panels) _entryFor(panel)],
+      'glances': [for (final glance in _glances) _entryFor(glance)],
     });
 
-    if (!mounted || response.ok) return;
+    if (!mounted) return;
+    if (response.ok) {
+      _rememberLayout(response.body, fallback: _glances);
+      return;
+    }
 
     ScaffoldMessenger.of(
       context,
@@ -148,12 +124,188 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _load();
   }
 
-  /// A panel as the layout stores it. Options travel with it, or saving a new
-  /// ORDER would quietly reset how every panel was configured.
-  Map<String, dynamic> _entryFor(Map<String, dynamic> panel) => {
-    'key': panel['key'],
-    'options': panel['options'] ?? <String, dynamic>{},
+  Future<void> _setPeriod(String period) async {
+    if (period == _period) return;
+
+    setState(() => _period = period);
+
+    final response = await widget.api.put('/dashboard/layout', {
+      'period': period,
+      'glances': [for (final glance in _glances) _entryFor(glance)],
+    });
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
+    } else {
+      _rememberLayout(response.body, fallback: _glances);
+    }
+
+    _load();
+  }
+
+  /// Remember how this box is drawn. The payload does not change with
+  /// presentation — slices and series are already on the glance — so the
+  /// card updates on this frame. A failed save reloads, the same as a
+  /// rejected drag.
+  Future<void> _setPresentation(String key, String presentation) async {
+    Map<String, dynamic>? current;
+    for (final glance in _glances) {
+      if (glance['key'] == key) {
+        current = glance;
+        break;
+      }
+    }
+    if (current == null) return;
+    if ((current['presentation'] ?? 'text') == presentation) return;
+
+    setState(() {
+      _glances = [
+        for (final glance in _glances)
+          if (glance['key'] == key)
+            {...glance, 'presentation': presentation}
+          else
+            glance,
+      ];
+    });
+
+    final response = await widget.api.put('/dashboard/layout', {
+      'glances': [for (final glance in _glances) _entryFor(glance)],
+    });
+
+    if (!mounted) return;
+    if (response.ok) {
+      _rememberLayout(response.body, fallback: _glances);
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(response.message)));
+
+    _load();
+  }
+
+  Future<void> _setEarnedStatuses(List<String> statuses) async {
+    setState(() {
+      _glances = [
+        for (final glance in _glances)
+          if (glance['key'] == 'jobs')
+            {
+              ...glance,
+              'options': {
+                ..._optionsOf(glance),
+                'earned_statuses': statuses,
+              },
+            }
+          else
+            glance,
+      ];
+    });
+
+    final response = await widget.api.put('/dashboard/layout', {
+      'glances': [for (final glance in _glances) _entryFor(glance)],
+    });
+
+    if (!mounted) return;
+
+    if (response.ok) {
+      _rememberLayout(response.body, fallback: _glances);
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
+    }
+
+    _load();
+  }
+
+  /// Keep the stored layout in the session so the HR chip's first save does
+  /// not name only `{hr}` and wipe Jobs options the main board just wrote.
+  void _rememberLayout(
+    Map<String, dynamic> body, {
+    required List<Map<String, dynamic>> fallback,
+  }) {
+    final glances = body['glances'];
+    final source = glances is List && glances.isNotEmpty ? glances : fallback;
+    if (source.isEmpty) return;
+
+    widget.session.rememberPreference('dashboard.glances', [
+      for (final item in source)
+        if (item is Map) _entryFor(Map<String, dynamic>.from(item)),
+    ]);
+  }
+
+  static Map<String, dynamic> _optionsOf(Map<String, dynamic> glance) {
+    final options = glance['options'];
+    return options is Map
+        ? Map<String, dynamic>.from(options)
+        : <String, dynamic>{};
+  }
+
+  /// A glance as the layout stores it. Presentation and options travel with
+  /// it, or saving a new ORDER would quietly reset how every box was drawn.
+  Map<String, dynamic> _entryFor(Map<String, dynamic> glance) => {
+    'key': glance['key'],
+    'presentation': glance['presentation'] ?? 'text',
+    'options': glance['options'] ?? <String, dynamic>{},
   };
+
+  /// Compact, because the header already holds three 48-point move/drag
+  /// controls. Coming soon and an empty `allowed_presentations` draw nothing
+  /// — a disabled menu would invite somebody to work out why it does nothing.
+  Widget? _presentationMenu(Map<String, dynamic> glance) {
+    final options = _presentationsOf(glance);
+    if (options.isEmpty) return null;
+
+    final selected = glance['presentation'] as String? ?? 'text';
+    final label = glance['label'] as String? ?? 'this box';
+
+    return PopupMenuButton<String>(
+      tooltip: 'How to draw “$label”',
+      padding: EdgeInsets.zero,
+      iconSize: 18,
+      initialValue: options.contains(selected) ? selected : null,
+      icon: Icon(_iconFor(selected)),
+      onSelected: (value) => _setPresentation(glance['key'] as String, value),
+      itemBuilder: (context) => [
+        for (final option in options)
+          PopupMenuItem(
+            value: option,
+            child: Text(_labelFor(option)),
+          ),
+      ],
+    );
+  }
+
+  static List<String> _presentationsOf(Map<String, dynamic> glance) {
+    final raw = glance['allowed_presentations'];
+    if (raw is! List || raw.isEmpty) return const [];
+
+    final options = [for (final item in raw) '$item'];
+    if (!options.contains('text')) options.add('text');
+    return options;
+  }
+
+  static String _labelFor(String presentation) => switch (presentation) {
+        'pie' => 'Pie',
+        'bar' => 'Bar',
+        'line' => 'Line',
+        'timeline' => 'Timeline',
+        'text' => 'Text',
+        _ => presentation,
+      };
+
+  static IconData _iconFor(String presentation) => switch (presentation) {
+        'pie' => Icons.pie_chart,
+        'bar' => Icons.bar_chart,
+        'line' => Icons.show_chart,
+        'timeline' => Icons.timeline,
+        _ => Icons.notes,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -177,345 +329,205 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 icon: const Icon(Icons.refresh),
                 tooltip: 'Refresh',
               ),
-              IconButton(
-                onPressed: _choosePanels,
-                icon: const Icon(Icons.tune),
-                tooltip: 'Choose panels',
-              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final (key, label) in _periods)
+                ChoiceChip(
+                  label: Text(label),
+                  selected: _period == key,
+                  onSelected: (on) {
+                    if (on) _setPeriod(key);
+                  },
+                ),
             ],
           ),
           const SizedBox(height: 16),
-          if (_panels.isEmpty)
-            _EmptyState(onChoose: _choosePanels)
-          else
-            DashboardGrid(
-              onReorder: _reorder,
-              panels: [
-                for (final panel in _panels)
-                  DashboardPanel(
-                    key: panel['key'] as String,
-                    title: panel['label'] as String,
-                    icon: dashboardPanelIcon(panel['key'] as String),
-                    body: _PanelBody(
-                      panel: panel,
-                      formats: widget.session.me!.display,
-                    ),
+          DashboardGrid(
+            onReorder: _reorder,
+            panels: [
+              for (final glance in _glances)
+                DashboardPanel(
+                  key: glance['key'] as String,
+                  title: glance['label'] as String,
+                  icon: dashboardPanelIcon(glance['key'] as String),
+                  badge: glance['coming_soon'] == true
+                      ? const Tag('Coming soon', warn: true)
+                      : null,
+                  controls: _presentationMenu(glance),
+                  body: _GlanceBody(
+                    glance: glance,
+                    onEarnedStatuses: glance['key'] == 'jobs'
+                        ? _setEarnedStatuses
+                        : null,
                   ),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
-  void _choosePanels() {
-    final shown = _panels.map((p) => p['key'] as String).toSet();
-
-    showSidePanel<void>(
-      context,
-      builder: (panelContext) => SidePanel(
-        title: 'Choose panels',
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(panelContext).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.of(panelContext).pop();
-
-              final already = {for (final p in _panels) p['key'] as String};
-
-              // The panels already on screen keep their PLACE as well as their
-              // options. Rebuilt from the catalogue's order, as this was, every
-              // save silently threw away the arrangement somebody had dragged
-              // their dashboard into — and ticking one extra panel is a very
-              // odd way to be told your layout is gone.
-              //
-              // Options are preserved for the same reason: turning a panel off
-              // and on again should not reset how it was configured.
-              _setLayout([
-                for (final panel in _panels)
-                  if (shown.contains(panel['key'])) _entryFor(panel),
-
-                // Newly ticked panels go on the end, in the catalogue's order.
-                // Appending is the only placement that does not move something
-                // the user put where it is.
-                for (final entry in _catalogue)
-                  if (shown.contains(entry['key']) &&
-                      !already.contains(entry['key']))
-                    {'key': entry['key'], 'options': <String, dynamic>{}},
-              ]);
-            },
-            child: const Text('Save'),
-          ),
-        ],
-        // The footer reads `shown` when Save is pressed, so only the list needs
-        // rebuilding as boxes are ticked.
-        child: StatefulBuilder(
-          builder: (context, setInner) => Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final entry in _catalogue)
-                CheckboxListTile(
-                  dense: true,
-                  value: shown.contains(entry['key']),
-                  title: Text(entry['label'] as String),
-                  onChanged: (on) => setInner(() {
-                    on == true
-                        ? shown.add(entry['key'] as String)
-                        : shown.remove(entry['key'] as String);
-                  }),
                 ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.onChoose});
+/// What one glance says, rendered from its payload rather than its name.
+///
+/// A pie / bar / line / timeline with slices or series draws the chart above
+/// the sentences. Text, empty, and coming soon are sentences only — an empty
+/// chart is not a sentence. The BOX around it is DashboardCard, through
+/// DashboardGrid.
+class _GlanceBody extends StatelessWidget {
+  const _GlanceBody({required this.glance, this.onEarnedStatuses});
 
-  final VoidCallback onChoose;
+  final Map<String, dynamic> glance;
+  final ValueChanged<List<String>>? onEarnedStatuses;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Text(
-              'Nothing chosen yet',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Pick the numbers you want to see. Nothing here is fixed — '
-              'panels are yours, not the organization\'s.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: onChoose,
-              child: const Text('Choose panels'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+    final data =
+        glance['data'] as Map<String, dynamic>? ?? const <String, dynamic>{};
 
-/// What one panel says, rendered from its shape rather than its name.
-///
-/// The server decides what a widget returns; this decides how a shape is drawn.
-/// A widget returning `rows` gets a list, one returning `total` gets a big
-/// number. A new widget that reuses a shape needs nothing here.
-///
-/// The BOX around it is not this class's business. Both dashboards draw their
-/// cards with DashboardCard, through DashboardGrid, so the padding, the border,
-/// the header and the minimum height are one decision made once — see that
-/// widget for what went wrong when they were two.
-class _PanelBody extends StatelessWidget {
-  const _PanelBody({required this.panel, required this.formats});
-
-  final Map<String, dynamic> panel;
-
-  /// How this scope writes a date (§6). Passed down rather than reached for,
-  /// because a panel that formatted from the browser's locale would show a
-  /// 12-hour clock to an organization that set 24 and look correct doing it.
-  final DisplayFormats formats;
-
-  @override
-  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: _body(context, panel['data'] as Map<String, dynamic>),
+      children: _body(
+        data,
+        glance['coming_soon'] == true,
+        glance['presentation'] as String? ?? 'text',
+      ),
     );
   }
 
-  List<Widget> _body(BuildContext context, Map<String, dynamic> data) {
-    if (data['needs_configuring'] == true) {
+  List<Widget> _body(
+    Map<String, dynamic> data,
+    bool comingSoon,
+    String presentation,
+  ) {
+    final earned = _earnedControl(data);
+
+    if (comingSoon || data['empty'] == true) {
       return [
-        DashboardNote(data['message'] as String? ?? 'Needs configuring.'),
+        DashboardNote(_sentenceOf(data) ?? 'Nothing to show yet.'),
+        if (earned != null) earned,
       ];
     }
 
-    // Money. Rendered per currency because the server refuses to add them
-    // together — see the Revenue widget for why.
-    // By SHAPE, not by name. Keying on the literal 'jobs.revenue' means the
-    // next widget that reports money renders as a bare list of numbers with no
-    // currency beside them — and a number that might be dollars is worse than
-    // no number.
-    if (_isMoney(data)) {
-      final rows = (data['rows'] as List<dynamic>).cast<Map<String, dynamic>>();
+    return [
+      if (_chartable(presentation, data))
+        DashboardChart(
+          presentation: presentation,
+          slices: data['slices'] is List ? data['slices'] as List : null,
+          series: data['series'] is List ? data['series'] as List : null,
+        ),
+      ..._sentences(data),
+      if (earned != null) earned,
+    ];
+  }
 
-      if (rows.isEmpty) {
-        return [const DashboardNote('No work in this period.')];
-      }
+  Widget? _earnedControl(Map<String, dynamic> data) {
+    if (onEarnedStatuses == null) return null;
 
+    final choices = _earnedChoices(data);
+    if (choices.isEmpty) return null;
+
+    final selected = _earnedSelected();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        children: [
+          for (final status in choices)
+            FilterChip(
+              label: Text(status),
+              selected: selected.contains(status),
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              onSelected: (on) {
+                final next = [...selected];
+                if (on) {
+                  if (!next.contains(status)) next.add(status);
+                } else {
+                  next.remove(status);
+                }
+                onEarnedStatuses!(next);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  List<String> _earnedChoices(Map<String, dynamic> data) {
+    final raw = data['status_choices'];
+    if (raw is List && raw.isNotEmpty) {
+      return [for (final item in raw) '$item'];
+    }
+
+    final slices = data['slices'];
+    if (slices is! List) return const [];
+
+    return [
+      for (final item in slices)
+        if (item is Map && '${item['label'] ?? ''}'.isNotEmpty)
+          '${item['label']}',
+    ];
+  }
+
+  List<String> _earnedSelected() {
+    final options = glance['options'];
+    if (options is! Map) return const [];
+    final raw = options['earned_statuses'];
+    if (raw is! List) return const [];
+    return [for (final item in raw) '$item'];
+  }
+
+  static bool _chartable(String presentation, Map<String, dynamic> data) {
+    switch (presentation) {
+      case 'pie' || 'bar':
+        return data['slices'] is List && (data['slices'] as List).isNotEmpty;
+      case 'line' || 'timeline':
+        return data['series'] is List && (data['series'] as List).isNotEmpty;
+      default:
+        return false;
+    }
+  }
+
+  static List<Widget> _sentences(Map<String, dynamic> data) {
+    final sentences = data['sentences'];
+
+    if (sentences is List && sentences.isNotEmpty) {
       return [
-        for (final row in rows)
+        for (final sentence in sentences)
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
-              children: [
-                // The amount takes the room and gives way when there is not
-                // enough of it. Two fixed Texts at either end of a
-                // space-between row overflowed a phone-width card by 19 pixels
-                // the moment a figure ran to six digits — and an amount of
-                // money with its end cut off is a number that is simply wrong.
-                Expanded(
-                  child: Text(
-                    _money(row['amount_minor'] as int, row['currency'] as String),
-                    style: Theme.of(context).textTheme.headlineSmall,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${row['jobs']} jobs',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
+            child: Text('$sentence'),
           ),
       ];
     }
 
-    if (panel['key'] == 'automations.health') {
-      final waiting = data['waiting'] as int;
+    final sentence = _sentenceOf(data);
 
-      if (data['idle'] == true) {
-        // Not "0 failures" — that reads as health, and silence is not health.
-        // And a backlog is reported HERE too: nothing running while events pile
-        // up is the exact signature of a stopped scheduler, and hiding it behind
-        // "idle" would bury the one number that says so.
-        return [
-          const DashboardNote('No automations have run in this period.'),
-          if (waiting > 0)
-            Text(
-              '$waiting event${waiting == 1 ? '' : 's'} waiting to be delivered.',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-        ];
-      }
-
-      return [
-        Text(
-          '${data['runs']} runs',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        if ((data['failed'] as int) > 0)
-          Text(
-            '${data['failed']} failed',
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
-        if (waiting > 0) Text('$waiting waiting'),
-      ];
-    }
-
-    if (panel['key'] == 'jobs.upcoming') {
-      final rows = (data['rows'] as List<dynamic>).cast<Map<String, dynamic>>();
-
-      if (rows.isEmpty) return [const DashboardNote('Nothing scheduled.')];
-
-      return [
-        for (final row in rows)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${row['number']} · ${row['title']}',
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  // The whole reason somebody opens this panel is WHEN. The
-                  // generic row renderer showed the status and the customer and
-                  // dropped both the job and its time.
-                  '${formatStamp(row['scheduled_for'] as String?, 'Not scheduled', formats: formats)}'
-                  '${row['customer'] == null ? '' : ' · ${row['customer']}'}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
-      ];
-    }
-
-    if (data.containsKey('rows')) {
-      final rows = (data['rows'] as List<dynamic>).cast<Map<String, dynamic>>();
-
-      if (rows.isEmpty) return [const DashboardNote('Nothing to show yet.')];
-
-      return [
-        for (final row in rows)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    // Carries the window when the widget says the window covers
-                    // this row. Dropped here, HR's "Joined" — a rolling 30-day
-                    // count — read as an all-time figure on this screen while
-                    // the HR tab labelled the same number correctly.
-                    dashboardRowLabel(data, row),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Text(
-                  (row['total'] ?? row['customer'] ?? '').toString(),
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
-      ];
-    }
-
-    if (data.containsKey('total')) {
-      return [
-        Text(
-          '${data['total']}',
-          style: Theme.of(context).textTheme.headlineMedium,
-        ),
-        if (data.containsKey('organization_total'))
-          Text(
-            '${data['organization_total']} across the organization',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-      ];
-    }
+    if (sentence != null) return [Text(sentence)];
 
     return [const DashboardNote('Nothing to show yet.')];
   }
 
-  /// Does this widget report amounts of money?
-  static bool _isMoney(Map<String, dynamic> data) {
-    final rows = data['rows'];
+  static String? _sentenceOf(Map<String, dynamic> data) {
+    final sentence = data['sentence'];
 
-    return rows is List &&
-        rows.isNotEmpty &&
-        rows.first is Map &&
-        (rows.first as Map).containsKey('amount_minor');
-  }
+    if (sentence is String && sentence.isNotEmpty) return sentence;
 
-  /// Minor units to something readable.
-  ///
-  /// Two decimal places is an assumption that is wrong for JPY, which is why the
-  /// server never does this — it stays a display concern, in one place, where it
-  /// can be corrected when a zero-decimal currency turns up.
-  String _money(int minor, String currency) {
-    final major = (minor / 100).toStringAsFixed(2);
+    final sentences = data['sentences'];
 
-    return '$currency $major';
+    if (sentences is List && sentences.isNotEmpty) {
+      return sentences.first.toString();
+    }
+
+    return null;
   }
 }

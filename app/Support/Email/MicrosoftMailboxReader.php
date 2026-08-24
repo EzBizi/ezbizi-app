@@ -254,6 +254,25 @@ final class MicrosoftMailboxReader implements MailboxReader
     }
 
     /**
+     * Graph's unread total for the well-known inbox folder — no message list.
+     */
+    public function unreadCount(Mailbox $mailbox): int
+    {
+        $folder = $this->get($mailbox, self::GRAPH.'/me/mailFolders/inbox', [
+            '$select' => 'unreadItemCount',
+        ]);
+
+        if (! array_key_exists('unreadItemCount', $folder) || ! is_numeric($folder['unreadItemCount'])) {
+            throw CannotReadMailbox::providerFaulty(
+                $mailbox,
+                'the mail service did not say how many unread messages there are',
+            );
+        }
+
+        return (int) $folder['unreadItemCount'];
+    }
+
+    /**
      * @param  array<string, string>  $query
      * @param  array<string, string>  $headers
      * @return array<string, mixed>

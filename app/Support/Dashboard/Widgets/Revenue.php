@@ -5,6 +5,7 @@ namespace App\Support\Dashboard\Widgets;
 use App\Models\Job;
 use App\Models\User;
 use App\Support\Dashboard\Widget;
+use Illuminate\Support\Carbon;
 
 /**
  * What the work was worth.
@@ -68,9 +69,15 @@ class Revenue implements Widget
             ];
         }
 
+        // Glances pass the dashboard period start as a Carbon; the old widget
+        // board still uses rolling days via since().
+        $since = ($options['since'] ?? null) instanceof Carbon
+            ? $options['since']
+            : $this->since($options);
+
         $rows = $this->reachable(Job::query(), $user)
             ->whereIn('status', $statuses)
-            ->where('created_at', '>=', $this->since($options))
+            ->where('created_at', '>=', $since)
             ->selectRaw('currency, SUM(amount_minor) as total, COUNT(*) as jobs')
             ->groupBy('currency')
             ->orderBy('currency')

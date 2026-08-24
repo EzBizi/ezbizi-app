@@ -4,249 +4,198 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/hr/dashboard_tab.dart';
+import 'package:ezbizi_client/widgets/dashboard_card.dart';
+import 'package:ezbizi_client/widgets/dashboard_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// The Human Resources dashboard (HR plan, "Dashboard").
+/// The Human Resources dashboard chip (spec §12).
 ///
-/// ── The empty organization is the case under test ────────────────
-///
-/// Most of this file is about zero. This organization has one person, no
-/// onboardings and no invitations, and that is not an edge case to degrade
-/// gracefully into — it is what the owner sees on day one and probably day
-/// thirty. A panel that renders "0" and stops has told them nothing about
-/// whether the app is working, whether they have lost a permission, or what to
-/// do next, and those are three very different problems.
-///
-/// So the assertions below are mostly about SENTENCES: that each empty panel
-/// says what will fill it, that "nothing has stalled" and "you have not invited
-/// anybody" are told apart, and that the one figure the app cannot honestly
-/// date says so instead of implying a period it does not have.
+/// One box — the same HrGlance the main dashboard draws — not five widget
+/// panels. The empty organization is still the case under test: most people
+/// open this tab with one person on the books, and the sentences have to say
+/// that rather than five titled zeros.
 void main() {
-  testWidgets('every panel is drawn, including the ones sitting at zero', (
+  testWidgets('one card titled Human Resources, not five widget titles', (
     tester,
   ) async {
     await _pump(tester, _handler());
 
-    // Five, not "the ones with something in them". A tab that shows three cards
-    // today and five next week re-teaches itself every time somebody looks.
-    expect(find.text('Headcount by place'), findsOneWidget);
-    expect(find.text('Onboardings in flight'), findsOneWidget);
-    expect(find.text('Invitations that have stalled'), findsOneWidget);
-    expect(find.text('Starting and leaving'), findsOneWidget);
-    expect(find.text('Expiring certifications'), findsOneWidget);
+    expect(find.byType(DashboardCard), findsOneWidget);
+    expect(find.text('Human Resources'), findsOneWidget);
+
+    expect(find.text('Headcount by place'), findsNothing);
+    expect(find.text('Invitations that have stalled'), findsNothing);
+    expect(find.text('Starting and leaving'), findsNothing);
+    expect(find.text('Expiring certifications'), findsNothing);
   });
 
-  /// The number that must not be zero for a one-person organization.
-  ///
-  /// The founder is assigned at ORGANIZATION level, so a server counting people
-  /// by franchise would answer nobody — and the panel would look like it was
-  /// working. This is the client half of that: the person is counted, and shown
-  /// under the organization's own name.
-  testWidgets('the one person on the books is counted and placed', (
+  testWidgets('the one-person organization is named in sentences', (
     tester,
   ) async {
     await _pump(tester, _handler());
 
-    expect(find.text('1'), findsWidgets);
-    expect(find.text('person'), findsOneWidget);
-    expect(find.text('Everdoors'), findsOneWidget);
+    expect(find.text('1 person on the books.'), findsOneWidget);
+    expect(find.text('0 onboardings in flight.'), findsOneWidget);
+    expect(find.text('0 invitations have stalled.'), findsOneWidget);
+    expect(find.text('0 people joined this month.'), findsOneWidget);
+    expect(find.text('0 people left this month.'), findsOneWidget);
+    expect(find.textContaining('marked as an expiry'), findsOneWidget);
   });
 
-  /// The unit is never left off. "1" beside "Headcount by place" could be one
-  /// person or one place, and those are very different messages.
-  testWidgets('the headline figure carries the word for what it counts', (
+  testWidgets('period chips sit in the header and write the dashboard period', (
     tester,
   ) async {
-    await _pump(tester, _handler(headcount: 4));
+    final sent = <Map<String, dynamic>>[];
 
-    expect(find.text('4'), findsWidgets);
-    expect(find.text('people'), findsOneWidget);
-    expect(find.text('person'), findsNothing);
+    await _pump(tester, _handler(record: sent));
+
+    expect(find.widgetWithText(ChoiceChip, 'Week'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Month'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Quarter'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Year'), findsOneWidget);
+    expect(
+      tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Month')).selected,
+      isTrue,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Week'));
+    await tester.pumpAndSettle();
+
+    expect(sent, hasLength(1));
+    expect(sent.single['period'], 'week');
+    expect(
+      [for (final g in sent.single['glances'] as List) g['key']],
+      ['hr', 'jobs', 'customers'],
+    );
+    expect(
+      (sent.single['glances'] as List).firstWhere((g) => g['key'] == 'hr')
+          ['presentation'],
+      'bar',
+    );
   });
 
-  testWidgets('an empty onboardings panel says what would fill it', (
+  /// /me often has no `dashboard.glances` yet. The first save GETs the
+  /// dashboard and writes that list, so it does not name only `{hr}` and
+  /// drop Jobs options the server would then append at defaults.
+  testWidgets('a second layout save keeps the glances the first one stored', (
     tester,
   ) async {
-    await _pump(tester, _handler());
+    final sent = <Map<String, dynamic>>[];
+
+    await _pump(tester, _handler(record: sent));
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Week'));
+    await tester.pumpAndSettle();
 
     expect(
-      find.textContaining('No paperwork is under way'),
-      findsOneWidget,
-      reason: 'A bare 0 is indistinguishable from a panel that failed to load.',
+      [for (final g in sent.single['glances'] as List) g['key']],
+      ['hr', 'jobs', 'customers'],
     );
 
-    // And names the act that makes one appear, rather than leaving the reader
-    // to work out where onboardings come from.
-    expect(find.textContaining('invite somebody'), findsOneWidget);
-  });
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Quarter'));
+    await tester.pumpAndSettle();
 
-  /// Two different kinds of nothing, and they need opposite responses: one is
-  /// good news, the other means this organization has not started.
-  testWidgets('never having invited anybody is not the same as nothing '
-      'having stalled', (tester) async {
-    await _pump(tester, _handler());
-
-    expect(find.textContaining('You have not invited anybody yet'), findsOneWidget);
-    expect(find.textContaining('Nothing has stalled'), findsNothing);
-  });
-
-  testWidgets('with invitations sent and none stalled, it says so', (
-    tester,
-  ) async {
-    await _pump(tester, _handler(sentTotal: 3));
-
-    expect(find.textContaining('Nothing has stalled'), findsOneWidget);
-    expect(find.textContaining('You have not invited anybody yet'), findsNothing);
-  });
-
-  testWidgets('a stalled invitation is broken down and says what to do', (
-    tester,
-  ) async {
-    await _pump(tester, _handler(expired: 2, neverOpened: 1, sentTotal: 5));
-
-    expect(find.text('3'), findsWidgets);
-    expect(find.text('need chasing'), findsOneWidget);
-
-    expect(find.text('Expired before anyone accepted'), findsOneWidget);
-    expect(find.text('Sent but never opened'), findsOneWidget);
-
-    // A count nobody can act on is a count nobody reads twice.
-    expect(find.textContaining('needs sending again'), findsOneWidget);
-  });
-
-  /// Joining and leaving both have dates. People inactive before record-keeping
-  /// began have no leaving date and sit on "No longer active".
-  testWidgets('the period is applied to joining and leaving, not to the undated remainder', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      _handler(joined: 2, noLongerActive: 3, periodAppliesTo: const ['Joined', 'Left']),
-    );
-
-    expect(find.text('Joined in the last 30 days'), findsOneWidget);
-    expect(find.text('Left in the last 30 days'), findsOneWidget);
-
-    expect(find.text('No longer active'), findsOneWidget);
-    expect(find.textContaining('No longer active in the last'), findsNothing);
-
+    expect(sent, hasLength(2));
     expect(
-      find.textContaining('Leaving dates start from when this record-keeping began'),
-      findsOneWidget,
+      [for (final g in sent[1]['glances'] as List) g['key']],
+      ['hr', 'jobs', 'customers'],
+    );
+    expect(sent[1]['period'], 'quarter');
+  });
+
+  testWidgets('the presentation switcher writes the same preference as the '
+      'main dashboard', (tester) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await _pump(tester, _handler(record: sent));
+
+    await tester.tap(find.byTooltip('How to draw “Human Resources”'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Text'));
+    await tester.pumpAndSettle();
+
+    expect(sent, hasLength(1));
+    expect(sent.single.containsKey('period'), isFalse);
+    expect(
+      [for (final g in sent.single['glances'] as List) g['key']],
+      ['hr', 'jobs', 'customers'],
+    );
+    expect(
+      (sent.single['glances'] as List).firstWhere((g) => g['key'] == 'hr')
+          ['presentation'],
+      'text',
     );
   });
 
-  /// A client that decided for itself which row was the dated one would keep
-  /// working until a third row was added and then quietly mislabel it. The
-  /// server sends the answer; this proves the client reads it.
-  testWidgets('the client does not decide for itself which row is dated', (
-    tester,
-  ) async {
-    await _pump(tester, _handler(periodAppliesTo: const []));
-
-    expect(find.text('Joined'), findsOneWidget);
-    expect(find.text('Joined in the last 30 days'), findsNothing);
-  });
-
-  testWidgets('with nobody having joined, it says so and says when they would '
-      'appear', (tester) async {
-    await _pump(tester, _handler(joined: 0, people: const []));
-
-    expect(find.textContaining('Nobody has joined in the last 30 days'),
-        findsOneWidget);
-    expect(find.textContaining('the day they accept their invitation'),
-        findsOneWidget);
-  });
-
-  /// §4 and §3: these are not the organization's numbers unless the reader is
-  /// looking at the organization. Stated on the page, because a headcount that
-  /// silently meant "your branch" would be read as "the company".
-  testWidgets('the page names the part of the business it counted', (
-    tester,
-  ) async {
+  testWidgets('one card cannot be dragged', (tester) async {
     await _pump(tester, _handler());
 
-    expect(find.textContaining('Counted across Everdoors'), findsOneWidget);
+    expect(find.byTooltip('Move “Human Resources” later'), findsNothing);
+    expect(find.byTooltip('Move “Human Resources” earlier'), findsNothing);
+    expect(
+      find.byTooltip(
+        'Drag “Human Resources” onto the card whose place it should take',
+      ),
+      findsNothing,
+    );
   });
 
-  /// The rows genuinely will not add up for anybody working in two places, and
-  /// a reader who notices that without an explanation concludes it is broken.
-  testWidgets('a total smaller than its rows explains itself', (tester) async {
+  testWidgets('tapping the card does not push another route', (tester) async {
+    final nav = _PushRecorder();
+
+    await _pump(tester, _handler(), observers: [nav]);
+
+    expect(nav.pushes, 1, reason: 'Home is the first push.');
+    expect(tester.state<NavigatorState>(find.byType(Navigator)).canPop(), isFalse);
+
+    await tester.tap(find.text('Human Resources'));
+    await tester.pumpAndSettle();
+
+    expect(nav.pushes, 1, reason: 'The card called Navigator.push.');
+    expect(tester.state<NavigatorState>(find.byType(Navigator)).canPop(), isFalse);
+    expect(find.byType(DashboardTab), findsOneWidget);
+  });
+
+  testWidgets('empty is a sentence, not a chart', (tester) async {
+    await _pump(tester, _handler(empty: true));
+
+    expect(find.byType(DashboardChart), findsNothing);
+    expect(find.text('Nobody on the books yet.'), findsOneWidget);
+  });
+
+  testWidgets('a bar is drawn when there is something to plot', (tester) async {
     await _pump(
       tester,
       _handler(
-        headcount: 2,
-        headcountRows: const [
-          {'title': 'Connecticut', 'total': 2},
-          {'title': 'Texas', 'total': 1},
+        inFlight: 2,
+        stalled: 1,
+        sentences: const [
+          '3 people on the books.',
+          '2 onboardings in flight.',
+          '1 invitation has stalled.',
         ],
       ),
     );
 
-    expect(find.textContaining('counted in each of them'), findsOneWidget);
+    expect(find.byType(DashboardChart), findsOneWidget);
+    expect(find.text('2 onboardings in flight.'), findsOneWidget);
   });
 
-  testWidgets('when the totals agree, no explanation is offered', (
-    tester,
-  ) async {
-    await _pump(tester, _handler());
-
-    expect(find.textContaining('counted in each of them'), findsNothing);
-  });
-
-  /// The panel keyed on `places` rather than on whether any rows arrived, and
-  /// the two are not the same question: a place nobody is in is still a place,
-  /// and it is the row somebody most often opened this tab to find.
-  testWidgets('an organization with nowhere to count says so, and says what '
-      'to add', (tester) async {
-    await _pump(
-      tester,
-      _handler(headcount: 0, places: 0, headcountRows: const []),
-    );
-
-    expect(find.textContaining('Nowhere to count yet'), findsOneWidget);
-    expect(find.textContaining('Add a company and a branch'), findsOneWidget);
-  });
-
-  /// The other half of that: places that exist get their rows and NOT the
-  /// "go and set one up" sentence, however empty they are.
-  testWidgets('a place nobody is in is a row, not a prompt to create one', (
-    tester,
-  ) async {
+  testWidgets('text presentation draws sentences only', (tester) async {
     await _pump(
       tester,
       _handler(
-        headcount: 0,
-        places: 3,
-        headcountRows: const [
-          {'title': 'Everdoors', 'total': 0},
-          {'title': 'Connecticut', 'total': 0},
-          {'title': 'Texas', 'total': 0},
-        ],
+        presentation: 'text',
+        inFlight: 2,
+        stalled: 1,
       ),
     );
 
-    expect(find.textContaining('Nowhere to count yet'), findsNothing);
-    expect(find.text('Connecticut'), findsOneWidget);
-    expect(find.text('Texas'), findsOneWidget);
-  });
-
-  /// A panel withheld by permission is absent, not drawn empty. The server
-  /// filters the list; a client that assumed four panels would throw on the
-  /// first index it could not find.
-  testWidgets('a panel the server withheld is simply not there', (
-    tester,
-  ) async {
-    await _pump(tester, _handler(only: {'hr.headcount'}));
-
-    expect(find.text('Headcount by place'), findsOneWidget);
-    expect(find.text('Onboardings in flight'), findsNothing);
-
-    // And the tab still renders rather than failing on the missing ones.
-    expect(find.text('At a glance'), findsOneWidget);
+    expect(find.byType(DashboardChart), findsNothing);
+    expect(find.text('1 person on the books.'), findsOneWidget);
   });
 
   testWidgets('a failure is the server’s message and a way back, not a blank '
@@ -258,14 +207,21 @@ void main() {
   });
 }
 
-// ── driving the tab ────────────────────────────────────────────────
+class _PushRecorder extends NavigatorObserver {
+  int pushes = 0;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pushes++;
+  }
+}
 
 Future<void> _pump(
   WidgetTester tester,
   MockClientHandler handler, {
-  Size size = const Size(1400, 2200),
+  List<NavigatorObserver> observers = const [],
 }) async {
-  tester.view.physicalSize = size;
+  tester.view.physicalSize = const Size(1400, 2200);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
@@ -279,108 +235,70 @@ Future<void> _pump(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
+      navigatorObservers: observers,
       home: Scaffold(body: DashboardTab(api: api, session: session)),
     ),
   );
   await tester.pumpAndSettle();
 }
 
-/// The server, parameterised on exactly the figures the tests vary.
-///
-/// Built as data rather than as a pile of fixtures, so a test says what it is
-/// about — "two expired invitations" — instead of pointing at a constant three
-/// hundred lines away that somebody else is also depending on.
 MockClientHandler _handler({
   int status = 200,
-  int headcount = 1,
-  int places = 1,
-  List<Map<String, Object?>>? headcountRows,
-  int expired = 0,
-  int neverOpened = 0,
-  int sentTotal = 0,
-  int joined = 1,
-  int noLongerActive = 0,
-  List<String> periodAppliesTo = const ['Joined', 'Left'],
-  List<Map<String, Object?>>? people,
-  Set<String>? only,
+  bool empty = false,
+  String presentation = 'bar',
+  int inFlight = 0,
+  int stalled = 0,
+  List<String>? sentences,
+  List<Map<String, dynamic>>? record,
 }) {
-  final panels = [
-    {
-      'key': 'hr.headcount',
-      'label': 'Headcount by place',
-      'data': {
-        'rows': headcountRows ?? [
-          {'title': 'Everdoors', 'total': headcount},
-        ],
-        'total': headcount,
-        'places': places,
-      },
-    },
-    {
-      'key': 'hr.onboardings_in_flight',
-      'label': 'Onboardings in flight',
-      'data': {
-        'rows': [
-          {'title': 'Being filled in', 'total': 0},
-          {'title': 'Waiting on a signature', 'total': 0},
-        ],
-        'total': 0,
-        'oldest_started_at': null,
-      },
-    },
-    {
-      'key': 'hr.invitations_stalled',
-      'label': 'Invitations that have stalled',
-      'data': {
-        'rows': [
-          {'title': 'Expired before anyone accepted', 'total': expired},
-          {'title': 'Sent but never opened', 'total': neverOpened},
-        ],
-        'total': expired + neverOpened,
-        'sent_total': sentTotal,
-      },
-    },
-    {
-      'key': 'hr.starters_and_leavers',
-      'label': 'Starting and leaving',
-      'data': {
-        'rows': [
-          {'title': 'Joined', 'total': joined},
-          {'title': 'Left', 'total': 0},
-          {'title': 'No longer active', 'total': noLongerActive},
-        ],
-        'total': joined,
-        'days': 30,
-        'period_applies_to': periodAppliesTo,
-        'note':
-            'Leaving dates start from when this record-keeping began. People who were already inactive before then have no leaving date.',
-        'people': people ??
-            [
-              {
-                'id': 'u-1',
-                'name': 'Jose Silva',
-                'joined_at': '2026-08-01T09:00:00+00:00',
-              },
-            ],
-        'more_people': 0,
-      },
-    },
-    {
-      'key': 'hr.certifications',
-      'label': 'Expiring certifications',
-      'data': {
-        'rows': [],
-        'total': 0,
-        'note':
-            'None of the contract questions are marked as an expiry, so there is nothing to list yet.',
-      },
-    },
-  ];
-
   return (request) async {
     final path = request.url.path;
 
     if (path.endsWith('/me')) return _json({'data': _me});
+
+    if (request.method == 'PUT' && path.endsWith('/dashboard/layout')) {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      record?.add(body);
+
+      // Same append the server does: omitted reachable modules join at the
+      // end. The second save must send this list back, not `{hr}` again.
+      final sent = [
+        for (final item in (body['glances'] as List? ?? const []))
+          if (item is Map) Map<String, dynamic>.from(item),
+      ];
+      final keys = {for (final glance in sent) glance['key']};
+      return _json({
+        'period': body['period'] ?? 'month',
+        'glances': [
+          ...sent,
+          if (!keys.contains('jobs'))
+            {'key': 'jobs', 'presentation': 'pie'},
+          if (!keys.contains('customers'))
+            {'key': 'customers', 'presentation': 'line'},
+        ],
+      });
+    }
+
+    if (request.method == 'GET' &&
+        path.endsWith('/dashboard') &&
+        !path.endsWith('/hr/dashboard')) {
+      return _json({
+        'period': 'month',
+        'glances': [
+          {
+            'key': 'hr',
+            'presentation': presentation,
+            'options': <String, dynamic>{},
+          },
+          {'key': 'jobs', 'presentation': 'pie', 'options': <String, dynamic>{}},
+          {
+            'key': 'customers',
+            'presentation': 'line',
+            'options': <String, dynamic>{},
+          },
+        ],
+      });
+    }
 
     if (path.endsWith('/hr/dashboard')) {
       if (status != 200) {
@@ -388,9 +306,39 @@ MockClientHandler _handler({
       }
 
       return _json({
-        'panels': only == null
-            ? panels
-            : panels.where((p) => only.contains(p['key'])).toList(),
+        'period': 'month',
+        'period_starts_on': '2026-08-01T00:00:00-04:00',
+        'period_ends_on': '2026-08-24T16:00:00-04:00',
+        'glance': {
+          'key': 'hr',
+          'label': 'Human Resources',
+          'presentation': presentation,
+          'allowed_presentations': ['bar', 'pie', 'text'],
+          'snapshot': true,
+          'coming_soon': false,
+          'options': <String, dynamic>{},
+          'data': empty
+              ? {
+                  'empty': true,
+                  'sentence': 'Nobody on the books yet.',
+                }
+              : {
+                  'empty': false,
+                  'slices': [
+                    {'label': 'Onboardings in flight', 'total': inFlight},
+                    {'label': 'Invitations stalled', 'total': stalled},
+                  ],
+                  'sentences': sentences ??
+                      [
+                        '1 person on the books.',
+                        '0 onboardings in flight.',
+                        '0 invitations have stalled.',
+                        '0 people joined this month.',
+                        '0 people left this month.',
+                        'None of the contract questions are marked as an expiry, so there is nothing to list yet. Mark a date field as an expiry on a contract template.',
+                      ],
+                },
+        },
       });
     }
 

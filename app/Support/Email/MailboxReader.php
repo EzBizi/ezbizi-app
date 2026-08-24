@@ -173,6 +173,17 @@ interface MailboxReader
     public function arrivalsSince(Mailbox $mailbox, string $mark, int $limit): Arrivals;
 
     /**
+     * How many unread messages the provider reports for this mailbox.
+     *
+     * A mailbox-level figure — Gmail's profile `messagesUnread`, IMAP
+     * `STATUS INBOX (UNSEEN)`, Graph's inbox `unreadItemCount` — not a page of
+     * headers and not a count of rows we store. Nothing here is persisted.
+     *
+     * @throws CannotReadMailbox when the mailbox cannot be asked
+     */
+    public function unreadCount(Mailbox $mailbox): int;
+
+    /**
      * Is this reader actually able to do any of the above?
      *
      * Asked so that a screen can say "not connected" without provoking an

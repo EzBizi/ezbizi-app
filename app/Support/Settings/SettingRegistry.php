@@ -211,8 +211,7 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_ENUM, default: 'sunday',
                 options: ['sunday', 'monday'],
                 optionLabels: ['sunday' => 'Sunday', 'monday' => 'Monday'],
-                notYetInEffect: 'Takes effect when the scheduling calendar ships. Nothing in the '
-                    .'app lays out a week yet, so there is no first column for this to move.',
+                // Read by DashboardPeriod for the dashboard week bound (spec §6).
             ),
             new SettingDefinition(
                 key: 'measurement_units', label: 'Units',

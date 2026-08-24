@@ -1274,6 +1274,11 @@ class FakeMailboxReader implements MailboxReader
         return new Arrivals([], $mark);
     }
 
+    public function unreadCount(Mailbox $mailbox): int
+    {
+        return 0;
+    }
+
     public function isConfigured(Mailbox $mailbox): bool
     {
         return true;

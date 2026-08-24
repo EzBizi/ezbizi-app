@@ -17,6 +17,7 @@ class DashboardPanel {
     required this.icon,
     required this.body,
     this.badge,
+    this.controls,
   });
 
   final String key;
@@ -28,6 +29,11 @@ class DashboardPanel {
 
   /// A state label after the title.
   final Widget? badge;
+
+  /// Controls that belong to this panel rather than to the grid — the
+  /// presentation switcher. Drawn in the header before the move / drag
+  /// buttons. Null when the glance has nothing to switch (coming soon).
+  final Widget? controls;
 }
 
 /// Every dashboard's layout: equal-height rows of [DashboardCard], rearrangeable
@@ -182,7 +188,7 @@ class _DashboardGridState extends State<DashboardGrid> {
       title: panel.title,
       icon: panel.icon,
       badge: panel.badge,
-      controls: widget.onReorder == null ? null : _controls(index, panel),
+      controls: _headerControls(index, panel),
       child: panel.body,
     );
 
@@ -219,6 +225,22 @@ class _DashboardGridState extends State<DashboardGrid> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Header trailing: the panel's own controls, then the grid's move / drag
+  /// buttons. Either half may be absent — a glance with no presentations
+  /// still rearranges, and a one-card surface still switches how it is drawn.
+  Widget? _headerControls(int index, DashboardPanel panel) {
+    final extra = panel.controls;
+    final reorder = widget.onReorder == null ? null : _controls(index, panel);
+
+    if (extra == null) return reorder;
+    if (reorder == null) return extra;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [extra, reorder],
     );
   }
 

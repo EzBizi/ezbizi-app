@@ -43,8 +43,8 @@ void main() {
       expect(heights, hasLength(4), reason: 'Four panels were sent.');
 
       // The two on the first row match, and the two on the second row match.
-      // "Jobs by status" has one line under its header and "Upcoming" has four,
-      // which is exactly the pair that used to leave a hole.
+      // Jobs is one sentence and Human Resources is several, which is the pair
+      // that used to leave a hole when cards sized to their own contents.
       expect(heights[0], heights[1]);
       expect(heights[2], heights[3]);
 
@@ -57,7 +57,9 @@ void main() {
     testWidgets('a card with almost nothing in it is still a card', (
       tester,
     ) async {
-      await _pumpDashboard(tester, _dashboard(only: {'jobs.by_status'}));
+      // Inspection is empty — a sentence, not a chart. Jobs now draws a pie
+      // above its sentence, which is supposed to be taller than the floor.
+      await _pumpDashboard(tester, _dashboard(only: {'inspection'}));
 
       expect(_cardHeights(tester).single, DashboardCard.minimumHeight);
     });
@@ -70,15 +72,15 @@ void main() {
 
       await _pumpHr(tester, _hr());
 
-      // Five from the server, including certifications — the same card widget
-      // the main dashboard uses, not a second implementation on this tab.
-      expect(find.byType(DashboardCard), findsNWidgets(5));
+      // One glance, the same card widget the main dashboard uses.
+      expect(find.byType(DashboardCard), findsOneWidget);
+      expect(_cardTitles(tester), ['Human Resources']);
     });
 
     testWidgets('the border is the theme’s edge, not a colour of its own', (
       tester,
     ) async {
-      await _pumpDashboard(tester, _dashboard(only: {'jobs.by_status'}));
+      await _pumpDashboard(tester, _dashboard(only: {'jobs'}));
 
       final context = tester.element(find.byType(DashboardCard).first);
       final material = tester.widget<Material>(
@@ -117,10 +119,10 @@ void main() {
       await _pumpHr(tester, _hr(), size: const Size(375, 4000));
       expect(tester.takeException(), isNull);
 
-      // And the controls are still there to be used, not dropped because the
-      // window was small — which would leave a phone with no way to rearrange
-      // anything at all.
-      expect(find.byTooltip('Move “Headcount by place” later'), findsOneWidget);
+      // The chip still switches how it is drawn on a phone. It does not
+      // rearrange — there is only one box.
+      expect(find.byTooltip('How to draw “Human Resources”'), findsOneWidget);
+      expect(find.byTooltip('Move “Human Resources” later'), findsNothing);
     });
   });
 
@@ -131,22 +133,23 @@ void main() {
 
       await _pumpDashboard(tester, _dashboard(record: sent));
 
-      await tester.tap(find.byTooltip('Move “Jobs by status” later'));
+      await tester.tap(find.byTooltip('Move “Jobs” later'));
       await tester.pumpAndSettle();
 
       expect(sent, hasLength(1));
 
       // The whole list goes back, in its new order...
       expect(
-        [for (final w in sent.single['widgets'] as List) w['key']],
-        ['jobs.upcoming', 'jobs.by_status', 'jobs.revenue', 'customers.added'],
+        [for (final g in sent.single['glances'] as List) g['key']],
+        ['hr', 'jobs', 'customers', 'inspection'],
       );
 
-      // ...carrying what each panel was configured with. Saving an ORDER that
-      // quietly reset every panel's options would be a very expensive drag.
+      // ...carrying how each box was drawn. Saving an ORDER that quietly
+      // reset presentation or options would be a very expensive drag.
+      expect((sent.single['glances'] as List)[1]['presentation'], 'pie');
       expect(
-        (sent.single['widgets'] as List)[2]['options'],
-        {'statuses': ['completed'], 'days': 30},
+        (sent.single['glances'] as List)[1]['options'],
+        {'earned_statuses': ['completed']},
       );
     });
 
@@ -162,14 +165,14 @@ void main() {
 
       await _pumpDashboard(tester, _dashboard(saveStatus: 500, held: answered));
 
-      expect(_cardTitles(tester).first, 'Jobs by status');
+      expect(_cardTitles(tester).first, 'Jobs');
 
-      await tester.tap(find.byTooltip('Move “Jobs by status” later'));
+      await tester.tap(find.byTooltip('Move “Jobs” later'));
       await tester.pump();
 
       expect(
         _cardTitles(tester).first,
-        'Upcoming jobs',
+        'Human Resources',
         reason: 'The card waited for a round trip before moving.',
       );
 
@@ -179,90 +182,26 @@ void main() {
       // Put back where the server still has it, and said out loud. A card left
       // sitting somewhere the server does not agree with is worse than a card
       // that did not move.
-      expect(_cardTitles(tester).first, 'Jobs by status');
+      expect(_cardTitles(tester).first, 'Jobs');
       expect(find.text('Nothing doing.'), findsOneWidget);
     });
 
-    /// Turning a panel on is not a reason to lose an arrangement. Rebuilding
-    /// the layout from the catalogue, as the panel picker used to, threw away
-    /// the order every time somebody ticked a box.
-    testWidgets('choosing panels keeps the order they are already in', (
+    testWidgets('the HR chip is one card and has no reorder controls', (
       tester,
     ) async {
-      final sent = <Map<String, dynamic>>[];
+      await _pumpHr(tester, _hr());
 
-      // The catalogue lists them in the registry's order; this user's dashboard
-      // is in a different one. Saving must follow the user, not the registry.
-      await _pumpDashboard(tester, _dashboard(record: sent, catalogueReversed: true));
-
-      await tester.tap(find.byTooltip('Choose panels'));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
-
+      expect(find.byType(DashboardCard), findsOneWidget);
+      expect(_cardTitles(tester), ['Human Resources']);
+      expect(find.byTooltip('Move “Human Resources” later'), findsNothing);
+      expect(find.byTooltip('Move “Human Resources” earlier'), findsNothing);
       expect(
-        [for (final w in sent.single['widgets'] as List) w['key']],
-        ['jobs.by_status', 'jobs.upcoming', 'jobs.revenue', 'customers.added'],
-      );
-    });
-
-    testWidgets('a saved order comes back the next time the tab is opened', (
-      tester,
-    ) async {
-      final sent = <Map<String, dynamic>>[];
-
-      await _pumpHr(tester, _hr(record: sent));
-
-      expect(_cardTitles(tester).first, 'Headcount by place');
-
-      await tester.tap(find.byTooltip('Move “Headcount by place” later'));
-      await tester.pumpAndSettle();
-
-      // It is stored per surface, in the dashboard's own preference, because
-      // this tab's panels are fixed and there is no chosen list to keep an
-      // order inside.
-      expect(sent.single['surface'], 'hr');
-
-      final order = [
-        for (final w in sent.single['widgets'] as List) w['key'] as String,
-      ];
-
-      expect(order.first, 'hr.onboardings_in_flight');
-      expect(order[1], 'hr.headcount');
-
-      // Reopened by somebody whose preferences now carry that order — which is
-      // how it arrives, since /me brings a user's preferences with it.
-      await _pumpHr(tester, _hr(savedOrder: order));
-
-      expect(_cardTitles(tester).first, 'Onboardings in flight');
-      expect(_cardTitles(tester)[1], 'Headcount by place');
-    });
-
-    /// The order outlives the thing it names, in both directions.
-    testWidgets('a saved order naming a panel that is gone still draws the '
-        'ones that are not', (tester) async {
-      await _pumpHr(
-        tester,
-        _hr(
-          // 'hr.payroll' was never a panel; the headcount panel is withheld by
-          // the server this time, the way a narrowed role would withhold it.
-          savedOrder: const [
-            'hr.payroll',
-            'hr.headcount',
-            'hr.invitations_stalled',
-          ],
-          withhold: {'hr.headcount'},
+        find.byTooltip(
+          'Drag “Human Resources” onto the card whose place it should take',
         ),
+        findsNothing,
       );
-
-      // No error, and no missing card: the two names it could not place were
-      // passed over, and every panel the order says nothing about is still
-      // drawn — appended rather than dropped.
-      expect(tester.takeException(), isNull);
-      expect(_cardTitles(tester).first, 'Invitations that have stalled');
-      expect(find.text('Expiring certifications'), findsOneWidget);
-      expect(find.byType(DashboardCard), findsNWidgets(4));
+      expect(find.byTooltip('How to draw “Human Resources”'), findsOneWidget);
     });
   });
 
@@ -284,7 +223,7 @@ void main() {
     testWidgets('a finger swiping from the grip scrolls the page', (
       tester,
     ) async {
-      await _pumpHr(tester, _hr(), size: const Size(375, 700));
+      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700));
 
       // Controls. A page with nothing to scroll would pass the assertion below
       // by standing still, and so would a test that swiped a page already at
@@ -297,7 +236,7 @@ void main() {
       );
 
       await tester.drag(
-        _gripOf('Headcount by place'),
+        _gripOf('Jobs'),
         const Offset(0, -300),
         kind: PointerDeviceKind.touch,
       );
@@ -311,20 +250,20 @@ void main() {
 
       // And a swipe is not a sideways way to rearrange anything: it finished
       // over a different card, and no card moved.
-      expect(_cardTitles(tester).first, 'Headcount by place');
+      expect(_cardTitles(tester).first, 'Jobs');
     });
 
     testWidgets('a finger held on the grip picks the card up', (tester) async {
       final sent = <Map<String, dynamic>>[];
 
-      await _pumpHr(tester, _hr(record: sent), size: const Size(375, 700));
+      await _pumpDashboard(tester, _dashboard(record: sent), size: const Size(375, 700));
 
-      expect(_cardTitles(tester).first, 'Headcount by place');
+      expect(_cardTitles(tester).first, 'Jobs');
 
       final felt = _recordHaptics(tester);
 
       final finger = await tester.startGesture(
-        tester.getCenter(_gripOf('Onboardings in flight')),
+        tester.getCenter(_gripOf('Human Resources')),
         kind: PointerDeviceKind.touch,
       );
 
@@ -345,8 +284,7 @@ void main() {
       // one.
       expect(
         find.text(
-          'Drag “Onboardings in flight” onto the card whose place it should '
-          'take',
+          'Drag “Human Resources” onto the card whose place it should take',
         ),
         findsNothing,
       );
@@ -356,8 +294,8 @@ void main() {
       await finger.up();
       await tester.pumpAndSettle();
 
-      expect(_cardTitles(tester).first, 'Onboardings in flight');
-      expect(_cardTitles(tester)[1], 'Headcount by place');
+      expect(_cardTitles(tester).first, 'Human Resources');
+      expect(_cardTitles(tester)[1], 'Jobs');
 
       // The card was carried UP the page. Had the hold leaked to the ListView
       // instead, this is the number that would have moved and the order that
@@ -366,14 +304,8 @@ void main() {
 
       expect(sent, hasLength(1));
       expect(
-        [for (final w in sent.single['widgets'] as List) w['key']],
-        [
-          'hr.onboardings_in_flight',
-          'hr.headcount',
-          'hr.invitations_stalled',
-          'hr.starters_and_leavers',
-          'hr.certifications',
-        ],
+        [for (final g in sent.single['glances'] as List) g['key']],
+        ['hr', 'jobs', 'customers', 'inspection'],
       );
     });
 
@@ -383,9 +315,9 @@ void main() {
     testWidgets('the corner of the grip is grip, not decoration', (
       tester,
     ) async {
-      await _pumpHr(tester, _hr(), size: const Size(375, 700));
+      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700));
 
-      final box = tester.getRect(_gripOf('Onboardings in flight'));
+      final box = tester.getRect(_gripOf('Human Resources'));
 
       expect(
         box.size,
@@ -403,7 +335,7 @@ void main() {
       await finger.up();
       await tester.pumpAndSettle();
 
-      expect(_cardTitles(tester).first, 'Onboardings in flight');
+      expect(_cardTitles(tester).first, 'Human Resources');
     });
 
     /// A finger's long press had to stop being the tooltip's trigger, because
@@ -415,12 +347,12 @@ void main() {
     ) async {
       final semantics = tester.ensureSemantics();
 
-      await _pumpHr(tester, _hr(), size: const Size(375, 700));
+      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700));
 
       const said =
-          'Drag “Headcount by place” onto the card whose place it should take';
+          'Drag “Jobs” onto the card whose place it should take';
 
-      expect(tester.getSemantics(_gripOf('Headcount by place')).tooltip, said);
+      expect(tester.getSemantics(_gripOf('Jobs')).tooltip, said);
 
       // Control: it is not on screen yet, so the assertion after the hover is
       // about the hover and not about a caption that was always drawn.
@@ -430,7 +362,7 @@ void main() {
       addTearDown(mouse.removePointer);
 
       await mouse.addPointer(location: Offset.zero);
-      await mouse.moveTo(tester.getCenter(_gripOf('Headcount by place')));
+      await mouse.moveTo(tester.getCenter(_gripOf('Jobs')));
       await tester.pumpAndSettle();
 
       expect(find.text(said), findsOneWidget);
@@ -449,7 +381,7 @@ void main() {
 
       await _pumpDashboard(tester, _dashboard(record: sent));
 
-      final grip = _gripOf('Customers added');
+      final grip = _gripOf('Customers');
 
       await tester.drag(
         grip,
@@ -459,10 +391,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(_cardTitles(tester).first, 'Customers added');
+      expect(_cardTitles(tester).first, 'Customers');
       expect(
-        [for (final w in sent.single['widgets'] as List) w['key']],
-        ['customers.added', 'jobs.by_status', 'jobs.upcoming', 'jobs.revenue'],
+        [for (final g in sent.single['glances'] as List) g['key']],
+        ['customers', 'jobs', 'hr', 'inspection'],
       );
     });
 
@@ -476,14 +408,15 @@ void main() {
     /// as well as fingers: two recognizers would then be contesting one press,
     /// and the card would sit there until one of them won.
     testWidgets('a mouse has the card the moment it presses', (tester) async {
-      await _pumpHr(tester, _hr(), size: const Size(375, 700));
+      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700));
 
       // Control: one of this title, drawn in the card's own header. The
-      // assertion below is about a SECOND one appearing.
-      expect(find.text('Onboardings in flight'), findsOneWidget);
+      // assertion below is about a SECOND one appearing. Jobs is the first
+      // card, so the grip is on screen in this window.
+      expect(find.text('Jobs'), findsOneWidget);
 
       final mouse = await tester.startGesture(
-        tester.getCenter(_gripOf('Onboardings in flight')),
+        tester.getCenter(_gripOf('Jobs')),
         kind: PointerDeviceKind.mouse,
       );
 
@@ -491,7 +424,7 @@ void main() {
       await tester.pump();
 
       expect(
-        find.text('Onboardings in flight'),
+        find.text('Jobs'),
         findsNWidgets(2),
         reason: 'The preview is not following the pointer: nothing was picked '
             'up by the press alone.',
@@ -516,21 +449,22 @@ void main() {
     testWidgets('a held stylus picks the card up and shows no caption', (
       tester,
     ) async {
-      await _pumpHr(tester, _hr(), size: const Size(375, 700));
+      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700));
 
       // Control, as in the mouse test above: one of this title to begin with,
-      // drawn in the card's own header.
-      expect(find.text('Onboardings in flight'), findsOneWidget);
+      // drawn in the card's own header. Jobs is first, so the grip is on
+      // screen in this window.
+      expect(find.text('Jobs'), findsOneWidget);
 
       final pen = await tester.startGesture(
-        tester.getCenter(_gripOf('Onboardings in flight')),
+        tester.getCenter(_gripOf('Jobs')),
         kind: PointerDeviceKind.stylus,
       );
 
       // One frame first: a pen must NOT have the card yet, or it is back in
       // the immediate set and the dead band comes with it.
       await tester.pump();
-      expect(find.text('Onboardings in flight'), findsOneWidget);
+      expect(find.text('Jobs'), findsOneWidget);
 
       await tester.pump(kLongPressTimeout + const Duration(milliseconds: 20));
 
@@ -545,7 +479,7 @@ void main() {
       );
 
       expect(
-        find.text('Onboardings in flight'),
+        find.text('Jobs'),
         findsNWidgets(2),
         reason:
             'The pen held the grip and nothing was picked up, so a stylus '
@@ -566,11 +500,11 @@ void main() {
     ) async {
       await _pumpDashboard(tester, _dashboard());
 
-      expect(_cardTitles(tester).first, 'Jobs by status');
+      expect(_cardTitles(tester).first, 'Jobs');
 
       final button = tester.widget<IconButton>(
         find.ancestor(
-          of: find.byTooltip('Move “Jobs by status” later'),
+          of: find.byTooltip('Move “Jobs” later'),
           matching: find.byType(IconButton),
         ).first,
       );
@@ -583,8 +517,8 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();
 
-      expect(_cardTitles(tester).first, 'Upcoming jobs');
-      expect(_cardTitles(tester)[1], 'Jobs by status');
+      expect(_cardTitles(tester).first, 'Human Resources');
+      expect(_cardTitles(tester)[1], 'Jobs');
     });
 
     /// Walking a card from the bottom of the page to the top means pressing the
@@ -593,10 +527,10 @@ void main() {
     testWidgets('focus follows the card it just moved', (tester) async {
       await _pumpDashboard(tester, _dashboard());
 
-      await tester.tap(find.byTooltip('Move “Customers added” earlier'));
+      await tester.tap(find.byTooltip('Move “Inspection” earlier'));
       await tester.pumpAndSettle();
 
-      expect(_cardTitles(tester)[2], 'Customers added');
+      expect(_cardTitles(tester)[2], 'Inspection');
 
       final focused = tester
           .widgetList<IconButton>(find.byType(IconButton))
@@ -604,7 +538,7 @@ void main() {
           .toList();
 
       expect(focused, hasLength(1), reason: 'Focus was dropped by the move.');
-      expect(focused.single.tooltip, 'Move “Customers added” earlier');
+      expect(focused.single.tooltip, 'Move “Inspection” earlier');
     });
 
     testWidgets('a dashboard nobody may rearrange draws no controls at all', (
@@ -802,62 +736,86 @@ Future<void> _pump(
 
 // ── the servers ────────────────────────────────────────────────────
 
-/// A main dashboard of four panels: two short, two long, in that pairing, so
+/// A main dashboard of four glances: one short, one long, then two short, so
 /// that a row of unequal cards is what the layout is asked to cope with.
 MockClientHandler _dashboard({
   Set<String>? only,
   List<Map<String, dynamic>>? record,
   int saveStatus = 200,
   Completer<void>? held,
-  bool catalogueReversed = false,
 }) {
-  final panels = [
+  final glances = [
     {
-      'key': 'jobs.by_status',
-      'label': 'Jobs by status',
-      'options': <String, dynamic>{},
-      'data': {
-        'rows': [
-          {'status': 'scheduled', 'total': 2},
-        ],
-      },
-    },
-    {
-      'key': 'jobs.upcoming',
-      'label': 'Upcoming jobs',
-      'options': <String, dynamic>{},
-      'data': {
-        'rows': [
-          for (var i = 0; i < 4; i++)
-            {
-              'number': 'J-$i',
-              'title': 'Sweep $i',
-              'scheduled_for': '2026-09-0${i + 1}T09:00:00+00:00',
-              'customer': 'Somebody',
-            },
-        ],
-      },
-    },
-    {
-      'key': 'jobs.revenue',
-      'label': 'Revenue',
+      'key': 'jobs',
+      'label': 'Jobs',
+      'presentation': 'pie',
+      'allowed_presentations': ['pie', 'bar', 'text'],
+      'snapshot': true,
+      'coming_soon': false,
       'options': {
-        'statuses': ['completed'],
-        'days': 30,
+        'earned_statuses': ['completed'],
       },
       'data': {
-        'rows': [
-          {'currency': 'USD', 'amount_minor': 12345, 'jobs': 3},
+        'empty': false,
+        'slices': [
+          {'label': 'scheduled', 'total': 2},
+        ],
+        'sentences': ['2 jobs on the board.'],
+      },
+    },
+    {
+      'key': 'hr',
+      'label': 'Human Resources',
+      'presentation': 'bar',
+      'allowed_presentations': ['bar', 'pie', 'text'],
+      'snapshot': true,
+      'coming_soon': false,
+      'options': <String, dynamic>{},
+      'data': {
+        'empty': false,
+        'slices': [
+          {'label': 'Onboardings in flight', 'total': 0},
+          {'label': 'Invitations stalled', 'total': 0},
+        ],
+        'sentences': [
+          '1 person on the books.',
+          '0 onboardings in flight.',
+          '0 invitations have stalled.',
+          '0 people joined this month.',
+          '0 people left this month.',
+          'None of the contract questions are marked as an expiry, so there is nothing to list yet.',
+          'A second line so this card is taller than a one-sentence neighbour.',
+          'A third line for the same reason.',
         ],
       },
     },
     {
-      'key': 'customers.added',
-      'label': 'Customers added',
+      'key': 'customers',
+      'label': 'Customers',
+      'presentation': 'line',
+      'allowed_presentations': ['line', 'bar', 'text'],
+      'snapshot': false,
+      'coming_soon': false,
       'options': <String, dynamic>{},
-      'data': {'total': 4},
+      'data': {
+        'empty': false,
+        'sentences': ['2 new customers this month.'],
+      },
     },
-  ].where((panel) => only == null || only.contains(panel['key'])).toList();
+    {
+      'key': 'inspection',
+      'label': 'Inspection',
+      'presentation': 'bar',
+      'allowed_presentations': ['bar', 'pie', 'text'],
+      'snapshot': true,
+      'coming_soon': false,
+      'options': <String, dynamic>{},
+      'data': {
+        'empty': true,
+        'sentence': 'No inspections in reach.',
+      },
+    },
+  ].where((glance) => only == null || only.contains(glance['key'])).toList();
 
   return (request) async {
     final path = request.url.path;
@@ -871,23 +829,15 @@ MockClientHandler _dashboard({
 
       if (saveStatus != 200) return _json({'message': 'Nothing doing.'}, saveStatus);
 
-      return _json({'widgets': jsonDecode(request.body)['widgets']});
+      return _json({'ok': true});
     }
 
-    if (path.endsWith('/dashboard')) return _json({'panels': panels});
-
-    if (path.endsWith('/dashboard/catalogue')) {
+    if (path.endsWith('/dashboard')) {
       return _json({
-        'widgets': [
-          // The registry's order, which is not this user's. A save that
-          // followed THIS list would reverse their dashboard.
-          for (final panel in catalogueReversed ? panels.reversed : panels)
-            {
-              'key': panel['key'],
-              'label': panel['label'],
-              'options': <String, dynamic>{},
-            },
-        ],
+        'period': 'month',
+        'period_starts_on': '2026-08-01T00:00:00-04:00',
+        'period_ends_on': '2026-08-24T16:00:00-04:00',
+        'glances': glances,
       });
     }
 
@@ -895,81 +845,63 @@ MockClientHandler _dashboard({
   };
 }
 
-/// The HR tab's five widgets, with a saved order optionally already in this
-/// user's preferences — which is where /me carries it from.
-MockClientHandler _hr({
-  List<String>? savedOrder,
-  Set<String> withhold = const {},
-  List<Map<String, dynamic>>? record,
-}) {
-  final panels = [
-    {
-      'key': 'hr.headcount',
-      'label': 'Headcount by place',
-      'data': {
-        'rows': [
-          {'title': 'Everdoors', 'total': 1},
-        ],
-        'total': 1,
-        'places': 1,
-      },
-    },
-    {
-      'key': 'hr.onboardings_in_flight',
-      'label': 'Onboardings in flight',
-      'data': {'rows': <Map<String, Object?>>[], 'total': 0, 'oldest_started_at': null},
-    },
-    {
-      'key': 'hr.invitations_stalled',
-      'label': 'Invitations that have stalled',
-      'data': {'rows': <Map<String, Object?>>[], 'total': 0, 'sent_total': 0},
-    },
-    {
-      'key': 'hr.starters_and_leavers',
-      'label': 'Starting and leaving',
-      'data': {
-        'rows': [
-          {'title': 'Joined', 'total': 1},
-        ],
-        'total': 1,
-        'days': 30,
-        'period_applies_to': ['Joined'],
-        'people': <Map<String, Object?>>[],
-        'more_people': 0,
-      },
-    },
-    {
-      'key': 'hr.certifications',
-      'label': 'Expiring certifications',
-      'data': {
-        'rows': <Map<String, Object?>>[],
-        'total': 0,
-        'note':
-            'None of the contract questions are marked as an expiry, so there is nothing to list yet.',
-      },
-    },
-  ].where((panel) => !withhold.contains(panel['key'])).toList();
-
-  final me = {
-    ..._me,
-    if (savedOrder != null)
-      'preferences': {
-        'dashboard.order': {'hr': savedOrder},
-      },
-  };
-
+/// The HR chip — one glance, the same shape GET /dashboard would include for hr.
+MockClientHandler _hr() {
   return (request) async {
     final path = request.url.path;
 
-    if (path.endsWith('/me')) return _json({'data': me});
+    if (path.endsWith('/me')) return _json({'data': _me});
 
     if (request.method == 'PUT' && path.endsWith('/dashboard/layout')) {
-      record?.add(jsonDecode(request.body) as Map<String, dynamic>);
-
-      return _json(jsonDecode(request.body));
+      return _json({'ok': true});
     }
 
-    if (path.endsWith('/hr/dashboard')) return _json({'panels': panels});
+    if (request.method == 'GET' &&
+        path.endsWith('/dashboard') &&
+        !path.endsWith('/hr/dashboard')) {
+      return _json({
+        'period': 'month',
+        'glances': [
+          {
+            'key': 'hr',
+            'presentation': 'bar',
+            'options': <String, dynamic>{},
+          },
+        ],
+      });
+    }
+
+    if (path.endsWith('/hr/dashboard')) {
+      return _json({
+        'period': 'month',
+        'period_starts_on': '2026-08-01T00:00:00-04:00',
+        'period_ends_on': '2026-08-24T16:00:00-04:00',
+        'glance': {
+          'key': 'hr',
+          'label': 'Human Resources',
+          'presentation': 'bar',
+          'allowed_presentations': ['bar', 'pie', 'text'],
+          'snapshot': true,
+          'coming_soon': false,
+          'options': <String, dynamic>{},
+          'data': {
+            'empty': false,
+            'slices': [
+              {'label': 'Onboardings in flight', 'total': 0},
+              {'label': 'Invitations stalled', 'total': 0},
+            ],
+            'sentences': [
+              '1 person on the books.',
+              '0 onboardings in flight.',
+              '0 invitations have stalled.',
+              '0 people joined this month.',
+              '0 people left this month.',
+              'None of the contract questions are marked as an expiry, so there is nothing to list yet.',
+            ],
+          },
+        },
+      });
+    }
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);
   };

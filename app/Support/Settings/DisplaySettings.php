@@ -23,11 +23,12 @@ use Illuminate\Database\Eloquent\Model;
  * screens share to write a timestamp — and by the settings screen's own time
  * pickers.
  *
- * `week_starts_on` and `measurement_units` are deliberately absent. There is no
- * calendar and no quantity field in the client yet, so nothing would read them,
- * and adding them here would recreate the exact failure this work exists to fix:
- * a value that travels, looks live, and changes nothing. They join this list on
- * the day something formats from them, which costs one line each.
+ * `week_starts_on` and `measurement_units` are deliberately absent from /me.
+ * The server already reads `week_starts_on` for the dashboard week bound; the
+ * client does not format a week grid from it yet. `measurement_units` still
+ * waits on a quantity field. A value that travels on /me but changes nothing
+ * on screen is the failure this list exists to prevent — they join KEYS on the
+ * day a client format reads them.
  */
 class DisplaySettings
 {

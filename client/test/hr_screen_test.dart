@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/hr_screen.dart';
+import 'package:ezbizi_client/widgets/tab_bar_like.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -33,9 +34,8 @@ import 'package:http/testing.dart';
 /// automation action the engine cannot run.
 ///
 /// No tab is left — all five are built, and hr_contracts_test.dart,
-/// hr_onboarding_test.dart and hr_dashboard_test.dart defend what they do. What
-/// is left is one PANEL on the Dashboard: expiring certifications, which has no
-/// field model to read yet. The rule is the same one level down.
+/// hr_onboarding_test.dart and hr_dashboard_test.dart defend what they do. The
+/// Dashboard chip is one glance; certifications is a sentence on that card.
 void main() {
   testWidgets('the five tabs are drawn, in the owner’s order, and switch', (
     tester,
@@ -74,17 +74,14 @@ void main() {
     expect(find.text('Jose Silva'), findsOneWidget);
   });
 
-  /// The convention moved down a level rather than going away.
-  ///
-  /// Every tab is built now, so nothing on the strip is a placeholder. What is
-  /// still unfinished is one PANEL — wait, certifications now has a widget.
-  /// The empty state is the one worth pinning: none marked as expiry.
-  testWidgets('the expiring panel is drawn and says none are marked yet', (
+  /// Certifications is a sentence on the one HR card, not a fifth panel.
+  testWidgets('the certifications sentence is on the one HR card', (
     tester,
   ) async {
     await _pump(tester, _handler());
 
-    expect(find.text('Expiring certifications'), findsOneWidget);
+    expect(find.text('Human Resources'), findsOneWidget);
+    expect(find.text('Expiring certifications'), findsNothing);
     expect(find.text('Not built yet'), findsNothing);
 
     expect(
@@ -549,7 +546,12 @@ Future<void> _pump(
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 
 List<String> _chips(WidgetTester tester) => tester
-    .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+    .widgetList<ChoiceChip>(
+      find.descendant(
+        of: find.byType(TabBarLike),
+        matching: find.byType(ChoiceChip),
+      ),
+    )
     .map((chip) => (chip.label as Text).data!)
     .toList();
 
@@ -620,12 +622,19 @@ MockClientHandler _handler({
     if (path.endsWith('/me')) return _json({'data': _me});
 
     // The tab this screen now opens on, so every test in this file pays for it.
-    // Enough for it to draw; what the panels DO is defended in
-    // client/test/hr_dashboard_test.dart, against fixtures written to catch a
-    // client that invents its own figures — a second copy of those here would be
-    // a second thing to keep in step.
+    // Enough for it to draw; what the chip DOES is defended in
+    // client/test/hr_dashboard_test.dart.
     if (path.endsWith('/hr/dashboard')) {
-      return _json({'panels': _dashboardPanels});
+      return _json({
+        'period': 'month',
+        'period_starts_on': '2026-08-01T00:00:00-04:00',
+        'period_ends_on': '2026-08-24T16:00:00-04:00',
+        'glance': _dashboardGlance,
+      });
+    }
+
+    if (request.method == 'PUT' && path.endsWith('/dashboard/layout')) {
+      return _json({'ok': true});
     }
 
     // Enough for the Contracts tab to open and say it has nothing yet. What
@@ -861,74 +870,31 @@ const _completedOnly = [
 /// `GET /hr/dashboard` — just enough for the tab to draw.
 ///
 /// The one-person organization, which is what most people open this on. What
-/// each panel says in that state is defended in hr_dashboard_test.dart.
-const _dashboardPanels = [
-  {
-    'key': 'hr.headcount',
-    'label': 'Headcount by place',
-    'data': {
-      'rows': [
-        {'title': 'Everdoors', 'total': 1},
-      ],
-      'total': 1,
-      'places': 1,
-    },
+/// the chip says in that state is defended in hr_dashboard_test.dart.
+const _dashboardGlance = {
+  'key': 'hr',
+  'label': 'Human Resources',
+  'presentation': 'bar',
+  'allowed_presentations': ['bar', 'pie', 'text'],
+  'snapshot': true,
+  'coming_soon': false,
+  'options': <String, dynamic>{},
+  'data': {
+    'empty': false,
+    'slices': [
+      {'label': 'Onboardings in flight', 'total': 0},
+      {'label': 'Invitations stalled', 'total': 0},
+    ],
+    'sentences': [
+      '1 person on the books.',
+      '0 onboardings in flight.',
+      '0 invitations have stalled.',
+      '0 people joined this month.',
+      '0 people left this month.',
+      'None of the contract questions are marked as an expiry, so there is nothing to list yet. Mark a date field as an expiry on a contract template.',
+    ],
   },
-  {
-    'key': 'hr.onboardings_in_flight',
-    'label': 'Onboardings in flight',
-    'data': {
-      'rows': [
-        {'title': 'Being filled in', 'total': 0},
-        {'title': 'Waiting on a signature', 'total': 0},
-      ],
-      'total': 0,
-      'oldest_started_at': null,
-    },
-  },
-  {
-    'key': 'hr.invitations_stalled',
-    'label': 'Invitations that have stalled',
-    'data': {
-      'rows': [
-        {'title': 'Expired before anyone accepted', 'total': 0},
-        {'title': 'Sent but never opened', 'total': 0},
-      ],
-      'total': 0,
-      'sent_total': 0,
-    },
-  },
-  {
-    'key': 'hr.starters_and_leavers',
-    'label': 'Starting and leaving',
-    'data': {
-      'rows': [
-        {'title': 'Joined', 'total': 1},
-        {'title': 'Left', 'total': 0},
-        {'title': 'No longer active', 'total': 0},
-      ],
-      'total': 1,
-      'days': 30,
-      'period_applies_to': ['Joined', 'Left'],
-      'note':
-          'Leaving dates start from when this record-keeping began. People who were already inactive before then have no leaving date.',
-      'people': [
-        {'id': 'u-1', 'name': 'Jose Silva', 'joined_at': '2026-08-01T09:00:00+00:00'},
-      ],
-      'more_people': 0,
-    },
-  },
-  {
-    'key': 'hr.certifications',
-    'label': 'Expiring certifications',
-    'data': {
-      'rows': [],
-      'total': 0,
-      'note':
-          'None of the contract questions are marked as an expiry, so there is nothing to list yet. Mark a date field as an expiry on a contract template.',
-    },
-  },
-];
+};
 
 /// The create response — the one moment the raw token exists.
 const _created = {

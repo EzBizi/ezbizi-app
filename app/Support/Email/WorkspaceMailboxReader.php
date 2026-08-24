@@ -93,4 +93,11 @@ final class WorkspaceMailboxReader implements MailboxReader
 
         return $this->gmail->arrivalsSince($mailbox, $mark, $limit);
     }
+
+    public function unreadCount(Mailbox $mailbox): int
+    {
+        $this->workspace->assertCanOpen($mailbox);
+
+        return $this->gmail->unreadCount($mailbox);
+    }
 }
