@@ -107,11 +107,15 @@ final class JobsGlance implements Glance
                 if (! empty($revenue['needs_configuring'])) {
                     $sentences[] = 'Choose which of your job statuses count as earned.';
                 } else {
+                    // amount_minor stays on data.revenue only — never ÷100 into a
+                    // sentence (JPY and other non-cent currencies would lie).
                     $data['revenue'] = $revenue['rows'];
                     foreach ($revenue['rows'] as $row) {
-                        // Display only — amount_minor stays on data.revenue for the client.
-                        $amount = number_format(((int) $row['amount_minor']) / 100, 2);
-                        $sentences[] = "{$amount} {$row['currency']} earned.";
+                        $jobs = (int) $row['jobs'];
+                        $currency = $row['currency'];
+                        $sentences[] = $jobs === 1
+                            ? "1 job earned in {$currency}."
+                            : "{$jobs} jobs earned in {$currency}.";
                     }
                 }
             }
@@ -148,12 +152,27 @@ final class JobsGlance implements Glance
         return $earned === [] ? [] : ['earned_statuses' => $earned];
     }
 
+    /**
+     * Same “still upcoming” rule as UpcomingJobs: scheduled_for compared to
+     * now() in the franchise timezone (UTC when the place has none).
+     */
     private function upcomingCount(User $user): int
     {
         return Job::query()
             ->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
             ->whereNotNull('scheduled_for')
-            ->where('scheduled_for', '>', now())
+            ->with(['franchise:id,timezone'])
+            ->orderBy('scheduled_for')
+            ->get()
+            ->filter(fn (Job $job) => $this->isUpcoming($job))
             ->count();
+    }
+
+    private function isUpcoming(Job $job): bool
+    {
+        $tz = $job->franchise?->timezone ?: 'UTC';
+        $wall = $job->scheduled_for;
+
+        return $wall !== null && $wall->gte(now($tz));
     }
 }
