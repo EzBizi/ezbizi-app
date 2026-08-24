@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0076',
+      date: '24 Aug 2026',
+      items: [
+        'The dashboard is one box per module you can open, with one week, '
+            'month, quarter or year for the page, and no panel picker.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0075',
       date: '24 Aug 2026',
       items: [

@@ -4,55 +4,124 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/dashboard_screen.dart';
+import 'package:ezbizi_client/widgets/dashboard_card.dart';
+import 'package:ezbizi_client/widgets/tag.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// The main dashboard (plan §18 Phase 4).
-///
-/// ── The second surface, which is where a panel stops being honest ─
-///
-/// Every widget is drawn twice in this product: on the screen it was written
-/// for, and here, by a renderer that knows nothing about it. That is the whole
-/// value of a registry — one computation, two surfaces — and it is also the
-/// exact place a panel's carefully-worded label goes missing.
-///
-/// It went missing. HR's starters-and-leavers reports joining over a rolling
-/// window and "no longer active" as an all-time count, because nothing records
-/// the DAY somebody was deactivated. The HR tab labels the two rows apart; this
-/// screen drew `title` and `total` and nothing else, so the same figure read
-/// "Joined — 1" and any reader would take it for all time.
+/// The main dashboard: one box per reachable module, one period, no picker.
 void main() {
-  testWidgets('a row counted over a window carries the window here too', (
-    tester,
-  ) async {
+  testWidgets('HR sentences from the glance payload appear', (tester) async {
     await _pump(tester, _handler());
 
-    expect(find.text('Joined in the last 30 days'), findsOneWidget);
+    expect(find.text('1 person on the books.'), findsOneWidget);
+    expect(find.text('0 onboardings in flight.'), findsOneWidget);
+    expect(find.text('0 invitations have stalled.'), findsOneWidget);
+    expect(find.text('0 people joined this month.'), findsOneWidget);
 
-    // And the row the app cannot date does NOT inherit it. This is the failure
-    // that looks like success: a plausible number under a period it was never
-    // counted over.
-    expect(find.text('No longer active'), findsOneWidget);
-    expect(find.textContaining('No longer active in the last'), findsNothing);
+    // The old widget-row window is gone; this screen draws sentences.
+    expect(find.text('Joined in the last 30 days'), findsNothing);
   });
 
-  /// The window is the server's answer, not this screen's guess. A renderer
-  /// that decided for itself would keep working until a third row arrived.
-  testWidgets('a widget that says nothing about a period gets a bare title', (
+  testWidgets('period chips sit in the header and Choose panels does not', (
     tester,
   ) async {
     await _pump(tester, _handler());
 
-    expect(find.text('scheduled'), findsOneWidget);
-    expect(find.textContaining('scheduled in the last'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Week'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Month'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Quarter'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Year'), findsOneWidget);
+
+    expect(
+      tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Month')).selected,
+      isTrue,
+    );
+    expect(
+      tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Week')).selected,
+      isFalse,
+    );
+
+    expect(find.text('Choose panels'), findsNothing);
+    expect(find.byTooltip('Choose panels'), findsNothing);
+    expect(find.byIcon(Icons.tune), findsNothing);
+  });
+
+  testWidgets('an empty glance is the sentence, coming soon is tagged', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+
+    expect(find.text('No new customers this month.'), findsOneWidget);
+    expect(find.text('Coming soon'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(DashboardCard),
+        matching: find.byType(Tag),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('The register is not here yet'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('tapping a card does not push another route', (tester) async {
+    final nav = _PushRecorder();
+
+    await _pump(tester, _handler(), observers: [nav]);
+
+    expect(nav.pushes, 1, reason: 'Home is the first push.');
+    expect(tester.state<NavigatorState>(find.byType(Navigator)).canPop(), isFalse);
+
+    await tester.tap(find.text('Human Resources'));
+    await tester.pumpAndSettle();
+
+    expect(nav.pushes, 1, reason: 'The card called Navigator.push.');
+    expect(tester.state<NavigatorState>(find.byType(Navigator)).canPop(), isFalse);
+    expect(find.byType(DashboardScreen), findsOneWidget);
+  });
+
+  testWidgets('choosing a period writes it with the current glances', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await _pump(tester, _handler(record: sent));
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Week'));
+    await tester.pumpAndSettle();
+
+    expect(sent, hasLength(1));
+    expect(sent.single['period'], 'week');
+    expect(
+      [for (final g in sent.single['glances'] as List) g['key']],
+      ['hr', 'customers', 'inventory'],
+    );
+    expect(
+      (sent.single['glances'] as List)[0]['presentation'],
+      'bar',
+    );
   });
 }
 
-// ── driving the screen ─────────────────────────────────────────────
+class _PushRecorder extends NavigatorObserver {
+  int pushes = 0;
 
-Future<void> _pump(WidgetTester tester, MockClientHandler handler) async {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pushes++;
+  }
+}
+
+Future<void> _pump(
+  WidgetTester tester,
+  MockClientHandler handler, {
+  List<NavigatorObserver> observers = const [],
+}) async {
   tester.view.physicalSize = const Size(1400, 2000);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -67,40 +136,65 @@ Future<void> _pump(WidgetTester tester, MockClientHandler handler) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
+      navigatorObservers: observers,
       home: Scaffold(body: DashboardScreen(api: api, session: session)),
     ),
   );
   await tester.pumpAndSettle();
 }
 
-/// A dashboard somebody composed: one widget that reports over a window and one
-/// that does not.
-MockClientHandler _handler() {
-  final panels = [
+MockClientHandler _handler({List<Map<String, dynamic>>? record}) {
+  final glances = [
     {
-      'key': 'jobs.by_status',
-      'label': 'Jobs by status',
+      'key': 'hr',
+      'label': 'Human Resources',
+      'presentation': 'bar',
+      'allowed_presentations': ['bar', 'pie', 'text'],
+      'snapshot': true,
+      'coming_soon': false,
       'options': <String, dynamic>{},
       'data': {
-        'rows': [
-          {'status': 'scheduled', 'total': 2},
+        'empty': false,
+        'slices': [
+          {'label': 'Onboardings in flight', 'total': 0},
+          {'label': 'Invitations stalled', 'total': 0},
+        ],
+        'sentences': [
+          '1 person on the books.',
+          '0 onboardings in flight.',
+          '0 invitations have stalled.',
+          '0 people joined this month.',
+          '0 people left this month.',
         ],
       },
     },
     {
-      'key': 'hr.starters_and_leavers',
-      'label': 'Starting and leaving',
+      'key': 'customers',
+      'label': 'Customers',
+      'presentation': 'line',
+      'allowed_presentations': ['line', 'bar', 'text'],
+      'snapshot': false,
+      'coming_soon': false,
       'options': <String, dynamic>{},
       'data': {
-        'rows': [
-          {'title': 'Joined', 'total': 1},
-          {'title': 'No longer active', 'total': 0},
-        ],
-        'total': 1,
-        'days': 30,
-        'period_applies_to': ['Joined'],
-        'people': <Map<String, Object?>>[],
-        'more_people': 0,
+        'empty': true,
+        'sentence': 'No new customers this month.',
+      },
+    },
+    {
+      'key': 'inventory',
+      'label': 'Inventory',
+      'presentation': 'text',
+      'allowed_presentations': <String>[],
+      'snapshot': true,
+      'coming_soon': true,
+      'options': <String, dynamic>{},
+      'data': {
+        'empty': true,
+        'sentence':
+            'Inventory is where the company will keep what it has on the shelf '
+            '— parts, materials, and the stock that jobs draw from. The '
+            'register is not here yet.',
       },
     },
   ];
@@ -110,18 +204,18 @@ MockClientHandler _handler() {
 
     if (path.endsWith('/me')) return _json({'data': _me});
 
-    if (path.endsWith('/dashboard')) return _json({'panels': panels});
+    if (request.method == 'PUT' && path.endsWith('/dashboard/layout')) {
+      record?.add(jsonDecode(request.body) as Map<String, dynamic>);
 
-    if (path.endsWith('/dashboard/catalogue')) {
+      return _json({'ok': true});
+    }
+
+    if (path.endsWith('/dashboard')) {
       return _json({
-        'widgets': [
-          for (final panel in panels)
-            {
-              'key': panel['key'],
-              'label': panel['label'],
-              'options': <String, dynamic>{},
-            },
-        ],
+        'period': 'month',
+        'period_starts_on': '2026-08-01T00:00:00-04:00',
+        'period_ends_on': '2026-08-24T16:00:00-04:00',
+        'glances': glances,
       });
     }
 

@@ -43,8 +43,8 @@ void main() {
       expect(heights, hasLength(4), reason: 'Four panels were sent.');
 
       // The two on the first row match, and the two on the second row match.
-      // "Jobs by status" has one line under its header and "Upcoming" has four,
-      // which is exactly the pair that used to leave a hole.
+      // Jobs is one sentence and Human Resources is several, which is the pair
+      // that used to leave a hole when cards sized to their own contents.
       expect(heights[0], heights[1]);
       expect(heights[2], heights[3]);
 
@@ -57,7 +57,7 @@ void main() {
     testWidgets('a card with almost nothing in it is still a card', (
       tester,
     ) async {
-      await _pumpDashboard(tester, _dashboard(only: {'jobs.by_status'}));
+      await _pumpDashboard(tester, _dashboard(only: {'jobs'}));
 
       expect(_cardHeights(tester).single, DashboardCard.minimumHeight);
     });
@@ -78,7 +78,7 @@ void main() {
     testWidgets('the border is the theme’s edge, not a colour of its own', (
       tester,
     ) async {
-      await _pumpDashboard(tester, _dashboard(only: {'jobs.by_status'}));
+      await _pumpDashboard(tester, _dashboard(only: {'jobs'}));
 
       final context = tester.element(find.byType(DashboardCard).first);
       final material = tester.widget<Material>(
@@ -131,22 +131,23 @@ void main() {
 
       await _pumpDashboard(tester, _dashboard(record: sent));
 
-      await tester.tap(find.byTooltip('Move “Jobs by status” later'));
+      await tester.tap(find.byTooltip('Move “Jobs” later'));
       await tester.pumpAndSettle();
 
       expect(sent, hasLength(1));
 
       // The whole list goes back, in its new order...
       expect(
-        [for (final w in sent.single['widgets'] as List) w['key']],
-        ['jobs.upcoming', 'jobs.by_status', 'jobs.revenue', 'customers.added'],
+        [for (final g in sent.single['glances'] as List) g['key']],
+        ['hr', 'jobs', 'customers', 'inspection'],
       );
 
-      // ...carrying what each panel was configured with. Saving an ORDER that
-      // quietly reset every panel's options would be a very expensive drag.
+      // ...carrying how each box was drawn. Saving an ORDER that quietly
+      // reset presentation or options would be a very expensive drag.
+      expect((sent.single['glances'] as List)[1]['presentation'], 'pie');
       expect(
-        (sent.single['widgets'] as List)[2]['options'],
-        {'statuses': ['completed'], 'days': 30},
+        (sent.single['glances'] as List)[1]['options'],
+        {'earned_statuses': ['completed']},
       );
     });
 
@@ -162,14 +163,14 @@ void main() {
 
       await _pumpDashboard(tester, _dashboard(saveStatus: 500, held: answered));
 
-      expect(_cardTitles(tester).first, 'Jobs by status');
+      expect(_cardTitles(tester).first, 'Jobs');
 
-      await tester.tap(find.byTooltip('Move “Jobs by status” later'));
+      await tester.tap(find.byTooltip('Move “Jobs” later'));
       await tester.pump();
 
       expect(
         _cardTitles(tester).first,
-        'Upcoming jobs',
+        'Human Resources',
         reason: 'The card waited for a round trip before moving.',
       );
 
@@ -179,32 +180,8 @@ void main() {
       // Put back where the server still has it, and said out loud. A card left
       // sitting somewhere the server does not agree with is worse than a card
       // that did not move.
-      expect(_cardTitles(tester).first, 'Jobs by status');
+      expect(_cardTitles(tester).first, 'Jobs');
       expect(find.text('Nothing doing.'), findsOneWidget);
-    });
-
-    /// Turning a panel on is not a reason to lose an arrangement. Rebuilding
-    /// the layout from the catalogue, as the panel picker used to, threw away
-    /// the order every time somebody ticked a box.
-    testWidgets('choosing panels keeps the order they are already in', (
-      tester,
-    ) async {
-      final sent = <Map<String, dynamic>>[];
-
-      // The catalogue lists them in the registry's order; this user's dashboard
-      // is in a different one. Saving must follow the user, not the registry.
-      await _pumpDashboard(tester, _dashboard(record: sent, catalogueReversed: true));
-
-      await tester.tap(find.byTooltip('Choose panels'));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
-
-      expect(
-        [for (final w in sent.single['widgets'] as List) w['key']],
-        ['jobs.by_status', 'jobs.upcoming', 'jobs.revenue', 'customers.added'],
-      );
     });
 
     testWidgets('a saved order comes back the next time the tab is opened', (
@@ -449,7 +426,7 @@ void main() {
 
       await _pumpDashboard(tester, _dashboard(record: sent));
 
-      final grip = _gripOf('Customers added');
+      final grip = _gripOf('Customers');
 
       await tester.drag(
         grip,
@@ -459,10 +436,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(_cardTitles(tester).first, 'Customers added');
+      expect(_cardTitles(tester).first, 'Customers');
       expect(
-        [for (final w in sent.single['widgets'] as List) w['key']],
-        ['customers.added', 'jobs.by_status', 'jobs.upcoming', 'jobs.revenue'],
+        [for (final g in sent.single['glances'] as List) g['key']],
+        ['customers', 'jobs', 'hr', 'inspection'],
       );
     });
 
@@ -566,11 +543,11 @@ void main() {
     ) async {
       await _pumpDashboard(tester, _dashboard());
 
-      expect(_cardTitles(tester).first, 'Jobs by status');
+      expect(_cardTitles(tester).first, 'Jobs');
 
       final button = tester.widget<IconButton>(
         find.ancestor(
-          of: find.byTooltip('Move “Jobs by status” later'),
+          of: find.byTooltip('Move “Jobs” later'),
           matching: find.byType(IconButton),
         ).first,
       );
@@ -583,8 +560,8 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();
 
-      expect(_cardTitles(tester).first, 'Upcoming jobs');
-      expect(_cardTitles(tester)[1], 'Jobs by status');
+      expect(_cardTitles(tester).first, 'Human Resources');
+      expect(_cardTitles(tester)[1], 'Jobs');
     });
 
     /// Walking a card from the bottom of the page to the top means pressing the
@@ -593,10 +570,10 @@ void main() {
     testWidgets('focus follows the card it just moved', (tester) async {
       await _pumpDashboard(tester, _dashboard());
 
-      await tester.tap(find.byTooltip('Move “Customers added” earlier'));
+      await tester.tap(find.byTooltip('Move “Inspection” earlier'));
       await tester.pumpAndSettle();
 
-      expect(_cardTitles(tester)[2], 'Customers added');
+      expect(_cardTitles(tester)[2], 'Inspection');
 
       final focused = tester
           .widgetList<IconButton>(find.byType(IconButton))
@@ -604,7 +581,7 @@ void main() {
           .toList();
 
       expect(focused, hasLength(1), reason: 'Focus was dropped by the move.');
-      expect(focused.single.tooltip, 'Move “Customers added” earlier');
+      expect(focused.single.tooltip, 'Move “Inspection” earlier');
     });
 
     testWidgets('a dashboard nobody may rearrange draws no controls at all', (
@@ -802,62 +779,86 @@ Future<void> _pump(
 
 // ── the servers ────────────────────────────────────────────────────
 
-/// A main dashboard of four panels: two short, two long, in that pairing, so
+/// A main dashboard of four glances: one short, one long, then two short, so
 /// that a row of unequal cards is what the layout is asked to cope with.
 MockClientHandler _dashboard({
   Set<String>? only,
   List<Map<String, dynamic>>? record,
   int saveStatus = 200,
   Completer<void>? held,
-  bool catalogueReversed = false,
 }) {
-  final panels = [
+  final glances = [
     {
-      'key': 'jobs.by_status',
-      'label': 'Jobs by status',
-      'options': <String, dynamic>{},
-      'data': {
-        'rows': [
-          {'status': 'scheduled', 'total': 2},
-        ],
-      },
-    },
-    {
-      'key': 'jobs.upcoming',
-      'label': 'Upcoming jobs',
-      'options': <String, dynamic>{},
-      'data': {
-        'rows': [
-          for (var i = 0; i < 4; i++)
-            {
-              'number': 'J-$i',
-              'title': 'Sweep $i',
-              'scheduled_for': '2026-09-0${i + 1}T09:00:00+00:00',
-              'customer': 'Somebody',
-            },
-        ],
-      },
-    },
-    {
-      'key': 'jobs.revenue',
-      'label': 'Revenue',
+      'key': 'jobs',
+      'label': 'Jobs',
+      'presentation': 'pie',
+      'allowed_presentations': ['pie', 'bar', 'text'],
+      'snapshot': true,
+      'coming_soon': false,
       'options': {
-        'statuses': ['completed'],
-        'days': 30,
+        'earned_statuses': ['completed'],
       },
       'data': {
-        'rows': [
-          {'currency': 'USD', 'amount_minor': 12345, 'jobs': 3},
+        'empty': false,
+        'slices': [
+          {'label': 'scheduled', 'total': 2},
+        ],
+        'sentences': ['2 jobs on the board.'],
+      },
+    },
+    {
+      'key': 'hr',
+      'label': 'Human Resources',
+      'presentation': 'bar',
+      'allowed_presentations': ['bar', 'pie', 'text'],
+      'snapshot': true,
+      'coming_soon': false,
+      'options': <String, dynamic>{},
+      'data': {
+        'empty': false,
+        'slices': [
+          {'label': 'Onboardings in flight', 'total': 0},
+          {'label': 'Invitations stalled', 'total': 0},
+        ],
+        'sentences': [
+          '1 person on the books.',
+          '0 onboardings in flight.',
+          '0 invitations have stalled.',
+          '0 people joined this month.',
+          '0 people left this month.',
+          'None of the contract questions are marked as an expiry, so there is nothing to list yet.',
+          'A second line so this card is taller than a one-sentence neighbour.',
+          'A third line for the same reason.',
         ],
       },
     },
     {
-      'key': 'customers.added',
-      'label': 'Customers added',
+      'key': 'customers',
+      'label': 'Customers',
+      'presentation': 'line',
+      'allowed_presentations': ['line', 'bar', 'text'],
+      'snapshot': false,
+      'coming_soon': false,
       'options': <String, dynamic>{},
-      'data': {'total': 4},
+      'data': {
+        'empty': false,
+        'sentences': ['2 new customers this month.'],
+      },
     },
-  ].where((panel) => only == null || only.contains(panel['key'])).toList();
+    {
+      'key': 'inspection',
+      'label': 'Inspection',
+      'presentation': 'bar',
+      'allowed_presentations': ['bar', 'pie', 'text'],
+      'snapshot': true,
+      'coming_soon': false,
+      'options': <String, dynamic>{},
+      'data': {
+        'empty': true,
+        'sentence': 'No inspections in reach.',
+      },
+    },
+  ].where((glance) => only == null || only.contains(glance['key'])).toList();
 
   return (request) async {
     final path = request.url.path;
@@ -871,23 +872,15 @@ MockClientHandler _dashboard({
 
       if (saveStatus != 200) return _json({'message': 'Nothing doing.'}, saveStatus);
 
-      return _json({'widgets': jsonDecode(request.body)['widgets']});
+      return _json({'ok': true});
     }
 
-    if (path.endsWith('/dashboard')) return _json({'panels': panels});
-
-    if (path.endsWith('/dashboard/catalogue')) {
+    if (path.endsWith('/dashboard')) {
       return _json({
-        'widgets': [
-          // The registry's order, which is not this user's. A save that
-          // followed THIS list would reverse their dashboard.
-          for (final panel in catalogueReversed ? panels.reversed : panels)
-            {
-              'key': panel['key'],
-              'label': panel['label'],
-              'options': <String, dynamic>{},
-            },
-        ],
+        'period': 'month',
+        'period_starts_on': '2026-08-01T00:00:00-04:00',
+        'period_ends_on': '2026-08-24T16:00:00-04:00',
+        'glances': glances,
       });
     }
 

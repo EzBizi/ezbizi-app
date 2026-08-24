@@ -47,50 +47,32 @@ String dashboardRowLabel(Map<String, dynamic> data, Map<String, dynamic> row) {
 
 /// The glyph a panel is headed with.
 ///
-/// ── Why this is not each screen's business ───────────────────────
-///
-/// The HR tab picked its own icons and the main dashboard picked none, so the
-/// same widget — headcount, say — was a card with a group of people on one
-/// screen and a card with nothing on the other. The card standard says every
-/// panel has an icon; this is where the icon comes from, so the two surfaces
-/// cannot disagree about which one.
-///
-/// ── Falling back twice, so a new widget is never bare ────────────
-///
-/// A widget is added to the SERVER's registry and appears on the dashboard
-/// without a client release — that is the point of the registry, and it means
-/// this list is always one step behind. So an unrecognised key falls back to its
-/// module's icon (`hr.something_new` gets HR's), and a key from a module this
-/// does not know falls back to a neutral one. A panel with no icon at all would
-/// leave a header a different shape from the cards beside it, which is the
-/// misalignment this was all written to fix.
+/// Glance keys are module keys (`hr`, `jobs`). An unrecognised key still falls
+/// back to its module prefix (`hr.something_new` gets HR's) so a leftover
+/// widget key on the HR tab is never a bare header, and a module this list
+/// has not heard of still gets a neutral icon rather than none.
 ///
 /// Not a preference and not an organization setting: it is how a thing is drawn,
 /// the same for everybody, in the app's own visual language.
 IconData dashboardPanelIcon(String key) {
-  const byKey = <String, IconData>{
-    'hr.headcount': Icons.groups_outlined,
-    'hr.onboardings_in_flight': Icons.how_to_reg_outlined,
-    'hr.invitations_stalled': Icons.mail_outline,
-    'hr.starters_and_leavers': Icons.trending_up_outlined,
-    'hr.certifications': Icons.verified_outlined,
-    'jobs.by_status': Icons.work_outline,
-    'jobs.upcoming': Icons.event_outlined,
-    'jobs.revenue': Icons.payments_outlined,
-    'customers.added': Icons.person_add_outlined,
-    'automations.health': Icons.bolt_outlined,
-  };
-
   const byModule = <String, IconData>{
-    'hr': Icons.groups_outlined,
-    'jobs': Icons.work_outline,
+    'hr': Icons.badge_outlined,
     'customers': Icons.people_outline,
+    'jobs': Icons.construction_outlined,
+    'inspection': Icons.fact_check_outlined,
+    'marketing': Icons.campaign_outlined,
+    'web_management': Icons.language_outlined,
+    'phone': Icons.phone_outlined,
+    'fleet_management': Icons.local_shipping_outlined,
+    'inventory': Icons.inventory_2_outlined,
+    'services': Icons.handyman_outlined,
+    'email': Icons.inbox_outlined,
     'automations': Icons.bolt_outlined,
   };
 
-  final module = key.split('.').first;
-
-  return byKey[key] ?? byModule[module] ?? Icons.insights_outlined;
+  return byModule[key] ??
+      byModule[key.split('.').first] ??
+      Icons.insights_outlined;
 }
 
 /// Where a user's panel order lives inside their preferences.
