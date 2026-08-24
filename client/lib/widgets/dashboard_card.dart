@@ -59,9 +59,10 @@ class DashboardCard extends StatelessWidget {
   /// A state label after the title — "Not built yet", and whatever comes next.
   final Widget? badge;
 
-  /// Controls that belong to the card rather than to the panel: today, the move
-  /// buttons and the drag handle DashboardGrid supplies. Drawn at the end of the
-  /// header row, after the title and its badge.
+  /// Controls that belong to the card rather than to the panel: the
+  /// presentation switcher, then the move buttons and the drag handle
+  /// DashboardGrid supplies. Drawn at the end of the header row, after the
+  /// title and its badge.
   ///
   /// Null on a dashboard that cannot be rearranged, and then nothing is drawn —
   /// not a disabled control, which would invite somebody to work out why it
@@ -106,8 +107,8 @@ class DashboardCard extends StatelessWidget {
               // and the only things that cannot are the icon and the
               // controls, which have a size of their own. That is what
               // makes the header safe on a phone (R7): the fixed part is
-              // 26 points plus three 48-point controls — two move buttons
-              // and a grip — so a long title or a long badge shortens
+              // 26 points plus the header controls — presentation, two move
+              // buttons and a grip — so a long title or a long badge shortens
               // instead of running off the card.
               //
               // Nesting the title and its badge in a row of their own read

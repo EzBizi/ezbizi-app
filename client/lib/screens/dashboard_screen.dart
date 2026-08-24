@@ -4,6 +4,7 @@ import '../core/dashboard_panels.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/dashboard_card.dart';
+import '../widgets/dashboard_chart.dart';
 import '../widgets/dashboard_grid.dart';
 import '../widgets/tag.dart';
 
@@ -11,8 +12,8 @@ import '../widgets/tag.dart';
 ///
 /// Every glance is rendered from what the server sends. There is no picker —
 /// a module you can open is a box, and a module that is not built yet still
-/// has one, tagged coming soon. Charts land in a later pass; this screen
-/// draws the sentences.
+/// has one, tagged coming soon. A chart presentation draws the server's
+/// slices or series above the sentences; text is sentences only.
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key, required this.api, required this.session});
 
@@ -137,6 +138,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _load();
   }
 
+  /// Remember how this box is drawn. The payload does not change with
+  /// presentation — slices and series are already on the glance — so the
+  /// card updates on this frame. A failed save reloads, the same as a
+  /// rejected drag.
+  Future<void> _setPresentation(String key, String presentation) async {
+    Map<String, dynamic>? current;
+    for (final glance in _glances) {
+      if (glance['key'] == key) {
+        current = glance;
+        break;
+      }
+    }
+    if (current == null) return;
+    if ((current['presentation'] ?? 'text') == presentation) return;
+
+    setState(() {
+      _glances = [
+        for (final glance in _glances)
+          if (glance['key'] == key)
+            {...glance, 'presentation': presentation}
+          else
+            glance,
+      ];
+    });
+
+    final response = await widget.api.put('/dashboard/layout', {
+      'glances': [for (final glance in _glances) _entryFor(glance)],
+    });
+
+    if (!mounted || response.ok) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(response.message)));
+
+    _load();
+  }
+
   /// A glance as the layout stores it. Presentation and options travel with
   /// it, or saving a new ORDER would quietly reset how every box was drawn.
   Map<String, dynamic> _entryFor(Map<String, dynamic> glance) => {
@@ -144,6 +183,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'presentation': glance['presentation'] ?? 'text',
     'options': glance['options'] ?? <String, dynamic>{},
   };
+
+  /// Compact, because the header already holds three 48-point move/drag
+  /// controls. Coming soon and an empty `allowed_presentations` draw nothing
+  /// — a disabled menu would invite somebody to work out why it does nothing.
+  Widget? _presentationMenu(Map<String, dynamic> glance) {
+    final options = _presentationsOf(glance);
+    if (options.isEmpty) return null;
+
+    final selected = glance['presentation'] as String? ?? 'text';
+    final label = glance['label'] as String? ?? 'this box';
+
+    return PopupMenuButton<String>(
+      tooltip: 'How to draw “$label”',
+      padding: EdgeInsets.zero,
+      iconSize: 18,
+      initialValue: options.contains(selected) ? selected : null,
+      icon: Icon(_iconFor(selected)),
+      onSelected: (value) => _setPresentation(glance['key'] as String, value),
+      itemBuilder: (context) => [
+        for (final option in options)
+          PopupMenuItem(
+            value: option,
+            child: Text(_labelFor(option)),
+          ),
+      ],
+    );
+  }
+
+  static List<String> _presentationsOf(Map<String, dynamic> glance) {
+    final raw = glance['allowed_presentations'];
+    if (raw is! List || raw.isEmpty) return const [];
+
+    final options = [for (final item in raw) '$item'];
+    if (!options.contains('text')) options.add('text');
+    return options;
+  }
+
+  static String _labelFor(String presentation) => switch (presentation) {
+        'pie' => 'Pie',
+        'bar' => 'Bar',
+        'line' => 'Line',
+        'timeline' => 'Timeline',
+        'text' => 'Text',
+        _ => presentation,
+      };
+
+  static IconData _iconFor(String presentation) => switch (presentation) {
+        'pie' => Icons.pie_chart,
+        'bar' => Icons.bar_chart,
+        'line' => Icons.show_chart,
+        'timeline' => Icons.timeline,
+        _ => Icons.notes,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -196,6 +288,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   badge: glance['coming_soon'] == true
                       ? const Tag('Coming soon', warn: true)
                       : null,
+                  controls: _presentationMenu(glance),
                   body: _GlanceBody(glance: glance),
                 ),
             ],
@@ -208,9 +301,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
 /// What one glance says, rendered from its payload rather than its name.
 ///
-/// Charts are a later pass. This draws sentences, and the empty / coming-soon
-/// sentence in [DashboardNote]'s voice. The BOX around it is DashboardCard,
-/// through DashboardGrid.
+/// A pie / bar / line / timeline with slices or series draws the chart above
+/// the sentences. Text, empty, and coming soon are sentences only — an empty
+/// chart is not a sentence. The BOX around it is DashboardCard, through
+/// DashboardGrid.
 class _GlanceBody extends StatelessWidget {
   const _GlanceBody({required this.glance});
 
@@ -223,17 +317,48 @@ class _GlanceBody extends StatelessWidget {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: _body(data, glance['coming_soon'] == true),
+      children: _body(
+        data,
+        glance['coming_soon'] == true,
+        glance['presentation'] as String? ?? 'text',
+      ),
     );
   }
 
-  List<Widget> _body(Map<String, dynamic> data, bool comingSoon) {
+  List<Widget> _body(
+    Map<String, dynamic> data,
+    bool comingSoon,
+    String presentation,
+  ) {
     if (comingSoon || data['empty'] == true) {
       return [
         DashboardNote(_sentenceOf(data) ?? 'Nothing to show yet.'),
       ];
     }
 
+    return [
+      if (_chartable(presentation, data))
+        DashboardChart(
+          presentation: presentation,
+          slices: data['slices'] is List ? data['slices'] as List : null,
+          series: data['series'] is List ? data['series'] as List : null,
+        ),
+      ..._sentences(data),
+    ];
+  }
+
+  static bool _chartable(String presentation, Map<String, dynamic> data) {
+    switch (presentation) {
+      case 'pie' || 'bar':
+        return data['slices'] is List && (data['slices'] as List).isNotEmpty;
+      case 'line' || 'timeline':
+        return data['series'] is List && (data['series'] as List).isNotEmpty;
+      default:
+        return false;
+    }
+  }
+
+  static List<Widget> _sentences(Map<String, dynamic> data) {
     final sentences = data['sentences'];
 
     if (sentences is List && sentences.isNotEmpty) {

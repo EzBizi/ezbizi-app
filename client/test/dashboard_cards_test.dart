@@ -57,7 +57,9 @@ void main() {
     testWidgets('a card with almost nothing in it is still a card', (
       tester,
     ) async {
-      await _pumpDashboard(tester, _dashboard(only: {'jobs'}));
+      // Inspection is empty — a sentence, not a chart. Jobs now draws a pie
+      // above its sentence, which is supposed to be taller than the floor.
+      await _pumpDashboard(tester, _dashboard(only: {'inspection'}));
 
       expect(_cardHeights(tester).single, DashboardCard.minimumHeight);
     });
