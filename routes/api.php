@@ -44,6 +44,7 @@ use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
+use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\RolesController;
@@ -212,6 +213,45 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
     ->middleware('throttle:30,1')
     ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x')
     ->name('social.callback');
+
+/*
+|--------------------------------------------------------------------------
+| Twilio Voice webhook — public, because Twilio posts with no Sanctum token
+|--------------------------------------------------------------------------
+|
+| Twilio ends an inbound (or App-driven outbound) call by POSTing form fields
+| to the Voice URL registered on the TwiML App. That POST carries no
+| Authorization header, so `auth:sanctum` here would refuse every legitimate
+| call there will ever be. There is nothing to fix with middleware, and
+| adding it would only make the feature impossible.
+|
+| WHAT AUTHENTICATES IT INSTEAD is the X-Twilio-Signature header, validated
+| with the auth token (secret) stored on THAT phone connection — never the
+| platform Twilio credentials. A global token would be a tenant-boundary
+| break. See App\Support\Phone\TwilioSignature and VoiceWebhookController.
+|
+| THE PATH NAMES THE ORGANIZATION. `{organization}` and `{connection}` are
+| plain UUID segments, not route-model-bound: binding would run a
+| tenant-scoped find with no tenant, and the connection id is what tells us
+| which organization to enter. The controller loads the Organization, then
+| TenantContext::run, the way InvitationAcceptanceController and the Google
+| OAuth callback do.
+|
+| No `tenant` middleware either: the path is what names an organization, so
+| the organization cannot already be known when the request arrives.
+|
+| Not listed in EnforceMinimumClientVersion's always-permitted paths.
+| Twilio sends no client version header; that gate fails open for requests
+| without one, which is the intended behaviour for server-to-server posts.
+|
+| Throttled, because it is public and every hit does a database lookup. The
+| numbers are inline rather than a named limiter — AppServiceProvider owns
+| those and this needs nothing bespoke.
+|
+*/
+Route::post('v1/phone/voice/{organization}/{connection}', PhoneVoiceWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('phone.voice.webhook');
 
 Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
     ->middleware('throttle:60,1');
