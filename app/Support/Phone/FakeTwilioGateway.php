@@ -60,9 +60,10 @@ final class FakeTwilioGateway implements TwilioGateway
 
     public function searchAvailable(PhoneConnection $connection, array $criteria): array
     {
-        $this->record(__FUNCTION__, [$connection->id, $criteria]);
+        $normalized = HttpTwilioGateway::normalizeSearchCriteria($criteria);
+        $this->record(__FUNCTION__, [$connection->id, $normalized]);
 
-        $area = $criteria['areaCode'] ?? $criteria['area_code'] ?? '555';
+        $area = $normalized['areaCode'] ?? '555';
 
         return [[
             'phone_number' => '+1'.$area.'0101001',

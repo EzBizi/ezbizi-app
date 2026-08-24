@@ -45,7 +45,10 @@ interface TwilioGateway
     ): array;
 
     /**
-     * @param  array{area_code?: string, contains?: string, voice?: bool, sms?: bool}  $criteria
+     * Search available numbers. Callers pass EzBizi snake_case keys; the HTTP
+     * gateway maps them to Twilio’s camelCase before the SDK `read()`.
+     *
+     * @param  array{area_code?: string|int, contains?: string, voice?: bool, sms?: bool, country?: string}  $criteria
      * @return list<array{phone_number: string, friendly_name: ?string, locality: ?string, region: ?string}>
      */
     public function searchAvailable(PhoneConnection $connection, array $criteria): array;
@@ -151,13 +154,14 @@ final class HttpTwilioGateway implements TwilioGateway
 
     public function searchAvailable(PhoneConnection $connection, array $criteria): array
     {
-        $country = $criteria['country'] ?? 'US';
-        unset($criteria['country']);
+        $normalized = self::normalizeSearchCriteria($criteria);
+        $country = $normalized['country'] ?? 'US';
+        unset($normalized['country']);
 
         $page = $this->connectionClient($connection)
             ->availablePhoneNumbers($country)
             ->local
-            ->read($criteria, 20);
+            ->read($normalized, 20);
 
         $out = [];
         foreach ($page as $number) {
@@ -167,6 +171,43 @@ final class HttpTwilioGateway implements TwilioGateway
                 'locality' => $number->locality,
                 'region' => $number->region,
             ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Map EzBizi search keys to Twilio AvailablePhoneNumber options.
+     *
+     * Twilio’s LocalList::read ignores unknown keys, so leaving `area_code`
+     * unmapped silently returns an unfiltered list. Callers (and Task 6 buy)
+     * speak snake_case; this is the only place that translation happens.
+     *
+     * @param  array<string, mixed>  $criteria
+     * @return array<string, mixed>
+     */
+    public static function normalizeSearchCriteria(array $criteria): array
+    {
+        $map = [
+            'area_code' => 'areaCode',
+            'voice' => 'voiceEnabled',
+            'sms' => 'smsEnabled',
+            'mms' => 'mmsEnabled',
+            'near_number' => 'nearNumber',
+            'near_lat_long' => 'nearLatLong',
+            'in_postal_code' => 'inPostalCode',
+            'in_region' => 'inRegion',
+            'in_rate_center' => 'inRateCenter',
+            'in_lata' => 'inLata',
+            'in_locality' => 'inLocality',
+            'exclude_all_address_required' => 'excludeAllAddressRequired',
+            'exclude_local_address_required' => 'excludeLocalAddressRequired',
+            'exclude_foreign_address_required' => 'excludeForeignAddressRequired',
+        ];
+
+        $out = [];
+        foreach ($criteria as $key => $value) {
+            $out[$map[$key] ?? $key] = $value;
         }
 
         return $out;
