@@ -57,7 +57,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       // A spinner only when there is nothing to keep — see AsyncBody. An
       // empty glances list is a legitimate answer (no modules in reach), so
-      // emptiness is not "still loading"; the first completed fetch is.
+      // emptiness is not "still loading"; only a successful fetch is loaded.
+      // A failed first fetch must not count: Try again then has nothing to
+      // keep, and a spinner is the honest thing to draw.
       _loading = !_loaded;
       _error = null;
     });
@@ -69,11 +71,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     setState(() {
       _loading = false;
-      _loaded = true;
       if (!response.ok) {
         _error = response.message;
         return;
       }
+      _loaded = true;
       _error = null;
       _period = response.body['period'] as String? ?? 'month';
       _glances = (response.body['glances'] as List<dynamic>)

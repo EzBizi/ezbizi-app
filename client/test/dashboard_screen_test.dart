@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -105,6 +106,74 @@ void main() {
       (sent.single['glances'] as List)[0]['presentation'],
       'bar',
     );
+  });
+
+  /// AsyncBody: a retry after failure has nothing to keep. Treating a failed
+  /// first fetch as loaded cleared the error, skipped the spinner, and flashed
+  /// empty period chips until the next answer landed.
+  testWidgets('Try again after a failed first fetch is a spinner, not an '
+      'empty dashboard', (tester) async {
+    var dashboardGets = 0;
+    final retry = Completer<void>();
+
+    await _pump(tester, (request) async {
+      final path = request.url.path;
+
+      if (path.endsWith('/me')) return _json({'data': _me});
+
+      if (path.endsWith('/dashboard')) {
+        dashboardGets++;
+        if (dashboardGets == 1) {
+          return _json({'message': 'Nothing doing.'}, 500);
+        }
+        await retry.future;
+        return _json({
+          'period': 'month',
+          'period_starts_on': '2026-08-01T00:00:00-04:00',
+          'period_ends_on': '2026-08-24T16:00:00-04:00',
+          'glances': [
+            {
+              'key': 'hr',
+              'label': 'Human Resources',
+              'presentation': 'bar',
+              'allowed_presentations': ['bar', 'pie', 'text'],
+              'snapshot': true,
+              'coming_soon': false,
+              'options': <String, dynamic>{},
+              'data': {
+                'empty': false,
+                'sentences': ['1 person on the books.'],
+              },
+            },
+          ],
+        });
+      }
+
+      return _json({'message': 'Unexpected ${request.method} $path'}, 500);
+    });
+
+    expect(find.text('Nothing doing.'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Month'), findsNothing);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pump();
+
+    expect(
+      find.byType(CircularProgressIndicator),
+      findsOneWidget,
+      reason: 'A retry after a failed first fetch has nothing to keep.',
+    );
+    expect(
+      find.widgetWithText(ChoiceChip, 'Month'),
+      findsNothing,
+      reason: 'Empty chips flashed because the failed fetch was treated as loaded.',
+    );
+
+    retry.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 person on the books.'), findsOneWidget);
   });
 }
 
