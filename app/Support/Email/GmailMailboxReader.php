@@ -5,6 +5,8 @@ namespace App\Support\Email;
 use App\Models\Mailbox;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
@@ -241,29 +243,38 @@ final class GmailMailboxReader implements MailboxReader
             ...($cursor === null ? [] : ['pageToken' => $cursor]),
         ]);
 
-        $messages = [];
+        $ids = [];
 
         foreach ((array) ($listing['threads'] ?? []) as $stub) {
             $id = is_array($stub) ? (string) ($stub['id'] ?? '') : '';
 
-            if ($id === '') {
-                continue;
+            if ($id !== '') {
+                $ids[] = $id;
             }
+        }
 
-            /*
-             * `format=metadata`, and the headers named explicitly.
-             *
-             * A list must not download bodies: twenty-five conversations with
-             * attachments is megabytes over the wire to render twenty-five
-             * lines of text. Naming the headers also means Google returns
-             * roughly a kilobyte per message rather than every Received: hop.
-             */
-            $messages[] = $this->mapper->threadSummary(
-                $this->get($mailbox, self::API.'/threads/'.rawurlencode($id), [
-                    'format'          => 'metadata',
-                    'metadataHeaders' => ['From', 'To', 'Subject', 'Date', 'Authentication-Results'],
-                ]),
-            );
+        /*
+         * `format=metadata`, and the headers named explicitly.
+         *
+         * A list must not download bodies: twenty-five conversations with
+         * attachments is megabytes over the wire to render twenty-five
+         * lines of text. Naming the headers also means Google returns
+         * roughly a kilobyte per message rather than every Received: hop.
+         *
+         * Fetched together. One round trip per conversation, done one
+         * after another, is why opening Email felt slow — twenty-five
+         * waits for the same headers Gmail's own inbox loads as one
+         * screen. The access token is still spent once; only the
+         * conversation gets overlap.
+         */
+        $fetched = $this->threadMetadata($mailbox, $ids);
+
+        $messages = [];
+
+        foreach ($ids as $id) {
+            if (isset($fetched[$id])) {
+                $messages[] = $this->mapper->threadSummary($fetched[$id]);
+            }
         }
 
         return new MessagePage(
@@ -960,6 +971,82 @@ final class GmailMailboxReader implements MailboxReader
             // is a guess wearing a diagnosis's clothes.
             default => CannotReadMailbox::providerRefused($mailbox, $detail),
         };
+    }
+
+    /**
+     * Headers for one page of conversations, in one wait.
+     *
+     * @param  list<string>  $ids
+     * @return array<string, array<string, mixed>>
+     */
+    private function threadMetadata(Mailbox $mailbox, array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $responses = $this->poolThreadGets($mailbox, $ids, $this->accessToken($mailbox));
+
+        if ($this->anyUnauthorized($responses)) {
+            $this->forgetAccessToken($mailbox);
+            $responses = $this->poolThreadGets($mailbox, $ids, $this->accessToken($mailbox));
+        }
+
+        $out = [];
+
+        foreach ($ids as $id) {
+            $response = $responses[$id] ?? null;
+
+            if (! $response instanceof Response) {
+                throw CannotReadMailbox::hostNotAnswering(
+                    $mailbox,
+                    'the mail service did not answer for a conversation',
+                );
+            }
+
+            $out[$id] = $this->body($mailbox, $response);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string>  $ids
+     * @return array<string, mixed>
+     */
+    private function poolThreadGets(Mailbox $mailbox, array $ids, string $token): array
+    {
+        try {
+            return Http::pool(function (Pool $pool) use ($ids, $token) {
+                $pending = [];
+
+                foreach ($ids as $id) {
+                    $pending[$id] = $pool->as($id)
+                        ->withToken($token)
+                        ->timeout(self::TIMEOUT)
+                        ->get(self::API.'/threads/'.rawurlencode($id), [
+                            'format'          => 'metadata',
+                            'metadataHeaders' => ['From', 'To', 'Subject', 'Date', 'Authentication-Results'],
+                        ]);
+                }
+
+                return $pending;
+            });
+        } catch (ConnectionException $e) {
+            throw CannotReadMailbox::hostNotAnswering($mailbox, $e->getMessage());
+        }
+    }
+
+    /** @param  array<string, mixed>  $responses */
+    private function anyUnauthorized(array $responses): bool
+    {
+        foreach ($responses as $response) {
+            if ($response instanceof Response && $response->status() === 401) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @param array<string, mixed> $query */

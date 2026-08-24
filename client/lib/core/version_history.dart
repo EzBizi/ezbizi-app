@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0076',
+      date: '24 Aug 2026',
+      items: [
+        'Opening Email loads the inbox as one wait, not one wait per '
+            'conversation.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0075',
       date: '24 Aug 2026',
       items: [

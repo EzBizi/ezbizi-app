@@ -317,4 +317,72 @@ class GoogleMailTokenRefreshTest extends TestCase
             'The read was attempted more than twice.',
         );
     }
+
+    /**
+     * A page of conversations is one wait, not one wait per row.
+     *
+     * `users.threads.list` answers ids. Each conversation's From/Subject
+     * still needs `users.threads.get`. Doing those one after another is
+     * why opening Email sat on a spinner for several seconds — twenty-five
+     * round trips to Google, each waiting for the last. They share one
+     * access token; they do not have to share one clock.
+     */
+    public function test_a_page_of_conversations_is_fetched_together(): void
+    {
+        Http::fake(function (\Illuminate\Http\Client\Request $request) {
+            $url = $request->url();
+
+            if ($url === self::TOKEN_ENDPOINT) {
+                return Http::response(['access_token' => 'an-access-token', 'expires_in' => 3599]);
+            }
+
+            if (preg_match('#/users/me/threads/([^/?]+)#', $url, $match) === 1) {
+                $id = rawurldecode($match[1]);
+
+                return Http::response([
+                    'id' => $id,
+                    'messages' => [[
+                        'id'           => 'm-'.$id,
+                        'threadId'     => $id,
+                        'internalDate' => '1000',
+                        'snippet'      => 'hello '.$id,
+                        'labelIds'     => ['INBOX'],
+                        'payload'      => [
+                            'headers' => [
+                                ['name' => 'From', 'value' => 'Bob <bob@example.com>'],
+                                ['name' => 'Subject', 'value' => 'About '.$id],
+                            ],
+                        ],
+                    ]],
+                ]);
+            }
+
+            if (str_contains($url, '/users/me/threads')) {
+                return Http::response([
+                    'threads' => [['id' => 't-1'], ['id' => 't-2']],
+                    'resultSizeEstimate' => 2,
+                ]);
+            }
+
+            return Http::response(['error' => ['message' => $url]], 404);
+        });
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        $page = $this->inTenant($t['org'], fn () => app(GmailMailboxReader::class)->list($mailbox));
+
+        $this->assertCount(2, $page->messages);
+        $this->assertSame(['m-t-1', 'm-t-2'], array_map(fn ($m) => $m->id, $page->messages));
+        $this->assertSame('About t-1', $page->messages[0]->subject);
+        $this->assertSame('About t-2', $page->messages[1]->subject);
+
+        $gets = Http::recorded(fn ($request) => (bool) preg_match(
+            '#/users/me/threads/[^/?]+#',
+            $request->url(),
+        ));
+
+        $this->assertCount(2, $gets);
+        $this->assertSame(1, $this->tokenRequests());
+    }
 }
