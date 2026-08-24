@@ -411,7 +411,7 @@ class _GlanceBody extends StatelessWidget {
     if (comingSoon || data['empty'] == true) {
       return [
         DashboardNote(_sentenceOf(data) ?? 'Nothing to show yet.'),
-        if (earned != null) earned,
+        ?earned,
       ];
     }
 
@@ -423,7 +423,7 @@ class _GlanceBody extends StatelessWidget {
           series: data['series'] is List ? data['series'] as List : null,
         ),
       ..._sentences(data),
-      if (earned != null) earned,
+      ?earned,
     ];
   }
 
