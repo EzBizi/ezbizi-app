@@ -1,0 +1,84 @@
+<?php
+
+namespace App\Models;
+
+use App\Models\Concerns\BelongsToTenant;
+use App\Support\Inventory\InventoryLocationKind;
+use App\Support\Inventory\InventoryLocationStatus;
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
+use Database\Factories\InventoryLocationFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+/**
+ * A named place stock sits (spec §6).
+ *
+ * Soft-delete is not used. Closed is a status. Hard delete only when isEmpty().
+ * `catalogue_key` is a generated stored column — never written.
+ */
+#[Fillable([
+    'company_id', 'franchise_id', 'name', 'kind', 'status', 'vehicle_id',
+])]
+class InventoryLocation extends Model implements StatesRetention
+{
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::forever(
+            'The places stock sat. Closed stays on the row rather than disappearing, '
+            .'because a later movement still names the location. Removing the organization '
+            .'takes the row. Empty mistakes can still be hard-deleted by hand.'
+        );
+    }
+
+    use BelongsToTenant;
+
+    /** @use HasFactory<InventoryLocationFactory> */
+    use HasFactory;
+    use HasUuids;
+
+    protected static function booted(): void
+    {
+        static::saving(function (InventoryLocation $location): void {
+            unset($location->catalogue_key);
+        });
+    }
+
+    protected function casts(): array
+    {
+        return [
+            'kind' => InventoryLocationKind::class,
+            'status' => InventoryLocationStatus::class,
+        ];
+    }
+
+    /** True when no balance row holds a non-zero qty. */
+    public function isEmpty(): bool
+    {
+        return ! $this->balances()->where('qty_on_hand', '!=', 0)->exists();
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
+
+    public function franchise(): BelongsTo
+    {
+        return $this->belongsTo(Franchise::class);
+    }
+
+    public function vehicle(): BelongsTo
+    {
+        return $this->belongsTo(Vehicle::class);
+    }
+
+    public function balances(): HasMany
+    {
+        return $this->hasMany(InventoryBalance::class, 'location_id');
+    }
+}
