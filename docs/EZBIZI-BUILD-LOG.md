@@ -481,3 +481,13 @@ sees. Two overlapping deploys used to wipe `/opt/ezbizi-test/bootstrap`
 mid-suite; the gate now waits on a lock.
 
 Release `20260821204600`. Client `v0.0.0066` (this build `v0.0.0067`).
+
+---
+
+## 2026-08-24 — Marketing site: one canonical URL
+
+Search Console listed HTTP, apex, `/index.html` and the old
+`/privacy.html` `/terms.html` paths. nginx now 301s all of those to
+`https://www.ezbizi.com/` (or `/privacy/` `/terms/`) in one hop.
+`GET /` still serves the homepage — a naive `location = /index.html`
+redirect looped because nginx internally rewrites `/` to that file.
