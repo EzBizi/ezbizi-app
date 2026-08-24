@@ -12,11 +12,12 @@ use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Carbon;
 
 /**
- * Customers box: new customers owned in reach as a line over the period.
+ * Customers box: in-reach book as a snapshot, new customers as a line.
  *
- * Buckets follow DashboardPeriod (day / week / month). Organization-wide total
- * sits beside the in-reach count the same way CustomersAdded does — reach is
- * accountability for the line, not a read gate on customers.
+ * Empty only when nobody is in the book. Buckets follow DashboardPeriod
+ * (day / week / month) so a quiet stretch still draws zeros. organization_total
+ * is the whole tenant book — reach is accountability for the line, not a read
+ * gate on customers.
  */
 final class CustomersGlance implements Glance
 {
@@ -61,13 +62,11 @@ final class CustomersGlance implements Glance
             $from = $period->startsOn->copy()->utc();
             $to = $period->endsOn->copy()->utc();
 
-            $mine = Customer::query()
+            $book = (int) Customer::query()
                 ->whereIn('owning_franchise_id', $reachable)
-                ->where('created_at', '>=', $from)
-                ->where('created_at', '<=', $to)
-                ->get(['id', 'created_at']);
+                ->count();
 
-            if ($mine->isEmpty()) {
+            if ($book === 0) {
                 return new GlancePayload(
                     key: $this->key(),
                     label: $this->label(),
@@ -83,6 +82,12 @@ final class CustomersGlance implements Glance
                 );
             }
 
+            $mine = Customer::query()
+                ->whereIn('owning_franchise_id', $reachable)
+                ->where('created_at', '>=', $from)
+                ->where('created_at', '<=', $to)
+                ->get(['id', 'created_at']);
+
             $counts = $this->emptyBuckets($period);
             foreach ($mine as $customer) {
                 $at = $customer->created_at;
@@ -93,16 +98,14 @@ final class CustomersGlance implements Glance
                 $counts[$bucket] = ($counts[$bucket] ?? 0) + 1;
             }
 
-            $total = $mine->count();
+            $added = array_sum($counts);
             $periodWord = $period->key;
-            $sentence = $total === 1
-                ? "1 new customer this {$periodWord}."
-                : "{$total} new customers this {$periodWord}.";
+            $sentences = [
+                $book === 1 ? '1 customer in reach.' : "{$book} customers in reach.",
+                "{$added} new this {$periodWord}.",
+            ];
 
-            $organizationTotal = Customer::query()
-                ->where('created_at', '>=', $from)
-                ->where('created_at', '<=', $to)
-                ->count();
+            $organizationTotal = Customer::query()->count();
 
             $points = [];
             $slices = [];
@@ -131,7 +134,7 @@ final class CustomersGlance implements Glance
                         ],
                     ],
                     'slices' => $slices,
-                    'sentences' => [$sentence],
+                    'sentences' => $sentences,
                     'organization_total' => $organizationTotal,
                 ],
             );
