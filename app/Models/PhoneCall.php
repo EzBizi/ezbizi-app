@@ -65,6 +65,22 @@ class PhoneCall extends Model implements HoldsPersonalData
             return static::query()->where('user_id', $subject->getKey());
         }
 
+        if ($subject instanceof Customer) {
+            // Exact match on customers.phone ↔ from_e164/to_e164. Read the phone
+            // from the subject instance: Customer is blanked earlier in the
+            // alphabetical purge walk, and reloading the row would miss every
+            // call that still names the original number.
+            $phone = (string) ($subject->getAttribute('phone') ?? '');
+
+            if ($phone === '') {
+                return static::query()->whereRaw('0 = 1');
+            }
+
+            return static::query()->where(fn (Builder $q) => $q
+                ->where('from_e164', $phone)
+                ->orWhere('to_e164', $phone));
+        }
+
         return null;
     }
 

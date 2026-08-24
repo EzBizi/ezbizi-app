@@ -2,8 +2,11 @@
 
 namespace Tests\Feature\Phone;
 
+use App\Models\Customer;
+use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
+use App\Support\Privacy\Anonymiser;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -99,6 +102,62 @@ class PhoneTablesTest extends TestCase
         $this->assertFalse($number->transcribe);
         $this->assertContains('record', $number->getFillable());
         $this->assertContains('transcribe', $number->getFillable());
+    }
+
+    /**
+     * from_e164 / to_e164 are CONTACT about outsiders; Customer erasure must
+     * find those legs by matching customers.phone (exact E.164 string).
+     */
+    public function test_a_customer_purge_drops_calls_that_name_their_number(): void
+    {
+        $t = $this->provisionTenant();
+        $phone = '+15557654321';
+
+        [$customer, $named, $other] = $this->inTenant($t['org'], function () use ($t, $phone) {
+            $customer = Customer::create([
+                'owning_franchise_id' => $t['franchise']->id,
+                'number' => 'C-phone-1',
+                'name' => 'Caller',
+                'phone' => $phone,
+            ]);
+
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => 'organization',
+                'scope_id' => $t['org']->id,
+            ]);
+
+            $named = PhoneCall::create([
+                'connection_id' => $connection->id,
+                'twilio_sid' => 'CAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                'direction' => 'inbound',
+                'from_e164' => $phone,
+                'to_e164' => '+15551110000',
+                'status' => 'completed',
+            ]);
+
+            $other = PhoneCall::create([
+                'connection_id' => $connection->id,
+                'twilio_sid' => 'CAbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                'direction' => 'inbound',
+                'from_e164' => '+15550001111',
+                'to_e164' => '+15551110000',
+                'status' => 'completed',
+            ]);
+
+            $this->assertTrue(
+                PhoneCall::personalDataAbout($customer)->whereKey($named->id)->exists(),
+                'personalDataAbout must link the customer phone to the call leg.',
+            );
+
+            return [$customer, $named, $other];
+        });
+
+        app(Anonymiser::class)->purge($customer);
+
+        $this->inTenant($t['org'], function () use ($named, $other) {
+            $this->assertNull(PhoneCall::find($named->id), 'The named call must be dropped.');
+            $this->assertNotNull(PhoneCall::find($other->id), 'Unrelated calls must survive.');
+        });
     }
 
     /**
