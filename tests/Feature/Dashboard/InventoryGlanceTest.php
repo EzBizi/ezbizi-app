@@ -101,13 +101,13 @@ class InventoryGlanceTest extends TestCase
         ]));
     }
 
-    private function setOnHand(InventoryItem $item, InventoryLocation $location, int $qty): void
+    private function setOnHand(InventoryItem $item, InventoryLocation $location, int|string $qty): void
     {
         $this->inTenant(function () use ($item, $location, $qty) {
             InventoryBalance::create([
                 'item_id' => $item->id,
                 'location_id' => $location->id,
-                'qty_on_hand' => sprintf('%d.000', $qty),
+                'qty_on_hand' => is_int($qty) ? sprintf('%d.000', $qty) : $qty,
             ]);
         });
     }
@@ -275,6 +275,26 @@ class InventoryGlanceTest extends TestCase
         )->toArray();
 
         $this->assertArrayNotHasKey('stock_value', $without['data']);
+    }
+
+    public function test_stock_value_rounds_fractional_on_hand_not_truncated_qty(): void
+    {
+        $location = $this->taggedLocation($this->alpha['franchise']);
+        $item = $this->taggedItem($this->alpha['franchise'], [
+            'last_cost_minor' => 250,
+        ]);
+        $this->setOnHand($item, $location, '1.500');
+
+        $money = $this->userWithPermissions(
+            ['inventory.view', 'inventory.financials'],
+            'frac-money@alpha.test',
+        );
+
+        $payload = app(InventoryGlance::class)->resolve(
+            $money, DashboardPeriod::for($money), []
+        )->toArray();
+
+        $this->assertSame(375, $payload['data']['stock_value'][0]['amount_minor']);
     }
 
     public function test_the_stock_slices_ignore_the_dashboard_period(): void

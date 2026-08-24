@@ -101,18 +101,21 @@ final class InventoryGlance implements Glance
                 $qtyByItem = $this->qtyOnHandByItemId($activeItems->pluck('id'));
 
                 foreach ($activeItems as $item) {
-                    $qty = $qtyByItem[$item->id] ?? 0;
+                    $qty = $qtyByItem[$item->id] ?? '0.000';
 
-                    if ($qty <= 0) {
+                    if (bccomp($qty, '0', 3) <= 0) {
                         $out++;
-                    } elseif ($item->reorder_at !== null && $qty <= (float) $item->reorder_at) {
+                    } elseif ($item->reorder_at !== null
+                        && bccomp($qty, (string) $item->reorder_at, 3) <= 0) {
                         $low++;
                     } else {
                         $inStock++;
                     }
 
                     if ($item->last_cost_minor !== null) {
-                        $stockValueMinor += ((int) $qty) * (int) $item->last_cost_minor;
+                        // Keep the fractional on-hand; round the product to nearest
+                        // minor unit (half-up) rather than truncating qty first.
+                        $stockValueMinor += (int) round(((float) $qty) * (int) $item->last_cost_minor);
                     }
                 }
             }
@@ -152,7 +155,7 @@ final class InventoryGlance implements Glance
 
     /**
      * @param  Collection<int, string>  $itemIds
-     * @return array<string, float>
+     * @return array<string, string> item id → qty decimal string (scale 3)
      */
     private function qtyOnHandByItemId(Collection $itemIds): array
     {
@@ -165,7 +168,7 @@ final class InventoryGlance implements Glance
             ->groupBy('item_id')
             ->selectRaw('item_id, SUM(qty_on_hand) as qty_on_hand')
             ->pluck('qty_on_hand', 'item_id')
-            ->map(fn ($qty) => (float) $qty)
+            ->map(fn ($qty) => number_format((float) $qty, 3, '.', ''))
             ->all();
     }
 }
