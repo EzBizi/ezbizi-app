@@ -357,7 +357,7 @@ Map<String, dynamic> _balanceOf(String qty, {int? lastCost}) => {
       'qty_on_hand': qty,
       'item': {
         ..._item,
-        if (lastCost != null) 'last_cost_minor': lastCost,
+        'last_cost_minor': ?lastCost,
       },
       'location': {
         'id': 'loc-1',
