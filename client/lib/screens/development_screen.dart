@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/staff_session.dart';
+import '../widgets/error_note.dart';
 import '../widgets/tab_bar_like.dart';
 import 'staff/client_versions_screen.dart';
 import 'staff/health_screen.dart';
@@ -12,86 +13,157 @@ import 'staff/staff_accounts_screen.dart';
 
 /// The Development section, inside the customer app (plan §4.2, revised).
 ///
-/// The same control-plane screens dev.ezbizi.com serves, embedded here for
-/// somebody whose tenant account is linked to a staff record. It appears only
-/// when the server said so — `/me` reports the link, and without it this widget
-/// is never built.
-///
-/// ── Why it has its own client and its own session ────────────────
-///
-/// The staff token that arrived with the tenant login goes on a SEPARATE
-/// ApiClient. The two must not share one: a tenant token that could reach
-/// /api/v1/staff is precisely the collapse the split identity exists to prevent,
-/// and the server refuses both directions anyway. This keeps the client honest
-/// about which credential it is presenting.
+/// Opening this tab asks for the authenticator, then holds a staff token on a
+/// SEPARATE ApiClient while the tab is mounted. Leaving drops that session.
 class DevelopmentScreen extends StatefulWidget {
-  const DevelopmentScreen({super.key, required this.session});
+  const DevelopmentScreen({
+    super.key,
+    required this.session,
+    this.staffApi,
+  });
 
   final Session session;
+  final ApiClient? staffApi;
 
   @override
   State<DevelopmentScreen> createState() => _DevelopmentScreenState();
 }
 
 class _DevelopmentScreenState extends State<DevelopmentScreen> {
-  late final ApiClient _staffApi = ApiClient();
+  late final ApiClient _staffApi = widget.staffApi ?? ApiClient();
   late final StaffSession _staff = StaffSession(_staffApi);
+  final _code = TextEditingController();
+  final _codeFormKey = GlobalKey<FormState>();
 
   int _index = 0;
-  bool _adopting = true;
+  bool _busy = false;
+  String? _error;
 
   @override
-  void initState() {
-    super.initState();
-    _adopt();
+  void dispose() {
+    _code.dispose();
+    _staff.release();
+    super.dispose();
   }
 
-  Future<void> _adopt() async {
-    final token = widget.session.staffToken;
+  Future<void> _unlock() async {
+    if (!(_codeFormKey.currentState?.validate() ?? false)) return;
 
-    if (token == null) {
-      setState(() => _adopting = false);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    final response = await widget.session.api.post('/me/development/unlock', {
+      'code': _code.text.trim(),
+    });
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _busy = false;
+        _error = response.message;
+        _code.clear();
+      });
       return;
     }
 
-    await _staff.adopt(token);
+    final token = response.body['token'] as String?;
+    if (token == null || token.isEmpty) {
+      setState(() {
+        _busy = false;
+        _error = 'The authenticator was accepted, but no session came back.';
+      });
+      return;
+    }
 
-    if (mounted) setState(() => _adopting = false);
+    final signedIn = await _staff.adopt(token, persist: false);
+
+    if (!mounted) return;
+
+    if (!signedIn) {
+      setState(() {
+        _busy = false;
+        _error =
+            'The authenticator was accepted, but the session could not be loaded.';
+        _code.clear();
+      });
+      return;
+    }
+
+    setState(() {
+      _busy = false;
+      _error = null;
+      _code.clear();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_adopting) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
     if (!_staff.signedIn) {
-      // The staff token is short-lived by design — twelve hours against the
-      // tenant token's thirty days. When it lapses the CRM session is still
-      // perfectly good, so this says what happened rather than signing anyone
-      // out of everything.
       return Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.lock_clock_outlined, size: 32),
-              const SizedBox(height: 12),
-              Text(
-                'Your control-plane session has expired',
-                style: Theme.of(context).textTheme.titleMedium,
-                textAlign: TextAlign.center,
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Form(
+              key: _codeFormKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Icon(Icons.lock_outline, size: 32),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Enter your authenticator code',
+                    style: Theme.of(context).textTheme.titleMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'This tab reaches every organization on the platform. '
+                    'The code is asked each time you open it.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  TextFormField(
+                    controller: _code,
+                    decoration: const InputDecoration(
+                      labelText: 'Authenticator code',
+                      helperText: 'Six digits, or a recovery code',
+                    ),
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    autofillHints: const [AutofillHints.oneTimeCode],
+                    enabled: !_busy,
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Enter the code'
+                        : null,
+                    onFieldSubmitted: (_) => _unlock(),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 16),
+                    ErrorNote(_error!),
+                  ],
+                  const SizedBox(height: 24),
+                  FilledButton(
+                    onPressed: _busy ? null : _unlock,
+                    child: _busy
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Continue'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                'It lasts twelve hours — much less than your CRM session, because '
-                'it reaches every organization on the platform. Sign in again to '
-                'renew it; your work here is unaffected.',
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-            ],
+            ),
           ),
         ),
       );
@@ -129,9 +201,6 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
           isLead: me.isLead,
           focusedAt: widget.session.me?.development?.focusedAt,
         ),
-        // A second row of tabs, not a second sidebar. The section is one
-        // destination in the CRM's navigation; nesting a full rail inside it
-        // would make it look like a different application, which it is not.
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
@@ -147,7 +216,6 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
   }
 }
 
-/// Says plainly what this section is, and where the focused version lives.
 class _Banner extends StatelessWidget {
   const _Banner({required this.isLead, this.focusedAt});
 

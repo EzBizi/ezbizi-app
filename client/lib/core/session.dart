@@ -19,6 +19,7 @@ class Session extends ChangeNotifier {
   }
 
   final ApiClient _api;
+  ApiClient get api => _api;
 
   Me? _me;
   Me? get me => _me;
@@ -47,7 +48,7 @@ class Session extends ChangeNotifier {
     Map<String, dynamic> body, {
     bool persist = false,
   }) {
-    staffToken = body['staff_token'] as String?;
+    staffToken = null;
 
     return adopt(body['token'] as String, persist: persist);
   }
@@ -63,7 +64,8 @@ class Session extends ChangeNotifier {
     // work would mean every future launch tries it, fails, and clears it —
     // a slow sign-in instead of a fast sign-out.
     if (signedIn) {
-      TokenStore.save(tenant: token, staff: staffToken, persist: persist);
+      TokenStore.save(tenant: token, persist: persist);
+      TokenStore.dropStaff();
     }
 
     return signedIn;

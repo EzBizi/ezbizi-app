@@ -22,15 +22,21 @@ class StaffSession extends ChangeNotifier {
   StaffMe? get me => _me;
   bool get signedIn => _me != null;
 
-  Future<bool> adopt(String token) async {
+  Future<bool> adopt(String token, {bool persist = true}) async {
     _api.setToken(token);
     await refresh();
 
-    if (signedIn) {
+    if (signedIn && persist) {
       TokenStore.save(staff: token);
     }
 
     return signedIn;
+  }
+
+  void release() {
+    _me = null;
+    _api.setToken(null);
+    notifyListeners();
   }
 
   /// Pick up a session left by a refresh, verifying it before trusting it.

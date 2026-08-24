@@ -46,6 +46,10 @@ class TokenStore {
 
   /// Both, always. Signing out of one while the other lingers is how somebody
   /// ends up believing they have left.
+  static void dropStaff() {
+    store.writeItem(_staffKey, null);
+  }
+
   static void clear() {
     store.writeItem(_tenantKey, null);
     store.writeItem(_staffKey, null);

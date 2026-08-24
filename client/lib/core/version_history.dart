@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0071',
+      date: '24 Aug 2026',
+      items: [
+        'Opening Development asks for your authenticator code each time, '
+            'instead of a control-plane session that expires and tells you to '
+            'sign in again.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0070',
       date: '24 Aug 2026',
       items: [

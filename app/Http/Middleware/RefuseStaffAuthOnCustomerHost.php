@@ -9,8 +9,8 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Staff sign-in and enrolment are not served on the customer host.
  *
- * The Development tab still talks to /api/v1/staff with a token issued at
- * tenant login (linked accounts) or from dev.ezbizi.com. What this stops is a
+ * The Development tab still talks to /api/v1/staff with a token issued after
+ * the authenticator on that tab, or from dev.ezbizi.com. What this stops is a
  * phish that looks like app.ezbizi.com having a staff login to POST to.
  */
 class RefuseStaffAuthOnCustomerHost

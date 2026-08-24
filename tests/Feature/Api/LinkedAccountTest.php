@@ -134,7 +134,7 @@ class LinkedAccountTest extends TestCase
 
     // ── what the login hands back ────────────────────────────────
 
-    public function test_one_sign_in_yields_both_tokens_and_they_stay_separate(): void
+    public function test_crm_login_does_not_hand_out_a_staff_token(): void
     {
         $this->link();
 
@@ -144,27 +144,68 @@ class LinkedAccountTest extends TestCase
         ])->assertOk();
 
         $tenantToken = $response->json('token');
-        $staffToken  = $response->json('staff_token');
+        $this->assertNotNull($tenantToken);
+        $this->assertNull($response->json('staff_token'));
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', "Bearer {$tenantToken}")
+            ->getJson('/api/v1/staff/organizations')->assertForbidden();
+    }
+
+    public function test_development_unlock_with_the_authenticator_issues_a_staff_token(): void
+    {
+        $this->link();
+
+        $tenantToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'jose@ezbizi.test', 'password' => 'a-sufficiently-long-staff-password',
+            'code' => $this->code(),
+        ])->assertOk()->json('token');
+
+        $this->app['auth']->forgetGuards();
+        $staffToken = $this->withHeader('Authorization', "Bearer {$tenantToken}")
+            ->postJson('/api/v1/me/development/unlock', ['code' => $this->code()])
+            ->assertOk()
+            ->json('token');
 
         $this->assertNotNull($staffToken);
         $this->assertNotSame($tenantToken, $staffToken);
 
-        // Both factors were just proven, so a second challenge to open the
-        // Development section would be ceremony. But the tokens do NOT become
-        // interchangeable — that separation is what keeps a stolen CRM session
-        // from being a platform session.
         $this->app['auth']->forgetGuards();
-        $this->withHeader('Authorization', "Bearer {$tenantToken}")
-            ->getJson('/api/v1/staff/organizations')->assertForbidden();
+        $this->withHeader('Authorization', "Bearer {$staffToken}")
+            ->getJson('/api/v1/staff/organizations')->assertOk();
 
         $this->app['auth']->forgetGuards();
         $this->withHeader('Authorization', "Bearer {$staffToken}")
             ->getJson('/api/v1/me')->assertForbidden();
+    }
 
-        // ...and each works on its own side.
+    public function test_development_unlock_refuses_a_wrong_code_and_an_unlinked_user(): void
+    {
+        $this->link();
+
+        $tenantToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'jose@ezbizi.test', 'password' => 'a-sufficiently-long-staff-password',
+            'code' => $this->code(),
+        ])->assertOk()->json('token');
+
         $this->app['auth']->forgetGuards();
-        $this->withHeader('Authorization', "Bearer {$staffToken}")
-            ->getJson('/api/v1/staff/organizations')->assertOk();
+        $this->withHeader('Authorization', "Bearer {$tenantToken}")
+            ->postJson('/api/v1/me/development/unlock', ['code' => '000000'])
+            ->assertUnauthorized();
+
+        app(ProvisionOrganization::class)(
+            organizationName: 'Plain',
+            administrator: ['name' => 'P', 'email' => 'p@plain.test', 'password' => 'a-real-password'],
+            companyName: 'Co', franchiseName: 'F1',
+        );
+        $plainToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'p@plain.test', 'password' => 'a-real-password',
+        ])->assertOk()->json('token');
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', "Bearer {$plainToken}")
+            ->postJson('/api/v1/me/development/unlock', ['code' => '123456'])
+            ->assertForbidden();
     }
 
     public function test_me_reports_the_development_access_that_drives_the_sidebar(): void

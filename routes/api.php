@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\BrandingController;
 use App\Http\Controllers\Api\CompaniesController;
 use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\DevelopmentUnlockController;
 use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\FranchisesController;
@@ -737,6 +738,7 @@ Route::prefix('v1')
         // proves somebody sat down at an unlocked laptop, not that they are the
         // account holder.
         Route::post('me/password', [PasswordController::class, 'change']);
+        Route::post('me/development/unlock', [DevelopmentUnlockController::class, 'store']);
 
         // ── Your own account (§2.1 category 6) ───────────────────
         //
