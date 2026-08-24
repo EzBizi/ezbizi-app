@@ -66,6 +66,24 @@ String fleetKindLabel(String? kind) => switch (kind) {
   _ => '',
 };
 
+/// Empty franchise is General, never a blank place (spec §4).
+const fleetGeneralLabel = 'General';
+const fleetOrgValue = '__org__';
+const fleetGeneralValue = '__pool__';
+
+String fleetPlaceLabel(Map<String, dynamic> vehicle) {
+  final franchise = fleetMap(vehicle['franchise']);
+  if (franchise != null) {
+    return franchise['name'] as String? ?? fleetGeneralLabel;
+  }
+  return fleetGeneralLabel;
+}
+
+String fleetOwnerLabel(Map<String, dynamic> vehicle, String organizationName) {
+  final company = fleetMap(vehicle['company']);
+  return company?['name'] as String? ?? organizationName;
+}
+
 String? fleetCents(dynamic cents) {
   if (cents is! int) return null;
   final dollars = (cents / 100).toStringAsFixed(2);

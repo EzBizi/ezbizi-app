@@ -193,7 +193,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(posted, isNotNull);
-    expect(posted!['company_id'], 'co-1');
+    expect(posted!.containsKey('company_id'), isFalse);
     expect(posted!['year'], 2022);
     expect(posted!['make'], 'Ford');
     expect(posted!['model'], 'Transit');
@@ -221,6 +221,46 @@ void main() {
     expect(queries.first.containsKey('status'), isFalse);
     expect(find.widgetWithText(FilterChip, 'Owned'), findsOneWidget);
     expect(find.widgetWithText(FilterChip, 'Due soon'), findsOneWidget);
+  });
+
+  testWidgets('Add names General, not Company pool, and offers the group', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      me: {
+        ..._me,
+        'organization': {
+          ..._me['organization'] as Map<String, dynamic>,
+          'name': 'A-1 Group',
+        },
+        'scope': {
+          'type': 'organization',
+          'id': 'org-1',
+          'label': 'A-1 Group',
+          'path': ['A-1 Group'],
+        },
+        'companies': [
+          {'id': 'co-1', 'name': 'A-1 Chimney', 'parent_company_id': null},
+          {'id': 'co-2', 'name': 'Premier', 'parent_company_id': null},
+        ],
+      },
+    );
+
+    await tester.tap(find.text('Add vehicle'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Company pool'), findsNothing);
+    expect(find.text('A-1 Group'), findsWidgets);
+    expect(find.textContaining('General'), findsWidgets);
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('A-1 Chimney').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('General'), findsWidgets);
+    expect(find.text('Company pool'), findsNothing);
   });
 }
 
@@ -277,6 +317,7 @@ Future<void> _pumpScreen(
     'fleet_management.create',
   ],
   List<Map<String, dynamic>> vehicles = const [],
+  Map<String, dynamic>? me,
   Size size = const Size(1280, 900),
   http.Response? Function(http.Request request)? onRequest,
 }) async {
@@ -289,6 +330,7 @@ Future<void> _pumpScreen(
       _handler(
         permissions: permissions,
         vehicles: vehicles,
+        me: me,
         onRequest: onRequest,
       ),
     ),
@@ -314,6 +356,7 @@ MockClientHandler _handler({
     'fleet_management.create',
   ],
   List<Map<String, dynamic>> vehicles = const [],
+  Map<String, dynamic>? me,
   http.Response? Function(http.Request request)? onRequest,
 }) {
   return (request) async {
@@ -324,7 +367,7 @@ MockClientHandler _handler({
 
     if (path.endsWith('/me')) {
       return _json({
-        'data': {..._me, 'permissions': permissions},
+        'data': {..._me, ...?me, 'permissions': permissions},
       });
     }
 

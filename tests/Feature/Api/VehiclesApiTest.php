@@ -330,4 +330,70 @@ class VehiclesApiTest extends TestCase
             $this->assertFalse(Vehicle::query()->whereKey($empty->id)->exists());
         });
     }
+
+    public function test_admin_creates_a_vehicle_on_the_organization(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        $created = $this->signedInAs($admin)
+            ->postJson('/api/v1/vehicles', [
+                'year' => 2022,
+                'make' => 'Ford',
+                'model' => 'Transit',
+                'plate' => 'ORG-1',
+                'body_type' => 'van',
+                'fuel_type' => 'gas',
+                'ownership' => [
+                    'kind' => 'owned',
+                    'counterparty' => 'Dealer Co',
+                ],
+            ])
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertNull($created['company']);
+        $this->assertNull($created['franchise']);
+        $this->assertStringStartsWith('V-', $created['number']);
+
+        $this->inTenant($tenant['org'], function () use ($created) {
+            $row = Vehicle::query()->find($created['id']);
+            $this->assertNull($row?->company_id);
+            $this->assertNull($row?->franchise_id);
+        });
+    }
+
+    public function test_organization_vehicle_cannot_carry_a_franchise(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/vehicles', [
+                'franchise_id' => $tenant['franchise']->id,
+                'body_type' => 'van',
+                'fuel_type' => 'gas',
+                'ownership' => ['kind' => 'owned'],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['franchise_id']);
+    }
+
+    public function test_franchise_user_cannot_file_an_organization_vehicle(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $local = $this->userWithRole(
+            $tenant,
+            'Local',
+            ['fleet_management.view', 'fleet_management.create'],
+            onlyAt: $tenant['franchise'],
+        );
+
+        $this->signedInAs($local)
+            ->postJson('/api/v1/vehicles', [
+                'body_type' => 'van',
+                'fuel_type' => 'gas',
+                'ownership' => ['kind' => 'owned'],
+            ])
+            ->assertForbidden();
+    }
 }

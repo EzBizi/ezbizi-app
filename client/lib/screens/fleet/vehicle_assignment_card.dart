@@ -57,10 +57,9 @@ class _VehicleAssignmentCardState extends State<VehicleAssignmentCard> {
   Future<void> _loadDrivers() async {
     final company = fleetMap(widget.vehicle['company']);
     final companyId = company?['id'] as String?;
-    if (companyId == null) return;
 
     final response = await widget.api.get('/vehicles/drivers', {
-      'company_id': companyId,
+      'company_id': ?companyId,
     });
 
     if (!mounted || !response.ok) return;

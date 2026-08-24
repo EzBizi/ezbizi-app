@@ -48,17 +48,21 @@ class VehicleAssignmentsController extends Controller
         );
 
         $input = $request->validate([
-            'company_id' => ['required', 'uuid', $this->existsInTenant('companies')],
+            'company_id' => ['nullable', 'uuid', $this->existsInTenant('companies')],
         ]);
 
-        $company = Company::findOrFail($input['company_id']);
+        $company = isset($input['company_id'])
+            ? Company::findOrFail($input['company_id'])
+            : null;
 
         $drivers = User::query()
             ->where('is_active', true)
             ->with('assignments.assignedCompany')
             ->orderBy('name')
             ->get()
-            ->filter(fn (User $u) => $u->canActOnCompany($company))
+            ->filter(fn (User $u) => $company === null
+                ? $this->worksInOrganization($u)
+                : $u->canActOnCompany($company))
             ->values()
             ->map(fn (User $u) => [
                 'id' => $u->id,
@@ -82,9 +86,15 @@ class VehicleAssignmentsController extends Controller
             ->with('assignments.assignedCompany')
             ->findOrFail($input['user_id']);
 
-        if (! $assignee->is_active || ! $assignee->canActOnCompany($vehicle->company)) {
+        $inReach = $vehicle->company_id === null
+            ? $this->worksInOrganization($assignee)
+            : ($assignee->is_active && $assignee->canActOnCompany($vehicle->company));
+
+        if (! $inReach) {
             return response()->json([
-                'message' => 'You can assign people who work in this company. This person does not.',
+                'message' => $vehicle->company_id === null
+                    ? 'You can assign people who work in this group. This person does not.'
+                    : 'You can assign people who work in this company. This person does not.',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -164,5 +174,18 @@ class VehicleAssignmentsController extends Controller
             'released_at' => $assignment->released_at?->toIso8601String(),
             'note' => $assignment->note,
         ];
+    }
+
+    private function worksInOrganization(User $user): bool
+    {
+        if (! $user->is_active) {
+            return false;
+        }
+
+        $user->loadMissing('assignments.assignedCompany', 'organization');
+
+        return $user->canActOnOrganization($user->organization)
+            || $user->reachableCompanies()->isNotEmpty()
+            || $user->reachableFranchises()->isNotEmpty();
     }
 }

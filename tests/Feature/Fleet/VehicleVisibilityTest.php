@@ -54,6 +54,11 @@ class VehicleVisibilityTest extends TestCase
             ]);
 
             $vehicles = [
+                'orgPool' => Vehicle::factory()->create([
+                    'company_id' => null,
+                    'franchise_id' => null,
+                    'plate' => 'ORG-POOL',
+                ]),
                 'poolA' => Vehicle::factory()->create([
                     'company_id' => $companyA->id,
                     'franchise_id' => null,
@@ -105,6 +110,7 @@ class VehicleVisibilityTest extends TestCase
                 ->pluck('id')
                 ->all();
 
+            $this->assertContains($vehicles['orgPool']->id, $ids);
             $this->assertContains($vehicles['poolA']->id, $ids);
             $this->assertContains($vehicles['tagA1']->id, $ids);
             $this->assertNotContains($vehicles['tagA2']->id, $ids);

@@ -45,7 +45,7 @@ class VehiclesController extends Controller
     /** @var list<string> */
     private const UPDATED_FIELDS = [
         'year', 'make', 'model', 'plate', 'vin', 'colour',
-        'body_type', 'fuel_type', 'franchise_id',
+        'body_type', 'fuel_type', 'company_id', 'franchise_id',
         'odometer_miles', 'next_service_on', 'next_service_miles',
     ];
 
@@ -175,10 +175,18 @@ class VehiclesController extends Controller
     {
         $input = $request->validate($this->storeRules(), $this->storeMessages());
 
-        $company = Company::findOrFail($input['company_id']);
+        $company = isset($input['company_id'])
+            ? Company::findOrFail($input['company_id'])
+            : null;
         $franchise = isset($input['franchise_id'])
             ? Franchise::findOrFail($input['franchise_id'])
             : null;
+
+        if ($company === null && $franchise !== null) {
+            throw ValidationException::withMessages([
+                'franchise_id' => 'A place belongs to a company. File the vehicle on the company, or leave it on the group as General.',
+            ]);
+        }
 
         if ($franchise !== null && $franchise->company_id !== $company->getKey()) {
             throw ValidationException::withMessages([
@@ -186,7 +194,11 @@ class VehiclesController extends Controller
             ]);
         }
 
-        $this->authorize('create', [Vehicle::class, $company, $franchise]);
+        if ($company === null) {
+            $this->authorize('createOnOrganization', Vehicle::class);
+        } else {
+            $this->authorize('create', [Vehicle::class, $company, $franchise]);
+        }
 
         if (! $request->user()->hasPermission('fleet_management.financials')) {
             foreach (VehicleFinancials::keys() as $key) {
@@ -194,14 +206,14 @@ class VehiclesController extends Controller
             }
         }
 
-        $vehicle = DB::transaction(function () use ($input, $company, $franchise) {
+        $vehicle = DB::transaction(function () use ($request, $input, $company, $franchise) {
             $number = $this->numbers->next(
                 RecordNumberGenerator::VEHICLES,
-                $franchise ?? $company,
+                $franchise ?? $company ?? $request->user()->organization,
             );
 
             $vehicle = Vehicle::create([
-                'company_id' => $company->getKey(),
+                'company_id' => $company?->getKey(),
                 'franchise_id' => $franchise?->getKey(),
                 'number' => $number,
                 'year' => $input['year'] ?? null,
@@ -275,15 +287,31 @@ class VehiclesController extends Controller
 
         $input = $request->validate($this->updateRules($vehicle), $this->ownershipMessages());
 
-        if (array_key_exists('franchise_id', $input)) {
-            $franchise = $input['franchise_id'] === null
-                ? null
-                : Franchise::findOrFail($input['franchise_id']);
+        if (array_key_exists('company_id', $input) || array_key_exists('franchise_id', $input)) {
+            $companyId = array_key_exists('company_id', $input)
+                ? $input['company_id']
+                : $vehicle->company_id;
+            $franchiseId = array_key_exists('franchise_id', $input)
+                ? $input['franchise_id']
+                : $vehicle->franchise_id;
 
-            if ($franchise !== null && $franchise->company_id !== $vehicle->company_id) {
+            if ($companyId === null && $franchiseId !== null) {
                 throw ValidationException::withMessages([
-                    'franchise_id' => 'That place is not part of this company.',
+                    'franchise_id' => 'A place belongs to a company. File the vehicle on the company, or leave it on the group as General.',
                 ]);
+            }
+
+            if ($franchiseId !== null) {
+                $franchise = Franchise::findOrFail($franchiseId);
+                if ($franchise->company_id !== $companyId) {
+                    throw ValidationException::withMessages([
+                        'franchise_id' => 'That place is not part of this company.',
+                    ]);
+                }
+            }
+
+            if ($companyId === null) {
+                $input['franchise_id'] = null;
             }
         }
 
@@ -375,7 +403,7 @@ class VehiclesController extends Controller
             ->where('organization_id', $this->tenant->idOrFail());
 
         return [
-            'company_id' => ['required', 'uuid', $this->existsInTenant('companies')],
+            'company_id' => ['nullable', 'uuid', $this->existsInTenant('companies')],
             'franchise_id' => ['nullable', 'uuid', $this->existsInTenant('franchises')],
             'year' => ['nullable', 'integer', 'min:1900', 'max:2100'],
             'make' => ['nullable', 'string', 'max:100'],
@@ -401,6 +429,7 @@ class VehiclesController extends Controller
             ->ignore($vehicle->getKey());
 
         return [
+            'company_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('companies')],
             'franchise_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('franchises')],
             'year' => ['sometimes', 'nullable', 'integer', 'min:1900', 'max:2100'],
             'make' => ['sometimes', 'nullable', 'string', 'max:100'],
@@ -560,7 +589,7 @@ class VehiclesController extends Controller
             'next_service_on' => $vehicle->next_service_on?->toDateString(),
             'next_service_miles' => $vehicle->next_service_miles,
             'status' => $vehicle->status->value,
-            'company' => [
+            'company' => $vehicle->company_id === null ? null : [
                 'id' => $vehicle->company_id,
                 'name' => $vehicle->company?->name,
             ],

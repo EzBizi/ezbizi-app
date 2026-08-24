@@ -43,6 +43,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
   String _bodyType = 'van';
   String _fuelType = 'gas';
   String _status = 'active';
+  String? _companyId;
   String? _franchiseId;
   String? _kind;
   bool _busy = false;
@@ -50,6 +51,9 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
 
   Me get _me => widget.session.me!;
   bool get _canEdit => _me.can('fleet_management.edit');
+  bool get _atOrganization => _me.scope.type == 'organization';
+  bool get _showCompanyField =>
+      _atOrganization || _me.companies.length > 1;
   bool get _ended => _status == 'sold' || _status == 'returned';
 
   String? get _editRefusal =>
@@ -110,6 +114,8 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
     _bodyType = row['body_type'] as String? ?? 'van';
     _fuelType = row['fuel_type'] as String? ?? 'gas';
     _status = row['status'] as String? ?? 'active';
+    final company = fleetMap(row['company']);
+    _companyId = company?['id'] as String?;
     final franchise = fleetMap(row['franchise']);
     _franchiseId = franchise?['id'] as String?;
     _kind = fleetMap(row['ownership'])?['kind'] as String?;
@@ -117,8 +123,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
   }
 
   List<FranchiseSummary> get _places {
-    final company = fleetMap(widget.vehicle['company']);
-    final companyId = company?['id'] as String?;
+    final companyId = _companyId;
     if (companyId == null) return const [];
     return _me.franchises.where((f) => f.companyId == companyId).toList();
   }
@@ -175,7 +180,8 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
           : _nextServiceOn.text.trim(),
       'next_service_miles': nextMiles,
       'status': _status,
-      'franchise_id': _franchiseId,
+      if (_showCompanyField) 'company_id': _companyId,
+      'franchise_id': _companyId == null ? null : _franchiseId,
     };
 
     if (buyingBack) {
@@ -316,28 +322,61 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
                 ? (v) => setState(() => _status = v ?? _status)
                 : null,
           ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            key: ValueKey('place-$_franchiseId'),
-            initialValue: _franchiseId ?? '__pool__',
-            isExpanded: true,
-            decoration: InputDecoration(
-              labelText: _me.organization.franchiseLabel,
-            ),
-            items: [
-              const DropdownMenuItem(
-                value: '__pool__',
-                child: Text('Company pool'),
+          if (_showCompanyField) ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: ValueKey('company-$_companyId'),
+              initialValue: _companyId ?? fleetOrgValue,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: 'Company',
+                helperText: _companyId == null && _atOrganization
+                    ? '$fleetGeneralLabel — the whole group can see it.'
+                    : null,
+                helperMaxLines: 3,
               ),
-              for (final f in _places)
-                DropdownMenuItem(value: f.id, child: Text(f.name)),
-            ],
-            onChanged: enabled
-                ? (v) => setState(
-                    () => _franchiseId = v == '__pool__' ? null : v,
-                  )
-                : null,
-          ),
+              items: [
+                if (_atOrganization)
+                  DropdownMenuItem(
+                    value: fleetOrgValue,
+                    child: Text(_me.organization.name),
+                  ),
+                for (final c in _me.companies)
+                  DropdownMenuItem(value: c.id, child: Text(c.name)),
+              ],
+              onChanged: enabled
+                  ? (v) => setState(() {
+                      _companyId = v == fleetOrgValue ? null : v;
+                      _franchiseId = null;
+                    })
+                  : null,
+            ),
+          ],
+          if (_companyId != null) ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: ValueKey('place-$_companyId-$_franchiseId'),
+              initialValue: _franchiseId ?? fleetGeneralValue,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: _me.organization.franchiseLabel,
+              ),
+              items: [
+                const DropdownMenuItem(
+                  value: fleetGeneralValue,
+                  child: Text(fleetGeneralLabel),
+                ),
+                for (final f in _places)
+                  DropdownMenuItem(value: f.id, child: Text(f.name)),
+              ],
+              onChanged: enabled
+                  ? (v) => setState(
+                      () => _franchiseId =
+                          v == fleetGeneralValue ? null : v,
+                    )
+                  : null,
+            ),
+          ],
           if (_ended) ...[
             const SizedBox(height: 16),
             Text(

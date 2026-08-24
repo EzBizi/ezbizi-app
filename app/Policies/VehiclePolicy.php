@@ -12,10 +12,11 @@ use Illuminate\Auth\Access\Response;
 /**
  * Who may do what to a vehicle (spec §4, §9).
  *
- * Reach is company + optional franchise: the company pool (`franchise_id` null)
- * is visible to anyone who can see that company, including franchise-only
- * people assigned under it. Create still requires `canActOnCompany` — writing
- * the register is a company act.
+ * Reach is organization, then company + optional franchise. General
+ * (`franchise_id` null) is visible to anyone who can see that company,
+ * including franchise-only people assigned under it. Organization vans
+ * (`company_id` null) are visible throughout the tenant; writing them is an
+ * organization act.
  */
 class VehiclePolicy
 {
@@ -58,13 +59,31 @@ class VehiclePolicy
             : Refusal::noReach($user, Refusal::AT_FRANCHISE, 'add a vehicle', $franchise->name);
     }
 
+    public function createOnOrganization(User $user): Response
+    {
+        if (! $user->hasPermission('fleet_management.create')) {
+            return Refusal::permission('add a vehicle');
+        }
+
+        $organization = $user->organization;
+
+        return $user->canActOnOrganization($organization)
+            ? Response::allow()
+            : Refusal::noReach(
+                $user,
+                Refusal::AT_ORGANIZATION,
+                'add a vehicle',
+                $organization->name,
+            );
+    }
+
     public function update(User $user, Vehicle $vehicle): Response
     {
         if (! $user->hasPermission('fleet_management.edit')) {
             return Refusal::permission('change a vehicle');
         }
 
-        return $this->within($user, $vehicle, 'change this vehicle');
+        return $this->within($user, $vehicle, 'change this vehicle', write: true);
     }
 
     public function delete(User $user, Vehicle $vehicle): Response
@@ -73,7 +92,7 @@ class VehiclePolicy
             return Refusal::permission('delete a vehicle');
         }
 
-        return $this->within($user, $vehicle, 'delete this vehicle');
+        return $this->within($user, $vehicle, 'delete this vehicle', write: true);
     }
 
     public function assign(User $user, Vehicle $vehicle): Response
@@ -84,7 +103,7 @@ class VehiclePolicy
             );
         }
 
-        return $this->within($user, $vehicle, 'assign this vehicle');
+        return $this->within($user, $vehicle, 'assign this vehicle', write: true);
     }
 
     public function financials(User $user, Vehicle $vehicle): Response
@@ -96,10 +115,22 @@ class VehiclePolicy
         return $this->within($user, $vehicle, 'see amounts on this vehicle');
     }
 
-    private function within(User $user, Vehicle $vehicle, string $act): Response
+    private function within(User $user, Vehicle $vehicle, string $act, bool $write = false): Response
     {
         if ($vehicle->organization_id !== $user->organization_id) {
             return Response::denyAsNotFound();
+        }
+
+        if ($vehicle->company_id === null) {
+            if (! $write) {
+                return Response::allow();
+            }
+
+            $organization = $user->organization;
+
+            return $user->canActOnOrganization($organization)
+                ? Response::allow()
+                : Refusal::noReach($user, Refusal::AT_ORGANIZATION, $act, $organization->name);
         }
 
         $company = $vehicle->company;

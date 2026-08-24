@@ -168,4 +168,25 @@ class VehicleAssignmentsApiTest extends TestCase
                 'message' => 'Nobody has the keys.',
             ]);
     }
+
+    public function test_organization_vehicle_can_be_assigned_to_someone_in_the_group(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+        $driver = $this->userWithRole($tenant, 'OrgDriver', ['fleet_management.view']);
+
+        $vehicle = $this->inTenant($tenant['org'], function () {
+            return Vehicle::factory()->create([
+                'company_id' => null,
+                'franchise_id' => null,
+            ]);
+        });
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/vehicles/'.$vehicle->id.'/assignments', [
+                'user_id' => $driver->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.assignment.user.id', $driver->id);
+    }
 }

@@ -49,10 +49,12 @@ class RecordNumberGenerator
     /**
      * @param  Organization|Company|Franchise  $scope  where the FORMAT is read
      *                                                 from — prefix, padding and
-     *                                                 year cascade (§6). Pool
-     *                                                 vehicles pass a company.
-     *                                                 Only the format; the
-     *                                                 sequence stays organization-wide.
+     *                                                 year cascade (§6). General
+     *                                                 vehicles pass a company;
+     *                                                 organization vehicles pass
+     *                                                 the organization. Only the
+     *                                                 format; the sequence stays
+     *                                                 organization-wide.
      */
     public function next(string $sequenceKey, Organization|Company|Franchise $scope): string
     {

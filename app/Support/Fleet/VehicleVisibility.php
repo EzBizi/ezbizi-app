@@ -10,10 +10,12 @@ use Illuminate\Database\Eloquent\Builder;
 /**
  * Which vehicles a list may show (spec §4).
  *
- * Company pool (`franchise_id` null) is visible to anyone who can see that
- * company — including a franchise-only user looking at one of its places.
- * Tagged vans only appear when the franchise is in the view’s franchise ids
- * (already intersected with reach). Empty reach matches nothing.
+ * General (`franchise_id` null) is visible to anyone who can see that company
+ * — including a franchise-only user looking at one of its places. Organization
+ * vans (`company_id` null) are the group register: anyone with reach in the
+ * tenant sees them. Tagged vans only appear when the franchise is in the
+ * view’s franchise ids (already intersected with reach). Empty reach matches
+ * nothing.
  */
 final class VehicleVisibility
 {
@@ -26,15 +28,20 @@ final class VehicleVisibility
             return $query->whereRaw('0 = 1');
         }
 
-        return $query
-            ->whereIn('company_id', $companyIds)
-            ->where(function (Builder $inner) use ($franchiseIds): void {
-                $inner->whereNull('franchise_id');
+        return $query->where(function (Builder $outer) use ($companyIds, $franchiseIds): void {
+            $outer->whereNull('company_id')
+                ->orWhere(function (Builder $atCompany) use ($companyIds, $franchiseIds): void {
+                    $atCompany
+                        ->whereIn('company_id', $companyIds)
+                        ->where(function (Builder $inner) use ($franchiseIds): void {
+                            $inner->whereNull('franchise_id');
 
-                if ($franchiseIds !== []) {
-                    $inner->orWhereIn('franchise_id', $franchiseIds);
-                }
-            });
+                            if ($franchiseIds !== []) {
+                                $inner->orWhereIn('franchise_id', $franchiseIds);
+                            }
+                        });
+                });
+        });
     }
 
     /**

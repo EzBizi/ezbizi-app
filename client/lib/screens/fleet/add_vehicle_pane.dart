@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import 'vehicle_card.dart';
 
 /// Add is the same 75% pane as a vehicle, not a modal.
 ///
@@ -109,13 +110,26 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
     ('other', 'Other'),
   ];
 
+  bool get _atOrganization => widget.session.me!.scope.type == 'organization';
+
+  bool get _showCompanyField =>
+      _atOrganization || _me.companies.length > 1;
+
   @override
   void initState() {
     super.initState();
-    final companies = _me.companies;
-    if (companies.length == 1) _companyId = companies.first.id;
-    final places = _places;
-    if (places.length == 1) _franchiseId = places.first.id;
+    final scope = _me.scope;
+    if (scope.type == 'organization') {
+      _companyId = null;
+    } else if (scope.type == 'company') {
+      _companyId = scope.id;
+    } else if (scope.type == 'franchise') {
+      final place = _me.franchises.where((f) => f.id == scope.id).firstOrNull;
+      _companyId = place?.companyId;
+      _franchiseId = place?.id;
+    } else if (_me.companies.length == 1) {
+      _companyId = _me.companies.first.id;
+    }
     _startedOn.text = _today();
     for (final c in [_year, _make, _model, _plate, _vin]) {
       c.addListener(() => setState(() {}));
@@ -189,7 +203,8 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
   Future<void> _save() async {
     final companyId = _companyId;
     final kind = _kind;
-    if (companyId == null || kind == null) return;
+    if (kind == null) return;
+    if (companyId == null && !_atOrganization) return;
 
     final yearText = _year.text.trim();
     final year = yearText.isEmpty ? null : int.tryParse(yearText);
@@ -280,7 +295,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
     });
 
     final response = await widget.api.post('/vehicles', {
-      'company_id': companyId,
+      'company_id': ?companyId,
       'franchise_id': ?_franchiseId,
       'year': ?year,
       if (_make.text.trim().isNotEmpty) 'make': _make.text.trim(),
@@ -313,7 +328,10 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canSave = !_busy && _companyId != null && _kind != null;
+    final canSave =
+        !_busy &&
+        _kind != null &&
+        (_companyId != null || _atOrganization);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -336,54 +354,66 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
         ),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            clipBehavior: Clip.none,
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (_me.companies.length > 1) ...[
+                if (_showCompanyField) ...[
                   DropdownButtonFormField<String>(
-                    initialValue: _companyId,
+                    initialValue: _companyId ?? fleetOrgValue,
                     isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Company'),
+                    decoration: InputDecoration(
+                      labelText: 'Company',
+                      helperText: _companyId == null && _atOrganization
+                          ? '$fleetGeneralLabel — the whole group can see it.'
+                          : null,
+                      helperMaxLines: 3,
+                    ),
                     items: [
+                      if (_atOrganization)
+                        DropdownMenuItem(
+                          value: fleetOrgValue,
+                          child: Text(_me.organization.name),
+                        ),
                       for (final c in _me.companies)
                         DropdownMenuItem(value: c.id, child: Text(c.name)),
                     ],
                     onChanged: _busy
                         ? null
                         : (v) => setState(() {
-                            _companyId = v;
-                            if (_places.every((p) => p.id != _franchiseId)) {
-                              _franchiseId = null;
-                            }
+                            _companyId = v == fleetOrgValue ? null : v;
+                            _franchiseId = null;
                           }),
                   ),
                   const SizedBox(height: 12),
                 ],
-                DropdownButtonFormField<String>(
-                  key: ValueKey(_companyId),
-                  initialValue: _franchiseId ?? '__pool__',
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: _me.organization.franchiseLabel,
-                    helperText:
-                        'Company pool is visible to everyone who can see this company.',
-                    helperMaxLines: 3,
-                  ),
-                  items: [
-                    const DropdownMenuItem(
-                      value: '__pool__',
-                      child: Text('Company pool'),
+                if (_companyId != null)
+                  DropdownButtonFormField<String>(
+                    key: ValueKey(_companyId),
+                    initialValue: _franchiseId ?? fleetGeneralValue,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: _me.organization.franchiseLabel,
+                      helperText:
+                          '$fleetGeneralLabel is visible to everyone who can see this company.',
+                      helperMaxLines: 3,
                     ),
-                    for (final f in _places)
-                      DropdownMenuItem(value: f.id, child: Text(f.name)),
-                  ],
-                  onChanged: _busy
-                      ? null
-                      : (v) => setState(
-                          () => _franchiseId = v == '__pool__' ? null : v,
-                        ),
-                ),
+                    items: [
+                      const DropdownMenuItem(
+                        value: fleetGeneralValue,
+                        child: Text(fleetGeneralLabel),
+                      ),
+                      for (final f in _places)
+                        DropdownMenuItem(value: f.id, child: Text(f.name)),
+                    ],
+                    onChanged: _busy
+                        ? null
+                        : (v) => setState(
+                            () => _franchiseId =
+                                v == fleetGeneralValue ? null : v,
+                          ),
+                  ),
                 const SizedBox(height: 16),
                 _card(
                   context,

@@ -279,6 +279,7 @@ class _FleetScreenState extends State<FleetScreen> {
     fetching: _fetching,
     pageError: _pageError,
     onMore: () => _load(page: _page + 1),
+    organizationName: widget.session.me!.organization.name,
   );
 
   Widget _pane({required bool showBack}) {

@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0069',
+      date: '24 Aug 2026',
+      items: [
+        'Fleet vehicles can belong to the organization, not only a company. '
+            'Untagged vans are General. The Company label is fully visible '
+            'when adding a vehicle.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0068',
       date: '24 Aug 2026',
       items: [

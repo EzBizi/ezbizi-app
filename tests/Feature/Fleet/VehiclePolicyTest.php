@@ -79,4 +79,36 @@ class VehiclePolicyTest extends TestCase
             $this->assertTrue($allowed->allowed());
         });
     }
+
+    public function test_organization_vehicle_is_visible_in_the_group_but_written_at_the_organization(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $vehicle = $this->inTenant($tenant['org'], function () {
+            return Vehicle::factory()->create([
+                'company_id' => null,
+                'franchise_id' => null,
+            ]);
+        });
+
+        $local = $this->userWithRole(
+            $tenant,
+            'Local',
+            ['fleet_management.view', 'fleet_management.edit'],
+            onlyAt: $tenant['franchise'],
+        );
+        $admin = $tenant['admin'];
+
+        $this->inTenant($tenant['org'], function () use ($local, $admin, $vehicle) {
+            $this->assertTrue(
+                Gate::forUser($local->fresh())->inspect('view', $vehicle)->allowed(),
+            );
+            $this->assertTrue(
+                Gate::forUser($local->fresh())->inspect('update', $vehicle)->denied(),
+            );
+            $this->assertTrue(
+                Gate::forUser($admin->fresh())->inspect('update', $vehicle)->allowed(),
+            );
+        });
+    }
 }

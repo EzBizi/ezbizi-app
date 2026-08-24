@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../widgets/load_more.dart';
 import '../../widgets/tag.dart';
+import 'vehicle_card.dart';
 
 /// The fleet register as a list: search, chips, rows.
 ///
@@ -37,6 +38,7 @@ class VehicleList extends StatelessWidget {
     required this.fetching,
     required this.pageError,
     required this.onMore,
+    required this.organizationName,
   });
 
   final List<Map<String, dynamic>> vehicles;
@@ -66,6 +68,7 @@ class VehicleList extends StatelessWidget {
   final bool fetching;
   final String? pageError;
   final VoidCallback onMore;
+  final String organizationName;
 
   static const statusChips = <(String, String)>[
     ('active', 'Active'),
@@ -166,10 +169,7 @@ class VehicleList extends StatelessWidget {
     final assignment = vehicle['assignment'];
     final user = assignment is Map ? assignment['user'] : null;
     final driver = user is Map ? user['name'] as String? : null;
-    final franchise = vehicle['franchise'];
-    final place = franchise is Map
-        ? franchise['name'] as String? ?? 'Company pool'
-        : 'Company pool';
+    final place = fleetPlaceLabel(vehicle);
     final status = vehicle['status'] as String? ?? '';
 
     return Card(
@@ -203,8 +203,9 @@ class VehicleList extends StatelessWidget {
               Text(
                 [
                   vehicle['number'],
-                  driver ?? 'Nobody has the keys',
+                  fleetOwnerLabel(vehicle, organizationName),
                   place,
+                  driver ?? 'Nobody has the keys',
                 ].where((p) => p != null && '$p'.isNotEmpty).join(' · '),
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium,

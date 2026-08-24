@@ -35,7 +35,7 @@ A row opens the vehicle in a **25% list / 75% detail** split inside the tab. Not
 
 | # | Decision |
 |---|---|
-| 1 | Vehicle sits on a **company**, optional **franchise**. Empty franchise = **company pool**. |
+| 1 | Vehicle sits on the **organization**, a **company**, or a **franchise**. Empty franchise on a company = **General**. Empty company = the group. |
 | 2 | Assignment is to a **person** (driver / technician), with dated hand-offs. |
 | 3 | Ownership is **periods**: owned or rented, counterparty, started, ended, why it ended. Current = the open row. |
 | 4 | Insurance is **policy periods** on the vehicle. Current = the open row. |
@@ -52,21 +52,21 @@ A row opens the vehicle in a **25% list / 75% detail** split inside the tab. Not
 ## 4. Hierarchy and reach
 
 ```
-Organization
- └── Company                         ← the register lives here
-      ├── (pool)                     ← franchise_id null
-      ├── Franchise A  → vehicles tagged A, plus the pool
-      └── Franchise B  → vehicles tagged B, plus the pool
+Organization                         ← company_id null (group General)
+ └── Company
+      ├── (General)                  ← franchise_id null
+      ├── Franchise A  → vehicles tagged A, plus General
+      └── Franchise B  → vehicles tagged B, plus General
 ```
 
-- Creating a vehicle requires a company the caller can write. The franchise, if set, must belong to that company.
-- **Pool visibility:** anyone who can see the company sees pool vehicles. Anyone looking at one franchise of that company sees that franchise’s vehicles **and** the pool.
-- Organization view rolls every company’s vehicles up (existing scope switcher).
+- Creating a vehicle requires a company the caller can write, or the organization when the view is the group. The franchise, if set, must belong to that company.
+- **General visibility:** anyone who can see the company sees its General vehicles. Anyone looking at one franchise of that company sees that franchise’s vehicles **and** General. Organization vehicles are visible throughout the tenant.
+- Organization view rolls every company’s vehicles up (existing scope switcher), and is where you file a van on the group.
 - Moving `franchise_id` is an **edit**, audited. It is not assignment.
 - Authority does not flow upward. A franchise user cannot file a vehicle on a sibling company.
 - The assigned person must be an **active user reachable in that company’s subtree**. Org-level people who can see the company may be assigned. A person who only works in another company cannot.
 
-On screen, `franchise_id` null is labelled **Company pool**, never “no franchise.”
+On screen, `franchise_id` null is labelled **General**, never “no franchise.” An empty `company_id` is the organization — offered when the current view is the group.
 
 ---
 

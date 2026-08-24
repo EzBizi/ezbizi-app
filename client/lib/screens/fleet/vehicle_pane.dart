@@ -88,8 +88,6 @@ class _VehiclePaneState extends State<VehiclePane> {
     final assignment = fleetMap(_vehicle['assignment']);
     final user = fleetMap(assignment?['user']);
     final driver = user?['name'] as String?;
-    final company = fleetMap(_vehicle['company']);
-    final franchise = fleetMap(_vehicle['franchise']);
     final status = _vehicle['status'] as String? ?? '';
 
     return Column(
@@ -140,8 +138,11 @@ class _VehiclePaneState extends State<VehiclePane> {
               Text(
                 [
                   _vehicle['number'],
-                  if (company != null) company['name'],
-                  franchise != null ? franchise['name'] : 'Company pool',
+                  fleetOwnerLabel(
+                    _vehicle,
+                    widget.session.me!.organization.name,
+                  ),
+                  fleetPlaceLabel(_vehicle),
                   driver ?? 'Nobody has the keys',
                 ].where((p) => p != null && '$p'.isNotEmpty).join(' · '),
                 style: theme.textTheme.bodyMedium,
