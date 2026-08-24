@@ -197,7 +197,10 @@ final class JobsGlance implements Glance
         $tz = $job->franchise?->timezone ?: 'UTC';
         $wall = $job->scheduled_for;
 
-        return $wall !== null && $wall->toDateString() === now($tz)->toDateString();
+        // Convert into the franchise TZ before taking the calendar date.
+        // toDateString() alone is the date in $wall's own timezone.
+        return $wall !== null
+            && $wall->copy()->timezone($tz)->toDateString() === now($tz)->toDateString();
     }
 
     private function isUpcoming(Job $job): bool

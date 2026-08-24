@@ -12,6 +12,7 @@ use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glances\JobsGlance;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
@@ -46,6 +47,12 @@ class JobsGlanceTest extends TestCase
             'org' => $r['organization'], 'admin' => $r['administrator'],
             'company' => $r['company'], 'franchise' => $r['franchise'],
         ];
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     private function inTenant(callable $fn): mixed
@@ -157,6 +164,27 @@ class JobsGlanceTest extends TestCase
 
         $this->job($this->alpha['franchise'], ['scheduled_for' => $todayNoon]);
         $this->job($this->alpha['franchise'], ['scheduled_for' => $tomorrowNoon]);
+
+        $payload = app(JobsGlance::class)->resolve(
+            $this->alpha['admin'],
+            DashboardPeriod::for($this->alpha['admin']),
+            [],
+        )->toArray();
+
+        $this->assertContains('1 job today.', $payload['data']['sentences'] ?? []);
+    }
+
+    public function test_today_is_the_franchise_calendar_date_not_utc(): void
+    {
+        $tz = 'America/New_York';
+        $this->inTenant(fn () => $this->alpha['franchise']->forceFill(['timezone' => $tz])->save());
+
+        // 23:00 in New York is already the next calendar day in UTC. Counting
+        // `$wall->toDateString()` without converting into $tz would use UTC's
+        // date and miss this job.
+        Carbon::setTestNow(Carbon::parse('2026-08-24 23:00:00', $tz));
+
+        $this->job($this->alpha['franchise'], ['scheduled_for' => '2026-08-24 23:00:00']);
 
         $payload = app(JobsGlance::class)->resolve(
             $this->alpha['admin'],
