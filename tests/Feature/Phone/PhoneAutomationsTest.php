@@ -16,6 +16,7 @@ use App\Support\Phone\TwilioGateway;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
+use Twilio\Security\RequestValidator;
 
 /**
  * Phone automation actions and phone.number.broken (Task 14).
@@ -249,6 +250,137 @@ class PhoneAutomationsTest extends TestCase
         $this->assertTrue($module->trigger('phone.number.broken')->isRaised);
     }
 
+    public function test_recipient_fault_on_outbound_sms_does_not_break_the_line(): void
+    {
+        $t = $this->provisionTenant();
+        $viewer = $this->userWithRole($t, 'Desk recipient', ['phone.view']);
+
+        [$connection, $number] = $this->inTenant($t['org'], function () use ($t, $viewer) {
+            [$connection, $number] = $this->openLine($t, e164: '+12035553004');
+            $number->update(['sms_outbound_allowed' => true]);
+            PhoneNumberGrant::create([
+                'organization_id' => $t['org']->id,
+                'number_id' => $number->id,
+                'role_id' => $viewer->role_id,
+            ]);
+
+            return [$connection, $number->fresh()];
+        });
+
+        $fake = $this->app->make(TwilioGateway::class);
+        $this->assertInstanceOf(FakeTwilioGateway::class, $fake);
+        $fake->failSendMessageCode = 21211;
+
+        $this->signedInAs($viewer)->postJson('/api/v1/phone/messages', [
+            'number_id' => $number->id,
+            'to' => '+15550009999',
+            'body' => 'Bad destination.',
+        ])->assertStatus(502);
+
+        $this->inTenant($t['org'], function () use ($connection) {
+            $row = PhoneConnection::query()->find($connection->id);
+            $this->assertSame(PhoneConnection::STATUS_CONNECTED, $row->status);
+            $this->assertSame(
+                0,
+                AutomationEvent::query()->where('event_key', 'phone.number.broken')->count(),
+            );
+        });
+    }
+
+    public function test_status_webhook_invalid_to_does_not_break_the_line(): void
+    {
+        $t = $this->provisionTenant();
+        $authToken = 'auto-auth-+12035553005';
+
+        [$connection] = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, $number] = $this->openLine($t, e164: '+12035553005');
+            PhoneCall::create([
+                'connection_id' => $connection->id,
+                'number_id' => $number->id,
+                'twilio_sid' => 'CAeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+                'direction' => PhoneCall::DIRECTION_OUTBOUND,
+                'from_e164' => '+12035553005',
+                'to_e164' => '+15550008888',
+                'status' => PhoneCall::STATUS_RINGING,
+            ]);
+
+            return [$connection, $number];
+        });
+
+        $this->signedPost($this->statusUrl($t['org']->id, $connection->id), [
+            'CallSid' => 'CAeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'CallStatus' => 'failed',
+            'ErrorCode' => '21211',
+            'ErrorMessage' => 'Invalid To phone number',
+        ], $authToken)->assertOk();
+
+        $this->inTenant($t['org'], function () use ($connection) {
+            $row = PhoneConnection::query()->find($connection->id);
+            $this->assertSame(PhoneConnection::STATUS_CONNECTED, $row->status);
+            $this->assertSame(
+                0,
+                AutomationEvent::query()->where('event_key', 'phone.number.broken')->count(),
+            );
+        });
+    }
+
+    public function test_status_webhook_account_fault_breaks_the_line_once(): void
+    {
+        $t = $this->provisionTenant();
+        $authToken = 'auto-auth-+12035553006';
+
+        [$connection, $number] = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, $number] = $this->openLine($t, e164: '+12035553006');
+            PhoneCall::create([
+                'connection_id' => $connection->id,
+                'number_id' => $number->id,
+                'twilio_sid' => 'CAffffffffffffffffffffffffffffffff',
+                'direction' => PhoneCall::DIRECTION_OUTBOUND,
+                'from_e164' => '+12035553006',
+                'to_e164' => '+15550007777',
+                'status' => PhoneCall::STATUS_RINGING,
+            ]);
+
+            return [$connection, $number];
+        });
+
+        $params = [
+            'CallSid' => 'CAffffffffffffffffffffffffffffffff',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'CallStatus' => 'failed',
+            'ErrorCode' => '20003',
+            'ErrorMessage' => 'Authenticate',
+        ];
+        $url = $this->statusUrl($t['org']->id, $connection->id);
+
+        $this->signedPost($url, $params, $authToken)->assertOk();
+
+        $this->inTenant($t['org'], function () use ($connection, $number) {
+            $row = PhoneConnection::query()->find($connection->id);
+            $this->assertSame(PhoneConnection::STATUS_BROKEN, $row->status);
+            $this->assertNotSame('', (string) $row->status_reason);
+
+            $events = AutomationEvent::query()
+                ->where('event_key', 'phone.number.broken')
+                ->get();
+            $this->assertCount(1, $events);
+            $this->assertTrue(
+                in_array($events[0]->subject_type, [PhoneNumber::class, PhoneConnection::class], true),
+            );
+            $this->assertContains($events[0]->subject_id, [$number->id, $connection->id]);
+        });
+
+        $this->signedPost($url, $params, $authToken)->assertOk();
+
+        $this->inTenant($t['org'], function () {
+            $this->assertSame(
+                1,
+                AutomationEvent::query()->where('event_key', 'phone.number.broken')->count(),
+            );
+        });
+    }
+
     /**
      * @param  array{org: \App\Models\Organization, franchise: \App\Models\Franchise}  $tenant
      * @return array{0: PhoneConnection, 1: PhoneNumber}
@@ -273,5 +405,20 @@ class PhoneAutomationsTest extends TestCase
         ]);
 
         return [$connection, $number];
+    }
+
+    /** @param  array<string, string>  $params */
+    private function signedPost(string $url, array $params, string $authToken): \Illuminate\Testing\TestResponse
+    {
+        $signature = (new RequestValidator($authToken))->computeSignature($url, $params);
+
+        return $this->post($url, $params, [
+            'X-Twilio-Signature' => $signature,
+        ]);
+    }
+
+    private function statusUrl(string $organizationId, string $connectionId): string
+    {
+        return url('/api/v1/phone/status/'.$organizationId.'/'.$connectionId);
     }
 }

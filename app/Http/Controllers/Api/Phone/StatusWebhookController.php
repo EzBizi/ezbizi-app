@@ -106,7 +106,8 @@ class StatusWebhookController extends Controller
     }
 
     /**
-     * Account / number faults from the status callback — not ordinary no-answer.
+     * Account / From faults from the status callback — not ordinary no-answer
+     * and not a bad or unreachable To.
      */
     private function lineBroke(Request $request, string $incoming): bool
     {
@@ -114,11 +115,9 @@ class StatusWebhookController extends Controller
             return false;
         }
 
-        $code = (string) $request->input('ErrorCode', '');
-
-        // 20003 auth, 20404 unknown resource, 21211/21214 bad or unreachable To,
-        // 21606 number not owned / not SMS-capable on this account.
-        return in_array($code, ['20003', '20404', '21211', '21214', '21606'], true);
+        return PhoneLineHealth::isLineBreakingFault(
+            (string) $request->input('ErrorCode', ''),
+        );
     }
 
     private function breakReason(Request $request): string

@@ -78,7 +78,9 @@ class MessagesController extends Controller
             $reason = $e->getMessage() !== ''
                 ? $e->getMessage()
                 : 'Twilio refused to send from this phone line.';
-            $this->health->reportBroken($connection, $reason, $number);
+            if (PhoneLineHealth::isLineBreakingFault(null, $e)) {
+                $this->health->reportBroken($connection, $reason, $number);
+            }
 
             return response()->json(['message' => $reason], Status::HTTP_BAD_GATEWAY);
         }

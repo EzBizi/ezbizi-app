@@ -4,6 +4,7 @@ namespace App\Support\Phone;
 
 use App\Models\PhoneConnection;
 use RuntimeException;
+use Twilio\Exceptions\RestException;
 
 /**
  * In-memory Twilio for tests. Records every call; never hits the network.
@@ -23,6 +24,12 @@ final class FakeTwilioGateway implements TwilioGateway
 
     /** When set, sendMessage throws this message (number.broken tests). */
     public ?string $failSendMessageWith = null;
+
+    /**
+     * When set (and failSendMessageWith is null), sendMessage throws a Twilio
+     * RestException with this error code — e.g. 21211 invalid To.
+     */
+    public ?int $failSendMessageCode = null;
 
     public function verifyAccount(string $accountSid, string $apiKeySid, string $apiSecret): array
     {
@@ -120,6 +127,14 @@ final class FakeTwilioGateway implements TwilioGateway
 
         if ($this->failSendMessageWith !== null) {
             throw new RuntimeException($this->failSendMessageWith);
+        }
+
+        if ($this->failSendMessageCode !== null) {
+            throw new RestException(
+                'The To phone number is not a valid phone number.',
+                $this->failSendMessageCode,
+                400,
+            );
         }
 
         return [
