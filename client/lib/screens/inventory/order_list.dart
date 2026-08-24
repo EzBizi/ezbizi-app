@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/refused.dart';
 import '../../widgets/tag.dart';
 import '../inventory_screen.dart';
+import 'add_issue_pane.dart';
+import 'add_purchase_order_pane.dart';
 import 'issue_pane.dart';
 import 'item_pane.dart';
 import 'purchase_order_pane.dart';
@@ -35,6 +38,8 @@ class _OrderListState extends State<OrderList> {
   bool _openPos = false;
   bool _issuesOnly = false;
   bool _isIssue = false;
+  bool _addingPo = false;
+  bool _addingIssue = false;
   String? _selectedId;
   Map<String, dynamic>? _open;
 
@@ -50,7 +55,7 @@ class _OrderListState extends State<OrderList> {
     if (widget.visible && !oldWidget.visible) _load();
   }
 
-  bool get _hasPane => _open != null;
+  bool get _hasPane => _addingPo || _addingIssue || _open != null;
 
   Future<void> _load() async {
     setState(() {
@@ -91,6 +96,8 @@ class _OrderListState extends State<OrderList> {
   }
 
   void _clearPane() => setState(() {
+    _addingPo = false;
+    _addingIssue = false;
     _selectedId = null;
     _open = null;
     _isIssue = false;
@@ -134,6 +141,18 @@ class _OrderListState extends State<OrderList> {
 
   @override
   Widget build(BuildContext context) {
+    final me = widget.session.me!;
+    final canCreate = me.can('inventory.create');
+    final canEdit = me.can('inventory.edit');
+    final nowhere = (me.companies.isEmpty && me.franchises.isEmpty)
+        ? me.nowhereToAct('add a purchase order')
+        : null;
+    final createRefused = canCreate ? nowhere : null;
+    final issueNowhere = (me.companies.isEmpty && me.franchises.isEmpty)
+        ? me.nowhereToAct('issue stock')
+        : null;
+    final issueRefused = canEdit ? issueNowhere : null;
+
     return InventorySplitScaffold(
       hasPane: _hasPane,
       loading: _loading,
@@ -144,6 +163,48 @@ class _OrderListState extends State<OrderList> {
         note: (_loading || _error != null)
             ? 'Purchase orders and issues.'
             : 'Open orders to receive, and what has already gone out.',
+        action: (canCreate || canEdit)
+            ? Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (canCreate)
+                    Refused(
+                      reason: createRefused,
+                      child: FilledButton.icon(
+                        onPressed: createRefused == null
+                            ? () => setState(() {
+                                _addingPo = true;
+                                _addingIssue = false;
+                                _selectedId = null;
+                                _open = null;
+                                _isIssue = false;
+                              })
+                            : null,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Add purchase order'),
+                      ),
+                    ),
+                  if (canEdit)
+                    Refused(
+                      reason: issueRefused,
+                      child: OutlinedButton.icon(
+                        onPressed: issueRefused == null
+                            ? () => setState(() {
+                                _addingIssue = true;
+                                _addingPo = false;
+                                _selectedId = null;
+                                _open = null;
+                                _isIssue = false;
+                              })
+                            : null,
+                        icon: const Icon(Icons.output, size: 18),
+                        label: const Text('Issue'),
+                      ),
+                    ),
+                ],
+              )
+            : null,
       ),
       list: _list(),
       pane: ({required showBack}) => _pane(showBack: showBack),
@@ -286,6 +347,42 @@ class _OrderListState extends State<OrderList> {
   }
 
   Widget _pane({required bool showBack}) {
+    if (_addingPo) {
+      return AddPurchaseOrderPane(
+        api: widget.api,
+        session: widget.session,
+        showBack: showBack,
+        onCancel: _clearPane,
+        onSaved: (created) {
+          setState(() {
+            _addingPo = false;
+            _isIssue = false;
+            _open = created;
+            _selectedId = created['id'] as String?;
+          });
+          _load();
+        },
+      );
+    }
+
+    if (_addingIssue) {
+      return AddIssuePane(
+        api: widget.api,
+        session: widget.session,
+        showBack: showBack,
+        onCancel: _clearPane,
+        onSaved: (created) {
+          setState(() {
+            _addingIssue = false;
+            _isIssue = true;
+            _open = created;
+            _selectedId = created['id'] as String?;
+          });
+          _load();
+        },
+      );
+    }
+
     final row = _open;
     if (row == null) return const SizedBox.shrink();
 

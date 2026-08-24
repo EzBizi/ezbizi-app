@@ -4,8 +4,10 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/load_more.dart';
+import '../../widgets/refused.dart';
 import '../../widgets/tag.dart';
 import '../inventory_screen.dart';
+import 'add_transfer_pane.dart';
 import 'item_pane.dart';
 
 /// Stock chip: balance rows (item at a location).
@@ -36,6 +38,7 @@ class _StockListState extends State<StockList> {
   bool _fetching = false;
   int _request = 0;
   bool _low = false;
+  bool _transferring = false;
   String? _selectedId;
   Map<String, dynamic>? _open;
 
@@ -51,7 +54,7 @@ class _StockListState extends State<StockList> {
     if (widget.visible && !oldWidget.visible) _load();
   }
 
-  bool get _hasPane => _open != null;
+  bool get _hasPane => _transferring || _open != null;
 
   Future<void> _load({int page = 1}) async {
     if (page > 1 && _fetching) return;
@@ -94,6 +97,7 @@ class _StockListState extends State<StockList> {
   }
 
   void _clearPane() => setState(() {
+    _transferring = false;
     _selectedId = null;
     _open = null;
   });
@@ -101,6 +105,7 @@ class _StockListState extends State<StockList> {
   void _select(Map<String, dynamic> row) {
     final item = inventoryMap(row['item']);
     setState(() {
+      _transferring = false;
       _selectedId = item?['id'] as String?;
       _open = row;
     });
@@ -108,6 +113,13 @@ class _StockListState extends State<StockList> {
 
   @override
   Widget build(BuildContext context) {
+    final me = widget.session.me!;
+    final canEdit = me.can('inventory.edit');
+    final nowhere = (me.companies.isEmpty && me.franchises.isEmpty)
+        ? me.nowhereToAct('transfer stock')
+        : null;
+    final refused = canEdit ? nowhere : null;
+
     return InventorySplitScaffold(
       hasPane: _hasPane,
       loading: _loading,
@@ -122,6 +134,22 @@ class _StockListState extends State<StockList> {
             : _total == 1
             ? '1 balance in this view.'
             : '$_total in this view.',
+        action: canEdit
+            ? Refused(
+                reason: refused,
+                child: FilledButton.icon(
+                  onPressed: refused == null
+                      ? () => setState(() {
+                          _transferring = true;
+                          _selectedId = null;
+                          _open = null;
+                        })
+                      : null,
+                  icon: const Icon(Icons.swap_horiz, size: 18),
+                  label: const Text('Transfer'),
+                ),
+              )
+            : null,
       ),
       list: _list(),
       pane: ({required showBack}) => _pane(showBack: showBack),
@@ -212,6 +240,23 @@ class _StockListState extends State<StockList> {
   }
 
   Widget _pane({required bool showBack}) {
+    if (_transferring) {
+      final seed = inventoryMap(_open?['location']);
+      final item = inventoryMap(_open?['item']);
+      return AddTransferPane(
+        api: widget.api,
+        session: widget.session,
+        showBack: showBack,
+        fromLocationId: seed?['id'] as String?,
+        itemId: item?['id'] as String?,
+        onCancel: _clearPane,
+        onSaved: (_) {
+          _clearPane();
+          _load();
+        },
+      );
+    }
+
     final row = _open;
     final item = inventoryMap(row?['item']);
     final id = item?['id'] as String?;

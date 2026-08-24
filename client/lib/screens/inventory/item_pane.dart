@@ -81,6 +81,40 @@ String inventoryOwnerLabel(Map<String, dynamic> row, String organizationName) {
 
 String inventoryUnitLabel(String? unit) => unit ?? '';
 
+String inventoryItemChoiceLabel(Map<String, dynamic> item) {
+  final sku = item['sku'] as String?;
+  final name = item['name'] as String? ?? '';
+  if (sku != null && sku.isNotEmpty) return '$sku · $name';
+  return name;
+}
+
+String inventoryLocationChoiceLabel(
+  Map<String, dynamic> location,
+  String organizationName,
+) {
+  return [
+    location['name'],
+    inventoryOwnerLabel(location, organizationName),
+    inventoryPlaceLabel(location),
+  ].where((p) => p != null && '$p'.isNotEmpty).join(' · ');
+}
+
+({String? companyId, String? franchiseId}) inventoryPlaceFromScope(Me me) {
+  final scope = me.scope;
+  if (scope.type == 'organization') return (companyId: null, franchiseId: null);
+  if (scope.type == 'company') {
+    return (companyId: scope.id, franchiseId: null);
+  }
+  if (scope.type == 'franchise') {
+    final place = me.franchises.where((f) => f.id == scope.id).firstOrNull;
+    return (companyId: place?.companyId, franchiseId: place?.id);
+  }
+  if (me.companies.length == 1) {
+    return (companyId: me.companies.first.id, franchiseId: null);
+  }
+  return (companyId: null, franchiseId: null);
+}
+
 String inventoryKindLabel(String? kind) => switch (kind) {
   'warehouse' => 'Warehouse',
   'shop' => 'Shop',

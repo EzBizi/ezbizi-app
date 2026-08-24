@@ -42,6 +42,9 @@ class _PurchaseOrderPaneState extends State<PurchaseOrderPane> {
   bool get _canReceive =>
       widget.session.me!.can('inventory.edit') &&
       _order['status'] == 'open';
+  bool get _canOpen =>
+      widget.session.me!.can('inventory.edit') &&
+      _order['status'] == 'draft';
 
   @override
   void initState() {
@@ -109,6 +112,36 @@ class _PurchaseOrderPaneState extends State<PurchaseOrderPane> {
       _locations = rows;
       _locationId ??= rows.length == 1 ? rows.first['id'] as String? : null;
     });
+  }
+
+  Future<void> _openOrder() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    final id = _order['id'];
+    final response = await widget.api.post(
+      '/inventory/purchase-orders/$id/open',
+      const {},
+    );
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _busy = false;
+        _error = response.reason;
+      });
+      return;
+    }
+
+    setState(() {
+      _busy = false;
+      _order = Map<String, dynamic>.from(response.data as Map);
+      _syncQty();
+    });
+    widget.onChanged(_order);
   }
 
   Future<void> _receive() async {
@@ -256,6 +289,15 @@ class _PurchaseOrderPaneState extends State<PurchaseOrderPane> {
                     ),
                   ],
                   const SizedBox(height: 16),
+                ],
+                if (_canOpen) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton(
+                      onPressed: _busy ? null : _openOrder,
+                      child: const Text('Open order'),
+                    ),
+                  ),
                 ],
                 if (_canReceive) ...[
                   if (_loadingLocations)

@@ -54,11 +54,11 @@ void main() {
 
     expect(find.byType(VersionHistoryPanel), findsOneWidget);
     expect(find.text('What\'s been built'), findsOneWidget);
-    expect(find.text('v0.0.0082'), findsOneWidget);
-    expect(find.textContaining('Looking at one company'), findsOneWidget);
+    expect(find.text('v0.0.0084'), findsOneWidget);
+    expect(find.textContaining('Inventory can buy, issue and transfer'), findsOneWidget);
 
-    // Newest above oldest: the 0082 heading is above the first-build heading.
-    final newest = tester.getTopLeft(find.text('v0.0.0082'));
+    // Newest above oldest: the 0084 heading is above the first-build heading.
+    final newest = tester.getTopLeft(find.text('v0.0.0084'));
     final oldest = tester.getTopLeft(find.text('v0.0.0001'));
     expect(newest.dy, lessThan(oldest.dy));
   });
