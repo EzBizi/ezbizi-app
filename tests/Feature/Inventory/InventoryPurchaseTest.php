@@ -14,6 +14,7 @@ use App\Models\InventoryReceiveLine;
 use App\Models\InventoryVendor;
 use App\Models\Organization;
 use App\Models\User;
+use App\Support\Inventory\InventoryItemStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -225,6 +226,77 @@ class InventoryPurchaseTest extends TestCase
             ])
             ->assertStatus(422)
             ->assertJsonPath('message', 'This location is closed.');
+
+        $this->assertOnHand($tenant, $item->id, $location->id, '0.000');
+        $this->assertPoStatus($tenant, $po['id'], 'open');
+        $this->inTenant($tenant['org'], function () {
+            $this->assertSame(0, InventoryReceive::query()->count());
+        });
+    }
+
+    public function test_discontinued_item_cannot_be_ordered(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        [$vendor, $item] = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $vendor = InventoryVendor::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => 'Liner supply',
+            ]);
+            $item = InventoryItem::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => '6 mil liner',
+                'status' => InventoryItemStatus::Discontinued,
+            ]);
+
+            return [$vendor, $item];
+        });
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/purchase-orders', [
+                'vendor_id' => $vendor->id,
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'lines' => [
+                    ['item_id' => $item->id, 'qty' => 10],
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This item is discontinued, so it cannot go out.');
+
+        $this->inTenant($tenant['org'], function () {
+            $this->assertSame(0, InventoryPurchaseOrder::query()->count());
+        });
+    }
+
+    public function test_discontinued_item_cannot_be_received(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        [$vendor, $item, $location] = $this->vendorItemLocation($tenant);
+
+        $po = $this->openOrder($admin, $vendor, $item, $tenant, 10);
+        $lineId = $po['lines'][0]['id'];
+
+        $this->signedInAs($admin)
+            ->patchJson('/api/v1/inventory/items/'.$item->id, [
+                'status' => InventoryItemStatus::Discontinued->value,
+            ])
+            ->assertOk();
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/purchase-orders/'.$po['id'].'/receives', [
+                'location_id' => $location->id,
+                'lines' => [
+                    ['purchase_order_line_id' => $lineId, 'qty' => 4],
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This item is discontinued, so it cannot go out.');
 
         $this->assertOnHand($tenant, $item->id, $location->id, '0.000');
         $this->assertPoStatus($tenant, $po['id'], 'open');

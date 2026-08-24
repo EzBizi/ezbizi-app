@@ -285,6 +285,57 @@ class InventoryLocationsApiTest extends TestCase
         });
     }
 
+    public function test_delete_refuses_zero_qty_location_that_has_history(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        [$item, $location] = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $item = InventoryItem::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+            ]);
+            $location = InventoryLocation::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => 'Counted shop',
+            ]);
+
+            return [$item, $location];
+        });
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/adjustments', [
+                'location_id' => $location->id,
+                'item_id' => $item->id,
+                'counted_as' => 10,
+                'reason' => 'opening count',
+            ])
+            ->assertCreated();
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/adjustments', [
+                'location_id' => $location->id,
+                'item_id' => $item->id,
+                'counted_as' => 0,
+                'reason' => 'cleared',
+            ])
+            ->assertCreated();
+
+        $this->signedInAs($admin)
+            ->deleteJson('/api/v1/inventory/locations/'.$location->id)
+            ->assertStatus(422)
+            ->assertJsonFragment([
+                'message' => 'This location has history, so it cannot be removed.',
+            ]);
+
+        $this->inTenant($tenant['org'], function () use ($item, $location) {
+            $this->assertTrue(InventoryLocation::query()->whereKey($location->id)->exists());
+            $this->assertTrue($location->fresh()->isEmpty());
+            $this->assertSame('0.000', InventoryBalance::qtyOnHand($item->id, $location->id));
+        });
+    }
+
     public function test_admin_creates_a_location_on_the_organization(): void
     {
         $tenant = $this->provisionTenant('Alpha');

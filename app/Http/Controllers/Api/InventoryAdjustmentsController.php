@@ -16,8 +16,10 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Counted-as: post a new on-hand for one item at one location (spec §8.1).
  *
- * Authorizes location `update` (`inventory.edit` + write reach). Delta zero
- * is refused by the mover. Empty reason is a 422; there is no extra sentence.
+ * Authorizes location `update` (`inventory.edit` + write reach) and item
+ * `view`. Sibling SKUs are not countable onto a location you edit. Delta
+ * zero is refused by the mover. Empty reason is a 422; there is no extra
+ * sentence.
  */
 class InventoryAdjustmentsController extends Controller
 {
@@ -54,6 +56,7 @@ class InventoryAdjustmentsController extends Controller
         $item = InventoryItem::query()->findOrFail($input['item_id']);
 
         $this->authorize('update', $location);
+        $this->authorize('view', $item);
 
         $adjustment = $this->mover->adjust(
             $location,

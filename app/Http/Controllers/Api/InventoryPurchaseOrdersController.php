@@ -13,6 +13,7 @@ use App\Models\InventoryVendor;
 use App\Models\User;
 use App\Support\Automations\EventEmitter;
 use App\Support\Inventory\InventoryFinancials;
+use App\Support\Inventory\InventoryItemStatus;
 use App\Support\Inventory\InventoryMover;
 use App\Support\Inventory\InventoryPurchaseOrderStatus;
 use App\Support\Inventory\InventoryVisibility;
@@ -113,6 +114,12 @@ class InventoryPurchaseOrdersController extends Controller
         foreach ($input['lines'] as $line) {
             $item = InventoryItem::query()->findOrFail($line['item_id']);
             $this->authorize('view', $item);
+
+            if ($item->status === InventoryItemStatus::Discontinued) {
+                throw ValidationException::withMessages([
+                    'item_id' => 'This item is discontinued, so it cannot go out.',
+                ]);
+            }
 
             if (array_key_exists('unit_cost_minor', $line)
                 && $line['unit_cost_minor'] !== null

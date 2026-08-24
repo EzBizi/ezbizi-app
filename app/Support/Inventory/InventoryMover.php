@@ -37,8 +37,10 @@ use Illuminate\Validation\ValidationException;
  * location are refused; partial leaves the PO open, full marks received.
  *
  * Issue takes stock off a location. Job XOR a note; discontinued items
- * and closed locations are refused. The number is allocated in the same
- * transaction so a refused line does not consume IS-.
+ * and closed locations are refused. Transfer refuses discontinued items
+ * and closed from/onto. Receive refuses discontinued items. The number
+ * is allocated in the same transaction so a refused line does not consume
+ * IS- or T-.
  *
  * Each posted movement emits the matching item.* event on the InventoryItem
  * in the same transaction. last_cost on receive is not item.updated.
@@ -117,6 +119,9 @@ final class InventoryMover
         User $user,
     ): InventoryTransfer {
         return DB::transaction(function () use ($from, $to, $lines, $user) {
+            $this->assertLocationOpen($from, 'from_location_id');
+            $this->assertLocationOpen($to, 'to_location_id');
+
             $scope = $from->franchise ?? $from->company ?? $user->organization;
             $number = $this->numbers->next(RecordNumberGenerator::TRANSFERS, $scope);
 
@@ -137,6 +142,7 @@ final class InventoryMover
                     ]);
                 }
 
+                $this->assertItemCanMove($line['item']);
                 $this->moveQty($line['item'], $from, $to, $qty);
 
                 InventoryTransferLine::create([
@@ -171,11 +177,7 @@ final class InventoryMover
         User $user,
     ): InventoryReceive {
         return DB::transaction(function () use ($order, $location, $lines, $user) {
-            if ($location->status === InventoryLocationStatus::Closed) {
-                throw ValidationException::withMessages([
-                    'location_id' => 'This location is closed.',
-                ]);
-            }
+            $this->assertLocationOpen($location);
 
             if ($order->status !== InventoryPurchaseOrderStatus::Open) {
                 throw ValidationException::withMessages([
@@ -227,6 +229,7 @@ final class InventoryMover
 
                 $poLine->loadMissing('item');
                 $item = $poLine->item ?? $poLine->item()->firstOrFail();
+                $this->assertItemCanMove($item);
                 $this->addQty($item, $location, $qty);
 
                 $poLine->qty_received = bcadd($already, $qty, 3);
@@ -301,11 +304,7 @@ final class InventoryMover
         ?string $note = null,
     ): InventoryIssue {
         return DB::transaction(function () use ($location, $lines, $user, $job, $note) {
-            if ($location->status === InventoryLocationStatus::Closed) {
-                throw ValidationException::withMessages([
-                    'location_id' => 'This location is closed.',
-                ]);
-            }
+            $this->assertLocationOpen($location);
 
             $note = $note === null ? null : trim($note);
             if ($note === '') {
@@ -341,12 +340,7 @@ final class InventoryMover
 
                 $item = $line['item'];
 
-                if ($item->status === InventoryItemStatus::Discontinued) {
-                    throw ValidationException::withMessages([
-                        'item_id' => 'This item is discontinued, so it cannot go out.',
-                    ]);
-                }
-
+                $this->assertItemCanMove($item);
                 $this->removeQty($item, $location, $qty);
 
                 InventoryIssueLine::create([
@@ -367,6 +361,24 @@ final class InventoryMover
 
             return $issue;
         });
+    }
+
+    private function assertItemCanMove(InventoryItem $item): void
+    {
+        if ($item->status === InventoryItemStatus::Discontinued) {
+            throw ValidationException::withMessages([
+                'item_id' => 'This item is discontinued, so it cannot go out.',
+            ]);
+        }
+    }
+
+    private function assertLocationOpen(InventoryLocation $location, string $field = 'location_id'): void
+    {
+        if ($location->status === InventoryLocationStatus::Closed) {
+            throw ValidationException::withMessages([
+                $field => 'This location is closed.',
+            ]);
+        }
     }
 
     private function addQty(InventoryItem $item, InventoryLocation $location, string $qty): void

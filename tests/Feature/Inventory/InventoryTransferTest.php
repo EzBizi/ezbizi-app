@@ -8,6 +8,8 @@ use App\Models\InventoryItem;
 use App\Models\InventoryLocation;
 use App\Models\InventoryTransfer;
 use App\Models\InventoryTransferLine;
+use App\Support\Inventory\InventoryItemStatus;
+use App\Support\Inventory\InventoryLocationStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -211,6 +213,111 @@ class InventoryTransferTest extends TestCase
             $this->assertSame('0.000', InventoryBalance::qtyOnHand($short->id, $to->id));
             $this->assertSame(0, InventoryTransfer::query()->count());
             $this->assertSame(0, InventoryTransferLine::query()->count());
+        });
+    }
+
+    public function test_discontinued_item_cannot_transfer(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        [$item, $from, $to] = $this->twoLocations($tenant);
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/adjustments', [
+                'location_id' => $from->id,
+                'item_id' => $item->id,
+                'counted_as' => 10,
+                'reason' => 'opening count',
+            ])
+            ->assertCreated();
+
+        $this->signedInAs($admin)
+            ->patchJson('/api/v1/inventory/items/'.$item->id, [
+                'status' => InventoryItemStatus::Discontinued->value,
+            ])
+            ->assertOk();
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/transfers', [
+                'from_location_id' => $from->id,
+                'to_location_id' => $to->id,
+                'lines' => [
+                    ['item_id' => $item->id, 'qty' => 4],
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This item is discontinued, so it cannot go out.');
+
+        $this->inTenant($tenant['org'], function () use ($item, $from, $to) {
+            $this->assertSame('10.000', InventoryBalance::qtyOnHand($item->id, $from->id));
+            $this->assertSame('0.000', InventoryBalance::qtyOnHand($item->id, $to->id));
+            $this->assertSame(0, InventoryTransfer::query()->count());
+        });
+    }
+
+    public function test_closed_location_cannot_transfer_from_or_onto(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        [$item, $from, $to] = $this->twoLocations($tenant);
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/adjustments', [
+                'location_id' => $from->id,
+                'item_id' => $item->id,
+                'counted_as' => 10,
+                'reason' => 'opening count',
+            ])
+            ->assertCreated();
+
+        $this->signedInAs($admin)
+            ->patchJson('/api/v1/inventory/locations/'.$to->id, [
+                'status' => 'closed',
+            ])
+            ->assertOk();
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/transfers', [
+                'from_location_id' => $from->id,
+                'to_location_id' => $to->id,
+                'lines' => [
+                    ['item_id' => $item->id, 'qty' => 4],
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This location is closed.');
+
+        $this->inTenant($tenant['org'], function () use ($from) {
+            $from->status = InventoryLocationStatus::Closed;
+            $from->save();
+        });
+
+        $openTo = $this->inTenant($tenant['org'], function () use ($tenant) {
+            return InventoryLocation::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => 'Open cage',
+            ]);
+        });
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/transfers', [
+                'from_location_id' => $from->id,
+                'to_location_id' => $openTo->id,
+                'lines' => [
+                    ['item_id' => $item->id, 'qty' => 4],
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This location is closed.');
+
+        $this->inTenant($tenant['org'], function () use ($item, $from, $to, $openTo) {
+            $this->assertSame('10.000', InventoryBalance::qtyOnHand($item->id, $from->id));
+            $this->assertSame('0.000', InventoryBalance::qtyOnHand($item->id, $to->id));
+            $this->assertSame('0.000', InventoryBalance::qtyOnHand($item->id, $openTo->id));
+            $this->assertSame(0, InventoryTransfer::query()->count());
         });
     }
 

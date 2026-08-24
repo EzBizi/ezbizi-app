@@ -25,8 +25,8 @@ use Symfony\Component\HttpFoundation\Response;
  * Inventory places — list, create, show, update, destroy (spec §6).
  *
  * Closed is a status, not a delete. Hard delete only when the location holds
- * no stock. A van names a Fleet vehicle that is visible and not already a
- * location. List always applies InventoryVisibility.
+ * no stock and no movement still names it. A van names a Fleet vehicle that
+ * is visible and not already a location. List always applies InventoryVisibility.
  */
 class InventoryLocationsController extends Controller
 {
@@ -259,6 +259,12 @@ class InventoryLocationsController extends Controller
         if (! $location->isEmpty()) {
             return response()->json([
                 'message' => 'This location still has stock. Move or adjust it to zero first.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        if ($location->hasHistory()) {
+            return response()->json([
+                'message' => 'This location has history, so it cannot be removed.',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 

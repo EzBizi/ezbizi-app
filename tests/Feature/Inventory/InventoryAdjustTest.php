@@ -281,6 +281,81 @@ class InventoryAdjustTest extends TestCase
         }
     }
 
+    public function test_refuses_an_item_the_caller_cannot_see(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        $sibling = $this->inTenant($tenant['org'], function () use ($tenant) {
+            return Company::create([
+                'organization_id' => $tenant['org']->id,
+                'name' => 'Beta Co',
+                'is_active' => true,
+            ]);
+        });
+
+        [$ownItem, $ownLocation, $foreignItem] = $this->inTenant(
+            $tenant['org'],
+            function () use ($tenant, $sibling) {
+                $ownItem = InventoryItem::factory()->create([
+                    'company_id' => $tenant['company']->id,
+                    'franchise_id' => $tenant['franchise']->id,
+                    'name' => 'Own liner',
+                ]);
+                $ownLocation = InventoryLocation::factory()->create([
+                    'company_id' => $tenant['company']->id,
+                    'franchise_id' => $tenant['franchise']->id,
+                    'name' => 'Own shop',
+                ]);
+                $foreignItem = InventoryItem::factory()->create([
+                    'company_id' => $sibling->id,
+                    'name' => 'Beta liner',
+                ]);
+
+                return [$ownItem, $ownLocation, $foreignItem];
+            },
+        );
+
+        $local = $this->userWithRole(
+            $tenant,
+            'Local',
+            ['inventory.view', 'inventory.edit'],
+            onlyAt: $tenant['franchise'],
+        );
+
+        $this->signedInAs($local)
+            ->postJson('/api/v1/inventory/adjustments', [
+                'location_id' => $ownLocation->id,
+                'item_id' => $foreignItem->id,
+                'counted_as' => 7,
+                'reason' => 'sibling count',
+            ])
+            ->assertForbidden();
+
+        $this->inTenant($tenant['org'], function () use ($foreignItem, $ownLocation) {
+            $this->assertSame('0.000', InventoryBalance::qtyOnHand($foreignItem->id, $ownLocation->id));
+            $this->assertSame(0, InventoryAdjustment::query()->count());
+        });
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/adjustments', [
+                'location_id' => $ownLocation->id,
+                'item_id' => $ownItem->id,
+                'counted_as' => 10,
+                'reason' => 'own count',
+            ])
+            ->assertCreated();
+
+        $this->signedInAs($local)
+            ->postJson('/api/v1/inventory/adjustments', [
+                'location_id' => $ownLocation->id,
+                'item_id' => $ownItem->id,
+                'counted_as' => 4,
+                'reason' => 'recount',
+            ])
+            ->assertCreated();
+    }
+
     public function test_stock_index_item_id_returns_a_row_that_is_not_on_page_one(): void
     {
         $tenant = $this->provisionTenant('Alpha');

@@ -220,6 +220,25 @@ class InventoryItemsController extends Controller
 
             if ($companyId === null) {
                 $input['franchise_id'] = null;
+                $franchiseId = null;
+                $franchise = null;
+            }
+
+            $placeChanged = $companyId !== $item->company_id
+                || $franchiseId !== $item->franchise_id;
+
+            if ($placeChanged) {
+                if ($item->balances()->where('qty_on_hand', '!=', 0)->exists()) {
+                    return response()->json([
+                        'message' => 'Move the stock out first.',
+                    ], Response::HTTP_UNPROCESSABLE_ENTITY);
+                }
+
+                if ($company === null) {
+                    $this->authorize('createOnOrganization', InventoryItem::class);
+                } else {
+                    $this->authorize('create', [InventoryItem::class, $company, $franchise]);
+                }
             }
         } elseif (array_key_exists('sku', $input)) {
             $this->assertSkuAvailable(

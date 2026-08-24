@@ -5,6 +5,7 @@ namespace Tests\Feature\Inventory;
 use App\Models\Assignment;
 use App\Models\Company;
 use App\Models\InventoryAdjustment;
+use App\Models\InventoryBalance;
 use App\Models\InventoryItem;
 use App\Models\InventoryLocation;
 use App\Models\Role;
@@ -256,6 +257,106 @@ class InventoryItemsApiTest extends TestCase
 
         $this->inTenant($tenant['org'], function () use ($withHistory) {
             $this->assertTrue(InventoryItem::query()->whereKey($withHistory->id)->exists());
+        });
+    }
+
+    public function test_patch_company_refuses_stock_and_rechecks_create_reach(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        $sibling = $this->inTenant($tenant['org'], function () use ($tenant) {
+            return Company::create([
+                'organization_id' => $tenant['org']->id,
+                'name' => 'Beta Co',
+                'is_active' => true,
+            ]);
+        });
+
+        [$item, $location, $empty] = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $item = InventoryItem::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => 'Stocked liner',
+            ]);
+            $location = InventoryLocation::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => 'Main shop',
+            ]);
+            $empty = InventoryItem::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => 'Empty liner',
+            ]);
+
+            return [$item, $location, $empty];
+        });
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/adjustments', [
+                'location_id' => $location->id,
+                'item_id' => $item->id,
+                'counted_as' => 10,
+                'reason' => 'opening count',
+            ])
+            ->assertCreated();
+
+        $this->signedInAs($admin)
+            ->patchJson('/api/v1/inventory/items/'.$item->id, [
+                'company_id' => $sibling->id,
+                'franchise_id' => null,
+            ])
+            ->assertStatus(422)
+            ->assertJsonFragment([
+                'message' => 'Move the stock out first.',
+            ]);
+
+        $this->inTenant($tenant['org'], function () use ($item, $location) {
+            $row = InventoryItem::query()->find($item->id);
+            $this->assertSame($item->company_id, $row?->company_id);
+            $this->assertSame($item->franchise_id, $row?->franchise_id);
+            $this->assertSame('10.000', InventoryBalance::qtyOnHand($item->id, $location->id));
+        });
+
+        $this->signedInAs($admin)
+            ->patchJson('/api/v1/inventory/items/'.$empty->id, [
+                'company_id' => $sibling->id,
+                'franchise_id' => null,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.company.id', $sibling->id);
+
+        $local = $this->userAtCompany(
+            $tenant,
+            $tenant['company'],
+            'CompanyClerk',
+            ['inventory.view', 'inventory.edit', 'inventory.create'],
+        );
+
+        $ownEmpty = $this->inTenant($tenant['org'], function () use ($tenant) {
+            return InventoryItem::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'name' => 'Clerk liner',
+            ]);
+        });
+
+        $this->signedInAs($local)
+            ->patchJson('/api/v1/inventory/items/'.$ownEmpty->id, [
+                'company_id' => null,
+            ])
+            ->assertForbidden();
+
+        $this->signedInAs($local)
+            ->patchJson('/api/v1/inventory/items/'.$ownEmpty->id, [
+                'company_id' => $sibling->id,
+                'franchise_id' => null,
+            ])
+            ->assertForbidden();
+
+        $this->inTenant($tenant['org'], function () use ($ownEmpty, $tenant) {
+            $row = InventoryItem::query()->find($ownEmpty->id);
+            $this->assertSame($tenant['company']->id, $row?->company_id);
         });
     }
 

@@ -18,7 +18,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * A named place stock sits (spec §6).
  *
- * Soft-delete is not used. Closed is a status. Hard delete only when isEmpty().
+ * Soft-delete is not used. Closed is a status. Hard delete only when
+ * isEmpty() and no movement still names the place.
  * `catalogue_key` is a generated stored column — never written.
  */
 #[Fillable([
@@ -62,6 +63,19 @@ class InventoryLocation extends Model implements StatesRetention
         return ! $this->balances()->where('qty_on_hand', '!=', 0)->exists();
     }
 
+    /**
+     * True when an adjustment, transfer, issue, or receive still names
+     * this place — not safe to hard-delete even at zero qty.
+     */
+    public function hasHistory(): bool
+    {
+        return $this->adjustments()->exists()
+            || $this->issues()->exists()
+            || $this->receives()->exists()
+            || $this->transfersFrom()->exists()
+            || $this->transfersTo()->exists();
+    }
+
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
@@ -80,5 +94,30 @@ class InventoryLocation extends Model implements StatesRetention
     public function balances(): HasMany
     {
         return $this->hasMany(InventoryBalance::class, 'location_id');
+    }
+
+    public function adjustments(): HasMany
+    {
+        return $this->hasMany(InventoryAdjustment::class, 'location_id');
+    }
+
+    public function issues(): HasMany
+    {
+        return $this->hasMany(InventoryIssue::class, 'location_id');
+    }
+
+    public function receives(): HasMany
+    {
+        return $this->hasMany(InventoryReceive::class, 'location_id');
+    }
+
+    public function transfersFrom(): HasMany
+    {
+        return $this->hasMany(InventoryTransfer::class, 'from_location_id');
+    }
+
+    public function transfersTo(): HasMany
+    {
+        return $this->hasMany(InventoryTransfer::class, 'to_location_id');
     }
 }
