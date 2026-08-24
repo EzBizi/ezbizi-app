@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glance;
 use App\Support\Dashboard\GlancePayload;
+use App\Support\Email\CannotReachHost;
 use App\Support\Email\CannotReadMailbox;
 use App\Support\Email\MailboxAccess;
 use App\Support\Email\MailboxReaders;
@@ -78,7 +79,7 @@ final class EmailGlance implements Glance
                         'label' => $this->sliceLabel($mailbox),
                         'total' => $this->readers->for($mailbox)->unreadCount($mailbox),
                     ];
-                } catch (CannotReadMailbox) {
+                } catch (CannotReadMailbox|CannotReachHost) {
                     $sentences[] = sprintf(
                         '%s could not be asked for unread mail.',
                         $mailbox->address,

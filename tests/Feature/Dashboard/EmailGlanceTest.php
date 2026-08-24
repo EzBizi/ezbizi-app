@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glances\EmailGlance;
+use App\Support\Email\CannotReachHost;
 use App\Support\Email\CannotReadMailbox;
 use App\Support\Email\MailboxReaders;
 use App\Support\Tenancy\TenantContext;
@@ -164,6 +165,30 @@ class EmailGlanceTest extends TestCase
                 fn (string $s) => str_contains($s, 'dead@alpha.test'),
             ),
             'The unreadable inbox must be named in a sentence.',
+        );
+    }
+
+    public function test_a_host_that_cannot_be_reached_is_named_and_omitted_from_slices(): void
+    {
+        $user = $this->userWithPermissions(['email.view']);
+        $ok = $this->grantedInbox($user, 'ok@alpha.test');
+        $blocked = $this->grantedInbox($user, 'blocked@alpha.test');
+        $this->withScriptedProvider();
+        ScriptedMailboxReader::$unread[(string) $ok->getKey()] = 3;
+        ScriptedMailboxReader::$failUnread[(string) $blocked->getKey()] = new CannotReachHost(
+            'That is not a host EzBizi will dial.',
+        );
+
+        $payload = app(EmailGlance::class)->resolve($user, DashboardPeriod::for($user), [])->toArray();
+
+        $this->assertFalse($payload['data']['empty']);
+        $this->assertCount(1, $payload['data']['slices']);
+        $this->assertSame(3, $payload['data']['slices'][0]['total']);
+        $this->assertTrue(
+            collect($payload['data']['sentences'] ?? [])->contains(
+                fn (string $s) => str_contains($s, 'blocked@alpha.test'),
+            ),
+            'The unreachable inbox must be named in a sentence.',
         );
     }
 
