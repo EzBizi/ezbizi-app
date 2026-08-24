@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\HrPeopleController;
 use App\Http\Controllers\Api\InspectionDefinitionsController;
 use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InventoryItemsController;
+use App\Http\Controllers\Api\InventoryLocationsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
@@ -247,6 +248,7 @@ Route::prefix('v1')
         Route::post('vehicles/{vehicle}/payments', [VehiclePaymentsController::class, 'store']);
         Route::apiResource('vehicles', VehiclesController::class);
         Route::apiResource('inventory/items', InventoryItemsController::class);
+        Route::apiResource('inventory/locations', InventoryLocationsController::class);
 
         // ── The shape of the business (§3) ───────────────────────
         //
