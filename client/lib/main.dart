@@ -16,7 +16,6 @@ import 'screens/development_screen.dart';
 import 'screens/hr/onboarding_form.dart';
 import 'screens/invitation_screen.dart';
 import 'screens/login_screen.dart';
-import 'screens/organization_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'screens/signup_screen.dart';
@@ -354,7 +353,10 @@ class _HomeShellState extends State<HomeShell> {
 
     if (id == 'organization' || id == 'settings') {
       _rail = _Rail.pinned;
-      _selected = id;
+      // Organization used to be its own pinned row. It now lives inside
+      // Settings, so an old /organization URL still opens this destination
+      // rather than falling through to Dashboard.
+      _selected = 'settings';
       return;
     }
 
@@ -500,21 +502,11 @@ class _HomeShellState extends State<HomeShell> {
     // Pinned to the bottom, under a rule and the empty space.
     //
     // Neither is a place you go to do the work. Settings is where you go to
-    // change how the work behaves, and Development is the platform underneath
-    // the product rather than part of it (§4.2) — both belong away from the
-    // list of things you actually open all day.
+    // change how the work behaves — the shape of the business, the cascade,
+    // and its roles — and Development is the platform underneath the product
+    // rather than part of it (§4.2). Both belong away from the list of things
+    // you actually open all day.
     final pinned = <Destination>[
-      // Above Settings, because it is the thing Settings configures: every
-      // scope in that screen is a row in this one.
-      Destination(
-        'Organization',
-        Icons.hub_outlined,
-        OrganizationScreen(api: widget.api, session: widget.session),
-        id: 'organization',
-      ),
-      // Settings, and the organization's roles behind a second tab of it —
-      // see settings_shell.dart for why roles belong here rather than in the
-      // list above.
       Destination(
         UiStrings.t('shell.settings'),
         Icons.settings_outlined,
@@ -525,9 +517,9 @@ class _HomeShellState extends State<HomeShell> {
 
     // Development gets its own group, below its own rule.
     //
-    // It was the third row of `pinned`, which said it was the same KIND of thing
-    // as Organization and Settings. It is not: those configure the business and
-    // every administrator has them. This is the platform underneath the product
+    // It was a row of `pinned`, which said it was the same KIND of thing as
+    // Settings. It is not: Settings configures the business and every
+    // administrator has it. This is the platform underneath the product
     // (§4.2), it exists only when the server says this person is also EzBizi
     // staff, and most people signed into this app will never see it at all.
     //
@@ -1073,11 +1065,11 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
             // And a third group, for staff only.
             //
             // Development sat in the group above, which said it was the same
-            // kind of thing as Organization and Settings. Those configure the
-            // business and every administrator has them; this is the platform
-            // underneath the product (§4.2), it appears only when the server
-            // says this person is also EzBizi staff, and most people signed
-            // into this app will never see it.
+            // kind of thing as Settings. Settings configures the business and
+            // every administrator has it; this is the platform underneath the
+            // product (§4.2), it appears only when the server says this person
+            // is also EzBizi staff, and most people signed into this app will
+            // never see it.
             //
             // The whole group disappears with its rule when they are not, so
             // nobody is left looking at a divider with nothing under it.

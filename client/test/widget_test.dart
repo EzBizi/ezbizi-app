@@ -585,8 +585,8 @@ void main() {
   });
 
   /// Development is staff-only (§4.2), so it sits under its own rule rather than
-  /// in the group with Organization and Settings — those configure the business
-  /// and every administrator has them.
+  /// in the group with Settings — that configures the business and every
+  /// administrator has it.
   ///
   /// Both directions, because the interesting failure is the second one: a rule
   /// left behind when the group beneath it is empty is a divider with nothing

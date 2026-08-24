@@ -868,9 +868,9 @@ class _RoleEditorState extends State<_RoleEditor> {
           Text(
             'Ticking a tab lets this role open it — the same tabs, in the same '
             'order, as the sidebar. The tick fills in when every action inside '
-            'is granted and shows a dash when only some are. Organization and '
-            'Settings at the bottom of the sidebar are not tabs; the grants '
-            'under those headings are what you can do on those screens.',
+            'is granted and shows a dash when only some are. Settings at the '
+            'bottom of the sidebar is not a work tab; Organization lives inside '
+            'it. The grants under those headings are what you can do there.',
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 8),

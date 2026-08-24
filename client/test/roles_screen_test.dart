@@ -274,7 +274,7 @@ void main() {
           groupKey: 'organization',
           groupLabel: 'Organization',
           groupHint:
-              'The Organization screen at the bottom of the sidebar. '
+              'The Organization tab in Settings. '
               'There is no Companies or Franchises tab.',
         ),
         _catalogueModule(
@@ -283,7 +283,7 @@ void main() {
           groupKey: 'organization',
           groupLabel: 'Organization',
           groupHint:
-              'The Organization screen at the bottom of the sidebar. '
+              'The Organization tab in Settings. '
               'There is no Companies or Franchises tab.',
         ),
       ],
@@ -862,6 +862,8 @@ void main() {
 
       await _pumpSettingsShell(tester, rolesReachable: true);
 
+      expect(find.text('Organization'), findsOneWidget);
+      expect(find.text('Settings'), findsOneWidget);
       // Named by the server, not by this end.
       expect(find.text('Roles & permissions'), findsOneWidget);
     });
@@ -872,9 +874,9 @@ void main() {
       await _pumpSettingsShell(tester, rolesReachable: false);
 
       expect(find.text('Roles & permissions'), findsNothing);
-      // And with one tab left there is no chip row at all — a lone chip reads
-      // as a control that has lost its siblings.
-      expect(find.text('Settings'), findsNothing);
+      // Organization and Settings are always both there, so the chip row stays.
+      expect(find.text('Organization'), findsOneWidget);
+      expect(find.text('Settings'), findsOneWidget);
     });
   });
 }

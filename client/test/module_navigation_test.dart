@@ -50,7 +50,8 @@ void main() {
     );
 
     // The pinned group is not module-driven and stays where it is.
-    expect(_inSidebar('Organization'), findsOneWidget);
+    // Organization lives inside Settings, not as a neighbour.
+    expect(_inSidebar('Organization'), findsNothing);
     expect(_inSidebar('Settings'), findsOneWidget);
   });
 
@@ -234,6 +235,21 @@ void main() {
 
     expect(find.byType(MarketingScreen), findsOneWidget);
     expect(address.path, '/marketing');
+  });
+
+  testWidgets('/organization still opens Settings', (tester) async {
+    _wide(tester);
+
+    final address = Address(path: '/organization');
+    await _pumpShell(
+      tester,
+      modules: [_module('dashboard', 'Dashboard')],
+      address: address,
+    );
+
+    expect(find.byType(SettingsShell), findsOneWidget);
+    expect(address.path, '/settings');
+    expect(find.text('Organization'), findsOneWidget);
   });
 
   testWidgets('Settings and Your account have paths of their own', (

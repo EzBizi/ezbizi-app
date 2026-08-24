@@ -256,12 +256,12 @@ final class ModuleDefinition
             self::ROLES_ORGANIZATION => [
                 'key' => self::ROLES_ORGANIZATION,
                 'label' => 'Organization',
-                'hint' => 'The Organization screen at the bottom of the sidebar. There is no Companies or Franchises tab.',
+                'hint' => 'The Organization tab in Settings. There is no Companies or Franchises tab.',
             ],
             self::ROLES_SETTINGS => [
                 'key' => self::ROLES_SETTINGS,
                 'label' => 'Settings',
-                'hint' => 'The Settings screen at the bottom of the sidebar.',
+                'hint' => 'Settings at the bottom of the sidebar — the shape of the business, how the work behaves, and who may do it.',
             ],
             default => null,
         };
