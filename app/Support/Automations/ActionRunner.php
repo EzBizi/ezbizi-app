@@ -3,9 +3,14 @@
 namespace App\Support\Automations;
 
 use App\Models\AutomationEvent;
+use App\Models\Customer;
+use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\PhoneCall;
+use App\Models\PhoneNumber;
 use App\Models\Vehicle;
 use App\Support\Fleet\VehicleStatus;
+use App\Support\Numbering\RecordNumberGenerator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -149,6 +154,7 @@ class ActionRunner
         private readonly OutboundWebhook $webhook,
         private readonly \App\Support\Audit\AuditLogger $audit,
         private readonly \App\Support\Notifications\NotificationDispatcher $notifications,
+        private readonly RecordNumberGenerator $numbers,
     ) {}
 
     /**
@@ -180,10 +186,179 @@ class ActionRunner
             'webhook'       => $this->callWebhook($action, $event, $subject),
             'notify'        => $this->notify($action, $event, $subject),
 
+            // ActionDefinition::type() keeps everything after the first dot, so
+            // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
+            'voicemail.mark_dealt' => $this->markVoicemailDealt($event, $subject),
+            'missed.create_job'    => $this->createJobFromMissed($event, $subject),
+
             default => throw new InvalidArgumentException(
                 "Unknown automation action '{$type}'. Actions are declared by modules "
                 .'in code (§5.5) — a rule cannot invent one.'
             ),
+        };
+    }
+
+    /**
+     * Record that a voicemail has been picked up (dealt_at). EzBizi only — no Dial.
+     *
+     * @return array{type: string, ok: bool, detail: string}
+     */
+    private function markVoicemailDealt(AutomationEvent $event, ?Model $subject): array
+    {
+        if (! $subject instanceof PhoneCall) {
+            return [
+                'type' => 'voicemail.mark_dealt',
+                'ok' => false,
+                'detail' => 'That record is not a phone call, so it cannot be marked dealt with.',
+            ];
+        }
+
+        if (! $subject->voicemail) {
+            return [
+                'type' => 'voicemail.mark_dealt',
+                'ok' => false,
+                'detail' => 'That call has no voicemail to mark dealt with.',
+            ];
+        }
+
+        if ($subject->dealt_at !== null) {
+            return [
+                'type' => 'voicemail.mark_dealt',
+                'ok' => true,
+                'detail' => 'That voicemail was already marked dealt with.',
+            ];
+        }
+
+        $subject->dealt_at = now();
+        $subject->save();
+
+        $this->audit->log(
+            action: 'phone.voicemail_marked_dealt_by_automation',
+            target: $subject,
+            changes: ['after' => ['dealt_at' => $subject->dealt_at?->toIso8601String()]],
+            metadata: ['caused_by_event' => $event->getKey(), 'trigger' => $event->event_key],
+        );
+
+        return [
+            'type' => 'voicemail.mark_dealt',
+            'ok' => true,
+            'detail' => 'Marked the voicemail dealt with.',
+        ];
+    }
+
+    /**
+     * Open a job in reach titled from the caller number. Does not place a call.
+     *
+     * @return array{type: string, ok: bool, detail: string}
+     */
+    private function createJobFromMissed(AutomationEvent $event, ?Model $subject): array
+    {
+        if (! $subject instanceof PhoneCall) {
+            return [
+                'type' => 'missed.create_job',
+                'ok' => false,
+                'detail' => 'That record is not a phone call, so a job cannot be opened from it.',
+            ];
+        }
+
+        $caller = (string) ($subject->from_e164 ?? '');
+        if ($caller === '') {
+            return [
+                'type' => 'missed.create_job',
+                'ok' => false,
+                'detail' => 'That call has no caller number to title a job from.',
+            ];
+        }
+
+        $franchise = $this->franchiseForCall($subject);
+        if ($franchise === null) {
+            return [
+                'type' => 'missed.create_job',
+                'ok' => false,
+                'detail' => 'No franchise is in reach for that phone line, so a job cannot be opened.',
+            ];
+        }
+
+        $statuses = Job::allowedStatuses($franchise);
+        $status = $statuses[0] ?? null;
+        if ($status === null) {
+            return [
+                'type' => 'missed.create_job',
+                'ok' => false,
+                'detail' => 'This organization has no job statuses configured.',
+            ];
+        }
+
+        $job = DB::transaction(function () use ($subject, $caller, $franchise, $status, $event) {
+            $customer = Customer::query()->where('phone', $caller)->first();
+
+            if ($customer === null) {
+                $customer = Customer::create([
+                    'owning_franchise_id' => $franchise->id,
+                    'number' => $this->numbers->next(RecordNumberGenerator::CUSTOMERS, $franchise),
+                    'name' => $caller,
+                    'phone' => $caller,
+                ]);
+            }
+
+            $job = Job::create([
+                'franchise_id' => $franchise->id,
+                'customer_id' => $customer->id,
+                'number' => $this->numbers->next(RecordNumberGenerator::JOBS, $franchise),
+                'title' => $caller,
+                'status' => $status,
+                'currency' => strtoupper($franchise->currency ?: 'USD'),
+                'description' => 'Opened from a missed call on '
+                    .((string) ($subject->to_e164 ?: 'a phone line')).'.',
+            ]);
+
+            $this->audit->log(
+                action: 'job.created_by_automation',
+                target: $job,
+                metadata: [
+                    'caused_by_event' => $event->getKey(),
+                    'trigger' => $event->event_key,
+                    'from_call' => $subject->getKey(),
+                ],
+            );
+
+            $this->emitter->emit(
+                'job.created',
+                $job,
+                ['after' => $job->only([
+                    'status', 'title', 'franchise_id', 'customer_id', 'amount_minor',
+                ])],
+                causedBy: $event,
+            );
+
+            return $job;
+        });
+
+        return [
+            'type' => 'missed.create_job',
+            'ok' => true,
+            'detail' => "Opened job {$job->number} titled {$caller}.",
+        ];
+    }
+
+    private function franchiseForCall(PhoneCall $call): ?Franchise
+    {
+        $number = $call->number_id !== null
+            ? PhoneNumber::query()->find($call->number_id)
+            : null;
+
+        if ($number === null) {
+            return null;
+        }
+
+        return match ($number->scope_type) {
+            PhoneNumber::SCOPE_FRANCHISE => Franchise::query()->find($number->scope_id),
+            PhoneNumber::SCOPE_COMPANY => Franchise::query()
+                ->where('company_id', $number->scope_id)
+                ->orderBy('name')
+                ->first(),
+            PhoneNumber::SCOPE_ORGANIZATION => Franchise::query()->orderBy('name')->first(),
+            default => null,
         };
     }
 

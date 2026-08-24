@@ -6,7 +6,9 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\AutomationEvent;
 use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
+use App\Models\PhoneNumber;
 use App\Support\Automations\EventEmitter;
+use App\Support\Phone\PhoneLineHealth;
 use App\Support\Phone\TwilioWebhook;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
@@ -28,6 +30,7 @@ class StatusWebhookController extends Controller
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly EventEmitter $events,
+        private readonly PhoneLineHealth $health,
     ) {}
 
     /**
@@ -86,9 +89,50 @@ class StatusWebhookController extends Controller
             if ($this->isMiss($call->status) && $previous === PhoneCall::STATUS_RINGING) {
                 $this->events->emit('phone.call.missed', $call, $this->payload($call));
             }
+
+            if ($this->lineBroke($request, $incoming)) {
+                $number = $call->number_id !== null
+                    ? PhoneNumber::query()->find($call->number_id)
+                    : null;
+                $this->health->reportBroken(
+                    $connection,
+                    $this->breakReason($request),
+                    $number,
+                );
+            }
         });
 
         return $this->twiml();
+    }
+
+    /**
+     * Account / number faults from the status callback — not ordinary no-answer.
+     */
+    private function lineBroke(Request $request, string $incoming): bool
+    {
+        if ($incoming !== PhoneCall::STATUS_FAILED) {
+            return false;
+        }
+
+        $code = (string) $request->input('ErrorCode', '');
+
+        // 20003 auth, 20404 unknown resource, 21211/21214 bad or unreachable To,
+        // 21606 number not owned / not SMS-capable on this account.
+        return in_array($code, ['20003', '20404', '21211', '21214', '21606'], true);
+    }
+
+    private function breakReason(Request $request): string
+    {
+        $message = trim((string) $request->input('ErrorMessage', ''));
+        if ($message !== '') {
+            return $message;
+        }
+
+        $code = (string) $request->input('ErrorCode', '');
+
+        return $code !== ''
+            ? "Twilio reported error {$code} on this phone line."
+            : 'Twilio reported that this phone line failed.';
     }
 
     private function storedStatus(string $status): string

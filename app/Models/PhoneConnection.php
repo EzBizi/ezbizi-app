@@ -77,6 +77,17 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
         ])->save();
     }
 
+    /**
+     * The Twilio link stopped working. `$reason` is a sentence somebody reads.
+     */
+    public function markBroken(string $reason): void
+    {
+        $this->forceFill([
+            'status' => self::STATUS_BROKEN,
+            'status_reason' => $reason,
+        ]);
+    }
+
     public function numbers(): HasMany
     {
         return $this->hasMany(PhoneNumber::class, 'connection_id');

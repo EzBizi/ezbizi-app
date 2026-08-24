@@ -985,9 +985,9 @@ class ModuleServiceProvider extends ServiceProvider
              * Call started/ended/missed raise from the Voice and status
              * webhooks (Task 10). Voicemail raises from the recording
              * callback (Task 11). SMS received/sent raise from the SMS
-             * webhook and MessagesController (Task 12). number-broken stays
-             * unraised until that path emits. ModuleRegistryTest holds that
-             * claim to the source.
+             * webhook and MessagesController (Task 12). number.broken raises
+             * from PhoneLineHealth on a gateway/webhook failure transition
+             * (Task 14). ModuleRegistryTest holds that claim to the source.
              *
              * Actions change EzBizi only — mark a voicemail dealt with, or
              * open a job from a missed call. Nothing here places a call or
@@ -1047,7 +1047,7 @@ class ModuleServiceProvider extends ServiceProvider
                             .'Twilio account refused it, the number was invalid, or the '
                             .'subaccount was suspended. It fires once per break, not every '
                             .'retry afterwards.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                 ],
                 automationActions: [

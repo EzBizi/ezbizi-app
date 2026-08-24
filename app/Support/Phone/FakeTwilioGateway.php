@@ -21,6 +21,9 @@ final class FakeTwilioGateway implements TwilioGateway
     /** When set, createTwimlApp throws this message (connect-order tests). */
     public ?string $failCreateTwimlAppWith = null;
 
+    /** When set, sendMessage throws this message (number.broken tests). */
+    public ?string $failSendMessageWith = null;
+
     public function verifyAccount(string $accountSid, string $apiKeySid, string $apiSecret): array
     {
         $this->record(__FUNCTION__, func_get_args());
@@ -114,6 +117,10 @@ final class FakeTwilioGateway implements TwilioGateway
     public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body): array
     {
         $this->record(__FUNCTION__, [$connection->id, $from, $to, $body]);
+
+        if ($this->failSendMessageWith !== null) {
+            throw new RuntimeException($this->failSendMessageWith);
+        }
 
         return [
             'sid' => 'SM'.bin2hex(random_bytes(16)),

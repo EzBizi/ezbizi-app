@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\PhoneMessage;
 use App\Models\PhoneNumber;
 use App\Support\Automations\EventEmitter;
+use App\Support\Phone\PhoneLineHealth;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\SmsCompliance;
 use App\Support\Phone\TwilioGateway;
@@ -16,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response as Status;
+use Throwable;
 
 /**
  * Outbound SMS from the Call desk (spec §9).
@@ -31,6 +33,7 @@ class MessagesController extends Controller
         private readonly SmsCompliance $compliance,
         private readonly EventEmitter $events,
         private readonly TenantContext $tenant,
+        private readonly PhoneLineHealth $health,
     ) {}
 
     /** POST /api/v1/phone/messages */
@@ -69,7 +72,16 @@ class MessagesController extends Controller
         $body = (string) $input['body'];
         $from = (string) $number->e164;
 
-        $sent = $this->twilio->sendMessage($connection, $from, $to, $body);
+        try {
+            $sent = $this->twilio->sendMessage($connection, $from, $to, $body);
+        } catch (Throwable $e) {
+            $reason = $e->getMessage() !== ''
+                ? $e->getMessage()
+                : 'Twilio refused to send from this phone line.';
+            $this->health->reportBroken($connection, $reason, $number);
+
+            return response()->json(['message' => $reason], Status::HTTP_BAD_GATEWAY);
+        }
 
         $message = DB::transaction(function () use ($number, $connection, $sent, $from, $to, $body) {
             $message = PhoneMessage::query()->create([

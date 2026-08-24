@@ -10,8 +10,9 @@ use Tests\TestCase;
  *
  * Call started/ended/missed raise from the Voice webhooks. Voicemail left
  * raises from the recording callback. SMS received/sent raise from the SMS
- * webhook and MessagesController. number.broken stays unraised until that
- * path emits. Subject is null (call, SMS, and number — same shape as HR).
+ * webhook and MessagesController. number.broken raises from PhoneLineHealth
+ * on a gateway failure transition. Subject is null (call, SMS, and number —
+ * same shape as HR).
  */
 class PhoneModuleTest extends TestCase
 {
@@ -40,6 +41,6 @@ class PhoneModuleTest extends TestCase
         $this->assertTrue($module->trigger('phone.voicemail.left')->isRaised);
         $this->assertTrue($module->trigger('phone.sms.received')->isRaised);
         $this->assertTrue($module->trigger('phone.sms.sent')->isRaised);
-        $this->assertFalse($module->trigger('phone.number.broken')->isRaised);
+        $this->assertTrue($module->trigger('phone.number.broken')->isRaised);
     }
 }
