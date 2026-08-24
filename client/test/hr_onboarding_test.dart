@@ -857,7 +857,12 @@ MockClientHandler _handler({
 
       final rows = only == null
           ? _list
-          : _list.where((row) => row['user_id'] == only).toList();
+          : _list
+              .where((row) {
+                final person = row['person'] as Map<String, Object?>?;
+                return person?['user_id'] == only;
+              })
+              .toList();
 
       return _json({
         'data': rows,

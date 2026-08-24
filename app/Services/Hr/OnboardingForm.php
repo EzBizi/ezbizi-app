@@ -715,11 +715,18 @@ class OnboardingForm
             }
         }
 
+        $current = [];
+        foreach ($answered as $key => $answer) {
+            $current[$key] = $answer->value;
+        }
+
         foreach ($onboarding->fields() as $field) {
             if (! $field->required || $field->type === FieldType::SIGNATURE) {
                 continue;
             }
-
+            if (! $field->isShownGiven($current)) {
+                continue;
+            }
             if (! $answered->has($field->key)) {
                 $missing[$field->key] = $field->label;
             }
@@ -790,9 +797,10 @@ class OnboardingForm
                 'options'   => $field->options,
                 'source'    => 'contract',
                 'filled_by' => $field->filledBy,
-                'required'  => $field->required,
-                'sensitive' => $field->sensitive,
-                'retired'   => $field->retired,
+                'required'   => $field->required,
+                'sensitive'  => $field->sensitive,
+                'retired'    => $field->retired,
+                'shown_when' => $field->shownWhen,
                 // Through toArray(), which is what MasksSensitiveValues
                 // overrides — reading `$answer->value` here would hand back the
                 // clear IBAN on every screen load and leave the audit trail

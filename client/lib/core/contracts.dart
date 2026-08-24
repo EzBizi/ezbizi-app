@@ -651,6 +651,7 @@ class ContractField {
     required this.sensitive,
     this.isExpiry = false,
     required this.retired,
+    this.shownWhen,
   });
 
   final String key;
@@ -667,6 +668,8 @@ class ContractField {
   /// that drops a key.
   final bool retired;
 
+  final FieldShownWhen? shownWhen;
+
   factory ContractField.fromJson(Map<String, dynamic> json) => ContractField(
     key: json['key'] as String? ?? '',
     label: json['label'] as String? ?? '',
@@ -679,6 +682,7 @@ class ContractField {
     sensitive: json['sensitive'] == true,
     isExpiry: json['is_expiry'] == true,
     retired: json['retired'] == true,
+    shownWhen: FieldShownWhen.tryParse(json['shown_when']),
   );
 
   static List<ContractField> listFrom(Object? data) => data is List
@@ -689,6 +693,28 @@ class ContractField {
             )
             .toList(growable: false)
       : const [];
+}
+
+class FieldShownWhen {
+  const FieldShownWhen({required this.key, required this.option});
+
+  final String key;
+  final String option;
+
+  static FieldShownWhen? tryParse(Object? json) {
+    if (json is! Map) return null;
+    final key = json['key'] as String?;
+    final option = json['is'] as String?;
+    if (key == null || key.isEmpty || option == null || option.isEmpty) {
+      return null;
+    }
+    return FieldShownWhen(key: key, option: option);
+  }
+}
+
+String optionSlug(String option) {
+  final slug = option.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+  return slug.replaceAll(RegExp(r'^_+|_+$'), '');
 }
 
 /// What publishing would change, as the server worked it out.

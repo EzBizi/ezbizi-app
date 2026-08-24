@@ -155,6 +155,10 @@ class HrOnboardingsController extends Controller
             ->when(
                 $request->query('status'),
                 fn (Builder $q, string $status) => $q->where('status', $status),
+            )
+            ->when(
+                $request->query('user_id'),
+                fn (Builder $q, string $userId) => $q->where('user_id', $userId),
             );
 
         $onboardings = $query
@@ -813,17 +817,17 @@ class HrOnboardingsController extends Controller
          * to hold still, because a signature is only worth anything if every
          * party fingerprinted the same bytes.
          *
-         * A genuine mistake caught mid-ceremony is not stuck: whoever has signed
-         * can withdraw their signature, which reopens the form. That is a
-         * deliberate act with a record, which is what changing agreed terms
-         * should be.
+         * A genuine mistake caught mid-ceremony has to wait. There is no way
+         * to take a signature back: the first mark froze the answers, and the
+         * second has to fingerprint the same bytes. After both have signed,
+         * amend — that keeps the original and records who changed what.
          */
         if (! $onboarding->isFullySigned()) {
             throw ValidationException::withMessages(['answers' =>
                 'Somebody has signed and somebody has not, so the document cannot change yet '
                 .'— the second signature has to be over the same text as the first. Wait for '
-                .'the remaining signature and amend after, or withdraw the one that was given '
-                .'and correct it before signing again.',
+                .'the remaining signature, then amend. That keeps the original and records '
+                .'who changed what.',
             ]);
         }
 

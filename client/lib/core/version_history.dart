@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0074',
+      date: '24 Aug 2026',
+      items: [
+        'One contract per role: hourly or salary is chosen on the onboarding '
+            'form, and the unused pay questions stay off the page. The contract '
+            'builder can say when a question is asked.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0073',
       date: '24 Aug 2026',
       items: [

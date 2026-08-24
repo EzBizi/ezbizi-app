@@ -60,6 +60,10 @@ class OnboardingCatalogTest extends TestCase
         $keys = array_column($tech['fields'], 'key');
         $this->assertContains('pay_basis', $keys);
         $this->assertContains('raise_amount', $keys);
+
+        $byKey = array_column($tech['fields'], null, 'key');
+        $this->assertSame(['key' => 'pay_basis', 'is' => 'hourly'], $byKey['hourly_rate']['shown_when']);
+        $this->assertSame(['key' => 'pay_basis', 'is' => 'salary'], $byKey['salary_amount']['shown_when']);
     }
 
     public function test_the_inspector_is_one_1099_template(): void

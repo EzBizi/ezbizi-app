@@ -123,6 +123,7 @@ final class FieldSet
         }
 
         self::checkAgainstHistory($fields, $pinned, $errors);
+        self::checkShownWhen($fields, $errors);
 
         if ($errors !== []) {
             throw ValidationException::withMessages($errors);
@@ -272,6 +273,39 @@ final class FieldSet
      * An expiry is a date that lapses. Marking a number or a signature as one
      * would put nonsense on the certifications panel.
      */
+    private static function checkShownWhen(array $fields, array &$errors): void
+    {
+        $keyed = [];
+        foreach ($fields as $field) {
+            if ($field->key !== '') {
+                $keyed[$field->key] = $field;
+            }
+        }
+        foreach ($fields as $i => $field) {
+            if ($field->shownWhen === null) {
+                continue;
+            }
+            $at = "fields.{$i}.shown_when";
+            $gate = $keyed[$field->shownWhen['key']] ?? null;
+            if ($gate === null) {
+                $errors[$at] = sprintf("'%s' is not a question on this contract, so nothing can decide when '%s' is asked.", $field->shownWhen['key'], $field->label !== '' ? $field->label : $field->key);
+                continue;
+            }
+            if ($gate->type !== FieldType::CHOICE || $gate->retired) {
+                $errors[$at] = 'Only a live "one of a list" question can decide whether another is asked.';
+                continue;
+            }
+            $slugs = [];
+            foreach ($gate->options as $option) {
+                $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '_', $option) ?? '');
+                $slugs[trim($slug, '_')] = true;
+            }
+            if (! isset($slugs[$field->shownWhen['is']])) {
+                $errors[$at] = sprintf("'%s' is not an answer %s offers.", $field->shownWhen['is'], $gate->label);
+            }
+        }
+    }
+
     private static function checkExpiry(FieldDefinition $field, string $at, array &$errors): void
     {
         if ($field->isExpiry && $field->type !== FieldType::DATE) {

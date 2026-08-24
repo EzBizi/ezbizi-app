@@ -136,6 +136,8 @@ class _Question {
     this.sensitive = false,
     this.isExpiry = false,
     this.retired = false,
+    this.shownWhenKey,
+    this.shownWhenOption,
   }) : key = TextEditingController(text: key),
        label = TextEditingController(text: label),
        options = TextEditingController(text: options.join('\n')),
@@ -162,6 +164,8 @@ class _Question {
   bool sensitive;
   bool isExpiry;
   bool retired;
+  String? shownWhenKey;
+  String? shownWhenOption;
 
   /// This question exists in the version that is live, so its key and its kind
   /// are fixed — answers have been filed under both — and it can be retired but
@@ -213,6 +217,11 @@ class _Question {
     'sensitive': sensitive,
     'is_expiry': isExpiry,
     'retired': retired,
+    if (shownWhenKey != null &&
+        shownWhenKey!.isNotEmpty &&
+        shownWhenOption != null &&
+        shownWhenOption!.isNotEmpty)
+      'shown_when': {'key': shownWhenKey, 'is': shownWhenOption},
   };
 
   ContractField toField() => ContractField(
@@ -227,6 +236,9 @@ class _Question {
     sensitive: sensitive,
     isExpiry: isExpiry,
     retired: retired,
+    shownWhen: shownWhenKey != null && shownWhenOption != null
+        ? FieldShownWhen(key: shownWhenKey!, option: shownWhenOption!)
+        : null,
   );
 
   void dispose() {
@@ -399,6 +411,8 @@ class _ContractDesignerState extends State<ContractDesigner> {
       sensitive: field.sensitive,
       isExpiry: field.isExpiry,
       retired: field.retired,
+      shownWhenKey: field.shownWhen?.key,
+      shownWhenOption: field.shownWhen?.option,
     );
 
     question.label.addListener(_changed);
@@ -1328,6 +1342,8 @@ class _ContractDesignerState extends State<ContractDesigner> {
         const SizedBox(height: 16),
         _filledByRow(context, question, enabled),
         const SizedBox(height: 12),
+        _shownWhenRow(context, question, enabled),
+        const SizedBox(height: 12),
         _sensitiveRow(context, question, enabled),
         if (question.published) ...[
           const SizedBox(height: 8),
@@ -1337,6 +1353,106 @@ class _ContractDesignerState extends State<ContractDesigner> {
           ),
         ] else
           _keyRow(context, question, enabled),
+      ],
+    );
+  }
+
+  Widget _shownWhenRow(
+    BuildContext context,
+    _Question question,
+    bool enabled,
+  ) {
+    final theme = Theme.of(context);
+    final self = question.key.text.trim();
+    final gates = [
+      for (final other in _questions)
+        if (other != question &&
+            other.takesOptions &&
+            other.key.text.trim().isNotEmpty &&
+            other.key.text.trim() != self &&
+            other.sentOptions.isNotEmpty)
+          other,
+    ];
+
+    if (gates.isEmpty) return const SizedBox.shrink();
+
+    _Question? gate;
+    for (final other in gates) {
+      if (other.key.text.trim() == question.shownWhenKey) {
+        gate = other;
+        break;
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('When it is asked', style: theme.textTheme.labelLarge),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ChoiceChip(
+              label: const Text('Always'),
+              selected: question.shownWhenKey == null,
+              onSelected: enabled
+                  ? (_) => setState(() {
+                      question.shownWhenKey = null;
+                      question.shownWhenOption = null;
+                    })
+                  : null,
+            ),
+            for (final other in gates)
+              ChoiceChip(
+                label: Text(
+                  other.label.text.trim().isEmpty
+                      ? other.key.text.trim()
+                      : other.label.text.trim(),
+                ),
+                selected: question.shownWhenKey == other.key.text.trim(),
+                onSelected: enabled
+                    ? (_) => setState(() {
+                        question.shownWhenKey = other.key.text.trim();
+                        final options = other.sentOptions;
+                        if (question.shownWhenOption == null ||
+                            !options.any(
+                              (o) => optionSlug(o) == question.shownWhenOption,
+                            )) {
+                          question.shownWhenOption = options.isEmpty
+                              ? null
+                              : optionSlug(options.first);
+                        }
+                      })
+                    : null,
+              ),
+          ],
+        ),
+        if (gate != null) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final option in gate.sentOptions)
+                ChoiceChip(
+                  label: Text(option),
+                  selected: question.shownWhenOption == optionSlug(option),
+                  onSelected: enabled
+                      ? (_) => setState(
+                          () => question.shownWhenOption = optionSlug(option),
+                        )
+                      : null,
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Hidden on the form until that answer is picked. Keep the matching '
+            'clause in the contract with {{#${gate.key.text.trim()}.${question.shownWhenOption}}} … {{/${gate.key.text.trim()}.${question.shownWhenOption}}}.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
       ],
     );
   }

@@ -8,6 +8,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/load_more.dart';
+import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 
@@ -292,13 +293,29 @@ class _InvitationsTabState extends State<InvitationsTab> {
                   ),
                 ),
                 if (!settled) ...[
-                  TextButton(
-                    onPressed: () => _resend(invitation),
-                    child: const Text('Resend'),
+                  Refused(
+                    reason: widget.session.me?.refusal(
+                      'hr.create',
+                      'resend invitations',
+                    ),
+                    child: TextButton(
+                      onPressed: widget.session.me?.can('hr.create') == true
+                          ? () => _resend(invitation)
+                          : null,
+                      child: const Text('Resend'),
+                    ),
                   ),
-                  TextButton(
-                    onPressed: () => _revoke(invitation),
-                    child: const Text('Revoke'),
+                  Refused(
+                    reason: widget.session.me?.refusal(
+                      'hr.create',
+                      'withdraw invitations',
+                    ),
+                    child: TextButton(
+                      onPressed: widget.session.me?.can('hr.create') == true
+                          ? () => _revoke(invitation)
+                          : null,
+                      child: const Text('Revoke'),
+                    ),
                   ),
                 ],
               ],

@@ -57,6 +57,7 @@ final class FieldLibrary
             ),
             'hourly_rate' => self::field(
                 'hourly_rate', 'Hourly rate', FieldType::NUMBER, FilledBy::EMPLOYER,
+                shownWhen: ['key' => 'pay_basis', 'is' => 'hourly'],
             ),
             'comp_method' => self::field(
                 'comp_method', 'Compensation method', FieldType::TEXT, FilledBy::EMPLOYER,
@@ -69,12 +70,15 @@ final class FieldLibrary
             ),
             'salary_amount' => self::field(
                 'salary_amount', 'Salary amount', FieldType::NUMBER, FilledBy::EMPLOYER,
+                shownWhen: ['key' => 'pay_basis', 'is' => 'salary'],
             ),
             'salary_period' => self::field(
                 'salary_period', 'Salary period', FieldType::TEXT, FilledBy::EMPLOYER,
+                shownWhen: ['key' => 'pay_basis', 'is' => 'salary'],
             ),
             'daily_deduction' => self::field(
                 'daily_deduction', 'Daily salary deduction', FieldType::NUMBER, FilledBy::EMPLOYER,
+                shownWhen: ['key' => 'pay_basis', 'is' => 'salary'],
             ),
             'raise_amount' => self::field(
                 'raise_amount', 'Scheduled increase amount', FieldType::NUMBER, FilledBy::EMPLOYER,
@@ -88,7 +92,7 @@ final class FieldLibrary
                 'key'       => 'pay_basis',
                 'label'     => 'Pay basis',
                 'type'      => FieldType::CHOICE,
-                'options'   => ['hourly', 'salary'],
+                'options'   => ['Hourly', 'Salary'],
                 'filled_by' => FilledBy::EMPLOYER,
                 'required'  => true,
                 'sensitive' => false,
@@ -164,8 +168,9 @@ final class FieldLibrary
         string $type,
         string $filledBy,
         bool $required = true,
+        ?array $shownWhen = null,
     ): array {
-        return [
+        $row = [
             'key'       => $key,
             'label'     => $label,
             'type'      => $type,
@@ -176,5 +181,10 @@ final class FieldLibrary
             'retired'   => false,
             'is_expiry' => false,
         ];
+        if ($shownWhen !== null) {
+            $row['shown_when'] = $shownWhen;
+        }
+
+        return $row;
     }
 }

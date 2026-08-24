@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/contracts.dart';
+import '../../core/files.dart';
 import '../../core/onboarding.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
@@ -135,6 +136,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
   String? _revealing;
 
   bool _saving = false;
+  String? _uploading;
 
   /// Whatever the last save or reveal was refused with.
   ///
@@ -467,7 +469,8 @@ class _OnboardingFormState extends State<OnboardingForm> {
 
     final questions = [
       for (final question in form.questions)
-        if (!signatureKeys.contains(question.key)) question,
+        if (!signatureKeys.contains(question.key) && _isShown(form, question))
+          question,
     ];
 
     final mine = [
@@ -964,10 +967,6 @@ class _OnboardingFormState extends State<OnboardingForm> {
         items: [
           for (final option in field.options)
             DropdownMenuItem(value: option, child: Text(option)),
-          // An answer that is no longer one of the choices is kept and shown
-          // rather than silently dropped: the options can change between
-          // versions, and a form that erased somebody's answer on load would be
-          // doing it without saying so.
           if (_chosen(question) case final current?)
             if (!field.options.contains(current))
               DropdownMenuItem(
@@ -1095,6 +1094,20 @@ class _OnboardingFormState extends State<OnboardingForm> {
     });
   }
 
+  bool _isShown(Onboarding form, OnboardingQuestion question) {
+    final when = question.field.shownWhen;
+    if (when == null) return true;
+    final raw = _pending[when.key] ?? _valueOf(form, when.key);
+    return optionSlug(raw) == when.option;
+  }
+
+  String _valueOf(Onboarding form, String key) {
+    for (final question in form.questions) {
+      if (question.key == key) return question.value;
+    }
+    return '';
+  }
+
   String? _chosen(OnboardingQuestion question) {
     if (_pending[question.key] case final pending?) {
       return pending.isEmpty ? null : pending;
@@ -1134,24 +1147,11 @@ class _OnboardingFormState extends State<OnboardingForm> {
     );
   }
 
-  /// A file answer, which this build cannot yet collect.
-  ///
-  /// Drawn, named and refused, the same as an automation action the engine
-  /// cannot run: something absent invites the reader to conclude the app is
-  /// broken or that they have lost a permission, and both guesses are worse
-  /// than the truth. What is missing is not the picking. `Files` has no
-  /// any-file picker — `pickText` and `pickImage` are the two it offers, and
-  /// both narrow the browser input's `accept` list — but widening that list is
-  /// a line, and `PickedBytes` already carries a name and bytes. What does not
-  /// exist is the endpoint that ties an uploaded file to one ANSWER:
-  /// attachments hang off a RECORD, and nothing yet says which question of it a
-  /// file belongs to.
-  ///
-  /// An answer that has already been collected is still SHOWN, because a record
-  /// read months later must not lose a licence number just because this build
-  /// cannot take a new one.
   Widget _fileControl(BuildContext context, OnboardingQuestion question) {
     final theme = Theme.of(context);
+    final enabled = question.writable && !_saving && _uploading == null;
+    final pending = _pending[question.key];
+    final hasFile = (pending != null && pending.isNotEmpty) || question.answered;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1159,30 +1159,71 @@ class _OnboardingFormState extends State<OnboardingForm> {
         Row(
           children: [
             OutlinedButton.icon(
-              onPressed: null,
-              icon: const Icon(Icons.upload_file_outlined, size: 18),
-              label: const Text('Choose a file'),
+              onPressed: enabled ? () => _pickFile(question) : null,
+              icon: _uploading == question.key
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.upload_file_outlined, size: 18),
+              label: Text(
+                _uploading == question.key
+                    ? 'Uploading…'
+                    : hasFile
+                    ? 'Replace file'
+                    : 'Choose a file',
+              ),
             ),
-            const Tag('Not built yet', warn: true),
-
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                question.answered ? question.value : 'Nothing uploaded yet.',
+                hasFile ? 'A file is attached.' : 'Nothing uploaded yet.',
                 style: theme.textTheme.bodySmall,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 6),
-        Text(
-          'This question asks for a file, and this build cannot attach one to '
-          'an answer yet. Everything else on the form saves normally; send the '
-          'file to whoever is running the onboarding in the meantime.',
-          style: theme.textTheme.bodySmall,
-        ),
       ],
     );
+  }
+
+  Future<void> _pickFile(OnboardingQuestion question) async {
+    final picked = await Files.pickBytes();
+    if (picked == null || !mounted) return;
+
+    setState(() {
+      _uploading = question.key;
+      _actionError = null;
+    });
+
+    final response = await widget.api.postFile(
+      '/attachments',
+      'file',
+      picked.name,
+      picked.bytes,
+      fields: {
+        'attachable_type': 'onboardings',
+        'attachable_id': widget.onboardingId,
+      },
+    );
+
+    if (!mounted) return;
+
+    setState(() => _uploading = null);
+
+    if (!response.ok) {
+      setState(() => _actionError = response.reason);
+      return;
+    }
+
+    final id = (response.body['data'] as Map?)?['id']?.toString();
+    if (id == null || id.isEmpty) {
+      setState(() => _actionError = 'The file uploaded but no id came back.');
+      return;
+    }
+
+    setState(() => _pending[question.key] = id);
   }
 
   // ── the signing step ─────────────────────────────────────────────

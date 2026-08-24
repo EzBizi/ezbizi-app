@@ -116,8 +116,8 @@ class HrInvitationsController extends Controller
             // The only optional fields. The plan is explicit that the employer
             // MAY pre-fill the common core and does not have to; whatever is
             // left blank the person completes when they accept.
-            'first_name' => ['nullable', 'string', 'max:120'],
-            'last_name'  => ['nullable', 'string', 'max:120'],
+            'first_name' => ['nullable', 'string', 'max:60'],
+            'last_name'  => ['nullable', 'string', 'max:60'],
 
             'role_id' => ['required', 'uuid', Rule::exists('roles', 'id')
                 ->where('organization_id', $this->tenant->idOrFail())],

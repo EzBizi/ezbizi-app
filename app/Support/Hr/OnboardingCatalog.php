@@ -213,6 +213,13 @@ final class OnboardingCatalog
             $named['pay_basis'] = true;
         }
 
+        foreach (FieldLibrary::all($signer) as $key => $def) {
+            $gate = $def['shown_when']['key'] ?? null;
+            if (is_string($gate) && isset($named[$key])) {
+                $named[$gate] = true;
+            }
+        }
+
         $fields = [];
 
         foreach (array_keys(FieldLibrary::all($signer)) as $key) {

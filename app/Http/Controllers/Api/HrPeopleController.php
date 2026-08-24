@@ -277,6 +277,10 @@ class HrPeopleController extends Controller
                     ],
                     actor: $actor,
                 );
+
+                if (! $user->is_active) {
+                    $user->tokens()->delete();
+                }
             }
 
             if (array_key_exists('role_id', $changed)) {

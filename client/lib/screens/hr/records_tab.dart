@@ -178,8 +178,8 @@ class _RecordsTabState extends State<RecordsTab> {
     }
 
     if (!_options.roles.any((role) => role.assignable)) {
-      return 'There is no role you may hand out — §4: nobody gives away a '
-          'permission they do not hold themselves.';
+      return 'There is no role you may hand out. A role can only be given by '
+          'somebody who holds everything in it themselves.';
     }
 
     return null;
@@ -324,7 +324,7 @@ class _RecordsTabState extends State<RecordsTab> {
                     context,
                     value: 'role',
                     label: 'Change their role',
-                    reason: _cannotChangeRole,
+                    reason: noEdit ?? _cannotChangeRole,
                   ),
                   const PopupMenuDivider(),
                   refusedMenuItem(
@@ -365,7 +365,10 @@ class _RecordsTabState extends State<RecordsTab> {
 
     setState(() => _opening = id);
 
-    final response = await widget.api.get('/hr/onboardings');
+    final response = await widget.api.get('/hr/onboardings', {
+      'user_id': id,
+      'per_page': '50',
+    });
 
     if (!mounted) return;
 
@@ -379,13 +382,9 @@ class _RecordsTabState extends State<RecordsTab> {
       return;
     }
 
-    // Picked out here rather than asked for, because the endpoint takes no
-    // `user_id` — it answers with everything the reader may see, one page at a
-    // time. The honest consequence: on an organization with more onboardings
-    // than fit on a page, somebody's older record can be off the end of it, and
-    // this reports "nothing collected" rather than finding it. A filter on the
-    // endpoint is what fixes that; a second page fetched from here would only
-    // move the boundary.
+    // Asked of the list filtered to this person. The endpoint used to answer
+    // with everything the reader may see, one page at a time, so an older
+    // record past the first page was reported as never collected.
     final theirs = OnboardingSummary.listFrom(
       response.data,
     ).where((row) => row.userId == id).toList();

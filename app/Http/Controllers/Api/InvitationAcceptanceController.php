@@ -213,27 +213,38 @@ class InvitationAcceptanceController extends Controller
             // one optional: somebody should be able to get in with a password
             // and fill the rest of their profile afterwards, and "Your account"
             // is where that lives (the plan's one-home rule).
-            'first_name'    => ['nullable', 'string', 'max:120'],
-            'last_name'     => ['nullable', 'string', 'max:120'],
+            'first_name'    => ['nullable', 'string', 'max:60'],
+            'last_name'     => ['nullable', 'string', 'max:60'],
             'phone'         => ['nullable', 'string', 'max:40'],
             'address'       => ['nullable', 'string', 'max:500'],
             'date_of_birth' => ['nullable', 'date'],
-            'gender'        => ['nullable', 'string', 'max:40'],
         ]);
 
         return $this->tenant->run($organization, function () use ($invitation, $input, $request) {
-            $refusal = $this->refusalFor($invitation);
+            return DB::transaction(function () use ($invitation, $input, $request) {
+                $locked = Invitation::query()
+                    ->with(['organization', 'role'])
+                    ->whereKey($invitation->getKey())
+                    ->lockForUpdate()
+                    ->first();
 
-            if ($refusal !== null) {
-                return $refusal;
-            }
+                if ($locked === null || ! $locked->isOpen()) {
+                    return $this->refuse();
+                }
 
-            $user = DB::transaction(fn () => $this->createAccount($invitation, $input));
+                $refusal = $this->refusalFor($locked);
 
-            // Inside the tenant, because it audits the sign-in — an auth event
-            // written with no organization is missing from that customer's own
-            // history from the first second of the account's life.
-            return ($this->session)($request, $user, Response::HTTP_CREATED);
+                if ($refusal !== null) {
+                    return $refusal;
+                }
+
+                $user = $this->createAccount($locked, $input);
+
+                // Inside the tenant, because it audits the sign-in — an auth event
+                // written with no organization is missing from that customer's own
+                // history from the first second of the account's life.
+                return ($this->session)($request, $user, Response::HTTP_CREATED);
+            });
         });
     }
 
@@ -355,7 +366,6 @@ class InvitationAcceptanceController extends Controller
             'phone'         => $input['phone'] ?? null,
             'address'       => $input['address'] ?? null,
             'date_of_birth' => $input['date_of_birth'] ?? null,
-            'gender'        => $input['gender'] ?? null,
         ]);
 
         \App\Models\EmploymentEvent::create([

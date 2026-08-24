@@ -34,6 +34,7 @@ final class FieldDefinition
         public readonly bool $sensitive,
         public readonly bool $retired,
         public readonly bool $isExpiry,
+        public readonly ?array $shownWhen,
     ) {}
 
     /**
@@ -62,6 +63,7 @@ final class FieldDefinition
             sensitive: (bool) ($raw['sensitive'] ?? false),
             retired:   (bool) ($raw['retired'] ?? false),
             isExpiry:  (bool) ($raw['is_expiry'] ?? false),
+            shownWhen: self::normaliseShownWhen($raw['shown_when'] ?? null),
         );
     }
 
@@ -88,7 +90,7 @@ final class FieldDefinition
      */
     public function toArray(): array
     {
-        return [
+        $out = [
             'key'       => $this->key,
             'label'     => $this->label,
             'type'      => $this->type,
@@ -99,6 +101,14 @@ final class FieldDefinition
             'retired'   => $this->retired,
             'is_expiry' => $this->isExpiry,
         ];
+
+        // Absent means always asked. Sending null on every field would make
+        // every published version look like it changed the day this landed.
+        if ($this->shownWhen !== null) {
+            $out['shown_when'] = $this->shownWhen;
+        }
+
+        return $out;
     }
 
     /**
@@ -122,6 +132,43 @@ final class FieldDefinition
             'required'  => $this->required,
             'sensitive' => $this->sensitive,
             'is_expiry' => $this->isExpiry,
+            'shown_when' => $this->shownWhen,
         ];
+    }
+
+    public function isShownGiven(array $answers): bool
+    {
+        if ($this->shownWhen === null) {
+            return true;
+        }
+
+        $raw = $answers[$this->shownWhen['key']] ?? null;
+
+        if ($raw === null || $raw === '') {
+            return false;
+        }
+
+        $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '_', (string) $raw) ?? '');
+
+        return trim($slug, '_') === $this->shownWhen['is'];
+    }
+
+    private static function normaliseShownWhen(mixed $raw): ?array
+    {
+        if (! is_array($raw)) {
+            return null;
+        }
+
+        $key = is_string($raw['key'] ?? null) ? trim($raw['key']) : '';
+        $is  = is_string($raw['is'] ?? null) ? trim($raw['is']) : '';
+
+        if ($key === '' || $is === '') {
+            return null;
+        }
+
+        $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '_', $is) ?? '');
+        $slug = trim($slug, '_');
+
+        return $slug === '' ? null : ['key' => $key, 'is' => $slug];
     }
 }

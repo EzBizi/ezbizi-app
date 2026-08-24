@@ -647,6 +647,21 @@ class HrContractsController extends Controller
             ->withCount('versions')
             ->orderBy('name')
             ->get()
+            ->reject(function (Contract $c) {
+                foreach ([
+                    ' (hourly, scheduled increases)',
+                    ' (salary, scheduled increases)',
+                    ' (hourly)',
+                    ' (salary)',
+                ] as $suffix) {
+                    if (str_ends_with($c->name, $suffix)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            })
+            ->values()
             ->map(fn (Contract $c) => $this->present($c));
 
         return response()->json(['data' => $contracts]);

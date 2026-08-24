@@ -1142,4 +1142,37 @@ class HrContractsTest extends TestCase
             ->postJson('/api/v1/hr/contracts', ['name' => 'Driver', 'fields' => [$this->field()]])
             ->assertCreated();
     }
+
+    public function test_the_list_hides_split_pay_variant_names_and_stays_an_array(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $admin = $alpha['admin'];
+
+        foreach ([
+            'Accounting',
+            'Accounting (hourly)',
+            'Accounting (salary)',
+            'Accounting (hourly, scheduled increases)',
+            'Accounting (salary, scheduled increases)',
+            'Field Technician',
+        ] as $name) {
+            $this->signedInAs($admin)
+                ->postJson('/api/v1/hr/contracts', [
+                    'name'   => $name,
+                    'fields' => [$this->field()],
+                ])
+                ->assertCreated();
+        }
+
+        $data = $this->signedInAs($admin)
+            ->getJson('/api/v1/hr/contracts')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertIsList($data);
+        $this->assertEqualsCanonicalizing(
+            ['Accounting', 'Field Technician'],
+            array_column($data, 'name'),
+        );
+    }
 }
