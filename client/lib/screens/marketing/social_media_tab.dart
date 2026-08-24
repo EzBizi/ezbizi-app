@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/dashboard_card.dart';
+import '../../widgets/social_network_mark.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
@@ -719,6 +720,7 @@ class _AccountsPane extends StatelessWidget {
                 for (final page in connections)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
+                    leading: SocialNetworkMark(network: page.provider),
                     title: Text(page.displayName),
                     subtitle: Text(page.providerLabel),
                   ),
@@ -742,6 +744,7 @@ class _AccountsPane extends StatelessWidget {
               for (final network in providers)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
+                  leading: SocialNetworkMark(network: network.value),
                   title: Text(network.label),
                   subtitle: Text(
                     network.usable
@@ -794,17 +797,20 @@ class _SocialConnection {
   const _SocialConnection({
     required this.id,
     required this.displayName,
+    required this.provider,
     required this.providerLabel,
   });
 
   final String id;
   final String displayName;
+  final String provider;
   final String providerLabel;
 
   factory _SocialConnection.fromJson(Map<String, dynamic> json) {
     return _SocialConnection(
       id: json['id'] as String? ?? '',
       displayName: json['display_name'] as String? ?? '',
+      provider: json['provider'] as String? ?? '',
       providerLabel: json['provider_label'] as String? ?? '',
     );
   }
@@ -862,6 +868,7 @@ class _ConnectPanelState extends State<_ConnectPanel> {
               _blueskyTile(network)
             else
               ListTile(
+                leading: SocialNetworkMark(network: network.value),
                 title: Text(network.label),
                 subtitle: Text(
                   _busy == network.value
@@ -888,7 +895,13 @@ class _ConnectPanelState extends State<_ConnectPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(network.label, style: Theme.of(context).textTheme.titleSmall),
+          Row(
+            children: [
+              SocialNetworkMark(network: network.value, size: 24),
+              const SizedBox(width: 8),
+              Text(network.label, style: Theme.of(context).textTheme.titleSmall),
+            ],
+          ),
           const SizedBox(height: 4),
           DashboardNote(
             'Bluesky has no developer console. Use an app password from Bluesky '

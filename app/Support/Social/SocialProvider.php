@@ -25,8 +25,8 @@ enum SocialProvider: string
     public function label(): string
     {
         return match ($this) {
-            self::FacebookPage => 'Facebook Page',
-            self::InstagramProfessional => 'Instagram professional',
+            self::FacebookPage => 'Facebook',
+            self::InstagramProfessional => 'Instagram',
             self::Threads => 'Threads',
             self::LinkedIn => 'LinkedIn',
             self::TikTok => 'TikTok',

@@ -491,3 +491,14 @@ Search Console listed HTTP, apex, `/index.html` and the old
 `https://www.ezbizi.com/` (or `/privacy/` `/terms/`) in one hop.
 `GET /` still serves the homepage — a naive `location = /index.html`
 redirect looped because nginx internally rewrites `/` to that file.
+
+---
+
+## 2026-08-24 — Social catalogue marks and shorter names
+
+Each network in Accounts › Catalogue (and Connect) has its brand mark
+on the left. Facebook and Instagram are labelled that way on screen,
+not "Facebook Page" or "Instagram professional". Keys on the wire are
+unchanged.
+
+Client `v0.0.0068`.

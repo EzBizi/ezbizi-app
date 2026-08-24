@@ -54,11 +54,11 @@ void main() {
 
     expect(find.byType(VersionHistoryPanel), findsOneWidget);
     expect(find.text('What\'s been built'), findsOneWidget);
-    expect(find.text('v0.0.0067'), findsOneWidget);
-    expect(find.textContaining('Checklists of tools'), findsOneWidget);
+    expect(find.text('v0.0.0068'), findsOneWidget);
+    expect(find.textContaining('Facebook and Instagram are named that way'), findsOneWidget);
 
-    // Newest above oldest: the 0067 heading is above the first-build heading.
-    final newest = tester.getTopLeft(find.text('v0.0.0067'));
+    // Newest above oldest: the 0068 heading is above the first-build heading.
+    final newest = tester.getTopLeft(find.text('v0.0.0068'));
     final oldest = tester.getTopLeft(find.text('v0.0.0001'));
     expect(newest.dy, lessThan(oldest.dy));
   });

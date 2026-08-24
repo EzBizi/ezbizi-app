@@ -96,6 +96,8 @@ class SocialProvidersApiTest extends TestCase
             $this->assertStringContainsString('EzBizi', $byValue[$key]['unusable_because']);
         }
 
+        $this->assertSame('Facebook', $byValue['facebook_page']['label']);
+        $this->assertSame('Instagram', $byValue['instagram_professional']['label']);
         $this->assertTrue($byValue['bluesky']['usable'], 'Bluesky has no console — Connect is an app password.');
         $this->assertNull($byValue['bluesky']['unusable_because']);
         $this->assertSame('password', $byValue['bluesky']['connects_by']);
