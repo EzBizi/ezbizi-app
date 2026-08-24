@@ -49,8 +49,18 @@ void main() {
     expect(find.text('How do we hold it?'), findsOneWidget);
     expect(find.text('Owned'), findsWidgets);
     expect(find.text('Rented'), findsWidgets);
+    expect(find.text('Bought from'), findsNothing);
+    expect(find.text('Rented from'), findsNothing);
+    expect(find.text('Started on'), findsNothing);
     expect(find.text('Save'), findsOneWidget);
     expect(find.byType(Dialog), findsNothing);
+
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'Owned'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Owned'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bought from'), findsOneWidget);
+    expect(find.text('Started on'), findsOneWidget);
   });
 
   testWidgets('a failed load is the request failed, not an empty list', (

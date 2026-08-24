@@ -13,7 +13,8 @@ class VersionHistory {
       items: [
         'Fleet vehicles can belong to the organization, not only a company. '
             'Untagged vans are General. The Company label is fully visible '
-            'when adding a vehicle.',
+            'when adding a vehicle. Owned or rented has to be chosen before '
+            'the rest of how we hold it appears.',
       ],
     ),
     VersionRelease(

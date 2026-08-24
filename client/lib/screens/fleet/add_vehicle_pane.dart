@@ -508,16 +508,18 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      _field(
-                        _counterparty,
-                        _kind == 'rented' ? 'Rented from' : 'Bought from',
-                      ),
-                      _field(
-                        _startedOn,
-                        'Started on',
-                        helper: 'A calendar day — 2026-03-08.',
-                      ),
+                      if (_kind != null) ...[
+                        const SizedBox(height: 12),
+                        _field(
+                          _counterparty,
+                          _kind == 'rented' ? 'Rented from' : 'Bought from',
+                        ),
+                        _field(
+                          _startedOn,
+                          'Started on',
+                          helper: 'A calendar day — 2026-03-08.',
+                        ),
+                      ],
                       if (_financials && _kind == 'owned') ...[
                         _field(
                           _purchasePrice,
