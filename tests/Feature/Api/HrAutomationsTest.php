@@ -149,6 +149,7 @@ class HrAutomationsTest extends TestCase
         $this->assertSame(Onboarding::class, $subjects['onboarding.signed'] ?? null);
         $this->assertSame(Onboarding::class, $subjects['onboarding.completed'] ?? null);
         $this->assertSame(Onboarding::class, $subjects['onboarding.amended'] ?? null);
+        $this->assertSame(Onboarding::class, $subjects['onboarding.cancelled'] ?? null);
 
         // The VERSION, never the contract. A contract row is a name and a
         // pointer at whatever is current, so an event whose subject were the
@@ -591,6 +592,17 @@ class HrAutomationsTest extends TestCase
             'answers' => ['wage' => '19.00'],
             'reason'  => 'The wage agreed verbally was higher than the one typed in.',
         ])->assertCreated();
+
+        // A second invitation, started and cancelled — changing your mind about
+        // the paperwork, not about the person. A third invitation is withdrawn
+        // below, which is the other kind of change of mind.
+        $stoppedInvite = $this->invite($alpha, 'franchise', $alpha['franchise']->id, 'stopped@example.test');
+        $stoppedId = $this->as($alpha['admin'])->postJson('/api/v1/hr/onboardings', [
+            'invitation_id' => $stoppedInvite->json('data.id'),
+            'contract_id'   => $contractId,
+        ])->assertCreated()->json('data.id');
+        $this->as($alpha['admin'])->deleteJson("/api/v1/hr/onboardings/{$stoppedId}")
+            ->assertOk();
 
         // A second invitation, withdrawn — the one event above that is about
         // changing your mind rather than about somebody arriving.
