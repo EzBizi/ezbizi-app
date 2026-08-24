@@ -21,8 +21,8 @@ use Tests\TestCase;
 /**
  * Declared dashboard glances (spec §4, §9).
  *
- * One box per reachable sidebar module. Task 1 registers only the five
- * coming-soon modules; permission and ModuleAvailability still gate them.
+ * One box per reachable sidebar module. Permission and ModuleAvailability
+ * gate what availableTo returns; all() is the unfiltered declared set.
  */
 class GlanceRegistryTest extends TestCase
 {
@@ -120,6 +120,16 @@ class GlanceRegistryTest extends TestCase
     public function test_dashboard_is_not_a_glance(): void
     {
         $this->assertNull(app(GlanceRegistry::class)->find('dashboard', $this->alpha['admin']));
+    }
+
+    public function test_every_sidebar_tab_except_dashboard_has_a_glance(): void
+    {
+        $registry = app(\App\Support\Modules\ModuleRegistry::class);
+        $tabs = collect($registry->all())
+            ->filter(fn ($m) => $m->rolesGroup === \App\Support\Modules\ModuleDefinition::ROLES_TAB && $m->key !== 'dashboard')
+            ->keys()->sort()->values()->all();
+        $glances = collect(app(GlanceRegistry::class)->all())->map(fn ($g) => $g->key())->sort()->values()->all();
+        $this->assertSame($tabs, $glances);
     }
 
     public function test_a_live_glance_wins_when_coming_soon_still_lists_the_same_key(): void

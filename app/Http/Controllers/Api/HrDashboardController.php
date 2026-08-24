@@ -3,88 +3,33 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
-use App\Support\Dashboard\Widget;
-use App\Support\Dashboard\WidgetRegistry;
-use App\Support\Dashboard\Widgets\Hr\ExpiringCertifications;
-use App\Support\Dashboard\Widgets\Hr\Headcount;
-use App\Support\Dashboard\Widgets\Hr\InvitationsStalled;
-use App\Support\Dashboard\Widgets\Hr\OnboardingsInFlight;
-use App\Support\Dashboard\Widgets\Hr\StartersAndLeavers;
+use App\Support\Dashboard\DashboardPeriod;
+use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\GlanceRegistry;
 use Illuminate\Http\Request;
 
 /**
- * The Human Resources dashboard (EZBIZI-HR-PLAN.md — Dashboard).
+ * The Human Resources dashboard chip (spec §12).
  *
- * ── Why this is four lines of list and not a second dashboard ────
+ * One glance — the same HrGlance GET /dashboard would include for `hr`. Same
+ * class, same resolve(), same stored presentation from `dashboard.glances`.
+ * The chip does not apply `dashboard.order['hr']` (that surface order is gone;
+ * there is only one box).
  *
- * §18 named the widget registry as the pattern for exactly this, and the figures
- * on this tab are widgets: a question, a permission, and an answer computed under
- * the caller's reach. So they are declared in WidgetRegistry alongside the rest
- * and this controller does nothing but say WHICH of them the tab shows and in
- * what order.
- *
- * The alternative — an endpoint that computed headcount itself — would have been
- * shorter to write and would have created the trap §6 is about: the same figure
- * arrived at two ways, drifting the first time one of them was corrected.
- *
- * ── Fixed SELECTION, chosen order ────────────────────────────────
- *
- * The main dashboard is a preference twice over: you choose which panels you
- * have and what sequence they sit in (§2.1 category 6). This tab is a
- * preference once. WHICH panels appear is fixed — PANELS below is a constant,
- * and everybody with `hr.view` gets the same five — because the HR plan names
- * five things this dashboard is for and an owner opening Human Resources for
- * the first time should see them without having to assemble anything. The same
- * widgets stay available on the main dashboard for anybody who wants headcount
- * beside their revenue.
- *
- * The ORDER is theirs. Dragging a card on this tab saves the sequence under
- * `dashboard.order['hr']` — DashboardController::saveOrder(),
- * the same endpoint and the same preferences store the main layout uses. That
- * reuse is why the widgets did not have to be rebuilt to get it.
- *
- * This endpoint knows nothing about that order and deliberately does not: it
- * always answers in the plan's sequence and the CLIENT rearranges (see
- * `panelsInSavedOrder`).
+ * Kept as its own route so opening Human Resources does not download every
+ * module's glance.
  */
 class HrDashboardController extends Controller
 {
-    public function __construct(private WidgetRegistry $registry) {}
-
-    /**
-     * The panels, in the order the plan names them.
-     *
-     * Class constants rather than bare strings: the key is the thing stored in a
-     * layout and returned on the wire, so it exists in one place and both the
-     * widget and this list read it from there.
-     *
-     * "Expiring certifications" reads date fields marked `is_expiry` (TODO #26).
-     * Until a template marks one, the panel says none are marked rather than
-     * pretending every date is a licence.
-     */
-    private const PANELS = [
-        Headcount::KEY,
-        OnboardingsInFlight::KEY,
-        InvitationsStalled::KEY,
-        StartersAndLeavers::KEY,
-        ExpiringCertifications::KEY,
-    ];
+    public function __construct(private GlanceRegistry $registry) {}
 
     /**
      * GET /api/v1/hr/dashboard
      *
-     * Two gates (§4). The route sits behind authentication, `viewAny` asks for
-     * `hr.view` — the tab permission, the same question the Records tab asks —
-     * and the registry then filters every widget by its own permission before it
-     * can be resolved. The second is not redundant: a widget added to the HR list
-     * later with a narrower permission is filtered by the registry without this
-     * controller having to remember it exists.
-     *
-     * No widget in PANELS needs it yet — all five answer `hr.view`, which is
-     * what the route already asked — so on THIS tab the second gate is
-     * unexercised rather than proven. Where it is exercised is the catalogue,
-     * which any signed-in caller may read: HrDashboardTest
-     * ::test_the_registry_withholds_hr_widgets_from_somebody_without_hr_view.
+     * `viewAny` on User asks for `hr.view` — the tab permission, the same
+     * question the Records tab asks. When find('hr') is null (kill switch or
+     * permission narrowed since the role was written), answer with glance null
+     * rather than 500.
      */
     public function index(Request $request): array
     {
@@ -94,32 +39,66 @@ class HrDashboardController extends Controller
         $this->authorize('viewAny', User::class);
 
         $user = $request->user();
+        $period = $this->periodFor($user);
 
-        $panels = [];
+        $envelope = [
+            'period' => $period->key,
+            'period_starts_on' => $period->startsOn->toIso8601String(),
+            'period_ends_on' => $period->endsOn->toIso8601String(),
+        ];
 
-        foreach (self::PANELS as $key) {
-            $widget = $this->registry->find($key, $user);
+        $glance = $this->registry->find('hr', $user);
 
-            // Skipped rather than errored, for the reason DashboardController
-            // gives: a module switched off platform-wide, or a permission
-            // narrowed since the role was written, should make this tab show
-            // less rather than refuse to load.
-            if (! $widget instanceof Widget) {
+        if (! $glance instanceof Glance) {
+            return [...$envelope, 'glance' => null];
+        }
+
+        $presentation = $this->storedPresentation($glance, $user);
+        $payload = $glance->resolve($user, $period, [])->toArray();
+        $payload['presentation'] = $presentation;
+
+        return [...$envelope, 'glance' => $payload];
+    }
+
+    /**
+     * Chart kind from `dashboard.glances` for `hr`, if still allowed.
+     *
+     * Does not read `dashboard.order['hr']`. Order on this chip is meaningless
+     * with one box; presentation is shared with the main board.
+     */
+    private function storedPresentation(Glance $glance, User $user): string
+    {
+        $allowed = $glance->allowedPresentations();
+        $default = $glance->defaultPresentation();
+        $saved = $user->preferences['dashboard.glances'] ?? null;
+
+        if (! is_array($saved)) {
+            return $default;
+        }
+
+        foreach ($saved as $entry) {
+            if (($entry['key'] ?? null) !== 'hr') {
                 continue;
             }
 
-            $panels[] = [
-                'key'   => $widget->key(),
-                'label' => $widget->label(),
+            $given = $entry['presentation'] ?? null;
+            if (is_string($given) && in_array($given, $allowed, true)) {
+                return $given;
+            }
 
-                // Defaults. This tab has no per-user options to echo back — see
-                // the class docblock on why its SELECTION is fixed rather than
-                // composed. What is per-user here is the order, and the client
-                // applies that.
-                'data'  => $widget->resolve($user, []),
-            ];
+            break;
         }
 
-        return ['panels' => $panels];
+        return $default;
+    }
+
+    private function periodFor(User $user): DashboardPeriod
+    {
+        $key = $user->preferences['dashboard.period'] ?? 'month';
+        if (! in_array($key, DashboardPeriod::VALUES, true)) {
+            $key = 'month';
+        }
+
+        return DashboardPeriod::for($user, $key);
     }
 }
