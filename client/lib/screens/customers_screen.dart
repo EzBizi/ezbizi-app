@@ -417,9 +417,9 @@ class _NewCustomerPanelState extends State<_NewCustomerPanel> {
   @override
   void initState() {
     super.initState();
-    // Only franchises this user can actually act on — the server sends reach,
-    // not the full list, so the picker never offers something that fails on save.
-    final reachable = widget.session.me!.franchises;
+    // The current view, not every franchise this person can ever reach.
+    // Standing in A-1 Chimney must not offer Everdoors' Connecticut.
+    final reachable = widget.session.me!.franchisesInView;
     if (reachable.length == 1) _franchiseId = reachable.first.id;
   }
 

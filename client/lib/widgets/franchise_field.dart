@@ -81,15 +81,15 @@ class FranchiseField extends StatelessWidget {
 
   final String? helperText;
 
-  /// A narrower list than everything reachable — the importer offers only the
-  /// franchises the caller may write to.
+  /// A narrower list than the current view — the importer offers only the
+  /// franchises the caller may write to. Defaults to [Me.franchisesInView].
   final List<FranchiseSummary>? franchises;
 
   final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    final options = franchises ?? me.franchises;
+    final options = franchises ?? me.franchisesInView;
 
     // Sorted by the whole path, so the two Connecticuts sit under their own
     // companies rather than next to each other. Unsorted, the list arrives in

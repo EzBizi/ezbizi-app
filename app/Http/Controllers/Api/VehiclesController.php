@@ -22,6 +22,7 @@ use App\Support\Fleet\VehicleRentalTerms;
 use App\Support\Fleet\VehicleStatus;
 use App\Support\Fleet\VehicleVisibility;
 use App\Support\Numbering\RecordNumberGenerator;
+use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
@@ -182,17 +183,7 @@ class VehiclesController extends Controller
             ? Franchise::findOrFail($input['franchise_id'])
             : null;
 
-        if ($company === null && $franchise !== null) {
-            throw ValidationException::withMessages([
-                'franchise_id' => 'A place belongs to a company. File the vehicle on the company, or leave it on the group as General.',
-            ]);
-        }
-
-        if ($franchise !== null && $franchise->company_id !== $company->getKey()) {
-            throw ValidationException::withMessages([
-                'franchise_id' => 'That place is not part of this company.',
-            ]);
-        }
+        PlaceInView::assert($request->user(), $company, $franchise, 'vehicle');
 
         if ($company === null) {
             $this->authorize('createOnOrganization', Vehicle::class);
@@ -295,20 +286,10 @@ class VehiclesController extends Controller
                 ? $input['franchise_id']
                 : $vehicle->franchise_id;
 
-            if ($companyId === null && $franchiseId !== null) {
-                throw ValidationException::withMessages([
-                    'franchise_id' => 'A place belongs to a company. File the vehicle on the company, or leave it on the group as General.',
-                ]);
-            }
+            $company = $companyId === null ? null : Company::findOrFail($companyId);
+            $franchise = $franchiseId === null ? null : Franchise::findOrFail($franchiseId);
 
-            if ($franchiseId !== null) {
-                $franchise = Franchise::findOrFail($franchiseId);
-                if ($franchise->company_id !== $companyId) {
-                    throw ValidationException::withMessages([
-                        'franchise_id' => 'That place is not part of this company.',
-                    ]);
-                }
-            }
+            PlaceInView::assert($request->user(), $company, $franchise, 'vehicle');
 
             if ($companyId === null) {
                 $input['franchise_id'] = null;

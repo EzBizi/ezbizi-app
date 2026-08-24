@@ -175,6 +175,35 @@ class ViewScopeTest extends TestCase
         $this->assertSame(5, $this->countInView());
     }
 
+    public function test_a_company_view_does_not_cover_a_sibling_company(): void
+    {
+        $this->scopeTo('company:'.$this->w['chimney']->id);
+
+        app(TenantContext::class)->run($this->w['org'], function () {
+            $view = ViewScope::forUser(User::find($this->w['admin']->id));
+
+            $this->assertTrue($view->coversCompany($this->w['chimney']->id));
+            $this->assertFalse($view->coversCompany($this->w['everdoors']->id));
+            $this->assertFalse($view->coversCompany(null));
+            $this->assertTrue($view->coversFranchise($this->w['ct']->id));
+            $this->assertFalse($view->coversFranchise($this->w['everOh']->id));
+        });
+    }
+
+    public function test_a_parent_company_view_covers_its_sub_company(): void
+    {
+        $this->scopeTo('company:'.$this->w['everdoors']->id);
+
+        app(TenantContext::class)->run($this->w['org'], function () {
+            $view = ViewScope::forUser(User::find($this->w['admin']->id));
+
+            $this->assertTrue($view->coversCompany($this->w['everdoors']->id));
+            $this->assertTrue($view->coversCompany($this->w['premier']->id));
+            $this->assertFalse($view->coversCompany($this->w['chimney']->id));
+            $this->assertTrue($view->coversFranchise($this->w['premierCt']->id));
+        });
+    }
+
     public function test_the_company_views_add_up_to_the_organizations(): void
     {
         $total = 0;

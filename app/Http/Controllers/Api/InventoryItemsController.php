@@ -12,6 +12,7 @@ use App\Support\Inventory\InventoryItemStatus;
 use App\Support\Inventory\InventoryUnit;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Numbering\RecordNumberGenerator;
+use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
@@ -136,7 +137,7 @@ class InventoryItemsController extends Controller
             ? Franchise::findOrFail($input['franchise_id'])
             : null;
 
-        $this->assertPlace($company, $franchise);
+        PlaceInView::assert($request->user(), $company, $franchise, 'item');
         $this->assertSkuAvailable(
             $input['sku'] ?? null,
             $company?->getKey(),
@@ -210,7 +211,7 @@ class InventoryItemsController extends Controller
             $company = $companyId === null ? null : Company::findOrFail($companyId);
             $franchise = $franchiseId === null ? null : Franchise::findOrFail($franchiseId);
 
-            $this->assertPlace($company, $franchise);
+            PlaceInView::assert($request->user(), $company, $franchise, 'item');
             $this->assertSkuAvailable(
                 array_key_exists('sku', $input) ? ($input['sku'] ?? null) : $item->sku,
                 $company?->getKey(),
@@ -308,21 +309,6 @@ class InventoryItemsController extends Controller
         if ($taken) {
             throw ValidationException::withMessages([
                 'sku' => 'This place already has an item with that SKU.',
-            ]);
-        }
-    }
-
-    private function assertPlace(?Company $company, ?Franchise $franchise): void
-    {
-        if ($company === null && $franchise !== null) {
-            throw ValidationException::withMessages([
-                'franchise_id' => 'A place belongs to a company. File the item on the company, or leave it on the group as General.',
-            ]);
-        }
-
-        if ($franchise !== null && $franchise->company_id !== $company->getKey()) {
-            throw ValidationException::withMessages([
-                'franchise_id' => 'That place is not part of this company.',
             ]);
         }
     }

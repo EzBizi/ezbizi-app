@@ -112,8 +112,10 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
 
   bool get _atOrganization => widget.session.me!.scope.type == 'organization';
 
-  bool get _showCompanyField =>
-      _atOrganization || _me.companies.length > 1;
+  bool get _showCompanyField => _me.offersCompanyChoice;
+
+  bool get _showFranchiseField =>
+      _me.offersFranchiseChoice && _companyId != null;
 
   @override
   void initState() {
@@ -165,11 +167,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
     super.dispose();
   }
 
-  List<FranchiseSummary> get _places {
-    final companyId = _companyId;
-    if (companyId == null) return const [];
-    return _me.franchises.where((f) => f.companyId == companyId).toList();
-  }
+  List<FranchiseSummary> get _places => _me.franchisesOf(_companyId);
 
   String _today() {
     final n = DateTime.now();
@@ -376,7 +374,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                           value: fleetOrgValue,
                           child: Text(_me.organization.name),
                         ),
-                      for (final c in _me.companies)
+                      for (final c in _me.companiesInView)
                         DropdownMenuItem(value: c.id, child: Text(c.name)),
                     ],
                     onChanged: _busy
@@ -388,7 +386,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                   ),
                   const SizedBox(height: 12),
                 ],
-                if (_companyId != null)
+                if (_showFranchiseField)
                   DropdownButtonFormField<String>(
                     key: ValueKey(_companyId),
                     initialValue: _franchiseId ?? fleetGeneralValue,

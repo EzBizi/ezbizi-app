@@ -435,7 +435,7 @@ class _NewJobPanelState extends State<_NewJobPanel> {
   void initState() {
     super.initState();
 
-    final reachable = widget.session.me!.franchises;
+    final reachable = widget.session.me!.franchisesInView;
     if (reachable.length == 1) _franchiseId = reachable.first.id;
 
     _loadOptions();

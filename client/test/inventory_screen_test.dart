@@ -329,6 +329,60 @@ void main() {
     expect(find.widgetWithText(ChoiceChip, 'Van'), findsNothing);
     expect(find.widgetWithText(ChoiceChip, 'Shop'), findsOneWidget);
   });
+
+  testWidgets(
+    'a company view does not offer sibling companies on New location',
+    (tester) async {
+      await _pumpScreen(
+        tester,
+        me: {
+          'organization': {
+            'id': 'org-1',
+            'name': 'EzBizi Group',
+            'franchise_label': 'Franchise',
+            'is_read_only': false,
+          },
+          'scope': {
+            'type': 'company',
+            'id': 'co-a1',
+            'label': 'A-1 Chimney',
+            'path': ['A-1 Chimney'],
+          },
+          'companies': [
+            {'id': 'co-a1', 'name': 'A-1 Chimney', 'parent_company_id': null},
+            {'id': 'co-ever', 'name': 'Everdoors', 'parent_company_id': null},
+            {
+              'id': 'co-premier',
+              'name': 'Premier Garage Repair',
+              'parent_company_id': 'co-ever',
+            },
+            {
+              'id': 'co-speedy',
+              'name': 'Speedy Garage Doors',
+              'parent_company_id': 'co-ever',
+            },
+            {'id': 'co-ez', 'name': 'EzBizi', 'parent_company_id': null},
+          ],
+          'franchises': [
+            {'id': 'fr-a1', 'name': 'Connecticut', 'company_id': 'co-a1'},
+            {'id': 'fr-ever', 'name': 'Ohio', 'company_id': 'co-ever'},
+          ],
+        },
+      );
+
+      await tester.tap(find.text('Locations'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add location'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Everdoors'), findsNothing);
+      expect(find.text('Premier Garage Repair'), findsNothing);
+      expect(find.text('Speedy Garage Doors'), findsNothing);
+      expect(find.text('EzBizi'), findsNothing);
+      expect(find.text('Company'), findsNothing);
+      expect(find.text('Franchise'), findsOneWidget);
+    },
+  );
 }
 
 const _item = {
@@ -423,6 +477,7 @@ Future<void> _pumpScreen(
     'inventory.create',
     'inventory.edit',
   ],
+  Map<String, dynamic>? me,
   List<Map<String, dynamic>> stock = const [],
   List<Map<String, dynamic>> items = const [],
   List<Map<String, dynamic>> orders = const [],
@@ -439,6 +494,7 @@ Future<void> _pumpScreen(
     client: MockClient(
       _handler(
         permissions: permissions,
+        me: me,
         stock: stock,
         items: items,
         orders: orders,
@@ -469,6 +525,7 @@ MockClientHandler _handler({
     'inventory.create',
     'inventory.edit',
   ],
+  Map<String, dynamic>? me,
   List<Map<String, dynamic>> stock = const [],
   List<Map<String, dynamic>> items = const [],
   List<Map<String, dynamic>> orders = const [],
@@ -484,7 +541,7 @@ MockClientHandler _handler({
 
     if (path.endsWith('/me')) {
       return _json({
-        'data': {..._me, 'permissions': permissions},
+        'data': {..._me, 'permissions': permissions, ...?me},
       });
     }
 

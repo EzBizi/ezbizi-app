@@ -131,6 +131,44 @@ class ViewScope
     }
 
     /**
+     * Is this company inside the current view?
+     *
+     * Organization view: any company (reach is a separate question). Company
+     * view: this company and its Sub Companies — not a sibling. Franchise
+     * view: the franchise's own company only.
+     *
+     * Null is the organization itself, and that is only the group view.
+     */
+    public function coversCompany(?string $companyId): bool
+    {
+        if ($companyId === null) {
+            return $this->isOrganization();
+        }
+
+        return match ($this->type) {
+            self::ORGANIZATION => true,
+            self::COMPANY => in_array($companyId, $this->companyIds(), true),
+            self::FRANCHISE => Franchise::find($this->id)?->company_id === $companyId,
+            default => false,
+        };
+    }
+
+    /**
+     * Is this franchise (or General, when null) inside the current view?
+     *
+     * General is a company-level place. A franchise view is one branch, so
+     * General is not offered there — switch to the company to file it.
+     */
+    public function coversFranchise(?string $franchiseId): bool
+    {
+        if ($franchiseId === null) {
+            return $this->type !== self::FRANCHISE;
+        }
+
+        return in_array($franchiseId, $this->franchiseIds(), true);
+    }
+
+    /**
      * The one franchise a new record belongs to, when the view leaves no doubt.
      *
      * Null in a company or organization view, where the answer is a choice

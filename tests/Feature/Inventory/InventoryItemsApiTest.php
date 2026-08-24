@@ -65,6 +65,51 @@ class InventoryItemsApiTest extends TestCase
             ->assertCreated();
     }
 
+    public function test_company_view_cannot_file_an_item_on_a_sibling_company(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        $sibling = $this->inTenant($tenant['org'], function () use ($tenant) {
+            return Company::create([
+                'organization_id' => $tenant['org']->id,
+                'name' => 'Beta Co',
+                'is_active' => true,
+            ]);
+        });
+
+        $this->inTenant($tenant['org'], function () use ($admin, $tenant) {
+            $fresh = User::find($admin->id);
+            $fresh->forceFill([
+                'preferences' => array_merge($fresh->preferences ?? [], [
+                    'navigation.scope' => 'company:'.$tenant['company']->id,
+                ]),
+            ])->save();
+        });
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/items', [
+                'company_id' => $sibling->id,
+                'sku' => 'BETA-1',
+                'name' => 'Beta liner',
+                'unit' => 'each',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['company_id'])
+            ->assertJsonFragment([
+                'company_id' => ['That company is not in this view.'],
+            ]);
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/items', [
+                'company_id' => $tenant['company']->id,
+                'sku' => 'OWN-1',
+                'name' => 'Own liner',
+                'unit' => 'each',
+            ])
+            ->assertCreated();
+    }
+
     public function test_without_costs_drops_last_cost_and_line_unit_costs(): void
     {
         $row = InventoryFinancials::withoutCosts([

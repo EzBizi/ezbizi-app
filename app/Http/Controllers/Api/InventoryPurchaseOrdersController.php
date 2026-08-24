@@ -18,6 +18,7 @@ use App\Support\Inventory\InventoryMover;
 use App\Support\Inventory\InventoryPurchaseOrderStatus;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Numbering\RecordNumberGenerator;
+use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -98,7 +99,7 @@ class InventoryPurchaseOrdersController extends Controller
             ? Franchise::findOrFail($input['franchise_id'])
             : null;
 
-        $this->assertPlace($company, $franchise);
+        PlaceInView::assert($request->user(), $company, $franchise, 'order');
 
         if ($company === null) {
             $this->authorize('createOnOrganization', InventoryPurchaseOrder::class);
@@ -330,21 +331,6 @@ class InventoryPurchaseOrdersController extends Controller
 
         return $order->franchise_id !== null
             && $location->franchise_id === $order->franchise_id;
-    }
-
-    private function assertPlace(?Company $company, ?Franchise $franchise): void
-    {
-        if ($company === null && $franchise !== null) {
-            throw ValidationException::withMessages([
-                'franchise_id' => 'A place belongs to a company. File the order on the company, or leave it on the group as General.',
-            ]);
-        }
-
-        if ($franchise !== null && $franchise->company_id !== $company->getKey()) {
-            throw ValidationException::withMessages([
-                'franchise_id' => 'That place is not part of this company.',
-            ]);
-        }
     }
 
     /** Calendar day in the PO’s place timezone (spec §15). */

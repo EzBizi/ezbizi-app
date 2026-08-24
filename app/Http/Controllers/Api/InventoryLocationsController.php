@@ -11,6 +11,7 @@ use App\Support\Fleet\VehicleVisibility;
 use App\Support\Inventory\InventoryLocationKind;
 use App\Support\Inventory\InventoryLocationStatus;
 use App\Support\Inventory\InventoryVisibility;
+use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
@@ -123,7 +124,7 @@ class InventoryLocationsController extends Controller
             ? Franchise::findOrFail($input['franchise_id'])
             : null;
 
-        $this->assertPlace($company, $franchise);
+        PlaceInView::assert($request->user(), $company, $franchise, 'location');
         $this->assertNameAvailable(
             $input['name'],
             $company?->getKey(),
@@ -203,7 +204,7 @@ class InventoryLocationsController extends Controller
             $company = $companyId === null ? null : Company::findOrFail($companyId);
             $franchise = $franchiseId === null ? null : Franchise::findOrFail($franchiseId);
 
-            $this->assertPlace($company, $franchise);
+            PlaceInView::assert($request->user(), $company, $franchise, 'location');
             $this->assertNameAvailable(
                 array_key_exists('name', $input) ? $input['name'] : $location->name,
                 $company?->getKey(),
@@ -288,21 +289,6 @@ class InventoryLocationsController extends Controller
         if ($taken) {
             throw ValidationException::withMessages([
                 'name' => 'The name has already been taken.',
-            ]);
-        }
-    }
-
-    private function assertPlace(?Company $company, ?Franchise $franchise): void
-    {
-        if ($company === null && $franchise !== null) {
-            throw ValidationException::withMessages([
-                'franchise_id' => 'A place belongs to a company. File the location on the company, or leave it on the group as General.',
-            ]);
-        }
-
-        if ($franchise !== null && $franchise->company_id !== $company->getKey()) {
-            throw ValidationException::withMessages([
-                'franchise_id' => 'That place is not part of this company.',
             ]);
         }
     }

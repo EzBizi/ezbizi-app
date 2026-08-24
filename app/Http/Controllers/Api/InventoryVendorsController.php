@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\InventoryVendor;
 use App\Support\Inventory\InventoryVisibility;
+use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -85,7 +86,7 @@ class InventoryVendorsController extends Controller
             ? Franchise::findOrFail($input['franchise_id'])
             : null;
 
-        $this->assertPlace($company, $franchise);
+        PlaceInView::assert($request->user(), $company, $franchise, 'vendor');
 
         if ($company === null) {
             $this->authorize('createOnOrganization', InventoryVendor::class);
@@ -135,7 +136,7 @@ class InventoryVendorsController extends Controller
             $company = $companyId === null ? null : Company::findOrFail($companyId);
             $franchise = $franchiseId === null ? null : Franchise::findOrFail($franchiseId);
 
-            $this->assertPlace($company, $franchise);
+            PlaceInView::assert($request->user(), $company, $franchise, 'vendor');
 
             if ($companyId === null) {
                 $input['franchise_id'] = null;
@@ -164,21 +165,6 @@ class InventoryVendorsController extends Controller
         $vendor->delete();
 
         return response()->noContent();
-    }
-
-    private function assertPlace(?Company $company, ?Franchise $franchise): void
-    {
-        if ($company === null && $franchise !== null) {
-            throw ValidationException::withMessages([
-                'franchise_id' => 'A place belongs to a company. File the vendor on the company, or leave it on the group as General.',
-            ]);
-        }
-
-        if ($franchise !== null && $franchise->company_id !== $company->getKey()) {
-            throw ValidationException::withMessages([
-                'franchise_id' => 'That place is not part of this company.',
-            ]);
-        }
     }
 
     /** @return array<string, mixed> */

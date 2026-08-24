@@ -237,7 +237,7 @@ class _ImportPanelState extends State<ImportPanel> {
   @override
   void initState() {
     super.initState();
-    final franchises = widget.session.me!.franchises;
+    final franchises = widget.session.me!.franchisesInView;
     if (franchises.length == 1) _franchiseId = franchises.first.id;
   }
 
@@ -314,7 +314,7 @@ class _ImportPanelState extends State<ImportPanel> {
     final columns = (widget.resource['import_columns'] as List<dynamic>).join(
       ', ',
     );
-    final franchises = widget.session.me!.franchises;
+    final franchises = widget.session.me!.franchisesInView;
 
     return SidePanel(
       title: 'Import ${(widget.resource['label'] as String).toLowerCase()}',

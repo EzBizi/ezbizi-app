@@ -408,6 +408,70 @@ class Me {
 
   final List<FranchiseSummary> franchises;
 
+  /// Companies the current view covers — the scoped company plus its Sub
+  /// Companies, already intersected with [companies] (reach).
+  ///
+  /// `/me` sends every company this person can act on. The switcher then
+  /// narrows what they are looking at. A picker that offered the rest would
+  /// let somebody standing in A-1 Chimney file a record on Everdoors.
+  List<CompanySummary> get companiesInView {
+    final scope = this.scope;
+    if (scope.type == 'organization') return companies;
+    if (scope.type == 'franchise') {
+      final place = franchises.where((f) => f.id == scope.id).firstOrNull;
+      if (place == null) return const [];
+      return companies.where((c) => c.id == place.companyId).toList();
+    }
+    final rootId = scope.id;
+    if (rootId == null) return const [];
+    return companies.where((c) => _inCompanySubtree(c, rootId)).toList();
+  }
+
+  /// Franchises the current view covers. Organization: every reachable
+  /// franchise. Company: that company and its Sub Companies. Franchise: that
+  /// one branch.
+  List<FranchiseSummary> get franchisesInView {
+    final scope = this.scope;
+    if (scope.type == 'organization') return franchises;
+    if (scope.type == 'franchise') {
+      return franchises.where((f) => f.id == scope.id).toList();
+    }
+    final ids = {for (final c in companiesInView) c.id};
+    return franchises.where((f) => ids.contains(f.companyId)).toList();
+  }
+
+  /// Franchises of one company, still inside the current view.
+  List<FranchiseSummary> franchisesOf(String? companyId) {
+    if (companyId == null) return const [];
+    return franchisesInView.where((f) => f.companyId == companyId).toList();
+  }
+
+  /// A company picker only earns its place when the view still leaves a
+  /// choice: the group (org vs a company), or a parent with Sub Companies.
+  /// A company view of A-1 Chimney with no children has one owner, and
+  /// naming it again is how sibling companies leaked onto New location.
+  bool get offersCompanyChoice =>
+      scope.type == 'organization' ||
+      (scope.type == 'company' && companiesInView.length > 1);
+
+  /// General plus the company's places. A franchise view is that place, so
+  /// the field would only repeat the switcher.
+  bool get offersFranchiseChoice => scope.type != 'franchise';
+
+  bool _inCompanySubtree(CompanySummary company, String rootId) {
+    if (company.id == rootId) return true;
+    var parentId = company.parentCompanyId;
+    final seen = <String>{};
+    while (parentId != null && seen.add(parentId)) {
+      if (parentId == rootId) return true;
+      parentId = companies
+          .where((c) => c.id == parentId)
+          .firstOrNull
+          ?.parentCompanyId;
+    }
+    return false;
+  }
+
   /// The onboarding that is about THIS person, while it is unfinished.
   ///
   /// The id and nothing else. Everything about the form — the questions, the

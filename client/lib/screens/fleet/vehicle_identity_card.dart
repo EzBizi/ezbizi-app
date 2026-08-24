@@ -52,8 +52,10 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
   Me get _me => widget.session.me!;
   bool get _canEdit => _me.can('fleet_management.edit');
   bool get _atOrganization => _me.scope.type == 'organization';
-  bool get _showCompanyField =>
-      _atOrganization || _me.companies.length > 1;
+  bool get _showCompanyField => _me.offersCompanyChoice;
+
+  bool get _showFranchiseField =>
+      _me.offersFranchiseChoice && _companyId != null;
   bool get _ended => _status == 'sold' || _status == 'returned';
 
   String? get _editRefusal =>
@@ -122,11 +124,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
     if (_startedOn.text.isEmpty) _startedOn.text = fleetToday();
   }
 
-  List<FranchiseSummary> get _places {
-    final companyId = _companyId;
-    if (companyId == null) return const [];
-    return _me.franchises.where((f) => f.companyId == companyId).toList();
-  }
+  List<FranchiseSummary> get _places => _me.franchisesOf(_companyId);
 
   Future<void> _save() async {
     int? year;
@@ -341,7 +339,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
                     value: fleetOrgValue,
                     child: Text(_me.organization.name),
                   ),
-                for (final c in _me.companies)
+                for (final c in _me.companiesInView)
                   DropdownMenuItem(value: c.id, child: Text(c.name)),
               ],
               onChanged: enabled
@@ -352,7 +350,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
                   : null,
             ),
           ],
-          if (_companyId != null) ...[
+          if (_showFranchiseField) ...[
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               key: ValueKey('place-$_companyId-$_franchiseId'),

@@ -137,6 +137,91 @@ class InventoryLocationsApiTest extends TestCase
             ->assertCreated();
     }
 
+    public function test_company_view_cannot_file_a_location_on_a_sibling_company(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        $sibling = $this->inTenant($tenant['org'], function () use ($tenant) {
+            return Company::create([
+                'organization_id' => $tenant['org']->id,
+                'name' => 'Beta Co',
+                'is_active' => true,
+            ]);
+        });
+
+        $this->lookingAt($admin, $tenant['org'], 'company:'.$tenant['company']->id);
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/locations', [
+                'company_id' => $sibling->id,
+                'name' => 'Beta cage',
+                'kind' => 'cage',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['company_id'])
+            ->assertJsonFragment([
+                'company_id' => ['That company is not in this view.'],
+            ]);
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/locations', [
+                'company_id' => $tenant['company']->id,
+                'name' => 'Own cage',
+                'kind' => 'cage',
+            ])
+            ->assertCreated();
+
+        $this->inTenant($tenant['org'], function () {
+            $this->assertSame(1, InventoryLocation::query()->count());
+        });
+    }
+
+    public function test_company_view_cannot_file_a_location_on_the_group(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        $this->lookingAt($admin, $tenant['org'], 'company:'.$tenant['company']->id);
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/locations', [
+                'name' => 'Group cage',
+                'kind' => 'cage',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['company_id']);
+
+        $this->inTenant($tenant['org'], function () {
+            $this->assertSame(0, InventoryLocation::query()->count());
+        });
+    }
+
+    public function test_parent_company_view_can_file_on_a_sub_company(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        $child = $this->inTenant($tenant['org'], function () use ($tenant) {
+            return Company::create([
+                'organization_id' => $tenant['org']->id,
+                'parent_company_id' => $tenant['company']->id,
+                'name' => 'Sub Co',
+                'is_active' => true,
+            ]);
+        });
+
+        $this->lookingAt($admin, $tenant['org'], 'company:'.$tenant['company']->id);
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/locations', [
+                'company_id' => $child->id,
+                'name' => 'Sub cage',
+                'kind' => 'cage',
+            ])
+            ->assertCreated();
+    }
+
     public function test_admin_creates_shop_and_van_and_lists_them(): void
     {
         $tenant = $this->provisionTenant('Alpha');
@@ -438,6 +523,18 @@ class InventoryLocationsApiTest extends TestCase
             ]);
 
             return $user;
+        });
+    }
+
+    private function lookingAt(User $user, Organization $organization, string $scope): void
+    {
+        $this->inTenant($organization, function () use ($user, $scope) {
+            $fresh = User::find($user->id);
+            $fresh->forceFill([
+                'preferences' => array_merge($fresh->preferences ?? [], [
+                    'navigation.scope' => $scope,
+                ]),
+            ])->save();
         });
     }
 }
