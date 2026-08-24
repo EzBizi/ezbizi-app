@@ -23,8 +23,10 @@ use App\Http\Controllers\Api\HrOnboardingsController;
 use App\Http\Controllers\Api\HrPeopleController;
 use App\Http\Controllers\Api\InspectionDefinitionsController;
 use App\Http\Controllers\Api\InspectionReportsController;
+use App\Http\Controllers\Api\InventoryAdjustmentsController;
 use App\Http\Controllers\Api\InventoryItemsController;
 use App\Http\Controllers\Api\InventoryLocationsController;
+use App\Http\Controllers\Api\InventoryStockController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
@@ -249,6 +251,8 @@ Route::prefix('v1')
         Route::apiResource('vehicles', VehiclesController::class);
         Route::apiResource('inventory/items', InventoryItemsController::class);
         Route::apiResource('inventory/locations', InventoryLocationsController::class);
+        Route::get('inventory/stock', [InventoryStockController::class, 'index']);
+        Route::post('inventory/adjustments', [InventoryAdjustmentsController::class, 'store']);
 
         // ── The shape of the business (§3) ───────────────────────
         //
