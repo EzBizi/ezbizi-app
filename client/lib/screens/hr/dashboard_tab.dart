@@ -86,6 +86,8 @@ class _DashboardTabState extends State<DashboardTab> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(response.message)));
+    } else {
+      _rememberLayout(response.body);
     }
 
     _load();
@@ -104,7 +106,12 @@ class _DashboardTabState extends State<DashboardTab> {
       'glances': _layoutGlances(presentation: presentation),
     });
 
-    if (!mounted || response.ok) return;
+    if (!mounted) return;
+
+    if (response.ok) {
+      _rememberLayout(response.body);
+      return;
+    }
 
     ScaffoldMessenger.of(
       context,
@@ -113,10 +120,29 @@ class _DashboardTabState extends State<DashboardTab> {
     _load();
   }
 
-  /// What this chip writes back. One glance is enough: the server appends
-  /// reachable modules this payload omitted. If /me already carries
-  /// `dashboard.glances`, send that list so a period change here does not
-  /// reshuffle the main board's order.
+  /// Keep the union the server stored. PUT echoes `glances` after appending
+  /// reachable modules this chip omitted. Without writing that into the
+  /// session, the next tap sends `{hr}` again and saveLayout rebuilds the
+  /// rest at defaults — wiping Jobs options and any order already saved.
+  void _rememberLayout(Map<String, dynamic> body) {
+    final glances = body['glances'];
+    if (glances is! List || glances.isEmpty) return;
+
+    widget.session.rememberPreference('dashboard.glances', [
+      for (final item in glances)
+        if (item is Map)
+          {
+            'key': item['key'],
+            'presentation': item['presentation'] ?? 'text',
+            'options': item['options'] ?? <String, dynamic>{},
+          },
+    ]);
+  }
+
+  /// What this chip writes back. Prefer the session's stored layout so a
+  /// second save does not name only `hr`. If /me never carried
+  /// `dashboard.glances`, the first save still sends the one box and the
+  /// server appends the rest.
   List<Map<String, dynamic>> _layoutGlances({String? presentation}) {
     final chosen =
         presentation ?? _glance?['presentation'] as String? ?? 'text';

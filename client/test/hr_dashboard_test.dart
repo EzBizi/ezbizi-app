@@ -70,6 +70,37 @@ void main() {
     expect((sent.single['glances'] as List).single['presentation'], 'bar');
   });
 
+  /// The first save may name only `hr` — /me often has no `dashboard.glances`
+  /// yet. The PUT answers with the union the server stored. Forgetting that
+  /// means the next tap sends `{hr}` again, and saveLayout re-appends every
+  /// other module at its default, wiping Jobs options and any order already
+  /// on the server.
+  testWidgets('a second layout save keeps the glances the first one stored', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await _pump(tester, _handler(record: sent));
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Week'));
+    await tester.pumpAndSettle();
+
+    expect(
+      [for (final g in sent.single['glances'] as List) g['key']],
+      ['hr'],
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Quarter'));
+    await tester.pumpAndSettle();
+
+    expect(sent, hasLength(2));
+    expect(
+      [for (final g in sent[1]['glances'] as List) g['key']],
+      ['hr', 'jobs', 'customers'],
+    );
+    expect(sent[1]['period'], 'quarter');
+  });
+
   testWidgets('the presentation switcher writes the same preference as the '
       'main dashboard', (tester) async {
     final sent = <Map<String, dynamic>>[];
@@ -214,8 +245,26 @@ MockClientHandler _handler({
     if (path.endsWith('/me')) return _json({'data': _me});
 
     if (request.method == 'PUT' && path.endsWith('/dashboard/layout')) {
-      record?.add(jsonDecode(request.body) as Map<String, dynamic>);
-      return _json({'ok': true});
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      record?.add(body);
+
+      // Same append the server does: omitted reachable modules join at the
+      // end. The second save must send this list back, not `{hr}` again.
+      final sent = [
+        for (final item in (body['glances'] as List? ?? const []))
+          if (item is Map) Map<String, dynamic>.from(item),
+      ];
+      final keys = {for (final glance in sent) glance['key']};
+      return _json({
+        'period': body['period'] ?? 'month',
+        'glances': [
+          ...sent,
+          if (!keys.contains('jobs'))
+            {'key': 'jobs', 'presentation': 'pie'},
+          if (!keys.contains('customers'))
+            {'key': 'customers', 'presentation': 'line'},
+        ],
+      });
     }
 
     if (path.endsWith('/hr/dashboard')) {
