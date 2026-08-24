@@ -162,6 +162,7 @@ class NumbersController extends Controller
             'transcribe' => $number->transcribe,
             'after_hours' => $number->after_hours,
             'language' => $number->language,
+            'sms_outbound_allowed' => (bool) $number->sms_outbound_allowed,
         ];
     }
 }

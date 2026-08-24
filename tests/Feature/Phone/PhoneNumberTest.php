@@ -93,6 +93,8 @@ class PhoneNumberTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame($bought['id'], $rows[0]['id']);
         $this->assertSame('+12030101001', $rows[0]['e164']);
+        $this->assertArrayHasKey('sms_outbound_allowed', $rows[0]);
+        $this->assertFalse($rows[0]['sms_outbound_allowed']);
     }
 
     public function test_buying_without_a_connection_names_the_gap(): void

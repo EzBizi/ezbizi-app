@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use App\Models\Customer;
 use App\Models\PhoneCall;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\TwilioGateway;
@@ -29,11 +30,15 @@ class CallsController extends Controller
 
         $numberIds = $this->access->readable($request->user())->pluck('id')->all();
 
-        $rows = PhoneCall::query()
+        $calls = PhoneCall::query()
             ->whereIn('number_id', $numberIds)
             ->orderByDesc('created_at')
-            ->get()
-            ->map(fn (PhoneCall $call) => $this->row($call))
+            ->get();
+
+        $customerIds = $this->customerIdsByPhone($calls);
+
+        $rows = $calls
+            ->map(fn (PhoneCall $call) => $this->row($call, $customerIds))
             ->all();
 
         return response()->json(['data' => $rows]);
@@ -62,9 +67,45 @@ class CallsController extends Controller
             ->header('X-Content-Type-Options', 'nosniff');
     }
 
-    /** @return array<string, mixed> */
-    private function row(PhoneCall $call): array
+    /**
+     * @param  \Illuminate\Support\Collection<int, PhoneCall>  $calls
+     * @return array<string, string>
+     */
+    private function customerIdsByPhone($calls): array
     {
+        $phones = [];
+        foreach ($calls as $call) {
+            $outside = $this->outsideNumber($call);
+            if ($outside !== '') {
+                $phones[] = $outside;
+            }
+        }
+
+        if ($phones === []) {
+            return [];
+        }
+
+        return Customer::query()
+            ->whereIn('phone', array_values(array_unique($phones)))
+            ->pluck('id', 'phone')
+            ->all();
+    }
+
+    private function outsideNumber(PhoneCall $call): string
+    {
+        return $call->direction === PhoneCall::DIRECTION_INBOUND
+            ? (string) $call->from_e164
+            : (string) $call->to_e164;
+    }
+
+    /**
+     * @param  array<string, string>  $customerIds
+     * @return array<string, mixed>
+     */
+    private function row(PhoneCall $call, array $customerIds = []): array
+    {
+        $outside = $this->outsideNumber($call);
+
         return [
             'id' => $call->id,
             'number_id' => $call->number_id,
@@ -75,8 +116,10 @@ class CallsController extends Controller
             'to_e164' => $call->to_e164,
             'status' => $call->status,
             'duration_seconds' => $call->duration_seconds,
-            'voicemail' => $call->voicemail,
+            'voicemail' => (bool) $call->voicemail,
             'recording_sid' => $call->recording_sid,
+            'transcript' => $call->transcript,
+            'customer_id' => $customerIds[$outside] ?? null,
             'created_at' => $call->created_at?->toIso8601String(),
         ];
     }

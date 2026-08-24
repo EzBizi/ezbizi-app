@@ -447,6 +447,30 @@ MockClientHandler _handler({
       return _json({'data': connections});
     }
 
+    if (path.endsWith('/phone/numbers') && request.method == 'GET') {
+      return _json({'data': <Map<String, Object?>>[]});
+    }
+
+    if (path.endsWith('/phone/calls') && request.method == 'GET') {
+      return _json({'data': <Map<String, Object?>>[]});
+    }
+
+    if (path.endsWith('/phone/messages') && request.method == 'GET') {
+      return _json({'data': <Map<String, Object?>>[]});
+    }
+
+    if (path.endsWith('/phone/presence')) {
+      return _json({'data': <Map<String, Object?>>[]});
+    }
+
+    if (path.endsWith('/phone/tokens') && request.method == 'POST') {
+      return _json({
+        'token': 'fake-access-token',
+        'identity': 'u1',
+        'twiml_app_sid': 'APcccccccccccccccccccccccccccccccc',
+      });
+    }
+
     if (path.contains('/phone/connections/') && request.method == 'DELETE') {
       onDelete?.call();
       return _json({'message': 'deleted'}, 200);

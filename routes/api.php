@@ -596,6 +596,7 @@ Route::prefix('v1')
         // Voice SDK token + desk presence. phone.view and a granted number on
         // that connection; no grant → fixed 403 sentence.
         Route::post('phone/tokens', [PhoneTokensController::class, 'store']);
+        Route::get('phone/presence', [PhonePresenceController::class, 'index']);
         Route::put('phone/presence', [PhonePresenceController::class, 'update']);
 
         // Records: calls on granted numbers. Playback streams Twilio media.
@@ -603,6 +604,7 @@ Route::prefix('v1')
         Route::get('phone/calls/{call}/recording', [PhoneCallsController::class, 'recording']);
 
         // SMS from the Call desk. 10DLC / toll-free gate refuses until approved.
+        Route::get('phone/messages', [PhoneMessagesController::class, 'index']);
         Route::post('phone/messages', [PhoneMessagesController::class, 'store']);
 
         // ── Inspection Builder ───────────────────────────────────

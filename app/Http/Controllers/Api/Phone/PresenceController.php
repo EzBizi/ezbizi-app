@@ -26,6 +26,38 @@ class PresenceController extends Controller
         private readonly TenantContext $tenant,
     ) {}
 
+    /** GET /api/v1/phone/presence?connection_id= */
+    public function index(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', PhoneConnection::class);
+
+        $input = $request->validate([
+            'connection_id' => ['required', 'uuid', $this->existsInTenant('phone_connections')],
+        ]);
+
+        $connection = PhoneConnection::query()->findOrFail($input['connection_id']);
+        $user = $request->user();
+
+        if (! $this->access->hasLineOn($user, $connection)) {
+            return response()->json(['message' => self::NO_LINE], Response::HTTP_FORBIDDEN);
+        }
+
+        $rows = PhonePresence::query()
+            ->where('connection_id', $connection->id)
+            ->with('user')
+            ->orderBy('updated_at')
+            ->get()
+            ->map(fn (PhonePresence $row) => [
+                'user_id' => $row->user_id,
+                'name' => $row->user?->name ?? '',
+                'state' => $row->state,
+                'updated_at' => $row->updated_at?->toIso8601String(),
+            ])
+            ->all();
+
+        return response()->json(['data' => $rows]);
+    }
+
     /** PUT /api/v1/phone/presence */
     public function update(Request $request): JsonResponse
     {

@@ -36,6 +36,50 @@ class MessagesController extends Controller
         private readonly PhoneLineHealth $health,
     ) {}
 
+    /** GET /api/v1/phone/messages */
+    public function index(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', PhoneMessage::class);
+
+        $input = $request->validate([
+            'number_id' => [
+                'sometimes',
+                'uuid',
+                Rule::exists('phone_numbers', 'id')
+                    ->where('organization_id', $this->tenant->idOrFail()),
+            ],
+            'peer' => ['sometimes', 'nullable', 'string', 'max:32'],
+        ]);
+
+        $user = $request->user();
+        $readable = $this->access->readable($user)->pluck('id')->all();
+
+        if (isset($input['number_id'])) {
+            $number = PhoneNumber::query()->findOrFail($input['number_id']);
+            if (! $this->access->mayView($user, $number)) {
+                abort(Status::HTTP_FORBIDDEN);
+            }
+            $readable = [$number->id];
+        }
+
+        $query = PhoneMessage::query()
+            ->whereIn('number_id', $readable)
+            ->orderByDesc('created_at');
+
+        if (filled($input['peer'] ?? null)) {
+            $peer = (string) $input['peer'];
+            $query->where(fn ($q) => $q
+                ->where('from_e164', $peer)
+                ->orWhere('to_e164', $peer));
+        }
+
+        $rows = $query->get()
+            ->map(fn (PhoneMessage $message) => $this->row($message))
+            ->all();
+
+        return response()->json(['data' => $rows]);
+    }
+
     /** POST /api/v1/phone/messages */
     public function store(Request $request): JsonResponse
     {

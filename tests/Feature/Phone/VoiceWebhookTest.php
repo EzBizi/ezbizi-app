@@ -460,6 +460,8 @@ class VoiceWebhookTest extends TestCase
         $this->assertSame('+15550006666', $rows[0]['from_e164']);
         $this->assertSame('+12035551901', $rows[0]['to_e164']);
         $this->assertNotContains($hidden->id, array_column($rows, 'id'));
+        $this->assertArrayHasKey('customer_id', $rows[0]);
+        $this->assertArrayHasKey('voicemail', $rows[0]);
         $this->assertArrayNotHasKey('credentials', $rows[0]);
         $this->assertArrayNotHasKey('auth_token', $rows[0]);
     }

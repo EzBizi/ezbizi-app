@@ -215,6 +215,98 @@ class PhoneSmsTest extends TestCase
         });
     }
 
+    public function test_messages_list_returns_granted_rows_and_filters_by_peer(): void
+    {
+        $t = $this->provisionTenant();
+        $desk = $this->userWithRole($t, 'Desk list', ['phone.view']);
+
+        [$visible, $hidden, $kept] = $this->inTenant($t['org'], function () use ($t, $desk) {
+            [$connection, $granted] = $this->openLine($t, e164: '+12035551011');
+            $other = PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+12035551012',
+                'label' => 'Other',
+            ]);
+
+            PhoneNumberGrant::create([
+                'organization_id' => $t['org']->id,
+                'number_id' => $granted->id,
+                'role_id' => $desk->role_id,
+            ]);
+
+            $kept = PhoneMessage::query()->create([
+                'connection_id' => $granted->connection_id,
+                'number_id' => $granted->id,
+                'twilio_sid' => 'SMcccccccccccccccccccccccccccccccc',
+                'direction' => PhoneMessage::DIRECTION_INBOUND,
+                'from_e164' => '+15557654321',
+                'to_e164' => '+12035551011',
+                'body' => 'See you Thursday',
+            ]);
+            PhoneMessage::query()->create([
+                'connection_id' => $granted->connection_id,
+                'number_id' => $granted->id,
+                'twilio_sid' => 'SMdddddddddddddddddddddddddddddddd',
+                'direction' => PhoneMessage::DIRECTION_OUTBOUND,
+                'from_e164' => '+12035551011',
+                'to_e164' => '+15550001111',
+                'body' => 'Other thread',
+            ]);
+            $hidden = PhoneMessage::query()->create([
+                'connection_id' => $other->connection_id,
+                'number_id' => $other->id,
+                'twilio_sid' => 'SMeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+                'direction' => PhoneMessage::DIRECTION_INBOUND,
+                'from_e164' => '+15559998888',
+                'to_e164' => '+12035551012',
+                'body' => 'Hidden line',
+            ]);
+
+            return [$granted, $hidden, $kept];
+        });
+
+        $all = $this->signedInAs($desk)
+            ->getJson('/api/v1/phone/messages')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(2, $all);
+        $this->assertNotContains($hidden->id, array_column($all, 'id'));
+        $this->assertSame('See you Thursday', collect($all)->firstWhere('id', $kept->id)['body']);
+        $this->assertArrayHasKey('customer_id', $all[0]);
+        $this->assertArrayNotHasKey('credentials', $all[0]);
+
+        $thread = $this->signedInAs($desk)
+            ->getJson('/api/v1/phone/messages?'.http_build_query([
+                'number_id' => $visible->id,
+                'peer' => '+15557654321',
+            ]))
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(1, $thread);
+        $this->assertSame($kept->id, $thread[0]['id']);
+        $this->assertSame('See you Thursday', $thread[0]['body']);
+    }
+
+    public function test_messages_list_for_an_ungranted_number_is_forbidden(): void
+    {
+        $t = $this->provisionTenant();
+        $viewer = $this->userWithRole($t, 'No grant list', ['phone.view']);
+
+        $number = $this->inTenant($t['org'], function () use ($t) {
+            [, $number] = $this->openLine($t, e164: '+12035551013');
+
+            return $number;
+        });
+
+        $this->signedInAs($viewer)
+            ->getJson('/api/v1/phone/messages?number_id='.$number->id)
+            ->assertForbidden();
+    }
+
     public function test_send_without_a_grant_on_the_line_is_forbidden(): void
     {
         $t = $this->provisionTenant();

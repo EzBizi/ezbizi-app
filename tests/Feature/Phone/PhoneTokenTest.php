@@ -178,6 +178,94 @@ class PhoneTokenTest extends TestCase
         });
     }
 
+    public function test_presence_list_returns_teammates_on_the_connection(): void
+    {
+        $t = $this->provisionTenant();
+        $desk = $this->userWithRole($t, 'Desk list', ['phone.view']);
+        $other = $this->userWithRole($t, 'Other desk', ['phone.view']);
+
+        $connection = $this->inTenant($t['org'], function () use ($t, $desk, $other) {
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+            ]);
+
+            $number = PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+12035551041',
+            ]);
+
+            PhoneNumberGrant::create([
+                'organization_id' => $t['org']->id,
+                'number_id' => $number->id,
+                'role_id' => $desk->role_id,
+            ]);
+            PhoneNumberGrant::create([
+                'organization_id' => $t['org']->id,
+                'number_id' => $number->id,
+                'role_id' => $other->role_id,
+            ]);
+
+            PhonePresence::query()->create([
+                'connection_id' => $connection->id,
+                'user_id' => $desk->id,
+                'state' => PhonePresence::STATE_REGISTERED,
+            ]);
+            PhonePresence::query()->create([
+                'connection_id' => $connection->id,
+                'user_id' => $other->id,
+                'state' => PhonePresence::STATE_ON_CALL,
+            ]);
+
+            return $connection;
+        });
+
+        $rows = $this->signedInAs($desk)
+            ->getJson('/api/v1/phone/presence?connection_id='.$connection->id)
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(2, $rows);
+        $byUser = collect($rows)->keyBy('user_id');
+        $this->assertSame($desk->name, $byUser[$desk->id]['name']);
+        $this->assertSame('registered', $byUser[$desk->id]['state']);
+        $this->assertSame($other->name, $byUser[$other->id]['name']);
+        $this->assertSame('on_call', $byUser[$other->id]['state']);
+        $this->assertArrayHasKey('updated_at', $byUser[$desk->id]);
+        $this->assertArrayNotHasKey('credentials', $rows[0]);
+    }
+
+    public function test_presence_list_without_a_line_is_refused(): void
+    {
+        $t = $this->provisionTenant();
+        $viewer = $this->userWithRole($t, 'No line list', ['phone.view']);
+
+        $connection = $this->inTenant($t['org'], function () use ($t) {
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+            ]);
+            PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+12035551042',
+            ]);
+
+            return $connection;
+        });
+
+        $this->signedInAs($viewer)
+            ->getJson('/api/v1/phone/presence?connection_id='.$connection->id)
+            ->assertForbidden()
+            ->assertJsonPath(
+                'message',
+                'You have not been given a line on this phone account.',
+            );
+    }
+
     public function test_presence_without_a_line_is_refused(): void
     {
         $t = $this->provisionTenant();
