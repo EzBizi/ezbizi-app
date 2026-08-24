@@ -7,8 +7,10 @@ use App\Models\InventoryItem;
 use App\Models\InventoryLocation;
 use App\Models\Job;
 use App\Support\Inventory\InventoryMover;
+use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -42,6 +44,39 @@ class InventoryIssuesController extends Controller
     {
         return Rule::exists($table, 'id')
             ->where('organization_id', $this->tenant->idOrFail());
+    }
+
+    /** GET /api/v1/inventory/issues */
+    public function index(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', InventoryIssue::class);
+
+        $user = $request->user();
+        $scope = ViewScope::forUser($user);
+
+        $query = InventoryIssue::query()
+            ->whereHas(
+                'location',
+                fn (Builder $q) => InventoryVisibility::constrain($q, $user, $scope),
+            );
+
+        $issues = $query
+            ->with(['location', 'job', 'lines.item'])
+            ->orderByDesc('issued_on')
+            ->orderByDesc('created_at')
+            ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+
+        return response()->json([
+            'data' => collect($issues->items())->map(
+                fn (InventoryIssue $issue) => $this->present($issue),
+            ),
+            'meta' => [
+                'total' => $issues->total(),
+                'per_page' => $issues->perPage(),
+                'current_page' => $issues->currentPage(),
+                'last_page' => $issues->lastPage(),
+            ],
+        ]);
     }
 
     /** POST /api/v1/inventory/issues */

@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0075',
+      date: '24 Aug 2026',
+      items: [
+        'Inventory is a register of stock, items, orders and locations, '
+            'not a coming-soon tab. Costs stay hidden without financials.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0074',
       date: '24 Aug 2026',
       items: [

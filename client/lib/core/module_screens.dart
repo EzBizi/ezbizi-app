@@ -7,6 +7,7 @@ import '../screens/email/email_screen.dart';
 import '../screens/hr_screen.dart';
 import '../screens/inspection_screen.dart';
 import '../screens/fleet_screen.dart';
+import '../screens/inventory_screen.dart';
 import '../screens/jobs_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../widgets/coming_soon.dart';
@@ -100,14 +101,7 @@ final Map<String, ModuleScreen> moduleScreens = {
   ),
   'inventory': ModuleScreen(
     Icons.inventory_2_outlined,
-    (_, _) => const ComingSoonScreen(
-      title: 'Inventory',
-      icon: Icons.inventory_2_outlined,
-      what:
-          'Inventory is where the company will keep what it has on the shelf '
-          '— parts, materials, and the stock that jobs draw from. The register '
-          'is not here yet.',
-    ),
+    (api, session) => InventoryScreen(api: api, session: session),
   ),
   'services': ModuleScreen(
     Icons.handyman_outlined,

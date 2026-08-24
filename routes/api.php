@@ -264,7 +264,8 @@ Route::prefix('v1')
         Route::get('inventory/stock', [InventoryStockController::class, 'index']);
         Route::post('inventory/adjustments', [InventoryAdjustmentsController::class, 'store']);
         Route::post('inventory/transfers', [InventoryTransfersController::class, 'store']);
-        Route::post('inventory/issues', [InventoryIssuesController::class, 'store']);
+        Route::apiResource('inventory/issues', InventoryIssuesController::class)
+            ->only(['index', 'store']);
 
         // ── The shape of the business (§3) ───────────────────────
         //

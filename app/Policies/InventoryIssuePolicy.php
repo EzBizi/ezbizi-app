@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Models\InventoryIssue;
 use App\Models\InventoryLocation;
 use App\Models\User;
+use App\Support\Access\Refusal;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Support\Facades\Gate;
 
@@ -18,6 +19,13 @@ use Illuminate\Support\Facades\Gate;
  */
 class InventoryIssuePolicy
 {
+    public function viewAny(User $user): Response
+    {
+        return $user->hasPermission('inventory.view')
+            ? Response::allow()
+            : Refusal::permission('see inventory');
+    }
+
     public function view(User $user, InventoryIssue $issue): Response
     {
         return Gate::forUser($user)->inspect('view', $issue->location);

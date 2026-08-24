@@ -402,6 +402,54 @@ class InventoryIssueTest extends TestCase
             ->assertCreated();
     }
 
+    public function test_index_lists_visible_issues(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        [$item, $location] = $this->itemAndLocation($tenant);
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/adjustments', [
+                'location_id' => $location->id,
+                'item_id' => $item->id,
+                'counted_as' => 10,
+                'reason' => 'opening count',
+            ])
+            ->assertCreated();
+
+        $created = $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/issues', [
+                'location_id' => $location->id,
+                'note' => 'sold over the counter',
+                'lines' => [
+                    ['item_id' => $item->id, 'qty' => 3],
+                ],
+            ])
+            ->assertCreated()
+            ->json('data');
+
+        $listed = $this->signedInAs($admin)
+            ->getJson('/api/v1/inventory/issues')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertNotEmpty($listed);
+        $this->assertSame($created['id'], $listed[0]['id']);
+        $this->assertSame('sold over the counter', $listed[0]['note']);
+
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['inventory.view']);
+        $this->signedInAs($viewer)
+            ->getJson('/api/v1/inventory/issues')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $created['id']);
+
+        $outsider = $this->userWithRole($tenant, 'Outsider', ['customers.view']);
+        $this->signedInAs($outsider)
+            ->getJson('/api/v1/inventory/issues')
+            ->assertForbidden();
+    }
+
     /**
      * @param  array{org: \App\Models\Organization, company: Company, franchise: Franchise}  $tenant
      * @return array{0: InventoryItem, 1: InventoryLocation}
