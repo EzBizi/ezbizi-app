@@ -77,9 +77,12 @@ class PhoneTablesTest extends TestCase
         $t = $this->provisionTenant();
         $row = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
             'credentials' => 'SK-secret-value',
+            'auth_token' => 'auth-token-secret-value',
         ]));
 
-        $this->assertStringNotContainsString('SK-secret-value', json_encode($row));
+        $json = (string) json_encode($row);
+        $this->assertStringNotContainsString('SK-secret-value', $json);
+        $this->assertStringNotContainsString('auth-token-secret-value', $json);
     }
 
     public function test_a_number_defaults_record_on_and_transcribe_off(): void
@@ -188,6 +191,7 @@ class PhoneTablesTest extends TestCase
             'account_sid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
             'api_key_sid' => null,
             'credentials' => 'SK-placeholder',
+            'auth_token' => 'auth-token-placeholder',
             'twiml_app_sid' => null,
             'status' => 'connected',
             'status_reason' => null,

@@ -226,9 +226,10 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
 | adding it would only make the feature impossible.
 |
 | WHAT AUTHENTICATES IT INSTEAD is the X-Twilio-Signature header, validated
-| with the auth token (secret) stored on THAT phone connection — never the
-| platform Twilio credentials. A global token would be a tenant-boundary
-| break. See App\Support\Phone\TwilioSignature and VoiceWebhookController.
+| with the Account Auth Token stored on THAT phone connection (`auth_token`,
+| not the API key secret in `credentials`) — never the platform Twilio
+| credentials. A global token would be a tenant-boundary break. See
+| App\Support\Phone\TwilioSignature and VoiceWebhookController.
 |
 | THE PATH NAMES THE ORGANIZATION. `{organization}` and `{connection}` are
 | plain UUID segments, not route-model-bound: binding would run a

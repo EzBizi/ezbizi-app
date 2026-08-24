@@ -6,9 +6,10 @@ use App\Models\PhoneConnection;
 use Twilio\Security\RequestValidator;
 
 /**
- * Validates X-Twilio-Signature using the connection’s stored secret.
+ * Validates X-Twilio-Signature using the connection’s Account Auth Token.
  *
- * Never the platform Twilio token — that would cross tenant boundaries.
+ * Never the API key secret in `credentials`, and never the platform Twilio
+ * token — either would break verification or cross a tenant boundary.
  */
 final class TwilioSignature
 {
@@ -25,7 +26,7 @@ final class TwilioSignature
             return false;
         }
 
-        $token = (string) $connection->credentials;
+        $token = (string) $connection->auth_token;
         if ($token === '') {
             return false;
         }

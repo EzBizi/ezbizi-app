@@ -10,7 +10,8 @@ use Twilio\Security\RequestValidator;
 
 /**
  * Public voice webhooks authenticate with X-Twilio-Signature against the
- * connection’s stored secret — not Sanctum, not the platform Twilio token.
+ * connection’s Account Auth Token — not the API key secret, not Sanctum,
+ * not the platform Twilio token.
  */
 class TwilioSignatureTest extends TestCase
 {
@@ -20,11 +21,13 @@ class TwilioSignatureTest extends TestCase
     public function test_a_valid_signature_is_accepted(): void
     {
         $t = $this->provisionTenant();
-        $token = 'connection-auth-token-alpha';
+        $authToken = 'connection-auth-token-alpha';
+        $apiSecret = 'SK-api-key-secret-not-for-signing';
         $connection = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
             'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
             'scope_id' => $t['org']->id,
-            'credentials' => $token,
+            'credentials' => $apiSecret,
+            'auth_token' => $authToken,
         ]));
 
         $url = $this->voiceUrl($t['org']->id, $connection->id);
@@ -33,7 +36,7 @@ class TwilioSignatureTest extends TestCase
             'From' => '+15551112222',
             'To' => '+15553334444',
         ];
-        $signature = (new RequestValidator($token))->computeSignature($url, $params);
+        $signature = (new RequestValidator($authToken))->computeSignature($url, $params);
 
         $response = $this->post($url, $params, [
             'X-Twilio-Signature' => $signature,
@@ -43,13 +46,16 @@ class TwilioSignatureTest extends TestCase
         $this->assertStringContainsString('<Response', $response->getContent());
     }
 
-    public function test_a_wrong_token_is_forbidden(): void
+    public function test_a_signature_built_with_the_api_key_secret_is_forbidden(): void
     {
         $t = $this->provisionTenant();
+        $authToken = 'the-real-account-auth-token';
+        $apiSecret = 'SK-api-key-secret-wrong-for-hmac';
         $connection = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
             'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
             'scope_id' => $t['org']->id,
-            'credentials' => 'the-real-connection-token',
+            'credentials' => $apiSecret,
+            'auth_token' => $authToken,
         ]));
 
         $url = $this->voiceUrl($t['org']->id, $connection->id);
@@ -58,7 +64,34 @@ class TwilioSignatureTest extends TestCase
             'From' => '+15551112222',
             'To' => '+15553334444',
         ];
-        $signature = (new RequestValidator('a-different-token'))->computeSignature($url, $params);
+        // Twilio signs with the Account Auth Token; an HMAC made from the API
+        // key secret must not pass even when that secret is stored on the row.
+        $signature = (new RequestValidator($apiSecret))->computeSignature($url, $params);
+
+        $this->post($url, $params, [
+            'X-Twilio-Signature' => $signature,
+        ])
+            ->assertForbidden()
+            ->assertJsonPath('message', 'This request was not from Twilio.');
+    }
+
+    public function test_a_wrong_auth_token_is_forbidden(): void
+    {
+        $t = $this->provisionTenant();
+        $connection = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
+            'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+            'scope_id' => $t['org']->id,
+            'credentials' => 'SK-api-secret',
+            'auth_token' => 'the-real-account-auth-token',
+        ]));
+
+        $url = $this->voiceUrl($t['org']->id, $connection->id);
+        $params = [
+            'CallSid' => 'CAdddddddddddddddddddddddddddddddd',
+            'From' => '+15551112222',
+            'To' => '+15553334444',
+        ];
+        $signature = (new RequestValidator('a-different-auth-token'))->computeSignature($url, $params);
 
         $this->post($url, $params, [
             'X-Twilio-Signature' => $signature,
@@ -75,7 +108,8 @@ class TwilioSignatureTest extends TestCase
         $alphaConnection = $this->inTenant($alpha['org'], fn () => PhoneConnection::factory()->create([
             'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
             'scope_id' => $alpha['org']->id,
-            'credentials' => 'alpha-token',
+            'credentials' => 'SK-alpha',
+            'auth_token' => 'alpha-auth-token',
         ]));
 
         // Path names Beta's organization but Alpha's connection id — must 404
@@ -86,7 +120,7 @@ class TwilioSignatureTest extends TestCase
             'From' => '+15551112222',
             'To' => '+15553334444',
         ];
-        $signature = (new RequestValidator('alpha-token'))->computeSignature($url, $params);
+        $signature = (new RequestValidator('alpha-auth-token'))->computeSignature($url, $params);
 
         $this->post($url, $params, [
             'X-Twilio-Signature' => $signature,

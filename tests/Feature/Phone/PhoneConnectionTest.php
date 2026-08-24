@@ -66,7 +66,9 @@ class PhoneConnectionTest extends TestCase
         $response->assertCreated();
         $json = $response->getContent();
         $this->assertStringNotContainsString($secret, $json);
+        $this->assertStringNotContainsString('auth-token-from-verify', $json);
         $this->assertArrayNotHasKey('credentials', $response->json('data') ?? []);
+        $this->assertArrayNotHasKey('auth_token', $response->json('data') ?? []);
         $this->assertArrayNotHasKey('api_secret', $response->json('data') ?? []);
 
         $methods = array_column($gateway->calls, 'method');
@@ -76,8 +78,11 @@ class PhoneConnectionTest extends TestCase
         $row = $this->inTenant($t['org'], fn () => PhoneConnection::query()->first());
         $this->assertNotNull($row);
         $this->assertSame($secret, $row->credentials);
+        $this->assertSame('auth-token-from-verify', $row->auth_token);
         $this->assertNotSame($secret, $row->getAttributes()['credentials'] ?? null);
+        $this->assertNotSame('auth-token-from-verify', $row->getAttributes()['auth_token'] ?? null);
         $this->assertStringNotContainsString($secret, (string) json_encode($row));
+        $this->assertStringNotContainsString('auth-token-from-verify', (string) json_encode($row));
     }
 
     public function test_missing_platform_env_names_the_gap(): void

@@ -21,6 +21,7 @@ class PhoneConnectionFactory extends Factory
             'account_sid' => 'AC'.bin2hex(random_bytes(16)),
             'api_key_sid' => null,
             'credentials' => 'SK'.bin2hex(random_bytes(16)),
+            'auth_token' => bin2hex(random_bytes(16)),
             'twiml_app_sid' => null,
             'status' => PhoneConnection::STATUS_CONNECTED,
             'status_reason' => null,

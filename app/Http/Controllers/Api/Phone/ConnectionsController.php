@@ -88,7 +88,7 @@ class ConnectionsController extends Controller
         // Provision first, persist a disconnectable row, then attach the App.
         try {
             if ($input['kind'] === PhoneConnection::KIND_BYO) {
-                $this->twilio->verifyAccount(
+                $verified = $this->twilio->verifyAccount(
                     $input['account_sid'],
                     $input['api_key_sid'],
                     $input['api_secret'],
@@ -97,6 +97,7 @@ class ConnectionsController extends Controller
                 $accountSid = $input['account_sid'];
                 $apiKeySid = $input['api_key_sid'];
                 $apiSecret = $input['api_secret'];
+                $authToken = $verified['auth_token'] ?? null;
             } else {
                 $friendly = $company?->name ?? (string) $this->tenant->get()?->name;
                 $sub = $this->twilio->createSubaccount($friendly);
@@ -104,6 +105,7 @@ class ConnectionsController extends Controller
                 $accountSid = $sub['account_sid'];
                 $apiKeySid = $key['sid'];
                 $apiSecret = $key['secret'];
+                $authToken = $sub['auth_token'] ?? null;
             }
         } catch (RuntimeException $e) {
             if (str_contains($e->getMessage(), 'Twilio account to create phone service')) {
@@ -117,6 +119,12 @@ class ConnectionsController extends Controller
             ]);
         }
 
+        if (! is_string($authToken) || $authToken === '') {
+            throw ValidationException::withMessages([
+                'account_sid' => 'Twilio did not return an account auth token for this connection.',
+            ]);
+        }
+
         $connection = new PhoneConnection([
             'organization_id' => $this->tenant->idOrFail(),
             'scope_type' => $input['scope_type'],
@@ -126,7 +134,7 @@ class ConnectionsController extends Controller
             'api_key_sid' => $apiKeySid,
             'status' => PhoneConnection::STATUS_CONNECTED,
         ]);
-        $connection->forceFill(['credentials' => $apiSecret])->save();
+        $connection->writeSecrets($apiSecret, $authToken);
 
         $host = rtrim((string) config('app.url'), '/');
         $voiceUrl = $host.'/api/v1/phone/voice/'.$connection->organization_id.'/'.$connection->id;

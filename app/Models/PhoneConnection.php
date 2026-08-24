@@ -16,8 +16,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * A Twilio account link at organization or company scope (spec §4).
  *
- * Credentials follow the same three holds as Mailbox: encrypted column,
+ * Secrets follow the same three holds as Mailbox: encrypted columns,
  * MasksSensitiveValues, mayReveal false.
+ *
+ * `credentials` = API key secret (REST / Access Tokens).
+ * `auth_token` = Account Auth Token (X-Twilio-Signature only).
  */
 class PhoneConnection extends Model implements HoldsSensitiveValues, StatesRetention
 {
@@ -46,7 +49,8 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
     }
 
     /**
-     * `credentials` is absent on purpose — written by connect paths, not mass assignment.
+     * `credentials` and `auth_token` are absent on purpose — written by
+     * writeSecrets(), not mass assignment.
      */
     protected $fillable = [
         'organization_id', 'scope_type', 'scope_id',
@@ -58,7 +62,19 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
     {
         return [
             'credentials' => 'encrypted',
+            'auth_token' => 'encrypted',
         ];
+    }
+
+    /**
+     * Persist the API key secret and the account auth token together.
+     */
+    public function writeSecrets(string $apiSecret, string $authToken): void
+    {
+        $this->forceFill([
+            'credentials' => $apiSecret,
+            'auth_token' => $authToken,
+        ])->save();
     }
 
     public function numbers(): HasMany
@@ -98,7 +114,7 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
 
     public function sensitiveAttributes(): array
     {
-        return ['credentials'];
+        return ['credentials', 'auth_token'];
     }
 
     /**

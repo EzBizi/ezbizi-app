@@ -25,6 +25,7 @@ final class FakeTwilioGateway implements TwilioGateway
         return [
             'account_sid' => $accountSid,
             'friendly_name' => 'Fake account',
+            'auth_token' => 'auth-token-from-verify',
         ];
     }
 

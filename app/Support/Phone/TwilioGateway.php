@@ -18,7 +18,7 @@ use Twilio\Rest\Client;
 interface TwilioGateway
 {
     /**
-     * @return array{account_sid: string, friendly_name: ?string}
+     * @return array{account_sid: string, friendly_name: ?string, auth_token: ?string}
      */
     public function verifyAccount(string $accountSid, string $apiKeySid, string $apiSecret): array;
 
@@ -106,6 +106,7 @@ final class HttpTwilioGateway implements TwilioGateway
         return [
             'account_sid' => $account->sid,
             'friendly_name' => $account->friendlyName,
+            'auth_token' => $account->authToken,
         ];
     }
 
