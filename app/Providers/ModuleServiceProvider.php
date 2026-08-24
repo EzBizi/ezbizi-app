@@ -948,18 +948,18 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
-             * Web Management, Phone, Inventory and Services — declared so they
-             * can be granted, and not built. Same shape as Marketing on the
-             * day it arrived: a tab permission, a screen that says what is
-             * coming, and no action that would show up on Roles as a switch
-             * for work the software cannot do.
+             * Web Management, Inventory and Services — declared so they can be
+             * granted, and not built. Same shape as Marketing on the day it
+             * arrived: a tab permission, a screen that says what is coming, and
+             * no action that would show up on Roles as a switch for work the
+             * software cannot do.
              *
              * Exempt from automation until there is a record an event could
-             * be about. Inventing `website.published` or `call.ended` before
-             * either exists would put a trigger in the builder that saves,
-             * switches on and never runs — the failure Marketing avoided by
-             * declaring newsletter events as not raised, which we cannot do
-             * here because there is not even a name for the record yet.
+             * be about. Inventing `website.published` before the editor exists
+             * would put a trigger in the builder that saves, switches on and
+             * never runs — the failure Marketing avoided by declaring
+             * newsletter events as not raised, which we cannot do here because
+             * there is not even a name for the record yet.
              */
             new ModuleDefinition(
                 key:     'web_management',
@@ -970,13 +970,97 @@ class ModuleServiceProvider extends ServiceProvider
                     .'a rule could fire on and nothing a rule could change.',
             ),
 
+            /*
+             * Phone — Twilio softphone, numbers, SMS, voicemail, and records.
+             *
+             * Reaching the tab is `view`. Connecting Twilio, buying numbers,
+             * and changing flows/hours/ring groups is `edit`, the same split
+             * Email uses for looking at inboxes versus signing one in.
+             *
+             * No subject: events are about a call, an SMS, a voicemail, or a
+             * number, and naming any one would make the field picker wrong
+             * about the others. Same cost as HR — `update_field` is refused
+             * at save, in a sentence.
+             *
+             * All seven triggers stay unraised until later tasks emit from
+             * webhooks. ModuleRegistryTest holds that claim to the source.
+             *
+             * Actions change EzBizi only — mark a voicemail dealt with, or
+             * open a job from a missed call. Nothing here places a call or
+             * sends a text.
+             */
             new ModuleDefinition(
                 key:     'phone',
                 label:   'Phone',
-                actions: ['view'],
-                automationExemptBecause:
-                    'Calling and texting are not built, so there is no event a '
-                    .'rule could fire on and nothing a rule could change.',
+                actions: ['view', 'edit'],
+                triggers: [
+                    new TriggerDefinition(
+                        key:   'phone.call.started',
+                        label: 'A call started',
+                        description: 'A call began on one of the phone lines — inbound or '
+                            .'outbound — and is ringing or connected.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'phone.call.ended',
+                        label: 'A call ended',
+                        description: 'A call finished. It carries how long it lasted and which '
+                            .'line it used.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'phone.call.missed',
+                        label: 'A call was missed',
+                        description: 'Nobody answered, and the caller either hung up or reached '
+                            .'voicemail.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'phone.voicemail.left',
+                        label: 'A voicemail was left',
+                        description: 'A caller left a voicemail on one of the phone lines. The '
+                            .'recording stays on Twilio until it is erased.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'phone.sms.received',
+                        label: 'A text arrived',
+                        description: 'A text message reached one of the phone lines that can '
+                            .'receive SMS.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'phone.sms.sent',
+                        label: 'A text was sent',
+                        description: 'Somebody sent a text from a line that is allowed to send '
+                            .'SMS.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'phone.number.broken',
+                        label: 'A phone line stopped working',
+                        description: 'EzBizi could no longer use one of the phone lines — the '
+                            .'Twilio account refused it, the number was invalid, or the '
+                            .'subaccount was suspended. It fires once per break, not every '
+                            .'retry afterwards.',
+                        isRaised: false,
+                    ),
+                ],
+                automationActions: [
+                    new ActionDefinition(
+                        key:   'phone.voicemail.mark_dealt',
+                        label: 'Mark a voicemail dealt with',
+                        description: 'Records that a voicemail has been picked up so it stops '
+                            .'showing as waiting. It changes what the team sees in EzBizi and '
+                            .'does not call anyone.',
+                    ),
+                    new ActionDefinition(
+                        key:   'phone.missed.create_job',
+                        label: 'Create a job from a missed call',
+                        description: 'Opens a job in reach titled from the caller number so '
+                            .'somebody can follow up. It does not place a call or send a text.',
+                    ),
+                ],
             ),
 
             /*
