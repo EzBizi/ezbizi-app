@@ -15,7 +15,8 @@ use Illuminate\Http\Request;
  *
  * Rows are balances, not items. Both the item and the location must be
  * visible. `low=1` is on-hand at or below the item’s reorder_at when that
- * is set.
+ * is set. `item_id` is one item’s balances, so a pane is not page 1 of
+ * the whole register.
  */
 class InventoryStockController extends Controller
 {
@@ -37,6 +38,10 @@ class InventoryStockController extends Controller
         if ((string) $request->query('low') === '1') {
             $query->whereNotNull('inventory_items.reorder_at')
                 ->whereColumn('inventory_balances.qty_on_hand', '<=', 'inventory_items.reorder_at');
+        }
+
+        if (filled($request->query('item_id'))) {
+            $query->where('inventory_balances.item_id', (string) $request->query('item_id'));
         }
 
         $balances = $query

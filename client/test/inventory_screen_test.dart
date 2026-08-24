@@ -249,6 +249,75 @@ void main() {
     expect(find.text('Add item'), findsNothing);
   });
 
+  testWidgets(
+    'opening a later-page balance still shows qty in the pane',
+    (tester) async {
+      final itemIds = <String>[];
+      var unfiltered = 0;
+
+      await _pumpScreen(
+        tester,
+        onRequest: (request) {
+          if (!request.url.path.endsWith('/inventory/stock')) return null;
+
+          final itemId = request.url.queryParameters['item_id'];
+          if (itemId != null && itemId.isNotEmpty) {
+            itemIds.add(itemId);
+            return _json({
+              'data': [_balanceOf('17.000')],
+              'meta': {'total': 1, 'last_page': 1},
+            });
+          }
+
+          unfiltered++;
+          if (unfiltered == 1) {
+            return _json({
+              'data': [_balanceOf('17.000')],
+              'meta': {'total': 1, 'last_page': 1},
+            });
+          }
+
+          // Later unfiltered GETs are page 1 of a larger index — this row
+          // would not be on it.
+          return _json({
+            'data': <Map<String, dynamic>>[],
+            'meta': {'total': 0, 'last_page': 1},
+          });
+        },
+      );
+
+      await tester.tap(find.text('6 mil liner'));
+      await tester.pumpAndSettle();
+
+      expect(itemIds, contains('item-1'));
+      expect(find.textContaining('17 each'), findsWidgets);
+      expect(find.text('None on hand at a visible location.'), findsNothing);
+    },
+  );
+
+  testWidgets('a failed stock fetch in the pane is the request failed', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      stock: [_balance],
+      onRequest: (request) {
+        if (!request.url.path.endsWith('/inventory/stock')) return null;
+        final itemId = request.url.queryParameters['item_id'];
+        if (itemId != null && itemId.isNotEmpty) {
+          return _json({'message': 'the request failed'}, 500);
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('6 mil liner'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('the request failed'), findsOneWidget);
+    expect(find.text('None on hand at a visible location.'), findsNothing);
+  });
+
   testWidgets('van kind is hidden without fleet view', (tester) async {
     await _pumpScreen(tester);
 

@@ -222,6 +222,7 @@ class _StockListState extends State<StockList> {
       session: widget.session,
       itemId: id,
       seed: item,
+      seedBalance: row,
       showBack: showBack,
       onBack: _clearPane,
     );

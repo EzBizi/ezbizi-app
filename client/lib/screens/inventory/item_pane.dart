@@ -140,6 +140,7 @@ class ItemPane extends StatefulWidget {
     required this.itemId,
     required this.onBack,
     this.seed,
+    this.seedBalance,
     this.showBack = false,
   });
 
@@ -147,6 +148,7 @@ class ItemPane extends StatefulWidget {
   final Session session;
   final String itemId;
   final Map<String, dynamic>? seed;
+  final Map<String, dynamic>? seedBalance;
   final VoidCallback onBack;
   final bool showBack;
 
@@ -160,6 +162,7 @@ class _ItemPaneState extends State<ItemPane> {
   List<Map<String, dynamic>> _locations = [];
   String? _error;
   bool _loading = true;
+  bool _stockFailed = false;
 
   final _countedAs = TextEditingController();
   final _reason = TextEditingController();
@@ -185,6 +188,7 @@ class _ItemPaneState extends State<ItemPane> {
       _adjustLocationId = null;
       _countedAs.clear();
       _reason.clear();
+      _stockFailed = false;
       _load();
     }
   }
@@ -200,10 +204,13 @@ class _ItemPaneState extends State<ItemPane> {
     setState(() {
       _loading = _item == null;
       _error = null;
+      _stockFailed = false;
     });
 
     final itemRes = await widget.api.get('/inventory/items/${widget.itemId}');
-    final stockRes = await widget.api.get('/inventory/stock');
+    final stockRes = await widget.api.get('/inventory/stock', {
+      'item_id': widget.itemId,
+    });
     final locRes = await widget.api.get('/inventory/locations');
 
     if (!mounted) return;
@@ -217,24 +224,43 @@ class _ItemPaneState extends State<ItemPane> {
     }
 
     final item = Map<String, dynamic>.from(itemRes.data as Map);
-    final balances = inventoryRows(stockRes.ok ? stockRes.data : const []);
-    final mine = [
-      for (final row in balances)
-        if (inventoryMap(row['item'])?['id'] == widget.itemId) row,
-    ];
+    final stockFailed = !stockRes.ok;
+    final mine = stockFailed
+        ? <Map<String, dynamic>>[]
+        : [
+            for (final row in inventoryRows(stockRes.data))
+              if (inventoryMap(row['item'])?['id'] == widget.itemId) row,
+          ];
+    final balances = _unionSeed(mine);
 
     setState(() {
       _loading = false;
       _item = item;
-      _balances = mine;
+      _balances = balances;
+      _stockFailed = stockFailed;
       _locations = locRes.ok ? inventoryRows(locRes.data) : const [];
-      _adjustLocationId ??= mine.isEmpty
+      _adjustLocationId ??= balances.isEmpty
           ? null
-          : inventoryMap(mine.first['location'])?['id'] as String?;
-      if (!stockRes.ok) {
+          : inventoryMap(balances.first['location'])?['id'] as String?;
+      if (stockFailed) {
         _error = stockRes.message;
       }
     });
+  }
+
+  List<Map<String, dynamic>> _unionSeed(List<Map<String, dynamic>> rows) {
+    final seed = widget.seedBalance;
+    if (seed == null) return rows;
+
+    final seedLoc = inventoryMap(seed['location'])?['id'];
+    if (seedLoc == null) return rows;
+
+    final already = rows.any(
+      (row) => inventoryMap(row['location'])?['id'] == seedLoc,
+    );
+    if (already) return rows;
+
+    return [seed, ...rows];
   }
 
   Future<void> _adjust() async {
@@ -363,7 +389,11 @@ class _ItemPaneState extends State<ItemPane> {
                         Text('On-hand', style: theme.textTheme.titleMedium),
                         const SizedBox(height: 8),
                         if (_balances.isEmpty)
-                          const Text('None on hand at a visible location.')
+                          _stockFailed
+                              ? const SizedBox.shrink()
+                              : const Text(
+                                  'None on hand at a visible location.',
+                                )
                         else
                           for (final row in _balances)
                             Padding(

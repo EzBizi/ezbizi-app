@@ -281,6 +281,68 @@ class InventoryAdjustTest extends TestCase
         }
     }
 
+    public function test_stock_index_item_id_returns_a_row_that_is_not_on_page_one(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        [$first, $later, $location] = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $location = InventoryLocation::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => 'Main shop',
+            ]);
+            $first = InventoryItem::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => 'Aardvark liner',
+            ]);
+            $later = InventoryItem::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => 'Zebra liner',
+            ]);
+
+            return [$first, $later, $location];
+        });
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/adjustments', [
+                'location_id' => $location->id,
+                'item_id' => $first->id,
+                'counted_as' => 3,
+                'reason' => 'count',
+            ])
+            ->assertCreated();
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/adjustments', [
+                'location_id' => $location->id,
+                'item_id' => $later->id,
+                'counted_as' => 17,
+                'reason' => 'count',
+            ])
+            ->assertCreated();
+
+        $pageOne = $this->signedInAs($admin)
+            ->getJson('/api/v1/inventory/stock?per_page=1')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(1, $pageOne);
+        $this->assertSame($first->id, $pageOne[0]['item']['id'] ?? null);
+        $this->assertNull($this->stockRow($pageOne, $later->id, $location->id));
+
+        $filtered = $this->signedInAs($admin)
+            ->getJson('/api/v1/inventory/stock?per_page=1&item_id='.$later->id)
+            ->assertOk()
+            ->json('data');
+
+        $row = $this->stockRow($filtered, $later->id, $location->id);
+        $this->assertNotNull($row);
+        $this->assertSame(0, bccomp((string) $row['qty_on_hand'], '17', 3));
+    }
+
     /**
      * @param  array{org: \App\Models\Organization, company: Company, franchise: \App\Models\Franchise}  $tenant
      * @return array{0: InventoryItem, 1: InventoryLocation}
