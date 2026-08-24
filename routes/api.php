@@ -40,6 +40,7 @@ use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\SocialConnectionsController;
 use App\Http\Controllers\Api\SocialProvidersController;
 use App\Http\Controllers\Api\NotificationsController;
+use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
@@ -307,6 +308,7 @@ Route::prefix('v1')
         */
         Route::put('organization/canvas', [OrganizationCanvasController::class, 'save']);
         Route::patch('organization', [OrganizationProfileController::class, 'update']);
+        Route::get('address-lookup', AddressLookupController::class);
 
         // ── Branding (§12) ───────────────────────────────────────
         //
@@ -933,6 +935,11 @@ Route::prefix('v1')
                         'id'              => $user->organization->id,
                         'name'            => $user->organization->name,
                         'address'         => $user->organization->address,
+                        'address_line1'   => $user->organization->address_line1,
+                        'address_line2'   => $user->organization->address_line2,
+                        'city'            => $user->organization->city,
+                        'state'           => $user->organization->state,
+                        'postal_code'     => $user->organization->postal_code,
                         'franchise_label' => $user->organization->franchise_label,
                         'is_read_only'    => $user->organization->isReadOnly(),
                     ],

@@ -100,6 +100,15 @@ class SettingRegistryTest extends TestCase
         $this->assertSame(-5 * 3600, $winter->getOffset());
     }
 
+    public function test_inactivity_is_a_duration_stored_as_minutes(): void
+    {
+        $timeout = $this->registry->getOrFail('security.session_timeout_minutes');
+
+        $this->assertSame(SettingDefinition::TYPE_DURATION, $timeout->type);
+        $this->assertSame(480, $timeout->default);
+        $this->assertSame(480, $timeout->cast(480));
+    }
+
     public function test_every_setting_has_a_label(): void
     {
         foreach ($this->registry->all() as $key => $definition) {

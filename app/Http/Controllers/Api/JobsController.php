@@ -289,6 +289,9 @@ class JobsController extends Controller
             'number' => $job->number,
             'title'  => $job->title,
             'status' => $job->status,
+            'status_label' => $job->franchise
+                ? Job::labelFor($job->status, $job->franchise)
+                : Job::humanizeStatus($job->status),
             'scheduled_for' => $job->scheduled_for?->toIso8601String(),
             'franchise' => [
                 'id'   => $job->franchise_id,
@@ -318,7 +321,7 @@ class JobsController extends Controller
             'description'      => $job->description,
             'duration_minutes' => $job->duration_minutes,
             'allowed_statuses' => $job->franchise
-                ? Job::allowedStatuses($job->franchise)
+                ? Job::statusEntries($job->franchise)
                 : [],
             'created_at' => $job->created_at->toIso8601String(),
         ];

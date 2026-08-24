@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0079',
+      date: '24 Aug 2026',
+      items: [
+        'Sign out after inactivity is minutes, hours or days. Job statuses have '
+            'names people can read, and renaming one updates jobs that already '
+            'have it. The business address is street, city, state and ZIP, with '
+            'a search that fills them in.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0078',
       date: '24 Aug 2026',
       items: [

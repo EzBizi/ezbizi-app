@@ -21,7 +21,8 @@ class Organization extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'name', 'slug', 'address', 'reporting_currency', 'franchise_label',
+        'name', 'slug', 'address', 'address_line1', 'address_line2', 'city',
+        'state', 'postal_code', 'reporting_currency', 'franchise_label',
         'trial_ends_at', 'is_active', 'is_demo', 'logo_path', 'logo_aspect',
     ];
 
@@ -77,5 +78,33 @@ class Organization extends Model
         }
 
         return $this->trial_ends_at !== null && $this->trial_ends_at->isPast();
+    }
+
+    /**
+     * The one line a contract prints as {{organization.address}}.
+     *
+     * Structured fields are the source. `address` is the formatted snapshot so
+     * merge tags and older callers keep reading one string.
+     */
+    public function formattedAddress(): ?string
+    {
+        $cityLine = collect([$this->city, $this->state, $this->postal_code])
+            ->map(fn ($part) => is_string($part) ? trim($part) : null)
+            ->filter()
+            ->implode(' ');
+
+        $parts = collect([
+            is_string($this->address_line1) ? trim($this->address_line1) : null,
+            is_string($this->address_line2) ? trim($this->address_line2) : null,
+            $cityLine !== '' ? $cityLine : null,
+        ])->filter();
+
+        if ($parts->isNotEmpty()) {
+            return $parts->implode(', ');
+        }
+
+        $legacy = is_string($this->address) ? trim($this->address) : '';
+
+        return $legacy === '' ? null : $legacy;
     }
 }

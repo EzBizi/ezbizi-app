@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\Job;
 use App\Models\Organization;
 use App\Models\User;
 use App\Support\Access\Refusal;
@@ -89,6 +90,10 @@ class SettingsController extends Controller
         try {
             DB::transaction(function () use ($key, $scope, $request, $definition) {
                 $before = $this->resolver->get($key, $scope);
+
+                if ($key === 'jobs.statuses') {
+                    $this->renameJobStatuses($request->input('value'));
+                }
 
                 $this->resolver->set($key, $scope, $request->input('value'));
 
@@ -249,6 +254,35 @@ class SettingsController extends Controller
                 'inherited' => ! $source->is($scope),
             ],
         ];
+    }
+
+    /**
+     * A renamed status is the same status. Jobs that already have the old
+     * value move with it; leaving them behind is how "In progress" becomes a
+     * second pipeline nobody can find.
+     *
+     * The editor sends `was` on each row. Bare strings have nothing to rename.
+     */
+    private function renameJobStatuses(mixed $incoming): void
+    {
+        if (! is_array($incoming)) {
+            return;
+        }
+
+        foreach ($incoming as $item) {
+            if (! is_array($item) || array_is_list($item)) {
+                continue;
+            }
+
+            $from = trim((string) ($item['was'] ?? ''));
+            $to   = trim((string) ($item['value'] ?? ''));
+
+            if ($from === '' || $to === '' || $from === $to) {
+                continue;
+            }
+
+            Job::query()->where('status', $from)->update(['status' => $to]);
+        }
     }
 
     /**

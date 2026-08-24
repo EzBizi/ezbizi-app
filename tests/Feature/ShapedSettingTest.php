@@ -140,6 +140,20 @@ class ShapedSettingTest extends TestCase
         );
     }
 
+    public function test_a_named_list_keeps_value_and_label(): void
+    {
+        $this->assertSame(
+            [
+                ['value' => 'in_progress', 'label' => 'In progress'],
+                ['value' => 'done', 'label' => 'Done'],
+            ],
+            $this->list()->cast([
+                ['value' => 'in_progress', 'label' => 'In progress', 'was' => 'scheduled'],
+                ['value' => 'done', 'label' => ' Done '],
+            ]),
+        );
+    }
+
     public function test_a_list_refuses_blanks_duplicates_and_emptiness(): void
     {
         foreach ([

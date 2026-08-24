@@ -20,12 +20,13 @@ use InvalidArgumentException;
  */
 final class SettingDefinition
 {
-    public const TYPE_STRING  = 'string';
-    public const TYPE_BOOL    = 'bool';
-    public const TYPE_INT     = 'int';
-    public const TYPE_DECIMAL = 'decimal';
-    public const TYPE_ENUM    = 'enum';
-    public const TYPE_JSON    = 'json';
+    public const TYPE_STRING   = 'string';
+    public const TYPE_BOOL     = 'bool';
+    public const TYPE_INT      = 'int';
+    public const TYPE_DECIMAL  = 'decimal';
+    public const TYPE_ENUM     = 'enum';
+    public const TYPE_JSON     = 'json';
+    public const TYPE_DURATION = 'duration';
 
     /**
      * ── Shaped types ─────────────────────────────────────────────────
@@ -237,6 +238,7 @@ final class SettingDefinition
         return match ($this->type) {
             self::TYPE_BOOL    => (bool) $value,
             self::TYPE_INT     => $this->castInt($value),
+            self::TYPE_DURATION => $this->castInt($value),
             self::TYPE_DECIMAL => $this->castDecimal($value),
             self::TYPE_ENUM    => $this->castEnum($value),
             self::TYPE_STRING  => (string) $value,
@@ -321,12 +323,17 @@ final class SettingDefinition
     }
 
     /**
-     * An ordered list of distinct, non-empty strings.
+     * An ordered list of distinct, non-empty entries.
      *
      * Order is content, not presentation — job statuses are a pipeline, and the
      * sequence is what a board reads to lay out its columns. Duplicates are
      * refused because two identical entries make every later reference
      * ambiguous.
+     *
+     * A string is still a string: older clients and tests send `["scheduled"]`.
+     * An object `{value, label}` is a named status — the value is what jobs
+     * store, the label is what people see. `was` is a write-only hint for
+     * renaming existing jobs and is not stored.
      */
     private function castList(mixed $value): array
     {
@@ -337,23 +344,17 @@ final class SettingDefinition
         }
 
         $out = [];
+        $seen = [];
 
         foreach ($value as $item) {
-            if (! is_string($item) && ! is_numeric($item)) {
-                throw new InvalidArgumentException("Setting '{$this->key}' expects a list of text.");
+            [$entryValue, $entryLabel, $shaped] = $this->listEntry($item);
+
+            if (isset($seen[$entryValue])) {
+                throw new InvalidArgumentException("Setting '{$this->key}' repeats '{$entryValue}'.");
             }
 
-            $item = trim((string) $item);
-
-            if ($item === '') {
-                throw new InvalidArgumentException("Setting '{$this->key}' has a blank entry.");
-            }
-
-            if (in_array($item, $out, strict: true)) {
-                throw new InvalidArgumentException("Setting '{$this->key}' repeats '{$item}'.");
-            }
-
-            $out[] = $item;
+            $seen[$entryValue] = true;
+            $out[] = $shaped ? ['value' => $entryValue, 'label' => $entryLabel] : $entryValue;
         }
 
         if ($out === []) {
@@ -361,6 +362,43 @@ final class SettingDefinition
         }
 
         return $out;
+    }
+
+    /**
+     * @return array{0: string, 1: string, 2: bool} value, label, stored-as-object
+     */
+    private function listEntry(mixed $item): array
+    {
+        if (is_array($item)) {
+            if (array_is_list($item)) {
+                throw new InvalidArgumentException("Setting '{$this->key}' expects a list of text.");
+            }
+
+            $value = trim((string) ($item['value'] ?? ''));
+            $label = trim((string) ($item['label'] ?? $value));
+
+            if ($value === '' && $label !== '') {
+                $value = $label;
+            }
+
+            if ($value === '' || $label === '') {
+                throw new InvalidArgumentException("Setting '{$this->key}' has a blank entry.");
+            }
+
+            return [$value, $label, true];
+        }
+
+        if (! is_string($item) && ! is_numeric($item)) {
+            throw new InvalidArgumentException("Setting '{$this->key}' expects a list of text.");
+        }
+
+        $value = trim((string) $item);
+
+        if ($value === '') {
+            throw new InvalidArgumentException("Setting '{$this->key}' has a blank entry.");
+        }
+
+        return [$value, $value, false];
     }
 
     /** 24-hour HH:MM. Stored as text because that is what it is — a wall clock. */

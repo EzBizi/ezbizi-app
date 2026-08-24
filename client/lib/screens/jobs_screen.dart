@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/job_status.dart';
 import '../core/money.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
@@ -40,6 +41,7 @@ class _JobsScreenState extends State<JobsScreen> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _jobs = [];
+  List<JobStatus> _statusChoices = const [];
   List<String> _statuses = const [];
   String? _status;
   int _total = 0;
@@ -101,10 +103,12 @@ class _JobsScreenState extends State<JobsScreen> {
               .toList()
         : const <Map<String, dynamic>>[];
     final resolved = rows.isEmpty ? null : rows.first['value'];
+    final parsed = parseJobStatuses(resolved);
 
-    if (resolved is List && resolved.isNotEmpty) {
+    if (parsed.isNotEmpty) {
       setState(() {
-        _statuses = resolved.map((s) => s.toString()).toList();
+        _statusChoices = parsed;
+        _statuses = parsed.map((s) => s.value).toList();
       });
     }
   }
@@ -256,8 +260,8 @@ class _JobsScreenState extends State<JobsScreen> {
                   label: const Text('Status'),
                   dropdownMenuEntries: [
                     const DropdownMenuEntry(value: null, label: 'Any status'),
-                    ..._statuses.map(
-                      (s) => DropdownMenuEntry(value: s, label: s),
+                    ..._statusChoices.map(
+                      (s) => DropdownMenuEntry(value: s.value, label: s.label),
                     ),
                   ],
                   onSelected: (value) {
@@ -330,7 +334,7 @@ class _JobsScreenState extends State<JobsScreen> {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
-            Tag(job['status'] as String),
+            Tag(job['status_label'] as String? ?? job['status'] as String),
             // So it is obvious before anyone edits anything that this work is
             // for a customer another franchise is accountable for (§5.2).
             if (!ownedHere) const Tag('Shared customer', warn: true),
@@ -417,6 +421,9 @@ class _NewJobPanelState extends State<_NewJobPanel> {
   String _status = 'scheduled';
 
   List<Map<String, dynamic>> _customers = [];
+  List<JobStatus> _statusChoices = const [
+    JobStatus(value: 'scheduled', label: 'Scheduled'),
+  ];
   List<String> _statuses = const ['scheduled'];
 
   bool _loading = true;
@@ -488,8 +495,10 @@ class _NewJobPanelState extends State<_NewJobPanel> {
           : const <Map<String, dynamic>>[];
       final resolved = rows.isEmpty ? null : rows.first['value'];
 
-      if (resolved is List && resolved.isNotEmpty) {
-        _statuses = resolved.map((s) => s.toString()).toList();
+      final parsed = parseJobStatuses(resolved);
+      if (parsed.isNotEmpty) {
+        _statusChoices = parsed;
+        _statuses = parsed.map((s) => s.value).toList();
         _status = _statuses.first;
       }
     });
@@ -722,8 +731,13 @@ class _NewJobPanelState extends State<_NewJobPanel> {
                 DropdownButtonFormField<String>(
                   initialValue: _status,
                   decoration: const InputDecoration(labelText: 'Status'),
-                  items: _statuses
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                  items: _statusChoices
+                      .map(
+                        (s) => DropdownMenuItem(
+                          value: s.value,
+                          child: Text(s.label),
+                        ),
+                      )
                       .toList(),
                   onChanged: _busy
                       ? null

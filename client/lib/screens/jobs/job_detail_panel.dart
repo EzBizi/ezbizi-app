@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/job_status.dart';
 import '../../core/money.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
@@ -36,6 +37,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   final _amount = TextEditingController();
 
   Map<String, dynamic>? _row;
+  List<JobStatus> _statusChoices = const [];
   List<String> _statuses = const [];
   String _status = 'scheduled';
   bool _loading = true;
@@ -101,16 +103,28 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     final display = amount?['display'];
     _amount.text = display == null ? '' : '$display';
 
-    final allowed = (row['allowed_statuses'] as List?)
-            ?.map((s) => s.toString())
-            .toList() ??
-        const <String>[];
-    _statuses = allowed.isEmpty
-        ? [row['status'] as String? ?? 'scheduled']
-        : allowed;
+    final parsed = parseJobStatuses(row['allowed_statuses']);
+    _statusChoices = parsed.isEmpty
+        ? [
+            JobStatus(
+              value: row['status'] as String? ?? 'scheduled',
+              label:
+                  row['status_label'] as String? ??
+                  (row['status'] as String? ?? 'Scheduled'),
+            ),
+          ]
+        : parsed;
+    _statuses = _statusChoices.map((s) => s.value).toList();
     _status = row['status'] as String? ?? _statuses.first;
     if (!_statuses.contains(_status)) {
-      _statuses = [_status, ..._statuses];
+      _statusChoices = [
+        JobStatus(
+          value: _status,
+          label: row['status_label'] as String? ?? _status,
+        ),
+        ..._statusChoices,
+      ];
+      _statuses = _statusChoices.map((s) => s.value).toList();
     }
   }
 
@@ -234,7 +248,10 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        Tag(row['status'] as String),
+                        Tag(
+                          row['status_label'] as String? ??
+                              row['status'] as String,
+                        ),
                         if (customer?['owned_by_this_franchise'] == false)
                           const Tag('Shared customer', warn: true),
                       ],
@@ -249,8 +266,13 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                 DropdownButtonFormField<String>(
                   initialValue: _statuses.contains(_status) ? _status : null,
                   decoration: const InputDecoration(labelText: 'Status'),
-                  items: _statuses
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                  items: _statusChoices
+                      .map(
+                        (s) => DropdownMenuItem(
+                          value: s.value,
+                          child: Text(s.label),
+                        ),
+                      )
                       .toList(),
                   onChanged: editable
                       ? (v) => setState(() => _status = v ?? _status)

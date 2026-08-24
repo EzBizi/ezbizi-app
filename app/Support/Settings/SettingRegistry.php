@@ -501,18 +501,16 @@ class SettingRegistry
                     .'straight to setting one up — the rest of the app waits until they have.',
             ),
             new SettingDefinition(
-                key: 'security.session_timeout_minutes', label: 'Sign out after inactivity (minutes)',
-                type: SettingDefinition::TYPE_INT, default: 480,
+                key: 'security.session_timeout_minutes', label: 'Sign out after inactivity',
+                type: SettingDefinition::TYPE_DURATION, default: 480,
                 allowedScopes: $orgOnly,
-                // The floor and the ceiling are stated because the code clamps to
-                // both, and a screen that accepts 1 while the code enforces 5 is
-                // the same quiet lie this setting was guilty of when nothing read
-                // it at all. See App\Support\Auth\SessionLifetime for why each
-                // number is where it is.
+                // Stored as minutes so SessionLifetime can keep doing arithmetic
+                // in one unit. The screen offers minutes, hours or days; the
+                // floor and ceiling are stated because the code clamps to both.
                 help: 'Counts from the last thing you did, not from signing in. '
-                    .'Below 5 is treated as 5, and no session outlives 30 days however '
-                    .'much it is used. Does not apply to "Keep me signed in", which lasts '
-                    .'up to those 30 days.',
+                    .'Pick minutes, hours or days. Below 5 minutes is treated as 5, and '
+                    .'no session outlives 30 days however much it is used. Does not apply '
+                    .'to "Keep me signed in", which lasts up to those 30 days.',
             ),
             new SettingDefinition(
                 key: 'security.password_min_length', label: 'Minimum password length',
@@ -691,10 +689,15 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'jobs.statuses', label: 'Job statuses',
                 type: SettingDefinition::TYPE_LIST,
-                default: ['scheduled', 'in_progress', 'completed', 'cancelled'],
+                default: [
+                    ['value' => 'scheduled', 'label' => 'Scheduled'],
+                    ['value' => 'in_progress', 'label' => 'In progress'],
+                    ['value' => 'completed', 'label' => 'Completed'],
+                    ['value' => 'cancelled', 'label' => 'Cancelled'],
+                ],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
-                help: 'Renaming one does not rename it on existing jobs — those keep the '
-                    .'value they were saved with.',
+                help: 'The name is what people see. Stored as is what jobs keep. Changing '
+                    .'a stored value also updates jobs that already have it.',
             ),
         ];
     }

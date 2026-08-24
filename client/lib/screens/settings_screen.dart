@@ -4,6 +4,7 @@ import '../core/api_client.dart';
 import '../core/files.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
+import '../widgets/address_fields.dart';
 import '../widgets/error_note.dart';
 import '../widgets/refused.dart';
 import '../widgets/sending_identity_panel.dart';
@@ -129,7 +130,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// [_sendingIdentityCard] for why that draws nothing at all.
   Map<String, dynamic>? _sendingIdentity;
 
-  final TextEditingController _businessAddress = TextEditingController();
+  final TextEditingController _addressLine1 = TextEditingController();
+  final TextEditingController _addressLine2 = TextEditingController();
+  final TextEditingController _addressCity = TextEditingController();
+  final TextEditingController _addressState = TextEditingController();
+  final TextEditingController _addressPostal = TextEditingController();
   bool _savingAddress = false;
 
   final TextEditingController _search = TextEditingController();
@@ -163,7 +168,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Filtering is the only thing typing does, so a listener is the whole
     // wiring — no submit button, no debounce. Thirty rows do not need one.
     _search.addListener(() => setState(() {}));
-    _businessAddress.text = widget.session.me?.organization.address ?? '';
+    _fillBusinessAddress(widget.session.me?.organization);
     _load();
     _loadDataAnswers();
     _loadSendingIdentity();
@@ -215,7 +220,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _search.dispose();
-    _businessAddress.dispose();
+    _addressLine1.dispose();
+    _addressLine2.dispose();
+    _addressCity.dispose();
+    _addressState.dispose();
+    _addressPostal.dispose();
     super.dispose();
   }
 
@@ -667,6 +676,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!(widget.session.me?.can('organizations.edit') ?? false)) {
       return null;
     }
+    if (!_addressMatchesSearch(_search.text)) {
+      return null;
+    }
 
     return Padding(
       padding: const EdgeInsets.only(top: 22),
@@ -688,13 +700,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: _businessAddress,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
+              AddressFields(
+                api: widget.api,
+                line1: _addressLine1,
+                line2: _addressLine2,
+                city: _addressCity,
+                state: _addressState,
+                postal: _addressPostal,
               ),
               const SizedBox(height: 8),
               Align(
@@ -711,18 +723,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  bool _addressMatchesSearch(String query) {
+    final term = query.trim().toLowerCase();
+    if (term.isEmpty) return true;
+    const words = [
+      'business address',
+      'address',
+      'street',
+      'city',
+      'state',
+      'zip',
+      'postal',
+    ];
+    return words.any((word) => word.contains(term) || term.contains(word));
+  }
+
+  void _fillBusinessAddress(OrganizationSummary? organization) {
+    if (organization == null) return;
+    _addressLine1.text = organization.addressLine1 ??
+        (organization.address != null && organization.city == null
+            ? organization.address!
+            : '');
+    _addressLine2.text = organization.addressLine2 ?? '';
+    _addressCity.text = organization.city ?? '';
+    _addressState.text = organization.state ?? '';
+    _addressPostal.text = organization.postalCode ?? '';
+  }
+
   Future<void> _saveBusinessAddress() async {
     setState(() => _savingAddress = true);
     final response = await widget.api.patch('/organization', {
-      'address': _businessAddress.text.trim().isEmpty
-          ? null
-          : _businessAddress.text.trim(),
+      'address_line1': _emptyToNull(_addressLine1.text),
+      'address_line2': _emptyToNull(_addressLine2.text),
+      'city': _emptyToNull(_addressCity.text),
+      'state': _emptyToNull(_addressState.text.toUpperCase()),
+      'postal_code': _emptyToNull(_addressPostal.text),
     });
     if (!mounted) return;
     setState(() => _savingAddress = false);
     if (response.ok) {
       await widget.session.refresh();
       if (mounted) {
+        _fillBusinessAddress(widget.session.me?.organization);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Business address saved.')),
         );
@@ -732,6 +774,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         SnackBar(content: Text(response.message)),
       );
     }
+  }
+
+  String? _emptyToNull(String text) {
+    final trimmed = text.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   Widget? _sendingIdentityCard() {
@@ -1365,6 +1412,14 @@ class _SettingRow extends StatelessWidget {
       );
     }
 
+    if (type == 'duration') {
+      return _DurationControl(
+        minutes: value is int ? value : int.tryParse('$value') ?? 0,
+        editable: editable,
+        onChanged: (minutes) => onChanged(key, minutes),
+      );
+    }
+
     if (type == 'enum') {
       return _EnumControl(
         value: value,
@@ -1731,6 +1786,117 @@ class _EnumControl extends StatelessWidget {
               if (picked != null) onChanged(picked);
             }
           : null,
+    );
+  }
+}
+
+/// Minutes on the wire, minutes / hours / days on screen.
+class _DurationControl extends StatefulWidget {
+  const _DurationControl({
+    required this.minutes,
+    required this.editable,
+    required this.onChanged,
+  });
+
+  final int minutes;
+  final bool editable;
+  final ValueChanged<int> onChanged;
+
+  @override
+  State<_DurationControl> createState() => _DurationControlState();
+}
+
+class _DurationControlState extends State<_DurationControl> {
+  late final TextEditingController _amount;
+  late String _unit;
+
+  @override
+  void initState() {
+    super.initState();
+    final split = _split(widget.minutes);
+    _amount = TextEditingController(text: '${split.$1}');
+    _unit = split.$2;
+  }
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    super.dispose();
+  }
+
+  (int, String) _split(int minutes) {
+    if (minutes >= 1440 && minutes % 1440 == 0) {
+      return (minutes ~/ 1440, 'days');
+    }
+    if (minutes >= 60 && minutes % 60 == 0) {
+      return (minutes ~/ 60, 'hours');
+    }
+    return (minutes, 'minutes');
+  }
+
+  int _toMinutes() {
+    final amount = int.tryParse(_amount.text.trim()) ?? 0;
+    final minutes = switch (_unit) {
+      'days' => amount * 1440,
+      'hours' => amount * 60,
+      _ => amount,
+    };
+    return minutes.clamp(5, 30 * 24 * 60);
+  }
+
+  void _commit() {
+    if (!widget.editable) return;
+    widget.onChanged(_toMinutes());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 88,
+          child: TextField(
+            controller: _amount,
+            enabled: widget.editable,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.right,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+            onEditingComplete: _commit,
+            onTapOutside: (_) => _commit(),
+          ),
+        ),
+        const SizedBox(width: 8),
+        DropdownMenu<String>(
+          key: ValueKey(_unit),
+          initialSelection: _unit,
+          enabled: widget.editable,
+          enableFilter: false,
+          requestFocusOnTap: false,
+          width: 140,
+          inputDecorationTheme: const InputDecorationTheme(
+            border: OutlineInputBorder(),
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+          dropdownMenuEntries: const [
+            DropdownMenuEntry(value: 'minutes', label: 'Minutes'),
+            DropdownMenuEntry(value: 'hours', label: 'Hours'),
+            DropdownMenuEntry(value: 'days', label: 'Days'),
+          ],
+          onSelected: widget.editable
+              ? (picked) {
+                  if (picked == null) return;
+                  setState(() => _unit = picked);
+                  _commit();
+                }
+              : null,
+        ),
+      ],
     );
   }
 }

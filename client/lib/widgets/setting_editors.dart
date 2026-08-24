@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/job_status.dart';
 import '../core/timestamps.dart';
 import 'side_panel.dart';
 
@@ -380,16 +381,14 @@ class ListButton extends StatefulWidget {
   final dynamic value;
   final bool editable;
   final String? help;
-  final ValueChanged<List<String>> onChanged;
+  final ValueChanged<List<dynamic>> onChanged;
 
   @override
   State<ListButton> createState() => _ListButtonState();
 }
 
 class _ListButtonState extends State<ListButton> {
-  List<String> get _items => widget.value is List
-      ? (widget.value as List).map((e) => '$e').toList()
-      : [];
+  List<JobStatus> get _items => parseJobStatuses(widget.value);
 
   @override
   Widget build(BuildContext context) {
@@ -400,7 +399,9 @@ class _ListButtonState extends State<ListButton> {
       child: OutlinedButton(
         onPressed: widget.editable ? _open : null,
         child: Text(
-          _items.isEmpty ? 'None' : _items.join(', '),
+          _items.isEmpty
+              ? 'None'
+              : _items.map((item) => item.label).join(', '),
           overflow: TextOverflow.ellipsis,
         ),
       ),
@@ -408,7 +409,7 @@ class _ListButtonState extends State<ListButton> {
   }
 
   Future<void> _open() async {
-    final saved = await showSidePanel<List<String>>(
+    final saved = await showSidePanel<List<dynamic>>(
       context,
       builder: (_) =>
           _ListPanel(label: widget.label, help: widget.help, items: _items),
@@ -423,7 +424,7 @@ class _ListPanel extends StatefulWidget {
 
   final String label;
   final String? help;
-  final List<String> items;
+  final List<JobStatus> items;
 
   @override
   State<_ListPanel> createState() => _ListPanelState();
@@ -435,15 +436,20 @@ class _ListPanel extends StatefulWidget {
 /// lose focus mid-word; keyed by its position, dragging would carry the text of
 /// whatever used to be there. So each row keeps an id that outlives both.
 class _Row {
-  _Row(this.id, String text) : controller = TextEditingController(text: text);
+  _Row(this.id, {required String label, required String value, this.was})
+    : labelController = TextEditingController(text: label),
+      valueController = TextEditingController(text: value);
 
   final int id;
-  final TextEditingController controller;
+  final String? was;
+  final TextEditingController labelController;
+  final TextEditingController valueController;
 }
 
 class _ListPanelState extends State<_ListPanel> {
   late final List<_Row> _rows = [
-    for (final (i, item) in widget.items.indexed) _Row(i, item),
+    for (final (i, item) in widget.items.indexed)
+      _Row(i, label: item.label, value: item.value, was: item.was ?? item.value),
   ];
 
   late int _nextId = _rows.length;
@@ -452,7 +458,8 @@ class _ListPanelState extends State<_ListPanel> {
   @override
   void dispose() {
     for (final row in _rows) {
-      row.controller.dispose();
+      row.labelController.dispose();
+      row.valueController.dispose();
     }
     super.dispose();
   }
@@ -497,11 +504,25 @@ class _ListPanelState extends State<_ListPanel> {
                           ),
                         ),
                         Expanded(
+                          flex: 3,
                           child: TextField(
-                            controller: row.controller,
+                            controller: row.labelController,
                             decoration: const InputDecoration(
                               isDense: true,
                               border: OutlineInputBorder(),
+                              labelText: 'Name',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: row.valueController,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              border: OutlineInputBorder(),
+                              labelText: 'Stored as',
                             ),
                           ),
                         ),
@@ -509,7 +530,9 @@ class _ListPanelState extends State<_ListPanel> {
                           icon: const Icon(Icons.close, size: 18),
                           tooltip: 'Remove',
                           onPressed: () => setState(() {
-                            _rows.removeAt(i).controller.dispose();
+                            final removed = _rows.removeAt(i);
+                            removed.labelController.dispose();
+                            removed.valueController.dispose();
                           }),
                         ),
                       ],
@@ -529,7 +552,9 @@ class _ListPanelState extends State<_ListPanel> {
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
-              onPressed: () => setState(() => _rows.add(_Row(_nextId++, ''))),
+              onPressed: () => setState(
+                () => _rows.add(_Row(_nextId++, label: '', value: '')),
+              ),
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Add'),
             ),
@@ -542,15 +567,25 @@ class _ListPanelState extends State<_ListPanel> {
   /// The same three rules the server enforces, checked while the cursor is
   /// still in the field rather than as a 422 after the panel has closed.
   void _save() {
-    final values = [for (final row in _rows) row.controller.text.trim()];
+    final entries = <JobStatus>[];
 
-    if (values.any((v) => v.isEmpty)) {
+    for (final row in _rows) {
+      final label = row.labelController.text.trim();
+      var value = row.valueController.text.trim();
+      if (value.isEmpty && label.isNotEmpty) {
+        value = _slug(label);
+      }
+      entries.add(JobStatus(value: value, label: label, was: row.was));
+    }
+
+    if (entries.any((entry) => entry.label.isEmpty || entry.value.isEmpty)) {
       setState(
         () => _error = 'One of these is blank. Fill it in or remove it.',
       );
       return;
     }
 
+    final values = [for (final entry in entries) entry.value];
     if (values.toSet().length != values.length) {
       setState(
         () => _error = 'Two entries are the same — each has to be distinct.',
@@ -558,11 +593,19 @@ class _ListPanelState extends State<_ListPanel> {
       return;
     }
 
-    if (values.isEmpty) {
+    if (entries.isEmpty) {
       setState(() => _error = 'There has to be at least one.');
       return;
     }
 
-    Navigator.of(context).pop(values);
+    Navigator.of(context).pop([for (final entry in entries) entry.toJson()]);
+  }
+
+  String _slug(String label) {
+    final slug = label
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    return slug.isEmpty ? label : slug;
   }
 }
