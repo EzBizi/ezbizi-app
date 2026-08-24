@@ -325,8 +325,8 @@ MockClientHandler _handler({
               : {
                   'empty': false,
                   'slices': [
-                    {'label': 'Onboardings in flight', 'total': inFlight},
-                    {'label': 'Invitations stalled', 'total': stalled},
+                    {'label': 'Active', 'total': inFlight},
+                    {'label': 'Inactive', 'total': stalled},
                   ],
                   'sentences': sentences ??
                       [
