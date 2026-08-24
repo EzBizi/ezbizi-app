@@ -6,6 +6,7 @@ use App\Models\EmploymentEvent;
 use App\Models\User;
 use App\Support\Dashboard\Widget;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 
 /**
  * Who has just joined, and who left (EZBIZI-HR-PLAN.md — Dashboard).
@@ -43,7 +44,12 @@ class StartersAndLeavers implements Widget
     public function resolve(User $user, array $options): array
     {
         $places = $this->placesInView($user);
-        $since  = $this->since($options);
+
+        // Glances pass the dashboard period start as a Carbon; the old widget
+        // board still uses rolling days via since().
+        $since = ($options['since'] ?? null) instanceof Carbon
+            ? $options['since']
+            : $this->since($options);
 
         $starters = $this->inView($places)
             ->where('is_active', true)
