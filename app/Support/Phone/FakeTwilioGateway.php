@@ -15,6 +15,9 @@ final class FakeTwilioGateway implements TwilioGateway
 
     public bool $lookupEnabled = true;
 
+    /** When true, lookup throws a miss (inbound must not 500). */
+    public bool $lookupMiss = false;
+
     /** When set, createTwimlApp throws this message (connect-order tests). */
     public ?string $failCreateTwimlAppWith = null;
 
@@ -126,9 +129,47 @@ final class FakeTwilioGateway implements TwilioGateway
             throw new RuntimeException('not enabled');
         }
 
+        if ($this->lookupMiss) {
+            throw new RuntimeException('lookup miss');
+        }
+
         return [
             'phone_number' => $e164,
             'caller_name' => 'Fake Caller',
+        ];
+    }
+
+    public function startPort(PhoneConnection $connection, array $e164s, array $params = []): array
+    {
+        $this->record(__FUNCTION__, [$connection->id, $e164s, $params]);
+
+        return [
+            'sid' => 'PW'.bin2hex(random_bytes(16)),
+            'status' => 'waiting_for_signature',
+        ];
+    }
+
+    public function trustStatus(PhoneConnection $connection): array
+    {
+        $this->record(__FUNCTION__, [$connection->id]);
+
+        return [
+            'customer_profile' => 'pending',
+            'shaken_stir' => 'pending',
+            'cnam' => 'pending',
+            'voice_integrity' => 'pending',
+        ];
+    }
+
+    public function submitTrust(PhoneConnection $connection, array $payload): array
+    {
+        $this->record(__FUNCTION__, [$connection->id, $payload]);
+
+        return [
+            'customer_profile' => 'pending',
+            'shaken_stir' => 'pending',
+            'cnam' => 'pending',
+            'voice_integrity' => 'pending',
         ];
     }
 

@@ -24,6 +24,24 @@ class PhoneConnectionPolicy
             : Refusal::permission('open Phone');
     }
 
+    public function view(User $user, PhoneConnection $connection): Response
+    {
+        if (! $user->hasPermission('phone.view')) {
+            return Refusal::permission('open Phone');
+        }
+
+        return $this->reach($user, $connection, 'see Twilio Trust for');
+    }
+
+    public function update(User $user, PhoneConnection $connection): Response
+    {
+        if (! $user->hasPermission('phone.edit')) {
+            return Refusal::permission('change Twilio Trust');
+        }
+
+        return $this->reach($user, $connection, 'change Twilio Trust for');
+    }
+
     /**
      * @param  'organization'|'company'  $scopeType
      */
@@ -59,6 +77,11 @@ class PhoneConnectionPolicy
             return Refusal::permission('disconnect Twilio');
         }
 
+        return $this->reach($user, $connection, 'disconnect Twilio for');
+    }
+
+    private function reach(User $user, PhoneConnection $connection, string $act): Response
+    {
         if ($connection->organization_id !== $user->organization_id) {
             return Response::denyAsNotFound();
         }
@@ -66,7 +89,7 @@ class PhoneConnectionPolicy
         if ($connection->scope_type === PhoneConnection::SCOPE_ORGANIZATION) {
             return $user->canActOnOrganization($user->organization)
                 ? Response::allow()
-                : Refusal::abovePosition('disconnect Twilio for the organization');
+                : Refusal::abovePosition($act.' the organization');
         }
 
         $company = Company::find($connection->scope_id);
@@ -79,7 +102,7 @@ class PhoneConnectionPolicy
             : Refusal::noReach(
                 $user,
                 Refusal::AT_COMPANY,
-                'disconnect Twilio for this company',
+                $act.' this company',
                 $company->name,
             );
     }

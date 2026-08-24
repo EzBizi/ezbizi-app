@@ -7,6 +7,7 @@ use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
 use App\Support\Automations\EventEmitter;
+use App\Support\Phone\TwilioGateway;
 use App\Support\Phone\TwilioWebhook;
 use App\Support\Phone\TwimlRenderer;
 use App\Support\Tenancy\TenantContext;
@@ -14,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response as Status;
+use Throwable;
 use Twilio\TwiML\VoiceResponse;
 
 /**
@@ -28,6 +30,7 @@ class VoiceWebhookController extends Controller
         private readonly TenantContext $tenant,
         private readonly TwimlRenderer $renderer,
         private readonly EventEmitter $events,
+        private readonly TwilioGateway $twilio,
     ) {}
 
     /**
@@ -59,6 +62,10 @@ class VoiceWebhookController extends Controller
 
         if ($dialStatus !== null || $batch > 0) {
             return $this->continueDial($request, $number, $context, $dialStatus);
+        }
+
+        if (! $outbound) {
+            $this->lookupQuietly($this->fromE164($request, false));
         }
 
         $xml = $number === null
@@ -259,6 +266,20 @@ class VoiceWebhookController extends Controller
         }
 
         return $this->clip((string) $request->input('From', ''));
+    }
+
+    /** Lookup is optional. Miss / not enabled must not 500 the inbound answer. */
+    private function lookupQuietly(string $e164): void
+    {
+        if ($e164 === '') {
+            return;
+        }
+
+        try {
+            $this->twilio->lookup($e164);
+        } catch (Throwable) {
+            // Show the number unmatched; never fail the webhook.
+        }
     }
 
     private function toE164(Request $request): string

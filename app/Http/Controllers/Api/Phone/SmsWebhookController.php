@@ -8,12 +8,14 @@ use App\Models\PhoneConnection;
 use App\Models\PhoneMessage;
 use App\Models\PhoneNumber;
 use App\Support\Automations\EventEmitter;
+use App\Support\Phone\TwilioGateway;
 use App\Support\Phone\TwilioWebhook;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response as Status;
+use Throwable;
 
 /**
  * Public Twilio SMS URL. Signature is auth; path names the tenant.
@@ -26,6 +28,7 @@ class SmsWebhookController extends Controller
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly EventEmitter $events,
+        private readonly TwilioGateway $twilio,
     ) {}
 
     /**
@@ -59,6 +62,7 @@ class SmsWebhookController extends Controller
             }
 
             $number = $this->line($connection, $to);
+            $this->lookupQuietly($from);
             $customerId = $this->matchCustomer($from);
 
             $message = PhoneMessage::query()->create([
@@ -99,6 +103,20 @@ class SmsWebhookController extends Controller
         return Customer::query()
             ->where('phone', $e164)
             ->value('id');
+    }
+
+    /** Lookup is optional. Miss / not enabled must not 500 the inbound store. */
+    private function lookupQuietly(string $e164): void
+    {
+        if ($e164 === '') {
+            return;
+        }
+
+        try {
+            $this->twilio->lookup($e164);
+        } catch (Throwable) {
+            // Show the number unmatched; never fail the webhook.
+        }
     }
 
     /** @return array<string, mixed> */

@@ -78,6 +78,30 @@ interface TwilioGateway
      */
     public function lookup(string $e164): array;
 
+    /**
+     * Start a US port-in on the connection’s Twilio account.
+     *
+     * @param  list<string>  $e164s
+     * @param  array<string, mixed>  $params  documents, losing_carrier_information, …
+     * @return array{sid: string, status: string}
+     */
+    public function startPort(PhoneConnection $connection, array $e164s, array $params = []): array;
+
+    /**
+     * Trust Hub statuses for Settings. Missing profiles return `pending` — never throw for empty.
+     *
+     * @return array{customer_profile: string, shaken_stir: string, cnam: string, voice_integrity: string}
+     */
+    public function trustStatus(PhoneConnection $connection): array;
+
+    /**
+     * Submit or advance Trust Hub for this connection. Fake returns pending.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array{customer_profile: string, shaken_stir: string, cnam: string, voice_integrity: string}
+     */
+    public function submitTrust(PhoneConnection $connection, array $payload): array;
+
     /** Raw recording media bytes. */
     public function recordingMedia(PhoneConnection $connection, string $recordingSid): string;
 
@@ -298,6 +322,131 @@ final class HttpTwilioGateway implements TwilioGateway
             'phone_number' => $result->phoneNumber ?? $e164,
             'caller_name' => is_array($caller) ? ($caller['caller_name'] ?? null) : null,
         ];
+    }
+
+    public function startPort(PhoneConnection $connection, array $e164s, array $params = []): array
+    {
+        $phoneNumbers = array_map(
+            fn (string $e164) => \Twilio\Rest\Numbers\V1\PortingPortInModels::createNumbersV1PortingPortInCreatePhoneNumbers([
+                'phone_number' => $e164,
+            ]),
+            $e164s,
+        );
+
+        $payload = [
+            'account_sid' => (string) $connection->account_sid,
+            'phone_numbers' => $phoneNumbers,
+            'documents' => $params['documents'] ?? [],
+            'losing_carrier_information' => $params['losing_carrier_information']
+                ?? \Twilio\Rest\Numbers\V1\PortingPortInModels::createNumbersV1PortingLosingCarrierInformation(
+                    is_array($params['losing_carrier'] ?? null) ? $params['losing_carrier'] : [],
+                ),
+        ];
+
+        foreach (['notification_emails', 'target_port_in_date', 'target_port_in_time_range_start', 'target_port_in_time_range_end', 'bundle_sid'] as $key) {
+            if (array_key_exists($key, $params)) {
+                $payload[$key] = $params[$key];
+            }
+        }
+
+        $created = $this->connectionClient($connection)
+            ->numbers
+            ->v1
+            ->portingPortIns
+            ->create(\Twilio\Rest\Numbers\V1\PortingPortInModels::createNumbersV1PortingPortInCreate($payload));
+
+        $status = (string) ($created->portInRequestStatus ?? 'waiting_for_signature');
+
+        return [
+            'sid' => (string) $created->portInRequestSid,
+            'status' => self::normalizePortStatus($status),
+        ];
+    }
+
+    public function trustStatus(PhoneConnection $connection): array
+    {
+        $out = [
+            'customer_profile' => 'pending',
+            'shaken_stir' => 'pending',
+            'cnam' => 'pending',
+            'voice_integrity' => 'pending',
+        ];
+
+        $client = $this->connectionClient($connection);
+
+        foreach ($client->trusthub->v1->customerProfiles->read([], 20) as $profile) {
+            $status = self::normalizeTrustStatus((string) $profile->status);
+            $out['customer_profile'] = $status;
+            break;
+        }
+
+        foreach ($client->trusthub->v1->trustProducts->read([], 20) as $product) {
+            $name = strtolower((string) ($product->friendlyName ?? ''));
+            $status = self::normalizeTrustStatus((string) $product->status);
+            if (str_contains($name, 'shaken') || str_contains($name, 'stir')) {
+                $out['shaken_stir'] = $status;
+            } elseif (str_contains($name, 'cnam')) {
+                $out['cnam'] = $status;
+            } elseif (str_contains($name, 'voice integrity') || str_contains($name, 'integrity')) {
+                $out['voice_integrity'] = $status;
+            }
+        }
+
+        return $out;
+    }
+
+    public function submitTrust(PhoneConnection $connection, array $payload): array
+    {
+        $client = $this->connectionClient($connection);
+        $email = (string) ($payload['email'] ?? '');
+        $friendly = (string) ($payload['friendly_name'] ?? 'EzBizi Trust');
+        $policySid = (string) ($payload['policy_sid'] ?? '');
+
+        if ($email === '' || $policySid === '') {
+            throw new RuntimeException('Trust submission needs an email and a Twilio policy SID.');
+        }
+
+        $profiles = $client->trusthub->v1->customerProfiles->read([], 1);
+        if ($profiles === []) {
+            $client->trusthub->v1->customerProfiles->create($friendly, $email, $policySid);
+        } else {
+            $client->trusthub->v1->customerProfiles($profiles[0]->sid)->update([
+                'status' => 'pending-review',
+                'email' => $email,
+            ]);
+        }
+
+        return $this->trustStatus($connection);
+    }
+
+    /** Map Twilio port labels / webhook values to our snake_case column. */
+    public static function normalizePortStatus(string $status): string
+    {
+        $key = strtolower(str_replace([' ', '-'], '_', trim($status)));
+
+        return match ($key) {
+            'in_review', 'inreview' => 'in_review',
+            'waiting_for_signature', 'waitingforsignature' => 'waiting_for_signature',
+            'in_progress', 'inprogress' => 'in_progress',
+            'action_required', 'actionrequired' => 'action_required',
+            'completed', 'complete' => 'completed',
+            'canceling', 'cancelling' => 'canceling',
+            'canceled', 'cancelled' => 'canceled',
+            default => $key !== '' ? $key : 'waiting_for_signature',
+        };
+    }
+
+    public static function normalizeTrustStatus(string $status): string
+    {
+        $key = strtolower(str_replace([' ', '_'], '-', trim($status)));
+
+        return match ($key) {
+            'draft' => 'draft',
+            'pending-review', 'in-review', 'pending' => 'pending',
+            'twilio-approved', 'approved' => 'twilio-approved',
+            'twilio-rejected', 'rejected' => 'twilio-rejected',
+            default => $key !== '' ? $key : 'pending',
+        };
     }
 
     public function recordingMedia(PhoneConnection $connection, string $recordingSid): string

@@ -163,6 +163,28 @@ class ConnectionsController extends Controller
         return response()->json(['data' => $this->row($connection->fresh())], Response::HTTP_CREATED);
     }
 
+    /** GET /api/v1/phone/connections/{connection}/trust */
+    public function trustShow(Request $request, PhoneConnection $connection): JsonResponse
+    {
+        $this->authorize('view', $connection);
+
+        return response()->json(['data' => $this->twilio->trustStatus($connection)]);
+    }
+
+    /** POST /api/v1/phone/connections/{connection}/trust */
+    public function trustStore(Request $request, PhoneConnection $connection): JsonResponse
+    {
+        $this->authorize('update', $connection);
+
+        $input = $request->validate([
+            'email' => ['sometimes', 'nullable', 'email', 'max:191'],
+            'friendly_name' => ['sometimes', 'nullable', 'string', 'max:191'],
+            'policy_sid' => ['sometimes', 'nullable', 'string', 'max:34'],
+        ]);
+
+        return response()->json(['data' => $this->twilio->submitTrust($connection, $input)]);
+    }
+
     /** DELETE /api/v1/phone/connections/{connection} */
     public function destroy(Request $request, PhoneConnection $connection): JsonResponse
     {

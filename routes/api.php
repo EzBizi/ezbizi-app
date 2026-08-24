@@ -48,6 +48,8 @@ use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsCont
 use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
 use App\Http\Controllers\Api\Phone\MessagesController as PhoneMessagesController;
 use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
+use App\Http\Controllers\Api\Phone\PortsController as PhonePortsController;
+use App\Http\Controllers\Api\Phone\PortWebhookController as PhonePortWebhookController;
 use App\Http\Controllers\Api\Phone\PresenceController as PhonePresenceController;
 use App\Http\Controllers\Api\Phone\RecordingWebhookController as PhoneRecordingWebhookController;
 use App\Http\Controllers\Api\Phone\SmsWebhookController as PhoneSmsWebhookController;
@@ -279,6 +281,10 @@ Route::post('v1/phone/recording/{organization}/{connection}', PhoneRecordingWebh
 Route::post('v1/phone/transcription/{organization}/{connection}', PhoneTranscriptionWebhookController::class)
     ->middleware('throttle:120,1')
     ->name('phone.transcription.webhook');
+
+Route::post('v1/phone/port/{organization}/{connection}', PhonePortWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('phone.port.webhook');
 
 Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
     ->middleware('throttle:60,1');
@@ -567,12 +573,17 @@ Route::prefix('v1')
         Route::get('phone/connections', [PhoneConnectionsController::class, 'index']);
         Route::post('phone/connections', [PhoneConnectionsController::class, 'store']);
         Route::delete('phone/connections/{connection}', [PhoneConnectionsController::class, 'destroy']);
+        Route::get('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustShow']);
+        Route::post('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustStore']);
 
         // Numbers hang on org / company / franchise. List is grant ∩ reach ∩
         // view-scope; buy/release need phone.edit and a resolved Twilio connection.
         Route::get('phone/numbers', [PhoneNumbersController::class, 'index']);
         Route::post('phone/numbers', [PhoneNumbersController::class, 'store']);
         Route::delete('phone/numbers/{number}', [PhoneNumbersController::class, 'destroy']);
+
+        // Port-in: start via gateway; status webhooks update phone_port_requests.
+        Route::post('phone/ports', [PhonePortsController::class, 'store']);
 
         // Named open-hours schedules on a connection. Create may take a number
         // so franchise lines default timezone from franchises.timezone.
