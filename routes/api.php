@@ -44,6 +44,7 @@ use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
+use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
 use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
@@ -548,6 +549,14 @@ Route::prefix('v1')
         Route::get('phone/numbers', [PhoneNumbersController::class, 'index']);
         Route::post('phone/numbers', [PhoneNumbersController::class, 'store']);
         Route::delete('phone/numbers/{number}', [PhoneNumbersController::class, 'destroy']);
+
+        // Named open-hours schedules on a connection. Create may take a number
+        // so franchise lines default timezone from franchises.timezone.
+        Route::get('phone/hours', [PhoneHoursController::class, 'index']);
+        Route::post('phone/hours', [PhoneHoursController::class, 'store']);
+        Route::get('phone/hours/{schedule}', [PhoneHoursController::class, 'show']);
+        Route::patch('phone/hours/{schedule}', [PhoneHoursController::class, 'update']);
+        Route::delete('phone/hours/{schedule}', [PhoneHoursController::class, 'destroy']);
 
         // ── Inspection Builder ───────────────────────────────────
         //
