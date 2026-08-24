@@ -225,6 +225,15 @@ class DataInventoryTest extends TestCase
             \App\Models\Company::class,
 
             /*
+             * Same five columns as a company, for the same reason: this is the
+             * address printed on a contract as the business, not a person's
+             * home. `organizations.address` already existed as one blob and
+             * was never personal data; splitting it into line/city/state/ZIP
+             * does not change whose address it is.
+             */
+            \App\Models\Organization::class,
+
+            /*
              * EzBizi's own staff (§4.2), in a separate control plane. The
              * inventory is answered PER ORGANIZATION — "what do you hold about
              * me" asked by a tenant's employee — and a platform operator's
