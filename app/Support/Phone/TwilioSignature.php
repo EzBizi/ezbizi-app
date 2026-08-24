@@ -14,12 +14,15 @@ use Twilio\Security\RequestValidator;
 final class TwilioSignature
 {
     /**
-     * @param  array<string, mixed>  $params
+     * Form webhooks pass param arrays. JSON webhooks (Port In) pass the raw
+     * body string; the URL must carry Twilio’s `bodySHA256` query param.
+     *
+     * @param  array<string, mixed>|string  $params
      */
     public static function valid(
         PhoneConnection $connection,
         string $url,
-        array $params,
+        array|string $params,
         ?string $header,
     ): bool {
         if ($header === null || $header === '') {

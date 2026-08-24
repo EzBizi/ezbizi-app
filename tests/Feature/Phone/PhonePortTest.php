@@ -73,4 +73,56 @@ class PhonePortTest extends TestCase
             $this->assertSame('in_progress', $fresh->status);
         });
     }
+
+    public function test_json_body_sha256_port_webhook_moves_the_row_to_in_progress(): void
+    {
+        $t = $this->provisionTenant();
+        $editor = $this->userWithRole($t, 'Port json', ['phone.view', 'phone.edit']);
+
+        $connection = $this->inTenant($t['org'], function () use ($t) {
+            return PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'auth_token' => 'port-json-auth-token',
+            ]);
+        });
+
+        $create = $this->signedInAs($editor)->postJson('/api/v1/phone/ports', [
+            'connection_id' => $connection->id,
+            'e164s' => ['+12035558765'],
+        ]);
+        $create->assertCreated();
+
+        $row = $this->inTenant($t['org'], fn () => PhonePortRequest::query()->first());
+        $this->assertNotNull($row);
+        $this->assertSame('waiting_for_signature', $row->status);
+
+        $body = json_encode([
+            'port_in_request_sid' => $row->twilio_sid,
+            'status' => 'in_progress',
+            'rejection_reason' => null,
+        ], JSON_THROW_ON_ERROR);
+        $hash = RequestValidator::computeBodyHash($body);
+        $url = url('/api/v1/phone/port/'.$t['org']->id.'/'.$connection->id).'?bodySHA256='.$hash;
+        $signature = (new RequestValidator('port-json-auth-token'))->computeSignature($url, []);
+
+        $this->call(
+            'POST',
+            $url,
+            [],
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_X_TWILIO_SIGNATURE' => $signature,
+            ],
+            $body,
+        )->assertOk();
+
+        $this->inTenant($t['org'], function () use ($row) {
+            $fresh = PhonePortRequest::query()->find($row->id);
+            $this->assertNotNull($fresh);
+            $this->assertSame('in_progress', $fresh->status);
+        });
+    }
 }

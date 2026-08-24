@@ -39,14 +39,32 @@ final class TwilioWebhook
             }
 
             $url = $request->fullUrl();
-            $params = $request->request->all();
             $header = $request->header('X-Twilio-Signature');
+            $payload = self::signaturePayload($request);
 
-            if (! TwilioSignature::valid($row, $url, $params, is_string($header) ? $header : null)) {
+            if (! TwilioSignature::valid($row, $url, $payload, is_string($header) ? $header : null)) {
                 abort(Status::HTTP_FORBIDDEN, 'This request was not from Twilio.');
             }
 
             return $then($row);
         });
+    }
+
+    /**
+     * Form posts: signed param map. JSON (Port In): raw body + bodySHA256 on the URL.
+     *
+     * @return array<string, mixed>|string
+     */
+    private static function signaturePayload(Request $request): array|string
+    {
+        $contentType = (string) $request->header('Content-Type', '');
+        $json = str_contains(strtolower($contentType), 'application/json')
+            || $request->query->has('bodySHA256');
+
+        if ($json) {
+            return $request->getContent();
+        }
+
+        return $request->request->all();
     }
 }

@@ -397,15 +397,22 @@ final class HttpTwilioGateway implements TwilioGateway
 
     public function submitTrust(PhoneConnection $connection, array $payload): array
     {
-        $client = $this->connectionClient($connection);
         $email = (string) ($payload['email'] ?? '');
         $friendly = (string) ($payload['friendly_name'] ?? 'EzBizi Trust');
         $policySid = (string) ($payload['policy_sid'] ?? '');
 
+        // Same as Fake: incomplete payload returns pending — do not throw or
+        // call Twilio while Settings is still collecting email / policy_sid.
         if ($email === '' || $policySid === '') {
-            throw new RuntimeException('Trust submission needs an email and a Twilio policy SID.');
+            return [
+                'customer_profile' => 'pending',
+                'shaken_stir' => 'pending',
+                'cnam' => 'pending',
+                'voice_integrity' => 'pending',
+            ];
         }
 
+        $client = $this->connectionClient($connection);
         $profiles = $client->trusthub->v1->customerProfiles->read([], 1);
         if ($profiles === []) {
             $client->trusthub->v1->customerProfiles->create($friendly, $email, $policySid);

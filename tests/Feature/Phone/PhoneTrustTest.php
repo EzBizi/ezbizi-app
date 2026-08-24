@@ -64,6 +64,7 @@ class PhoneTrustTest extends TestCase
         /** @var FakeTwilioGateway $gateway */
         $gateway = $this->app->make(TwilioGateway::class);
 
+        // email without policy_sid — Http must not 500; same pending as Fake.
         $response = $this->signedInAs($editor)->postJson(
             '/api/v1/phone/connections/'.$connection->id.'/trust',
             [
@@ -75,5 +76,31 @@ class PhoneTrustTest extends TestCase
         $response->assertOk();
         $this->assertSame('pending', $response->json('data.customer_profile'));
         $this->assertContains('submitTrust', array_column($gateway->calls, 'method'));
+    }
+
+    public function test_http_submit_trust_without_policy_sid_returns_pending_not_throw(): void
+    {
+        $t = $this->provisionTenant();
+        $connection = $this->inTenant($t['org'], function () use ($t) {
+            return PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'account_sid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                'api_key_sid' => 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                'credentials' => 'secret',
+            ]);
+        });
+
+        $http = new \App\Support\Phone\HttpTwilioGateway;
+        $statuses = $http->submitTrust($connection, [
+            'email' => 'ops@example.com',
+            'friendly_name' => 'EzBizi trust',
+            // no policy_sid — must not throw or hit Twilio
+        ]);
+
+        $this->assertSame('pending', $statuses['customer_profile']);
+        $this->assertSame('pending', $statuses['shaken_stir']);
+        $this->assertSame('pending', $statuses['cnam']);
+        $this->assertSame('pending', $statuses['voice_integrity']);
     }
 }
