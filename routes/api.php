@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\HrPeopleController;
 use App\Http\Controllers\Api\InspectionDefinitionsController;
 use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InventoryAdjustmentsController;
+use App\Http\Controllers\Api\InventoryIssuesController;
 use App\Http\Controllers\Api\InventoryItemsController;
 use App\Http\Controllers\Api\InventoryLocationsController;
 use App\Http\Controllers\Api\InventoryPurchaseOrdersController;
@@ -263,6 +264,7 @@ Route::prefix('v1')
         Route::get('inventory/stock', [InventoryStockController::class, 'index']);
         Route::post('inventory/adjustments', [InventoryAdjustmentsController::class, 'store']);
         Route::post('inventory/transfers', [InventoryTransfersController::class, 'store']);
+        Route::post('inventory/issues', [InventoryIssuesController::class, 'store']);
 
         // ── The shape of the business (§3) ───────────────────────
         //

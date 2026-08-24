@@ -43,6 +43,7 @@ class RecordNumberGenerator
     public const ITEMS           = 'inventory_item';
     public const PURCHASE_ORDERS = 'inventory_po';
     public const TRANSFERS       = 'inventory_transfer';
+    public const ISSUES          = 'inventory_issue';
 
     public function __construct(
         private readonly TenantContext $tenant,
@@ -121,6 +122,8 @@ class RecordNumberGenerator
             self::PURCHASE_ORDERS => (string) $this->settings->get('numbering.po_prefix', $scope),
             // Transfers have no prefix setting — spec §8.2 is prefix T-.
             self::TRANSFERS       => 'T-',
+            // Issues have no prefix setting — spec §8.4 is prefix IS-.
+            self::ISSUES          => 'IS-',
             default         => '',
         };
 

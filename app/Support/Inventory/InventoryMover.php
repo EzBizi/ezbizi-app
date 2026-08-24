@@ -5,6 +5,8 @@ namespace App\Support\Inventory;
 use App\Models\Franchise;
 use App\Models\InventoryAdjustment;
 use App\Models\InventoryBalance;
+use App\Models\InventoryIssue;
+use App\Models\InventoryIssueLine;
 use App\Models\InventoryItem;
 use App\Models\InventoryLocation;
 use App\Models\InventoryPurchaseOrder;
@@ -13,6 +15,7 @@ use App\Models\InventoryReceive;
 use App\Models\InventoryReceiveLine;
 use App\Models\InventoryTransfer;
 use App\Models\InventoryTransferLine;
+use App\Models\Job;
 use App\Models\User;
 use App\Support\Numbering\RecordNumberGenerator;
 use Illuminate\Support\Facades\DB;
@@ -31,6 +34,10 @@ use Illuminate\Validation\ValidationException;
  *
  * Receive posts onto on-hand against an open PO. Over-receive and a closed
  * location are refused; partial leaves the PO open, full marks received.
+ *
+ * Issue takes stock off a location. Job XOR a note; discontinued items
+ * and closed locations are refused. The number is allocated in the same
+ * transaction so a refused line does not consume IS-.
  */
 final class InventoryMover
 {
@@ -236,6 +243,79 @@ final class InventoryMover
         });
     }
 
+    /**
+     * Take qty of each line off a location. Whole call rolls back if any
+     * line cannot be covered. Does not write jobs columns.
+     *
+     * @param  list<array{item: InventoryItem, qty: string}>  $lines
+     */
+    public function issue(
+        InventoryLocation $location,
+        array $lines,
+        User $user,
+        ?Job $job = null,
+        ?string $note = null,
+    ): InventoryIssue {
+        return DB::transaction(function () use ($location, $lines, $user, $job, $note) {
+            if ($location->status === InventoryLocationStatus::Closed) {
+                throw ValidationException::withMessages([
+                    'location_id' => 'This location is closed.',
+                ]);
+            }
+
+            $note = $note === null ? null : trim($note);
+            if ($note === '') {
+                $note = null;
+            }
+
+            if ($job === null && $note === null) {
+                throw ValidationException::withMessages([
+                    'job_id' => 'Say which job this is for, or why it left.',
+                ]);
+            }
+
+            $scope = $location->franchise ?? $location->company ?? $user->organization;
+            $number = $this->numbers->next(RecordNumberGenerator::ISSUES, $scope);
+
+            $issue = InventoryIssue::create([
+                'location_id' => $location->getKey(),
+                'job_id' => $job?->getKey(),
+                'note' => $note,
+                'number' => $number,
+                'issued_on' => $this->calendarDayOn($location),
+                'user_id' => $user->getKey(),
+            ]);
+
+            foreach ($lines as $line) {
+                $qty = $this->scale($line['qty']);
+
+                if (bccomp($qty, '0', 3) <= 0) {
+                    throw ValidationException::withMessages([
+                        'qty' => 'The qty must be greater than 0.',
+                    ]);
+                }
+
+                $item = $line['item'];
+
+                if ($item->status === InventoryItemStatus::Discontinued) {
+                    throw ValidationException::withMessages([
+                        'item_id' => 'This item is discontinued, so it cannot go out.',
+                    ]);
+                }
+
+                $this->removeQty($item, $location, $qty);
+
+                InventoryIssueLine::create([
+                    'issue_id' => $issue->getKey(),
+                    'item_id' => $item->getKey(),
+                    'qty' => $qty,
+                ]);
+            }
+
+            return $issue;
+        });
+    }
+
     private function addQty(InventoryItem $item, InventoryLocation $location, string $qty): void
     {
         $this->ensureBalanceRow($item, $location);
@@ -247,6 +327,28 @@ final class InventoryMover
             ->firstOrFail();
 
         $balance->qty_on_hand = bcadd($this->scale((string) $balance->qty_on_hand), $qty, 3);
+        $balance->save();
+    }
+
+    private function removeQty(InventoryItem $item, InventoryLocation $location, string $qty): void
+    {
+        $this->ensureBalanceRow($item, $location);
+
+        $balance = InventoryBalance::query()
+            ->where('item_id', $item->getKey())
+            ->where('location_id', $location->getKey())
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        $onHand = $this->scale((string) $balance->qty_on_hand);
+
+        if (bccomp($onHand, $qty, 3) < 0) {
+            throw ValidationException::withMessages([
+                'qty' => 'There is not enough at this location.',
+            ]);
+        }
+
+        $balance->qty_on_hand = bcsub($onHand, $qty, 3);
         $balance->save();
     }
 
