@@ -9,7 +9,8 @@ use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
- * Web Management and Phone — tabs that can be granted, and are not built.
+ * Web Management, Phone, Inventory and Services — tabs that can be granted,
+ * and are not built.
  *
  * Being new exempts them from nothing (§4). They exist so an organization can
  * turn the destination on or off, and so the sidebar is not a second list
@@ -29,6 +30,8 @@ class ComingSoonModulesTest extends TestCase
         return [
             ['web_management', 'Web Management'],
             ['phone', 'Phone'],
+            ['inventory', 'Inventory'],
+            ['services', 'Services'],
         ];
     }
 
@@ -96,8 +99,16 @@ class ComingSoonModulesTest extends TestCase
             array_search('phone', $keys, true),
         );
         $this->assertLessThan(
-            array_search('email', $keys, true),
+            array_search('inventory', $keys, true),
             array_search('fleet_management', $keys, true),
+        );
+        $this->assertLessThan(
+            array_search('services', $keys, true),
+            array_search('inventory', $keys, true),
+        );
+        $this->assertLessThan(
+            array_search('email', $keys, true),
+            array_search('services', $keys, true),
         );
     }
 

@@ -948,11 +948,11 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
-             * Web Management and Phone — declared so they can be granted, and
-             * not built. Same shape as Marketing on the day it arrived: a tab
-             * permission, a screen that says what is coming, and no action that
-             * would show up on Roles as a switch for work the software cannot
-             * do.
+             * Web Management, Phone, Inventory and Services — declared so they
+             * can be granted, and not built. Same shape as Marketing on the
+             * day it arrived: a tab permission, a screen that says what is
+             * coming, and no action that would show up on Roles as a switch
+             * for work the software cannot do.
              *
              * Exempt from automation until there is a record an event could
              * be about. Inventing `website.published` or `call.ended` before
@@ -1087,6 +1087,24 @@ class ModuleServiceProvider extends ServiceProvider
                             .'the rule: plate, colour, odometer, or next-due.',
                     ),
                 ],
+            ),
+
+            new ModuleDefinition(
+                key:     'inventory',
+                label:   'Inventory',
+                actions: ['view'],
+                automationExemptBecause:
+                    'The stock register does not exist yet, so there is no event '
+                    .'a rule could fire on and nothing a rule could change.',
+            ),
+
+            new ModuleDefinition(
+                key:     'services',
+                label:   'Services',
+                actions: ['view'],
+                automationExemptBecause:
+                    'The service catalogue does not exist yet, so there is no '
+                    .'event a rule could fire on and nothing a rule could change.',
             ),
 
             /*

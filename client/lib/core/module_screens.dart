@@ -98,6 +98,28 @@ final Map<String, ModuleScreen> moduleScreens = {
     Icons.local_shipping_outlined,
     (api, session) => FleetScreen(api: api, session: session),
   ),
+  'inventory': ModuleScreen(
+    Icons.inventory_2_outlined,
+    (_, _) => const ComingSoonScreen(
+      title: 'Inventory',
+      icon: Icons.inventory_2_outlined,
+      what:
+          'Inventory is where the company will keep what it has on the shelf '
+          '— parts, materials, and the stock that jobs draw from. The register '
+          'is not here yet.',
+    ),
+  ),
+  'services': ModuleScreen(
+    Icons.handyman_outlined,
+    (_, _) => const ComingSoonScreen(
+      title: 'Services',
+      icon: Icons.handyman_outlined,
+      what:
+          'Services is where the company will name what it sells — the work a '
+          'job is for, and the price it starts from. The catalogue is not '
+          'here yet.',
+    ),
+  ),
   'automations': ModuleScreen(
     Icons.bolt_outlined,
     (api, session) => AutomationsScreen(api: api, session: session),

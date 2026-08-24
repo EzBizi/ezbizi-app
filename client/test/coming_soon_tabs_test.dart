@@ -80,6 +80,76 @@ void main() {
     expect(find.textContaining('without leaving EzBizi'), findsOneWidget);
   });
 
+  testWidgets('Inventory names itself and is not a blank page', (
+    tester,
+  ) async {
+    await _pumpDestination(tester, 'inventory', 'Inventory');
+
+    expect(find.text('Coming soon'), findsOneWidget);
+    expect(find.textContaining('on the shelf'), findsOneWidget);
+  });
+
+  testWidgets('Services names itself and is not a blank page', (
+    tester,
+  ) async {
+    await _pumpDestination(tester, 'services', 'Services');
+
+    expect(find.text('Coming soon'), findsOneWidget);
+    expect(find.textContaining('what it sells'), findsOneWidget);
+  });
+
+  testWidgets('a granted Inventory tab is in the sidebar and opens', (
+    tester,
+  ) async {
+    await _pumpShell(tester, 'inventory', 'Inventory');
+
+    final inSidebar = find.descendant(
+      of: find.byType(NavigationSidebar),
+      matching: find.text('Inventory'),
+    );
+
+    expect(inSidebar, findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(NavigationSidebar),
+        matching: find.byIcon(Icons.inventory_2_outlined),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(inSidebar);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ComingSoonScreen), findsOneWidget);
+    expect(find.textContaining('on the shelf'), findsOneWidget);
+  });
+
+  testWidgets('a granted Services tab is in the sidebar and opens', (
+    tester,
+  ) async {
+    await _pumpShell(tester, 'services', 'Services');
+
+    final inSidebar = find.descendant(
+      of: find.byType(NavigationSidebar),
+      matching: find.text('Services'),
+    );
+
+    expect(inSidebar, findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(NavigationSidebar),
+        matching: find.byIcon(Icons.handyman_outlined),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(inSidebar);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ComingSoonScreen), findsOneWidget);
+    expect(find.textContaining('what it sells'), findsOneWidget);
+  });
+
   testWidgets('Coming soon lays out on a 375-point window without overflowing', (
     tester,
   ) async {
