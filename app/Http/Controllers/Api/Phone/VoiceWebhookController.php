@@ -195,6 +195,8 @@ class VoiceWebhookController extends Controller
             'batch' => $batch,
             'skip_menu' => $request->request->has('Digits'),
             'dial_action' => $this->voiceAction($connection, $batch + 1),
+            'recording_status_callback' => $this->webhookUrl($connection, 'recording'),
+            'transcription_status_callback' => $this->webhookUrl($connection, 'transcription'),
         ];
 
         if ($outbound) {
@@ -295,8 +297,12 @@ class VoiceWebhookController extends Controller
 
     private function voiceAction(PhoneConnection $connection, int $batch): string
     {
-        return url('/api/v1/phone/voice/'.$connection->organization_id.'/'.$connection->id)
-            .'?batch='.$batch;
+        return $this->webhookUrl($connection, 'voice').'?batch='.$batch;
+    }
+
+    private function webhookUrl(PhoneConnection $connection, string $kind): string
+    {
+        return url('/api/v1/phone/'.$kind.'/'.$connection->organization_id.'/'.$connection->id);
     }
 
     /** @return array<string, mixed> */

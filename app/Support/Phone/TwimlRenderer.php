@@ -158,7 +158,7 @@ final class TwimlRenderer
             return;
         }
 
-        $this->voicemail($response, $language);
+        $this->voicemail($response, $language, $context);
     }
 
     /**
@@ -184,7 +184,7 @@ final class TwimlRenderer
                 : PhoneRingGroup::query()->find($number->ring_group_id));
 
         if ($group === null || $connection === null) {
-            $this->voicemail($response, $language);
+            $this->voicemail($response, $language, $context);
 
             return;
         }
@@ -248,7 +248,7 @@ final class TwimlRenderer
             }
         }
 
-        $this->voicemail($response, $language);
+        $this->voicemail($response, $language, $context);
     }
 
     /**
@@ -311,10 +311,20 @@ final class TwimlRenderer
         return $attributes;
     }
 
-    private function voicemail(VoiceResponse $response, string $language): void
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function voicemail(VoiceResponse $response, string $language, array $context = []): void
     {
         $response->say('Please leave a message after the tone.', ['language' => $language]);
-        $response->record(['playBeep' => true]);
+
+        $attributes = ['playBeep' => true];
+        if (is_string($context['recording_status_callback'] ?? null)
+            && $context['recording_status_callback'] !== '') {
+            $attributes['recordingStatusCallback'] = $context['recording_status_callback'];
+        }
+
+        $response->record($attributes);
     }
 
     private function menuPrompt(PhoneNumber $number): ?string

@@ -1022,7 +1022,7 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'A voicemail was left',
                         description: 'A caller left a voicemail on one of the phone lines. The '
                             .'recording stays on Twilio until it is erased.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                     new TriggerDefinition(
                         key:   'phone.sms.received',

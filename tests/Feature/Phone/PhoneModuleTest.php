@@ -8,9 +8,10 @@ use Tests\TestCase;
 /**
  * Phone — real module declaration (view/edit, call/SMS/voicemail automations).
  *
- * Call started/ended/missed raise from the Voice webhooks. The rest stay
- * unraised until those webhooks emit. Subject is null (call, SMS, and number
- * — same shape as HR).
+ * Call started/ended/missed raise from the Voice webhooks. Voicemail left
+ * raises from the recording callback. SMS and number.broken stay unraised
+ * until those webhooks emit. Subject is null (call, SMS, and number — same
+ * shape as HR).
  */
 class PhoneModuleTest extends TestCase
 {
@@ -36,6 +37,6 @@ class PhoneModuleTest extends TestCase
         $this->assertTrue($module->trigger('phone.call.started')->isRaised);
         $this->assertTrue($module->trigger('phone.call.ended')->isRaised);
         $this->assertTrue($module->trigger('phone.call.missed')->isRaised);
-        $this->assertFalse($module->trigger('phone.voicemail.left')->isRaised);
+        $this->assertTrue($module->trigger('phone.voicemail.left')->isRaised);
     }
 }

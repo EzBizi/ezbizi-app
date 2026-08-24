@@ -62,9 +62,10 @@ class PhoneCall extends Model implements HoldsPersonalData
                 Erasure::keep('A foreign key to the account the purge anonymises at its home. '
                     .'Nulling it here would orphan a dated call from the person who took it '
                     .'without removing anything about them.')),
-            new PersonalDataEntry('recording_sid, transcription_sid', PersonalDataEntry::CONTENT,
-                'Pointers at recorded audio and any transcript Twilio produced. The media '
-                .'itself is personal content about whoever spoke.',
+            new PersonalDataEntry('recording_sid, transcription_sid, transcript', PersonalDataEntry::CONTENT,
+                'Pointers at recorded audio, any transcript SID Twilio produced, and the '
+                .'concatenated final transcript text we keep on the row. The media itself is '
+                .'personal content about whoever spoke.',
                 Erasure::drop('Goes with the call row. The purge also asks Twilio to delete '
                     .'the recording so the SID cannot be replayed later.')),
         ];
@@ -99,7 +100,7 @@ class PhoneCall extends Model implements HoldsPersonalData
         'organization_id', 'number_id', 'connection_id',
         'twilio_sid', 'parent_sid', 'direction',
         'from_e164', 'to_e164', 'user_id', 'status',
-        'duration_seconds', 'recording_sid', 'transcription_sid',
+        'duration_seconds', 'recording_sid', 'transcription_sid', 'transcript',
         'voicemail', 'dealt_at',
     ];
 
