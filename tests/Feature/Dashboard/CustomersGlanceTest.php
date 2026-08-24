@@ -47,6 +47,12 @@ class CustomersGlanceTest extends TestCase
         ];
     }
 
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
     private function inTenant(callable $fn): mixed
     {
         return app(TenantContext::class)->run($this->alpha['org'], $fn);
