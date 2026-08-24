@@ -983,9 +983,11 @@ class ModuleServiceProvider extends ServiceProvider
              * at save, in a sentence.
              *
              * Call started/ended/missed raise from the Voice and status
-             * webhooks (Task 10). Voicemail, SMS, and number-broken stay
-             * unraised until those webhooks emit. ModuleRegistryTest holds
-             * that claim to the source.
+             * webhooks (Task 10). Voicemail raises from the recording
+             * callback (Task 11). SMS received/sent raise from the SMS
+             * webhook and MessagesController (Task 12). number-broken stays
+             * unraised until that path emits. ModuleRegistryTest holds that
+             * claim to the source.
              *
              * Actions change EzBizi only — mark a voicemail dealt with, or
              * open a job from a missed call. Nothing here places a call or
@@ -1029,14 +1031,14 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'A text arrived',
                         description: 'A text message reached one of the phone lines that can '
                             .'receive SMS.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                     new TriggerDefinition(
                         key:   'phone.sms.sent',
                         label: 'A text was sent',
                         description: 'Somebody sent a text from a line that is allowed to send '
                             .'SMS.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                     new TriggerDefinition(
                         key:   'phone.number.broken',

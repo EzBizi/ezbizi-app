@@ -22,6 +22,9 @@ class PhoneMessage extends Model implements HoldsPersonalData
     use HasFactory;
     use HasUuids;
 
+    public const DIRECTION_INBOUND = 'inbound';
+    public const DIRECTION_OUTBOUND = 'outbound';
+
     public static function personalDataPurpose(): string
     {
         return 'Text messages sent or received on a business line. The body is free text '
