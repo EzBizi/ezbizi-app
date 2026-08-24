@@ -9,6 +9,7 @@ import '../screens/inspection_screen.dart';
 import '../screens/fleet_screen.dart';
 import '../screens/jobs_screen.dart';
 import '../screens/marketing_screen.dart';
+import '../screens/phone_screen.dart';
 import '../widgets/coming_soon.dart';
 import 'api_client.dart';
 import 'session.dart';
@@ -85,14 +86,7 @@ final Map<String, ModuleScreen> moduleScreens = {
   ),
   'phone': ModuleScreen(
     Icons.phone_outlined,
-    (_, _) => const ComingSoonScreen(
-      title: 'Phone',
-      icon: Icons.phone_outlined,
-      what:
-          'Phone is where the team will place and receive calls, and send '
-          'texts, with customers without leaving EzBizi. Calling is not '
-          'here yet.',
-    ),
+    (api, session) => PhoneScreen(api: api, session: session),
   ),
   'fleet_management': ModuleScreen(
     Icons.local_shipping_outlined,
