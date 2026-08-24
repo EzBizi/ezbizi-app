@@ -3,8 +3,11 @@
 namespace App\Support\Dashboard;
 
 use App\Models\User;
+use App\Support\Dashboard\Glances\AutomationsGlance;
 use App\Support\Dashboard\Glances\CustomersGlance;
+use App\Support\Dashboard\Glances\FleetGlance;
 use App\Support\Dashboard\Glances\HrGlance;
+use App\Support\Dashboard\Glances\InspectionGlance;
 use App\Support\Dashboard\Glances\JobsGlance;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Tenancy\TenantContext;
@@ -69,6 +72,9 @@ class GlanceRegistry
         HrGlance::class,
         CustomersGlance::class,
         JobsGlance::class,
+        InspectionGlance::class,
+        FleetGlance::class,
+        AutomationsGlance::class,
     ];
 
     public function __construct(

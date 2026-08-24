@@ -1,0 +1,193 @@
+<?php
+
+namespace Tests\Feature\Dashboard;
+
+use App\Models\Assignment;
+use App\Models\Customer;
+use App\Models\Franchise;
+use App\Models\InspectionDefinition;
+use App\Models\InspectionDefinitionVersion;
+use App\Models\InspectionRun;
+use App\Models\Job;
+use App\Models\User;
+use App\Services\Organizations\ProvisionOrganization;
+use App\Support\Dashboard\DashboardPeriod;
+use App\Support\Dashboard\Glances\InspectionGlance;
+use App\Support\Inspection\ScopeKey;
+use App\Support\Tenancy\TenantContext;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+/**
+ * Inspection dashboard glance (spec § Inspection — bar).
+ *
+ * Snapshot bars: in-progress runs, submitted reports, archived reports — all
+ * under the caller's franchise reach (same job filter as Generated Reports).
+ */
+class InspectionGlanceTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private array $alpha;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Permissions are a PLATFORM table populated by the module registry, not
+        // by provisioning an organization — so a test that builds a non-admin
+        // role has to make sure the rows exist first.
+        $this->artisan('ezbizi:sync-permissions')->assertSuccessful();
+
+        $r = app(ProvisionOrganization::class)(
+            organizationName: 'Alpha',
+            administrator: ['name' => 'Admin', 'email' => 'a@alpha.test', 'password' => 'a-real-password'],
+            companyName: 'Co', franchiseName: 'F1',
+        );
+
+        $this->alpha = [
+            'org' => $r['organization'], 'admin' => $r['administrator'],
+            'company' => $r['company'], 'franchise' => $r['franchise'],
+        ];
+    }
+
+    private function inTenant(callable $fn): mixed
+    {
+        return app(TenantContext::class)->run($this->alpha['org'], $fn);
+    }
+
+    /** A second franchise with its own user, reaching only that franchise. */
+    private function secondBranch(): array
+    {
+        return $this->inTenant(function () {
+            $franchise = Franchise::create([
+                'organization_id' => $this->alpha['org']->id,
+                'company_id'      => $this->alpha['company']->id,
+                'name' => 'Second', 'is_active' => true,
+            ]);
+
+            $user = User::create([
+                'organization_id' => $this->alpha['org']->id,
+                'role_id'         => $this->alpha['admin']->role_id,
+                'name' => 'Branch', 'email' => 'branch@alpha.test',
+                'password' => 'a-real-password', 'is_active' => true,
+            ]);
+
+            Assignment::create([
+                'organization_id' => $this->alpha['org']->id,
+                'user_id' => $user->id, 'assigned_franchise_id' => $franchise->id,
+            ]);
+
+            return [$franchise, $user];
+        });
+    }
+
+    /** @return array{definition: InspectionDefinition, version: InspectionDefinitionVersion} */
+    private function publishedDefinition(): array
+    {
+        return $this->inTenant(function () {
+            $existing = InspectionDefinition::query()->where('name', 'Level 1')->first();
+            if ($existing !== null) {
+                return [
+                    'definition' => $existing,
+                    'version' => InspectionDefinitionVersion::query()
+                        ->where('inspection_definition_id', $existing->id)
+                        ->firstOrFail(),
+                ];
+            }
+
+            $definition = InspectionDefinition::create([
+                'name' => 'Level 1',
+                'created_by' => $this->alpha['admin']->id,
+                'published_at' => now(),
+            ]);
+
+            $version = InspectionDefinitionVersion::create([
+                'inspection_definition_id' => $definition->id,
+                'version' => 1,
+                'layout_preset' => 'step_strip',
+                'screens' => [],
+                'published_by' => $this->alpha['admin']->id,
+            ]);
+
+            $definition->update(['current_version_id' => $version->id]);
+
+            return ['definition' => $definition->fresh(), 'version' => $version];
+        });
+    }
+
+    private function customer(Franchise $franchise): Customer
+    {
+        return $this->inTenant(fn () => Customer::create([
+            'owning_franchise_id' => $franchise->id,
+            'number' => 'C-'.bin2hex(random_bytes(3)),
+            'name' => '14 Maple',
+        ]));
+    }
+
+    private function job(Franchise $franchise, Customer $customer): Job
+    {
+        return $this->inTenant(fn () => Job::create([
+            'franchise_id' => $franchise->id,
+            'customer_id' => $customer->id,
+            'number' => 'J-'.bin2hex(random_bytes(3)),
+            'title' => 'Work',
+            'status' => 'scheduled',
+            'currency' => 'USD',
+        ]));
+    }
+
+    private function runOn(Franchise $franchise): InspectionRun
+    {
+        $seeded = $this->publishedDefinition();
+        $customer = $this->customer($franchise);
+        $job = $this->job($franchise, $customer);
+
+        return $this->inTenant(fn () => InspectionRun::create([
+            'user_id' => $this->alpha['admin']->id,
+            'customer_id' => $customer->id,
+            'job_id' => $job->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+            'inspection_definition_version_id' => $seeded['version']->id,
+            'scope_key' => ScopeKey::for($customer->id, $job->id),
+            'answers' => [],
+        ]));
+    }
+
+    public function test_a_branch_user_sees_only_runs_in_their_franchises(): void
+    {
+        [$second, $branch] = $this->secondBranch();
+        $this->runOn($this->alpha['franchise']);
+        $this->runOn($this->alpha['franchise']);
+        $this->runOn($second);
+
+        $payload = app(InspectionGlance::class)->resolve($branch, DashboardPeriod::for($branch), [])->toArray();
+        $inProgress = collect($payload['data']['slices'])->firstWhere('label', 'In progress');
+
+        $this->assertSame(1, $inProgress['total'] ?? null);
+    }
+
+    public function test_zero_inspections_is_a_sentence_not_slices(): void
+    {
+        $payload = app(InspectionGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+        )->toArray();
+
+        $this->assertTrue($payload['data']['empty']);
+        $this->assertSame('No inspections in reach.', $payload['data']['sentence']);
+    }
+
+    public function test_the_bars_ignore_the_dashboard_period(): void
+    {
+        $this->runOn($this->alpha['franchise']);
+
+        $week = app(InspectionGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'week'), []
+        )->toArray();
+        $year = app(InspectionGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'year'), []
+        )->toArray();
+
+        $this->assertSame($week['data']['slices'], $year['data']['slices']);
+    }
+}
