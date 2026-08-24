@@ -11,6 +11,7 @@ use App\Models\InventoryPurchaseOrderLine;
 use App\Models\InventoryReceive;
 use App\Models\InventoryVendor;
 use App\Models\User;
+use App\Support\Automations\EventEmitter;
 use App\Support\Inventory\InventoryFinancials;
 use App\Support\Inventory\InventoryMover;
 use App\Support\Inventory\InventoryPurchaseOrderStatus;
@@ -39,6 +40,7 @@ class InventoryPurchaseOrdersController extends Controller
         private readonly RecordNumberGenerator $numbers,
         private readonly InventoryMover $mover,
         private readonly TenantContext $tenant,
+        private readonly EventEmitter $events,
     ) {}
 
     /**
@@ -182,9 +184,31 @@ class InventoryPurchaseOrdersController extends Controller
             ]);
         }
 
-        $purchaseOrder->status = InventoryPurchaseOrderStatus::Open;
-        $purchaseOrder->ordered_on = $this->calendarDayForPo($purchaseOrder);
-        $purchaseOrder->save();
+        DB::transaction(function () use ($purchaseOrder) {
+            $purchaseOrder->status = InventoryPurchaseOrderStatus::Open;
+            $purchaseOrder->ordered_on = $this->calendarDayForPo($purchaseOrder);
+            $purchaseOrder->save();
+
+            $purchaseOrder->loadMissing('lines.item');
+            $seen = [];
+            foreach ($purchaseOrder->lines as $line) {
+                $item = $line->item;
+                if ($item === null) {
+                    continue;
+                }
+                $id = $item->getKey();
+                if (isset($seen[$id])) {
+                    continue;
+                }
+                $seen[$id] = true;
+                $this->events->emit('item.ordered', $item, [
+                    'after' => [
+                        'purchase_order_id' => $purchaseOrder->getKey(),
+                        'number' => $purchaseOrder->number,
+                    ],
+                ]);
+            }
+        });
 
         return response()->json([
             'data' => $this->presentOrder(

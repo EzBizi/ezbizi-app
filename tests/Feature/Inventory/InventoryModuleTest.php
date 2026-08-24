@@ -10,8 +10,8 @@ use Tests\TestCase;
 /**
  * Inventory — real module declaration (create, edit, delete, financials).
  *
- * Every trigger stays unraised until EventEmitter::emit('item.…') lands
- * (Task 12). item.low stays unraised for good — no sweep in this plan.
+ * Clock trigger item.low stays unraised (no sweep in this plan). The rest
+ * are raised from the write path; InventoryEventsTest watches the outbox.
  * Nothing a rule can do moves stock.
  */
 class InventoryModuleTest extends TestCase
@@ -61,19 +61,23 @@ class InventoryModuleTest extends TestCase
         );
     }
 
-    public function test_every_declared_trigger_is_item_prefixed_and_unraised(): void
+    public function test_only_item_low_stays_unraised(): void
     {
         $module = app(ModuleRegistry::class)->get(self::MODULE);
 
         $this->assertNotEmpty($module->triggers);
 
         $keys = [];
+        $notRaised = [];
         foreach ($module->triggers as $trigger) {
             $this->assertStringStartsWith('item.', $trigger->key);
-            $this->assertFalse($trigger->isRaised, $trigger->key);
+            if (! $trigger->isRaised) {
+                $notRaised[] = $trigger->key;
+            }
             $keys[] = $trigger->key;
         }
 
+        $this->assertSame(['item.low'], $notRaised);
         $this->assertSame(
             [
                 'item.created',

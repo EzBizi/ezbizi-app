@@ -17,6 +17,7 @@ use App\Models\InventoryTransfer;
 use App\Models\InventoryTransferLine;
 use App\Models\Job;
 use App\Models\User;
+use App\Support\Automations\EventEmitter;
 use App\Support\Numbering\RecordNumberGenerator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -38,11 +39,15 @@ use Illuminate\Validation\ValidationException;
  * Issue takes stock off a location. Job XOR a note; discontinued items
  * and closed locations are refused. The number is allocated in the same
  * transaction so a refused line does not consume IS-.
+ *
+ * Each posted movement emits the matching item.* event on the InventoryItem
+ * in the same transaction. last_cost on receive is not item.updated.
  */
 final class InventoryMover
 {
     public function __construct(
         private readonly RecordNumberGenerator $numbers,
+        private readonly EventEmitter $events,
     ) {}
 
     public function adjust(
@@ -80,7 +85,7 @@ final class InventoryMover
             $balance->qty_on_hand = $counted;
             $balance->save();
 
-            return InventoryAdjustment::create([
+            $adjustment = InventoryAdjustment::create([
                 'location_id' => $location->getKey(),
                 'item_id' => $item->getKey(),
                 'qty_before' => $before,
@@ -89,6 +94,13 @@ final class InventoryMover
                 'adjusted_on' => $this->calendarDayOn($location),
                 'user_id' => $user->getKey(),
             ]);
+
+            $this->events->emit('item.adjusted', $item, [
+                'before' => ['qty_on_hand' => $before],
+                'after' => ['qty_on_hand' => $counted],
+            ]);
+
+            return $adjustment;
         });
     }
 
@@ -131,6 +143,14 @@ final class InventoryMover
                     'transfer_id' => $transfer->getKey(),
                     'item_id' => $line['item']->getKey(),
                     'qty' => $qty,
+                ]);
+
+                $this->events->emit('item.transferred', $line['item'], [
+                    'after' => [
+                        'qty' => $qty,
+                        'from_location_id' => $from->getKey(),
+                        'to_location_id' => $to->getKey(),
+                    ],
                 ]);
             }
 
@@ -222,6 +242,14 @@ final class InventoryMover
                     'purchase_order_line_id' => $poLine->getKey(),
                     'qty' => $qty,
                 ]);
+
+                $this->events->emit('item.received', $item, [
+                    'after' => [
+                        'qty' => $qty,
+                        'location_id' => $location->getKey(),
+                        'purchase_order_id' => $order->getKey(),
+                    ],
+                ]);
             }
 
             $stillOwes = $lockedLines->contains(
@@ -237,6 +265,22 @@ final class InventoryMover
             if (! $stillOwes) {
                 $order->status = InventoryPurchaseOrderStatus::Received;
                 $order->save();
+
+                $seen = [];
+                foreach ($lockedLines as $poLine) {
+                    $poLine->loadMissing('item');
+                    $item = $poLine->item ?? $poLine->item()->firstOrFail();
+                    $id = $item->getKey();
+                    if (isset($seen[$id])) {
+                        continue;
+                    }
+                    $seen[$id] = true;
+                    $this->events->emit('item.purchase_received', $item, [
+                        'after' => [
+                            'purchase_order_id' => $order->getKey(),
+                        ],
+                    ]);
+                }
             }
 
             return $receive;
@@ -309,6 +353,15 @@ final class InventoryMover
                     'issue_id' => $issue->getKey(),
                     'item_id' => $item->getKey(),
                     'qty' => $qty,
+                ]);
+
+                $this->events->emit('item.issued', $item, [
+                    'after' => [
+                        'qty' => $qty,
+                        'location_id' => $location->getKey(),
+                        'job_id' => $job?->getKey(),
+                        'note' => $note,
+                    ],
                 ]);
             }
 

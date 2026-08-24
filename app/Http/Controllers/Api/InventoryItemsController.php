@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\InventoryItem;
 use App\Models\User;
+use App\Support\Automations\EventEmitter;
 use App\Support\Inventory\InventoryFinancials;
 use App\Support\Inventory\InventoryItemStatus;
 use App\Support\Inventory\InventoryUnit;
@@ -31,9 +32,15 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class InventoryItemsController extends Controller
 {
+    /** @var list<string> */
+    private const UPDATED_FIELDS = [
+        'sku', 'name', 'unit', 'status', 'reorder_at', 'company_id', 'franchise_id',
+    ];
+
     public function __construct(
         private readonly RecordNumberGenerator $numbers,
         private readonly TenantContext $tenant,
+        private readonly EventEmitter $events,
     ) {}
 
     /**
@@ -148,7 +155,7 @@ class InventoryItemsController extends Controller
                 $franchise ?? $company ?? $request->user()->organization,
             );
 
-            return InventoryItem::create([
+            $item = InventoryItem::create([
                 'company_id' => $company?->getKey(),
                 'franchise_id' => $franchise?->getKey(),
                 'number' => $number,
@@ -158,6 +165,15 @@ class InventoryItemsController extends Controller
                 'status' => InventoryItemStatus::Active,
                 'reorder_at' => $input['reorder_at'] ?? null,
             ]);
+
+            $this->events->emit('item.created', $item, [
+                'after' => $this->scalars($item->only([
+                    'sku', 'name', 'unit', 'status', 'reorder_at',
+                    'company_id', 'franchise_id',
+                ])),
+            ]);
+
+            return $item;
         });
 
         return response()->json(
@@ -214,8 +230,24 @@ class InventoryItemsController extends Controller
             );
         }
 
-        $item->fill($input);
-        $item->save();
+        DB::transaction(function () use ($item, $input) {
+            $item->fill($input);
+
+            $changed = $item->getDirty();
+            $before = array_intersect_key($item->getOriginal(), $changed);
+
+            $item->save();
+
+            $updated = array_intersect_key($changed, array_flip(self::UPDATED_FIELDS));
+            if ($updated === []) {
+                return;
+            }
+
+            $this->events->emit('item.updated', $item, [
+                'before' => $this->scalars(array_intersect_key($before, $updated)),
+                'after' => $this->scalars($updated),
+            ]);
+        });
 
         return response()->json([
             'data' => $this->present($item->fresh(), $request->user()),
@@ -380,5 +412,20 @@ class InventoryItemsController extends Controller
         }
 
         return InventoryFinancials::withoutCosts($row);
+    }
+
+    /** @param  array<string, mixed>  $attributes */
+    private function scalars(array $attributes): array
+    {
+        return array_map(fn (mixed $value) => $this->scalar($value), $attributes);
+    }
+
+    private function scalar(mixed $value): mixed
+    {
+        if ($value instanceof \BackedEnum) {
+            return $value->value;
+        }
+
+        return $value;
     }
 }
