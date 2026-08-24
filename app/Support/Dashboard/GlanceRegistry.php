@@ -3,6 +3,7 @@
 namespace App\Support\Dashboard;
 
 use App\Models\User;
+use App\Support\Dashboard\Glances\JobsGlance;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Tenancy\TenantContext;
 
@@ -57,11 +58,14 @@ class GlanceRegistry
     /**
      * Live glance classes, keyed later by each class's key().
      *
-     * Empty in Task 1 — Jobs / HR / … register here in later tasks.
+     * Coming-soon placeholders stay in COMING_SOON; a live class here wins on
+     * the same key when all() merges.
      *
      * @var class-string<Glance>[]
      */
-    private const GLANCES = [];
+    private const GLANCES = [
+        JobsGlance::class,
+    ];
 
     public function __construct(
         private readonly ModuleAvailability $availability,
