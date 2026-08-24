@@ -15,10 +15,11 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Jobs dashboard glance (spec § Jobs — pie).
+ * Jobs dashboard glance (spec § Jobs — pie, plus a revenue line).
  *
- * Pie of statuses under the caller's reach, revenue as sentences per currency
- * over the dashboard period, upcoming count when something is scheduled.
+ * Pie of statuses under the caller's reach (snapshot), revenue as sentences
+ * and a per-currency line over the dashboard period, plus today / upcoming
+ * when something is scheduled.
  */
 class JobsGlanceTest extends TestCase
 {
@@ -146,5 +147,59 @@ class JobsGlanceTest extends TestCase
         $week = app(JobsGlance::class)->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'week'), [])->toArray();
         $year = app(JobsGlance::class)->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'year'), [])->toArray();
         $this->assertSame($week['data']['slices'], $year['data']['slices']);
+    }
+
+    public function test_jobs_scheduled_for_today_are_spoken(): void
+    {
+        $tz = $this->alpha['franchise']->timezone ?: 'UTC';
+        $todayNoon = now($tz)->copy()->startOfDay()->addHours(12)->format('Y-m-d H:i:s');
+        $tomorrowNoon = now($tz)->copy()->addDay()->startOfDay()->addHours(12)->format('Y-m-d H:i:s');
+
+        $this->job($this->alpha['franchise'], ['scheduled_for' => $todayNoon]);
+        $this->job($this->alpha['franchise'], ['scheduled_for' => $tomorrowNoon]);
+
+        $payload = app(JobsGlance::class)->resolve(
+            $this->alpha['admin'],
+            DashboardPeriod::for($this->alpha['admin']),
+            [],
+        )->toArray();
+
+        $this->assertContains('1 job today.', $payload['data']['sentences'] ?? []);
+    }
+
+    public function test_line_series_is_revenue_minor_units_per_currency(): void
+    {
+        $this->job($this->alpha['franchise'], ['amount_minor' => 10000, 'currency' => 'USD', 'status' => 'completed']);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 20000, 'currency' => 'USD', 'status' => 'completed']);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 5000, 'currency' => 'CAD', 'status' => 'completed']);
+
+        $payload = app(JobsGlance::class)->resolve(
+            $this->alpha['admin'],
+            DashboardPeriod::for($this->alpha['admin'], 'year'),
+            ['earned_statuses' => ['completed']],
+        )->toArray();
+
+        $series = $payload['data']['series'] ?? [];
+        $this->assertSame(['CAD', 'USD'], array_column($series, 'label'));
+
+        $sums = [];
+        foreach ($series as $row) {
+            $sums[$row['label']] = array_sum(array_column($row['points'], 'value'));
+        }
+        $this->assertSame(30000, $sums['USD']);
+        $this->assertSame(5000, $sums['CAD']);
+    }
+
+    public function test_allowed_presentations_include_line(): void
+    {
+        $this->job($this->alpha['franchise']);
+        $payload = app(JobsGlance::class)->resolve(
+            $this->alpha['admin'],
+            DashboardPeriod::for($this->alpha['admin']),
+            [],
+        )->toArray();
+
+        $this->assertContains('line', $payload['allowed_presentations']);
+        $this->assertSame('pie', $payload['presentation']);
     }
 }

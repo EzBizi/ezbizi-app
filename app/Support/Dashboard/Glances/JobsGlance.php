@@ -11,13 +11,15 @@ use App\Support\Dashboard\Widgets\JobsByStatus;
 use App\Support\Dashboard\Widgets\Revenue;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Support\Carbon;
 
 /**
- * Jobs box: status pie (snapshot) plus revenue and upcoming as sentences.
+ * Jobs box: status pie (snapshot) plus a per-currency revenue line.
  *
  * Slices reuse JobsByStatus so the vocabulary stays the organization's own.
- * Revenue is never summed across currencies; unconfigured statuses stay a
- * prompt rather than a silent zero.
+ * Revenue is never summed across currencies and never divided; unconfigured
+ * statuses stay a prompt rather than a silent zero. Today and upcoming are
+ * sentences on the same box.
  */
 final class JobsGlance implements Glance
 {
@@ -43,7 +45,7 @@ final class JobsGlance implements Glance
 
     public function allowedPresentations(): array
     {
-        return ['pie', 'bar', 'text'];
+        return ['pie', 'bar', 'line', 'text'];
     }
 
     public function defaultPresentation(): string
@@ -121,10 +123,28 @@ final class JobsGlance implements Glance
                             ? "1 job earned in {$currency}."
                             : "{$jobs} jobs earned in {$currency}.";
                     }
+                    // Line reads series; pie/bar keep the status slices above.
+                    $data['series'] = $this->revenueSeries($user, $period, $earned);
                 }
             }
 
-            $upcoming = $this->upcomingCount($user);
+            $today = 0;
+            $upcoming = 0;
+            foreach ($this->scheduledInReach($user) as $job) {
+                if ($this->isToday($job)) {
+                    $today++;
+                }
+                if ($this->isUpcoming($job)) {
+                    $upcoming++;
+                }
+            }
+
+            if ($today === 1) {
+                $sentences[] = '1 job today.';
+            } elseif ($today > 1) {
+                $sentences[] = "{$today} jobs today.";
+            }
+
             if ($upcoming === 1) {
                 $sentences[] = '1 job coming up.';
             } elseif ($upcoming > 1) {
@@ -157,19 +177,27 @@ final class JobsGlance implements Glance
     }
 
     /**
-     * Same “still upcoming” rule as UpcomingJobs: scheduled_for compared to
-     * now() in the franchise timezone (UTC when the place has none).
+     * Reachable jobs that have a wall time, with franchise TZ for today /
+     * upcoming. Same load for both so a job later today can count twice.
+     *
+     * @return \Illuminate\Support\Collection<int, Job>
      */
-    private function upcomingCount(User $user): int
+    private function scheduledInReach(User $user)
     {
         return Job::query()
             ->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
             ->whereNotNull('scheduled_for')
             ->with(['franchise:id,timezone'])
             ->orderBy('scheduled_for')
-            ->get()
-            ->filter(fn (Job $job) => $this->isUpcoming($job))
-            ->count();
+            ->get();
+    }
+
+    private function isToday(Job $job): bool
+    {
+        $tz = $job->franchise?->timezone ?: 'UTC';
+        $wall = $job->scheduled_for;
+
+        return $wall !== null && $wall->toDateString() === now($tz)->toDateString();
     }
 
     private function isUpcoming(Job $job): bool
@@ -178,5 +206,81 @@ final class JobsGlance implements Glance
         $wall = $job->scheduled_for;
 
         return $wall !== null && $wall->gte(now($tz));
+    }
+
+    /**
+     * One series per currency; value is the sum of amount_minor in each
+     * DashboardPeriod bucket. Currencies are never added together.
+     *
+     * @param  list<string>  $statuses
+     * @return list<array{label: string, points: list<array{at: string, value: int}>}>
+     */
+    private function revenueSeries(User $user, DashboardPeriod $period, array $statuses): array
+    {
+        // Period bounds are wall times in the view timezone; created_at is
+        // stored UTC. Bind UTC instants so "now" is not compared as a naive
+        // clock string earlier than the row.
+        $from = $period->startsOn->copy()->utc();
+        $to = $period->endsOn->copy()->utc();
+
+        $jobs = Job::query()
+            ->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
+            ->whereIn('status', $statuses)
+            ->where('created_at', '>=', $from)
+            ->where('created_at', '<=', $to)
+            ->get(['created_at', 'currency', 'amount_minor']);
+
+        $empty = $this->emptyBuckets($period);
+        $byCurrency = [];
+
+        foreach ($jobs as $job) {
+            $at = $job->created_at;
+            if (! $at instanceof Carbon) {
+                continue;
+            }
+            $currency = (string) $job->currency;
+            if (! isset($byCurrency[$currency])) {
+                $byCurrency[$currency] = $empty;
+            }
+            $bucket = $period->bucket($at);
+            $byCurrency[$currency][$bucket] = ($byCurrency[$currency][$bucket] ?? 0)
+                + (int) $job->amount_minor;
+        }
+
+        ksort($byCurrency);
+
+        $series = [];
+        foreach ($byCurrency as $currency => $buckets) {
+            $points = [];
+            foreach ($buckets as $at => $value) {
+                $points[] = ['at' => $at, 'value' => $value];
+            }
+            $series[] = [
+                'label' => $currency,
+                'points' => $points,
+            ];
+        }
+
+        return $series;
+    }
+
+    /**
+     * Every axis key from startsOn through endsOn, zeros included so the line
+     * does not skip quiet days / weeks / months.
+     *
+     * @return array<string, int>
+     */
+    private function emptyBuckets(DashboardPeriod $period): array
+    {
+        $out = [];
+        $cursor = $period->startsOn->copy()->startOfDay();
+        $end = $period->endsOn->copy()->startOfDay();
+
+        while ($cursor->lte($end)) {
+            $out[$period->bucket($cursor)] = 0;
+            $cursor->addDay();
+        }
+
+        return $out;
     }
 }
