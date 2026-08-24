@@ -33,8 +33,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Enter your authenticator code'), findsNothing);
-    expect(find.text('Organizations'), findsOneWidget);
     expect(find.text('Health'), findsOneWidget);
+    expect(find.text('Continue'), findsNothing);
   });
 }
 
@@ -115,7 +115,18 @@ Future<void> _pump(WidgetTester tester) async {
       return http.Response(
         jsonEncode({
           'data': [
-            {'id': 'org-1', 'name': 'Alpha', 'is_active': true},
+            {
+              'id': 'org-1',
+              'name': 'Alpha',
+              'is_active': true,
+              'is_read_only': false,
+              'is_demo': false,
+              'counts': {
+                'companies': 1,
+                'franchises': 1,
+                'users': 1,
+              },
+            },
           ],
         }),
         200,
