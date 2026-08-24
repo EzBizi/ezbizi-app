@@ -15,6 +15,9 @@ final class FakeTwilioGateway implements TwilioGateway
 
     public bool $lookupEnabled = true;
 
+    /** When set, createTwimlApp throws this message (connect-order tests). */
+    public ?string $failCreateTwimlAppWith = null;
+
     public function verifyAccount(string $accountSid, string $apiKeySid, string $apiSecret): array
     {
         $this->record(__FUNCTION__, func_get_args());
@@ -54,6 +57,10 @@ final class FakeTwilioGateway implements TwilioGateway
         ?string $statusCallback = null,
     ): array {
         $this->record(__FUNCTION__, func_get_args());
+
+        if ($this->failCreateTwimlAppWith !== null) {
+            throw new RuntimeException($this->failCreateTwimlAppWith);
+        }
 
         return ['sid' => 'AP'.bin2hex(random_bytes(16))];
     }

@@ -102,4 +102,35 @@ class PhoneConnectionTest extends TestCase
                 'EzBizi has not been given a Twilio account to create phone service with.',
             );
     }
+
+    /**
+     * A TwiML App failure must not roll back the saved connection: the row is
+     * what Settings uses to disconnect orphaned Twilio resources. The old
+     * in-transaction order left nothing to clean up.
+     */
+    public function test_a_failed_twiml_app_still_leaves_a_disconnectable_connection(): void
+    {
+        $t = $this->provisionTenant();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+        $gateway->failCreateTwimlAppWith = 'Twilio refused the voice application.';
+
+        $this->signedInAs($editor)->postJson('/api/v1/phone/connections', [
+            'scope_type' => 'organization',
+            'scope_id' => $t['org']->id,
+            'kind' => 'byo',
+            'account_sid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'api_key_sid' => 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            'api_secret' => 'SK-secret-kept',
+        ])->assertStatus(422);
+
+        $row = $this->inTenant($t['org'], fn () => PhoneConnection::query()->first());
+        $this->assertNotNull($row);
+        $this->assertSame('ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', $row->account_sid);
+        $this->assertNull($row->twiml_app_sid);
+        $this->assertContains('verifyAccount', array_column($gateway->calls, 'method'));
+        $this->assertContains('createTwimlApp', array_column($gateway->calls, 'method'));
+    }
 }

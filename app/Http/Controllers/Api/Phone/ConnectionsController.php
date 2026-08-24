@@ -10,7 +10,6 @@ use App\Support\Phone\TwilioGateway;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -84,55 +83,28 @@ class ConnectionsController extends Controller
             ], Response::HTTP_CONFLICT);
         }
 
+        // Twilio HTTP must not sit inside a DB transaction: a rolled-back local
+        // row would orphan a real subaccount / TwiML App with nothing to disconnect.
+        // Provision first, persist a disconnectable row, then attach the App.
         try {
-            $connection = DB::transaction(function () use ($input, $company) {
-                if ($input['kind'] === PhoneConnection::KIND_BYO) {
-                    $this->twilio->verifyAccount(
-                        $input['account_sid'],
-                        $input['api_key_sid'],
-                        $input['api_secret'],
-                    );
-
-                    $accountSid = $input['account_sid'];
-                    $apiKeySid = $input['api_key_sid'];
-                    $apiSecret = $input['api_secret'];
-                } else {
-                    $friendly = $company?->name ?? (string) $this->tenant->get()?->name;
-                    $sub = $this->twilio->createSubaccount($friendly);
-                    $key = $this->twilio->createApiKey($sub['account_sid'], 'EzBizi');
-                    $accountSid = $sub['account_sid'];
-                    $apiKeySid = $key['sid'];
-                    $apiSecret = $key['secret'];
-                }
-
-                $connection = new PhoneConnection([
-                    'organization_id' => $this->tenant->idOrFail(),
-                    'scope_type' => $input['scope_type'],
-                    'scope_id' => $input['scope_id'],
-                    'kind' => $input['kind'],
-                    'account_sid' => $accountSid,
-                    'api_key_sid' => $apiKeySid,
-                    'status' => PhoneConnection::STATUS_CONNECTED,
-                ]);
-                $connection->forceFill(['credentials' => $apiSecret])->save();
-
-                $host = rtrim((string) config('app.url'), '/');
-                $voiceUrl = $host.'/api/v1/phone/voice/'.$connection->organization_id.'/'.$connection->id;
-                $statusUrl = $host.'/api/v1/phone/status/'.$connection->organization_id.'/'.$connection->id;
-
-                $app = $this->twilio->createTwimlApp(
-                    $accountSid,
-                    $apiKeySid,
-                    $apiSecret,
-                    'EzBizi Phone',
-                    $voiceUrl,
-                    $statusUrl,
+            if ($input['kind'] === PhoneConnection::KIND_BYO) {
+                $this->twilio->verifyAccount(
+                    $input['account_sid'],
+                    $input['api_key_sid'],
+                    $input['api_secret'],
                 );
 
-                $connection->update(['twiml_app_sid' => $app['sid']]);
-
-                return $connection->fresh();
-            });
+                $accountSid = $input['account_sid'];
+                $apiKeySid = $input['api_key_sid'];
+                $apiSecret = $input['api_secret'];
+            } else {
+                $friendly = $company?->name ?? (string) $this->tenant->get()?->name;
+                $sub = $this->twilio->createSubaccount($friendly);
+                $key = $this->twilio->createApiKey($sub['account_sid'], 'EzBizi');
+                $accountSid = $sub['account_sid'];
+                $apiKeySid = $key['sid'];
+                $apiSecret = $key['secret'];
+            }
         } catch (RuntimeException $e) {
             if (str_contains($e->getMessage(), 'Twilio account to create phone service')) {
                 return response()->json(['message' => self::PLATFORM_GAP], Response::HTTP_NOT_IMPLEMENTED);
@@ -145,7 +117,42 @@ class ConnectionsController extends Controller
             ]);
         }
 
-        return response()->json(['data' => $this->row($connection)], Response::HTTP_CREATED);
+        $connection = new PhoneConnection([
+            'organization_id' => $this->tenant->idOrFail(),
+            'scope_type' => $input['scope_type'],
+            'scope_id' => $input['scope_id'],
+            'kind' => $input['kind'],
+            'account_sid' => $accountSid,
+            'api_key_sid' => $apiKeySid,
+            'status' => PhoneConnection::STATUS_CONNECTED,
+        ]);
+        $connection->forceFill(['credentials' => $apiSecret])->save();
+
+        $host = rtrim((string) config('app.url'), '/');
+        $voiceUrl = $host.'/api/v1/phone/voice/'.$connection->organization_id.'/'.$connection->id;
+        $statusUrl = $host.'/api/v1/phone/status/'.$connection->organization_id.'/'.$connection->id;
+
+        try {
+            $app = $this->twilio->createTwimlApp(
+                $accountSid,
+                $apiKeySid,
+                $apiSecret,
+                'EzBizi Phone',
+                $voiceUrl,
+                $statusUrl,
+            );
+        } catch (RuntimeException $e) {
+            // Row stays so Settings can disconnect / finish; do not roll it back.
+            throw ValidationException::withMessages([
+                'account_sid' => $e->getMessage() !== ''
+                    ? $e->getMessage()
+                    : 'Twilio could not create the voice application for this connection.',
+            ]);
+        }
+
+        $connection->update(['twiml_app_sid' => $app['sid']]);
+
+        return response()->json(['data' => $this->row($connection->fresh())], Response::HTTP_CREATED);
     }
 
     /** DELETE /api/v1/phone/connections/{connection} */
