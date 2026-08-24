@@ -51,6 +51,26 @@ class PhoneNumberTest extends TestCase
         $this->assertContains('searchAvailable', $methods);
         $this->assertContains('purchaseIncoming', $methods);
 
+        $host = rtrim((string) config('app.url'), '/');
+        $purchase = collect($gateway->calls)->firstWhere('method', 'purchaseIncoming');
+        $this->assertNotNull($purchase);
+        $params = $purchase['args'][2] ?? [];
+        $this->assertSame(
+            $host.'/api/v1/phone/voice/'.$t['org']->id.'/'.$connection->id,
+            $params['voiceUrl'] ?? null,
+        );
+        $this->assertSame(
+            $host.'/api/v1/phone/sms/'.$t['org']->id.'/'.$connection->id,
+            $params['smsUrl'] ?? null,
+        );
+        $this->assertSame(
+            $host.'/api/v1/phone/status/'.$t['org']->id.'/'.$connection->id,
+            $params['statusCallback'] ?? null,
+        );
+        $this->assertSame('POST', $params['voiceMethod'] ?? null);
+        $this->assertSame('POST', $params['smsMethod'] ?? null);
+        $this->assertSame('POST', $params['statusCallbackMethod'] ?? null);
+
         $row = $this->inTenant($t['org'], fn () => PhoneNumber::query()->first());
         $this->assertNotNull($row);
         $this->assertSame($connection->id, $row->connection_id);

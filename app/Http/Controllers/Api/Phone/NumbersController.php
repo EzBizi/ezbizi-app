@@ -77,7 +77,19 @@ class NumbersController extends Controller
             ? (string) $input['e164']
             : $this->pickAvailable($connection, (string) $input['area_code']);
 
-        $purchased = $this->twilio->purchaseIncoming($connection, $phoneNumber);
+        $host = rtrim((string) config('app.url'), '/');
+        $base = $host.'/api/v1/phone';
+        $orgId = $connection->organization_id;
+        $connectionId = $connection->id;
+
+        $purchased = $this->twilio->purchaseIncoming($connection, $phoneNumber, [
+            'voiceUrl' => $base.'/voice/'.$orgId.'/'.$connectionId,
+            'voiceMethod' => 'POST',
+            'smsUrl' => $base.'/sms/'.$orgId.'/'.$connectionId,
+            'smsMethod' => 'POST',
+            'statusCallback' => $base.'/status/'.$orgId.'/'.$connectionId,
+            'statusCallbackMethod' => 'POST',
+        ]);
 
         $number = PhoneNumber::query()->create([
             'organization_id' => $this->tenant->idOrFail(),
