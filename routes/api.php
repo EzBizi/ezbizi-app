@@ -44,6 +44,7 @@ use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
+use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
@@ -541,6 +542,12 @@ Route::prefix('v1')
         Route::get('phone/connections', [PhoneConnectionsController::class, 'index']);
         Route::post('phone/connections', [PhoneConnectionsController::class, 'store']);
         Route::delete('phone/connections/{connection}', [PhoneConnectionsController::class, 'destroy']);
+
+        // Numbers hang on org / company / franchise. List is grant ∩ reach ∩
+        // view-scope; buy/release need phone.edit and a resolved Twilio connection.
+        Route::get('phone/numbers', [PhoneNumbersController::class, 'index']);
+        Route::post('phone/numbers', [PhoneNumbersController::class, 'store']);
+        Route::delete('phone/numbers/{number}', [PhoneNumbersController::class, 'destroy']);
 
         // ── Inspection Builder ───────────────────────────────────
         //
