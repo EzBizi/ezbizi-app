@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\InventoryItem;
 use App\Models\Job;
 use App\Models\Organization;
 use App\Models\User;
@@ -1097,13 +1098,83 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
             ),
 
+            /*
+             * Inventory — the register, buying, and issuing. Quantity lives on
+             * (item, location); movements post balances. The tab is one list
+             * with chips; money never travels with edit.
+             *
+             * Extra action beyond CRUD:
+             *   financials — see and change costs
+             *
+             * Receive, transfer, issue, and adjust travel with `edit`.
+             *
+             * Every trigger is raised from the write path except item.low,
+             * which stays unraised — no sweep in this plan. ModuleRegistryTest
+             * holds those claims to the source.
+             *
+             * No automation action moves stock: a rule that could issue or
+             * receive without a person is the same objection Email records
+             * against sending.
+             *
+             * Subject prefix is declared `item` — class_basename(InventoryItem)
+             * is inventoryitem, and boot would refuse every item.* trigger.
+             */
             new ModuleDefinition(
                 key:     'inventory',
                 label:   'Inventory',
-                actions: ['view'],
-                automationExemptBecause:
-                    'The stock register does not exist yet, so there is no event '
-                    .'a rule could fire on and nothing a rule could change.',
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'financials'],
+                subject: new AutomationSubject(InventoryItem::class, 'Item', key: 'item'),
+                triggers: [
+                    new TriggerDefinition(
+                        key:   'item.created',
+                        label: 'Item added',
+                        description: 'A catalogue item was saved for the first time.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'item.updated',
+                        label: 'Item updated',
+                        description: 'Identity, status, or reorder point was saved. A movement '
+                            .'does not raise this — those have their own events.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'item.received',
+                        label: 'Stock received',
+                        description: 'Stock arrived against a purchase order and the balance '
+                            .'went up.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'item.issued',
+                        label: 'Stock issued',
+                        description: 'Stock left a location, for a job or with a note.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'item.transferred',
+                        label: 'Stock transferred',
+                        description: 'Stock moved from one location to another in a single save.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'item.adjusted',
+                        label: 'Count adjusted',
+                        description: 'On-hand at a location was counted as a new quantity.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'item.ordered',
+                        label: 'Purchase order opened',
+                        description: 'A purchase order left draft and is now open to receive.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'item.purchase_received',
+                        label: 'Purchase order fully received',
+                        description: 'Every line on a purchase order has been fully received.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'item.low',
+                        label: 'Stock is low',
+                        description: 'On-hand at a visible location is at or below the reorder '
+                            .'point. No sweep raises this yet.',
+                        isRaised: false,
+                    ),
+                ],
             ),
 
             new ModuleDefinition(

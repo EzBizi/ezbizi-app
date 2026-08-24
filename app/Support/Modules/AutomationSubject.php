@@ -30,6 +30,8 @@ use InvalidArgumentException;
  */
 final class AutomationSubject
 {
+    private readonly string $keyPrefix;
+
     public function __construct(
         /** @var class-string<Model> the record type this module's events carry */
         public readonly string $model,
@@ -40,6 +42,14 @@ final class AutomationSubject
          * rule may set on a job".
          */
         public readonly string $label,
+        /**
+         * Trigger-key prefix when the class name is not the word people use.
+         *
+         * Default is `strtolower(class_basename($model))`, which is how Job
+         * becomes `job` and Vehicle becomes `vehicle`. InventoryItem would
+         * become `inventoryitem`; the record is an item, so pass `item`.
+         */
+        ?string $key = null,
     ) {
         if (! is_subclass_of($model, Model::class)) {
             throw new InvalidArgumentException(
@@ -54,18 +64,32 @@ final class AutomationSubject
                 .'would say — "Job", not "job" and not "jobs.subject".'
             );
         }
+
+        $derived = strtolower(class_basename($model));
+        if ($key === null) {
+            $this->keyPrefix = $derived;
+        } elseif (! preg_match('/^[a-z][a-z0-9_]*$/', $key)) {
+            throw new InvalidArgumentException(
+                "Subject key '{$key}' for '{$model}' must be lower_snake_case — trigger "
+                .'keys begin with it.'
+            );
+        } else {
+            $this->keyPrefix = $key;
+        }
     }
 
     /**
      * `job`, `customer` — the same string the trigger keys are prefixed with,
-     * and the same one `ActionRunner::updateEventFor` builds `job.updated` from.
+     * and the same one `ActionRunner::updateEventFor` builds `job.updated` from
+     * when the class name is that word.
      *
-     * Derived rather than declared, because a declared copy could disagree with
-     * the keys it is supposed to match, and there would be no way to tell which
-     * one was wrong.
+     * Derived from the model unless a prefix is declared, because a declared
+     * copy that silently disagreed with the class would have no way to tell
+     * which one was wrong. The declaration exists for compound class names:
+     * InventoryItem keys as `item`, not `inventoryitem`.
      */
     public function key(): string
     {
-        return strtolower(class_basename($this->model));
+        return $this->keyPrefix;
     }
 }

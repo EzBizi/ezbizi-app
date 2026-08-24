@@ -2,12 +2,18 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\AuditEvent;
+use App\Models\Company;
 use App\Models\Customer;
+use App\Models\InventoryVendor;
+use App\Models\PlatformStaff;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
+use Symfony\Component\Finder\Finder;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -70,7 +76,7 @@ class DataInventoryTest extends TestCase
     public function test_the_counts_are_this_organizations_only(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $beta  = $this->provisionTenant('Beta');
+        $beta = $this->provisionTenant('Beta');
 
         $this->inTenant($beta['org'], fn () => Customer::create([
             'owning_franchise_id' => $beta['franchise']->id,
@@ -97,7 +103,7 @@ class DataInventoryTest extends TestCase
 
         $this->assertGreaterThan(0, $events['rows']);
         $this->assertLessThan(
-            $this->inTenant($alpha['org'], fn () => \App\Models\AuditEvent::count()) + 1,
+            $this->inTenant($alpha['org'], fn () => AuditEvent::count()) + 1,
             $events['rows'],
             'The audit count looks like it spans organizations.',
         );
@@ -222,7 +228,15 @@ class DataInventoryTest extends TestCase
              * sole trader those are the same, and if EzBizi ever markets at
              * one-person businesses this belongs back in the inventory.
              */
-            \App\Models\Company::class,
+            Company::class,
+
+            /*
+             * A VENDOR IS NOT A PERSON. Inventory spec §8.3: who the organization
+             * buys from. `phone` and `email` are the supplier's contact, the same
+             * way Company is exempt. W-9 and terms hang off the row as files;
+             * Attachment already states those.
+             */
+            InventoryVendor::class,
 
             /*
              * Same five columns as a company, for the same reason: this is the
@@ -240,27 +254,27 @@ class DataInventoryTest extends TestCase
              * address is not in that answer. It is our own obligation and a
              * different register.
              */
-            \App\Models\PlatformStaff::class,
+            PlatformStaff::class,
         ];
 
         $missing = [];
 
-        foreach ((new \Symfony\Component\Finder\Finder)->files()->in(app_path('Models'))->name('*.php') as $file) {
+        foreach ((new Finder)->files()->in(app_path('Models'))->name('*.php') as $file) {
             $class = 'App\\Models\\'.$file->getFilenameWithoutExtension();
 
-            if (! class_exists($class) || ! is_subclass_of($class, \Illuminate\Database\Eloquent\Model::class)) {
+            if (! class_exists($class) || ! is_subclass_of($class, Model::class)) {
                 continue;
             }
 
             $model = new $class;
             $table = $model->getTable();
 
-            if (! \Illuminate\Support\Facades\Schema::hasTable($table)) {
+            if (! Schema::hasTable($table)) {
                 continue;
             }
 
-            $columns = \Illuminate\Support\Facades\Schema::getColumnListing($table);
-            $found   = array_values(array_intersect($tells, $columns));
+            $columns = Schema::getColumnListing($table);
+            $found = array_values(array_intersect($tells, $columns));
 
             if ($found === [] || in_array($class, $exempt, true)) {
                 continue;
@@ -345,13 +359,13 @@ class DataInventoryTest extends TestCase
 
             $table = (new $class)->getTable();
 
-            if (! \Illuminate\Support\Facades\Schema::hasTable($table)) {
+            if (! Schema::hasTable($table)) {
                 continue;
             }
 
             $present = array_intersect(
                 self::PERSON_SHAPED_COLUMNS,
-                \Illuminate\Support\Facades\Schema::getColumnListing($table),
+                Schema::getColumnListing($table),
             );
 
             $declared = [];
@@ -368,7 +382,7 @@ class DataInventoryTest extends TestCase
         sort($undeclared);
 
         $this->assertSame([], $undeclared, sprintf(
-            "These columns describe a person and are not named by any entry on the model "
+            'These columns describe a person and are not named by any entry on the model '
             ."that owns them:\n  %s\nThe table is already in the §9 inventory, so nothing "
             .'else will notice: the answer to "what do you hold about me" omits the column '
             .'and the purge, which reads the same declarations as its instructions, walks '
@@ -428,11 +442,11 @@ class DataInventoryTest extends TestCase
 
             $table = (new $class)->getTable();
 
-            if (! \Illuminate\Support\Facades\Schema::hasTable($table)) {
+            if (! Schema::hasTable($table)) {
                 continue;
             }
 
-            $columns = \Illuminate\Support\Facades\Schema::getColumnListing($table);
+            $columns = Schema::getColumnListing($table);
 
             foreach ($class::personalDataHeld() as $entry) {
                 if ($entry->tenantDefined) {

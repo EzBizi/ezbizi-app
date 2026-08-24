@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Attachment;
+use App\Models\InventoryPurchaseOrder;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\Attachables;
 use App\Support\Files\FileStore;
@@ -64,7 +65,7 @@ class AttachmentsController extends Controller
     {
         $subject = $this->subject($request);
 
-        $this->authorize('view', $subject);
+        $this->authorizeAttachment('view', $subject);
 
         return response()->json([
             'data' => $subject->attachments()->with('uploadedBy:id,name')->get()
@@ -92,7 +93,7 @@ class AttachmentsController extends Controller
 
         $subject = $this->subject($request);
 
-        $this->authorize('update', $subject);
+        $this->authorizeAttachment('update', $subject);
 
         $request->validate(
             $this->limits->rulesFor('file'),
@@ -174,7 +175,7 @@ class AttachmentsController extends Controller
     {
         $subject = $this->subjectOf($attachment);
 
-        $this->authorize('view', $subject);
+        $this->authorizeAttachment('view', $subject);
 
         /*
          * SOME FILES ARE A REVEAL, and this was the second door to the room.
@@ -227,7 +228,7 @@ class AttachmentsController extends Controller
     {
         $subject = $this->subjectOf($attachment);
 
-        $this->authorize('update', $subject);
+        $this->authorizeAttachment('update', $subject);
 
         /*
          * Some files are not uploads — they are the record.
@@ -284,6 +285,29 @@ class AttachmentsController extends Controller
     }
 
     // ── shared ───────────────────────────────────────────────────
+
+    /**
+     * `view` / `update` on the subject, plus the one type whose files are money.
+     *
+     * Vehicle payments close the receipt-URL hole in the policy: `view` already
+     * requires financials because the payment *is* the ledger. A purchase order
+     * is the opposite — technicians must see the header without financials — so
+     * those abilities stay open and this type is the one case the file endpoint
+     * has to close itself. Otherwise GET /attachments/{id} is a vendor invoice
+     * to anyone who can see the order (spec §9).
+     */
+    private function authorizeAttachment(string $ability, Model $subject): void
+    {
+        $this->authorize($ability, $subject);
+
+        if (! $subject instanceof InventoryPurchaseOrder) {
+            return;
+        }
+
+        if (! request()->user()->hasPermission('inventory.financials')) {
+            abort(Response::HTTP_FORBIDDEN, 'Costs on inventory are hidden for your role.');
+        }
+    }
 
     /**
      * The record this request is about, resolved from a DECLARED type.

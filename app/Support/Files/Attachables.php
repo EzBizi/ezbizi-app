@@ -2,6 +2,10 @@
 
 namespace App\Support\Files;
 
+use App\Models\InventoryIssue;
+use App\Models\InventoryItem;
+use App\Models\InventoryPurchaseOrder;
+use App\Models\InventoryVendor;
 use App\Models\Job;
 use App\Models\Onboarding;
 use App\Models\Vehicle;
@@ -95,6 +99,17 @@ final class Attachables
             'vehicle_insurance_policies' => VehicleInsurancePolicy::class,
             'vehicle_service_visits' => VehicleServiceVisit::class,
             'vehicle_payments' => VehiclePayment::class,
+            /*
+             * Inventory files hang off the subject the same way. Item photos
+             * and vendor papers travel with view / edit. A PO invoice is
+             * money: listing and downloading it requires inventory.financials,
+             * closed in AttachmentsController because the PO header itself is
+             * still visible without it (spec §9).
+             */
+            'inventory_items' => InventoryItem::class,
+            'inventory_purchase_orders' => InventoryPurchaseOrder::class,
+            'inventory_issues' => InventoryIssue::class,
+            'inventory_vendors' => InventoryVendor::class,
         ];
     }
 

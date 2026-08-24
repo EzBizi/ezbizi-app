@@ -447,6 +447,14 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_STRING, default: 'V-',
             ),
             new SettingDefinition(
+                key: 'numbering.item_prefix', label: 'Item number prefix',
+                type: SettingDefinition::TYPE_STRING, default: 'I-',
+            ),
+            new SettingDefinition(
+                key: 'numbering.po_prefix', label: 'Purchase order number prefix',
+                type: SettingDefinition::TYPE_STRING, default: 'PO-',
+            ),
+            new SettingDefinition(
                 key: 'numbering.invoice_prefix', label: 'Invoice number prefix',
                 type: SettingDefinition::TYPE_STRING, default: 'INV-',
                 notYetInEffect: 'Takes effect when invoicing ships. Job numbers already use '
