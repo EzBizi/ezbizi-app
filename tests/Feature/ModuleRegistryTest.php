@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\Job;
 use App\Models\Permission;
 use App\Support\Modules\ActionDefinition;
+use App\Support\Modules\AutomationSubject;
 use App\Support\Modules\ModuleDefinition;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Modules\TriggerDefinition;
@@ -245,6 +247,15 @@ class ModuleRegistryTest extends TestCase
             label: 'customer.update_field',
             description: 'Sets one field on the customer that triggered the rule.',
         );
+    }
+
+    public function test_a_subject_key_that_is_not_snake_case_is_refused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/lower_snake_case/');
+
+        // The prefix is what trigger keys begin with. "Item." is a label leak.
+        new AutomationSubject(Job::class, 'Job', key: 'Item.');
     }
 
     public function test_a_module_may_not_declare_a_trigger_as_a_bare_string(): void
