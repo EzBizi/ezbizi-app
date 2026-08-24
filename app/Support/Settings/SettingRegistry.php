@@ -177,27 +177,40 @@ class SettingRegistry
                 key: 'locale', label: 'Language',
                 type: SettingDefinition::TYPE_ENUM, default: 'en',
                 options: ['en', 'es'],   // §8 — more addable without a code change
+                optionLabels: ['en' => 'English', 'es' => 'Spanish'],
                 help: 'Users may override this for themselves under Your account.',
             ),
             new SettingDefinition(
                 key: 'timezone', label: 'Default timezone',
-                type: SettingDefinition::TYPE_STRING, default: 'America/New_York',
+                type: SettingDefinition::TYPE_ENUM, default: 'America/New_York',
+                options: self::timezones(),
+                optionLabels: self::timezoneLabels(),
                 help: 'A franchise with its own timezone set overrides this.',
             ),
             new SettingDefinition(
                 key: 'date_format', label: 'Date format',
                 type: SettingDefinition::TYPE_ENUM, default: 'M/D/YYYY',
                 options: ['M/D/YYYY', 'D/M/YYYY', 'YYYY-MM-DD'],
+                optionLabels: [
+                    'M/D/YYYY'   => 'M/D/YYYY — 8/24/2026',
+                    'D/M/YYYY'   => 'D/M/YYYY — 24/8/2026',
+                    'YYYY-MM-DD' => 'YYYY-MM-DD — 2026-08-24',
+                ],
             ),
             new SettingDefinition(
                 key: 'time_format', label: 'Time format',
                 type: SettingDefinition::TYPE_ENUM, default: '12h',
                 options: ['12h', '24h'],
+                optionLabels: [
+                    '12h' => '12-hour — 3:00 PM',
+                    '24h' => '24-hour — 15:00',
+                ],
             ),
             new SettingDefinition(
                 key: 'week_starts_on', label: 'Week starts on',
                 type: SettingDefinition::TYPE_ENUM, default: 'sunday',
                 options: ['sunday', 'monday'],
+                optionLabels: ['sunday' => 'Sunday', 'monday' => 'Monday'],
                 notYetInEffect: 'Takes effect when the scheduling calendar ships. Nothing in the '
                     .'app lays out a week yet, so there is no first column for this to move.',
             ),
@@ -205,6 +218,10 @@ class SettingRegistry
                 key: 'measurement_units', label: 'Units',
                 type: SettingDefinition::TYPE_ENUM, default: 'imperial',
                 options: ['imperial', 'metric'],
+                optionLabels: [
+                    'imperial' => 'Imperial — lb, mi, °F',
+                    'metric'   => 'Metric — kg, km, °C',
+                ],
                 notYetInEffect: 'Takes effect when jobs record distances and areas. Nothing in '
                     .'the app shows a measurement yet, in either system.',
             ),
@@ -234,6 +251,10 @@ class SettingRegistry
                 key: 'contract_pdf_paper', label: 'Contract paper size',
                 type: SettingDefinition::TYPE_ENUM, default: 'a4',
                 options: ['a4', 'letter'],
+                optionLabels: [
+                    'a4'     => 'A4',
+                    'letter' => 'US Letter',
+                ],
             ),
         ];
     }
@@ -264,15 +285,41 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'ops.fiscal_year_starts_month', label: 'Fiscal year starts',
-                type: SettingDefinition::TYPE_INT, default: 1,
+                type: SettingDefinition::TYPE_ENUM, default: 1,
+                options: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+                optionLabels: [
+                    '1'  => 'January',
+                    '2'  => 'February',
+                    '3'  => 'March',
+                    '4'  => 'April',
+                    '5'  => 'May',
+                    '6'  => 'June',
+                    '7'  => 'July',
+                    '8'  => 'August',
+                    '9'  => 'September',
+                    '10' => 'October',
+                    '11' => 'November',
+                    '12' => 'December',
+                ],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
-                help: 'Month number, 1–12. Organization-wide so reporting periods line up.',
+                help: 'Organization-wide so reporting periods line up.',
                 notYetInEffect: 'Takes effect when reporting offers a financial year. No figure '
                     .'in the app is grouped by one yet.',
             ),
             new SettingDefinition(
                 key: 'ops.default_job_duration_minutes', label: 'Default job duration',
-                type: SettingDefinition::TYPE_INT, default: 60,
+                type: SettingDefinition::TYPE_ENUM, default: 60,
+                options: [15, 30, 45, 60, 90, 120, 180, 240],
+                optionLabels: [
+                    '15'  => '15 minutes',
+                    '30'  => '30 minutes',
+                    '45'  => '45 minutes',
+                    '60'  => '1 hour',
+                    '90'  => '1½ hours',
+                    '120' => '2 hours',
+                    '180' => '3 hours',
+                    '240' => '4 hours',
+                ],
                 notYetInEffect: 'Takes effect when scheduling ships. A job can already hold a '
                     .'length, but nothing fills one in, so this number is never reached for.',
             ),
@@ -348,8 +395,9 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'money.tax_label', label: 'Tax label',
-                type: SettingDefinition::TYPE_STRING, default: 'Sales Tax',
-                help: 'Shown on invoices — "Sales Tax", "VAT", "GST".',
+                type: SettingDefinition::TYPE_ENUM, default: 'Sales Tax',
+                options: ['Sales Tax', 'VAT', 'GST', 'HST', 'PST'],
+                help: 'Shown on invoices.',
                 notYetInEffect: 'Takes effect when invoicing ships. It is the word that will '
                     .'head the tax line, and there are no invoices to head yet.',
             ),
@@ -360,8 +408,19 @@ class SettingRegistry
                     .'already contains tax or has it added, and nothing totals a price yet.',
             ),
             new SettingDefinition(
-                key: 'money.payment_terms_days', label: 'Payment terms (days)',
-                type: SettingDefinition::TYPE_INT, default: 30,
+                key: 'money.payment_terms_days', label: 'Payment terms',
+                type: SettingDefinition::TYPE_ENUM, default: 30,
+                options: [0, 7, 14, 15, 30, 45, 60, 90],
+                optionLabels: [
+                    '0'  => 'Due on receipt',
+                    '7'  => 'Net 7',
+                    '14' => 'Net 14',
+                    '15' => 'Net 15',
+                    '30' => 'Net 30',
+                    '45' => 'Net 45',
+                    '60' => 'Net 60',
+                    '90' => 'Net 90',
+                ],
                 notYetInEffect: 'Takes effect when invoicing ships. It will set the due date on '
                     .'a new invoice; nothing in the app has a due date today.',
             ),
@@ -401,7 +460,16 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'numbering.pad_to_digits', label: 'Pad numbers to',
-                type: SettingDefinition::TYPE_INT, default: 5,
+                type: SettingDefinition::TYPE_ENUM, default: 5,
+                options: [3, 4, 5, 6, 7, 8],
+                optionLabels: [
+                    '3' => '3 digits — INV-042',
+                    '4' => '4 digits — INV-0042',
+                    '5' => '5 digits — INV-00042',
+                    '6' => '6 digits — INV-000042',
+                    '7' => '7 digits',
+                    '8' => '8 digits',
+                ],
                 help: 'INV-00042 rather than INV-42.',
             ),
             new SettingDefinition(
@@ -458,10 +526,19 @@ class SettingRegistry
                     .'created before this organization exists.',
             ),
             new SettingDefinition(
-                key: 'security.password_expiry_days', label: 'Password expires after (days)',
-                type: SettingDefinition::TYPE_INT, default: 0,
+                key: 'security.password_expiry_days', label: 'Password expires after',
+                type: SettingDefinition::TYPE_ENUM, default: 0,
+                options: [0, 30, 60, 90, 180, 365],
+                optionLabels: [
+                    '0'   => 'Never',
+                    '30'  => '30 days',
+                    '60'  => '60 days',
+                    '90'  => '90 days',
+                    '180' => '6 months',
+                    '365' => '1 year',
+                ],
                 allowedScopes: $orgOnly,
-                help: '0 disables expiry. Forced rotation encourages weaker passwords — NIST advises against it.',
+                help: 'Never is the default. Forced rotation encourages weaker passwords — NIST advises against it.',
                 notYetInEffect: 'Takes effect when scheduled password expiry ships. Nobody is '
                     .'asked to change a password on a timetable today, whatever this says.',
             ),
@@ -548,6 +625,10 @@ class SettingRegistry
                 key: 'email.read_state', label: 'Who can see that a message has been opened',
                 type: SettingDefinition::TYPE_ENUM, default: 'shared',
                 options: ['shared', 'private'],
+                optionLabels: [
+                    'shared'  => 'The whole team',
+                    'private' => 'Only the person who opened it',
+                ],
                 help: 'Shared shows "Seen by" beside each message, so the team can tell what '
                     .'has already been picked up. Private keeps that to each person. Changing '
                     .'it does not lose anything — the marks are kept either way, and switching '
@@ -567,6 +648,13 @@ class SettingRegistry
                 key: 'customers.duplicate_match_on', label: 'Detect duplicates by',
                 type: SettingDefinition::TYPE_ENUM, default: 'phone_or_email',
                 options: ['phone_or_email', 'phone', 'email', 'name_and_address', 'off'],
+                optionLabels: [
+                    'phone_or_email'   => 'Phone or email',
+                    'phone'            => 'Phone',
+                    'email'            => 'Email',
+                    'name_and_address' => 'Name and address',
+                    'off'              => 'Do not detect',
+                ],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 help: 'Organization-wide, since sharing means duplicates cross franchises.',
             ),
@@ -609,5 +697,31 @@ class SettingRegistry
                     .'value they were saved with.',
             ),
         ];
+    }
+
+    /**
+     * IANA identifiers, which is what PHP and the franchise column already
+     * store. A typed box invited "EST" and "New York", neither of which is a
+     * timezone.
+     *
+     * @return list<string>
+     */
+    private static function timezones(): array
+    {
+        return \DateTimeZone::listIdentifiers(\DateTimeZone::ALL);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function timezoneLabels(): array
+    {
+        $labels = [];
+
+        foreach (self::timezones() as $zone) {
+            $labels[$zone] = str_replace('_', ' ', $zone);
+        }
+
+        return $labels;
     }
 }

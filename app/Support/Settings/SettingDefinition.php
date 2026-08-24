@@ -68,8 +68,18 @@ final class SettingDefinition
         public readonly array $allowedScopes = [
             self::SCOPE_ORGANIZATION, self::SCOPE_COMPANY, self::SCOPE_FRANCHISE,
         ],
-        /** @var array<int,string|int> permitted values when type is enum */
+        /** @var array<int, string|int> permitted values when type is enum */
         public readonly array $options = [],
+        /**
+         * What a person reads for each option, keyed by the option as a string.
+         *
+         * Absent keys fall back to the value itself. The settings screen used
+         * to print `en` and `phone_or_email` because that is what travelled
+         * on the wire; the label is what belongs in a selector.
+         *
+         * @var array<string, string>
+         */
+        public readonly array $optionLabels = [],
         /** Redacted in the audit log, and never returned to the API in clear. */
         public readonly bool $isSensitive = false,
         /** Permission required to change it. Null = organizations.edit. */
@@ -213,6 +223,12 @@ final class SettingDefinition
     public function permissionRequired(): string
     {
         return $this->editPermission ?? 'organizations.edit';
+    }
+
+    /** The words a selector prints for one permitted value. */
+    public function labelFor(mixed $option): string
+    {
+        return $this->optionLabels[(string) $option] ?? (string) $option;
     }
 
     /** Coerce and validate. Throws rather than silently storing nonsense. */
@@ -405,14 +421,18 @@ final class SettingDefinition
 
     private function castEnum(mixed $value): mixed
     {
-        if (! in_array($value, $this->options, strict: false)) {
-            throw new InvalidArgumentException(sprintf(
-                "Setting '%s' must be one of: %s.",
-                $this->key,
-                implode(', ', array_map(fn ($o) => var_export($o, true), $this->options))
-            ));
+        foreach ($this->options as $option) {
+            if ($option == $value) {
+                // The option as declared, so an int month stays an int when
+                // the client sends "1" from a dropdown.
+                return $option;
+            }
         }
 
-        return $value;
+        throw new InvalidArgumentException(sprintf(
+            "Setting '%s' must be one of: %s.",
+            $this->key,
+            implode(', ', array_map(fn ($o) => var_export($o, true), $this->options))
+        ));
     }
 }

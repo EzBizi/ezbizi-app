@@ -75,6 +75,16 @@ class SettingRegistryTest extends TestCase
         }
     }
 
+    public function test_timezone_is_an_iana_selector(): void
+    {
+        $timezone = $this->registry->getOrFail('timezone');
+
+        $this->assertSame(SettingDefinition::TYPE_ENUM, $timezone->type);
+        $this->assertContains('America/New_York', $timezone->options);
+        $this->assertContains('UTC', $timezone->options);
+        $this->assertSame('America/New York', $timezone->labelFor('America/New_York'));
+    }
+
     public function test_every_setting_has_a_label(): void
     {
         foreach ($this->registry->all() as $key => $definition) {

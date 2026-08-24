@@ -128,6 +128,33 @@ void main() {
     expect(find.text('Inherited from Everdoors'), findsNothing);
   });
 
+  testWidgets('an enum offers the words, not the key', (tester) async {
+    _wide(tester);
+
+    await _pumpSettings(tester, (request) async {
+      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+      return _json({
+        'data': [
+          _row(
+            'locale',
+            label: 'Language',
+            type: 'enum',
+            value: 'en',
+            options: const [
+              {'value': 'en', 'label': 'English'},
+              {'value': 'es', 'label': 'Spanish'},
+            ],
+            source: null,
+          ),
+        ],
+      });
+    });
+
+    expect(find.text('English'), findsOneWidget);
+    expect(find.text('en'), findsNothing);
+  });
+
   testWidgets(
     'a refused change leaves the control on the value the server has',
     (tester) async {
@@ -973,7 +1000,7 @@ Map<String, dynamic> _row(
   required String type,
   required dynamic value,
   required Map<String, dynamic>? source,
-  List<String>? options,
+  List<dynamic>? options,
   String? group = 'general',
   String? groupLabel = 'General',
   bool editableHere = true,

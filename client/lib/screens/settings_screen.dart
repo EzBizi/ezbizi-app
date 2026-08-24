@@ -1366,17 +1366,11 @@ class _SettingRow extends StatelessWidget {
     }
 
     if (type == 'enum') {
-      final options = (setting['options'] as List<dynamic>? ?? [])
-          .cast<String>();
-      return DropdownButton<String>(
-        value: options.contains(value) ? value as String : null,
-        underline: const SizedBox.shrink(),
-        onChanged: editable
-            ? (v) => v == null ? null : onChanged(key, v)
-            : null,
-        items: options
-            .map((o) => DropdownMenuItem(value: o, child: Text(o)))
-            .toList(),
+      return _EnumControl(
+        value: value,
+        choices: _settingChoices(setting['options']),
+        editable: editable,
+        onChanged: (v) => onChanged(key, v),
       );
     }
 
@@ -1654,5 +1648,122 @@ class _JsonButton extends StatelessWidget {
     controller.dispose();
 
     if (saved != null) onChanged(saved);
+  }
+}
+
+/// One permitted value, with the words the selector prints.
+class _SettingChoice {
+  const _SettingChoice(this.value, this.label);
+
+  final Object value;
+  final String label;
+}
+
+/// Strings from older fixtures, `{value, label}` from the server today.
+List<_SettingChoice> _settingChoices(Object? raw) {
+  if (raw is! List) return const [];
+
+  return [
+    for (final item in raw)
+      if (item is String)
+        _SettingChoice(item, item)
+      else if (item is Map)
+        _SettingChoice(
+          item['value'] as Object? ?? item['key'] as Object? ?? '',
+          item['label'] as String? ?? '${item['value'] ?? item['key'] ?? ''}',
+        ),
+  ];
+}
+
+/// A closed list of answers — a menu, searchable when the list is long.
+///
+/// Timezone is four hundred IANA names. Printing them in an ordinary
+/// dropdown is how "New York" becomes a typing exercise. Sixteen is
+/// enough that a person can still scan; past that the box takes a
+/// filter.
+class _EnumControl extends StatelessWidget {
+  const _EnumControl({
+    required this.value,
+    required this.choices,
+    required this.editable,
+    required this.onChanged,
+  });
+
+  final Object? value;
+  final List<_SettingChoice> choices;
+  final bool editable;
+  final ValueChanged<Object> onChanged;
+
+  static const int _searchFrom = 16;
+
+  @override
+  Widget build(BuildContext context) {
+    if (choices.isEmpty) {
+      return Text(value?.toString() ?? '');
+    }
+
+    final matching = [
+      for (final choice in choices)
+        if (choice.value == value) choice,
+    ];
+    final selected = matching.isEmpty ? value : matching.first.value;
+    final items = [
+      if (value != null && matching.isEmpty)
+        _SettingChoice(value as Object, '$value — not in the list'),
+      ...choices,
+    ];
+
+    if (choices.length >= _searchFrom) {
+      return DropdownMenu<Object>(
+        initialSelection: selected is Object ? selected : null,
+        enabled: editable,
+        enableFilter: true,
+        requestFocusOnTap: editable,
+        width: 260,
+        dropdownMenuEntries: [
+          for (final choice in items)
+            DropdownMenuEntry(value: choice.value, label: choice.label),
+        ],
+        onSelected: editable
+            ? (picked) {
+                if (picked != null) onChanged(picked);
+              }
+            : null,
+      );
+    }
+
+    // Same widget the existing tests drive, when every value is a string.
+    if (items.every((choice) => choice.value is String)) {
+      return DropdownButton<String>(
+        value: selected is String ? selected : null,
+        underline: const SizedBox.shrink(),
+        onChanged: editable
+            ? (picked) {
+                if (picked != null) onChanged(picked);
+              }
+            : null,
+        items: [
+          for (final choice in items)
+            DropdownMenuItem(
+              value: choice.value as String,
+              child: Text(choice.label),
+            ),
+        ],
+      );
+    }
+
+    return DropdownButton<Object>(
+      value: selected is Object ? selected : null,
+      underline: const SizedBox.shrink(),
+      onChanged: editable
+          ? (picked) {
+              if (picked != null) onChanged(picked);
+            }
+          : null,
+      items: [
+        for (final choice in items)
+          DropdownMenuItem(value: choice.value, child: Text(choice.label)),
+      ],
+    );
   }
 }

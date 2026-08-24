@@ -199,7 +199,7 @@ class SettingsController extends Controller
             'group_label'    => $group['label'],
             'value'          => $definition->isSensitive ? null : $this->resolver->get($key, $scope),
             'is_sensitive'   => $definition->isSensitive,
-            'options'        => $definition->options ?: null,
+            'options'        => $this->optionsOf($definition),
             'help'           => $definition->help,
 
             // Does this setting do anything yet, and if not, what is it waiting
@@ -249,6 +249,32 @@ class SettingsController extends Controller
                 'inherited' => ! $source->is($scope),
             ],
         ];
+    }
+
+    /**
+     * Each permitted value with the words a selector should print.
+     *
+     * A list of strings used to travel and the screen printed them, so
+     * Language offered `en` and Detect duplicates offered `phone_or_email`.
+     * Empty stays null rather than [], for the same reason FieldDefinition
+     * gives: a missing list is "this is not a choice", an empty list would
+     * be "a choice with nothing in it".
+     *
+     * @return list<array{value: mixed, label: string}>|null
+     */
+    private function optionsOf(SettingDefinition $definition): ?array
+    {
+        if ($definition->options === []) {
+            return null;
+        }
+
+        return array_map(
+            fn (mixed $option) => [
+                'value' => $option,
+                'label' => $definition->labelFor($option),
+            ],
+            array_values($definition->options),
+        );
     }
 
     /** Which scope the rows in this response were resolved against. */

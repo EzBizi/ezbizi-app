@@ -53,6 +53,17 @@ class SettingsApiTest extends TestCase
         $locale = collect($response->json('data'))->firstWhere('key', 'locale');
         $this->assertSame('en', $locale['value']);
         $this->assertNull($locale['source'], 'Nothing set yet, so the default applies and there is no source.');
+        $this->assertSame(
+            ['value' => 'en', 'label' => 'English'],
+            collect($locale['options'])->firstWhere('value', 'en'),
+        );
+
+        $timezone = collect($response->json('data'))->firstWhere('key', 'timezone');
+        $this->assertSame('enum', $timezone['type']);
+        $this->assertContains(
+            'America/New_York',
+            array_column($timezone['options'], 'value'),
+        );
     }
 
     public function test_marks_inherited_values_as_such(): void
