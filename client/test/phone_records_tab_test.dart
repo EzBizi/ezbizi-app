@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/phone/recording_player.dart';
 import 'package:ezbizi_client/screens/phone/records_tab.dart';
 import 'package:ezbizi_client/widgets/coming_soon.dart';
 import 'package:flutter/material.dart';
@@ -75,6 +76,59 @@ void main() {
     expect(find.text('Play recording'), findsNothing);
     expect(find.textContaining('Thursday morning still good?'), findsWidgets);
   });
+
+  testWidgets('Play fetches the recording and asks the player to play', (
+    tester,
+  ) async {
+    final player = _FakePlayer();
+    final seen = <http.Request>[];
+    addTearDown(player.dispose);
+
+    await _pump(
+      tester,
+      size: const Size(900, 800),
+      player: player,
+      seen: seen,
+    );
+
+    await _tap(tester, find.byKey(const Key('phone-record-ca-1')));
+
+    expect(find.text('Play recording'), findsOneWidget);
+    expect(find.text('The recording is playing.'), findsNothing);
+    expect(player.played, isEmpty);
+    expect(
+      seen.where((r) => r.url.path.endsWith('/phone/calls/ca-1/recording')),
+      isEmpty,
+    );
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Play recording'));
+
+    expect(
+      seen.any(
+        (r) =>
+            r.method == 'GET' &&
+            r.url.path.endsWith('/phone/calls/ca-1/recording'),
+      ),
+      isTrue,
+    );
+    expect(player.played, isNotEmpty);
+    expect(find.text('The recording is playing.'), findsOneWidget);
+  });
+}
+
+class _FakePlayer implements RecordingPlayer {
+  final played = <List<int>>[];
+
+  @override
+  Future<void> play(List<int> bytes) async {
+    played.add(bytes);
+  }
+
+  @override
+  void stop() {}
+
+  @override
+  void dispose() {}
 }
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
@@ -95,18 +149,22 @@ Future<void> _pump(
   Size size = const Size(1280, 900),
   List<Map<String, Object?>>? calls,
   List<Map<String, Object?>>? messages,
+  RecordingPlayer? player,
+  List<http.Request>? seen,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
+  final inner = _handler(
+    calls: calls ?? const [_call],
+    messages: messages ?? const [_sms],
+  );
   final api = ApiClient(
-    client: MockClient(
-      _handler(
-        calls: calls ?? const [_call],
-        messages: messages ?? const [_sms],
-      ),
-    ),
+    client: MockClient((request) async {
+      seen?.add(request);
+      return inner(request);
+    }),
   );
   final session = Session(api);
   await tester.runAsync(() => session.adopt('tok'));
@@ -116,7 +174,7 @@ Future<void> _pump(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: RecordsTab(api: api, session: session),
+        body: RecordsTab(api: api, session: session, player: player),
       ),
     ),
   );

@@ -120,11 +120,142 @@ void main() {
     expect(device.declined, isTrue);
     expect(find.textContaining('Incoming from'), findsNothing);
   });
+
+  testWidgets('empty pad does not request messages without a peer', (
+    tester,
+  ) async {
+    final seen = <http.Request>[];
+    await _pump(tester, size: const Size(900, 800), seen: seen);
+
+    expect(
+      seen.where(
+        (r) => r.method == 'GET' && r.url.path.endsWith('/phone/messages'),
+      ),
+      isEmpty,
+    );
+    expect(find.text('Thursday morning still good?'), findsNothing);
+    expect(find.text('Type a number to see who it is.'), findsOneWidget);
+  });
+
+  testWidgets('a plus number loads the thread with that peer', (tester) async {
+    final seen = <http.Request>[];
+    await _pump(tester, size: const Size(900, 800), seen: seen);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '+12035550199',
+    );
+    await tester.pumpAndSettle();
+
+    final gets = seen.where(
+      (r) => r.method == 'GET' && r.url.path.endsWith('/phone/messages'),
+    );
+    expect(gets, isNotEmpty);
+    expect(gets.last.url.queryParameters['peer'], '+12035550199');
+    expect(find.text('Thursday morning still good?'), findsOneWidget);
+  });
+
+  testWidgets('pad digits load the thread as E.164', (tester) async {
+    final seen = <http.Request>[];
+    await _pump(tester, size: const Size(900, 800), seen: seen);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '12035550199',
+    );
+    await tester.pumpAndSettle();
+
+    final gets = seen.where(
+      (r) => r.method == 'GET' && r.url.path.endsWith('/phone/messages'),
+    );
+    expect(gets, isNotEmpty);
+    expect(gets.last.url.queryParameters['peer'], '+12035550199');
+  });
+
+  testWidgets('Accept puts presence on_call', (tester) async {
+    final device = _FakeDevice();
+    final seen = <http.Request>[];
+    addTearDown(device.dispose);
+
+    await _pump(
+      tester,
+      device: device,
+      size: const Size(900, 800),
+      seen: seen,
+    );
+
+    seen.clear();
+    device.ring('+12035550199');
+    await tester.pump();
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Accept'));
+
+    expect(device.accepted, isTrue);
+    expect(
+      seen.any((r) {
+        if (r.method != 'PUT' || !r.url.path.endsWith('/phone/presence')) {
+          return false;
+        }
+        final body = jsonDecode(r.body) as Map<String, dynamic>;
+        return body['state'] == 'on_call';
+      }),
+      isTrue,
+    );
+  });
+
+  testWidgets('Internal connects to the teammate client identity', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(tester, device: device, size: const Size(900, 800));
+
+    await _tap(tester, find.text('Maya Chen'));
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Internal'));
+
+    expect(device.connectedTo, 'client:u2');
+    expect(device.callerId, '+12035550142');
+  });
+
+  testWidgets('allowed SMS enables Send when there is a peer and a body', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      size: const Size(900, 800),
+      numbers: [
+        {
+          ..._number,
+          'sms_outbound_allowed': true,
+        },
+      ],
+    );
+
+    expect(
+      find.text('This line cannot send texts until messaging is approved.'),
+      findsNothing,
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '+12035550199',
+    );
+    await tester.enterText(find.widgetWithText(TextField, 'Message'), 'Hello');
+    await tester.pumpAndSettle();
+
+    final send = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Send'),
+    );
+    expect(send.onPressed, isNotNull);
+  });
 }
 
 class _FakeDevice implements VoiceDevice {
   var declined = false;
   var accepted = false;
+  String? connectedTo;
+  String? callerId;
 
   @override
   void Function(VoiceIncoming incoming)? onIncoming;
@@ -133,7 +264,10 @@ class _FakeDevice implements VoiceDevice {
   Future<void> setup(String token) async {}
 
   @override
-  Future<void> connect({required String to, String? callerId}) async {}
+  Future<void> connect({required String to, String? callerId}) async {
+    connectedTo = to;
+    this.callerId = callerId;
+  }
 
   @override
   void hangUp() {}
@@ -170,13 +304,18 @@ Future<void> _pump(
   Size size = const Size(1280, 900),
   List<Map<String, Object?>>? numbers,
   VoiceDevice? device,
+  List<http.Request>? seen,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
+  final inner = _handler(numbers: numbers ?? const [_number]);
   final api = ApiClient(
-    client: MockClient(_handler(numbers: numbers ?? const [_number])),
+    client: MockClient((request) async {
+      seen?.add(request);
+      return inner(request);
+    }),
   );
   final session = Session(api);
   await tester.runAsync(() => session.adopt('tok'));

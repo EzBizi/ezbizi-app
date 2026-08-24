@@ -81,7 +81,13 @@ class _CallTabState extends State<CallTab> {
 
   String? get _peer {
     final text = _destination.text.trim();
-    return text.startsWith('+') && text.length >= 8 ? text : null;
+    if (text.isEmpty) return null;
+    if (text.startsWith('+')) {
+      final digits = text.substring(1).replaceAll(RegExp(r'\D'), '');
+      return digits.length >= 7 ? '+$digits' : null;
+    }
+    final digits = text.replaceAll(RegExp(r'\D'), '');
+    return digits.length >= 8 ? '+$digits' : null;
   }
 
   bool get _canSend {
@@ -153,11 +159,16 @@ class _CallTabState extends State<CallTab> {
 
   Future<void> _loadMessages() async {
     final number = _selected;
-    if (number == null) return;
+    final peer = _peer;
+    if (number == null || peer == null) {
+      if (_messages.isEmpty) return;
+      setState(() => _messages = const []);
+      return;
+    }
 
     final response = await widget.api.get('/phone/messages', {
       'number_id': number.id,
-      'peer': ?_peer,
+      'peer': peer,
     });
     if (!mounted) return;
 
@@ -206,9 +217,7 @@ class _CallTabState extends State<CallTab> {
     final number = _selected;
     if (number == null) return;
 
-    final to = internal
-        ? _clientTo()
-        : _destination.text.trim();
+    final to = internal ? _clientTo() : _peer;
     if (to == null || to.isEmpty) return;
 
     await _device.connect(to: to, callerId: number.e164);
@@ -236,11 +245,17 @@ class _CallTabState extends State<CallTab> {
     });
   }
 
-  void _accept() {
+  Future<void> _accept() async {
     _device.acceptIncoming();
     setState(() {
       _incomingFrom = null;
       _onCall = true;
+    });
+    final number = _selected;
+    if (number == null) return;
+    await widget.api.put('/phone/presence', {
+      'connection_id': number.connectionId,
+      'state': 'on_call',
     });
   }
 
@@ -667,35 +682,39 @@ class _CallTabState extends State<CallTab> {
           child: Text('Messages', style: theme.textTheme.titleSmall),
         ),
         Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-            children: [
-              for (final message in _messages)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: message.outbound
-                        ? theme.colorScheme.primaryContainer.withValues(
-                            alpha: 0.5,
-                          )
-                        : theme.colorScheme.surfaceContainerHighest.withValues(
-                            alpha: 0.5,
-                          ),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: EzBiziTheme.edge(context)),
-                  ),
-                  child: Text(message.body, style: theme.textTheme.bodyMedium),
+          child: _peer == null
+              ? const SizedBox.shrink()
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+                  children: [
+                    for (final message in _messages)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: message.outbound
+                              ? theme.colorScheme.primaryContainer.withValues(
+                                  alpha: 0.5,
+                                )
+                              : theme.colorScheme.surfaceContainerHighest
+                                    .withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: EzBiziTheme.edge(context)),
+                        ),
+                        child: Text(
+                          message.body,
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ),
+                    if (_messages.isEmpty)
+                      Text(
+                        'No messages with this number yet.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
                 ),
-              if (_messages.isEmpty)
-                Text(
-                  'No messages with this number yet.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-            ],
-          ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),

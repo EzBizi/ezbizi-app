@@ -5,13 +5,20 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
+import 'recording_player.dart';
 
 /// Calls, voicemail and texts — layout 4: 25/75 list and detail.
 class RecordsTab extends StatefulWidget {
-  const RecordsTab({super.key, required this.api, required this.session});
+  const RecordsTab({
+    super.key,
+    required this.api,
+    required this.session,
+    this.player,
+  });
 
   final ApiClient api;
   final Session session;
+  final RecordingPlayer? player;
 
   static const double splitAbove = 600;
 
@@ -34,10 +41,22 @@ class _RecordsTabState extends State<RecordsTab> {
   String? _playError;
   bool _playing = false;
 
+  late final RecordingPlayer _player;
+  late final bool _ownsPlayer;
+
   @override
   void initState() {
     super.initState();
+    _ownsPlayer = widget.player == null;
+    _player = widget.player ?? createRecordingPlayer();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _player.stop();
+    if (_ownsPlayer) _player.dispose();
+    super.dispose();
   }
 
   bool get _hasOpen => _openCall != null || _openMessage != null;
@@ -107,34 +126,46 @@ class _RecordsTabState extends State<RecordsTab> {
     });
   }
 
-  void _selectCall(_Call call) => setState(() {
-    _openCall = call;
-    _openMessage = null;
-    _playError = null;
-    _playing = false;
-  });
+  void _selectCall(_Call call) {
+    _player.stop();
+    setState(() {
+      _openCall = call;
+      _openMessage = null;
+      _playError = null;
+      _playing = false;
+    });
+  }
 
-  void _selectMessage(_Message message) => setState(() {
-    _openMessage = message;
-    _openCall = null;
-    _playError = null;
-    _playing = false;
-  });
+  void _selectMessage(_Message message) {
+    _player.stop();
+    setState(() {
+      _openMessage = message;
+      _openCall = null;
+      _playError = null;
+      _playing = false;
+    });
+  }
 
-  void _clear() => setState(() {
-    _openCall = null;
-    _openMessage = null;
-    _playError = null;
-    _playing = false;
-  });
+  void _clear() {
+    _player.stop();
+    setState(() {
+      _openCall = null;
+      _openMessage = null;
+      _playError = null;
+      _playing = false;
+    });
+  }
 
-  void _setFilter(_Filter filter) => setState(() {
-    _filter = filter;
-    _openCall = null;
-    _openMessage = null;
-    _playError = null;
-    _playing = false;
-  });
+  void _setFilter(_Filter filter) {
+    _player.stop();
+    setState(() {
+      _filter = filter;
+      _openCall = null;
+      _openMessage = null;
+      _playError = null;
+      _playing = false;
+    });
+  }
 
   Future<void> _play(_Call call) async {
     if (call.recordingSid == null || call.recordingSid!.isEmpty) return;
@@ -149,13 +180,20 @@ class _RecordsTabState extends State<RecordsTab> {
     );
     if (!mounted) return;
 
-    setState(() {
-      if (bytes == null) {
-        _playError = 'The recording could not be played.';
-        return;
-      }
-      _playing = true;
-    });
+    if (bytes == null) {
+      setState(() => _playError = 'The recording could not be played.');
+      return;
+    }
+
+    try {
+      await _player.play(bytes);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _playError = 'The recording could not be played.');
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _playing = true);
   }
 
   @override
