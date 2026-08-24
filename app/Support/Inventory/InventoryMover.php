@@ -7,6 +7,10 @@ use App\Models\InventoryAdjustment;
 use App\Models\InventoryBalance;
 use App\Models\InventoryItem;
 use App\Models\InventoryLocation;
+use App\Models\InventoryPurchaseOrder;
+use App\Models\InventoryPurchaseOrderLine;
+use App\Models\InventoryReceive;
+use App\Models\InventoryReceiveLine;
 use App\Models\InventoryTransfer;
 use App\Models\InventoryTransferLine;
 use App\Models\User;
@@ -24,6 +28,9 @@ use Illuminate\Validation\ValidationException;
  *
  * Transfer is A→B, posted on save. The number is allocated in the same
  * transaction as the balance writes so a refused line does not consume T-.
+ *
+ * Receive posts onto on-hand against an open PO. Over-receive and a closed
+ * location are refused; partial leaves the PO open, full marks received.
  */
 final class InventoryMover
 {
@@ -122,6 +129,125 @@ final class InventoryMover
 
             return $transfer;
         });
+    }
+
+    /**
+     * Post qty against open PO lines into one location. Whole call rolls
+     * back if any line would exceed what the order still owes.
+     *
+     * @param  list<array{line: InventoryPurchaseOrderLine, qty: string}>  $lines
+     */
+    public function receive(
+        InventoryPurchaseOrder $order,
+        InventoryLocation $location,
+        array $lines,
+        User $user,
+    ): InventoryReceive {
+        return DB::transaction(function () use ($order, $location, $lines, $user) {
+            if ($location->status === InventoryLocationStatus::Closed) {
+                throw ValidationException::withMessages([
+                    'location_id' => 'This location is closed.',
+                ]);
+            }
+
+            if ($order->status !== InventoryPurchaseOrderStatus::Open) {
+                throw ValidationException::withMessages([
+                    'status' => 'This order is not open.',
+                ]);
+            }
+
+            $lockedLines = InventoryPurchaseOrderLine::query()
+                ->where('purchase_order_id', $order->getKey())
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy(fn (InventoryPurchaseOrderLine $line) => (string) $line->getKey());
+
+            $receive = InventoryReceive::create([
+                'purchase_order_id' => $order->getKey(),
+                'location_id' => $location->getKey(),
+                'received_on' => $this->calendarDayOn($location),
+                'received_by' => $user->getKey(),
+            ]);
+
+            foreach ($lines as $entry) {
+                $qty = $this->scale($entry['qty']);
+
+                if (bccomp($qty, '0', 3) <= 0) {
+                    throw ValidationException::withMessages([
+                        'qty' => 'The qty must be greater than 0.',
+                    ]);
+                }
+
+                $lineId = (string) $entry['line']->getKey();
+                $poLine = $lockedLines->get($lineId);
+
+                if ($poLine === null) {
+                    throw ValidationException::withMessages([
+                        'purchase_order_line_id' => 'The selected purchase order line id is invalid.',
+                    ]);
+                }
+
+                $ordered = $this->scale((string) $poLine->qty_ordered);
+                $already = $this->scale((string) $poLine->qty_received);
+                $remaining = bcsub($ordered, $already, 3);
+
+                if (bccomp($qty, $remaining, 3) > 0) {
+                    throw ValidationException::withMessages([
+                        'qty' => 'This order does not have that many left to receive.',
+                    ]);
+                }
+
+                $poLine->loadMissing('item');
+                $item = $poLine->item ?? $poLine->item()->firstOrFail();
+                $this->addQty($item, $location, $qty);
+
+                $poLine->qty_received = bcadd($already, $qty, 3);
+                $poLine->save();
+
+                if ($poLine->unit_cost_minor !== null) {
+                    $item->last_cost_minor = $poLine->unit_cost_minor;
+                    $item->save();
+                }
+
+                InventoryReceiveLine::create([
+                    'receive_id' => $receive->getKey(),
+                    'purchase_order_line_id' => $poLine->getKey(),
+                    'qty' => $qty,
+                ]);
+            }
+
+            $stillOwes = $lockedLines->contains(
+                function (InventoryPurchaseOrderLine $line) {
+                    return bccomp(
+                        $this->scale((string) $line->qty_received),
+                        $this->scale((string) $line->qty_ordered),
+                        3,
+                    ) < 0;
+                },
+            );
+
+            if (! $stillOwes) {
+                $order->status = InventoryPurchaseOrderStatus::Received;
+                $order->save();
+            }
+
+            return $receive;
+        });
+    }
+
+    private function addQty(InventoryItem $item, InventoryLocation $location, string $qty): void
+    {
+        $this->ensureBalanceRow($item, $location);
+
+        $balance = InventoryBalance::query()
+            ->where('item_id', $item->getKey())
+            ->where('location_id', $location->getKey())
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        $balance->qty_on_hand = bcadd($this->scale((string) $balance->qty_on_hand), $qty, 3);
+        $balance->save();
     }
 
     private function moveQty(

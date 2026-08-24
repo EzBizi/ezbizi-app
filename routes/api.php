@@ -26,8 +26,10 @@ use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InventoryAdjustmentsController;
 use App\Http\Controllers\Api\InventoryItemsController;
 use App\Http\Controllers\Api\InventoryLocationsController;
+use App\Http\Controllers\Api\InventoryPurchaseOrdersController;
 use App\Http\Controllers\Api\InventoryStockController;
 use App\Http\Controllers\Api\InventoryTransfersController;
+use App\Http\Controllers\Api\InventoryVendorsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
@@ -252,6 +254,12 @@ Route::prefix('v1')
         Route::apiResource('vehicles', VehiclesController::class);
         Route::apiResource('inventory/items', InventoryItemsController::class);
         Route::apiResource('inventory/locations', InventoryLocationsController::class);
+        Route::apiResource('inventory/vendors', InventoryVendorsController::class);
+        Route::post('inventory/purchase-orders/{purchase_order}/open', [InventoryPurchaseOrdersController::class, 'open']);
+        Route::post('inventory/purchase-orders/{purchase_order}/cancel', [InventoryPurchaseOrdersController::class, 'cancel']);
+        Route::post('inventory/purchase-orders/{purchase_order}/receives', [InventoryPurchaseOrdersController::class, 'receive']);
+        Route::apiResource('inventory/purchase-orders', InventoryPurchaseOrdersController::class)
+            ->only(['index', 'store', 'show']);
         Route::get('inventory/stock', [InventoryStockController::class, 'index']);
         Route::post('inventory/adjustments', [InventoryAdjustmentsController::class, 'store']);
         Route::post('inventory/transfers', [InventoryTransfersController::class, 'store']);
