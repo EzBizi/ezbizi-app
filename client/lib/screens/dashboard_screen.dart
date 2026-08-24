@@ -512,14 +512,14 @@ class _GlanceBody extends StatelessWidget {
     return [
       for (final item in raw)
         if (item is Map &&
-            item['amount_minor'] is int &&
+            item['amount_minor'] is num &&
             item['currency'] is String &&
             (item['currency'] as String).isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Text(
               formatMinor(
-                item['amount_minor'] as int,
+                (item['amount_minor'] as num).toInt(),
                 item['currency'] as String,
               ),
             ),

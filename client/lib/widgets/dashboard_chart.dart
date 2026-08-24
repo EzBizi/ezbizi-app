@@ -29,12 +29,13 @@ class DashboardChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final parsed = _readSlices(slices);
+    final parsedSlices = _readSlices(slices);
+    final parsedSeries = _readSeries(series);
     final colors = _palette(scheme);
     final painter = _DashboardChartPainter(
       presentation: presentation,
-      slices: parsed,
-      points: _readPoints(series),
+      slices: parsedSlices,
+      series: parsedSeries,
       colors: colors,
       track: scheme.outlineVariant,
       onLine: scheme.surface,
@@ -42,7 +43,10 @@ class DashboardChart extends StatelessWidget {
 
     if (!painter.isDrawable) return const SizedBox.shrink();
 
-    final named = presentation == 'pie' || presentation == 'bar';
+    final legendLabels = presentation == 'pie' || presentation == 'bar'
+        ? [for (final slice in parsedSlices) slice.label]
+        : [for (final row in parsedSeries) row.label];
+    final named = legendLabels.any((label) => label.isNotEmpty);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -58,7 +62,7 @@ class DashboardChart extends StatelessWidget {
             ),
             if (named) ...[
               const SizedBox(height: 8),
-              _SliceLegend(slices: parsed, colors: colors),
+              _ChartLegend(labels: legendLabels, colors: colors),
             ],
           ],
         ),
@@ -69,10 +73,10 @@ class DashboardChart extends StatelessWidget {
 
 /// Labels from the payload, coloured with the same theme swatches as the chart.
 /// Totals stay on the wire; this does not add them up or print them.
-class _SliceLegend extends StatelessWidget {
-  const _SliceLegend({required this.slices, required this.colors});
+class _ChartLegend extends StatelessWidget {
+  const _ChartLegend({required this.labels, required this.colors});
 
-  final List<_Slice> slices;
+  final List<String> labels;
   final List<Color> colors;
 
   @override
@@ -83,8 +87,8 @@ class _SliceLegend extends StatelessWidget {
       spacing: 12,
       runSpacing: 4,
       children: [
-        for (var i = 0; i < slices.length; i++)
-          if (slices[i].label.isNotEmpty)
+        for (var i = 0; i < labels.length; i++)
+          if (labels[i].isNotEmpty)
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -98,7 +102,7 @@ class _SliceLegend extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  slices[i].label,
+                  labels[i],
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -132,27 +136,29 @@ List<_Slice> _readSlices(List<dynamic>? raw) {
   ];
 }
 
-List<_Point> _readPoints(List<dynamic>? series) {
+List<_Series> _readSeries(List<dynamic>? series) {
   if (series == null || series.isEmpty) return const [];
 
-  final first = series.first;
-  if (first is! Map) return const [];
-
-  final raw = first['points'];
-  if (raw is! List) return const [];
-
-  final points = <_Point>[];
-  for (final item in raw) {
+  final out = <_Series>[];
+  for (final item in series) {
     if (item is! Map) continue;
-    final atRaw = '${item['at'] ?? ''}';
-    // Year buckets are `Y-m` (`2026-08`). DateTime.tryParse skips those.
-    final at = DateTime.tryParse(atRaw) ?? DateTime.tryParse('$atRaw-01');
-    if (at == null) continue;
-    points.add(_Point(at, (item['value'] as num?)?.toDouble() ?? 0));
-  }
+    final raw = item['points'];
+    if (raw is! List) continue;
 
-  points.sort((a, b) => a.at.compareTo(b.at));
-  return points;
+    final points = <_Point>[];
+    for (final point in raw) {
+      if (point is! Map) continue;
+      final atRaw = '${point['at'] ?? ''}';
+      // Year buckets are `Y-m` (`2026-08`). DateTime.tryParse skips those.
+      final at = DateTime.tryParse(atRaw) ?? DateTime.tryParse('$atRaw-01');
+      if (at == null) continue;
+      points.add(_Point(at, (point['value'] as num?)?.toDouble() ?? 0));
+    }
+    if (points.isEmpty) continue;
+    points.sort((a, b) => a.at.compareTo(b.at));
+    out.add(_Series('${item['label'] ?? ''}', points));
+  }
+  return out;
 }
 
 class _Slice {
@@ -169,11 +175,18 @@ class _Point {
   final double value;
 }
 
+class _Series {
+  const _Series(this.label, this.points);
+
+  final String label;
+  final List<_Point> points;
+}
+
 class _DashboardChartPainter extends CustomPainter {
   _DashboardChartPainter({
     required this.presentation,
     required this.slices,
-    required this.points,
+    required this.series,
     required this.colors,
     required this.track,
     required this.onLine,
@@ -181,14 +194,14 @@ class _DashboardChartPainter extends CustomPainter {
 
   final String presentation;
   final List<_Slice> slices;
-  final List<_Point> points;
+  final List<_Series> series;
   final List<Color> colors;
   final Color track;
   final Color onLine;
 
   bool get isDrawable => switch (presentation) {
         'pie' || 'bar' => slices.any((s) => s.total > 0),
-        'line' || 'timeline' => points.isNotEmpty,
+        'line' || 'timeline' => series.any((s) => s.points.isNotEmpty),
         _ => false,
       };
 
@@ -200,7 +213,11 @@ class _DashboardChartPainter extends CustomPainter {
     }
 
     return [
-      for (final point in points) '${point.value.round()}',
+      for (final row in series)
+        [
+          if (row.label.isNotEmpty) row.label,
+          for (final point in row.points) '${point.value.round()}',
+        ].join(' '),
     ].join(', ');
   }
 
@@ -289,7 +306,8 @@ class _DashboardChartPainter extends CustomPainter {
   }
 
   void _paintLine(Canvas canvas, Size size, {required bool markers}) {
-    if (points.isEmpty) return;
+    final allPoints = [for (final row in series) ...row.points];
+    if (allPoints.isEmpty) return;
 
     canvas.drawLine(
       Offset(8, size.height - 8),
@@ -307,9 +325,15 @@ class _DashboardChartPainter extends CustomPainter {
       math.max(size.height - inset * 2, 1.0),
     );
 
-    final minMs = points.first.at.millisecondsSinceEpoch.toDouble();
-    final maxMs = points.last.at.millisecondsSinceEpoch.toDouble();
-    final maxValue = points.fold<double>(0, (m, p) => math.max(m, p.value));
+    var minMs = allPoints.first.at.millisecondsSinceEpoch.toDouble();
+    var maxMs = minMs;
+    var maxValue = 0.0;
+    for (final point in allPoints) {
+      final ms = point.at.millisecondsSinceEpoch.toDouble();
+      if (ms < minMs) minMs = ms;
+      if (ms > maxMs) maxMs = ms;
+      if (point.value > maxValue) maxValue = point.value;
+    }
 
     Offset at(_Point point) {
       final x = maxMs == minMs
@@ -323,47 +347,53 @@ class _DashboardChartPainter extends CustomPainter {
       return Offset(x, y);
     }
 
-    final path = Path();
-    for (var i = 0; i < points.length; i++) {
-      final o = at(points[i]);
-      i == 0 ? path.moveTo(o.dx, o.dy) : path.lineTo(o.dx, o.dy);
-    }
+    for (var s = 0; s < series.length; s++) {
+      final points = series[s].points;
+      if (points.isEmpty) continue;
+      final color = colors[s % colors.length];
 
-    if (points.length > 1) {
-      final fill = Path.from(path)
-        ..lineTo(at(points.last).dx, inner.bottom)
-        ..lineTo(at(points.first).dx, inner.bottom)
-        ..close();
+      final path = Path();
+      for (var i = 0; i < points.length; i++) {
+        final o = at(points[i]);
+        i == 0 ? path.moveTo(o.dx, o.dy) : path.lineTo(o.dx, o.dy);
+      }
+
+      if (points.length > 1) {
+        final fill = Path.from(path)
+          ..lineTo(at(points.last).dx, inner.bottom)
+          ..lineTo(at(points.first).dx, inner.bottom)
+          ..close();
+
+        canvas.drawPath(
+          fill,
+          Paint()..color = color.withValues(alpha: 0.18),
+        );
+      }
 
       canvas.drawPath(
-        fill,
-        Paint()..color = colors.first.withValues(alpha: 0.18),
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..color = color,
       );
-    }
 
-    canvas.drawPath(
-      path,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..color = colors.first,
-    );
-
-    if (markers || points.length == 1) {
-      final radius = markers ? 4.5 : 3.0;
-      for (final point in points) {
-        final o = at(point);
-        canvas.drawCircle(o, radius, Paint()..color = colors.first);
-        canvas.drawCircle(
-          o,
-          radius,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.5
-            ..color = onLine,
-        );
+      if (markers || points.length == 1) {
+        final radius = markers ? 4.5 : 3.0;
+        for (final point in points) {
+          final o = at(point);
+          canvas.drawCircle(o, radius, Paint()..color = color);
+          canvas.drawCircle(
+            o,
+            radius,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.5
+              ..color = onLine,
+          );
+        }
       }
     }
   }
@@ -374,7 +404,7 @@ class _DashboardChartPainter extends CustomPainter {
       old.track != track ||
       old.onLine != onLine ||
       !_sameSlices(old.slices, slices) ||
-      !_samePoints(old.points, points) ||
+      !_sameSeries(old.series, series) ||
       !_sameColors(old.colors, colors);
 }
 
@@ -382,6 +412,16 @@ bool _sameSlices(List<_Slice> a, List<_Slice> b) {
   if (a.length != b.length) return false;
   for (var i = 0; i < a.length; i++) {
     if (a[i].label != b[i].label || a[i].total != b[i].total) return false;
+  }
+  return true;
+}
+
+bool _sameSeries(List<_Series> a, List<_Series> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i].label != b[i].label || !_samePoints(a[i].points, b[i].points)) {
+      return false;
+    }
   }
   return true;
 }

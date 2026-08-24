@@ -195,6 +195,37 @@ class JobsGlanceTest extends TestCase
         $this->assertContains('1 job today.', $payload['data']['sentences'] ?? []);
     }
 
+    public function test_earned_sentences_use_the_utc_period_start(): void
+    {
+        // View TZ is Etc/GMT+5 (UTC−5). Month starts 2026-08-01 00:00 there,
+        // which is 05:00 UTC. A completed job at 02:00 UTC is still July and
+        // must not count; one at 06:00 UTC is in the month.
+        Carbon::setTestNow(Carbon::parse('2026-08-01 02:00:00', 'UTC'));
+        $this->job($this->alpha['franchise'], [
+            'amount_minor' => 10000,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-01 06:00:00', 'UTC'));
+        $this->job($this->alpha['franchise'], [
+            'amount_minor' => 2500,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-24 16:00:00', 'Etc/GMT+5'));
+
+        $payload = app(JobsGlance::class)->resolve(
+            $this->alpha['admin'],
+            DashboardPeriod::for($this->alpha['admin'], 'month'),
+            ['earned_statuses' => ['completed']],
+        )->toArray();
+
+        $this->assertSame([2500], array_column($payload['data']['revenue'] ?? [], 'amount_minor'));
+        $this->assertContains('1 job earned in USD.', $payload['data']['sentences'] ?? []);
+    }
+
     public function test_line_series_is_revenue_minor_units_per_currency(): void
     {
         $this->job($this->alpha['franchise'], ['amount_minor' => 10000, 'currency' => 'USD', 'status' => 'completed']);

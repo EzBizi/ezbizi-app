@@ -184,6 +184,14 @@ void main() {
     expect(find.text('USD 5.00'), findsOneWidget);
     expect(find.text('No new customers this month.'), findsOneWidget);
   });
+
+  testWidgets('a JSON number for amount_minor still draws', (tester) async {
+    await _pump(tester, _handler(stockValue: [
+      {'currency': 'USD', 'amount_minor': 500.0},
+    ]));
+
+    expect(find.text('USD 5.00'), findsOneWidget);
+  });
 }
 
 class _PushRecorder extends NavigatorObserver {

@@ -104,9 +104,12 @@ final class JobsGlance implements Glance
             if ($earned === []) {
                 $sentences[] = 'Choose which of your job statuses count as earned.';
             } else {
+                // startsOn is a view-TZ wall; created_at is UTC. Same bind as
+                // revenueSeries — a naive clock string would count jobs still
+                // in the previous calendar day at the franchise.
                 $revenue = $this->revenue->resolve($user, [
                     'statuses' => $earned,
-                    'since' => $period->startsOn,
+                    'since' => $period->startsOn->copy()->utc(),
                 ]);
                 // Stale or renamed statuses intersect to nothing — same prompt as
                 // leaving the control empty; never ship an empty revenue key.
