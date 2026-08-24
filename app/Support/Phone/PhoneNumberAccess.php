@@ -4,6 +4,7 @@ namespace App\Support\Phone;
 
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
 use App\Models\PhoneNumberGrant;
 use App\Models\Role;
@@ -179,6 +180,22 @@ final class PhoneNumberAccess
             ->filter(fn (PhoneNumber $number) => $this->inView($user, $number)
                 && $this->reaches($user, $number))
             ->values();
+    }
+
+    /**
+     * Softphone / presence: phone.view and at least one granted number on
+     * this Twilio connection (view-scope ∩ reach ∩ grant).
+     */
+    public function hasLineOn(User $user, PhoneConnection $connection): bool
+    {
+        if (! $user->hasPermission('phone.view')) {
+            return false;
+        }
+
+        return PhoneNumber::query()
+            ->where('connection_id', $connection->getKey())
+            ->get()
+            ->contains(fn (PhoneNumber $number) => $this->mayView($user, $number));
     }
 
     /** Call / Records: tab + grant + view-scope + reach. */

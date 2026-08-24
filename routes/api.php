@@ -46,6 +46,8 @@ use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
 use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
 use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
+use App\Http\Controllers\Api\Phone\PresenceController as PhonePresenceController;
+use App\Http\Controllers\Api\Phone\TokensController as PhoneTokensController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
@@ -557,6 +559,11 @@ Route::prefix('v1')
         Route::get('phone/hours/{schedule}', [PhoneHoursController::class, 'show']);
         Route::patch('phone/hours/{schedule}', [PhoneHoursController::class, 'update']);
         Route::delete('phone/hours/{schedule}', [PhoneHoursController::class, 'destroy']);
+
+        // Voice SDK token + desk presence. phone.view and a granted number on
+        // that connection; no grant → fixed 403 sentence.
+        Route::post('phone/tokens', [PhoneTokensController::class, 'store']);
+        Route::put('phone/presence', [PhonePresenceController::class, 'update']);
 
         // ── Inspection Builder ───────────────────────────────────
         //
