@@ -982,8 +982,10 @@ class ModuleServiceProvider extends ServiceProvider
              * about the others. Same cost as HR — `update_field` is refused
              * at save, in a sentence.
              *
-             * All seven triggers stay unraised until later tasks emit from
-             * webhooks. ModuleRegistryTest holds that claim to the source.
+             * Call started/ended/missed raise from the Voice and status
+             * webhooks (Task 10). Voicemail, SMS, and number-broken stay
+             * unraised until those webhooks emit. ModuleRegistryTest holds
+             * that claim to the source.
              *
              * Actions change EzBizi only — mark a voicemail dealt with, or
              * open a job from a missed call. Nothing here places a call or
@@ -999,21 +1001,21 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'A call started',
                         description: 'A call began on one of the phone lines — inbound or '
                             .'outbound — and is ringing or connected.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                     new TriggerDefinition(
                         key:   'phone.call.ended',
                         label: 'A call ended',
                         description: 'A call finished. It carries how long it lasted and which '
                             .'line it used.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                     new TriggerDefinition(
                         key:   'phone.call.missed',
                         label: 'A call was missed',
                         description: 'Nobody answered, and the caller either hung up or reached '
                             .'voicemail.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                     new TriggerDefinition(
                         key:   'phone.voicemail.left',

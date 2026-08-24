@@ -43,11 +43,36 @@ final class TwimlRenderer
             return (string) $response;
         }
 
-        $prompt = $outbound ? null : $this->menuPrompt($number);
+        $skipMenu = $outbound || (bool) ($context['skip_menu'] ?? false);
+        $prompt = $skipMenu ? null : $this->menuPrompt($number);
         if ($prompt !== null) {
             $gather = $response->gather(['language' => $language]);
             $gather->say($prompt, ['language' => $language]);
 
+            return (string) $response;
+        }
+
+        if ($outbound && is_string($context['dial_to'] ?? null) && $context['dial_to'] !== '') {
+            $this->dialParty($response, $number, $context);
+
+            return (string) $response;
+        }
+
+        $this->ringOrVoicemail($response, $number, $context);
+
+        return (string) $response;
+    }
+
+    /**
+     * Next Dial batch or overflow after a Dial ends (spec §7, Task 10).
+     *
+     * @param  array<string, mixed>  $context
+     */
+    public function afterDial(PhoneNumber $number, array $context = []): string
+    {
+        $response = new VoiceResponse;
+        $status = (string) ($context['dial_status'] ?? '');
+        if ($status === 'completed') {
             return (string) $response;
         }
 
@@ -152,9 +177,11 @@ final class TwimlRenderer
     {
         $language = $this->language($number);
         $connection = $number->connection;
-        $group = $number->ring_group_id === null
-            ? null
-            : PhoneRingGroup::query()->find($number->ring_group_id);
+        $group = ($context['overflow_group'] ?? null) instanceof PhoneRingGroup
+            ? $context['overflow_group']
+            : ($number->ring_group_id === null
+                ? null
+                : PhoneRingGroup::query()->find($number->ring_group_id));
 
         if ($group === null || $connection === null) {
             $this->voicemail($response, $language);
@@ -163,8 +190,9 @@ final class TwimlRenderer
         }
 
         $batches = DialPlan::batches($group, $connection);
-        if ($batches === []) {
-            $this->voicemail($response, $language);
+        $index = (int) ($context['batch'] ?? 0);
+        if (! isset($batches[$index])) {
+            $this->overflow($response, $number, $group, $language, $context);
 
             return;
         }
@@ -177,9 +205,73 @@ final class TwimlRenderer
         );
 
         $dial = $response->dial(null, $attributes);
-        foreach ($batches[0] as $identity) {
+        foreach ($batches[$index] as $identity) {
             $dial->client($identity);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function overflow(
+        VoiceResponse $response,
+        PhoneNumber $number,
+        PhoneRingGroup $group,
+        string $language,
+        array $context,
+    ): void {
+        if ($group->overflow === 'forward' && is_string($group->overflow_number)
+            && $group->overflow_number !== '') {
+            $dial = $response->dial(null, $this->dialAttributes(
+                $number,
+                timeout: (int) ($group->timeout_seconds ?: 30),
+                sequential: false,
+                context: array_merge($context, ['dial_action' => null]),
+            ));
+            $dial->number($group->overflow_number);
+
+            return;
+        }
+
+        if ($group->overflow === 'group' && is_string($group->overflow_group_id)
+            && $group->overflow_group_id !== ''
+            && ! ($context['overflowed'] ?? false)) {
+            $next = PhoneRingGroup::query()->find($group->overflow_group_id);
+            if ($next !== null) {
+                $this->ringOrVoicemail($response, $number, array_merge($context, [
+                    'batch' => 0,
+                    'overflowed' => true,
+                    'overflow_group' => $next,
+                ]));
+
+                return;
+            }
+        }
+
+        $this->voicemail($response, $language);
+    }
+
+    /**
+     * Outbound from the desk: Dial the destination, not the ring group.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function dialParty(VoiceResponse $response, PhoneNumber $number, array $context): void
+    {
+        $to = (string) $context['dial_to'];
+        $attributes = $this->dialAttributes($number, timeout: 30, sequential: false, context: $context);
+        if (is_string($context['caller_id'] ?? null) && $context['caller_id'] !== '') {
+            $attributes['callerId'] = $context['caller_id'];
+        }
+
+        $dial = $response->dial(null, $attributes);
+        if (str_starts_with($to, 'client:')) {
+            $dial->client(substr($to, strlen('client:')));
+
+            return;
+        }
+
+        $dial->number($to);
     }
 
     /**

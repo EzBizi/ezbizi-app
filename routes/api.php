@@ -43,10 +43,12 @@ use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
+use App\Http\Controllers\Api\Phone\CallsController as PhoneCallsController;
 use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
 use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
 use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
 use App\Http\Controllers\Api\Phone\PresenceController as PhonePresenceController;
+use App\Http\Controllers\Api\Phone\StatusWebhookController as PhoneStatusWebhookController;
 use App\Http\Controllers\Api\Phone\TokensController as PhoneTokensController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
@@ -257,6 +259,10 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
 Route::post('v1/phone/voice/{organization}/{connection}', PhoneVoiceWebhookController::class)
     ->middleware('throttle:120,1')
     ->name('phone.voice.webhook');
+
+Route::post('v1/phone/status/{organization}/{connection}', PhoneStatusWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('phone.status.webhook');
 
 Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
     ->middleware('throttle:60,1');
@@ -564,6 +570,9 @@ Route::prefix('v1')
         // that connection; no grant → fixed 403 sentence.
         Route::post('phone/tokens', [PhoneTokensController::class, 'store']);
         Route::put('phone/presence', [PhonePresenceController::class, 'update']);
+
+        // Records: calls on granted numbers. Recording playback is Task 11.
+        Route::get('phone/calls', [PhoneCallsController::class, 'index']);
 
         // ── Inspection Builder ───────────────────────────────────
         //

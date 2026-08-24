@@ -8,8 +8,9 @@ use Tests\TestCase;
 /**
  * Phone — real module declaration (view/edit, call/SMS/voicemail automations).
  *
- * Triggers stay unraised until later tasks emit from webhooks. Subject is null
- * (call, SMS, and number — same shape as HR).
+ * Call started/ended/missed raise from the Voice webhooks. The rest stay
+ * unraised until those webhooks emit. Subject is null (call, SMS, and number
+ * — same shape as HR).
  */
 class PhoneModuleTest extends TestCase
 {
@@ -31,6 +32,10 @@ class PhoneModuleTest extends TestCase
             ],
             array_map(fn ($t) => $t->key, $module->triggers),
         );
-        $this->assertFalse($module->triggers[0]->isRaised);
+        $this->assertTrue($module->triggers[0]->isRaised);
+        $this->assertTrue($module->trigger('phone.call.started')->isRaised);
+        $this->assertTrue($module->trigger('phone.call.ended')->isRaised);
+        $this->assertTrue($module->trigger('phone.call.missed')->isRaised);
+        $this->assertFalse($module->trigger('phone.voicemail.left')->isRaised);
     }
 }

@@ -22,6 +22,17 @@ class PhoneCall extends Model implements HoldsPersonalData
     use HasFactory;
     use HasUuids;
 
+    public const DIRECTION_INBOUND = 'inbound';
+    public const DIRECTION_OUTBOUND = 'outbound';
+
+    public const STATUS_RINGING = 'ringing';
+    public const STATUS_IN_PROGRESS = 'in-progress';
+    public const STATUS_COMPLETED = 'completed';
+    public const STATUS_NO_ANSWER = 'no-answer';
+    public const STATUS_BUSY = 'busy';
+    public const STATUS_FAILED = 'failed';
+    public const STATUS_CANCELED = 'canceled';
+
     public static function personalDataPurpose(): string
     {
         return 'Call and voicemail history: who dialled whom, how long it lasted, and any '
