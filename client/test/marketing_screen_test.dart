@@ -8,6 +8,7 @@ import 'package:ezbizi_client/screens/marketing_screen.dart';
 import 'package:ezbizi_client/widgets/dashboard_card.dart';
 import 'package:ezbizi_client/widgets/social_network_mark.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -141,6 +142,7 @@ void main() {
       expect(find.text('Facebook'), findsOneWidget);
       expect(find.text('Facebook Page'), findsNothing);
       expect(find.byType(SocialNetworkMark), findsWidgets);
+      expect(find.byType(SvgPicture), findsWidgets);
       expect(find.textContaining('no X app'), findsOneWidget);
       expect(find.textContaining('EzBizi has no Pinterest'), findsOneWidget);
     });
