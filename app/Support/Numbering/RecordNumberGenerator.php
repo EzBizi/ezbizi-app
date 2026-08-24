@@ -41,6 +41,7 @@ class RecordNumberGenerator
     public const JOBS      = 'job';
     public const VEHICLES  = 'vehicle';
     public const ITEMS     = 'inventory_item';
+    public const TRANSFERS = 'inventory_transfer';
 
     public function __construct(
         private readonly TenantContext $tenant,
@@ -116,6 +117,8 @@ class RecordNumberGenerator
             self::CUSTOMERS => 'C-',
             self::VEHICLES  => (string) $this->settings->get('numbering.vehicle_prefix', $scope),
             self::ITEMS     => (string) $this->settings->get('numbering.item_prefix', $scope),
+            // Transfers have no prefix setting — spec §8.2 is prefix T-.
+            self::TRANSFERS => 'T-',
             default         => '',
         };
 

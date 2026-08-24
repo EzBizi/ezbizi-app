@@ -7,7 +7,10 @@ use App\Models\InventoryAdjustment;
 use App\Models\InventoryBalance;
 use App\Models\InventoryItem;
 use App\Models\InventoryLocation;
+use App\Models\InventoryTransfer;
+use App\Models\InventoryTransferLine;
 use App\Models\User;
+use App\Support\Numbering\RecordNumberGenerator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -18,9 +21,16 @@ use Illuminate\Validation\ValidationException;
  * Adjust is counted-as: the new on-hand, not a signed delta. A missing
  * balance row is zero. insertOrIgnore then lockForUpdate so two first
  * counts wait rather than both inserting.
+ *
+ * Transfer is A→B, posted on save. The number is allocated in the same
+ * transaction as the balance writes so a refused line does not consume T-.
  */
 final class InventoryMover
 {
+    public function __construct(
+        private readonly RecordNumberGenerator $numbers,
+    ) {}
+
     public function adjust(
         InventoryLocation $location,
         InventoryItem $item,
@@ -66,6 +76,90 @@ final class InventoryMover
                 'user_id' => $user->getKey(),
             ]);
         });
+    }
+
+    /**
+     * Move qty of each line from A to B. Whole call rolls back if any
+     * line cannot be covered.
+     *
+     * @param  list<array{item: InventoryItem, qty: string}>  $lines
+     */
+    public function transfer(
+        InventoryLocation $from,
+        InventoryLocation $to,
+        array $lines,
+        User $user,
+    ): InventoryTransfer {
+        return DB::transaction(function () use ($from, $to, $lines, $user) {
+            $scope = $from->franchise ?? $from->company ?? $user->organization;
+            $number = $this->numbers->next(RecordNumberGenerator::TRANSFERS, $scope);
+
+            $transfer = InventoryTransfer::create([
+                'from_location_id' => $from->getKey(),
+                'to_location_id' => $to->getKey(),
+                'number' => $number,
+                'transferred_on' => $this->calendarDayOn($from),
+                'user_id' => $user->getKey(),
+            ]);
+
+            foreach ($lines as $line) {
+                $qty = $this->scale($line['qty']);
+
+                if (bccomp($qty, '0', 3) <= 0) {
+                    throw ValidationException::withMessages([
+                        'qty' => 'The qty must be greater than 0.',
+                    ]);
+                }
+
+                $this->moveQty($line['item'], $from, $to, $qty);
+
+                InventoryTransferLine::create([
+                    'transfer_id' => $transfer->getKey(),
+                    'item_id' => $line['item']->getKey(),
+                    'qty' => $qty,
+                ]);
+            }
+
+            return $transfer;
+        });
+    }
+
+    private function moveQty(
+        InventoryItem $item,
+        InventoryLocation $from,
+        InventoryLocation $to,
+        string $qty,
+    ): void {
+        $this->ensureBalanceRow($item, $from);
+        $this->ensureBalanceRow($item, $to);
+
+        $locationIds = [$from->getKey(), $to->getKey()];
+        sort($locationIds);
+
+        $locked = [];
+        foreach ($locationIds as $locationId) {
+            $locked[$locationId] = InventoryBalance::query()
+                ->where('item_id', $item->getKey())
+                ->where('location_id', $locationId)
+                ->lockForUpdate()
+                ->firstOrFail();
+        }
+
+        $fromBalance = $locked[$from->getKey()];
+        $toBalance = $locked[$to->getKey()];
+        $onHand = $this->scale((string) $fromBalance->qty_on_hand);
+
+        if (bccomp($onHand, $qty, 3) < 0) {
+            throw ValidationException::withMessages([
+                'qty' => 'There is not enough at this location.',
+            ]);
+        }
+
+        $fromBalance->qty_on_hand = bcsub($onHand, $qty, 3);
+        $fromBalance->save();
+
+        $toBalance->qty_on_hand = bcadd($this->scale((string) $toBalance->qty_on_hand), $qty, 3);
+        $toBalance->save();
     }
 
     /** A missing (item, location) row is zero, not a gap that two writers can both insert. */
