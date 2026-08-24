@@ -454,7 +454,16 @@ final class FieldSet
             }
         }
 
-        $missing = array_values(array_diff(array_keys($pinned), array_keys($present)));
+        // A key that has since been claimed by the common core is the one
+        // exception to "never drop". It cannot stay on the template —
+        // checkOne would refuse it — and dropping it does not orphan
+        // answers: every record still reads through the version it was
+        // collected on, and the fact now lives on the profile, which is
+        // the one home the plan wanted.
+        $missing = array_values(array_filter(
+            array_diff(array_keys($pinned), array_keys($present)),
+            fn (string $key) => ! CommonCore::claims($key),
+        ));
 
         if ($missing !== []) {
             $errors['fields'] = sprintf(

@@ -7,6 +7,7 @@ use App\Models\ContractVersion;
 use App\Models\Organization;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
+use App\Support\Contracts\CommonCore;
 use App\Support\Contracts\FieldSet;
 use App\Support\Hr\OnboardingCatalog;
 use App\Support\Tenancy\TenantContext;
@@ -100,8 +101,14 @@ class PublishOnboardingCatalog extends Command
                     // replace cannot drop a key, change a type, or un-mark
                     // sensitive. The catalog already validated the pair; this
                     // is the second check against THIS contract's past.
+                    //
+                    // Keys the catalog no longer asks, and that are not now
+                    // common core, stay on the list as retired — same as a
+                    // person ticking Retired in the designer. Core keys are
+                    // dropped: FieldSet allows that, and keeping them would
+                    // be refused as a second home.
                     $fields = FieldSet::fromInput(
-                        $template['fields'],
+                        $this->withRetiredLeftovers($template['fields'], $existing),
                         $contract->pinnedKeyProperties(),
                     );
 
@@ -143,5 +150,34 @@ class PublishOnboardingCatalog extends Command
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $fields
+     * @return list<array<string, mixed>>
+     */
+    private function withRetiredLeftovers(array $fields, ?Contract $existing): array
+    {
+        if ($existing === null) {
+            return $fields;
+        }
+
+        $keep = [];
+        foreach ($fields as $field) {
+            if (is_string($field['key'] ?? null) && $field['key'] !== '') {
+                $keep[$field['key']] = true;
+            }
+        }
+
+        foreach ($existing->currentVersion?->fieldSet()->toArray() ?? [] as $previous) {
+            $key = $previous['key'] ?? '';
+            if ($key === '' || isset($keep[$key]) || CommonCore::claims($key)) {
+                continue;
+            }
+            $previous['retired'] = true;
+            $fields[] = $previous;
+        }
+
+        return $fields;
     }
 }

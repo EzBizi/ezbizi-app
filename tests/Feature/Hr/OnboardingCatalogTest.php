@@ -3,6 +3,7 @@
 namespace Tests\Feature\Hr;
 
 use App\Models\Contract;
+use App\Models\ContractVersion;
 use App\Support\Contracts\MergeTags;
 use App\Support\Hr\OnboardingCatalog;
 use App\Support\Hr\OnboardingCatalog\SourceCompiler;
@@ -103,6 +104,56 @@ class OnboardingCatalogTest extends TestCase
 
         $this->inTenant($alpha['org'], function () {
             $this->assertSame(11, Contract::query()->count());
+        });
+    }
+
+    public function test_replace_retires_keys_the_catalog_no_longer_asks(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $this->artisan('hr:publish-onboarding-catalog', ['organization' => 'Alpha'])
+            ->assertSuccessful();
+
+        $this->inTenant($alpha['org'], function () {
+            $accounting = Contract::query()->where('name', 'Accounting')->firstOrFail();
+            $fields = $accounting->currentVersion->fields;
+            $fields[] = [
+                'key' => 'address', 'label' => 'Home address', 'type' => 'text',
+                'options' => [], 'filled_by' => 'either',
+                'required' => true, 'sensitive' => false, 'retired' => false,
+            ];
+            $fields[] = [
+                'key' => 'employer_address', 'label' => 'Business address', 'type' => 'text',
+                'options' => [], 'filled_by' => 'employer',
+                'required' => true, 'sensitive' => false, 'retired' => false,
+            ];
+            $next = ContractVersion::create([
+                'contract_id' => $accounting->getKey(),
+                'version'     => ((int) $accounting->currentVersion->version) + 1,
+                'fields'      => $fields,
+                'body'        => $accounting->currentVersion->body,
+                'created_by'  => $accounting->created_by,
+            ]);
+            $accounting->forceFill(['current_version_id' => $next->getKey()])->save();
+        });
+
+        $this->artisan('hr:publish-onboarding-catalog', [
+            'organization' => 'Alpha',
+            '--replace'    => true,
+        ])->assertSuccessful();
+
+        $this->inTenant($alpha['org'], function () {
+            $accounting = Contract::query()->where('name', 'Accounting')->firstOrFail();
+            $fields = $accounting->currentVersion->fields;
+            $keys = array_column($fields, 'key');
+            $this->assertNotContains('address', $keys, 'Home address is core now; it cannot stay on the template.');
+            $this->assertContains('employer_address', $keys);
+            $byKey = array_column($fields, null, 'key');
+            $this->assertTrue($byKey['employer_address']['retired']);
+            $this->assertEqualsCanonicalizing(
+                ['key' => 'pay_basis', 'is' => 'hourly'],
+                $byKey['hourly_rate']['shown_when'],
+            );
         });
     }
 

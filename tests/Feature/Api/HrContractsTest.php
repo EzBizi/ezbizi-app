@@ -1143,6 +1143,37 @@ class HrContractsTest extends TestCase
             ->assertCreated();
     }
 
+    public function test_a_key_that_moved_onto_the_profile_may_leave_the_template(): void
+    {
+        [$alpha, $id] = $this->aContract();
+
+        $this->inTenant($alpha['org'], function () use ($id) {
+            $contract = Contract::findOrFail($id);
+            $fields = $contract->currentVersion->fields;
+            $fields[] = [
+                'key' => 'address', 'label' => 'Home address', 'type' => 'text',
+                'options' => [], 'filled_by' => 'either',
+                'required' => true, 'sensitive' => false, 'retired' => false,
+            ];
+            $next = ContractVersion::create([
+                'contract_id' => $id,
+                'version'     => ((int) $contract->currentVersion->version) + 1,
+                'fields'      => $fields,
+                'created_by'  => $contract->created_by,
+            ]);
+            $contract->forceFill(['current_version_id' => $next->getKey()])->save();
+        });
+
+        $diff = $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/hr/contracts/{$id}/versions", [
+                'fields' => [$this->field()],
+            ])
+            ->assertCreated()
+            ->json('data.diff');
+
+        $this->assertSame(['address'], array_column($diff['retired'], 'key'));
+    }
+
     public function test_the_list_hides_split_pay_variant_names_and_stays_an_array(): void
     {
         $alpha = $this->provisionTenant('Alpha');

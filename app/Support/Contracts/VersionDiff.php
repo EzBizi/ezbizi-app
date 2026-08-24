@@ -116,6 +116,12 @@ final class VersionDiff
             }
         }
 
+        foreach ($old as $key => $field) {
+            if (! isset($new[$key])) {
+                $retired[] = ['key' => $key, 'label' => $field->label];
+            }
+        }
+
         return new self(
             added: $added,
             retired: $retired,
