@@ -58,6 +58,43 @@ class PhoneNumberTest extends TestCase
         $this->assertSame($t['org']->id, $row->scope_id);
     }
 
+    /**
+     * Settings buyers hold phone.edit without a per-number grant. The list is
+     * the mailbox union: granted for Call/Records, plus editable for Settings.
+     */
+    public function test_an_editor_sees_a_number_they_bought_without_a_grant(): void
+    {
+        $t = $this->provisionTenant();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+
+        $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
+            'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+            'scope_id' => $t['org']->id,
+        ]));
+
+        $bought = $this->signedInAs($editor)->postJson('/api/v1/phone/numbers', [
+            'scope_type' => 'organization',
+            'scope_id' => $t['org']->id,
+            'area_code' => '203',
+            'label' => 'Main',
+        ])->assertCreated()->json('data');
+
+        $this->inTenant($t['org'], function () use ($bought) {
+            $this->assertSame(0, PhoneNumberGrant::query()
+                ->where('number_id', $bought['id'])
+                ->count());
+        });
+
+        $rows = $this->signedInAs($editor)
+            ->getJson('/api/v1/phone/numbers')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($bought['id'], $rows[0]['id']);
+        $this->assertSame('+12030101001', $rows[0]['e164']);
+    }
+
     public function test_buying_without_a_connection_names_the_gap(): void
     {
         $t = $this->provisionTenant();

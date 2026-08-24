@@ -13,7 +13,8 @@ use Illuminate\Auth\Access\Response;
 /**
  * Who may list, buy, or release phone numbers (spec §4–§5, §12).
  *
- * View is phone.view plus grant (Administrator: all in reach). Buy and release
+ * Call/Records view is phone.view plus grant (Administrator: all in reach).
+ * Settings list unions that with phone.edit ∩ reach (no grant). Buy and release
  * are phone.edit plus reach over the place the number hangs on.
  */
 class PhoneNumberPolicy

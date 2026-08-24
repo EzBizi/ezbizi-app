@@ -127,12 +127,29 @@ final class PhoneNumberAccess
     }
 
     /**
-     * Numbers this person may open in the current view: reach ∩ view ∩ grant
-     * (Administrator: reach ∩ view).
+     * Numbers Settings / the desk may list for this person.
+     *
+     * Same union as mailbox Settings: granted lines (phone.view ∩ grant ∩ view ∩
+     * reach) plus lines they may manage (phone.edit ∩ view ∩ reach). Buyers must
+     * see what they bought without waiting for a Roles grant.
      *
      * @return Collection<int, PhoneNumber>
      */
     public function visibleTo(User $user): Collection
+    {
+        return $this->manageable($user)
+            ->concat($this->readable($user))
+            ->unique(fn (PhoneNumber $number) => $number->getKey())
+            ->sortBy('e164')
+            ->values();
+    }
+
+    /**
+     * Granted lines for Call / Records — phone.view ∩ grant ∩ view ∩ reach.
+     *
+     * @return Collection<int, PhoneNumber>
+     */
+    public function readable(User $user): Collection
     {
         if (! $user->hasPermission('phone.view')) {
             return collect();
@@ -145,6 +162,26 @@ final class PhoneNumberAccess
             ->values();
     }
 
+    /**
+     * Lines Settings may manage — phone.edit ∩ view ∩ reach, no grant.
+     *
+     * @return Collection<int, PhoneNumber>
+     */
+    public function manageable(User $user): Collection
+    {
+        if (! $user->hasPermission('phone.edit')) {
+            return collect();
+        }
+
+        return PhoneNumber::query()
+            ->orderBy('e164')
+            ->get()
+            ->filter(fn (PhoneNumber $number) => $this->inView($user, $number)
+                && $this->reaches($user, $number))
+            ->values();
+    }
+
+    /** Call / Records: tab + grant + view-scope + reach. */
     public function mayView(User $user, PhoneNumber $number): bool
     {
         if (! $user->hasPermission('phone.view')) {
@@ -241,7 +278,7 @@ final class PhoneNumberAccess
             throw ValidationException::withMessages(['phone_numbers' => sprintf(
                 'You cannot grant %s, because you cannot open %s yourself. Nobody can hand '
                 .'out more than they have.',
-                $this->readable($beyond, $items),
+                $this->asSentence($beyond, $items),
                 count($beyond) === 1 ? 'it' : 'them',
             )]);
         }
@@ -350,7 +387,7 @@ final class PhoneNumberAccess
      * @param  string[]  $ids
      * @param  array<string, GrantablePhoneNumber>  $items
      */
-    private function readable(array $ids, array $items): string
+    private function asSentence(array $ids, array $items): string
     {
         $labels = $this->labels($ids, $items);
 
