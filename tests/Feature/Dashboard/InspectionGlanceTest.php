@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\InspectionDefinition;
 use App\Models\InspectionDefinitionVersion;
+use App\Models\InspectionReport;
 use App\Models\InspectionRun;
 use App\Models\Job;
 use App\Models\User;
@@ -16,13 +17,14 @@ use App\Support\Dashboard\Glances\InspectionGlance;
 use App\Support\Inspection\ScopeKey;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
- * Inspection dashboard glance (spec § Inspection — bar).
+ * Inspection dashboard glance (named bars + submitted-this-period sentences).
  *
- * Snapshot bars: in-progress runs, submitted reports, archived reports — all
- * under the caller's franchise reach (same job filter as Generated Reports).
+ * Snapshot bars are named inspections in reach (in-progress runs plus live
+ * reports). Status counts and submitted-in-period ride as sentences.
  */
 class InspectionGlanceTest extends TestCase
 {
@@ -49,6 +51,12 @@ class InspectionGlanceTest extends TestCase
             'org' => $r['organization'], 'admin' => $r['administrator'],
             'company' => $r['company'], 'franchise' => $r['franchise'],
         ];
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     private function inTenant(callable $fn): mixed
@@ -154,6 +162,26 @@ class InspectionGlanceTest extends TestCase
         ]));
     }
 
+    /** Same reach as runOn; insert style copied from InspectionReportsTest. */
+    private function reportOn(Franchise $franchise, ?Carbon $submittedAt = null): InspectionReport
+    {
+        $seeded = $this->publishedDefinition();
+        $customer = $this->customer($franchise);
+        $job = $this->job($franchise, $customer);
+
+        return $this->inTenant(fn () => InspectionReport::create([
+            'customer_id' => $customer->id,
+            'job_id' => $job->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+            'inspection_definition_version_id' => $seeded['version']->id,
+            'submitted_by' => $this->alpha['admin']->id,
+            'submitted_at' => $submittedAt ?? now(),
+            'answers' => ['crown' => 'ok'],
+            'layout_preset' => 'step_strip',
+            'definition_name' => $seeded['definition']->name,
+        ]));
+    }
+
     public function test_a_branch_user_sees_only_runs_in_their_franchises(): void
     {
         [$second, $branch] = $this->secondBranch();
@@ -162,9 +190,11 @@ class InspectionGlanceTest extends TestCase
         $this->runOn($second);
 
         $payload = app(InspectionGlance::class)->resolve($branch, DashboardPeriod::for($branch), [])->toArray();
-        $inProgress = collect($payload['data']['slices'])->firstWhere('label', 'In progress');
+        $slices = collect($payload['data']['slices']);
 
-        $this->assertSame(1, $inProgress['total'] ?? null);
+        $this->assertNull($slices->firstWhere('label', 'In progress'));
+        $this->assertSame(1, (int) $slices->sum('total'));
+        $this->assertSame(1, $slices->firstWhere('label', 'Level 1')['total'] ?? null);
     }
 
     public function test_zero_inspections_is_a_sentence_not_slices(): void
@@ -177,9 +207,10 @@ class InspectionGlanceTest extends TestCase
         $this->assertSame('No inspections in reach.', $payload['data']['sentence']);
     }
 
-    public function test_the_bars_ignore_the_dashboard_period(): void
+    public function test_the_named_bars_ignore_the_dashboard_period(): void
     {
         $this->runOn($this->alpha['franchise']);
+        $this->reportOn($this->alpha['franchise']);
 
         $week = app(InspectionGlance::class)->resolve(
             $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'week'), []
@@ -189,5 +220,27 @@ class InspectionGlanceTest extends TestCase
         )->toArray();
 
         $this->assertSame($week['data']['slices'], $year['data']['slices']);
+    }
+
+    public function test_submitted_this_period_uses_the_period(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'UTC'));
+        $this->reportOn($this->alpha['franchise']);
+
+        $week = app(InspectionGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'week'), []
+        )->toArray();
+        $this->assertContains('1 submitted this week.', $week['data']['sentences'] ?? []);
+
+        Carbon::setTestNow(Carbon::parse('2026-10-24 12:00:00', 'UTC'));
+        $weekLater = app(InspectionGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'week'), []
+        )->toArray();
+        $yearLater = app(InspectionGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'year'), []
+        )->toArray();
+
+        $this->assertContains('0 submitted this week.', $weekLater['data']['sentences'] ?? []);
+        $this->assertContains('1 submitted this year.', $yearLater['data']['sentences'] ?? []);
     }
 }
