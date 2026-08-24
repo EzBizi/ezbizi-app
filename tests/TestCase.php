@@ -2,6 +2,8 @@
 
 namespace Tests;
 
+use App\Support\Phone\FakeTwilioGateway;
+use App\Support\Phone\TwilioGateway;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use RuntimeException;
 
@@ -41,6 +43,8 @@ abstract class TestCase extends BaseTestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->app->instance(TwilioGateway::class, new FakeTwilioGateway);
 
         $database = config('database.connections.'.config('database.default').'.database');
 

@@ -100,6 +100,15 @@ class AppServiceProvider extends ServiceProvider
          * between jobs, which is exactly as long as the answer stays true.
          */
         $this->app->scoped(\App\Support\Access\ScopeReach::class);
+
+        /*
+         * Twilio HTTP seam for Phone. Tests replace this with FakeTwilioGateway
+         * so nothing dials the live API from the suite.
+         */
+        $this->app->singleton(
+            \App\Support\Phone\TwilioGateway::class,
+            \App\Support\Phone\HttpTwilioGateway::class,
+        );
     }
 
     /**
