@@ -65,7 +65,14 @@ class VoiceWebhookController extends Controller
             ? (string) new VoiceResponse
             : $this->renderer->inbound($number, $context);
 
-        $this->recordStart($request, $connection, $number, $outbound);
+        $this->recordStart(
+            $request,
+            $connection,
+            $number,
+            $outbound,
+            miss: $this->isClosedDocument($xml) || $this->isVoicemailDocument($xml),
+            voicemail: $this->isVoicemailDocument($xml),
+        );
 
         return $this->twiml($xml);
     }
@@ -85,9 +92,9 @@ class VoiceWebhookController extends Controller
 
         $call = $this->findCall($request);
         if ($call !== null && $this->unanswered($dialStatus)
-            && (str_contains($xml, '<Record') || str_contains($xml, 'This line is closed.'))) {
-            DB::transaction(function () use ($call) {
-                $this->markMissed($call);
+            && ($this->isVoicemailDocument($xml) || $this->isClosedDocument($xml))) {
+            DB::transaction(function () use ($call, $xml) {
+                $this->markMissed($call, voicemail: $this->isVoicemailDocument($xml));
             });
         }
 
@@ -99,6 +106,8 @@ class VoiceWebhookController extends Controller
         PhoneConnection $connection,
         ?PhoneNumber $number,
         bool $outbound,
+        bool $miss = false,
+        bool $voicemail = false,
     ): void {
         $sid = (string) $request->input('CallSid', '');
         if ($sid === '') {
@@ -108,33 +117,55 @@ class VoiceWebhookController extends Controller
         $from = $this->fromE164($request, $outbound);
         $to = $this->toE164($request);
 
-        DB::transaction(function () use ($request, $connection, $number, $outbound, $sid, $from, $to) {
-            if (PhoneCall::query()->where('twilio_sid', $sid)->exists()) {
-                return;
+        DB::transaction(function () use ($request, $connection, $number, $outbound, $sid, $from, $to, $miss, $voicemail) {
+            $call = PhoneCall::query()->where('twilio_sid', $sid)->first();
+            if ($call === null) {
+                $call = PhoneCall::query()->create([
+                    'connection_id' => $connection->id,
+                    'number_id' => $number?->id,
+                    'twilio_sid' => $sid,
+                    'parent_sid' => $this->optionalSid($request->input('ParentCallSid')),
+                    'direction' => $outbound ? PhoneCall::DIRECTION_OUTBOUND : PhoneCall::DIRECTION_INBOUND,
+                    'from_e164' => $from,
+                    'to_e164' => $to,
+                    'status' => PhoneCall::STATUS_RINGING,
+                ]);
+
+                $this->events->emit('phone.call.started', $call, $this->payload($call));
             }
 
-            $call = PhoneCall::query()->create([
-                'connection_id' => $connection->id,
-                'number_id' => $number?->id,
-                'twilio_sid' => $sid,
-                'parent_sid' => $this->optionalSid($request->input('ParentCallSid')),
-                'direction' => $outbound ? PhoneCall::DIRECTION_OUTBOUND : PhoneCall::DIRECTION_INBOUND,
-                'from_e164' => $from,
-                'to_e164' => $to,
-                'status' => PhoneCall::STATUS_RINGING,
-            ]);
-
-            $this->events->emit('phone.call.started', $call, $this->payload($call));
+            if ($miss) {
+                $this->markMissed($call, voicemail: $voicemail);
+            }
         });
     }
 
-    private function markMissed(PhoneCall $call): void
+    private function markMissed(PhoneCall $call, bool $voicemail = false): void
     {
+        $alreadyMissed = in_array($call->status, [
+            PhoneCall::STATUS_NO_ANSWER,
+            PhoneCall::STATUS_BUSY,
+            PhoneCall::STATUS_FAILED,
+            PhoneCall::STATUS_CANCELED,
+        ], true);
+
+        if ($alreadyMissed) {
+            if ($voicemail && ! $call->voicemail) {
+                $call->voicemail = true;
+                $call->save();
+            }
+
+            return;
+        }
+
         if ($call->status !== PhoneCall::STATUS_RINGING) {
             return;
         }
 
         $call->status = PhoneCall::STATUS_NO_ANSWER;
+        if ($voicemail) {
+            $call->voicemail = true;
+        }
         $call->save();
 
         $this->events->emit('phone.call.missed', $call, $this->payload($call));
@@ -250,6 +281,16 @@ class VoiceWebhookController extends Controller
     private function unanswered(?string $dialStatus): bool
     {
         return ! in_array($dialStatus, ['completed', 'answered'], true);
+    }
+
+    private function isVoicemailDocument(string $xml): bool
+    {
+        return str_contains($xml, '<Record');
+    }
+
+    private function isClosedDocument(string $xml): bool
+    {
+        return str_contains($xml, 'This line is closed.');
     }
 
     private function voiceAction(PhoneConnection $connection, int $batch): string

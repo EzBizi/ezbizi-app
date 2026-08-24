@@ -221,9 +221,81 @@ class VoiceWebhookTest extends TestCase
             $call = PhoneCall::query()->first();
             $this->assertNotNull($call);
             $this->assertSame('no-answer', $call->status);
+            $this->assertTrue($call->voicemail);
 
             $keys = AutomationEvent::query()->pluck('event_key')->all();
             $this->assertEqualsCanonicalizing(['phone.call.started', 'phone.call.missed'], $keys);
+        });
+    }
+
+    public function test_zero_available_inbound_goes_to_voicemail_and_is_missed(): void
+    {
+        $t = $this->provisionTenant();
+        [$connection, , $authToken] = $this->inTenant($t['org'], function () use ($t) {
+            return $this->openLine($t, e164: '+12035551009', desks: 0);
+        });
+
+        $url = $this->voiceUrl($t['org']->id, $connection->id);
+        $params = $this->inboundParams(
+            callSid: 'CA55555555555555555555555555555555',
+            from: '+15550008888',
+            to: '+12035551009',
+        );
+
+        $this->signedPost($url, $params, $authToken)
+            ->assertOk()
+            ->assertSee('Please leave a message after the tone.', false)
+            ->assertSee('<Record', false)
+            ->assertDontSee('<Dial', false);
+
+        $this->inTenant($t['org'], function () {
+            $call = PhoneCall::query()->first();
+            $this->assertNotNull($call);
+            $this->assertSame('no-answer', $call->status);
+            $this->assertTrue($call->voicemail);
+
+            $keys = AutomationEvent::query()->pluck('event_key')->all();
+            $this->assertEqualsCanonicalizing(['phone.call.started', 'phone.call.missed'], $keys);
+        });
+    }
+
+    public function test_status_completed_after_voicemail_keeps_the_miss(): void
+    {
+        $t = $this->provisionTenant();
+        [$connection, , $authToken] = $this->inTenant($t['org'], function () use ($t) {
+            return $this->openLine($t, e164: '+12035551010', desks: 0);
+        });
+
+        $params = $this->inboundParams(
+            callSid: 'CA66666666666666666666666666666666',
+            from: '+15550009999',
+            to: '+12035551010',
+        );
+        $this->signedPost($this->voiceUrl($t['org']->id, $connection->id), $params, $authToken)
+            ->assertOk();
+
+        $this->signedPost($this->statusUrl($t['org']->id, $connection->id), array_merge($params, [
+            'CallStatus' => 'completed',
+            'CallDuration' => '18',
+        ]), $authToken)->assertOk();
+
+        $this->inTenant($t['org'], function () {
+            $call = PhoneCall::query()->first();
+            $this->assertNotNull($call);
+            $this->assertSame('no-answer', $call->status);
+            $this->assertTrue($call->voicemail);
+            $this->assertSame(18, $call->duration_seconds);
+
+            $keys = AutomationEvent::query()->pluck('event_key')->all();
+            $this->assertContains('phone.call.started', $keys);
+            $this->assertContains('phone.call.missed', $keys);
+            $this->assertContains('phone.call.ended', $keys);
+            $this->assertSame(1, AutomationEvent::query()
+                ->where('event_key', 'phone.call.missed')
+                ->count());
+            $this->assertSame(1, AutomationEvent::query()
+                ->where('event_key', 'phone.call.ended')
+                ->count());
         });
     }
 
@@ -437,7 +509,7 @@ class VoiceWebhookTest extends TestCase
             'record' => true,
         ]);
 
-        return [$connection, $number, $authToken, $identities[0], $identities];
+        return [$connection, $number, $authToken, $identities[0] ?? '', $identities];
     }
 
     /**

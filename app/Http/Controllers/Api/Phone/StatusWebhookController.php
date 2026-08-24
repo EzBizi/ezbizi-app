@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use App\Models\AutomationEvent;
 use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
 use App\Support\Automations\EventEmitter;
@@ -17,8 +18,10 @@ use Twilio\TwiML\VoiceResponse;
 /**
  * Public Twilio status callback. Signature is auth; path names the tenant.
  *
- * Updates duration and status. Completed raises phone.call.ended. A terminal
- * no-answer without an earlier Dial-action miss raises phone.call.missed.
+ * Updates duration. Completed raises phone.call.ended. A miss or voicemail
+ * already on the row is kept — Twilio completed after <Record> does not
+ * promote it. Terminal no-answer without an earlier miss still raises
+ * phone.call.missed.
  */
 class StatusWebhookController extends Controller
 {
@@ -66,10 +69,17 @@ class StatusWebhookController extends Controller
             }
 
             $previous = $call->status;
-            $call->status = $this->storedStatus($status);
+            $wasMiss = $this->isMiss($previous) || $call->voicemail;
+            $incoming = $this->storedStatus($status);
+
+            // Voicemail is a recording on the missed call (spec §11). Twilio
+            // still posts completed after <Record>; that must not clear the miss.
+            if (! $wasMiss) {
+                $call->status = $incoming;
+            }
             $call->save();
 
-            if ($call->status === PhoneCall::STATUS_COMPLETED && $previous !== PhoneCall::STATUS_COMPLETED) {
+            if ($incoming === PhoneCall::STATUS_COMPLETED && ! $this->alreadyEnded($call)) {
                 $this->events->emit('phone.call.ended', $call, $this->payload($call));
             }
 
@@ -103,6 +113,14 @@ class StatusWebhookController extends Controller
             PhoneCall::STATUS_FAILED,
             PhoneCall::STATUS_CANCELED,
         ], true);
+    }
+
+    private function alreadyEnded(PhoneCall $call): bool
+    {
+        return AutomationEvent::query()
+            ->where('event_key', 'phone.call.ended')
+            ->where('subject_id', $call->id)
+            ->exists();
     }
 
     /** @return array<string, mixed> */
