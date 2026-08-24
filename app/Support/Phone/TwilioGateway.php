@@ -82,6 +82,12 @@ interface TwilioGateway
     public function recordingMedia(PhoneConnection $connection, string $recordingSid): string;
 
     public function deleteRecording(PhoneConnection $connection, string $recordingSid): void;
+
+    /** Clear Voice / status URLs on the connection’s TwiML App (disconnect). */
+    public function clearTwimlApp(PhoneConnection $connection): void;
+
+    /** Close a provisioned subaccount after an explicit disconnect-with-close. */
+    public function closeSubaccount(PhoneConnection $connection): void;
 }
 
 /**
@@ -325,6 +331,30 @@ final class HttpTwilioGateway implements TwilioGateway
         $this->connectionClient($connection)
             ->recordings($recordingSid)
             ->delete();
+    }
+
+    public function clearTwimlApp(PhoneConnection $connection): void
+    {
+        $sid = (string) $connection->twiml_app_sid;
+        if ($sid === '') {
+            return;
+        }
+
+        $this->connectionClient($connection)
+            ->applications($sid)
+            ->update([
+                'voiceUrl' => '',
+                'statusCallback' => '',
+            ]);
+    }
+
+    public function closeSubaccount(PhoneConnection $connection): void
+    {
+        $this->platformClient()
+            ->api
+            ->v2010
+            ->accounts((string) $connection->account_sid)
+            ->update(['status' => 'closed']);
     }
 
     private function connectionClient(PhoneConnection $connection): Client

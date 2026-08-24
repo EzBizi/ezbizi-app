@@ -136,6 +136,16 @@ final class FakeTwilioGateway implements TwilioGateway
         $this->record(__FUNCTION__, [$connection->id, $recordingSid]);
     }
 
+    public function clearTwimlApp(PhoneConnection $connection): void
+    {
+        $this->record(__FUNCTION__, [$connection->id, $connection->twiml_app_sid]);
+    }
+
+    public function closeSubaccount(PhoneConnection $connection): void
+    {
+        $this->record(__FUNCTION__, [$connection->id, $connection->account_sid]);
+    }
+
     /**
      * @param  array<int, mixed>  $args
      */

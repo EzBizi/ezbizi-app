@@ -43,6 +43,7 @@ use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
+use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\RolesController;
@@ -490,6 +491,15 @@ Route::prefix('v1')
             ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x');
         Route::get('social/{network}/status', [SocialAuthController::class, 'status'])
             ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x');
+
+        // ── Phone: Twilio connections (org / company) ────────────
+        //
+        // Authenticated. Public voice/SMS webhooks land in a later task outside
+        // this Sanctum group. Connect is phone.edit + §4 reach; list is phone.view
+        // narrowed to connections in reach.
+        Route::get('phone/connections', [PhoneConnectionsController::class, 'index']);
+        Route::post('phone/connections', [PhoneConnectionsController::class, 'store']);
+        Route::delete('phone/connections/{connection}', [PhoneConnectionsController::class, 'destroy']);
 
         // ── Inspection Builder ───────────────────────────────────
         //
