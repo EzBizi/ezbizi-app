@@ -304,104 +304,110 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
             child: _Notice(_notice!, onDismiss: () => setState(() => _notice = null)),
           ),
-        if (_workspaceReachable)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final link in _workspace?.connections ?? const <WorkspaceLink>[])
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _WorkspaceCard(
-                      link: link,
-                      viewLabel: _workspace?.viewLabel ?? '',
-                      connectRefusal: _me.refusal(
-                        'email.edit',
-                        'connect Google Workspace',
-                      ),
-                      onConnect: _connectWorkspace,
-                      onDisconnect: () => _disconnectWorkspace(link),
-                    ),
-                  ),
-                if (_workspace?.canConnect ?? false)
-                  _WorkspaceCard(
-                    link: null,
-                    viewLabel: _workspace?.viewLabel ?? '',
-                    connectRefusal: _me.refusal(
-                      'email.edit',
-                      'connect Google Workspace',
-                    ),
-                    onConnect: _connectWorkspace,
-                    onDisconnect: () {},
-                  ),
-              ],
-            ),
-          ),
         Expanded(
           child: AsyncBody(
             loading: _loading,
             error: _error,
             onRetry: _load,
-            child: _mailboxes.isEmpty ? _nothingConnected() : _list(),
+            child: _scrollBody(),
           ),
         ),
       ],
     );
   }
 
+  /// Workspace cards used to sit above this list. Two connected domains with
+  /// Admin steps are taller than the page, and a Column that does not scroll
+  /// left the rest of Settings unreachable.
+  Widget _scrollBody() {
+    final links = _workspace?.connections ?? const <WorkspaceLink>[];
+    final offerConnect = _workspaceReachable && (_workspace?.canConnect ?? false);
+    final showWorkspace = _workspaceReachable && (links.isNotEmpty || offerConnect);
+
+    return ListView(
+      key: const Key('email-settings-list'),
+      padding: const EdgeInsets.fromLTRB(24, 4, 24, 28),
+      children: [
+        if (showWorkspace) ...[
+          for (final link in links)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _WorkspaceCard(
+                link: link,
+                viewLabel: _workspace?.viewLabel ?? '',
+                connectRefusal: _me.refusal(
+                  'email.edit',
+                  'connect Google Workspace',
+                ),
+                onConnect: _connectWorkspace,
+                onDisconnect: () => _disconnectWorkspace(link),
+              ),
+            ),
+          if (offerConnect)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _WorkspaceCard(
+                link: null,
+                viewLabel: _workspace?.viewLabel ?? '',
+                connectRefusal: _me.refusal(
+                  'email.edit',
+                  'connect Google Workspace',
+                ),
+                onConnect: _connectWorkspace,
+                onDisconnect: () {},
+              ),
+            ),
+        ],
+        if (_mailboxes.isEmpty)
+          _nothingConnected()
+        else
+          for (final mailbox in _mailboxes)
+            _MailboxCard(
+              mailbox: mailbox,
+              me: _me,
+              provider: _providerFor(mailbox),
+              connectRefusal: _manageRefusal(mailbox, 'connect this inbox'),
+              disconnectRefusal: _manageRefusal(mailbox, 'disconnect this inbox'),
+              onConnect: () => _connect(mailbox),
+              onDisconnect: () => _disconnect(mailbox),
+            ),
+      ],
+    );
+  }
+
   /// No inbox at all — a setup step rather than an empty list.
-  Widget _nothingConnected() => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(32),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.mark_email_unread_outlined,
-              size: 34,
-              color: Theme.of(context).colorScheme.outline,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'No shared inbox is connected here yet.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              _addRefusal ??
-                  'Add the address people already write to — info@, bookings@ '
-                      '— and then give the roles that answer it access under '
-                      'Roles & permissions.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
-        ),
+  Widget _nothingConnected() => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 32),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 460),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.mark_email_unread_outlined,
+            size: 34,
+            color: Theme.of(context).colorScheme.outline,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No shared inbox is connected here yet.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _addRefusal ??
+                'Add the address people already write to — info@, bookings@ '
+                    '— and then give the roles that answer it access under '
+                    'Roles & permissions.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ],
       ),
     ),
   );
 
-  Widget _list() => ListView.builder(
-    padding: const EdgeInsets.fromLTRB(24, 4, 24, 28),
-    itemCount: _mailboxes.length,
-    itemBuilder: (context, index) {
-      final mailbox = _mailboxes[index];
-
-      return _MailboxCard(
-        mailbox: mailbox,
-        me: _me,
-        provider: _providerFor(mailbox),
-        connectRefusal: _manageRefusal(mailbox, 'connect this inbox'),
-        disconnectRefusal: _manageRefusal(mailbox, 'disconnect this inbox'),
-        onConnect: () => _connect(mailbox),
-        onDisconnect: () => _disconnect(mailbox),
-      );
-    },
-  );
 }
 
 /// One Workspace grant, or the empty card that offers to connect this view.

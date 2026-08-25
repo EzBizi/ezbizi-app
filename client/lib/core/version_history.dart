@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0092',
+      date: '25 Aug 2026',
+      items: [
+        'Email Settings scrolls when Google Workspace cards are taller than '
+            'the page.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0091',
       date: '25 Aug 2026',
       items: [

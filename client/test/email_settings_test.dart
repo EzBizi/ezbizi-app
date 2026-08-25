@@ -175,6 +175,93 @@ void main() {
     );
   });
 
+  testWidgets('two Workspace cards taller than the page still scroll', (
+    tester,
+  ) async {
+    const connection = {
+      'domain': 'a-1chimney.com',
+      'admin_email': 'it-admin@a-1chimney.com',
+      'status': 'pending_delegation',
+      'status_reason':
+          'EzBizi cannot list or open mailboxes until Google Admin allows this app.',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_label': 'A1 Chimney',
+      'is_current_view': true,
+      'client_id_for_admin_console': '117502255825060957159',
+      'scopes': [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/admin.directory.user.readonly',
+      ],
+      'setup_steps': [
+        {
+          'title': 'Open Google Admin',
+          'detail': 'Sign in as a Super Admin of this company\'s Workspace.',
+          'url': 'https://admin.google.com/ac/owl/domainwidedelegation',
+          'copy': null,
+        },
+        {
+          'title': 'Add a new API client',
+          'detail': 'Paste this client ID.',
+          'url': null,
+          'copy': '117502255825060957159',
+        },
+        {
+          'title': 'Allow these three scopes',
+          'detail': 'Paste all three.',
+          'url': null,
+          'copy':
+              'https://www.googleapis.com/auth/gmail.readonly\nhttps://www.googleapis.com/auth/gmail.send',
+        },
+        {
+          'title': 'Authorize, then come back here',
+          'detail': 'Return to Email → Settings.',
+          'url': null,
+          'copy': null,
+        },
+      ],
+    };
+
+    await _pumpSettings(
+      tester,
+      _handler(
+        workspaceUsable: true,
+        workspace: {
+          'can_connect': false,
+          'view': {'type': 'organization', 'id': 'org-1', 'label': 'A1-Group'},
+          'connections': [
+            connection,
+            {
+              ...connection,
+              'domain': 'ezbizi.com',
+              'scope_label': 'EzBizi',
+              'scope_id': 'co-2',
+            },
+          ],
+        },
+      ),
+      window: null,
+      size: const Size(1280, 640),
+    );
+
+    final list = find.byKey(const Key('email-settings-list'));
+    expect(list, findsOneWidget);
+    final scroller = find.descendant(
+      of: list,
+      matching: find.byType(Scrollable),
+    ).first;
+    final position = tester.state<ScrollableState>(scroller).position;
+    expect(
+      position.maxScrollExtent,
+      greaterThan(0),
+      reason: 'Workspace cards taller than the page must sit in a scrolling list.',
+    );
+    await tester.drag(list, const Offset(0, -800));
+    await tester.pumpAndSettle();
+    expect(position.pixels, greaterThan(0));
+  });
+
   testWidgets('a connected Workspace names a missing Trash scope', (
     tester,
   ) async {
