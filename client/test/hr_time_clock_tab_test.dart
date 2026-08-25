@@ -85,7 +85,7 @@ void main() {
     await _pump(
       tester,
       timeClock: _clock(organizationEnabled: true),
-      onClock: (_, __) => _day(date: '2026-08-25', shifts: const []),
+      onClock: (_, _) => _day(date: '2026-08-25', shifts: const []),
     );
 
     await _tap(tester, _tab('Clock in\u2013out'));
@@ -100,7 +100,7 @@ void main() {
     await _pump(
       tester,
       timeClock: _clock(organizationEnabled: true),
-      onClock: (_, __) => _day(
+      onClock: (_, _) => _day(
         date: '2026-08-25',
         shifts: [
           {
