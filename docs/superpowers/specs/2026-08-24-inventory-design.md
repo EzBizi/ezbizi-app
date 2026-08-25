@@ -39,11 +39,11 @@ A row opens in a **25% list / 75% detail** split. Nothing selected: the list is 
 | 2 | A **location** belongs the same way. Warehouse, shop, cage, receiving, or a van (a Fleet vehicle may *be* a location). |
 | 3 | **Quantity** is always *(item, location)*. Org view rolls up. Siblings do not share stock. |
 | 4 | Visibility matches Fleet: franchise sees its locations, that company’s General, and organization stock. Authority does not flow upward. |
-| 5 | v1 movements: **adjust**, **transfer**, **purchase/receive**, **issue** (to a job or a simple use/sale). |
+| 5 | Movements: **adjust**, **transfer**, **purchase/receive**, **issue** (job or use), **sale** (customer or counter; stock leaves on fulfill). |
 | 6 | No manufacturing. No lots/serials. No in-transit location: a transfer is one save. |
-| 7 | Money is in v1 on PO lines and last cost. Hidden without `inventory.financials`. |
+| 7 | Money is in v1 on PO lines, sale prices, payment status, and last cost. Hidden without `inventory.financials`. |
 | 8 | Qty is `decimal(12,3)` with a unit on the item (`each` `box` `ft` `in` `gal` `lb` `kit` `other`). |
-| 9 | Permissions: `view` `create` `edit` `delete` `financials`. Receive, transfer, issue, and adjust travel with `edit`. |
+| 9 | Permissions: `view` `create` `edit` `delete` `financials`. Receive, transfer, issue, fulfill, and adjust travel with `edit`. |
 | 10 | List + 25/75. Inner chips, not extra sidebar tabs. |
 | 11 | Record numbers are organization-wide (`RecordNumberGenerator`). Format still cascades. |
 
@@ -182,6 +182,21 @@ A job is franchise-owned. Issuing from an organization warehouse onto that job i
 
 Cannot issue a discontinued item. Cannot issue from a closed location.
 
+### 8.5 Sale
+
+Outbound commercial document. Not an issue: an issue is use on a job or a note. A sale names a **Customer** (shared, not a second buyer list) or a counter-sale note.
+
+| Field | Notes |
+|---|---|
+| number | Sequence `inventory_sale`. Prefix `SO-`. |
+| customer_id | Nullable. XOR with a required note when null. |
+| place | Same as a PO. |
+| status | `draft` · `open` · `partial` · `fulfilled` · `cancelled` |
+| payment_status | `unpaid` · `paid`. Hidden without `financials`. |
+| lines | Item, qty ordered, qty fulfilled, unit price (cents, `financials`). |
+
+Draft: editable. **Open:** issued to the customer; lines freeze. **Fulfill** (child of a sale, one location per fulfillment): like receive, but stock leaves. Partial is normal. Cancel only from draft or open with zero fulfilled.
+
 ---
 
 ## 9. Files
@@ -193,6 +208,7 @@ Existing FileStore + `Attachables` + `HasAttachments`.
 | `inventory_items` | the item | photo |
 | `inventory_purchase_orders` | a PO | vendor quote, invoice |
 | `inventory_issues` | an issue | ticket, photo of what left |
+| `inventory_sales` | a sale | quote, delivery ticket |
 | `inventory_vendors` | a vendor | W-9, terms |
 
 Costs on a PO and the files on it require `financials` to **view**. Item photos stay on `view` / `edit`.
@@ -203,7 +219,7 @@ Costs on a PO and the files on it require `financials` to **view**. Item photos 
 
 USD cents. No FX.
 
-Without `inventory.financials`, every read path omits unit cost, last cost, and PO money. This is an API contract, not a Flutter `if`. A technician with `edit` can still receive, transfer, and issue.
+Without `inventory.financials`, every read path omits unit cost, last cost, sale price, payment status, and PO money. This is an API contract, not a Flutter `if`. A technician with `edit` can still receive, transfer, issue, and fulfill.
 
 Writes of amounts require `financials` as well as `create`/`edit`.
 

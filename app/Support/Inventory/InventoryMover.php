@@ -13,6 +13,10 @@ use App\Models\InventoryPurchaseOrder;
 use App\Models\InventoryPurchaseOrderLine;
 use App\Models\InventoryReceive;
 use App\Models\InventoryReceiveLine;
+use App\Models\InventorySale;
+use App\Models\InventorySaleFulfillment;
+use App\Models\InventorySaleFulfillmentLine;
+use App\Models\InventorySaleLine;
 use App\Models\InventoryTransfer;
 use App\Models\InventoryTransferLine;
 use App\Models\Job;
@@ -36,9 +40,14 @@ use Illuminate\Validation\ValidationException;
  * Receive posts onto on-hand against an open PO. Over-receive and a closed
  * location are refused; partial leaves the PO open, full marks received.
  *
+ * Fulfill takes stock off a location against an open sale. Over-fulfill
+ * and a closed location are refused; partial leaves the sale open,
+ * full marks fulfilled.
+ *
  * Issue takes stock off a location. Job XOR a note; discontinued items
  * and closed locations are refused. Transfer refuses discontinued items
- * and closed from/onto. Receive refuses discontinued items. The number
+ * and closed from/onto. Receive refuses discontinued items. Sale
+ * fulfillment refuses discontinued items. The number
  * is allocated in the same transaction so a refused line does not consume
  * IS- or T-.
  *
@@ -360,6 +369,132 @@ final class InventoryMover
             }
 
             return $issue;
+        });
+    }
+
+    /**
+     * Fulfil qty of each sale line from a location. Whole call rolls back
+     * if any line cannot be covered or would over-fulfil.
+     *
+     * @param  list<array{line: InventorySaleLine, qty: string}>  $lines
+     */
+    public function fulfillSale(
+        InventorySale $sale,
+        InventoryLocation $location,
+        array $lines,
+        User $user,
+    ): InventorySaleFulfillment {
+        return DB::transaction(function () use ($sale, $location, $lines, $user) {
+            $this->assertLocationOpen($location);
+
+            if (! in_array($sale->status, [
+                InventorySaleStatus::Open,
+                InventorySaleStatus::Partial,
+            ], true)) {
+                throw ValidationException::withMessages([
+                    'status' => 'This sale is not open.',
+                ]);
+            }
+
+            $lockedLines = InventorySaleLine::query()
+                ->where('sale_id', $sale->getKey())
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy(fn (InventorySaleLine $line) => (string) $line->getKey());
+
+            $fulfillment = InventorySaleFulfillment::create([
+                'sale_id' => $sale->getKey(),
+                'location_id' => $location->getKey(),
+                'fulfilled_on' => $this->calendarDayOn($location),
+                'fulfilled_by' => $user->getKey(),
+            ]);
+
+            foreach ($lines as $entry) {
+                $qty = $this->scale($entry['qty']);
+
+                if (bccomp($qty, '0', 3) <= 0) {
+                    throw ValidationException::withMessages([
+                        'qty' => 'The qty must be greater than 0.',
+                    ]);
+                }
+
+                $lineId = (string) $entry['line']->getKey();
+                $saleLine = $lockedLines->get($lineId);
+
+                if ($saleLine === null) {
+                    throw ValidationException::withMessages([
+                        'sale_line_id' => 'The selected sale line id is invalid.',
+                    ]);
+                }
+
+                $ordered = $this->scale((string) $saleLine->qty_ordered);
+                $already = $this->scale((string) $saleLine->qty_fulfilled);
+                $remaining = bcsub($ordered, $already, 3);
+
+                if (bccomp($qty, $remaining, 3) > 0) {
+                    throw ValidationException::withMessages([
+                        'qty' => 'This sale does not have that many left to fulfill.',
+                    ]);
+                }
+
+                $saleLine->loadMissing('item');
+                $item = $saleLine->item ?? $saleLine->item()->firstOrFail();
+                $this->assertItemCanMove($item);
+                $this->removeQty($item, $location, $qty);
+
+                $saleLine->qty_fulfilled = bcadd($already, $qty, 3);
+                $saleLine->save();
+
+                InventorySaleFulfillmentLine::create([
+                    'fulfillment_id' => $fulfillment->getKey(),
+                    'sale_line_id' => $saleLine->getKey(),
+                    'qty' => $qty,
+                ]);
+
+                $this->events->emit('item.sold', $item, [
+                    'after' => [
+                        'qty' => $qty,
+                        'location_id' => $location->getKey(),
+                        'sale_id' => $sale->getKey(),
+                    ],
+                ]);
+            }
+
+            $stillOwes = $lockedLines->contains(
+                function (InventorySaleLine $line) {
+                    return bccomp(
+                        $this->scale((string) $line->qty_fulfilled),
+                        $this->scale((string) $line->qty_ordered),
+                        3,
+                    ) < 0;
+                },
+            );
+
+            $sale->status = $stillOwes
+                ? InventorySaleStatus::Partial
+                : InventorySaleStatus::Fulfilled;
+            $sale->save();
+
+            if (! $stillOwes) {
+                $seen = [];
+                foreach ($lockedLines as $saleLine) {
+                    $saleLine->loadMissing('item');
+                    $item = $saleLine->item ?? $saleLine->item()->firstOrFail();
+                    $id = $item->getKey();
+                    if (isset($seen[$id])) {
+                        continue;
+                    }
+                    $seen[$id] = true;
+                    $this->events->emit('item.sale_fulfilled', $item, [
+                        'after' => [
+                            'sale_id' => $sale->getKey(),
+                        ],
+                    ]);
+                }
+            }
+
+            return $fulfillment;
         });
     }
 

@@ -5,9 +5,10 @@ namespace App\Support\Inventory;
 /**
  * Cost attributes on inventory payloads (spec §7, §14).
  *
- * Without `inventory.financials`, every read path omits last cost and unit
- * cost, including nested PO lines and item last cost. Controllers call
- * [withoutCosts] on presented arrays rather than branching per field.
+ * Without `inventory.financials`, every read path omits last cost, unit
+ * cost, sale price, and payment status, including nested PO and sale
+ * lines. Controllers call [withoutCosts] on presented arrays rather than
+ * branching per field.
  */
 final class InventoryFinancials
 {
@@ -19,7 +20,12 @@ final class InventoryFinancials
      */
     public static function withoutCosts(array $row): array
     {
-        unset($row['last_cost_minor'], $row['unit_cost_minor']);
+        unset(
+            $row['last_cost_minor'],
+            $row['unit_cost_minor'],
+            $row['unit_price_minor'],
+            $row['payment_status'],
+        );
 
         foreach ($row as $key => $value) {
             if (! is_array($value)) {

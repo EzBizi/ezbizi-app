@@ -133,6 +133,21 @@ String inventoryPoStatusLabel(String? status) => switch (status) {
   _ => status ?? '',
 };
 
+String inventorySaleStatusLabel(String? status) => switch (status) {
+  'draft' => 'Draft',
+  'open' => 'Open',
+  'partial' => 'Partial',
+  'fulfilled' => 'Fulfilled',
+  'cancelled' => 'Cancelled',
+  _ => status ?? '',
+};
+
+String inventorySalePaymentLabel(String? status) => switch (status) {
+  'unpaid' => 'Unpaid',
+  'paid' => 'Paid',
+  _ => status ?? '',
+};
+
 const inventoryUnits = <(String, String)>[
   ('each', 'Each'),
   ('box', 'Box'),

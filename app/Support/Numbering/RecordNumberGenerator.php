@@ -44,6 +44,7 @@ class RecordNumberGenerator
     public const PURCHASE_ORDERS = 'inventory_po';
     public const TRANSFERS       = 'inventory_transfer';
     public const ISSUES          = 'inventory_issue';
+    public const SALES           = 'inventory_sale';
 
     public function __construct(
         private readonly TenantContext $tenant,
@@ -124,6 +125,7 @@ class RecordNumberGenerator
             self::TRANSFERS       => 'T-',
             // Issues have no prefix setting — spec §8.4 is prefix IS-.
             self::ISSUES          => 'IS-',
+            self::SALES           => 'SO-',
             default         => '',
         };
 

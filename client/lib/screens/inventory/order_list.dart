@@ -8,11 +8,13 @@ import '../../widgets/tag.dart';
 import '../inventory_screen.dart';
 import 'add_issue_pane.dart';
 import 'add_purchase_order_pane.dart';
+import 'add_sale_pane.dart';
 import 'issue_pane.dart';
 import 'item_pane.dart';
 import 'purchase_order_pane.dart';
+import 'sale_pane.dart';
 
-/// Orders chip: purchase orders and recent issues.
+/// Orders chip: purchase orders, sales, and issues.
 class OrderList extends StatefulWidget {
   const OrderList({
     super.key,
@@ -34,12 +36,15 @@ class _OrderListState extends State<OrderList> {
   String? _error;
   List<Map<String, dynamic>> _orders = [];
   List<Map<String, dynamic>> _issues = [];
+  List<Map<String, dynamic>> _sales = [];
   bool _toReceive = false;
   bool _openPos = false;
   bool _issuesOnly = false;
-  bool _isIssue = false;
+  bool _salesOnly = false;
+  String? _kind;
   bool _addingPo = false;
   bool _addingIssue = false;
+  bool _addingSale = false;
   String? _selectedId;
   Map<String, dynamic>? _open;
 
@@ -55,16 +60,18 @@ class _OrderListState extends State<OrderList> {
     if (widget.visible && !oldWidget.visible) _load();
   }
 
-  bool get _hasPane => _addingPo || _addingIssue || _open != null;
+  bool get _hasPane =>
+      _addingPo || _addingIssue || _addingSale || _open != null;
 
   Future<void> _load() async {
     setState(() {
-      _loading = _orders.isEmpty && _issues.isEmpty;
+      _loading = _orders.isEmpty && _issues.isEmpty && _sales.isEmpty;
       _error = null;
     });
 
     final po = await widget.api.get('/inventory/purchase-orders');
     final issues = await widget.api.get('/inventory/issues');
+    final sales = await widget.api.get('/inventory/sales');
 
     if (!mounted) return;
 
@@ -84,12 +91,25 @@ class _OrderListState extends State<OrderList> {
       return;
     }
 
+    if (!sales.ok) {
+      setState(() {
+        _loading = false;
+        _error = sales.message;
+      });
+      return;
+    }
+
     setState(() {
       _loading = false;
       _orders = inventoryRows(po.data);
       _issues = inventoryRows(issues.data);
-      if (_open != null && _selectedId != null && !_isIssue) {
+      _sales = inventoryRows(sales.data);
+      if (_open != null && _selectedId != null && _kind == 'po') {
         final match = _orders.where((row) => row['id'] == _selectedId);
+        if (match.isNotEmpty) _open = match.first;
+      }
+      if (_open != null && _selectedId != null && _kind == 'sale') {
+        final match = _sales.where((row) => row['id'] == _selectedId);
         if (match.isNotEmpty) _open = match.first;
       }
     });
@@ -98,9 +118,10 @@ class _OrderListState extends State<OrderList> {
   void _clearPane() => setState(() {
     _addingPo = false;
     _addingIssue = false;
+    _addingSale = false;
     _selectedId = null;
     _open = null;
-    _isIssue = false;
+    _kind = null;
   });
 
   bool _hasRemaining(Map<String, dynamic> order) {
@@ -112,27 +133,30 @@ class _OrderListState extends State<OrderList> {
     return false;
   }
 
-  List<({bool issue, Map<String, dynamic> row})> _visible() {
-    final rows = <({bool issue, Map<String, dynamic> row})>[];
+  List<({String kind, Map<String, dynamic> row})> _visible() {
+    final rows = <({String kind, Map<String, dynamic> row})>[];
+    final filtering = _toReceive || _openPos || _issuesOnly || _salesOnly;
 
-    final wantPo = !_issuesOnly || _openPos || _toReceive;
-    final wantIssues = !_toReceive && !_openPos || _issuesOnly;
-
-    if (wantPo) {
+    if (!_issuesOnly && !_salesOnly) {
       for (final order in _orders) {
         final status = order['status'] as String?;
         if (_toReceive && (status != 'open' || !_hasRemaining(order))) {
           continue;
         }
         if (_openPos && status != 'open') continue;
-        if (_issuesOnly && !_openPos && !_toReceive) continue;
-        rows.add((issue: false, row: order));
+        rows.add((kind: 'po', row: order));
       }
     }
 
-    if (wantIssues && (_issuesOnly || (!_toReceive && !_openPos))) {
+    if (!filtering || _issuesOnly) {
       for (final issue in _issues) {
-        rows.add((issue: true, row: issue));
+        rows.add((kind: 'issue', row: issue));
+      }
+    }
+
+    if (!filtering || _salesOnly) {
+      for (final sale in _sales) {
+        rows.add((kind: 'sale', row: sale));
       }
     }
 
@@ -161,8 +185,8 @@ class _OrderListState extends State<OrderList> {
       header: PanelHeader(
         title: 'Orders',
         note: (_loading || _error != null)
-            ? 'Purchase orders and issues.'
-            : 'Open orders to receive, and what has already gone out.',
+            ? 'Purchase orders, sales, and issues.'
+            : 'Buy in, sell out, and what has already gone to a job.',
         action: (canCreate || canEdit)
             ? Wrap(
                 spacing: 8,
@@ -176,9 +200,10 @@ class _OrderListState extends State<OrderList> {
                             ? () => setState(() {
                                 _addingPo = true;
                                 _addingIssue = false;
+                                _addingSale = false;
                                 _selectedId = null;
                                 _open = null;
-                                _isIssue = false;
+                                _kind = null;
                               })
                             : null,
                         icon: const Icon(Icons.add, size: 18),
@@ -193,13 +218,32 @@ class _OrderListState extends State<OrderList> {
                             ? () => setState(() {
                                 _addingIssue = true;
                                 _addingPo = false;
+                                _addingSale = false;
                                 _selectedId = null;
                                 _open = null;
-                                _isIssue = false;
+                                _kind = null;
                               })
                             : null,
                         icon: const Icon(Icons.output, size: 18),
                         label: const Text('Issue'),
+                      ),
+                    ),
+                  if (canCreate)
+                    Refused(
+                      reason: createRefused,
+                      child: OutlinedButton.icon(
+                        onPressed: createRefused == null
+                            ? () => setState(() {
+                                _addingSale = true;
+                                _addingPo = false;
+                                _addingIssue = false;
+                                _selectedId = null;
+                                _open = null;
+                                _kind = null;
+                              })
+                            : null,
+                        icon: const Icon(Icons.point_of_sale, size: 18),
+                        label: const Text('Add sale'),
                       ),
                     ),
                 ],
@@ -238,12 +282,17 @@ class _OrderListState extends State<OrderList> {
                 selected: _issuesOnly,
                 onSelected: (_) => setState(() => _issuesOnly = !_issuesOnly),
               ),
+              FilterChip(
+                label: const Text('Sales'),
+                selected: _salesOnly,
+                onSelected: (_) => setState(() => _salesOnly = !_salesOnly),
+              ),
             ],
           ),
         ),
         Expanded(
           child: rows.isEmpty
-              ? const Center(child: Text('There are no orders.'))
+              ? const Center(child: Text('There are no orders or sales.'))
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                   itemCount: rows.length,
@@ -257,12 +306,12 @@ class _OrderListState extends State<OrderList> {
 
   Widget _row(
     BuildContext context,
-    ({bool issue, Map<String, dynamic> row}) entry,
+    ({String kind, Map<String, dynamic> row}) entry,
   ) {
     final id = entry.row['id'] as String?;
-    final selected = id != null && id == _selectedId && _isIssue == entry.issue;
+    final selected = id != null && id == _selectedId && _kind == entry.kind;
 
-    if (entry.issue) {
+    if (entry.kind == 'issue') {
       final location = inventoryMap(entry.row['location']);
       final job = inventoryMap(entry.row['job']);
       return Card(
@@ -273,7 +322,10 @@ class _OrderListState extends State<OrderList> {
             vertical: 8,
           ),
           onTap: () => setState(() {
-            _isIssue = true;
+            _kind = 'issue';
+            _addingPo = false;
+            _addingIssue = false;
+            _addingSale = false;
             _selectedId = id;
             _open = entry.row;
           }),
@@ -303,6 +355,58 @@ class _OrderListState extends State<OrderList> {
       );
     }
 
+    if (entry.kind == 'sale') {
+      final customer = inventoryMap(entry.row['customer']);
+      final status = entry.row['status'] as String? ?? '';
+      return Card(
+        child: ListTile(
+          selected: selected,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 8,
+          ),
+          onTap: () => setState(() {
+            _kind = 'sale';
+            _addingPo = false;
+            _addingIssue = false;
+            _addingSale = false;
+            _selectedId = id;
+            _open = entry.row;
+          }),
+          title: Text(
+            entry.row['number'] as String? ?? 'Sale',
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  children: [
+                    const Tag('Sale'),
+                    if (status.isNotEmpty)
+                      Tag(
+                        inventorySaleStatusLabel(status),
+                        warn: status == 'cancelled',
+                      ),
+                  ],
+                ),
+                Text(
+                  customer?['name'] as String? ??
+                      entry.row['note'] as String? ??
+                      '',
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final vendor = inventoryMap(entry.row['vendor']);
     final status = entry.row['status'] as String? ?? '';
 
@@ -311,7 +415,10 @@ class _OrderListState extends State<OrderList> {
         selected: selected,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         onTap: () => setState(() {
-          _isIssue = false;
+          _kind = 'po';
+          _addingPo = false;
+          _addingIssue = false;
+          _addingSale = false;
           _selectedId = id;
           _open = entry.row;
         }),
@@ -356,7 +463,7 @@ class _OrderListState extends State<OrderList> {
         onSaved: (created) {
           setState(() {
             _addingPo = false;
-            _isIssue = false;
+            _kind = 'po';
             _open = created;
             _selectedId = created['id'] as String?;
           });
@@ -374,7 +481,25 @@ class _OrderListState extends State<OrderList> {
         onSaved: (created) {
           setState(() {
             _addingIssue = false;
-            _isIssue = true;
+            _kind = 'issue';
+            _open = created;
+            _selectedId = created['id'] as String?;
+          });
+          _load();
+        },
+      );
+    }
+
+    if (_addingSale) {
+      return AddSalePane(
+        api: widget.api,
+        session: widget.session,
+        showBack: showBack,
+        onCancel: _clearPane,
+        onSaved: (created) {
+          setState(() {
+            _addingSale = false;
+            _kind = 'sale';
             _open = created;
             _selectedId = created['id'] as String?;
           });
@@ -386,11 +511,29 @@ class _OrderListState extends State<OrderList> {
     final row = _open;
     if (row == null) return const SizedBox.shrink();
 
-    if (_isIssue) {
+    if (_kind == 'issue') {
       return IssuePane(
         issue: row,
         showBack: showBack,
         onBack: _clearPane,
+      );
+    }
+
+    if (_kind == 'sale') {
+      return SalePane(
+        api: widget.api,
+        session: widget.session,
+        sale: row,
+        showBack: showBack,
+        onBack: _clearPane,
+        onChanged: (updated) {
+          setState(() {
+            _open = updated;
+            _selectedId = updated['id'] as String?;
+            _kind = 'sale';
+          });
+          _load();
+        },
       );
     }
 
@@ -404,7 +547,7 @@ class _OrderListState extends State<OrderList> {
         setState(() {
           _open = updated;
           _selectedId = updated['id'] as String?;
-          _isIssue = false;
+          _kind = 'po';
         });
         _load();
       },

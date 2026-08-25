@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0091',
+      date: '25 Aug 2026',
+      items: [
+        'Sales orders on Inventory: draft, open, fulfill from a location. '
+            'The buyer is a Customer, or a note for a counter sale.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0090',
       date: '25 Aug 2026',
       items: [
@@ -19,8 +27,8 @@ class VersionHistory {
       version: '0.0.0089',
       date: '25 Aug 2026',
       items: [
-        'Sales orders on Inventory: draft, open, fulfill from a location. '
-            'The buyer is a Customer, or a note for a counter sale.',
+        'A company view cannot connect or change the organization Twilio. '
+            'That is only offered when looking at the group.',
       ],
     ),
     VersionRelease(

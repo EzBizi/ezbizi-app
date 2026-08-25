@@ -340,6 +340,7 @@ void main() {
 
     expect(find.text('Add purchase order'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, 'Issue'), findsOneWidget);
+    expect(find.text('Add sale'), findsOneWidget);
     expect(find.byType(Dialog), findsNothing);
   });
 
@@ -544,6 +545,139 @@ void main() {
       expect(find.text('Franchise'), findsOneWidget);
     },
   );
+
+  testWidgets('a sale draft posts customer, item and qty', (tester) async {
+    Map<String, dynamic>? posted;
+
+    await _pumpScreen(
+      tester,
+      customers: [_customer],
+      items: [_item],
+      onRequest: (request) {
+        if (request.method == 'POST' &&
+            request.url.path.endsWith('/inventory/sales')) {
+          posted = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'data': {..._openSale, 'status': 'draft'},
+          }, 201);
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Orders'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add sale'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.text('New sale'), findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Qty ordered'),
+      '5',
+    );
+    await tester.pump();
+    await tester.tap(find.text('Save draft'));
+    await tester.pumpAndSettle();
+
+    expect(posted, isNotNull);
+    expect(posted!['customer_id'], 'cust-1');
+    expect(posted!.containsKey('note'), isFalse);
+    expect((posted!['lines'] as List).first['item_id'], 'item-1');
+    expect((posted!['lines'] as List).first['qty'], '5');
+    expect(find.text('SO-00001'), findsWidgets);
+  });
+
+  testWidgets('a counter sale posts a note and no customer', (tester) async {
+    Map<String, dynamic>? posted;
+
+    await _pumpScreen(
+      tester,
+      items: [_item],
+      onRequest: (request) {
+        if (request.method == 'POST' &&
+            request.url.path.endsWith('/inventory/sales')) {
+          posted = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'data': {
+              ..._openSale,
+              'status': 'draft',
+              'customer': null,
+              'note': 'Walk-in',
+            },
+          }, 201);
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Orders'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add sale'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Counter sale'), findsWidgets);
+
+    await tester.enterText(find.widgetWithText(TextField, 'Note'), 'Walk-in');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Qty ordered'),
+      '1',
+    );
+    await tester.pump();
+    await tester.tap(find.text('Save draft'));
+    await tester.pumpAndSettle();
+
+    expect(posted, isNotNull);
+    expect(posted!.containsKey('customer_id'), isFalse);
+    expect(posted!['note'], 'Walk-in');
+    expect((posted!['lines'] as List).first['qty'], '1');
+  });
+
+  testWidgets('Fulfill posts from a location', (tester) async {
+    Map<String, dynamic>? posted;
+
+    await _pumpScreen(
+      tester,
+      sales: [_openSale],
+      locations: [_shop],
+      onRequest: (request) {
+        if (request.method == 'POST' &&
+            request.url.path.endsWith('/inventory/sales/so-1/fulfillments')) {
+          posted = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'data': {
+              'id': 'ful-1',
+              'location': {'id': 'loc-1', 'name': 'Main shop'},
+              'sale': {'id': 'so-1', 'number': 'SO-00001', 'status': 'partial'},
+            },
+          }, 201);
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Orders'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('SO-00001'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.text('Fulfill'), findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Qty this time'),
+      '2',
+    );
+    await tester.pump();
+    await tester.tap(find.text('Fulfill'));
+    await tester.pumpAndSettle();
+
+    expect(posted, isNotNull);
+    expect(posted!['location_id'], 'loc-1');
+    expect((posted!['lines'] as List).first['qty'], '2');
+    expect((posted!['lines'] as List).first['sale_line_id'], 'sol-1');
+  });
 }
 
 const _item = {
@@ -559,6 +693,8 @@ const _item = {
 };
 
 const _vendor = {'id': 'ven-1', 'name': 'Supply Co'};
+
+const _customer = {'id': 'cust-1', 'name': 'Pat Buyer', 'number': 'C-00001'};
 
 const _cage = {
   'id': 'loc-2',
@@ -612,6 +748,25 @@ const _openPo = {
   ],
 };
 
+const _openSale = {
+  'id': 'so-1',
+  'number': 'SO-00001',
+  'status': 'open',
+  'payment_status': 'unpaid',
+  'note': null,
+  'customer': {'id': 'cust-1', 'name': 'Pat Buyer', 'number': 'C-00001'},
+  'company': {'id': 'co-1', 'name': 'Everdoors'},
+  'franchise': {'id': 'fr-1', 'name': 'Connecticut'},
+  'lines': [
+    {
+      'id': 'sol-1',
+      'qty_ordered': '5.000',
+      'qty_fulfilled': '0.000',
+      'item': {'id': 'item-1', 'name': '6 mil liner'},
+    },
+  ],
+};
+
 Future<void> _pumpShell(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1280, 900);
   tester.view.devicePixelRatio = 1.0;
@@ -656,6 +811,8 @@ Future<void> _pumpScreen(
   List<Map<String, dynamic>> issues = const [],
   List<Map<String, dynamic>> locations = const [],
   List<Map<String, dynamic>> vendors = const [],
+  List<Map<String, dynamic>> customers = const [],
+  List<Map<String, dynamic>> sales = const [],
   Size size = const Size(1280, 900),
   http.Response? Function(http.Request request)? onRequest,
 }) async {
@@ -674,6 +831,8 @@ Future<void> _pumpScreen(
         issues: issues,
         locations: locations,
         vendors: vendors,
+        customers: customers,
+        sales: sales,
         onRequest: onRequest,
       ),
     ),
@@ -706,6 +865,8 @@ MockClientHandler _handler({
   List<Map<String, dynamic>> issues = const [],
   List<Map<String, dynamic>> locations = const [],
   List<Map<String, dynamic>> vendors = const [],
+  List<Map<String, dynamic>> customers = const [],
+  List<Map<String, dynamic>> sales = const [],
   http.Response? Function(http.Request request)? onRequest,
 }) {
   return (request) async {
@@ -795,6 +956,26 @@ MockClientHandler _handler({
         'data': issues,
         'meta': {'total': issues.length, 'last_page': 1},
       });
+    }
+
+    if (path.endsWith('/customers')) {
+      return _json({
+        'data': customers,
+        'meta': {'total': customers.length, 'last_page': 1},
+      });
+    }
+
+    if (path.endsWith('/inventory/sales')) {
+      return _json({
+        'data': sales,
+        'meta': {'total': sales.length, 'last_page': 1},
+      });
+    }
+
+    if (RegExp(r'/inventory/sales/[^/]+$').hasMatch(path)) {
+      final id = path.split('/').last;
+      final match = sales.where((row) => row['id'] == id);
+      return _json({'data': match.isEmpty ? _openSale : match.first});
     }
 
     if (path.endsWith('/vehicles')) {

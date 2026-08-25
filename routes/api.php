@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\InventoryIssuesController;
 use App\Http\Controllers\Api\InventoryItemsController;
 use App\Http\Controllers\Api\InventoryLocationsController;
 use App\Http\Controllers\Api\InventoryPurchaseOrdersController;
+use App\Http\Controllers\Api\InventorySalesController;
 use App\Http\Controllers\Api\InventoryStockController;
 use App\Http\Controllers\Api\InventoryTransfersController;
 use App\Http\Controllers\Api\InventoryVendorsController;
@@ -341,6 +342,12 @@ Route::prefix('v1')
         Route::post('inventory/transfers', [InventoryTransfersController::class, 'store']);
         Route::apiResource('inventory/issues', InventoryIssuesController::class)
             ->only(['index', 'store']);
+        Route::post('inventory/sales/{sale}/open', [InventorySalesController::class, 'open']);
+        Route::post('inventory/sales/{sale}/cancel', [InventorySalesController::class, 'cancel']);
+        Route::post('inventory/sales/{sale}/pay', [InventorySalesController::class, 'pay']);
+        Route::post('inventory/sales/{sale}/fulfillments', [InventorySalesController::class, 'fulfill']);
+        Route::apiResource('inventory/sales', InventorySalesController::class)
+            ->only(['index', 'store', 'show']);
 
         // ── The shape of the business (§3) ───────────────────────
         //

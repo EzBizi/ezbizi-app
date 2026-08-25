@@ -9,6 +9,8 @@ use App\Support\Inventory\InventoryItemStatus;
 use App\Support\Inventory\InventoryLocationKind;
 use App\Support\Inventory\InventoryLocationStatus;
 use App\Support\Inventory\InventoryPurchaseOrderStatus;
+use App\Support\Inventory\InventorySalePaymentStatus;
+use App\Support\Inventory\InventorySaleStatus;
 use App\Support\Inventory\InventoryUnit;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -39,6 +41,10 @@ class InventoryTablesTest extends TestCase
             'inventory_issues',
             'inventory_issue_lines',
             'inventory_adjustments',
+            'inventory_sales',
+            'inventory_sale_lines',
+            'inventory_sale_fulfillments',
+            'inventory_sale_fulfillment_lines',
         ] as $table) {
             $this->assertTrue(Schema::hasTable($table), $table);
         }
@@ -51,6 +57,8 @@ class InventoryTablesTest extends TestCase
         $this->assertSame(['warehouse', 'shop', 'cage', 'receiving', 'van', 'other'], InventoryLocationKind::values());
         $this->assertSame(['active', 'closed'], InventoryLocationStatus::values());
         $this->assertSame(['draft', 'open', 'received', 'cancelled'], InventoryPurchaseOrderStatus::values());
+        $this->assertSame(['draft', 'open', 'partial', 'fulfilled', 'cancelled'], InventorySaleStatus::values());
+        $this->assertSame(['unpaid', 'paid'], InventorySalePaymentStatus::values());
     }
 
     public function test_sku_is_unique_inside_a_place_not_the_organization(): void

@@ -1256,6 +1256,21 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Every line on a purchase order has been fully received.',
                     ),
                     new TriggerDefinition(
+                        key:   'item.sale_opened',
+                        label: 'Sale opened',
+                        description: 'A sales order left draft and can be fulfilled.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'item.sold',
+                        label: 'Stock sold',
+                        description: 'Stock left a location against a sales order.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'item.sale_fulfilled',
+                        label: 'Sale fully fulfilled',
+                        description: 'Every line on a sales order has been fully fulfilled.',
+                    ),
+                    new TriggerDefinition(
                         key:   'item.low',
                         label: 'Stock is low',
                         description: 'On-hand at a visible location is at or below the reorder '
