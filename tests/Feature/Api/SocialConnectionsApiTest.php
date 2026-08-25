@@ -139,6 +139,58 @@ class SocialConnectionsApiTest extends TestCase
         $this->assertSame(SocialConnection::STATUS_CONNECTED, $row['status']);
     }
 
+    public function test_disconnecting_forgets_the_row_and_its_tokens(): void
+    {
+        $t   = $this->provisionTenant('A1-Group');
+        $row = $this->connection($t, 'company', $t['company']->id);
+
+        $this->signedInAs($t['admin'])
+            ->deleteJson(self::ENDPOINT.'/'.$row->getKey())
+            ->assertOk();
+
+        $this->inTenant($t['org'], function () use ($row) {
+            $this->assertNull(SocialConnection::query()->find($row->getKey()));
+        });
+    }
+
+    public function test_a_sibling_company_cannot_disconnect_this_companys_page(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $premier = $this->inTenant($t['org'], fn () => Company::create([
+            'organization_id' => $t['org']->id,
+            'name'            => 'Premier Garage Repair',
+        ]));
+
+        $row = $this->connection($t, 'company', $t['company']->id);
+
+        $this->lookingAt($t['admin'], 'company', $premier->id);
+
+        // Out of reach is a 404, not a 403: a sibling learning that a
+        // connection exists is itself the leak.
+        $this->signedInAs($t['admin']->fresh())
+            ->deleteJson(self::ENDPOINT.'/'.$row->getKey())
+            ->assertNotFound();
+
+        $this->inTenant($t['org'], function () use ($row) {
+            $this->assertNotNull(SocialConnection::query()->find($row->getKey()));
+        });
+    }
+
+    public function test_disconnecting_is_refused_without_marketing_edit(): void
+    {
+        $t      = $this->provisionTenant('A1-Group');
+        $row    = $this->connection($t, 'company', $t['company']->id);
+        $viewer = $this->userWithRole($t, 'Reader', ['marketing.view']);
+
+        $this->signedInAs($viewer)
+            ->deleteJson(self::ENDPOINT.'/'.$row->getKey())
+            ->assertForbidden();
+
+        $this->inTenant($t['org'], function () use ($row) {
+            $this->assertNotNull(SocialConnection::query()->find($row->getKey()));
+        });
+    }
+
     private function connection(
         array $t,
         string $scopeType,

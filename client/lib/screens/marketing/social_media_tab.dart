@@ -101,6 +101,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                   connections: _connections,
                   error: _loadError,
                   onConnect: () => _openConnect(context),
+                  onDisconnect: _disconnect,
                 ),
         ),
       ],
@@ -114,10 +115,48 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
         api: widget.api,
         viewName: _viewName,
         providers: _providers,
+        connected: {for (final c in _connections) c.provider},
         openConsent: widget.openConsent,
         onConnected: _load,
       ),
     );
+  }
+
+  Future<void> _disconnect(_SocialConnection page) async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Disconnect ${page.displayName}?'),
+        content: Text(
+          'EzBizi forgets this ${page.providerLabel} account and its tokens. '
+          'Anything scheduled to it stops. To revoke EzBizi at '
+          '${page.providerLabel}’s end as well, use that network’s own '
+          'settings.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep it'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Disconnect'),
+          ),
+        ],
+      ),
+    );
+
+    if (go != true || !mounted) return;
+
+    final response = await widget.api.delete('/social/connections/${page.id}');
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() => _loadError = response.reason);
+      return;
+    }
+
+    await _load();
   }
 }
 
@@ -144,7 +183,10 @@ class _PostsPane extends StatelessWidget {
           connections: connections,
           onConnect: onConnect,
         );
-        final compose = _ComposeColumn(viewName: viewName);
+        final compose = _ComposeColumn(
+          viewName: viewName,
+          connections: connections,
+        );
 
         if (stack) {
           return ListView(
@@ -208,7 +250,15 @@ class _PagesColumn extends StatelessWidget {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 dense: true,
-                title: Text(page.displayName),
+                leading: SocialNetworkMark(network: page.provider, size: 24),
+                // A network that gives us no display name leaves its own opaque
+                // id here. One line with an ellipsis, never three wrapped lines
+                // of base64 pushing the Connect button off the card.
+                title: Text(
+                  page.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 subtitle: Text(page.providerLabel),
               ),
           const SizedBox(height: 12),
@@ -226,14 +276,20 @@ class _PagesColumn extends StatelessWidget {
 }
 
 class _ComposeColumn extends StatelessWidget {
-  const _ComposeColumn({required this.viewName});
+  const _ComposeColumn({required this.viewName, required this.connections});
 
   final String viewName;
+  final List<_SocialConnection> connections;
 
   @override
   Widget build(BuildContext context) {
-    final nowhere =
-        'No page is connected in $viewName, so there is nowhere to publish.';
+    // Two different reasons Publish is dead, and they are owed different
+    // sentences. Saying "nothing is connected" to somebody looking at a
+    // connected page in the next column is simply a lie.
+    final nowhere = connections.isEmpty
+        ? 'No page is connected in $viewName, so there is nowhere to publish.'
+        : 'Composing is not built yet. Connecting works; writing and sending '
+              'a post is the next piece.';
 
     return DashboardCard(
       title: 'Compose',
@@ -688,6 +744,7 @@ class _AccountsPane extends StatelessWidget {
     required this.providers,
     required this.connections,
     required this.onConnect,
+    required this.onDisconnect,
     this.error,
   });
 
@@ -695,10 +752,13 @@ class _AccountsPane extends StatelessWidget {
   final List<_SocialNetwork> providers;
   final List<_SocialConnection> connections;
   final VoidCallback onConnect;
+  final void Function(_SocialConnection) onDisconnect;
   final String? error;
 
   @override
   Widget build(BuildContext context) {
+    final connected = {for (final c in connections) c.provider: c};
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -721,8 +781,20 @@ class _AccountsPane extends StatelessWidget {
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: SocialNetworkMark(network: page.provider),
-                    title: Text(page.displayName),
-                    subtitle: Text(page.providerLabel),
+                    title: Text(
+                      page.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      page.handle != null
+                          ? '${page.providerLabel} · @${page.handle}'
+                          : page.providerLabel,
+                    ),
+                    trailing: TextButton(
+                      onPressed: () => onDisconnect(page),
+                      child: const Text('Disconnect'),
+                    ),
                   ),
               const SizedBox(height: 12),
               Align(
@@ -747,12 +819,20 @@ class _AccountsPane extends StatelessWidget {
                   leading: SocialNetworkMark(network: network.value),
                   title: Text(network.label),
                   subtitle: Text(
-                    network.usable
-                        ? 'Ready to connect'
-                        : network.unusableBecause ?? 'Not ready',
+                    connected[network.value] != null
+                        ? 'Connected as ${connected[network.value]!.displayName}'
+                        : network.usable
+                            ? 'Ready to connect'
+                            : network.unusableBecause ?? 'Not ready',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   trailing: Text(
-                    network.usable ? 'Ready' : 'Not ready',
+                    connected[network.value] != null
+                        ? 'Connected'
+                        : network.usable
+                            ? 'Ready'
+                            : 'Not ready',
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                 ),
@@ -799,12 +879,14 @@ class _SocialConnection {
     required this.displayName,
     required this.provider,
     required this.providerLabel,
+    this.handle,
   });
 
   final String id;
   final String displayName;
   final String provider;
   final String providerLabel;
+  final String? handle;
 
   factory _SocialConnection.fromJson(Map<String, dynamic> json) {
     return _SocialConnection(
@@ -812,6 +894,7 @@ class _SocialConnection {
       displayName: json['display_name'] as String? ?? '',
       provider: json['provider'] as String? ?? '',
       providerLabel: json['provider_label'] as String? ?? '',
+      handle: json['handle'] as String?,
     );
   }
 }
@@ -821,6 +904,7 @@ class _ConnectPanel extends StatefulWidget {
     required this.api,
     required this.viewName,
     required this.providers,
+    required this.connected,
     required this.openConsent,
     required this.onConnected,
   });
@@ -828,6 +912,10 @@ class _ConnectPanel extends StatefulWidget {
   final ApiClient api;
   final String viewName;
   final List<_SocialNetwork> providers;
+
+  /// Provider keys already connected in this view, so the button can say
+  /// Reconnect rather than offering Connect on something already connected.
+  final Set<String> connected;
   final OpenConsentWindow openConsent;
   final Future<void> Function() onConnected;
 
@@ -873,15 +961,21 @@ class _ConnectPanelState extends State<_ConnectPanel> {
                 subtitle: Text(
                   _busy == network.value
                       ? 'Waiting for ${network.label}…'
-                      : network.usable
-                          ? 'Opens the network sign-in.'
-                          : network.unusableBecause ?? 'Not ready',
+                      : widget.connected.contains(network.value)
+                          ? 'Already connected. Signing in again refreshes it.'
+                          : network.usable
+                              ? 'Opens the network sign-in.'
+                              : network.unusableBecause ?? 'Not ready',
                 ),
                 trailing: FilledButton(
                   onPressed: network.usable && _busy == null
                       ? () => _connectOauth(network)
                       : null,
-                  child: const Text('Connect'),
+                  child: Text(
+                    widget.connected.contains(network.value)
+                        ? 'Reconnect'
+                        : 'Connect',
+                  ),
                 ),
               ),
         ],

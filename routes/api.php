@@ -613,6 +613,7 @@ Route::prefix('v1')
 
         Route::get('social/providers', [SocialProvidersController::class, 'index']);
         Route::get('social/connections', [SocialConnectionsController::class, 'index']);
+        Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
         Route::post('social/bluesky/connect', [BlueskyConnectController::class, 'store']);
         Route::post('social/{network}/start', [SocialAuthController::class, 'start'])
             ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x');

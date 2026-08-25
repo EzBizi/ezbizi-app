@@ -131,8 +131,13 @@ final class TikTokOAuth implements SocialOAuth
         try {
             $response = Http::withToken($grant->accessToken)
                 ->timeout(self::TIMEOUT)
+                // Only fields `user.info.basic` covers. `username` needs
+                // `user.info.profile`, and TikTok fails the WHOLE request when
+                // one field is outside the granted scope — so asking for it
+                // cost us display_name too, and every connection was named
+                // after its own open_id.
                 ->get('https://open.tiktokapis.com/v2/user/info/', [
-                    'fields' => 'open_id,display_name,username',
+                    'fields' => 'open_id,display_name',
                 ]);
         } catch (ConnectionException) {
             throw SocialOAuthRefused::unidentified('TikTok');

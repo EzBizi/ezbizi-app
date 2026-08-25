@@ -128,7 +128,7 @@ class SocialAuthController extends Controller
                 $this->signIns->record($signIn, SocialOAuthSignIns::REFUSED, $e->getMessage());
             }
 
-            return $this->page('That did not work', $e->getMessage(), $e->status);
+            return $this->page('That did not work', $e->getMessage(), $e->status, $oauth->provider());
         }
     }
 
@@ -187,7 +187,7 @@ class SocialAuthController extends Controller
 
             $this->signIns->record($signIn, SocialOAuthSignIns::CONNECTED, $said);
 
-            return $this->page('Connected', $said, Status::HTTP_OK);
+            return $this->page('Connected', $said, Status::HTTP_OK, $oauth->provider());
         });
     }
 
@@ -284,8 +284,24 @@ class SocialAuthController extends Controller
         return [$view->type, (string) $view->id];
     }
 
-    private function page(string $heading, string $sentence, int $status): Response
-    {
+    private function page(
+        string $heading,
+        string $sentence,
+        int $status,
+        ?SocialProvider $provider = null,
+    ): Response {
+        $ok = $status === Status::HTTP_OK;
+
+        // How far the wire gets. A refusal draws a line that stops short and
+        // goes red — the picture says the same thing the sentence does, which
+        // is the whole point of having a picture.
+        $reach = $ok ? '100%' : '46%';
+        $wire  = $ok ? 'var(--cyan)' : '#C2412D';
+
+        // The palette is the client's, transcribed. This page cannot read
+        // EzBiziTheme — it is server-rendered HTML in a popup, outside Flutter
+        // entirely — so the hexes live here and nowhere else in PHP. If the
+        // brand moves, `client/lib/core/theme.dart` is the original.
         $html = <<<HTML
         <!doctype html>
         <html lang="en">
@@ -294,18 +310,81 @@ class SocialAuthController extends Controller
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>EzBizi — {$this->escape($heading)}</title>
         <style>
-        body { margin: 0; padding: 2rem 1.25rem; background: #f6f7f9; color: #1c1e21;
+        :root {
+          --cyan: #00AEEF; --ink: #060808; --muted: #5B6672;
+          --bg: #F5F8FA; --surface: #fff; --line: #E9EDF1;
+        }
+        @media (prefers-color-scheme: dark) {
+          :root {
+            --ink: #fff; --muted: #97A3B0;
+            --bg: #0B0F14; --surface: #10161B; --line: #1E262E;
+          }
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+               padding: 2rem 1.25rem; background: var(--bg); color: var(--ink);
                font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-        main { max-width: 34rem; margin: 0 auto; background: #fff; border: 1px solid #e2e5e9;
-               border-radius: 10px; padding: 1.5rem; }
-        h1 { margin: 0 0 .75rem; font-size: 1.25rem; }
-        p { margin: 0; }
+        main { width: 100%; max-width: 27rem; background: var(--surface);
+               border: 1px solid var(--line); border-radius: 14px;
+               padding: 2rem; text-align: center; }
+        /* EzBizi ——— network. The two things being joined, and the joining.
+           No wordmark above it: the cyan Ez tile already carries the brand, and
+           two of them on one card is a logo competing with itself. */
+        .link { display: flex; align-items: center; justify-content: center;
+                margin: .25rem 0 1.5rem; }
+        .node { position: relative; width: 58px; height: 58px; flex: none;
+                border-radius: 17px; display: grid; place-items: center;
+                background: var(--surface); border: 1px solid var(--line);
+                box-shadow: 0 1px 3px rgba(6, 8, 8, .07);
+                animation: pop .4s both; }
+        .node svg { width: 31px; height: 31px; }
+        .node.ez { background: var(--cyan); border-color: var(--cyan); color: #fff;
+                   font-weight: 800; font-size: 21px; letter-spacing: -.5px; }
+        .node.far { animation-delay: .55s; }
+        /* Direct child only: the badge is an svg too, and greying the whole
+           node took the red out of the cross that says it failed. */
+        .node.far.cold > svg { filter: grayscale(1); opacity: .4; }
+
+        .wire { position: relative; width: 84px; height: 3px; flex: none;
+                background: var(--line); border-radius: 2px; }
+        .wire i { position: absolute; top: 0; bottom: 0; left: 0; width: 0;
+                  border-radius: 2px; background: {$wire};
+                  animation: fill .75s .25s forwards cubic-bezier(.4, 0, .2, 1); }
+        .wire b { position: absolute; top: 50%; left: 0; width: 8px; height: 8px;
+                  margin: -4px 0 0 -4px; border-radius: 50%; background: var(--cyan);
+                  opacity: 0; animation: travel 1.9s 1.2s infinite; }
+
+        .badge { position: absolute; right: -7px; bottom: -7px; width: 24px;
+                 height: 24px; border-radius: 50%; display: grid;
+                 place-items: center; border: 2px solid var(--surface);
+                 background: {$this->dotFill($ok)}; opacity: 0;
+                 animation: pop .35s {$this->badgeDelay($ok)} both; }
+        .badge svg { width: 12px; height: 12px; stroke: #fff; stroke-width: 3;
+                     fill: none; stroke-linecap: round; stroke-linejoin: round; }
+
+        @keyframes pop { from { opacity: 0; transform: scale(.75); }
+                         to   { opacity: 1; transform: none; } }
+        @keyframes fill { to { width: {$reach}; } }
+        @keyframes travel { 0% { left: 0; opacity: 0; } 12% { opacity: 1; }
+                            88% { opacity: 1; } 100% { left: 100%; opacity: 0; } }
+
+        /* Motion is decoration here; the picture reads fine standing still. */
+        @media (prefers-reduced-motion: reduce) {
+          .node, .badge, .wire i { animation: none; opacity: 1; }
+          .wire i { width: {$reach}; }
+          .wire b { display: none; }
+        }
+
+        h1 { margin: 0 0 .5rem; font-size: 1.35rem; font-weight: 700;
+             letter-spacing: -.2px; }
+        p.said { margin: 0; color: var(--muted); }
         </style>
         </head>
         <body>
         <main>
+        {$this->linkGraphic($ok, $provider)}
         <h1>{$this->escape($heading)}</h1>
-        <p>{$this->escape($sentence)}</p>
+        <p class="said">{$this->escape($sentence)}</p>
         </main>
         </body>
         </html>
@@ -317,5 +396,66 @@ class SocialAuthController extends Controller
     private function escape(string $value): string
     {
         return e(mb_substr($value, 0, 2000));
+    }
+
+    private function dotFill(bool $ok): string
+    {
+        // Green and red are the only non-brand colours on the page, because a
+        // refusal that looks the same as a success is worse than off-palette.
+        return $ok ? '#1E9E62' : '#C2412D';
+    }
+
+    /** The badge lands after the wire has finished making its point. */
+    private function badgeDelay(bool $ok): string
+    {
+        return $ok ? '.95s' : '.8s';
+    }
+
+    /**
+     * EzBizi ——— the network being connected.
+     *
+     * The network's own mark is read from `client/assets/social`, the very same
+     * file the Flutter catalogue draws. The whole repo ships to the box, so
+     * there is no second copy of nine SVGs to keep in step — and no request
+     * off this page, which is a popup that may be closed a second from now.
+     */
+    private function linkGraphic(bool $ok, ?SocialProvider $provider): string
+    {
+        $mark = $provider === null ? null : $this->networkMark($provider);
+
+        if ($mark === null) {
+            return '';
+        }
+
+        $cold  = $ok ? '' : ' cold';
+        $pulse = $ok ? '<b></b>' : '';
+
+        return <<<HTML
+        <div class="link" role="img" aria-label="EzBizi and {$this->escape($provider->label())}">
+        <span class="node ez">Ez</span>
+        <span class="wire"><i></i>{$pulse}</span>
+        <span class="node far{$cold}">{$mark}<span class="badge">{$this->dotGlyph($ok)}</span></span>
+        </div>
+        HTML;
+    }
+
+    private function networkMark(SocialProvider $provider): ?string
+    {
+        $file = base_path('client/assets/social/'.$provider->routeKey().'.svg');
+
+        if (! is_file($file)) {
+            return null;
+        }
+
+        // Drop the XML prolog — it is only legal at the top of a document, and
+        // this one is about to be inlined halfway down an HTML body.
+        return preg_replace('/<\?xml.*?\?>\s*/s', '', (string) file_get_contents($file));
+    }
+
+    private function dotGlyph(bool $ok): string
+    {
+        return $ok
+            ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>'
+            : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
     }
 }

@@ -151,6 +151,38 @@ class SocialNetworkOAuthTest extends TestCase
         $this->assertStringContainsString('offline.access', $url);
     }
 
+    /**
+     * The callback page draws EzBizi wired to the network being connected, and
+     * the network's mark is the very SVG the Flutter catalogue uses. That is
+     * one filesystem read away from silently rendering nothing, so it is worth
+     * a test: a missing file returns null and the graphic just disappears.
+     */
+    public function test_the_callback_page_shows_the_network_it_was_connecting(): void
+    {
+        // No state, so this refuses — the refusal page carries the graphic too.
+        $html = $this->get('/api/v1/social/tiktok/callback')
+            ->assertStatus(400)
+            ->getContent();
+
+        $this->assertStringContainsString('class="link"', $html);
+        $this->assertStringContainsString('aria-label="EzBizi and TikTok"', $html);
+
+        // The mark itself, not an empty node. Its first path is enough to say
+        // the real file was inlined rather than some placeholder.
+        $mark = (string) file_get_contents(base_path('client/assets/social/tiktok.svg'));
+        preg_match('/<path[^>]*d="([^"]{20,})"/', $mark, $path);
+        $this->assertNotEmpty($path, 'the TikTok mark should have a path to match on');
+        $this->assertStringContainsString($path[1], $html);
+
+        // An XML prolog is only legal at the top of a document; this one is
+        // being inlined halfway down a body.
+        $this->assertStringNotContainsString('<?xml', $html);
+
+        // A refusal must not look like a success.
+        $this->assertStringContainsString('cold', $html);
+        $this->assertStringNotContainsString('#1E9E62', $html);
+    }
+
     public function test_host_header_cannot_move_a_facebook_redirect(): void
     {
         $t = $this->provisionTenant('A1-Group');
