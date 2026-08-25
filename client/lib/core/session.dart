@@ -401,11 +401,15 @@ class Me {
   /// DisplayFormats.fallback answers in ISO rather than guessing the default.
   final DisplayFormats display;
 
-  /// The companies behind the franchises this person can reach (§6). Needed so
-  /// the settings screen can offer the middle tier of the cascade, which was
-  /// supported by the API and unreachable from the UI.
+  /// Every company this person can *reach* (§6). That is not a picker.
+  ///
+  /// `/me` sends the full reach so the switcher can move. Iterating this to
+  /// offer Connect, Add, or a default `company_id` files on a sibling of the
+  /// current view. Use [companiesInView] or [filingCompanyId].
   final List<CompanySummary> companies;
 
+  /// Every franchise this person can reach. Same rule as [companies]: the
+  /// switcher lists it; filing uses [franchisesInView].
   final List<FranchiseSummary> franchises;
 
   /// Companies the current view covers — the scoped company plus its Sub
@@ -445,6 +449,28 @@ class Me {
     if (companyId == null) return const [];
     return franchisesInView.where((f) => f.companyId == companyId).toList();
   }
+
+  /// Company the current view has already named, or null at the group.
+  ///
+  /// Default for "file here". Never [companies].first — that is reach, and
+  /// the first reachable company is often a sibling of the view.
+  String? get filingCompanyId {
+    switch (scope.type) {
+      case 'organization':
+        return null;
+      case 'company':
+        return scope.id;
+      case 'franchise':
+        return franchises.where((f) => f.id == scope.id).firstOrNull?.companyId;
+      default:
+        final inView = companiesInView;
+        return inView.length == 1 ? inView.first.id : null;
+    }
+  }
+
+  /// Franchise the current view has already named, or null.
+  String? get filingFranchiseId =>
+      scope.type == 'franchise' ? scope.id : null;
 
   /// A company picker only earns its place when the view still leaves a
   /// choice: the group (org vs a company), or a parent with Sub Companies.

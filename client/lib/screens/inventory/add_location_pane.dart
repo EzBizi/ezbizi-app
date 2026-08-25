@@ -56,18 +56,8 @@ class _AddLocationPaneState extends State<AddLocationPane> {
   @override
   void initState() {
     super.initState();
-    final scope = _me.scope;
-    if (scope.type == 'organization') {
-      _companyId = null;
-    } else if (scope.type == 'company') {
-      _companyId = scope.id;
-    } else if (scope.type == 'franchise') {
-      final place = _me.franchises.where((f) => f.id == scope.id).firstOrNull;
-      _companyId = place?.companyId;
-      _franchiseId = place?.id;
-    } else if (_me.companies.length == 1) {
-      _companyId = _me.companies.first.id;
-    }
+    _companyId = _me.filingCompanyId;
+    _franchiseId = _me.filingFranchiseId;
   }
 
   @override

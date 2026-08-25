@@ -17,6 +17,9 @@ void main() {
     expect(me.franchisesInView.map((f) => f.name).toList(), ['Connecticut']);
     expect(me.offersCompanyChoice, isFalse);
     expect(me.offersFranchiseChoice, isTrue);
+    expect(me.filingCompanyId, 'co-a1');
+    expect(me.filingFranchiseId, isNull);
+    expect(me.companies.first.id, isNot(me.filingCompanyId));
   });
 
   test('a parent company view includes its sub companies', () {
@@ -59,6 +62,8 @@ void main() {
     expect(me.franchisesInView.map((f) => f.id).toList(), ['fr-a1']);
     expect(me.offersCompanyChoice, isFalse);
     expect(me.offersFranchiseChoice, isFalse);
+    expect(me.filingCompanyId, 'co-a1');
+    expect(me.filingFranchiseId, 'fr-a1');
   });
 
   test('the group view still offers every reachable company', () {
@@ -74,6 +79,8 @@ void main() {
     expect(me.companiesInView.length, 5);
     expect(me.offersCompanyChoice, isTrue);
     expect(me.franchisesInView.length, 3);
+    expect(me.filingCompanyId, isNull);
+    expect(me.filingFranchiseId, isNull);
   });
 }
 
@@ -93,8 +100,8 @@ Me _me({required Map<String, dynamic> scope}) => Me.fromJson({
 });
 
 const _companies = [
-  {'id': 'co-a1', 'name': 'A-1 Chimney', 'parent_company_id': null},
   {'id': 'co-ever', 'name': 'Everdoors', 'parent_company_id': null},
+  {'id': 'co-a1', 'name': 'A-1 Chimney', 'parent_company_id': null},
   {
     'id': 'co-premier',
     'name': 'Premier Garage Repair',
