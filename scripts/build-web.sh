@@ -62,7 +62,11 @@ cp client/web/sw-kill.js client/build/web/flutter_service_worker.js
 # FontManifest.json itself must not be cached (nginx exact-match no-cache);
 # renaming the font is what makes a leftover cached manifest miss instead of
 # silently drawing the old subset.
-python - "$COMMIT" <<'PY'
+# PYTHONIOENCODING, because this script is run from Git Bash on Windows where
+# Python's stdout defaults to cp1252 and the arrow below is not in it. The
+# manifest rewrite had already succeeded; it was the log line that killed the
+# deploy, with `set -e` taking the rest of the release down with it.
+PYTHONIOENCODING=utf-8 python - "$COMMIT" <<'PY'
 import json, sys
 from pathlib import Path
 
