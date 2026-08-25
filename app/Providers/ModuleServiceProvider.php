@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\InventoryItem;
 use App\Models\Job;
+use App\Models\Lead;
 use App\Models\Service;
 use App\Models\Organization;
 use App\Models\User;
@@ -1322,6 +1323,104 @@ class ModuleServiceProvider extends ServiceProvider
                         key:   'service.deleted',
                         label: 'Service deleted',
                         description: 'A service was removed from the catalogue.',
+                    ),
+                ],
+            ),
+
+            /*
+             * ── Leads: enquiries from connected advertising ──────
+             *
+             * The first module whose data belongs to somebody outside this
+             * building. A Local Services enquiry is a member of the public who
+             * left a phone number expecting a call back about work, and every
+             * decision below follows from that rather than from what the API
+             * makes possible.
+             *
+             * It reads the tenant's OWN Google Ads account, connected by the
+             * tenant through consent they can withdraw. EzBizi holds one OAuth
+             * registration for the installation and never a credential per
+             * customer; see `config/services.php`.
+             *
+             * ── Why this is not one module with Reviews ──────────
+             *
+             * A ModuleDefinition holds ONE AutomationSubject and
+             * assertKeysMatchSubject refuses a trigger key whose prefix
+             * disagrees with it. A lead and a review are different records, so
+             * one module could only carry both by declaring no subject at all —
+             * the HR compromise — and losing the field picker for both. Three
+             * subjects genuinely exist here, so there are three modules.
+             *
+             * It also sells better apart: a company with Maps listings and no
+             * advertising wants Reviews and has no use for this.
+             *
+             * ── What is deliberately NOT declared ────────────────
+             *
+             * Anything that REPLIES to an enquirer. The engine could hold the
+             * phone number and the message; what it cannot hold is the judgement
+             * about whether this particular stranger should receive an automatic
+             * text in the customer's name. Marketing refused to let a rule write
+             * a newsletter for the same reason, and the reason survives the
+             * change of audience: the value of the message is that a person read
+             * it first.
+             *
+             * `lead.converted` IS declared and marked not raised. Nothing turns
+             * a lead into a customer and a job yet. Naming it now shows the
+             * builder where this goes; the catalogue marks it per row, so
+             * nobody builds a rule on an event that cannot arrive.
+             */
+            new ModuleDefinition(
+                key:     'leads',
+                label:   'Leads',
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
+                subject: new AutomationSubject(Lead::class, 'Lead'),
+                triggers: [
+                    new TriggerDefinition(
+                        key:   'lead.received',
+                        label: 'Lead received',
+                        description: 'An enquiry arrived from a connected advertising account. It '
+                            .'carries the contact details as the enquirer gave them, which source '
+                            .'and location it came through, and when it arrived — not yet what it '
+                            .'is about.',
+                    ),
+                    /*
+                     * Separate from "received" because the gap between them is
+                     * real and sometimes minutes long: a voicemail has to be
+                     * transcribed before anything can be said about it. A rule
+                     * that routes by job type has to wait for this one; a rule
+                     * that just alerts somebody must not.
+                     */
+                    new TriggerDefinition(
+                        key:   'lead.classified',
+                        label: 'Lead classified',
+                        description: 'A lead was read and categorised — what kind of work it is '
+                            .'about, and whether it looks like a real enquiry at all. It fires '
+                            .'after "Lead received", once any recording has been transcribed.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key:   'lead.status_changed',
+                        label: 'Status changed',
+                        description: 'Somebody moved the lead — booked, archived, or marked not a '
+                            .'real enquiry. It carries who moved it and what it was before. The '
+                            .'advertising source\'s own status is a separate field and does not '
+                            .'raise this.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'lead.converted',
+                        label: 'Lead became a job',
+                        description: 'A lead was turned into a customer and a booked job, carrying '
+                            .'its source through so the work can be attributed back to the '
+                            .'advertising that produced it.',
+                        isRaised: false,
+                    ),
+                ],
+                automationActions: [
+                    new ActionDefinition(
+                        key:   'lead.update_field',
+                        label: 'Update a field',
+                        description: 'Sets one field on the lead that triggered the rule: its '
+                            .'status, or the summary kept against it. It cannot change the contact '
+                            .'details the enquirer gave, which are a record of what they said.',
                     ),
                 ],
             ),

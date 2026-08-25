@@ -17,7 +17,7 @@ rather than for trying harder.
 | Server panel | https://srv.ezbizi.com (Webmin) |
 | Stack | Laravel 13 · PHP 8.4 · MySQL 8 · Flutter web client |
 <!-- numbers:start -->
-| Tests | 1915 backend · 865 client. Both gated on deploy: nothing ships if either is red. |
+| Tests | 1919 backend · 865 client. Both gated on deploy: nothing ships if either is red. |
 | Client version | `v0.0.0097` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
 | Production data | **1 organization(s) · 5 companies · 14 franchises · 5 users · 1 customers · 0 jobs.** Counted 2026-08-25 against the live database by `scripts/status-numbers.sh`, not typed. |
 | Permissions in production | **67 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
@@ -32,6 +32,58 @@ rather than for trying harder.
 | 2 — foundation + vertical slice | Done. Organizations → Companies → Franchises → Users, Customers → Jobs. |
 | 3 — cross-cutting | **Done.** Automation engine, notifications, staff control plane, subscription enforcement, import/export. |
 | 4 — expansion | **Dashboards done** — the widget picker is replaced by module glances. One box per reachable sidebar tab, chart first, one period, cannot hide. Glances now include stock health, fleet due, customer book, jobs today/line, HR active/inactive, inspections by name. Spec `docs/superpowers/specs/2026-08-24-dashboard-module-boxes-design.md`. A1 Tools modules next, one at a time. **Inspection is live** as release `20260819130615` (2026-08-19). Builder publishes written-once versions; Generated Reports are frozen, searchable and archivable; New Inspection is a personal draft that submits to a report. Named inspections are granted per role the way inboxes are. Spec `docs/superpowers/specs/2026-08-18-inspection-design.md`, plan `docs/superpowers/plans/2026-08-18-inspection.md`. Five tables migrated, five `inspection.*` permissions synced (47 total), health-checked as `www-data` before the symlink swap. Administrator holds the tab implicitly. Other roles see it only after a grant on Roles, and only start a named inspection they have been offered. **Social Media Management** Posts layout is live. Monthly Calendar fills the pane width and height so the whole month is on screen (v0.0.0065). Catalogue rows use each network’s real brand mark (v0.0.0070). Connect for all nine networks: one `social_sign_ins` table, per-network OAuth start/callback/status (Facebook Pages, Instagram Login, Threads, LinkedIn, TikTok, Pinterest, YouTube, X). Bluesky is handle + app password. Catalogue is usable when the matching env is on the box; missing env is a sentence, not a 500. Live Connect still needs each console’s redirect URI and keys on `.env` — never in git. Compose/publish is still later. **TikTok and Pinterest are live** (2026-08-25): keys on the box, redirect URIs registered, one real TikTok connection made end-to-end. Connections can be disconnected (`DELETE /social/connections/{id}`, `marketing.edit`, view-scoped, audited); the catalogue says Connected and the panel offers Reconnect. The OAuth callback popup is EzBizi-styled and personalised — a wired EzBizi tile and the network's own mark, read from `client/assets/social`, animated, red and broken when the sign-in refuses. **Place survives a reload** (v0.0.0064): the address bar holds the current destination, so refreshing Marketing does not dump you on Dashboard. **Inventory is live** (client `v0.0.0081`). Chips Stock · Items · Orders · Locations. Items and locations sit on organization / company / franchise; quantity is (item, location). Adjust, transfer, purchase/receive, and issue (job XOR note). Costs stay hidden without `inventory.financials`. Five `inventory.*` permissions, thirteen tables. Spec `docs/superpowers/specs/2026-08-24-inventory-design.md`. Filing follows the current view (v0.0.0082): looking at A-1 Chimney cannot file on Everdoors. Buying, issuing and transferring are on screen (v0.0.0084). Sales orders are on Orders (v0.0.0091): a Customer or a counter note; stock leaves on fulfill. **Services is live** (client `v0.0.0093`). Catalogue of work the company sells: name, square photo, price, description, one label, one group. Settings chip for labels and groups. Four `services.*` permissions. Spec `docs/superpowers/specs/2026-08-25-services-design.md`. **Fleet Management is live** as release `20260821204600` (client `v0.0.0066`; this build is `v0.0.0067`). Vehicles are a company register: owned and rented periods, insurance, service, who has the keys, photos. Payments stay hidden without financials. Six `fleet_management.*` permissions, six tables. Spec `docs/superpowers/specs/2026-08-21-fleet-management-design.md`. **HR contract catalog:** eleven role templates (A-1 wording, EzBizi grammar). One template per role — hourly or salary is a Pay basis question on onboarding (`shown_when`), not four named variants. Raise is optional. Home address is core; business address is `organization.address`. `php artisan hr:publish-onboarding-catalog "{organization name}" --replace` loads them; they are not auto-installed. An in-progress onboarding can be cancelled (v0.0.0075); the row stays and the invitation is free for a new start. A fully signed agreement cannot. **Email** inbox listing fetches conversation headers together, so opening the tab is one wait rather than one per row (v0.0.0076). **Settings** that are a choice from a known list — timezone, language, paper, fiscal year — are selectors (v0.0.0077). Timezone is hours from UTC, not a city list; every selector uses the same outlined menu (v0.0.0078). Inactivity is minutes/hours/days; job statuses have readable names and rename existing jobs; the business address is street/city/state/ZIP with a lookup (v0.0.0079). **Settings** is one sidebar destination: Organization, the cascade, and Roles live as chips inside it (v0.0.0080). **Phone is live** as release `20260825125038` (2026-08-25, client `v0.0.0086`). Twilio at organization or company; numbers at org/company/franchise; Call / Records / Settings. Spec `docs/superpowers/specs/2026-08-24-phone-design.md`. **Clock in is live** as release `20260825160446` (2026-08-25, client `v0.0.0094`). Organization setting, off by default; role grant for the top-bar button; Human Resources day list in the view timezone. Spec `docs/superpowers/specs/2026-08-25-clock-in-design.md`. |
+
+## EZ Leads — `leads` is live, 2026-08-25
+
+The first expansion work that depends on an outside party's approval rather than on us. Rodrigo's
+A1 Leads — a local Node/SQLite system on his own PC — becomes native EzBizi modules. Read as
+specification, re-expressed here; nothing is ported.
+
+**Shipped in this release:** the `leads` module. One table, five permissions, a sidebar tab, a
+dashboard glance, and the Google Ads connection behind it. The list searches a name or a phone
+number in one box — digits are stored normalised so `5551234567` finds `+1 (555) 123-4567` — and
+`Fetch new` pulls from the connected account on demand. Status is EzBizi's column and the sync
+never writes it; the source's own status is a separate field, refreshed every run. A lead's name
+and phone cannot be edited at all: they are a record of what a member of the public said, and the
+one endpoint that touches a lead accepts `status` and nothing else.
+
+**The empty state is the part that matters.** "No enquiries" and "nothing is connected" draw the
+same empty list and mean opposite things, so `meta.connections` travels with every page and the
+screen says different sentences for each — the same rule as Email's stale-source behaviour, and
+the failure the whole module exists to avoid.
+
+**Not built yet:** `reviews` and `business_profile`, scheduled sync (fetching is on demand),
+classification and transcription (`lead.classified` is declared and marked not raised), and
+conversion to a customer and job (`lead.converted`, likewise).
+
+**Three modules, not one.** `ModuleDefinition` holds one `AutomationSubject` and
+`assertKeysMatchSubject` refuses a trigger key whose prefix disagrees with it, so leads, reviews
+and locations cannot share a module: `leads` (`Lead`), `reviews` (`Review`), `business_profile`
+(`BusinessLocation`). Three subjects, three tabs, three separately grantable units — review
+management sells to businesses with no advertising at all.
+
+**Scope is official APIs only.** The 28 files in A1 Leads that depend on `puppeteer-core` /
+`playwright-core` — Workiz UI reports, LSA account discovery, Google review removal — stay on
+Rodrigo's machine permanently. They need a human-authenticated browser profile no customer can
+have. That is a boundary, not a backlog item.
+
+**Gated on Google, in two independent chains.** Business Profile waits on an API quota application
+that cannot be filed before **2026-10-24**, because Google requires a verified profile aged 60+
+days and EzBizi's went live 2026-08-25. Google Ads waits on Basic Access review (submitted
+2026-08-25) and then on `adwords` scope verification, which requires a YouTube demo of the working
+module — which is why `leads` was built first. `business.manage` needs no approval; Google
+classifies it non-sensitive. TODO #30–#33 carry the detail.
+
+**So the tab ships before it can serve a customer, deliberately.** Until the developer token
+leaves Test level and the scope clears verification, Connect works and every read returns nothing.
+That is why `notReadyBecause()` on the Google Ads driver refuses to start a sign-in when the
+developer token is missing rather than letting somebody succeed at consent and then stare at an
+empty list — the failure would look exactly like a quiet week.
+
+**Known risk, recorded now rather than discovered later:** reviews, replies, posts and media all
+run on the legacy `mybusiness.googleapis.com/v4` host — 14 call sites in A1 Leads — with no v1
+replacement and a years-long deprecation behind it. The review layer goes behind an adapter for
+that reason and no other.
 
 ## Standing hazards
 

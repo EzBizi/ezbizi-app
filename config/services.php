@@ -164,6 +164,63 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Google, for EZ Leads
+    |--------------------------------------------------------------------------
+    |
+    | Two registrations, not one, and deliberately not the Gmail client either.
+    |
+    | A company with Maps listings and no advertising connects only the first;
+    | one whose agency runs its Local Services connects only the second. A
+    | single client would ask every customer for both scopes, and `adwords` is
+    | the one Google marks sensitive — so sharing would drag the Business
+    | Profile half into a verification it does not need.
+    |
+    | Both live in Google Cloud project `ezbizi-506117`, alongside the Gmail and
+    | YouTube registrations. DEPLOYMENT CONFIG (§2.1): one set of credentials
+    | per installation, never per tenant — a tenant that could type its own
+    | client id would be handing this installation the ability to mint tokens in
+    | a project nobody here controls.
+    |
+    | ── What an owner has to create, because none of it is code ──
+    |
+    | For Business Profile: an OAuth client, and an approved Business Profile
+    | API access application. The application cannot be filed until the
+    | applicant has managed a verified profile for sixty days, and approval
+    | shows up as quota — 0 QPM means refused, 300 means granted. Enabling the
+    | APIs in the console does NOT grant quota.
+    |
+    | For Google Ads: an OAuth client, a Google Ads manager (MCC) account, and a
+    | developer token issued by that manager account — not by the Cloud project,
+    | which is the dependency most easily missed. A fresh token is Test level and
+    | reaches test accounts only.
+    |
+    */
+    'business_profile' => [
+        'client_id'     => env('GBP_CLIENT_ID'),
+        'client_secret' => env('GBP_CLIENT_SECRET'),
+        'redirect' => env('GBP_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/business-profile/callback',
+    ],
+
+    'google_ads' => [
+        'client_id'     => env('GOOGLE_ADS_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_ADS_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_ADS_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/google-ads/callback',
+
+        // Issued to the MCC, sent as a header on every call. Without it Google
+        // answers nothing, which is why the driver refuses to connect rather
+        // than letting a customer succeed at consent and then see an empty list.
+        'developer_token' => env('GOOGLE_ADS_DEVELOPER_TOKEN'),
+
+        // Google retires Ads API versions on a published schedule and a retired
+        // one answers 404 to everything. Pinned here so the day it moves is an
+        // env change on the box, not a release.
+        'version' => env('GOOGLE_ADS_API_VERSION', 'v21'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Twilio platform account (provisioned Phone subaccounts)
     |--------------------------------------------------------------------------
     |

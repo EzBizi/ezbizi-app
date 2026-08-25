@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\InventoryVendorsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
+use App\Http\Controllers\Api\LeadsController;
 use App\Http\Controllers\Api\VehicleAssignmentsController;
 use App\Http\Controllers\Api\VehicleInsuranceController;
 use App\Http\Controllers\Api\VehicleOwnershipController;
@@ -332,6 +333,18 @@ Route::prefix('v1')
         Route::post('vehicles/{vehicle}/service', [VehicleServiceController::class, 'store']);
         Route::get('vehicles/{vehicle}/payments', [VehiclePaymentsController::class, 'index']);
         Route::post('vehicles/{vehicle}/payments', [VehiclePaymentsController::class, 'store']);
+        // Leads — enquiries from connected advertising (EZ Leads).
+        //
+        // `sync` before `{lead}` so the literal path is not captured as an id,
+        // the same reason `vehicles/drivers` sits above `vehicles/{vehicle}`.
+        //
+        // No `store`. Every lead arrives from a connected account; one somebody
+        // typed in would be indistinguishable from one a member of the public
+        // actually sent, and the record is only worth holding because it is not.
+        Route::post('leads/sync', [LeadsController::class, 'sync']);
+        Route::get('leads', [LeadsController::class, 'index']);
+        Route::get('leads/{lead}', [LeadsController::class, 'show']);
+        Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
         Route::apiResource('inventory/items', InventoryItemsController::class);
         Route::apiResource('inventory/locations', InventoryLocationsController::class);

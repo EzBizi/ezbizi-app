@@ -15,6 +15,10 @@ are separate projects; the shared numbering only produced gaps whenever an item 
 | 22 | **Signup has no email verification** | **[CLAUDE]** | **Chosen 2026-08-18: a confirmation email**, still blocked by #1. The pin test exists at `SignupTest::test_the_account_can_read_and_write_immediately_with_no_verification_step`. The gate must not fire while mail does not deliver. Do not ship this until a Health-screen test message has actually arrived. |
 | 28 | **Google Workspace go-live** | **[YOU]** then **[CLAUDE]** | Code is live. Needs Cloud Console (OAuth + service account) and Google Admin domain-wide delegation, then keys on the box `.env`. Console steps below. Shared inboxes only — do not pick a person's mailbox. |
 | 29 | **Outlook / Azure app** | **[YOU]** then **[CLAUDE]** | Code is live (PKCE, Graph, token refresh). Needs an Entra app registration, then keys on the box `.env`. Console steps below. Shared team inboxes only. |
+| 30 | **EZ Leads — GBP API quota** | **[YOU]** | **Blocked until 2026-10-24.** Google requires the applicant to manage a verified Business Profile **active 60+ days**; EzBizi's went live 2026-08-25. Nothing shortens this. Apply on or after that date. Approval shows as quota: **0 QPM = refused, 300 QPM = granted** — it is a gate, not a rate limit. Console steps below. |
+| 31 | **EZ Leads — Google Ads API Basic Access** | **[YOU]** then **[CLAUDE]** | **Submitted 2026-08-25**, ~5 business days to initial review. Token is currently **Test level** and cannot touch a real account. MCC `706-109-4046`. Brand verification (its hard prerequisite) is **done**. One step may still be outstanding: the developer token must be *associated* with project `ezbizi-506117` by making one Ads API call with OAuth credentials from that project — the call may fail, it only has to be made. |
+| 32 | **EZ Leads — `adwords` scope verification** | **[BOTH]** | **Module shipped 2026-08-25, so this is now recordable.** Google requires a YouTube demo video showing the scope in use across every OAuth client on the project. `business.manage` needs none of this — Google classifies it **non-sensitive**, confirmed on the Data Access page 2026-08-25. Only `adwords` is sensitive. Record against a staging environment or test project: demoing unverified scopes on production traffic consumes the **100-user lifetime cap, which cannot be reset**. |
+| 33 | **EZ Leads — OAuth clients** | **[YOU]** then **[CLAUDE]** | Two Web application clients on `ezbizi-506117`, kept separate so a customer can connect a Business Profile without a Google Ads account. Redirect URIs must match the driver's derived callback character for character. Keys go on the box `.env` as `GBP_CLIENT_ID`/`_SECRET` and `GOOGLE_ADS_CLIENT_ID`/`_SECRET` — never in git. Console steps below. |
 
 ## Mail console work (you) — recorded 2026-08-18
 
@@ -107,6 +111,40 @@ MICROSOFT_MAIL_CLIENT_SECRET=<secret value>
 ```
 
 `MICROSOFT_MAIL_REDIRECT_URI` only if it must differ from `APP_URL`. Then Email → Settings should offer Outlook.
+
+## EZ Leads / Google console work — recorded 2026-08-25 (TODO #30–#33)
+
+All of it under `development@ezbizi.com` on project **`ezbizi-506117`** (number `247590132639`,
+org `ezbizi.com` / `940564858837`). Keys go on the box `.env`, never in the repo.
+
+**Already done, so nobody redoes it:**
+
+- EzBizi's own Business Profile — created and **verified 2026-08-25**, owned by `info@ezbizi.com`.
+- GBP **Organization account** `EZBIZI LLC` under `development@`. Google requires the creating
+  account to own or manage **no locations**, which is why `info@` holds the listing and
+  `development@` holds everything else. One organization per company; there is no second attempt.
+- Google Ads **MCC `706-109-4046`**, developer token issued (Test level).
+- **Brand verification passed** — the hard prerequisite for Ads Basic Access. Consent screen is
+  External and In production, branding verified and shown to users.
+- All six APIs enabled: Ads, Local Services, and the four Business Profile ones. Note **enabling an
+  API and having quota are separate gates** — the Business Profile four enable happily on zero
+  quota and simply fail at call time.
+- `business.manage` declared and saved as a **non-sensitive** scope. No approval needed.
+
+**Left to do:**
+
+- GBP API quota — https://support.google.com/business/contact/api_default, select
+  **"Application for Basic API Access"**. On or after **2026-10-24** (#30).
+- Two OAuth clients — https://console.cloud.google.com/auth/clients?project=ezbizi-506117 (#33).
+- Associate the developer token with the project: one Ads API call using OAuth credentials from
+  `ezbizi-506117`. Success or failure does not matter, only that the call is made (#31).
+- `adwords` scope + demo video — https://console.cloud.google.com/auth/scopes?project=ezbizi-506117
+  once the module exists (#32).
+
+Design and application material lives outside the repo in `H:\Development\Leads\`:
+`EZ-LEADS-DESIGN.md`, `EZ-LEADS-MODULES.md`, `EZBIZI-GOOGLE-ACCOUNT-SETUP.md`, and the design
+document submitted to Google, `EzBizi-GoogleAdsAPI-DesignDocument.pdf`. That folder also holds
+Rodrigo's live A1 Leads `.env` — real production credentials, deliberately never committed.
 
 ## Decisions only you can make
 

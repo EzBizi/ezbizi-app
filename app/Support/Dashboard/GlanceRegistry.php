@@ -11,6 +11,7 @@ use App\Support\Dashboard\Glances\HrGlance;
 use App\Support\Dashboard\Glances\InspectionGlance;
 use App\Support\Dashboard\Glances\InventoryGlance;
 use App\Support\Dashboard\Glances\JobsGlance;
+use App\Support\Dashboard\Glances\LeadsGlance;
 use App\Support\Dashboard\Glances\ServicesGlance;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Tenancy\TenantContext;
@@ -32,7 +33,7 @@ class GlanceRegistry
     public const ORDER = [
         'hr', 'customers', 'jobs', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
-        'services', 'email', 'automations',
+        'services', 'leads', 'email', 'automations',
     ];
 
     /**
@@ -71,6 +72,7 @@ class GlanceRegistry
         FleetGlance::class,
         InventoryGlance::class,
         ServicesGlance::class,
+        LeadsGlance::class,
         EmailGlance::class,
         AutomationsGlance::class,
     ];

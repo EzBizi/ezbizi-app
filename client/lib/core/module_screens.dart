@@ -9,6 +9,7 @@ import '../screens/inspection_screen.dart';
 import '../screens/fleet_screen.dart';
 import '../screens/inventory_screen.dart';
 import '../screens/jobs_screen.dart';
+import '../screens/leads_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../screens/phone_screen.dart';
 import '../screens/services_screen.dart';
@@ -101,6 +102,14 @@ final Map<String, ModuleScreen> moduleScreens = {
   'services': ModuleScreen(
     Icons.handyman_outlined,
     (api, session) => ServicesScreen(api: api, session: session),
+  ),
+  // A call coming in, not a person or a chart. A lead is somebody who rang or
+  // messaged the business about work; `person_add` would say "a new contact"
+  // and `trending_up` would say "a number went up", and neither is what a
+  // branch manager is opening this tab to deal with.
+  'leads': ModuleScreen(
+    Icons.call_received_outlined,
+    (api, session) => LeadsScreen(api: api, session: session),
   ),
   'automations': ModuleScreen(
     Icons.bolt_outlined,
