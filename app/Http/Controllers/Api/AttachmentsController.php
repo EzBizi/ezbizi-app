@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -95,6 +96,13 @@ class AttachmentsController extends Controller
 
         $this->authorizeAttachment('update', $subject);
 
+        if ($request->input('attachable_type') === 'services'
+            && $subject->attachments()->exists()) {
+            throw ValidationException::withMessages([
+                'file' => 'This service already has a photo. Remove it first.',
+            ]);
+        }
+
         $request->validate(
             $this->limits->rulesFor('file'),
             $this->limits->messagesFor('file'),
@@ -117,6 +125,10 @@ class AttachmentsController extends Controller
         // browser claimed, and this value is echoed back as a Content-Type on
         // every download — a caller-supplied one is a caller-supplied header.
         $mime = $file->getMimeType() ?: 'application/octet-stream';
+
+        if ($request->input('attachable_type') === 'services') {
+            $this->assertSquareServicePhoto($file, $mime);
+        }
 
         $path = $this->files->put(
             $file,
@@ -282,6 +294,35 @@ class AttachmentsController extends Controller
         $this->files->delete($path, $disk);
 
         return response()->json(['message' => 'Attachment removed.']);
+    }
+
+    /**
+     * Service photos are 1:1. Not a picture, or not square, is the same
+     * sentence — the requirement is the square, not the file type.
+     */
+    private function assertSquareServicePhoto(\Illuminate\Http\UploadedFile $file, string $mime): void
+    {
+        if (! str_starts_with($mime, 'image/')) {
+            throw ValidationException::withMessages([
+                'file' => 'The photo has to be square (1:1).',
+            ]);
+        }
+
+        $info = @getimagesize($file->getRealPath());
+
+        if ($info === false) {
+            throw ValidationException::withMessages([
+                'file' => 'The photo has to be square (1:1).',
+            ]);
+        }
+
+        [$width, $height] = $info;
+
+        if ($width < 1 || $width !== $height) {
+            throw ValidationException::withMessages([
+                'file' => 'The photo has to be square (1:1).',
+            ]);
+        }
     }
 
     // ── shared ───────────────────────────────────────────────────

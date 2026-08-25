@@ -107,14 +107,14 @@ class GlanceRegistryTest extends TestCase
 
     public function test_a_coming_soon_glance_has_no_chart_presentations(): void
     {
-        $user = $this->userWithPermissions(['services.view']);
-        $payload = app(GlanceRegistry::class)->find('services', $user)
+        $user = $this->userWithPermissions(['web_management.view']);
+        $payload = app(GlanceRegistry::class)->find('web_management', $user)
             ->resolve($user, DashboardPeriod::for($user), []);
         $array = $payload->toArray();
         $this->assertTrue($array['coming_soon']);
         $this->assertSame([], $array['allowed_presentations']);
         $this->assertSame('text', $array['presentation']);
-        $this->assertStringContainsString('catalogue is not here yet', $array['data']['sentence']);
+        $this->assertStringContainsString('editor is not here yet', $array['data']['sentence']);
     }
 
     public function test_dashboard_is_not_a_glance(): void

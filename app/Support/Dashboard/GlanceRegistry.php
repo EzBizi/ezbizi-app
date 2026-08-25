@@ -11,6 +11,7 @@ use App\Support\Dashboard\Glances\HrGlance;
 use App\Support\Dashboard\Glances\InspectionGlance;
 use App\Support\Dashboard\Glances\InventoryGlance;
 use App\Support\Dashboard\Glances\JobsGlance;
+use App\Support\Dashboard\Glances\ServicesGlance;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Tenancy\TenantContext;
 
@@ -52,10 +53,6 @@ class GlanceRegistry
             'label' => 'Phone',
             'sentence' => 'Phone is where the team places and receives calls, and sends texts. Open the Phone tab for the desk.',
         ],
-        'services' => [
-            'label' => 'Services',
-            'sentence' => 'Services is where the company will name what it sells — the work a job is for, and the price it starts from. The catalogue is not here yet.',
-        ],
     ];
 
     /**
@@ -73,6 +70,7 @@ class GlanceRegistry
         InspectionGlance::class,
         FleetGlance::class,
         InventoryGlance::class,
+        ServicesGlance::class,
         EmailGlance::class,
         AutomationsGlance::class,
     ];

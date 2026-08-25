@@ -1,0 +1,291 @@
+import 'package:flutter/material.dart';
+
+import '../../core/api_client.dart';
+import '../../core/money.dart';
+import '../../core/session.dart';
+import '../../widgets/error_note.dart';
+import '../inventory/inventory_place_fields.dart';
+import '../inventory/item_pane.dart';
+
+/// Draft a service in the 75% pane, not a modal.
+class AddServicePane extends StatefulWidget {
+  const AddServicePane({
+    super.key,
+    required this.api,
+    required this.session,
+    required this.onCancel,
+    required this.onSaved,
+    this.showBack = false,
+  });
+
+  final ApiClient api;
+  final Session session;
+  final VoidCallback onCancel;
+  final ValueChanged<Map<String, dynamic>> onSaved;
+  final bool showBack;
+
+  @override
+  State<AddServicePane> createState() => _AddServicePaneState();
+}
+
+class _AddServicePaneState extends State<AddServicePane> {
+  final _name = TextEditingController();
+  final _description = TextEditingController();
+  final _price = TextEditingController();
+  String? _companyId;
+  String? _franchiseId;
+  String? _groupId;
+  String? _labelId;
+  List<Map<String, dynamic>> _groups = [];
+  List<Map<String, dynamic>> _labels = [];
+  bool _loading = true;
+  bool _busy = false;
+  String? _error;
+
+  Me get _me => widget.session.me!;
+  bool get _atOrganization => _me.scope.type == 'organization';
+
+  @override
+  void initState() {
+    super.initState();
+    final place = inventoryPlaceFromScope(_me);
+    _companyId = place.companyId;
+    _franchiseId = place.franchiseId;
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _description.dispose();
+    _price.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final groups = await widget.api.get('/services/groups');
+    final labels = await widget.api.get('/services/labels');
+    if (!mounted) return;
+
+    if (!groups.ok) {
+      setState(() {
+        _loading = false;
+        _error = groups.message;
+      });
+      return;
+    }
+    if (!labels.ok) {
+      setState(() {
+        _loading = false;
+        _error = labels.message;
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = false;
+      _groups = inventoryRows(groups.data);
+      _labels = inventoryRows(labels.data);
+    });
+  }
+
+  Future<void> _save() async {
+    if (_name.text.trim().isEmpty) return;
+    if (_companyId == null && !_atOrganization) return;
+
+    int? cents;
+    try {
+      cents = parseAmountMinor(_price.text);
+    } on FormatException catch (e) {
+      setState(() => _error = e.message);
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    final response = await widget.api.post('/services', {
+      'company_id': ?_companyId,
+      'franchise_id': ?_franchiseId,
+      'name': _name.text.trim(),
+      if (_description.text.trim().isNotEmpty)
+        'description': _description.text.trim(),
+      'price_minor': ?cents,
+      'group_id': ?_groupId,
+      'label_id': ?_labelId,
+    });
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _busy = false;
+        _error = response.reason;
+      });
+      return;
+    }
+
+    widget.onSaved(Map<String, dynamic>.from(response.data as Map));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final canSave =
+        !_busy &&
+        !_loading &&
+        _name.text.trim().isNotEmpty &&
+        (_companyId != null || _atOrganization);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(widget.showBack ? 8 : 20, 12, 20, 8),
+          child: Row(
+            children: [
+              if (widget.showBack)
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  tooltip: 'Back to the list',
+                  onPressed: _busy ? null : widget.onCancel,
+                ),
+              Expanded(
+                child: Text('New service', style: theme.textTheme.titleMedium),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  clipBehavior: Clip.none,
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      InventoryPlaceFields(
+                        me: _me,
+                        companyId: _companyId,
+                        franchiseId: _franchiseId,
+                        enabled: !_busy,
+                        onCompanyChanged: (v) => setState(() {
+                          _companyId = v;
+                          _franchiseId = null;
+                          _groupId = null;
+                          _labelId = null;
+                        }),
+                        onFranchiseChanged: (v) => setState(() {
+                          _franchiseId = v;
+                          _groupId = null;
+                          _labelId = null;
+                        }),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _name,
+                        enabled: !_busy,
+                        decoration: const InputDecoration(
+                          labelText: 'Name of service',
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _description,
+                        enabled: !_busy,
+                        maxLines: 4,
+                        decoration: const InputDecoration(
+                          labelText: 'Description',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _price,
+                        enabled: !_busy,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Price',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String?>(
+                        initialValue: _groupId,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Group'),
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('No group'),
+                          ),
+                          for (final row in _groups)
+                            DropdownMenuItem(
+                              value: row['id'] as String?,
+                              child: Text(
+                                row['name'] as String? ?? '',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                        onChanged: _busy
+                            ? null
+                            : (v) => setState(() => _groupId = v),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String?>(
+                        initialValue: _labelId,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Label'),
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('No label'),
+                          ),
+                          for (final row in _labels)
+                            DropdownMenuItem(
+                              value: row['id'] as String?,
+                              child: Text(
+                                row['name'] as String? ?? '',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                        onChanged: _busy
+                            ? null
+                            : (v) => setState(() => _labelId = v),
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 8),
+                        ErrorNote(_error!),
+                      ],
+                    ],
+                  ),
+                ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
+            children: [
+              TextButton(
+                onPressed: _busy ? null : widget.onCancel,
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: canSave ? _save : null,
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}

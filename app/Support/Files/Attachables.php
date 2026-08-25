@@ -7,6 +7,7 @@ use App\Models\InventoryItem;
 use App\Models\InventoryPurchaseOrder;
 use App\Models\InventorySale;
 use App\Models\InventoryVendor;
+use App\Models\Service;
 use App\Models\Job;
 use App\Models\Onboarding;
 use App\Models\Vehicle;
@@ -112,6 +113,7 @@ final class Attachables
             'inventory_issues' => InventoryIssue::class,
             'inventory_vendors' => InventoryVendor::class,
             'inventory_sales' => InventorySale::class,
+            'services' => Service::class,
         ];
     }
 

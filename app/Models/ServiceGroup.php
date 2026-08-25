@@ -1,0 +1,47 @@
+<?php
+
+namespace App\Models;
+
+use App\Models\Concerns\BelongsToTenant;
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
+use Database\Factories\ServiceGroupFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+/** A group on the service catalogue (spec). */
+#[Fillable(['company_id', 'franchise_id', 'name'])]
+class ServiceGroup extends Model implements StatesRetention
+{
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::forever(
+            'How this organization grouped the work it sold. Removing the '
+            .'organization takes the row. Empty mistakes can still be deleted.'
+        );
+    }
+
+    /** @use HasFactory<ServiceGroupFactory> */
+    use BelongsToTenant;
+    use HasFactory;
+    use HasUuids;
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
+
+    public function franchise(): BelongsTo
+    {
+        return $this->belongsTo(Franchise::class);
+    }
+
+    public function services(): HasMany
+    {
+        return $this->hasMany(Service::class, 'group_id');
+    }
+}

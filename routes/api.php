@@ -70,6 +70,9 @@ use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookCo
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\RolesController;
+use App\Http\Controllers\Api\ServiceGroupsController;
+use App\Http\Controllers\Api\ServiceLabelsController;
+use App\Http\Controllers\Api\ServicesController;
 use App\Http\Controllers\Api\SendingIdentitiesController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\StaffAccountsController;
@@ -348,6 +351,13 @@ Route::prefix('v1')
         Route::post('inventory/sales/{sale}/fulfillments', [InventorySalesController::class, 'fulfill']);
         Route::apiResource('inventory/sales', InventorySalesController::class)
             ->only(['index', 'store', 'show']);
+        Route::get('services/groups', [ServiceGroupsController::class, 'index']);
+        Route::post('services/groups', [ServiceGroupsController::class, 'store']);
+        Route::delete('services/groups/{id}', [ServiceGroupsController::class, 'destroy']);
+        Route::get('services/labels', [ServiceLabelsController::class, 'index']);
+        Route::post('services/labels', [ServiceLabelsController::class, 'store']);
+        Route::delete('services/labels/{id}', [ServiceLabelsController::class, 'destroy']);
+        Route::apiResource('services', ServicesController::class);
 
         // ── The shape of the business (§3) ───────────────────────
         //

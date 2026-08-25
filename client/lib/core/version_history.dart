@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0093',
+      date: '25 Aug 2026',
+      items: [
+        'Services: a catalogue of what the company sells, with square photos, '
+            'prices, labels and groups.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0092',
       date: '25 Aug 2026',
       items: [

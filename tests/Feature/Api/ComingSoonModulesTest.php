@@ -9,8 +9,7 @@ use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
- * Web Management and Services — tabs that can be granted, and are
- * not built.
+ * Web Management — a tab that can be granted, and is not built.
  *
  * Being new exempts them from nothing (§4). They exist so an organization can
  * turn the destination on or off, and so the sidebar is not a second list
@@ -20,7 +19,8 @@ use Tests\TestCase;
  * vehicle automation surface; see FleetModuleTest. Inventory left when it
  * gained create / edit / delete / financials; see InventoryModuleTest. Phone
  * left when it gained edit and call/SMS/voicemail automations; see
- * PhoneModuleTest.
+ * PhoneModuleTest. Services left when it gained create / edit / delete;
+ * see ServiceModuleTest.
  */
 class ComingSoonModulesTest extends TestCase
 {
@@ -32,7 +32,6 @@ class ComingSoonModulesTest extends TestCase
     {
         return [
             ['web_management', 'Web Management'],
-            ['services', 'Services'],
         ];
     }
 

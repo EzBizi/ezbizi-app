@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\InventoryItem;
 use App\Models\Job;
+use App\Models\Service;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -1283,10 +1284,25 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key:     'services',
                 label:   'Services',
-                actions: ['view'],
-                automationExemptBecause:
-                    'The service catalogue does not exist yet, so there is no '
-                    .'event a rule could fire on and nothing a rule could change.',
+                actions: ModuleDefinition::DEFAULT_ACTIONS,
+                subject: new AutomationSubject(Service::class, 'Service'),
+                triggers: [
+                    new TriggerDefinition(
+                        key:   'service.created',
+                        label: 'Service added',
+                        description: 'A service was saved for the first time.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'service.updated',
+                        label: 'Service updated',
+                        description: 'Name, price, description, group, or label was saved.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'service.deleted',
+                        label: 'Service deleted',
+                        description: 'A service was removed from the catalogue.',
+                    ),
+                ],
             ),
 
             /*

@@ -11,6 +11,7 @@ import '../screens/inventory_screen.dart';
 import '../screens/jobs_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../screens/phone_screen.dart';
+import '../screens/services_screen.dart';
 import '../widgets/coming_soon.dart';
 import 'api_client.dart';
 import 'session.dart';
@@ -99,14 +100,7 @@ final Map<String, ModuleScreen> moduleScreens = {
   ),
   'services': ModuleScreen(
     Icons.handyman_outlined,
-    (_, _) => const ComingSoonScreen(
-      title: 'Services',
-      icon: Icons.handyman_outlined,
-      what:
-          'Services is where the company will name what it sells — the work a '
-          'job is for, and the price it starts from. The catalogue is not '
-          'here yet.',
-    ),
+    (api, session) => ServicesScreen(api: api, session: session),
   ),
   'automations': ModuleScreen(
     Icons.bolt_outlined,
