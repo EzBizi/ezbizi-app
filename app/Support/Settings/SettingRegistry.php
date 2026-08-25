@@ -739,6 +739,17 @@ class SettingRegistry
     }
 
     /**
+     * Display label for a stored timezone id (POSIX Etc/GMT).
+     *
+     * Etc/GMT+5 is UTC-5. The day-list API may use an ASCII hyphen (`UTC-5`);
+     * the client caption is `Times in {$label}`.
+     */
+    public static function timezoneLabel(string $id): string
+    {
+        return self::timezoneLabels()[$id] ?? $id;
+    }
+
+    /**
      * @return array<string, string>
      */
     private static function timezoneLabels(): array

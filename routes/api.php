@@ -454,6 +454,10 @@ Route::prefix('v1')
         Route::post('time-clock/clock-in', [TimeClockController::class, 'clockIn']);
         Route::post('time-clock/clock-out', [TimeClockController::class, 'clockOut']);
 
+        // Clock in–out chip on Human Resources. `hr.view` plus the org switch;
+        // `?on=` is a calendar date in the current view timezone (design §9).
+        Route::get('hr/time-clock', [TimeClockController::class, 'index']);
+
         // The tab the owner asked for. It computes nothing itself — the figures
         // are widgets in the shared registry, so headcount on this tab and
         // headcount on somebody's main dashboard are the same code.
