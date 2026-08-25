@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/ui_strings.dart';
 import '../widgets/tab_bar_like.dart';
 import 'hr/contracts_tab.dart';
 import 'hr/dashboard_tab.dart';
 import 'hr/invitations_tab.dart';
 import 'hr/onboarding_tab.dart';
 import 'hr/records_tab.dart';
+import 'hr/time_clock_tab.dart';
 
-/// Human Resources — five tabs (HR plan).
+/// Human Resources — five tabs (HR plan), plus Clock in–out when the
+/// organization has turned Clock in on.
 ///
 /// The owner's words: *"this is the most integral part of the app as it allows
 /// its basic function."* It is what lets an organization have employees at all.
@@ -38,8 +41,9 @@ import 'hr/records_tab.dart';
 /// ── The tab strip, not a second sidebar ──────────────────────────
 ///
 /// Chips above the page, the shape settings_shell.dart and automations_screen
-/// already use. This is one destination with five faces, not an application
-/// inside the application, and the sidebar has already said "Human Resources"
+/// already use. This is one destination with a handful of faces, not an
+/// application inside the application, and the sidebar has already said
+/// "Human Resources"
 /// — repeating it in a header above the strip would be the product's name
 /// printed twice in two inches.
 class HrScreen extends StatefulWidget {
@@ -79,19 +83,20 @@ class _HrScreenState extends State<HrScreen> {
   /// is the "it reloads for every change" complaint AsyncBody's docblock is
   /// about.
   ///
-  /// The stack below always has five children, so a tab's position never moves
-  /// and its State survives every switch after the first; only the CONTENT of a
-  /// slot arrives late.
+  /// A tab's position never moves (Clock in–out is appended) and its State
+  /// survives every switch after the first; only the CONTENT of a slot
+  /// arrives late.
   final Set<int> _shown = {_dashboard};
 
-  /// The five, in the owner's order: Dashboard · Onboarding · Records ·
-  /// Invitations · Contracts.
+  /// Owner's order: Dashboard · Onboarding · Records · Invitations ·
+  /// Contracts · Clock in–out. The sixth chip is absent unless the
+  /// organization has turned Clock in on (and this person holds `hr.view`).
   ///
   /// One list rather than a list of labels beside a switch on the index, so a
   /// name can never end up above the wrong page. The pages are built on demand
   /// — see [_shown] — which is why the third element is a function and not a
   /// widget.
-  late final List<(String, IconData, Widget Function())> _tabs = [
+  List<(String, IconData, Widget Function())> get _tabs => [
     (
       'Dashboard',
       Icons.insights_outlined,
@@ -117,7 +122,22 @@ class _HrScreenState extends State<HrScreen> {
       Icons.description_outlined,
       () => ContractsTab(api: widget.api, session: widget.session),
     ),
+    if (_showClockInOut)
+      (
+        UiStrings.t('time_clock.tab'),
+        Icons.schedule_outlined,
+        () => TimeClockTab(api: widget.api),
+      ),
   ];
+
+  /// Chip rule (design §4 / §9): org switch on and `hr.view`. Absent
+  /// `time_clock` on `/me` is `organizationEnabled: false`.
+  bool get _showClockInOut {
+    final me = widget.session.me;
+    return me != null &&
+        me.timeClock.organizationEnabled &&
+        me.permissions.contains('hr.view');
+  }
 
   void _select(int tab) => setState(() {
     _tab = tab;
