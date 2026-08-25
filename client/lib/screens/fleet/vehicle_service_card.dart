@@ -207,11 +207,11 @@ class _VehicleServiceCardState extends State<VehicleServiceCard> {
           ],
           onChanged: _busy ? null : (v) => setState(() => _kind = v ?? _kind),
         ),
-        fleetField(
+        fleetCalendarDay(
           _occurredOn,
           'Occurred on',
+          formats: widget.session.me!.display,
           enabled: !_busy,
-          helper: 'A calendar day — 2026-06-01.',
         ),
         fleetField(
           _odometer,
@@ -221,7 +221,12 @@ class _VehicleServiceCardState extends State<VehicleServiceCard> {
         ),
         fleetField(_performedBy, 'Who did it', enabled: !_busy),
         fleetField(_notes, 'Notes', enabled: !_busy, minLines: 2, maxLines: 4),
-        fleetField(_nextOn, 'Next service on', enabled: !_busy),
+        fleetCalendarDay(
+          _nextOn,
+          'Next service on',
+          formats: widget.session.me!.display,
+          enabled: !_busy,
+        ),
         fleetField(
           _nextMiles,
           'Next service miles',

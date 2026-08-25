@@ -216,13 +216,18 @@ class _VehicleInsuranceCardState extends State<VehicleInsuranceCard> {
         fleetField(_carrier, 'Carrier', enabled: !_busy),
         fleetField(_policyNumber, 'Policy number', enabled: !_busy),
         fleetField(_coverage, 'Coverage', enabled: !_busy, minLines: 2, maxLines: 4),
-        fleetField(
+        fleetCalendarDay(
           _startedOn,
           'Started on',
+          formats: widget.session.me!.display,
           enabled: !_busy,
-          helper: 'A calendar day — 2026-01-01.',
         ),
-        fleetField(_expiresOn, 'Expires on', enabled: !_busy),
+        fleetCalendarDay(
+          _expiresOn,
+          'Expires on',
+          formats: widget.session.me!.display,
+          enabled: !_busy,
+        ),
         if (_financials) ...[
           fleetField(
             _premium,

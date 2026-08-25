@@ -258,11 +258,11 @@ class _VehiclePaymentsCardState extends State<VehiclePaymentsCard> {
               ? null
               : (v) => setState(() => _method = v ?? _method),
         ),
-        fleetField(
+        fleetCalendarDay(
           _occurredOn,
           'Occurred on',
+          formats: widget.session.me!.display,
           enabled: !_busy,
-          helper: 'A calendar day — 2026-08-01.',
         ),
         fleetField(_note, 'Note', enabled: !_busy),
         if (links.isNotEmpty) ...[

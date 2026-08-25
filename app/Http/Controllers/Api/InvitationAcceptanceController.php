@@ -12,6 +12,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Auth\PasswordPolicy;
 use App\Support\Automations\EventEmitter;
 use App\Support\Modules\PermissionCatalogue;
+use App\Support\Settings\DisplaySettings;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -88,6 +89,7 @@ class InvitationAcceptanceController extends Controller
         private readonly EventEmitter $events,
         private readonly TenantContext $tenant,
         private readonly IssueSession $session,
+        private readonly DisplaySettings $display,
     ) {}
 
     /**
@@ -174,6 +176,15 @@ class InvitationAcceptanceController extends Controller
             // guessing the platform floor and being corrected by a 422. The
             // organization may have raised it (§6).
             'password_min_length' => PasswordPolicy::minLengthFor($invitation->organization),
+
+            // Date/time format for the form on this page — the same resolved
+            // pair /me would send after they join. Without it the date of
+            // birth boxes would guess month-first, and an organization that
+            // set D/M/YYYY would collect 3/8 as the wrong day.
+            'display' => $this->tenant->run(
+                $invitation->organization,
+                fn () => $this->display->forScope($invitation->organization),
+            ),
         ]]);
     }
 

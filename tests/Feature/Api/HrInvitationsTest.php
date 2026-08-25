@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Notifications\InvitationLink;
 use App\Services\Hr\Invitations;
 use App\Support\Automations\AutomationEngine;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Modules\ModuleAvailability;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -85,6 +86,30 @@ class HrInvitationsTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.role.name', 'Dispatcher')
             ->assertJsonPath('data.organization.name', 'Alpha');
+    }
+
+    public function test_lookup_carries_the_organization_date_format(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $role  = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
+
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            app(SettingsResolver::class)->set('date_format', $alpha['org'], 'D/M/YYYY');
+        });
+
+        $sent = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/invitations', [
+            'email'      => 'newstarter@example.test',
+            'role_id'    => $role->id,
+            'scope_type' => 'franchise',
+            'scope_id'   => $alpha['franchise']->id,
+        ])->assertCreated();
+
+        $this->signedOut()->postJson('/api/v1/invitations/lookup', [
+            'token' => $this->tokenFrom($sent->json('data.accept_url')),
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.display.date_format', 'D/M/YYYY')
+            ->assertJsonPath('data.display.time_format', '12h');
     }
 
     public function test_accepting_grants_exactly_the_role_and_the_scope_on_the_invitation(): void

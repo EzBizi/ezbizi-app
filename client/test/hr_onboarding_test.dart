@@ -7,6 +7,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/hr/onboarding_form.dart';
+import 'package:ezbizi_client/widgets/calendar_day_field.dart';
 import 'package:ezbizi_client/screens/hr/onboarding_tab.dart';
 import 'package:ezbizi_client/screens/hr_screen.dart';
 import 'package:flutter/material.dart';
@@ -92,12 +93,12 @@ void main() {
       'who filled it in', (tester) async {
     await _pumpForm(tester, _handler(form: _asEmployer));
 
-    expect(_box(tester, 'date_of_birth').enabled, isTrue);
+    expect(_day(tester, 'date_of_birth').enabled, isTrue);
     expect(find.text('Either of you'), findsWidgets);
 
     await _pumpForm(tester, _handler(form: _asEmployee));
 
-    expect(_box(tester, 'date_of_birth').enabled, isTrue);
+    expect(_day(tester, 'date_of_birth').enabled, isTrue);
 
     // Provenance, which is the whole point: without it "the employer typed it"
     // and "I confirmed it" are the same fact.
@@ -118,7 +119,7 @@ void main() {
 
     // The values the server already holds, in the boxes, not lost.
     expect(_box(tester, 'hourly_wage').controller!.text, '22.50');
-    expect(_box(tester, 'date_of_birth').controller!.text, '1990-02-11');
+    expect(_day(tester, 'date_of_birth').controller.text, '1990-02-11');
 
     // Counted, because "your progress is saved" with no number behind it is
     // what every form says and nobody believes.
@@ -768,6 +769,9 @@ Future<void> _choose(WidgetTester tester, String label, String option) async {
 /// above it with the tags beside it. See [answerKey].
 TextField _box(WidgetTester tester, String fieldKey) =>
     tester.widget<TextField>(find.byKey(answerKey(fieldKey)));
+
+CalendarDayField _day(WidgetTester tester, String fieldKey) =>
+    tester.widget<CalendarDayField>(find.byKey(answerKey(fieldKey)));
 
 DropdownButtonFormField<String> _dropdown(
   WidgetTester tester,

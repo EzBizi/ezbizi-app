@@ -19,9 +19,8 @@ use Illuminate\Database\Eloquent\Model;
  * ── Why exactly these two ────────────────────────────────────────
  *
  * A key earns a place here when something on screen reads it. `date_format` and
- * `time_format` are read by the client's formatStamp — the one function four
- * screens share to write a timestamp — and by the settings screen's own time
- * pickers.
+ * `time_format` are read by the client's formatStamp and by CalendarDayField
+ * (month/day/year order), and by the settings screen's own time pickers.
  *
  * `week_starts_on` and `measurement_units` are deliberately absent from /me.
  * The server already reads `week_starts_on` for the dashboard week bound; the

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/session.dart';
+import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import 'vehicle_card.dart';
 
@@ -456,11 +457,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                         'Odometer (miles)',
                         keyboard: TextInputType.number,
                       ),
-                      _field(
-                        _nextServiceOn,
-                        'Next service on',
-                        helper: 'A calendar day — 2026-09-01.',
-                      ),
+                      _day(_nextServiceOn, 'Next service on'),
                       _field(
                         _nextServiceMiles,
                         'Next service miles',
@@ -502,11 +499,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                           _counterparty,
                           _kind == 'rented' ? 'Rented from' : 'Bought from',
                         ),
-                        _field(
-                          _startedOn,
-                          'Started on',
-                          helper: 'A calendar day — 2026-03-08.',
-                        ),
+                        _day(_startedOn, 'Started on'),
                       ],
                       if (_financials && _kind == 'owned') ...[
                         _field(
@@ -527,7 +520,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                             decimal: true,
                           ),
                         ),
-                        _field(_loanPayoff, 'Payoff date'),
+                        _day(_loanPayoff, 'Payoff date'),
                         _field(
                           _transport,
                           'Transport cost',
@@ -649,6 +642,18 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
             child,
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _day(TextEditingController controller, String label) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: CalendarDayField(
+        controller: controller,
+        label: label,
+        formats: _me.display,
+        enabled: !_busy,
       ),
     );
   }

@@ -8,6 +8,7 @@ import '../../core/files.dart';
 import '../../core/onboarding.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/tag.dart';
 
@@ -116,6 +117,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
   /// contract designer's `_Question` documents. These are keyed by the field
   /// key, so a question cannot end up wearing another question's text.
   final Map<String, TextEditingController> _boxes = {};
+  final Map<String, TextEditingController> _received = {};
 
   /// What has been changed and not yet saved, by field key.
   ///
@@ -193,6 +195,9 @@ class _OnboardingFormState extends State<OnboardingForm> {
   @override
   void dispose() {
     for (final box in _boxes.values) {
+      box.dispose();
+    }
+    for (final box in _received.values) {
       box.dispose();
     }
     super.dispose();
@@ -979,6 +984,15 @@ class _OnboardingFormState extends State<OnboardingForm> {
             : null,
       ),
       'file' => _fileControl(context, question),
+      'date' => CalendarDayField(
+        key: answerKey(field.key),
+        controller: _box(question),
+        formats: widget.formats,
+        enabled: enabled,
+        onChanged: enabled
+            ? (value) => setState(() => _pending[question.key] = value)
+            : null,
+      ),
       // A signature reaching this point is one the ceremony below does not
       // cover: [_page] lifts out every question the server named in `signing`,
       // so anything of this kind still here has no document behind it. Drawing
@@ -993,10 +1007,6 @@ class _OnboardingFormState extends State<OnboardingForm> {
       _ => _text(
         question,
         enabled: enabled,
-        // Typed rather than picked, the same as the invitation screen: a date
-        // picker is a modal dialog and this app does not use those. ISO because
-        // it is the one spelling that cannot be misread.
-        helper: field.type == 'date' ? 'YYYY-MM-DD' : null,
         numeric: field.type == 'number',
       ),
     };
@@ -1010,43 +1020,67 @@ class _OnboardingFormState extends State<OnboardingForm> {
       children: [
         for (final item in items)
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: Text(item)),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 72,
-                  child: TextField(
-                    enabled: enabled,
-                    controller: TextEditingController(text: rows[item]?['quantity'] ?? ''),
-                    decoration: const InputDecoration(
-                      labelText: 'Qty',
-                      isDense: true,
-                      border: OutlineInputBorder(),
+                Row(
+                  children: [
+                    Expanded(child: Text(item)),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 72,
+                      child: TextField(
+                        enabled: enabled,
+                        controller: TextEditingController(
+                          text: rows[item]?['quantity'] ?? '',
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Qty',
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (value) => _setChecklistCell(
+                          question,
+                          item,
+                          'quantity',
+                          value,
+                        ),
+                      ),
                     ),
-                    onChanged: (value) => _setChecklistCell(question, item, 'quantity', value),
-                  ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 130,
-                  child: TextField(
-                    enabled: enabled,
-                    controller: TextEditingController(text: rows[item]?['received'] ?? ''),
-                    decoration: const InputDecoration(
-                      labelText: 'Received',
-                      hintText: 'YYYY-MM-DD',
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (value) => _setChecklistCell(question, item, 'received', value),
-                  ),
+                const SizedBox(height: 8),
+                CalendarDayField(
+                  controller: _receivedBox(question, item, rows[item]?['received'] ?? ''),
+                  label: 'Received',
+                  formats: widget.formats,
+                  enabled: enabled,
+                  dense: true,
+                  onChanged: enabled
+                      ? (value) => _setChecklistCell(
+                          question,
+                          item,
+                          'received',
+                          value,
+                        )
+                      : null,
                 ),
               ],
             ),
           ),
       ],
+    );
+  }
+
+  TextEditingController _receivedBox(
+    OnboardingQuestion question,
+    String item,
+    String starting,
+  ) {
+    return _received.putIfAbsent(
+      '${question.key}::$item',
+      () => TextEditingController(text: starting),
     );
   }
 

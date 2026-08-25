@@ -1823,6 +1823,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
       child: ContractFormPreview(
         vocabulary: widget.vocabulary,
         fields: [for (final question in _questions) question.toField()],
+        formats: widget.formats,
       ),
     );
   }

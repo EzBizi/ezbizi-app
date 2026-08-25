@@ -294,11 +294,11 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
             enabled: enabled,
             keyboard: TextInputType.number,
           ),
-          fleetField(
+          fleetCalendarDay(
             _nextServiceOn,
             'Next service on',
+            formats: _me.display,
             enabled: enabled,
-            helper: 'A calendar day — 2026-09-01.',
           ),
           fleetField(
             _nextServiceMiles,
@@ -407,11 +407,11 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
               _kind == 'rented' ? 'Rented from' : 'Bought from',
               enabled: enabled,
             ),
-            fleetField(
+            fleetCalendarDay(
               _startedOn,
               'Started on',
+              formats: _me.display,
               enabled: enabled,
-              helper: 'A calendar day — 2026-03-08.',
             ),
           ],
           if (_error != null) ...[

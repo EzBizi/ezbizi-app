@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/contracts.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/tag.dart';
 
 /// The form each side will actually be asked to fill in.
@@ -37,9 +38,13 @@ class ContractFormPreview extends StatefulWidget {
     super.key,
     required this.vocabulary,
     required this.fields,
+    required this.formats,
   });
 
   final ContractVocabulary vocabulary;
+
+  /// Which box is first on a date question — the organization's `date_format`.
+  final DisplayFormats formats;
 
   /// The template's questions in form order. Retired ones are filtered out
   /// here, because "what will they be asked" is exactly the question retiring
@@ -247,14 +252,30 @@ class _ContractFormPreviewState extends State<ContractFormPreview> {
           ],
         ),
       ),
-      'date' => _box(
-        context,
-        Row(
-          children: [
-            Expanded(child: Text('', style: theme.textTheme.bodyMedium)),
-            const Icon(Icons.calendar_today_outlined, size: 16),
+      'date' => Row(
+        children: [
+          for (var i = 0; i < widget.formats.dateParts.length; i++) ...[
+            if (i > 0)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  widget.formats.dateFormat == 'YYYY-MM-DD' ? '-' : '/',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ),
+            _mini(context, switch (widget.formats.dateParts[i]) {
+              DatePart.month => 'MM',
+              DatePart.day => 'DD',
+              DatePart.year => 'YYYY',
+            }),
           ],
-        ),
+          const SizedBox(width: 4),
+          Icon(
+            Icons.calendar_today_outlined,
+            size: 16,
+            color: theme.colorScheme.outline,
+          ),
+        ],
       ),
       'file' => OutlinedButton.icon(
         onPressed: null,
@@ -273,6 +294,17 @@ class _ContractFormPreviewState extends State<ContractFormPreview> {
       _ => _box(context, const SizedBox(height: 20)),
     };
   }
+
+  Widget _mini(BuildContext context, String hint) => Container(
+    width: 56,
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surface,
+      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Text(hint, style: Theme.of(context).textTheme.bodySmall),
+  );
 
   Widget _box(BuildContext context, Widget child) => Container(
     width: double.infinity,

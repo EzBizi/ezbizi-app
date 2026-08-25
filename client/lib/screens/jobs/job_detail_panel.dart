@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/job_status.dart';
 import '../../core/money.dart';
 import '../../core/session.dart';
+import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
@@ -279,15 +280,12 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                       : null,
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                CalendarDayField(
                   controller: _scheduled,
-                  decoration: const InputDecoration(
-                    labelText: 'Scheduled for',
-                    helperText:
-                        'Wall time at this place — 2026-03-08 09:00. '
-                        'Empty means not dated yet.',
-                    helperMaxLines: 3,
-                  ),
+                  label: 'Scheduled for',
+                  helper: 'Empty means not dated yet.',
+                  formats: _me.display,
+                  withTime: true,
                   enabled: editable,
                 ),
                 const SizedBox(height: 12),

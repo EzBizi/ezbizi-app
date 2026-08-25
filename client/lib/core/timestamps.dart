@@ -150,6 +150,19 @@ class DisplayFormats {
     return formatTime(hour, minute);
   }
 
+  /// Month, day and year in the order this organization types a date.
+  ///
+  /// The three boxes on a date field follow this, not the browser locale and
+  /// not a hardcoded month-first row. Labels on each box keep 3/8 from being
+  /// two different days; the order is still the setting, or the setting is
+  /// decoration.
+  List<DatePart> get dateParts => switch (dateFormat) {
+    'D/M/YYYY' => const [DatePart.day, DatePart.month, DatePart.year],
+    'YYYY-MM-DD' => const [DatePart.year, DatePart.month, DatePart.day],
+    // 'M/D/YYYY', and anything this build does not know.
+    _ => const [DatePart.month, DatePart.day, DatePart.year],
+  };
+
   @override
   bool operator ==(Object other) =>
       other is DisplayFormats &&
@@ -160,7 +173,71 @@ class DisplayFormats {
   int get hashCode => Object.hash(dateFormat, timeFormat);
 }
 
+/// One piece of a calendar day, named so a field can label the box rather than
+/// hoping the reader infers the order from position.
+enum DatePart { month, day, year }
+
 String _two(int n) => n.toString().padLeft(2, '0');
+
+/// A calendar day as `YYYY-MM-DD`. Null when the string is empty or not a day.
+///
+/// Rejects overflow (`2026-02-31`) rather than letting [DateTime] roll it into
+/// March: a field that accepted a day the calendar does not have would store a
+/// different day than the one typed.
+DateTime? parseCalendarDay(String? raw) {
+  if (raw == null) return null;
+
+  final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(raw.trim());
+  if (match == null) return null;
+
+  return _civilDay(
+    int.parse(match[1]!),
+    int.parse(match[2]!),
+    int.parse(match[3]!),
+  );
+}
+
+/// Wall clock `YYYY-MM-DD HH:MM` as jobs store it, plus the date-only form.
+///
+/// The optional time is what `_wallClock` leaves after stripping a zone suffix.
+/// Hour and minute default to midnight when the string is a day and nothing
+/// else, so a date field and a date-and-time field can share the parser.
+({DateTime day, int hour, int minute})? parseWallDateTime(String? raw) {
+  if (raw == null) return null;
+
+  final match = RegExp(
+    r'^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?',
+  ).firstMatch(raw.trim());
+  if (match == null) return null;
+
+  final day = _civilDay(
+    int.parse(match[1]!),
+    int.parse(match[2]!),
+    int.parse(match[3]!),
+  );
+  if (day == null) return null;
+
+  final hour = match[4] == null ? 0 : int.parse(match[4]!);
+  final minute = match[5] == null ? 0 : int.parse(match[5]!);
+  if (hour > 23 || minute > 59) return null;
+
+  return (day: day, hour: hour, minute: minute);
+}
+
+String formatCalendarDay(DateTime at) =>
+    '${at.year}-${_two(at.month)}-${_two(at.day)}';
+
+String formatWallDateTime(DateTime day, int hour, int minute) =>
+    '${formatCalendarDay(day)} ${_two(hour)}:${_two(minute)}';
+
+DateTime? _civilDay(int year, int month, int day) {
+  if (month < 1 || month > 12 || day < 1) return null;
+
+  final at = DateTime(year, month, day);
+  if (at.year != year || at.month != month || at.day != day) return null;
+
+  return at;
+}
 
 /// ISO-8601 from the server, shown in the reader's own zone and in the
 /// organization's own format.

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/files.dart';
 import '../core/session.dart';
+import 'calendar_day_field.dart';
 import 'error_note.dart';
 import 'logo_cropper.dart';
 import 'side_panel.dart';
@@ -33,8 +34,8 @@ class _IdentityCardState extends State<IdentityCard> {
   final _phone = TextEditingController();
   final _address = TextEditingController();
   final _gender = TextEditingController();
+  final _dob = TextEditingController();
 
-  DateTime? _dob;
   String _email = '';
   bool _hasAvatar = false;
   Uint8List? _avatarPreview;
@@ -59,7 +60,7 @@ class _IdentityCardState extends State<IdentityCard> {
 
   @override
   void dispose() {
-    for (final c in [_first, _middle, _last, _phone, _address, _gender]) {
+    for (final c in [_first, _middle, _last, _phone, _address, _gender, _dob]) {
       c.dispose();
     }
     super.dispose();
@@ -87,9 +88,7 @@ class _IdentityCardState extends State<IdentityCard> {
       _gender.text = b['gender'] as String? ?? '';
       _email = b['email'] as String? ?? '';
       _hasAvatar = b['has_avatar'] == true;
-      _dob = b['date_of_birth'] == null
-          ? null
-          : DateTime.tryParse(b['date_of_birth'] as String);
+      _dob.text = b['date_of_birth'] as String? ?? '';
     });
   }
 
@@ -109,7 +108,7 @@ class _IdentityCardState extends State<IdentityCard> {
       'phone': _phone.text.trim().isEmpty ? null : _phone.text.trim(),
       'address': _address.text.trim().isEmpty ? null : _address.text.trim(),
       'gender': _gender.text.trim().isEmpty ? null : _gender.text.trim(),
-      'date_of_birth': _dob?.toIso8601String().split('T').first,
+      'date_of_birth': _dob.text.trim().isEmpty ? null : _dob.text.trim(),
     });
 
     if (!mounted) return;
@@ -285,13 +284,30 @@ class _IdentityCardState extends State<IdentityCard> {
             ),
 
             const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _genderField(context)),
-                const SizedBox(width: 12),
-                Expanded(child: _dobField(context)),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final stacked = constraints.maxWidth < 560;
+                final gender = _genderField(context);
+                final dob = _dobField(context);
+                if (stacked) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      gender,
+                      const SizedBox(height: 12),
+                      dob,
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: gender),
+                    const SizedBox(width: 12),
+                    Expanded(child: dob),
+                  ],
+                );
+              },
             ),
 
             const SizedBox(height: 16),
@@ -403,42 +419,13 @@ class _IdentityCardState extends State<IdentityCard> {
   }
 
   Widget _dobField(BuildContext context) {
-    return InkWell(
-      onTap: () async {
-        final now = DateTime.now();
-
-        final picked = await showDatePicker(
-          context: context,
-          initialDate: _dob ?? DateTime(now.year - 30),
-          firstDate: DateTime(now.year - 100),
-          lastDate: now,
-        );
-
-        if (picked != null) setState(() => _dob = picked);
-      },
-      child: InputDecorator(
-        decoration: const InputDecoration(
-          labelText: 'Date of birth (optional)',
-          isDense: true,
-          border: OutlineInputBorder(),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                _dob?.toIso8601String().split('T').first ?? 'Not set',
-              ),
-            ),
-            if (_dob != null)
-              IconButton(
-                icon: const Icon(Icons.clear, size: 16),
-                tooltip: 'Clear the date of birth',
-                onPressed: () => setState(() => _dob = null),
-              ),
-            const Icon(Icons.calendar_today_outlined, size: 16),
-          ],
-        ),
-      ),
+    final now = DateTime.now();
+    return CalendarDayField(
+      controller: _dob,
+      label: 'Date of birth (optional)',
+      formats: widget.session.me!.display,
+      firstDate: DateTime(now.year - 120),
+      lastDate: DateTime(now.year, now.month, now.day),
     );
   }
 

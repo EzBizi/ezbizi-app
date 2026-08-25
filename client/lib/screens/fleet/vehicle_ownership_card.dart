@@ -287,11 +287,11 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
           _kind == 'rented' ? 'Rented from' : 'Bought from',
           enabled: !_busy,
         ),
-        fleetField(
+        fleetCalendarDay(
           _startedOn,
           'Started on',
+          formats: widget.session.me!.display,
           enabled: !_busy,
-          helper: 'A calendar day — 2026-03-08.',
         ),
         if (_financials && _kind == 'owned') ...[
           fleetField(
@@ -308,7 +308,12 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
             enabled: !_busy,
             keyboard: const TextInputType.numberWithOptions(decimal: true),
           ),
-          fleetField(_loanPayoff, 'Payoff date', enabled: !_busy),
+          fleetCalendarDay(
+            _loanPayoff,
+            'Payoff date',
+            formats: widget.session.me!.display,
+            enabled: !_busy,
+          ),
           fleetField(
             _transport,
             'Transport cost',

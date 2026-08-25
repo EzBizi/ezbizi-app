@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/money.dart';
+import '../../core/timestamps.dart';
+import '../../widgets/calendar_day_field.dart';
 
 /// Shared chrome and labels for the vehicle cards (spec §11).
 class FleetSectionCard extends StatelessWidget {
@@ -99,6 +101,23 @@ int? fleetParseInt(String raw, String sentence) {
 }
 
 int? fleetParseCents(String raw) => parseAmountMinor(raw);
+
+Widget fleetCalendarDay(
+  TextEditingController controller,
+  String label, {
+  required DisplayFormats formats,
+  bool enabled = true,
+}) {
+  return Padding(
+    padding: const EdgeInsets.only(top: 12),
+    child: CalendarDayField(
+      controller: controller,
+      label: label,
+      formats: formats,
+      enabled: enabled,
+    ),
+  );
+}
 
 Widget fleetField(
   TextEditingController controller,

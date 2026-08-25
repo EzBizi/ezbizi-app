@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/fleet_screen.dart';
+import 'package:ezbizi_client/widgets/calendar_day_field.dart';
 import 'package:ezbizi_client/widgets/coming_soon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -61,6 +62,30 @@ void main() {
 
     expect(find.text('Bought from'), findsOneWidget);
     expect(find.text('Started on'), findsOneWidget);
+  });
+
+  testWidgets('Add dates follow the organization date format', (tester) async {
+    await _pumpScreen(
+      tester,
+      me: {
+        'display': {'date_format': 'D/M/YYYY', 'time_format': '24h'},
+      },
+    );
+
+    await tester.tap(find.text('Add vehicle'));
+    await tester.pumpAndSettle();
+
+    final order = tester
+        .widgetList<TextField>(
+          find.descendant(
+            of: find.byType(CalendarDayField).first,
+            matching: find.byType(TextField),
+          ),
+        )
+        .map((f) => f.decoration?.labelText)
+        .toList();
+
+    expect(order.take(3), ['Day', 'Month', 'Year']);
   });
 
   testWidgets('a failed load is the request failed, not an empty list', (
@@ -190,7 +215,10 @@ void main() {
     await tester.tap(find.text('Add vehicle'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.widgetWithText(TextField, 'Year'), '2022');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Year').first,
+      '2022',
+    );
     await tester.enterText(find.widgetWithText(TextField, 'Make'), 'Ford');
     await tester.enterText(find.widgetWithText(TextField, 'Model'), 'Transit');
     await tester.enterText(find.widgetWithText(TextField, 'Plate'), 'NEW-1');

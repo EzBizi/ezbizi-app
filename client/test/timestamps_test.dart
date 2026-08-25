@@ -84,6 +84,39 @@ void main() {
         startsWith('2026-08-03'),
       );
     });
+
+    test('the three boxes follow the same order the format names', () {
+      expect(american.dateParts, [
+        DatePart.month,
+        DatePart.day,
+        DatePart.year,
+      ]);
+      expect(european.dateParts, [
+        DatePart.day,
+        DatePart.month,
+        DatePart.year,
+      ]);
+      expect(iso.dateParts, [DatePart.year, DatePart.month, DatePart.day]);
+    });
+  });
+
+  group('a typed calendar day', () {
+    test('accepts a real day and rejects one the calendar does not have', () {
+      expect(parseCalendarDay('2026-09-01'), DateTime(2026, 9, 1));
+      expect(parseCalendarDay('2026-02-31'), isNull);
+      expect(parseCalendarDay(''), isNull);
+    });
+
+    test('a job wall clock keeps the hour it was given', () {
+      final parsed = parseWallDateTime('2026-03-08 09:00');
+      expect(parsed?.day, DateTime(2026, 3, 8));
+      expect(parsed?.hour, 9);
+      expect(parsed?.minute, 0);
+      expect(
+        formatWallDateTime(DateTime(2026, 3, 8), 9, 0),
+        '2026-03-08 09:00',
+      );
+    });
   });
 
   group('a value this build does not know', () {

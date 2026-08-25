@@ -5,6 +5,7 @@ import '../core/money.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
+import '../widgets/calendar_day_field.dart';
 import '../widgets/data_transfer.dart';
 import '../widgets/error_note.dart';
 import '../widgets/franchise_field.dart';
@@ -716,15 +717,12 @@ class _NewJobPanelState extends State<_NewJobPanel> {
                   enabled: !_busy,
                 ),
                 const SizedBox(height: 14),
-                TextField(
+                CalendarDayField(
                   controller: _scheduled,
-                  decoration: const InputDecoration(
-                    labelText: 'Scheduled for',
-                    helperText:
-                        'Wall time at this place — 2026-03-08 09:00. '
-                        'Empty means not dated yet.',
-                    helperMaxLines: 3,
-                  ),
+                  label: 'Scheduled for',
+                  helper: 'Empty means not dated yet.',
+                  formats: widget.session.me!.display,
+                  withTime: true,
                   enabled: !_busy,
                 ),
                 const SizedBox(height: 14),

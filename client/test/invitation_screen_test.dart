@@ -104,6 +104,31 @@ void main() {
     );
   });
 
+  testWidgets('date of birth follows the organization date format', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        invitation: {
+          ..._invitation,
+          'display': {
+            'date_format': 'D/M/YYYY',
+            'time_format': '24h',
+          },
+        },
+      ),
+    );
+
+    final order = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .map((f) => f.decoration?.labelText)
+        .where((label) => label == 'Day' || label == 'Month' || label == 'Year')
+        .toList();
+
+    expect(order, ['Day', 'Month', 'Year']);
+  });
+
   testWidgets('nothing can be submitted until a password is chosen', (
     tester,
   ) async {
@@ -131,7 +156,7 @@ void main() {
     await _type(tester, 'Choose a password', 'a-long-enough-password');
     await _type(tester, 'Last name', 'Okafor');
     await _type(tester, 'Phone', '860 555 0142');
-    await _type(tester, 'Date of birth', '1994-02-11');
+    await _typeDay(tester, DateTime(1994, 2, 11));
 
     await tester.tap(_acceptButton());
     await tester.pumpAndSettle();
@@ -281,6 +306,22 @@ Future<void> _type(WidgetTester tester, String label, String text) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _typeDay(WidgetTester tester, DateTime at) async {
+  await tester.enterText(
+    find.byKey(const Key('calendar-day-month')),
+    at.month.toString().padLeft(2, '0'),
+  );
+  await tester.enterText(
+    find.byKey(const Key('calendar-day-day')),
+    at.day.toString().padLeft(2, '0'),
+  );
+  await tester.enterText(
+    find.byKey(const Key('calendar-day-year')),
+    '${at.year}',
+  );
+  await tester.pumpAndSettle();
+}
+
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder.first);
   await tester.pumpAndSettle();
@@ -305,6 +346,7 @@ MockClientHandler _handler({
   int acceptStatus = 200,
   int meStatus = 200,
   bool acceptFieldError = true,
+  Map<String, dynamic>? invitation,
 }) {
   return (request) async {
     final path = request.url.path;
@@ -377,7 +419,7 @@ MockClientHandler _handler({
         }, getStatus);
       }
 
-      return _json({'data': _invitation});
+      return _json({'data': invitation ?? _invitation});
     }
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);
@@ -408,6 +450,7 @@ const _invitation = {
   'expires_at': '2026-08-18T09:00:00+00:00',
   // This organization has raised the floor above the platform's 12 (§6).
   'password_min_length': 16,
+  'display': {'date_format': 'M/D/YYYY', 'time_format': '12h'},
 };
 
 const _me = {

@@ -4,7 +4,9 @@ import '../core/api_client.dart';
 import '../core/password_policy.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
+import '../widgets/calendar_day_field.dart';
 import '../widgets/error_note.dart';
 
 /// The other end of an invitation (HR plan, "Invitations").
@@ -156,6 +158,22 @@ class _InvitationScreenState extends State<InvitationScreen> {
     return minimum == null
         ? PasswordPolicy.hint
         : PasswordPolicy.hintFor(minimum);
+  }
+
+  /// How this organization writes a date, for the date-of-birth boxes (§6).
+  ///
+  /// Same `display` block /me will send after they join. A missing block is a
+  /// server older than this build: month-first rather than ISO, because the
+  /// three boxes are named and month-first is the registry default — falling
+  /// back to YYYY-MM-DD here would put Year first on a form that never asked
+  /// for that.
+  DisplayFormats get _formats {
+    final raw = _invitation?['display'];
+    if (raw is! Map) {
+      return const DisplayFormats(dateFormat: 'M/D/YYYY', timeFormat: '12h');
+    }
+
+    return DisplayFormats.fromJson(raw);
   }
 
   Future<void> _submit() async {
@@ -344,18 +362,13 @@ class _InvitationScreenState extends State<InvitationScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        TextField(
+        CalendarDayField(
           controller: _dateOfBirth,
+          label: 'Date of birth',
+          formats: _formats,
           enabled: !_busy && !_accepted,
-          decoration: const InputDecoration(
-            labelText: 'Date of birth',
-            border: OutlineInputBorder(),
-            // Typed rather than picked. A date picker is a modal dialog, and
-            // this app does not use those — and there is no organization behind
-            // this screen yet to ask which way round it writes a date, so it
-            // asks for the one spelling that cannot be misread.
-            helperText: 'YYYY-MM-DD',
-          ),
+          firstDate: DateTime(DateTime.now().year - 120),
+          lastDate: DateTime.now(),
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
