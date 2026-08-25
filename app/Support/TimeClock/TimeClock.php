@@ -9,6 +9,7 @@ use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Settings\SettingsResolver;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -29,9 +30,11 @@ final class TimeClock
     /**
      * Chrome for `/me` and the punch responses (design §8).
      *
-     * `show_button` follows §4: org on and (`time_clock.view` or an open shift).
-     * Instants on the wire are UTC ISO-8601 with a Z suffix. The client never
-     * supplies a time — `now()` is the only clock.
+     * `show_button` is Clock in when the org is on and they hold the grant, or
+     * Clock out while a shift is still open — including after the org switch
+     * or grant is taken away (design §3.10). Instants on the wire are UTC
+     * ISO-8601 with a Z suffix. The client never supplies a time — `now()` is
+     * the only clock.
      *
      * @return array{
      *     organization_enabled: bool,
@@ -49,7 +52,7 @@ final class TimeClock
         return [
             'organization_enabled' => $enabled,
             'can_clock' => $canClock,
-            'show_button' => $enabled && ($canClock || $open !== null),
+            'show_button' => ($enabled && $canClock) || $open !== null,
             'open' => $open === null ? null : [
                 'id' => $open->id,
                 'clocked_in_at' => $this->instant($open->clocked_in_at),
@@ -70,31 +73,39 @@ final class TimeClock
             abort(403, Refusal::permission('clock in')->message());
         }
 
-        return DB::transaction(function () use ($user) {
-            $open = TimeClockShift::query()
-                ->open()
-                ->where('user_id', $user->getKey())
-                ->lockForUpdate()
-                ->first();
+        try {
+            return DB::transaction(function () use ($user) {
+                $open = TimeClockShift::query()
+                    ->open()
+                    ->where('user_id', $user->getKey())
+                    ->lockForUpdate()
+                    ->first();
 
-            if ($open !== null) {
-                throw ValidationException::withMessages([
-                    'time_clock' => 'You are already clocked in.',
+                if ($open !== null) {
+                    throw ValidationException::withMessages([
+                        'time_clock' => 'You are already clocked in.',
+                    ]);
+                }
+
+                $shift = TimeClockShift::query()->create([
+                    'organization_id' => $user->organization_id,
+                    'user_id' => $user->getKey(),
+                    'clocked_in_at' => now(),
+                    'clocked_out_at' => null,
                 ]);
-            }
 
-            $shift = TimeClockShift::query()->create([
-                'organization_id' => $user->organization_id,
-                'user_id' => $user->getKey(),
-                'clocked_in_at' => now(),
-                'clocked_out_at' => null,
+                $this->audit->log('time_clock.clocked_in', $shift);
+                $this->events->emit('time_clock.clocked_in', $user, $this->eventPayload($shift));
+
+                return $this->payload($user);
+            });
+        } catch (UniqueConstraintViolationException) {
+            // lockForUpdate on an empty open query does not serialize two first
+            // inserts. The unique index still holds; this is the sentence.
+            throw ValidationException::withMessages([
+                'time_clock' => 'You are already clocked in.',
             ]);
-
-            $this->audit->log('time_clock.clocked_in', $shift);
-            $this->events->emit('time_clock.clocked_in', $user, $this->eventPayload($shift));
-
-            return $this->payload($user);
-        });
+        }
     }
 
     /**

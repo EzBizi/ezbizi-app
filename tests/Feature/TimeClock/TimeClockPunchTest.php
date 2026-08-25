@@ -247,6 +247,59 @@ class TimeClockPunchTest extends TestCase
         );
     }
 
+    public function test_clock_out_stays_on_me_after_the_organization_switch_is_taken_away(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->enableClockIn($alpha['org']);
+        $puncher = $this->userWithRole($alpha, 'Tech', ['time_clock.view']);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-25 09:00:00', 'UTC'));
+        $this->signedInAs($puncher)->postJson('/api/v1/time-clock/clock-in')->assertOk();
+
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            app(SettingsResolver::class)->set('time_clock.enabled', $alpha['org'], false);
+        });
+
+        $me = $this->signedInAs($puncher)->getJson('/api/v1/me')->assertOk()->json('data.time_clock');
+        $this->assertFalse($me['organization_enabled']);
+        $this->assertTrue($me['show_button']);
+        $this->assertNotNull($me['open']);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-25 17:00:00', 'UTC'));
+        $this->signedInAs($puncher)->postJson('/api/v1/time-clock/clock-out')->assertOk();
+
+        $after = $this->signedInAs($puncher)->getJson('/api/v1/me')->assertOk()->json('data.time_clock');
+        $this->assertFalse($after['show_button']);
+        $this->assertNull($after['open']);
+    }
+
+    public function test_a_unique_violation_on_clock_in_is_already_clocked_in(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->enableClockIn($alpha['org']);
+        $puncher = $this->userWithRole($alpha, 'Tech', ['time_clock.view']);
+
+        TimeClockShift::creating(function () use ($alpha, $puncher) {
+            static $once = false;
+            if ($once) {
+                return;
+            }
+            $once = true;
+
+            TimeClockShift::withoutEvents(fn () => TimeClockShift::query()->create([
+                'organization_id' => $alpha['org']->id,
+                'user_id' => $puncher->id,
+                'clocked_in_at' => now()->subMinute(),
+                'clocked_out_at' => null,
+            ]));
+        });
+
+        $this->assertRefusedWithSentence(
+            $this->signedInAs($puncher)->postJson('/api/v1/time-clock/clock-in'),
+            'You are already clocked in.',
+        );
+    }
+
     private function enableClockIn(Organization $org): void
     {
         app(TenantContext::class)->run($org, function () use ($org) {
