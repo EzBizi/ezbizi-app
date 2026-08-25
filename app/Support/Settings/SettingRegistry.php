@@ -69,6 +69,7 @@ class SettingRegistry
             'email'         => ['Shared inboxes',       $this->email()],
             'customers'     => ['Customers',            $this->customers()],
             'jobs'          => ['Jobs',                 $this->jobs()],
+            'hr'            => ['Human Resources',      $this->hr()],
         ] as $group => [$label, $definitions]) {
             foreach ($definitions as $definition) {
                 $this->register($definition, $group, $label);
@@ -709,6 +710,20 @@ class SettingRegistry
         ];
     }
 
+    private function hr(): array
+    {
+        return [
+            new SettingDefinition(
+                key: 'time_clock.enabled',
+                label: 'Clock in',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'When on, people whose role includes Clock in see a button in the top bar. Human Resources shows the day list.',
+            ),
+        ];
+    }
+
     /**
      * Whole-hour UTC offsets, stored as IANA identifiers PHP already accepts.
      *
@@ -721,6 +736,17 @@ class SettingRegistry
     private static function timezones(): array
     {
         return array_keys(self::timezoneLabels());
+    }
+
+    /**
+     * Display label for a stored timezone id (POSIX Etc/GMT).
+     *
+     * Etc/GMT+5 is UTC-5. The day-list API may use an ASCII hyphen (`UTC-5`);
+     * the client caption is `Times in {$label}`.
+     */
+    public static function timezoneLabel(string $id): string
+    {
+        return self::timezoneLabels()[$id] ?? $id;
     }
 
     /**

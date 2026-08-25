@@ -604,6 +604,27 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
             ),
 
+            new ModuleDefinition(
+                key:     'time_clock',
+                label:   'Clock in',
+                actions: ['view'],
+                sidebar: false,
+                triggers: [
+                    new TriggerDefinition(
+                        key:   'time_clock.clocked_in',
+                        label: 'Person clocked in',
+                        description: 'Somebody started a shift. It carries who, and when they punched in.',
+                        isRaised: true,
+                    ),
+                    new TriggerDefinition(
+                        key:   'time_clock.clocked_out',
+                        label: 'Person clocked out',
+                        description: 'Somebody ended a shift. It carries who, when they punched in, and when they punched out.',
+                        isRaised: true,
+                    ),
+                ],
+            ),
+
             /*
              * ── Why there is a fifth action here ────────────────
              *

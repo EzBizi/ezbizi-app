@@ -80,6 +80,14 @@ final class ModuleDefinition
          * tab of its own. See ROLES_* above.
          */
         public readonly string $rolesGroup = self::ROLES_TAB,
+        /**
+         * Is this a rail destination?
+         *
+         * Default true: ROLES_TAB modules are sidebar tabs. Clock in is grantable
+         * the same way and is NOT a tab — the top-bar button is the surface.
+         * GlanceRegistry completeness and the client rail both honour this.
+         */
+        public readonly bool $sidebar = true,
     ) {
         if ($key === '' || ! preg_match('/^[a-z][a-z0-9_]*$/', $key)) {
             throw new InvalidArgumentException(

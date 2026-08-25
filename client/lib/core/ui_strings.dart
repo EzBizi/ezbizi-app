@@ -20,6 +20,15 @@ class UiStrings {
     'shell.email': 'Email',
     'shell.password': 'Password',
     'shell.language': 'Language',
+    'time_clock.clock_in': 'Clock in',
+    'time_clock.clock_out': 'Clock out',
+    'time_clock.tab': 'Clock in\u2013out',
+    'time_clock.empty': 'Nobody clocked in on this day.',
+    'time_clock.times_in': 'Times in {zone}',
+    'time_clock.in': 'In',
+    'time_clock.off': 'Clock in is switched off for this organization.',
+    'time_clock.already_in': 'You are already clocked in.',
+    'time_clock.not_in': 'You are not clocked in.',
   };
 
   static void adopt(Map<String, dynamic> payload) {

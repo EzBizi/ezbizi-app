@@ -34,6 +34,19 @@ class EzBiziTheme {
           ? const Color(0xFF1E262E)
           : const Color(0xFFE9EDF1);
 
+  /// Punch-in green. Named so the top-bar button never picks a hex, and so
+  /// the pair cannot drift into purple when a theme is mixed.
+  static Color clockIn(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF3DDC97)
+          : const Color(0xFF0B8F5B);
+
+  /// Punch-out red, same constraint as [clockIn].
+  static Color clockOut(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFFFF8A80)
+          : const Color(0xFFC62828);
+
   /// Which theme each half of the shell gets.
   ///
   /// `mixed_dark_nav` and `mixed_light_nav` are one idea in two directions: the

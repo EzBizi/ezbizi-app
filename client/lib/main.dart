@@ -404,6 +404,14 @@ class _HomeShellState extends State<HomeShell> {
   /// in build().
   String? _selected;
 
+  /// In-flight punch. The button is disabled so a second tap cannot fire
+  /// another POST while the first is still unanswered.
+  bool _punching = false;
+
+  /// Server sentence from a refused punch. A SnackBar is a popup; this sits
+  /// as a one-line strip under the AppBar, same family as the two-factor chip.
+  String? _timeClockNotice;
+
   void _show(_Rail rail, String id) => setState(() {
     _rail = rail;
     _selected = id;
@@ -421,6 +429,44 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _signOut() async {
     await widget.api.post('/auth/logout', {});
     widget.session.signOut();
+  }
+
+  Future<void> _punch() async {
+    final me = widget.session.me;
+    if (me == null || _punching || !me.timeClock.showButton) return;
+
+    final clockedIn = me.timeClock.open != null;
+
+    setState(() {
+      _punching = true;
+      _timeClockNotice = null;
+    });
+
+    final response = await widget.api.post(
+      clockedIn ? '/time-clock/clock-out' : '/time-clock/clock-in',
+      {},
+    );
+
+    if (!mounted) return;
+
+    if (response.ok) {
+      final data = response.data;
+      if (data is Map) {
+        final block = data['time_clock'];
+        if (block is Map<String, dynamic>) {
+          widget.session.applyTimeClock(block);
+        } else if (block is Map) {
+          widget.session.applyTimeClock(Map<String, dynamic>.from(block));
+        }
+      }
+      setState(() => _punching = false);
+      return;
+    }
+
+    setState(() {
+      _punching = false;
+      _timeClockNotice = response.reason;
+    });
   }
 
   @override
@@ -637,29 +683,47 @@ class _HomeShellState extends State<HomeShell> {
             // that shows where you are standing. Two controls saying almost the
             // same thing — a fixed name and a changeable view — is how somebody
             // ends up sure they are in one place while the lists show another.
-            title: Row(
-              children: [
-                EzBiziTheme.wordmark(context, size: 20),
-                const SizedBox(width: 14),
-                Container(
-                  width: 1,
-                  height: 18,
-                  color: Theme.of(context).dividerColor,
-                ),
-                const SizedBox(width: 14),
-                // The brand first, then the control. Reading order matches what the
-                // eye needs: whose business am I in, then where in it.
-                ScopeSwitcher.logo(widget.api, widget.session),
-                const SizedBox(width: 12),
-                Flexible(
-                  child: ScopeSwitcher(
-                    api: widget.api,
-                    session: widget.session,
+            title: LayoutBuilder(
+              builder: (context, constraints) {
+                final brand = <Widget>[
+                  EzBiziTheme.wordmark(context, size: 20),
+                  const SizedBox(width: 14),
+                  Container(
+                    width: 1,
+                    height: 18,
+                    color: Theme.of(context).dividerColor,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 14),
+                  // The brand first, then the control. Reading order matches
+                  // what the eye needs: whose business am I in, then where in it.
+                  ScopeSwitcher.logo(widget.api, widget.session),
+                  const SizedBox(width: 12),
+                ];
+                final switcher = ScopeSwitcher(
+                  api: widget.api,
+                  session: widget.session,
+                );
+                // Clock in must stay in this bar at 375px, not drop into a
+                // menu. When the title slot is tighter than the brand row,
+                // scale the brand rather than the punch control.
+                if (constraints.maxWidth < 240) {
+                  return FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [...brand, switcher],
+                    ),
+                  );
+                }
+                return Row(
+                  children: [...brand, Flexible(child: switcher)],
+                );
+              },
             ),
             actions: [
+              if (me.timeClock.showButton)
+                _clockButton(context, me),
               // Light / dark, one tap, from anywhere.
               //
               // It is the same preference the account screen holds (§2.1 category
@@ -777,67 +841,100 @@ class _HomeShellState extends State<HomeShell> {
           ),
         ),
       ),
-      body: Row(
+      body: Column(
         children: [
-          if (wide)
-            // Two shapes, and the default is the list.
-            //
-            // A list reads faster: the eye scans labels down a column, and the
-            // icons are a secondary cue rather than the thing being read.
-            // Blocks fit more in less width and some people prefer them, so
-            // they stay available — as the user's own preference, not an
-            // opinion imposed by whoever wrote this.
-            _maybeThemed(
-              // In a mixed mode the sidebar runs on the opposite theme to the
-              // page. Wrapping only the sidebar — rather than building two
-              // MaterialApps or threading colours by hand — means every widget
-              // inside it, including NavigationRail's own indicator and hover
-              // colours, resolves against the right scheme without knowing that
-              // anything unusual is happening.
-              //
-              // The top bar takes this same override, so the chrome is one
-              // theme and the page is the other.
-              EzBiziTheme.navigationOverride(me.theme),
-              builder: (context) => NavigationSidebar(
-                expanded: expanded,
-                width: me.navigationWidth,
-                destinations: destinations,
-                pinned: pinned,
-                staffOnly: staffOnly,
-                selectedIndex: railIndex,
-                pinnedIndex: pinnedIndex,
-                staffIndex: staffIndex,
-                onSelected: (i) => _show(_Rail.modules, destinations[i].id),
-                onPinnedSelected: (i) => _show(_Rail.pinned, pinned[i].id),
-                onStaffSelected: (i) => _show(_Rail.staff, staffOnly[i].id),
-                // Written through the same path as every other preference, once
-                // the drag settles.
-                onResized: (w) =>
-                    widget.session.setPreference('navigation.width', w.round()),
+          if (_timeClockNotice != null)
+            Material(
+              color: Theme.of(context)
+                  .colorScheme
+                  .errorContainer
+                  .withValues(alpha: 0.4),
+              child: SizedBox(
+                width: double.infinity,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: Text(
+                    _timeClockNotice!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
             ),
           Expanded(
-            // Keyed by the current view, so changing it REMOUNTS the screen and
-            // its initState fetches again.
-            //
-            // Every screen loads once in initState — the ordinary Flutter
-            // shape — so without this the switcher changed the label and left
-            // Connecticut's jobs on the page while claiming to be in Texas.
-            // Making the scope part of the screen's identity is the fix that
-            // needs no screen to know the switcher exists.
-            child: KeyedSubtree(
-              key: ValueKey('${me.scope.type}:${me.scope.id}'),
-              // Their own account is the last fallback, and the only honest
-              // one: it is the single screen that is theirs by definition and
-              // cannot answer 403. It is what somebody whose role reaches no
-              // module at all lands on, rather than an empty frame.
-              child: pinnedIndex != null
-                  ? pinned[pinnedIndex].screen
-                  : staffIndex != null
-                  ? staffOnly[staffIndex].screen
-                  : (showingProfile || railIndex == null)
-                  ? ProfileScreen(api: widget.api, session: widget.session)
-                  : destinations[railIndex].screen,
+            child: Row(
+              children: [
+                if (wide)
+                  // Two shapes, and the default is the list.
+                  //
+                  // A list reads faster: the eye scans labels down a column, and the
+                  // icons are a secondary cue rather than the thing being read.
+                  // Blocks fit more in less width and some people prefer them, so
+                  // they stay available — as the user's own preference, not an
+                  // opinion imposed by whoever wrote this.
+                  _maybeThemed(
+                    // In a mixed mode the sidebar runs on the opposite theme to the
+                    // page. Wrapping only the sidebar — rather than building two
+                    // MaterialApps or threading colours by hand — means every widget
+                    // inside it, including NavigationRail's own indicator and hover
+                    // colours, resolves against the right scheme without knowing that
+                    // anything unusual is happening.
+                    //
+                    // The top bar takes this same override, so the chrome is one
+                    // theme and the page is the other.
+                    EzBiziTheme.navigationOverride(me.theme),
+                    builder: (context) => NavigationSidebar(
+                      expanded: expanded,
+                      width: me.navigationWidth,
+                      destinations: destinations,
+                      pinned: pinned,
+                      staffOnly: staffOnly,
+                      selectedIndex: railIndex,
+                      pinnedIndex: pinnedIndex,
+                      staffIndex: staffIndex,
+                      onSelected: (i) =>
+                          _show(_Rail.modules, destinations[i].id),
+                      onPinnedSelected: (i) =>
+                          _show(_Rail.pinned, pinned[i].id),
+                      onStaffSelected: (i) =>
+                          _show(_Rail.staff, staffOnly[i].id),
+                      // Written through the same path as every other preference, once
+                      // the drag settles.
+                      onResized: (w) => widget.session
+                          .setPreference('navigation.width', w.round()),
+                    ),
+                  ),
+                Expanded(
+                  // Keyed by the current view, so changing it REMOUNTS the screen and
+                  // its initState fetches again.
+                  //
+                  // Every screen loads once in initState — the ordinary Flutter
+                  // shape — so without this the switcher changed the label and left
+                  // Connecticut's jobs on the page while claiming to be in Texas.
+                  // Making the scope part of the screen's identity is the fix that
+                  // needs no screen to know the switcher exists.
+                  child: KeyedSubtree(
+                    key: ValueKey('${me.scope.type}:${me.scope.id}'),
+                    // Their own account is the last fallback, and the only honest
+                    // one: it is the single screen that is theirs by definition and
+                    // cannot answer 403. It is what somebody whose role reaches no
+                    // module at all lands on, rather than an empty frame.
+                    child: pinnedIndex != null
+                        ? pinned[pinnedIndex].screen
+                        : staffIndex != null
+                        ? staffOnly[staffIndex].screen
+                        : (showingProfile || railIndex == null)
+                        ? ProfileScreen(
+                            api: widget.api,
+                            session: widget.session,
+                          )
+                        : destinations[railIndex].screen,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -887,6 +984,37 @@ class _HomeShellState extends State<HomeShell> {
                 );
               },
             ),
+    );
+  }
+
+  Widget _clockButton(BuildContext context, Me me) {
+    final open = me.timeClock.open != null;
+    final label = UiStrings.t(
+      open ? 'time_clock.clock_out' : 'time_clock.clock_in',
+    );
+    final color = open
+        ? EzBiziTheme.clockOut(context)
+        : EzBiziTheme.clockIn(context);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Tooltip(
+        message: label,
+        child: FilledButton(
+          onPressed: _punching ? null : _punch,
+          style: FilledButton.styleFrom(
+            backgroundColor: color,
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: color.withValues(alpha: 0.55),
+            disabledForegroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            minimumSize: const Size(0, 32),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+          ),
+          child: Text(label),
+        ),
+      ),
     );
   }
 }
