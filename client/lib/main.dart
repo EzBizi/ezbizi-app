@@ -1000,19 +1000,21 @@ class _HomeShellState extends State<HomeShell> {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Tooltip(
         message: label,
-        child: FilledButton(
+        child: OutlinedButton.icon(
           onPressed: _punching ? null : _punch,
-          style: FilledButton.styleFrom(
-            backgroundColor: color,
-            foregroundColor: Colors.white,
-            disabledBackgroundColor: color.withValues(alpha: 0.55),
-            disabledForegroundColor: Colors.white,
+          icon: Icon(open ? Icons.logout : Icons.login, size: 18),
+          label: Text(label),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: color,
+            disabledForegroundColor: color.withValues(alpha: 0.55),
+            side: BorderSide(color: color),
+            backgroundColor: Colors.transparent,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             minimumSize: const Size(0, 32),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             visualDensity: VisualDensity.compact,
+            shape: const StadiumBorder(),
           ),
-          child: Text(label),
         ),
       ),
     );

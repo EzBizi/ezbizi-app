@@ -18,8 +18,8 @@ void main() {
       timeClock: _clock(showButton: false, organizationEnabled: false),
     );
 
-    expect(_inAppBar('Clock in'), findsNothing);
-    expect(_inAppBar('Clock out'), findsNothing);
+    expect(_inAppBar('Clock In'), findsNothing);
+    expect(_inAppBar('Clock Out'), findsNothing);
   });
 
   testWidgets('an old server with no time_clock key has no button', (
@@ -27,8 +27,8 @@ void main() {
   ) async {
     await _pumpShell(tester);
 
-    expect(_inAppBar('Clock in'), findsNothing);
-    expect(_inAppBar('Clock out'), findsNothing);
+    expect(_inAppBar('Clock In'), findsNothing);
+    expect(_inAppBar('Clock Out'), findsNothing);
   });
 
   testWidgets('Clock in sits in the AppBar before the theme control', (
@@ -36,10 +36,10 @@ void main() {
   ) async {
     await _pumpShell(tester, timeClock: _clock());
 
-    expect(_inAppBar('Clock in'), findsOneWidget);
-    expect(_inAppBar('Clock out'), findsNothing);
+    expect(_inAppBar('Clock In'), findsOneWidget);
+    expect(_inAppBar('Clock Out'), findsNothing);
 
-    final clockX = tester.getTopLeft(_inAppBar('Clock in')).dx;
+    final clockX = tester.getTopLeft(_inAppBar('Clock In')).dx;
     final themeX = tester
         .getTopLeft(find.byTooltip('Matching your device — switch to light'))
         .dx;
@@ -59,17 +59,21 @@ void main() {
       ),
     );
 
-    expect(_inAppBar('Clock out'), findsOneWidget);
-    expect(_inAppBar('Clock in'), findsNothing);
+    expect(_inAppBar('Clock Out'), findsOneWidget);
+    expect(_inAppBar('Clock In'), findsNothing);
   });
 
-  testWidgets('Clock in is the named green; Clock out is the named red', (
+  testWidgets('Clock In is the named green outline; Clock Out is the named coral', (
     tester,
   ) async {
     await _pumpShell(tester, timeClock: _clock());
 
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.byIcon(Icons.login)),
+      findsOneWidget,
+    );
     expect(_appBarButtonColor(tester), const Color(0xFF0B8F5B));
-    expect(_appBarButtonColor(tester), isNot(const Color(0xFFC62828)));
+    expect(_appBarButtonColor(tester), isNot(const Color(0xFFE07070)));
 
     await _pumpShell(
       tester,
@@ -78,7 +82,11 @@ void main() {
       ),
     );
 
-    expect(_appBarButtonColor(tester), const Color(0xFFC62828));
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.byIcon(Icons.logout)),
+      findsOneWidget,
+    );
+    expect(_appBarButtonColor(tester), const Color(0xFFE07070));
   });
 
   testWidgets(
@@ -115,12 +123,12 @@ void main() {
         },
       );
 
-      await tester.tap(_inAppBar('Clock in'));
+      await tester.tap(_inAppBar('Clock In'));
       await tester.pump();
 
       expect(posts, ['/api/v1/time-clock/clock-in']);
 
-      await tester.tap(_inAppBar('Clock in'));
+      await tester.tap(_inAppBar('Clock In'));
       await tester.pump();
 
       expect(
@@ -140,8 +148,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(_inAppBar('Clock out'), findsOneWidget);
-      expect(_inAppBar('Clock in'), findsNothing);
+      expect(_inAppBar('Clock Out'), findsOneWidget);
+      expect(_inAppBar('Clock In'), findsNothing);
       expect(meCalls, 1);
     },
   );
@@ -168,12 +176,12 @@ void main() {
       },
     );
 
-    await tester.tap(_inAppBar('Clock out'));
+    await tester.tap(_inAppBar('Clock Out'));
     await tester.pumpAndSettle();
 
     expect(posts, ['/api/v1/time-clock/clock-out']);
-    expect(_inAppBar('Clock in'), findsOneWidget);
-    expect(_inAppBar('Clock out'), findsNothing);
+    expect(_inAppBar('Clock In'), findsOneWidget);
+    expect(_inAppBar('Clock Out'), findsNothing);
   });
 
   testWidgets(
@@ -196,13 +204,13 @@ void main() {
         },
       );
 
-      await tester.tap(_inAppBar('Clock in'));
+      await tester.tap(_inAppBar('Clock In'));
       await tester.pumpAndSettle();
 
       expect(find.text('You are already clocked in.'), findsOneWidget);
       expect(find.byType(SnackBar), findsNothing);
       expect(find.byType(Dialog), findsNothing);
-      expect(_inAppBar('Clock in'), findsOneWidget);
+      expect(_inAppBar('Clock In'), findsOneWidget);
     },
   );
 
@@ -228,7 +236,7 @@ void main() {
         ],
       );
 
-      expect(_inAppBar('Clock in'), findsOneWidget);
+      expect(_inAppBar('Clock In'), findsOneWidget);
       expect(
         find.descendant(
           of: find.byType(NavigationSidebar),
@@ -252,13 +260,13 @@ void main() {
       },
     );
 
-    expect(_inAppBar('Clock in'), findsOneWidget);
+    expect(_inAppBar('Clock In'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Matching your device — switch to light'));
     await tester.pumpAndSettle();
 
     expect(
-      _inAppBar('Clock in'),
+      _inAppBar('Clock In'),
       findsOneWidget,
       reason: 'withPreference must copy timeClock or a theme tap hides the button.',
     );
@@ -286,8 +294,8 @@ void main() {
     );
 
     expect(tester.takeException(), isNull);
-    expect(_inAppBar('Clock in'), findsOneWidget);
-    expect(tester.getRect(_inAppBar('Clock in')).right, lessThanOrEqualTo(375));
+    expect(_inAppBar('Clock In'), findsOneWidget);
+    expect(tester.getRect(_inAppBar('Clock In')).right, lessThanOrEqualTo(375));
     expect(find.byType(PopupMenuButton<String>), findsOneWidget);
   });
 }
@@ -298,10 +306,13 @@ Finder _inAppBar(String label) => find.descendant(
 );
 
 Color? _appBarButtonColor(WidgetTester tester) {
-  final button = tester.widget<FilledButton>(
-    find.descendant(of: find.byType(AppBar), matching: find.byType(FilledButton)),
+  final button = tester.widget<OutlinedButton>(
+    find.descendant(
+      of: find.byType(AppBar),
+      matching: find.byType(OutlinedButton),
+    ),
   );
-  return button.style?.backgroundColor?.resolve(const <WidgetState>{});
+  return button.style?.foregroundColor?.resolve(const <WidgetState>{});
 }
 
 Future<void> _pumpShell(

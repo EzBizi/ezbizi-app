@@ -15,6 +15,14 @@ class TimeClockUiStringsTest extends TestCase
         $this->assertSame(2, UiString::query()->where('key', 'time_clock.tab')->count());
 
         $this->assertSame(
+            'Clock In',
+            UiString::query()->where('key', 'time_clock.clock_in')->where('locale', 'en')->value('text'),
+        );
+        $this->assertSame(
+            'Clock Out',
+            UiString::query()->where('key', 'time_clock.clock_out')->where('locale', 'en')->value('text'),
+        );
+        $this->assertSame(
             'Clock in–out',
             UiString::query()->where('key', 'time_clock.tab')->where('locale', 'en')->value('text'),
         );

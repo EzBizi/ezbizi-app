@@ -41,11 +41,11 @@ class EzBiziTheme {
           ? const Color(0xFF3DDC97)
           : const Color(0xFF0B8F5B);
 
-  /// Punch-out red, same constraint as [clockIn].
+  /// Punch-out coral for the outlined top-bar chip, same constraint as [clockIn].
   static Color clockOut(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark
           ? const Color(0xFFFF8A80)
-          : const Color(0xFFC62828);
+          : const Color(0xFFE07070);
 
   /// Which theme each half of the shell gets.
   ///
