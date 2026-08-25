@@ -54,16 +54,16 @@ void main() {
 
     expect(find.byType(VersionHistoryPanel), findsOneWidget);
     expect(find.text('What\'s been built'), findsOneWidget);
-    expect(find.text('v0.0.0086'), findsOneWidget);
+    expect(find.text('v0.0.0087'), findsOneWidget);
     expect(
       find.textContaining(
-        'Phone: calls, texts, numbers, Twilio at organization or company.',
+        'Phone Settings only offers Twilio for the company you are looking at',
       ),
       findsOneWidget,
     );
 
-    // Newest above oldest: the 0086 heading is above the first-build heading.
-    final newest = tester.getTopLeft(find.text('v0.0.0086'));
+    // Newest above oldest: the 0087 heading is above the first-build heading.
+    final newest = tester.getTopLeft(find.text('v0.0.0087'));
     final oldest = tester.getTopLeft(find.text('v0.0.0001'));
     expect(newest.dy, lessThan(oldest.dy));
   });

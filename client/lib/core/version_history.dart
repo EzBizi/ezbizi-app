@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0087',
+      date: '25 Aug 2026',
+      items: [
+        'Phone Settings only offers Twilio for the company you are looking at, '
+            'not sibling companies.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0086',
       date: '25 Aug 2026',
       items: [

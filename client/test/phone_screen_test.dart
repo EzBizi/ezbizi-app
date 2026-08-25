@@ -58,6 +58,35 @@ void main() {
     expect(find.byType(Dialog), findsNothing);
   });
 
+  testWidgets(
+    'a company view does not offer Twilio for sibling companies',
+    (tester) async {
+      await _pump(
+        tester,
+        scope: {
+          'type': 'company',
+          'id': 'co-a1',
+          'label': 'A-1 Chimney',
+          'path': ['A-1 Chimney'],
+        },
+        companies: [
+          {'id': 'co-a1', 'name': 'A-1 Chimney', 'parent_company_id': null},
+          {
+            'id': 'co-ever',
+            'name': 'Everdoors Co',
+            'parent_company_id': null,
+          },
+        ],
+      );
+
+      await _tap(tester, _tab('Settings'));
+
+      expect(find.text('A-1 Chimney'), findsOneWidget);
+      expect(find.text('Everdoors Co'), findsNothing);
+      expect(find.text('Everdoors'), findsOneWidget);
+    },
+  );
+
   testWidgets('Connect your Twilio is in-page fields, not a dialog', (
     tester,
   ) async {
@@ -359,6 +388,8 @@ Future<void> _pump(
   Size size = const Size(1280, 900),
   List<String> permissions = const ['phone.view', 'phone.edit'],
   List<Map<String, Object?>> connections = const [],
+  Map<String, Object?>? scope,
+  List<Map<String, Object?>>? companies,
   int createStatus = 201,
   String? createMessage,
   void Function(Map<String, dynamic> body)? onCreate,
@@ -373,6 +404,8 @@ Future<void> _pump(
       _handler(
         permissions: permissions,
         connections: connections,
+        scope: scope,
+        companies: companies,
         createStatus: createStatus,
         createMessage: createMessage,
         onCreate: onCreate,
@@ -429,6 +462,8 @@ Future<void> _pumpShell(WidgetTester tester) async {
 MockClientHandler _handler({
   List<String> permissions = const ['phone.view', 'phone.edit'],
   List<Map<String, Object?>> connections = const [],
+  Map<String, Object?>? scope,
+  List<Map<String, Object?>>? companies,
   int createStatus = 201,
   String? createMessage,
   void Function(Map<String, dynamic> body)? onCreate,
@@ -439,7 +474,12 @@ MockClientHandler _handler({
 
     if (path.endsWith('/me')) {
       return _json({
-        'data': {..._me, 'permissions': permissions},
+        'data': {
+          ..._me,
+          'permissions': permissions,
+          'scope': ?scope,
+          'companies': ?companies,
+        },
       });
     }
 
