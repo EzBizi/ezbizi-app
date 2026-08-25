@@ -76,15 +76,16 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
 
   List<_Place> get _places {
     final me = _me;
-    // companiesInView, not companies: /me lists every company this person can
-    // act on. Standing in A-1 Chimney, that still includes Everdoors, and
-    // offering Connect there would file a Twilio link on a sibling.
+    // File on the current view. Organization Connect only when looking at
+    // the group — a company cannot modify its parent. companiesInView, not
+    // companies, so A-1 Chimney does not offer Everdoors.
     return [
-      _Place(
-        type: 'organization',
-        id: me.organization.id,
-        name: me.organization.name,
-      ),
+      if (me.scope.type == 'organization')
+        _Place(
+          type: 'organization',
+          id: me.organization.id,
+          name: me.organization.name,
+        ),
       for (final company in me.companiesInView)
         _Place(type: 'company', id: company.id, name: company.name),
     ];

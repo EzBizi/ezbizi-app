@@ -138,8 +138,9 @@ find yourself adding a re-parent, you have misunderstood the request.
 franchise this person can *reach*. The top-bar switcher then names what they are
 *looking at*. A Connect card, Add pane, company dropdown, or default `company_id`
 that iterates `me.companies` (or `me.companies.first`) offers siblings of the
-view — standing in A-1 Chimney, Everdoors is still in that list. Use
-`companiesInView`, `franchisesInView`, and `filingCompanyId` on `Me`. The
+view — standing in A-1 Chimney, Everdoors is still in that list. Authority does
+not flow up either: a company view cannot connect or edit the organization.
+Use `companiesInView`, `franchisesInView`, and `filingCompanyId` on `Me`. The
 switcher (`scope_picker_panel`) is the one control that lists reach. This has
 leaked in Inventory, Fleet, and Phone; do not ship a fourth. A company-view
 widget test with a sibling in `/me` is the proof.

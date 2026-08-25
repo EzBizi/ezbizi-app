@@ -41,6 +41,7 @@ see mid-flight work without rereading a chat.
   are every place this person may ever act. The top-bar switcher narrows that to
   `companiesInView` / `franchisesInView` / `filingCompanyId`. A picker, Connect
   card, Add pane, or default `company_id` that iterates `me.companies` lets
-  somebody standing in A-1 Chimney file on Everdoors. The switcher is the one
-  control that lists reach. Every new module copies Inventory/Fleet/Phone, not
-  a raw `me.companies` loop. Test a company view with a sibling in `/me`.
+  somebody standing in A-1 Chimney file on Everdoors. A company view also
+  cannot modify the organization (authority does not flow up). The switcher is
+  the one control that lists reach. Every new module copies Inventory/Fleet/Phone,
+  not a raw `me.companies` loop. Test a company view with a sibling in `/me`.

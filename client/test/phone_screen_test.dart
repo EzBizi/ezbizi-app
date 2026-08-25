@@ -83,7 +83,8 @@ void main() {
 
       expect(find.text('A-1 Chimney'), findsOneWidget);
       expect(find.text('Everdoors Co'), findsNothing);
-      expect(find.text('Everdoors'), findsOneWidget);
+      expect(find.text('Everdoors'), findsNothing);
+      expect(find.text('Connect your Twilio'), findsOneWidget);
     },
   );
 
