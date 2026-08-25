@@ -8,6 +8,7 @@ use App\Support\Access\InboxAccess;
 use App\Support\Audit\AuditLogger;
 use App\Support\Inspection\InspectionGrantAccess;
 use App\Support\Modules\PermissionCatalogue;
+use App\Support\Phone\PhoneNumberAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -49,10 +50,10 @@ use Illuminate\Validation\ValidationException;
  * ── A role holds two kinds of thing, and only one is a key ───────
  *
  * `permissions` is what the software can do, declared in code, identical for
- * every tenant. `inboxes` and `inspections` are which of THIS organization's
- * mailboxes or named inspections a role may use — tenant records, not permission
- * keys. Absent means leave them alone; present means this is the complete set
- * within the window of what the caller may grant.
+ * every tenant. `inboxes`, `inspections`, and `phone_numbers` are which of THIS
+ * organization's mailboxes, named inspections, or phone lines a role may use —
+ * tenant records, not permission keys. Absent means leave them alone; present
+ * means this is the complete set within the window of what the caller may grant.
  */
 class RolesController extends Controller
 {
@@ -61,6 +62,7 @@ class RolesController extends Controller
         private readonly PermissionCatalogue $catalogue,
         private readonly InboxAccess $inboxes,
         private readonly InspectionGrantAccess $inspections,
+        private readonly PhoneNumberAccess $phoneNumbers,
     ) {}
 
     /**
@@ -84,6 +86,7 @@ class RolesController extends Controller
         // access.
         $inboxes = $this->inboxes->heldByRoles($roles);
         $inspections = $this->inspections->heldByRoles($roles);
+        $phoneNumbers = $this->phoneNumbers->heldByRoles($roles);
 
         return response()->json([
             'data' => $roles->map(fn (Role $role) => [
@@ -108,6 +111,7 @@ class RolesController extends Controller
                 // being repeated on every role.
                 'inboxes' => $inboxes[$role->id] ?? [],
                 'inspections' => $inspections[$role->id] ?? [],
+                'phone_numbers' => $phoneNumbers[$role->id] ?? [],
 
                 'may_edit'   => $user->can('update', $role),
                 'may_delete' => $user->can('delete', $role),
@@ -142,9 +146,12 @@ class RolesController extends Controller
         $actor = $request->user();
 
         return response()->json([
-            'modules' => $this->inspections->compose(
-                $this->inboxes->compose(
-                    $this->catalogue->grantableTreeFor($actor),
+            'modules' => $this->phoneNumbers->compose(
+                $this->inspections->compose(
+                    $this->inboxes->compose(
+                        $this->catalogue->grantableTreeFor($actor),
+                        $actor,
+                    ),
                     $actor,
                 ),
                 $actor,
@@ -163,12 +170,14 @@ class RolesController extends Controller
         $requested = $input['permissions'] ?? [];
         $inboxes   = $input['inboxes'] ?? [];
         $inspections = $input['inspections'] ?? [];
+        $phoneNumbers = $input['phone_numbers'] ?? [];
 
         $this->catalogue->assertGrantable($actor, $requested);
         $this->inboxes->assertGrantable($actor, $inboxes);
         $this->inspections->assertGrantable($actor, $inspections);
+        $this->phoneNumbers->assertGrantable($actor, $phoneNumbers);
 
-        $role = DB::transaction(function () use ($input, $requested, $inboxes, $inspections, $actor) {
+        $role = DB::transaction(function () use ($input, $requested, $inboxes, $inspections, $phoneNumbers, $actor) {
             $role = Role::create([
                 'organization_id' => $actor->organization_id,
                 'name'            => trim($input['name']),
@@ -184,11 +193,14 @@ class RolesController extends Controller
             $mail = $this->inboxes->sync($role, $inboxes);
             $this->inspections->assertReachable($role, $inspections);
             $offered = $this->inspections->sync($role, $inspections);
+            $this->phoneNumbers->assertReachable($role, $phoneNumbers);
+            $lines = $this->phoneNumbers->sync($role, $phoneNumbers);
 
             $this->audit->log('role.created', $role, metadata: [
                 'permissions' => $changed['added'],
                 'inboxes' => $mail['added'],
                 'inspections' => $offered['added'],
+                'phone_numbers' => $lines['added'],
             ]);
 
             return $role;
@@ -270,6 +282,23 @@ class RolesController extends Controller
 
                 if ($offered['added'] !== [] || $offered['removed'] !== []) {
                     $this->audit->log('role.inspections_changed', $role, changes: $offered);
+                }
+            }
+
+            if (array_key_exists('phone_numbers', $input)) {
+                $this->phoneNumbers->assertGrantable($actor, $input['phone_numbers']);
+
+                $wantedNumbers = [
+                    ...$input['phone_numbers'],
+                    ...$this->phoneNumbers->preservedFor($role, $actor),
+                ];
+
+                $this->phoneNumbers->assertReachable($role, $wantedNumbers);
+
+                $lines = $this->phoneNumbers->sync($role, $wantedNumbers);
+
+                if ($lines['added'] !== [] || $lines['removed'] !== []) {
+                    $this->audit->log('role.phone_numbers_changed', $role, changes: $lines);
                 }
             }
         });
@@ -360,6 +389,7 @@ class RolesController extends Controller
                 // InboxAccess::sync gives: an id here resolves to nothing.
                 'inboxes' => $this->inboxes->addressesHeldBy($role),
                 'inspections' => $this->inspections->namesHeldBy($role),
+                'phone_numbers' => $this->phoneNumbers->labelsHeldBy($role),
             ]);
 
             $role->permissions()->detach();
@@ -405,6 +435,8 @@ class RolesController extends Controller
             'inboxes.*' => ['string', 'max:64'],
             'inspections'   => ['sometimes', 'array'],
             'inspections.*' => ['string', 'max:64'],
+            'phone_numbers'   => ['sometimes', 'array'],
+            'phone_numbers.*' => ['string', 'max:64'],
         ]);
     }
 
@@ -417,6 +449,7 @@ class RolesController extends Controller
             'permissions'      => $role->permissionKeys(),
             'inboxes'          => $this->inboxes->heldBy($role),
             'inspections'      => $this->inspections->heldBy($role),
+            'phone_numbers'    => $this->phoneNumbers->heldBy($role),
         ];
     }
 }

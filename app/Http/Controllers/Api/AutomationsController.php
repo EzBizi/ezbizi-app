@@ -42,7 +42,16 @@ use Symfony\Component\HttpFoundation\Response;
 class AutomationsController extends Controller
 {
     /** What ActionRunner can actually perform. The validator agrees with this. */
-    private const IMPLEMENTED_ACTIONS = ['update_field', 'change_status', 'webhook', 'notify'];
+    private const IMPLEMENTED_ACTIONS = [
+        'update_field',
+        'change_status',
+        'webhook',
+        'notify',
+        // Nested Phone keys: ActionDefinition::type() keeps everything after the
+        // first dot (voicemail.mark_dealt, missed.create_job).
+        'voicemail.mark_dealt',
+        'missed.create_job',
+    ];
 
     public function __construct(
         private readonly ModuleRegistry $registry,
@@ -199,6 +208,8 @@ class AutomationsController extends Controller
                     ['key' => 'change_status', 'label' => 'Change the status'],
                     ['key' => 'webhook', 'label' => 'Call a webhook'],
                     ['key' => 'notify', 'label' => 'Send a notification'],
+                    ['key' => 'voicemail.mark_dealt', 'label' => 'Mark a voicemail dealt with'],
+                    ['key' => 'missed.create_job', 'label' => 'Create a job from a missed call'],
                 ],
                 'limits' => [
                     'max_depth'     => AutomationEvent::MAX_DEPTH,

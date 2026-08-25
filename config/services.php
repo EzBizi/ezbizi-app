@@ -162,4 +162,21 @@ return [
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/x/callback',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Twilio platform account (provisioned Phone subaccounts)
+    |--------------------------------------------------------------------------
+    |
+    | One EzBizi Twilio account for the installation, never a per-tenant value.
+    | Used only to create subaccounts + API keys when a tenant chooses
+    | kind=subaccount. BYO connections use the tenant’s own SID and key.
+    | Administered as development@ezbizi.com. Never commit real values.
+    |
+    */
+    'twilio' => [
+        'platform_account_sid' => env('TWILIO_PLATFORM_ACCOUNT_SID'),
+        'platform_api_key_sid' => env('TWILIO_PLATFORM_API_KEY_SID'),
+        'platform_api_secret'  => env('TWILIO_PLATFORM_API_SECRET'),
+    ],
+
 ];

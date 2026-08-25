@@ -39,10 +39,13 @@ abstract class AutomationDeclaration
         /** When it fires or what it does — and where it is confusable, what it does NOT cover. */
         public readonly string $description,
     ) {
-        if (! preg_match('/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/', $key)) {
+        // One or more dots: `customer.updated`, or nested forms like
+        // `phone.call.started` when the module has several kinds of record.
+        if (! preg_match('/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/', $key)) {
             throw new InvalidArgumentException(
-                "Automation key '{$key}' must read 'subject.thing' in lower_snake_case — "
-                .'the engine routes on it and the catalogue groups on the part before the dot.'
+                "Automation key '{$key}' must read 'subject.thing' (or 'subject.kind.thing') "
+                .'in lower_snake_case — the engine routes on it and the catalogue groups on '
+                .'the part before the first dot.'
             );
         }
 

@@ -141,6 +141,8 @@ class _ActionRow {
     },
     'webhook' => {'type': 'webhook', 'url': url.text.trim()},
     'notify' => {'type': 'notify', 'message': message.text},
+    // Phone actions take no form fields — the subject of the event is enough.
+    'voicemail.mark_dealt' || 'missed.create_job' => {'type': type},
 
     // No silent fallthrough. This used to end `_ => notify`, so a type the
     // catalogue offered but this build had no form for was drawn as a Message
@@ -160,7 +162,13 @@ class _ActionRow {
   ///
   /// The picker consults it, so an unknown type is never offered and the throw
   /// above is unreachable rather than merely unlikely.
-  static const Set<String> knownTypes = {'update_field', 'webhook', 'notify'};
+  static const Set<String> knownTypes = {
+    'update_field',
+    'webhook',
+    'notify',
+    'voicemail.mark_dealt',
+    'missed.create_job',
+  };
 
   void dispose() {
     field.dispose();
@@ -1403,6 +1411,9 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           isDense: true,
           helperText: 'Public addresses only — internal ones are refused.',
         ),
+      ),
+      'voicemail.mark_dealt' || 'missed.create_job' => _note(
+        'Uses the call that triggered the rule. Nothing else to fill in.',
       ),
       _ => TextField(
         controller: row.message,

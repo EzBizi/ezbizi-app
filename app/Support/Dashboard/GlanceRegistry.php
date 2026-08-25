@@ -50,7 +50,7 @@ class GlanceRegistry
         ],
         'phone' => [
             'label' => 'Phone',
-            'sentence' => 'Phone is where the team will place and receive calls, and send texts, with customers without leaving EzBizi. Calling is not here yet.',
+            'sentence' => 'Phone is where the team places and receives calls, and sends texts. Open the Phone tab for the desk.',
         ],
         'services' => [
             'label' => 'Services',

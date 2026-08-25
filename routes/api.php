@@ -52,6 +52,20 @@ use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
+use App\Http\Controllers\Api\Phone\CallsController as PhoneCallsController;
+use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
+use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
+use App\Http\Controllers\Api\Phone\MessagesController as PhoneMessagesController;
+use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
+use App\Http\Controllers\Api\Phone\PortsController as PhonePortsController;
+use App\Http\Controllers\Api\Phone\PortWebhookController as PhonePortWebhookController;
+use App\Http\Controllers\Api\Phone\PresenceController as PhonePresenceController;
+use App\Http\Controllers\Api\Phone\RecordingWebhookController as PhoneRecordingWebhookController;
+use App\Http\Controllers\Api\Phone\SmsWebhookController as PhoneSmsWebhookController;
+use App\Http\Controllers\Api\Phone\StatusWebhookController as PhoneStatusWebhookController;
+use App\Http\Controllers\Api\Phone\TokensController as PhoneTokensController;
+use App\Http\Controllers\Api\Phone\TranscriptionWebhookController as PhoneTranscriptionWebhookController;
+use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\RolesController;
@@ -220,6 +234,66 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
     ->middleware('throttle:30,1')
     ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x')
     ->name('social.callback');
+
+/*
+|--------------------------------------------------------------------------
+| Twilio Voice webhook — public, because Twilio posts with no Sanctum token
+|--------------------------------------------------------------------------
+|
+| Twilio ends an inbound (or App-driven outbound) call by POSTing form fields
+| to the Voice URL registered on the TwiML App. That POST carries no
+| Authorization header, so `auth:sanctum` here would refuse every legitimate
+| call there will ever be. There is nothing to fix with middleware, and
+| adding it would only make the feature impossible.
+|
+| WHAT AUTHENTICATES IT INSTEAD is the X-Twilio-Signature header, validated
+| with the Account Auth Token stored on THAT phone connection (`auth_token`,
+| not the API key secret in `credentials`) — never the platform Twilio
+| credentials. A global token would be a tenant-boundary break. See
+| App\Support\Phone\TwilioSignature and VoiceWebhookController.
+|
+| THE PATH NAMES THE ORGANIZATION. `{organization}` and `{connection}` are
+| plain UUID segments, not route-model-bound: binding would run a
+| tenant-scoped find with no tenant, and the connection id is what tells us
+| which organization to enter. The controller loads the Organization, then
+| TenantContext::run, the way InvitationAcceptanceController and the Google
+| OAuth callback do.
+|
+| No `tenant` middleware either: the path is what names an organization, so
+| the organization cannot already be known when the request arrives.
+|
+| Not listed in EnforceMinimumClientVersion's always-permitted paths.
+| Twilio sends no client version header; that gate fails open for requests
+| without one, which is the intended behaviour for server-to-server posts.
+|
+| Throttled, because it is public and every hit does a database lookup. The
+| numbers are inline rather than a named limiter — AppServiceProvider owns
+| those and this needs nothing bespoke.
+|
+*/
+Route::post('v1/phone/voice/{organization}/{connection}', PhoneVoiceWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('phone.voice.webhook');
+
+Route::post('v1/phone/sms/{organization}/{connection}', PhoneSmsWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('phone.sms.webhook');
+
+Route::post('v1/phone/status/{organization}/{connection}', PhoneStatusWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('phone.status.webhook');
+
+Route::post('v1/phone/recording/{organization}/{connection}', PhoneRecordingWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('phone.recording.webhook');
+
+Route::post('v1/phone/transcription/{organization}/{connection}', PhoneTranscriptionWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('phone.transcription.webhook');
+
+Route::post('v1/phone/port/{organization}/{connection}', PhonePortWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('phone.port.webhook');
 
 Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
     ->middleware('throttle:60,1');
@@ -517,6 +591,48 @@ Route::prefix('v1')
             ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x');
         Route::get('social/{network}/status', [SocialAuthController::class, 'status'])
             ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x');
+
+        // ── Phone: Twilio connections (org / company) ────────────
+        //
+        // Authenticated. Public voice/SMS webhooks land in a later task outside
+        // this Sanctum group. Connect is phone.edit + §4 reach; list is phone.view
+        // narrowed to connections in reach.
+        Route::get('phone/connections', [PhoneConnectionsController::class, 'index']);
+        Route::post('phone/connections', [PhoneConnectionsController::class, 'store']);
+        Route::delete('phone/connections/{connection}', [PhoneConnectionsController::class, 'destroy']);
+        Route::get('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustShow']);
+        Route::post('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustStore']);
+
+        // Numbers hang on org / company / franchise. List is grant ∩ reach ∩
+        // view-scope; buy/release need phone.edit and a resolved Twilio connection.
+        Route::get('phone/numbers', [PhoneNumbersController::class, 'index']);
+        Route::post('phone/numbers', [PhoneNumbersController::class, 'store']);
+        Route::delete('phone/numbers/{number}', [PhoneNumbersController::class, 'destroy']);
+
+        // Port-in: start via gateway; status webhooks update phone_port_requests.
+        Route::post('phone/ports', [PhonePortsController::class, 'store']);
+
+        // Named open-hours schedules on a connection. Create may take a number
+        // so franchise lines default timezone from franchises.timezone.
+        Route::get('phone/hours', [PhoneHoursController::class, 'index']);
+        Route::post('phone/hours', [PhoneHoursController::class, 'store']);
+        Route::get('phone/hours/{schedule}', [PhoneHoursController::class, 'show']);
+        Route::patch('phone/hours/{schedule}', [PhoneHoursController::class, 'update']);
+        Route::delete('phone/hours/{schedule}', [PhoneHoursController::class, 'destroy']);
+
+        // Voice SDK token + desk presence. phone.view and a granted number on
+        // that connection; no grant → fixed 403 sentence.
+        Route::post('phone/tokens', [PhoneTokensController::class, 'store']);
+        Route::get('phone/presence', [PhonePresenceController::class, 'index']);
+        Route::put('phone/presence', [PhonePresenceController::class, 'update']);
+
+        // Records: calls on granted numbers. Playback streams Twilio media.
+        Route::get('phone/calls', [PhoneCallsController::class, 'index']);
+        Route::get('phone/calls/{call}/recording', [PhoneCallsController::class, 'recording']);
+
+        // SMS from the Call desk. 10DLC / toll-free gate refuses until approved.
+        Route::get('phone/messages', [PhoneMessagesController::class, 'index']);
+        Route::post('phone/messages', [PhoneMessagesController::class, 'store']);
 
         // ── Inspection Builder ───────────────────────────────────
         //
