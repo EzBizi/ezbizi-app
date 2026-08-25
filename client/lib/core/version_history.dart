@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0096',
+      date: '25 Aug 2026',
+      items: [
+        'Matching the device theme uses a half-light, half-dark circle, not '
+            'the automatic-brightness A.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0095',
       date: '25 Aug 2026',
       items: [

@@ -54,16 +54,16 @@ void main() {
 
     expect(find.byType(VersionHistoryPanel), findsOneWidget);
     expect(find.text('What\'s been built'), findsOneWidget);
-    expect(find.text('v0.0.0095'), findsOneWidget);
+    expect(find.text('v0.0.0096'), findsOneWidget);
     expect(
       find.textContaining(
-        'Clock In and Clock Out in the top bar are an outlined chip',
+        'Matching the device theme uses a half-light, half-dark circle',
       ),
       findsOneWidget,
     );
 
-    // Newest above oldest: the 0095 heading is above the first-build heading.
-    final newest = tester.getTopLeft(find.text('v0.0.0095'));
+    // Newest above oldest: the 0096 heading is above the first-build heading.
+    final newest = tester.getTopLeft(find.text('v0.0.0096'));
     final oldest = tester.getTopLeft(find.text('v0.0.0001'));
     expect(newest.dy, lessThan(oldest.dy));
   });

@@ -741,9 +741,13 @@ class _HomeShellState extends State<HomeShell> {
                   _ => 'Matching your device — switch to light',
                 },
                 icon: Icon(switch (me.theme) {
-                  'light' => Icons.light_mode_outlined,
+                  'light' => Icons.wb_sunny_outlined,
                   'dark' => Icons.dark_mode_outlined,
-                  _ => Icons.brightness_auto_outlined,
+                  // Not brightness_auto: that glyph is a sun with an A, and
+                  // it sits next to the two-factor shield that also carries
+                  // an A. Contrast is the half-and-half circle — light and
+                  // dark in one mark, no letter.
+                  _ => Icons.contrast,
                 }),
                 onPressed: () => widget.session.setPreference(
                   'appearance.theme',

@@ -261,6 +261,12 @@ void main() {
     );
 
     expect(_inAppBar('Clock In'), findsOneWidget);
+    expect(
+      find.byIcon(Icons.contrast),
+      findsOneWidget,
+      reason: 'Follow-the-device is a half-and-half circle, not the auto-A.',
+    );
+    expect(find.byIcon(Icons.brightness_auto_outlined), findsNothing);
 
     await tester.tap(find.byTooltip('Matching your device — switch to light'));
     await tester.pumpAndSettle();
