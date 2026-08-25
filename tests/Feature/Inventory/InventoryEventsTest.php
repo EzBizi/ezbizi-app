@@ -239,6 +239,31 @@ class InventoryEventsTest extends TestCase
                 'reason' => 'cycle count',
             ])
             ->assertCreated();
+
+        $sale = $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/sales', [
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'note' => 'Walk sale',
+                'lines' => [
+                    ['item_id' => $item->id, 'qty' => 2],
+                ],
+            ])
+            ->assertCreated()
+            ->json('data');
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/sales/'.$sale['id'].'/open')
+            ->assertOk();
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/inventory/sales/'.$sale['id'].'/fulfillments', [
+                'location_id' => $from->id,
+                'lines' => [
+                    ['sale_line_id' => $sale['lines'][0]['id'], 'qty' => 2],
+                ],
+            ])
+            ->assertCreated();
     }
 
     /**

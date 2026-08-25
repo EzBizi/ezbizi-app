@@ -128,14 +128,36 @@ class _SalePaneState extends State<SalePane> {
     });
   }
 
-  Future<void> _post(String path, [Map<String, dynamic> body = const {}]) async {
+  Future<void> _openSale() => _act((id) => widget.api.post(
+    '/inventory/sales/$id/open',
+    const {},
+  ));
+
+  Future<void> _cancelSale() => _act((id) => widget.api.post(
+    '/inventory/sales/$id/cancel',
+    const {},
+  ));
+
+  Future<void> _markPaid() => _act((id) => widget.api.post(
+    '/inventory/sales/$id/pay',
+    {'payment_status': 'paid'},
+  ));
+
+  Future<void> _markUnpaid() => _act((id) => widget.api.post(
+    '/inventory/sales/$id/pay',
+    {'payment_status': 'unpaid'},
+  ));
+
+  Future<void> _act(
+    Future<ApiResponse> Function(String id) send,
+  ) async {
     setState(() {
       _busy = true;
       _error = null;
     });
 
-    final id = _sale['id'];
-    final response = await widget.api.post('/inventory/sales/$id$path', body);
+    final id = _sale['id'] as String;
+    final response = await send(id);
 
     if (!mounted) return;
 
@@ -154,14 +176,6 @@ class _SalePaneState extends State<SalePane> {
     });
     widget.onChanged(_sale);
   }
-
-  Future<void> _openSale() => _post('/open');
-
-  Future<void> _cancelSale() => _post('/cancel');
-
-  Future<void> _markPaid() => _post('/pay', {'payment_status': 'paid'});
-
-  Future<void> _markUnpaid() => _post('/pay', {'payment_status': 'unpaid'});
 
   Future<void> _fulfill() async {
     final locationId = _locationId;
