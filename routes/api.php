@@ -75,6 +75,7 @@ use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
 use App\Http\Controllers\Api\StaffClientVersionsController;
 use App\Http\Controllers\Api\StaffController;
+use App\Http\Controllers\Api\TimeClockController;
 use App\Http\Controllers\Api\TwoFactorController;
 use Illuminate\Support\Facades\Route;
 
@@ -447,6 +448,11 @@ Route::prefix('v1')
         // same habit `roles/catalogue` follows. There is no collision today —
         // the literal is a GET and the parameter route is a PATCH — and the day
         // somebody adds `GET people/{user}` it must already be above it.
+
+        // Punch clock — top-bar, not an HR tab. Empty bodies; the server clock
+        // is the only time that counts (design §8).
+        Route::post('time-clock/clock-in', [TimeClockController::class, 'clockIn']);
+        Route::post('time-clock/clock-out', [TimeClockController::class, 'clockOut']);
 
         // The tab the owner asked for. It computes nothing itself — the figures
         // are widgets in the shared registry, so headcount on this tab and
@@ -1053,6 +1059,10 @@ Route::prefix('v1')
                     // and nothing on screen saying why.
                     'two_factor_enrolment_required' =>
                         app(\App\Support\Auth\TwoFactorPolicy::class)->mustEnrol($user),
+
+                    // Clock in chrome on the first frame (design §8). The top-bar
+                    // button reads this rather than a second round trip.
+                    'time_clock' => app(\App\Support\TimeClock\TimeClock::class)->payload($user),
 
                     // What the change-password form should ASK for: the platform
                     // floor, or this organization's own minimum where that is
