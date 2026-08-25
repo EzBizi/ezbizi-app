@@ -294,6 +294,20 @@ class Session extends ChangeNotifier {
     readOnlyNotice = message;
     notifyListeners();
   }
+
+  /// Write a punch response onto this device's session.
+  ///
+  /// The POST answers the same `time_clock` block `/me` carries. Applying it
+  /// here is what flips Clock in to Clock out without a navigation or a second
+  /// `/me` — other devices pick it up the next time they load, restore, or
+  /// change place.
+  void applyTimeClock(Map<String, dynamic> json) {
+    final me = _me;
+    if (me == null) return;
+
+    _me = me.withTimeClock(TimeClockStatus.fromJson(json));
+    notifyListeners();
+  }
 }
 
 class Me {
@@ -315,6 +329,7 @@ class Me {
     required this.companies,
     required this.franchises,
     required this.onboardingId,
+    this.timeClock = TimeClockStatus.absent,
   });
 
   final String id;
@@ -535,6 +550,14 @@ class Me {
   /// send the block, which is the same state as far as anybody can tell.
   final String? onboardingId;
 
+  /// Punch-clock chrome from `/me`.
+  ///
+  /// The button is session chrome, the same reason two-factor rides here: it
+  /// has to be right on the first frame. A punch writes this block back via
+  /// [Session.applyTimeClock] so this device flips without another `/me`.
+  /// [TimeClockStatus.absent] is an older server that never sent the key.
+  final TimeClockStatus timeClock;
+
   /// Does this person's role hold this exact permission?
   ///
   /// Fails closed, including when the server sent no list at all. The server is
@@ -658,6 +681,29 @@ class Me {
     companies: companies,
     franchises: franchises,
     onboardingId: onboardingId,
+    timeClock: timeClock,
+  );
+
+  /// A copy with the punch-clock chrome replaced after a successful POST.
+  Me withTimeClock(TimeClockStatus timeClock) => Me(
+    id: id,
+    name: name,
+    email: email,
+    roleName: roleName,
+    hasAvatar: hasAvatar,
+    permissions: permissions,
+    modules: modules,
+    preferences: preferences,
+    development: development,
+    twoFactorEnrolmentRequired: twoFactorEnrolmentRequired,
+    passwordMinLength: passwordMinLength,
+    organization: organization,
+    scope: scope,
+    display: display,
+    companies: companies,
+    franchises: franchises,
+    onboardingId: onboardingId,
+    timeClock: timeClock,
   );
 
   /// Never null and never unknown — an unrecognised stored value falls back to
@@ -725,6 +771,65 @@ class Me {
         .toList(),
     onboardingId: (json['onboarding'] as Map<String, dynamic>?)?['id']
         ?.toString(),
+    timeClock: TimeClockStatus.fromJson(json['time_clock']),
+  );
+}
+
+/// `/me`'s `time_clock` block — whether the chrome draws Clock in / Clock out.
+class TimeClockStatus {
+  const TimeClockStatus({
+    required this.organizationEnabled,
+    required this.canClock,
+    required this.showButton,
+    this.open,
+  });
+
+  /// Key missing on `/me`: an older server. No button.
+  static const absent = TimeClockStatus(
+    organizationEnabled: false,
+    canClock: false,
+    showButton: false,
+  );
+
+  final bool organizationEnabled;
+  final bool canClock;
+
+  /// `(org enabled && can_clock) || open != null` — Clock out stays if they
+  /// are still in even when the organization has switched Clock in off.
+  final bool showButton;
+  final TimeClockOpen? open;
+
+  factory TimeClockStatus.fromJson(Object? json) {
+    if (json is! Map) return absent;
+    final map = json is Map<String, dynamic>
+        ? json
+        : Map<String, dynamic>.from(json);
+    final openRaw = map['open'];
+
+    return TimeClockStatus(
+      organizationEnabled: map['organization_enabled'] == true,
+      canClock: map['can_clock'] == true,
+      showButton: map['show_button'] == true,
+      open: openRaw is Map<String, dynamic>
+          ? TimeClockOpen.fromJson(openRaw)
+          : openRaw is Map
+          ? TimeClockOpen.fromJson(Map<String, dynamic>.from(openRaw))
+          : null,
+    );
+  }
+}
+
+class TimeClockOpen {
+  const TimeClockOpen({required this.id, required this.clockedInAt});
+
+  final String id;
+
+  /// ISO-8601 UTC instant from the server. The client never submits a time.
+  final String clockedInAt;
+
+  factory TimeClockOpen.fromJson(Map<String, dynamic> json) => TimeClockOpen(
+    id: json['id'] as String,
+    clockedInAt: json['clocked_in_at'] as String,
   );
 }
 

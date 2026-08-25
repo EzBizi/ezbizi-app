@@ -20,6 +20,8 @@ class UiStrings {
     'shell.email': 'Email',
     'shell.password': 'Password',
     'shell.language': 'Language',
+    'time_clock.clock_in': 'Clock in',
+    'time_clock.clock_out': 'Clock out',
   };
 
   static void adopt(Map<String, dynamic> payload) {
