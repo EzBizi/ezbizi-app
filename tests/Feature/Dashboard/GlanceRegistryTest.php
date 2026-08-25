@@ -126,7 +126,9 @@ class GlanceRegistryTest extends TestCase
     {
         $registry = app(\App\Support\Modules\ModuleRegistry::class);
         $tabs = collect($registry->all())
-            ->filter(fn ($m) => $m->rolesGroup === \App\Support\Modules\ModuleDefinition::ROLES_TAB && $m->key !== 'dashboard')
+            ->filter(fn ($m) => $m->rolesGroup === \App\Support\Modules\ModuleDefinition::ROLES_TAB
+                && $m->sidebar
+                && $m->key !== 'dashboard')
             ->keys()->sort()->values()->all();
         $glances = collect(app(GlanceRegistry::class)->all())->map(fn ($g) => $g->key())->sort()->values()->all();
         $this->assertSame($tabs, $glances);

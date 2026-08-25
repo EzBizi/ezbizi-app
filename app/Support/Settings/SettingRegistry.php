@@ -69,6 +69,7 @@ class SettingRegistry
             'email'         => ['Shared inboxes',       $this->email()],
             'customers'     => ['Customers',            $this->customers()],
             'jobs'          => ['Jobs',                 $this->jobs()],
+            'hr'            => ['Human Resources',      $this->hr()],
         ] as $group => [$label, $definitions]) {
             foreach ($definitions as $definition) {
                 $this->register($definition, $group, $label);
@@ -705,6 +706,20 @@ class SettingRegistry
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 help: 'The name is what people see. Stored as is what jobs keep. Changing '
                     .'a stored value also updates jobs that already have it.',
+            ),
+        ];
+    }
+
+    private function hr(): array
+    {
+        return [
+            new SettingDefinition(
+                key: 'time_clock.enabled',
+                label: 'Clock in',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'When on, people whose role includes Clock in see a button in the top bar. Human Resources shows the day list.',
             ),
         ];
     }
