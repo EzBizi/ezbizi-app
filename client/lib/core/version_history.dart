@@ -8,6 +8,22 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0090',
+      date: '25 Aug 2026',
+      items: [
+        'In a company view the organization Twilio is visible but cannot be '
+            'connected or changed. Switch to the group to edit it.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0089',
+      date: '25 Aug 2026',
+      items: [
+        'Sales orders on Inventory: draft, open, fulfill from a location. '
+            'The buyer is a Customer, or a note for a counter sale.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0088',
       date: '25 Aug 2026',
       items: [

@@ -83,8 +83,13 @@ void main() {
 
       expect(find.text('A-1 Chimney'), findsOneWidget);
       expect(find.text('Everdoors Co'), findsNothing);
-      expect(find.text('Everdoors'), findsNothing);
+      expect(find.text('Everdoors'), findsOneWidget);
       expect(find.text('Connect your Twilio'), findsOneWidget);
+      expect(find.text('EzBizi will create a phone account'), findsOneWidget);
+      expect(
+        find.textContaining('Switch to the group to connect or change it'),
+        findsOneWidget,
+      );
     },
   );
 

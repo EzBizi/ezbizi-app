@@ -76,19 +76,27 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
 
   List<_Place> get _places {
     final me = _me;
-    // File on the current view. Organization Connect only when looking at
-    // the group — a company cannot modify its parent. companiesInView, not
-    // companies, so A-1 Chimney does not offer Everdoors.
+    // Organization card is always visible (numbers walk up to it). Connect
+    // and Replace only when looking at the group — a company cannot modify
+    // its parent. companiesInView, not companies, so A-1 Chimney does not
+    // offer Everdoors.
     return [
-      if (me.scope.type == 'organization')
-        _Place(
-          type: 'organization',
-          id: me.organization.id,
-          name: me.organization.name,
-        ),
+      _Place(
+        type: 'organization',
+        id: me.organization.id,
+        name: me.organization.name,
+      ),
       for (final company in me.companiesInView)
         _Place(type: 'company', id: company.id, name: company.name),
     ];
+  }
+
+  /// Organization Twilio is only writable in an organization view.
+  bool _canModifyPlace(_Place place) {
+    if (place.type == 'organization') {
+      return _me.scope.type == 'organization';
+    }
+    return true;
   }
 
   Future<void> _load() async {
@@ -436,7 +444,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
               const SizedBox(height: 12),
               ErrorNote(_notice!),
             ],
-            if (open) ...[
+            if (open && _canModifyPlace(place)) ...[
               const SizedBox(height: 12),
               TextField(
                 controller: _accountSid,
@@ -483,7 +491,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
                   ),
                 ],
               ),
-            ] else ...[
+            ] else if (_canModifyPlace(place)) ...[
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
@@ -534,6 +542,11 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
 
   String _blurb(_Place place, _Connection? row) {
     if (place.type == 'organization') {
+      if (!_canModifyPlace(place)) {
+        return row == null
+            ? 'Organization line. Switch to the group to connect or change it. Company numbers use this unless this company has its own.'
+            : 'Organization line. Switch to the group to change it. Company numbers use this unless this company has its own.';
+      }
       return row == null
           ? 'No connection. Company numbers use this unless that company has its own.'
           : 'Numbers without their own company connection use this.';
