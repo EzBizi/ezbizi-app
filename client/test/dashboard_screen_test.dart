@@ -175,6 +175,23 @@ void main() {
 
     expect(find.text('1 person on the books.'), findsOneWidget);
   });
+
+  testWidgets('stock_value of 500 USD is drawn as USD 5.00', (tester) async {
+    await _pump(tester, _handler(stockValue: [
+      {'currency': 'USD', 'amount_minor': 500},
+    ]));
+
+    expect(find.text('USD 5.00'), findsOneWidget);
+    expect(find.text('No new customers this month.'), findsOneWidget);
+  });
+
+  testWidgets('a JSON number for amount_minor still draws', (tester) async {
+    await _pump(tester, _handler(stockValue: [
+      {'currency': 'USD', 'amount_minor': 500.0},
+    ]));
+
+    expect(find.text('USD 5.00'), findsOneWidget);
+  });
 }
 
 class _PushRecorder extends NavigatorObserver {
@@ -212,7 +229,10 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
-MockClientHandler _handler({List<Map<String, dynamic>>? record}) {
+MockClientHandler _handler({
+  List<Map<String, dynamic>>? record,
+  List<Map<String, dynamic>>? stockValue,
+}) {
   final glances = [
     {
       'key': 'hr',
@@ -225,8 +245,8 @@ MockClientHandler _handler({List<Map<String, dynamic>>? record}) {
       'data': {
         'empty': false,
         'slices': [
-          {'label': 'Onboardings in flight', 'total': 0},
-          {'label': 'Invitations stalled', 'total': 0},
+          {'label': 'Active', 'total': 0},
+          {'label': 'Inactive', 'total': 0},
         ],
         'sentences': [
           '1 person on the books.',
@@ -256,15 +276,21 @@ MockClientHandler _handler({List<Map<String, dynamic>>? record}) {
       'presentation': 'text',
       'allowed_presentations': <String>[],
       'snapshot': true,
-      'coming_soon': true,
+      'coming_soon': stockValue == null,
       'options': <String, dynamic>{},
-      'data': {
-        'empty': true,
-        'sentence':
-            'Inventory is where the company will keep what it has on the shelf '
-            '— parts, materials, and the stock that jobs draw from. The '
-            'register is not here yet.',
-      },
+      'data': stockValue == null
+          ? {
+              'empty': true,
+              'sentence':
+                  'Inventory is where the company will keep what it has on the '
+                  'shelf — parts, materials, and the stock that jobs draw '
+                  'from. The register is not here yet.',
+            }
+          : {
+              'empty': false,
+              'sentences': ['1 item in reach.'],
+              'stock_value': stockValue,
+            },
     },
   ];
 

@@ -52,3 +52,21 @@ int? parseAmountMinor(String input) {
   // cents minus whatever the binary representation lost.
   return (major * 100).round();
 }
+
+/// Formats whole minor units for a glance: `USD 125.00`, `JPY 125`.
+///
+/// The wire never divides. Yen has no hundredths, so treating every integer as
+/// cents would print a hundredth of the yen total. JPY is the one 0-decimal
+/// code this client already names; everything else is two decimal places.
+String formatMinor(int amountMinor, String currency) {
+  if (currency == 'JPY') {
+    return 'JPY $amountMinor';
+  }
+
+  final negative = amountMinor < 0;
+  final abs = amountMinor.abs();
+  final major = abs ~/ 100;
+  final cents = (abs % 100).toString().padLeft(2, '0');
+
+  return '$currency ${negative ? '-' : ''}$major.$cents';
+}

@@ -774,8 +774,8 @@ MockClientHandler _dashboard({
       'data': {
         'empty': false,
         'slices': [
-          {'label': 'Onboardings in flight', 'total': 0},
-          {'label': 'Invitations stalled', 'total': 0},
+          {'label': 'Active', 'total': 0},
+          {'label': 'Inactive', 'total': 0},
         ],
         'sentences': [
           '1 person on the books.',
@@ -887,8 +887,8 @@ MockClientHandler _hr() {
           'data': {
             'empty': false,
             'slices': [
-              {'label': 'Onboardings in flight', 'total': 0},
-              {'label': 'Invitations stalled', 'total': 0},
+              {'label': 'Active', 'total': 0},
+              {'label': 'Inactive', 'total': 0},
             ],
             'sentences': [
               '1 person on the books.',

@@ -52,4 +52,20 @@ void main() {
       expect(parseAmountMinor('0.125'), 13);
     });
   });
+
+  group('formatMinor', () {
+    test('two-decimal currencies print the major amount and the code', () {
+      expect(formatMinor(12500, 'USD'), 'USD 125.00');
+    });
+
+    test('five hundred minor units of USD is five dollars', () {
+      // The glance draws this string; dividing on the server would have
+      // printed 5 for JPY and 5.00 for USD from the same integer.
+      expect(formatMinor(500, 'USD'), 'USD 5.00');
+    });
+
+    test('JPY is the integer and the code, never a hundredth', () {
+      expect(formatMinor(125, 'JPY'), 'JPY 125');
+    });
+  });
 }

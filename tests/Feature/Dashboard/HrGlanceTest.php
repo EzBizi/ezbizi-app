@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Dashboard;
 
+use App\Models\Assignment;
 use App\Models\Invitation;
+use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glances\HrGlance;
@@ -14,9 +16,9 @@ use Tests\TestCase;
 /**
  * Human Resources dashboard glance (spec § HR — bar).
  *
- * Snapshot bar of onboardings in flight vs invitations stalled. Headcount and
- * the other HR figures stay in sentences. Organization-level assignments must
- * count — the founder is not on a franchise.
+ * Snapshot bar of active vs inactive people in reach. Onboardings, stalled
+ * invitations, joiners, leavers, and certifications stay sentences.
+ * Organization-level assignments must count — the founder is not on a franchise.
  */
 class HrGlanceTest extends TestCase
 {
@@ -86,6 +88,10 @@ class HrGlanceTest extends TestCase
             $payload['data']['sentences'],
             'The founder is assigned at organization level; counting by franchise_id would say nobody.',
         );
+
+        $slices = collect($payload['data']['slices']);
+        $this->assertSame(1, $slices->firstWhere('label', 'Active')['total'] ?? null);
+        $this->assertSame(0, $slices->firstWhere('label', 'Inactive')['total'] ?? null);
     }
 
     public function test_revoked_invitations_are_not_stalled(): void
@@ -96,15 +102,41 @@ class HrGlanceTest extends TestCase
             ->firstOrFail()->forceFill(['revoked_at' => now()])->save());
 
         $payload = app(HrGlance::class)->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), [])->toArray();
-        $stalled = collect($payload['data']['slices'])->firstWhere('label', 'Invitations stalled');
 
-        $this->assertSame(0, $stalled['total'] ?? null);
+        $this->assertContains('0 invitations have stalled.', $payload['data']['sentences']);
     }
 
-    public function test_in_flight_vs_stalled_slices_ignore_the_period(): void
+    public function test_active_vs_inactive_slices_ignore_the_period(): void
     {
         $week = app(HrGlance::class)->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'week'), [])->toArray()['data']['slices'];
         $year = app(HrGlance::class)->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'year'), [])->toArray()['data']['slices'];
         $this->assertSame($week, $year);
+    }
+
+    public function test_deactivated_people_are_the_inactive_slice(): void
+    {
+        $this->inTenant(function () {
+            $person = User::create([
+                'organization_id' => $this->alpha['org']->id,
+                'role_id'         => $this->alpha['admin']->role_id,
+                'name' => 'Gone', 'email' => 'gone@alpha.test',
+                'password' => 'a-real-password', 'is_active' => true,
+            ]);
+
+            Assignment::create([
+                'organization_id' => $this->alpha['org']->id,
+                'user_id' => $person->id,
+                'assigned_franchise_id' => $this->alpha['franchise']->id,
+            ]);
+
+            $person->forceFill(['is_active' => false])->save();
+        });
+
+        $payload = app(HrGlance::class)->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), [])->toArray();
+        $slices = collect($payload['data']['slices']);
+
+        $this->assertSame(1, $slices->firstWhere('label', 'Active')['total'] ?? null);
+        $this->assertSame(1, $slices->firstWhere('label', 'Inactive')['total'] ?? null);
+        $this->assertContains('2 people on the books.', $payload['data']['sentences']);
     }
 }

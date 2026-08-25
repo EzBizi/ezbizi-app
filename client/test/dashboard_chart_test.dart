@@ -195,6 +195,50 @@ void main() {
     expect(find.byType(DashboardChart), findsOneWidget);
   });
 
+  testWidgets('a line names every currency series', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: DashboardChart(
+            presentation: 'line',
+            series: [
+              {
+                'label': 'CAD',
+                'points': [
+                  {'at': '2026-08-01', 'value': 5000},
+                  {'at': '2026-08-08', 'value': 7000},
+                ],
+              },
+              {
+                'label': 'USD',
+                'points': [
+                  {'at': '2026-08-01', 'value': 10000},
+                  {'at': '2026-08-08', 'value': 20000},
+                ],
+              },
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.descendant(
+        of: find.byType(DashboardChart),
+        matching: find.text('CAD'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(DashboardChart),
+        matching: find.text('USD'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a timeline is drawn for series', (tester) async {
     await _pumpDashboard(
       tester,

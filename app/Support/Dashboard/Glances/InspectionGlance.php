@@ -11,12 +11,14 @@ use App\Support\Dashboard\GlancePayload;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 /**
- * Inspection box: in progress / submitted / archived (snapshot).
+ * Inspection box: named inspections as bars (snapshot), status as sentences.
  *
- * Reach copies Generated Reports: job in the view's franchise ids, or no job.
- * Empty reach still matches job-less rows the same way the list does.
+ * One bar per name with a live count: in-progress runs (definition name) plus
+ * submitted reports that are not archived (frozen definition_name). Archived
+ * and submitted-this-period stay sentences. Reach copies Generated Reports.
  */
 final class InspectionGlance implements Glance
 {
@@ -52,20 +54,24 @@ final class InspectionGlance implements Glance
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {
-        return app(TenantContext::class)->run($user->organization, function () use ($user) {
+        return app(TenantContext::class)->run($user->organization, function () use ($user, $period) {
             $reachable = collect(ViewScope::forUser($user)->franchiseIds());
 
-            $inProgress = InspectionRun::query()
+            $runs = InspectionRun::query()
                 ->where(fn (Builder $q) => $this->constrainToReach($q, $reachable))
-                ->count();
-            $submitted = InspectionReport::query()
+                ->with('definition:id,name')
+                ->get();
+            $liveReports = InspectionReport::query()
                 ->whereNull('archived_at')
                 ->where(fn (Builder $q) => $this->constrainToReach($q, $reachable))
-                ->count();
+                ->get(['id', 'definition_name']);
             $archived = InspectionReport::query()
                 ->whereNotNull('archived_at')
                 ->where(fn (Builder $q) => $this->constrainToReach($q, $reachable))
                 ->count();
+
+            $inProgress = $runs->count();
+            $submitted = $liveReports->count();
 
             if ($inProgress === 0 && $submitted === 0 && $archived === 0) {
                 return new GlancePayload(
@@ -83,6 +89,19 @@ final class InspectionGlance implements Glance
                 );
             }
 
+            // Period bounds are wall times in the view timezone; submitted_at is
+            // stored UTC. Bind UTC instants so "now" is not compared as a naive
+            // clock string earlier than the row.
+            $from = $period->startsOn->copy()->utc();
+            $to = $period->endsOn->copy()->utc();
+            $submittedThisPeriod = InspectionReport::query()
+                ->where(fn (Builder $q) => $this->constrainToReach($q, $reachable))
+                ->where('submitted_at', '>=', $from)
+                ->where('submitted_at', '<=', $to)
+                ->count();
+
+            $periodWord = $period->key;
+
             return new GlancePayload(
                 key: $this->key(),
                 label: $this->label(),
@@ -93,14 +112,52 @@ final class InspectionGlance implements Glance
                 options: [],
                 data: [
                     'empty' => false,
-                    'slices' => [
-                        ['label' => 'In progress', 'total' => $inProgress],
-                        ['label' => 'Submitted', 'total' => $submitted],
-                        ['label' => 'Archived', 'total' => $archived],
+                    'slices' => $this->namedSlices($runs, $liveReports),
+                    'sentences' => [
+                        "{$inProgress} in progress.",
+                        "{$submittedThisPeriod} submitted this {$periodWord}.",
+                        "{$archived} archived.",
                     ],
                 ],
             );
         });
+    }
+
+    /**
+     * One bar per name that has a live count. Labels sort so the board stays put.
+     *
+     * @param  Collection<int, InspectionRun>  $runs
+     * @param  Collection<int, InspectionReport>  $reports
+     * @return list<array{label: string, total: int}>
+     */
+    private function namedSlices(Collection $runs, Collection $reports): array
+    {
+        $counts = [];
+
+        foreach ($runs as $run) {
+            $name = (string) ($run->definition?->name ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $counts[$name] = ($counts[$name] ?? 0) + 1;
+        }
+
+        foreach ($reports as $report) {
+            $name = (string) ($report->definition_name ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $counts[$name] = ($counts[$name] ?? 0) + 1;
+        }
+
+        ksort($counts, SORT_STRING);
+
+        $slices = [];
+        foreach ($counts as $label => $total) {
+            $slices[] = ['label' => $label, 'total' => $total];
+        }
+
+        return $slices;
     }
 
     /**

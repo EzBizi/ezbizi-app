@@ -78,10 +78,11 @@ class HrDashboardTest extends TestCase
             'The founder is assigned at organization level; counting by franchise_id would say nobody.',
         );
 
-        $stalled = collect($glance['data']['slices'])->firstWhere('label', 'Invitations stalled');
-        $inFlight = collect($glance['data']['slices'])->firstWhere('label', 'Onboardings in flight');
-        $this->assertSame(0, $stalled['total'] ?? null);
-        $this->assertSame(0, $inFlight['total'] ?? null);
+        $slices = collect($glance['data']['slices']);
+        $this->assertSame(1, $slices->firstWhere('label', 'Active')['total'] ?? null);
+        $this->assertSame(0, $slices->firstWhere('label', 'Inactive')['total'] ?? null);
+        $this->assertContains('0 onboardings in flight.', $glance['data']['sentences']);
+        $this->assertContains('0 invitations have stalled.', $glance['data']['sentences']);
     }
 
     // ── reach ────────────────────────────────────────────────────
@@ -119,13 +120,12 @@ class HrDashboardTest extends TestCase
             ->firstOrFail()->forceFill(['revoked_at' => now()])->save());
 
         $glance = $this->glance($this->alpha['admin']);
-        $stalled = collect($glance['data']['slices'])->firstWhere('label', 'Invitations stalled');
 
         // "We changed our mind" and "they never came" are different facts.
-        $this->assertSame(0, $stalled['total'] ?? null);
+        $this->assertContains('0 invitations have stalled.', $glance['data']['sentences']);
     }
 
-    public function test_in_flight_vs_stalled_slices_ignore_the_period(): void
+    public function test_active_vs_inactive_slices_ignore_the_period(): void
     {
         $this->setPeriod($this->alpha['admin'], 'week');
         $week = $this->glance($this->alpha['admin'])['data']['slices'];

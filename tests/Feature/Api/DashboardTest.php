@@ -401,7 +401,7 @@ class DashboardTest extends TestCase
     public function test_a_presentation_not_offered_is_dropped_to_the_default(): void
     {
         $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
-            'glances' => [['key' => 'jobs', 'presentation' => 'line']],
+            'glances' => [['key' => 'jobs', 'presentation' => 'timeline']],
         ])->assertOk();
 
         $jobs = collect($this->glancesOf($this->alpha['admin']))->firstWhere('key', 'jobs');

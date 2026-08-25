@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/dashboard_panels.dart';
+import '../core/money.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/dashboard_card.dart';
@@ -423,6 +424,7 @@ class _GlanceBody extends StatelessWidget {
           series: data['series'] is List ? data['series'] as List : null,
         ),
       ..._sentences(data),
+      ..._money(data),
       ?earned,
     ];
   }
@@ -495,6 +497,34 @@ class _GlanceBody extends StatelessWidget {
       default:
         return false;
     }
+  }
+
+  /// Jobs sends `revenue`; Inventory sends `stock_value` only with financials.
+  /// A missing or empty key draws nothing.
+  static List<Widget> _money(Map<String, dynamic> data) => [
+        ..._moneyOf(data['revenue']),
+        ..._moneyOf(data['stock_value']),
+      ];
+
+  static List<Widget> _moneyOf(dynamic raw) {
+    if (raw is! List) return const [];
+
+    return [
+      for (final item in raw)
+        if (item is Map &&
+            item['amount_minor'] is num &&
+            item['currency'] is String &&
+            (item['currency'] as String).isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              formatMinor(
+                (item['amount_minor'] as num).toInt(),
+                item['currency'] as String,
+              ),
+            ),
+          ),
+    ];
   }
 
   static List<Widget> _sentences(Map<String, dynamic> data) {

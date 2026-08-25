@@ -7,24 +7,26 @@ use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Dashboard\Widgets\Hr\ExpiringCertifications;
-use App\Support\Dashboard\Widgets\Hr\Headcount;
 use App\Support\Dashboard\Widgets\Hr\InvitationsStalled;
 use App\Support\Dashboard\Widgets\Hr\OnboardingsInFlight;
+use App\Support\Dashboard\Widgets\Hr\ScopesToPlaces;
 use App\Support\Dashboard\Widgets\Hr\StartersAndLeavers;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
- * Human Resources box: in-flight vs stalled bar (snapshot), five figures as text.
+ * Human Resources box: active vs inactive bar (snapshot), five figures as text.
  *
- * Chart reuses OnboardingsInFlight and InvitationsStalled totals. Headcount,
- * starters/leavers, and certifications stay sentences so text mode keeps the
- * HR plan's five numbers. Places stay ScopesToPlaces — the founder is at
- * organization level, not on a franchise.
+ * Chart counts distinct people in ScopesToPlaces reach, including inactive.
+ * Onboardings, stalled invitations, starters/leavers, and certifications stay
+ * sentences so text mode keeps the HR plan's five numbers. Places stay
+ * ScopesToPlaces — the founder is at organization level, not on a franchise.
  */
 final class HrGlance implements Glance
 {
+    use ScopesToPlaces;
+
     public function __construct(
-        private readonly Headcount $headcount,
         private readonly OnboardingsInFlight $onboardingsInFlight,
         private readonly InvitationsStalled $invitationsStalled,
         private readonly StartersAndLeavers $startersAndLeavers,
@@ -64,8 +66,10 @@ final class HrGlance implements Glance
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {
         return app(TenantContext::class)->run($user->organization, function () use ($user, $period) {
-            $headcount = $this->headcount->resolve($user, []);
-            $people = (int) ($headcount['total'] ?? 0);
+            $onTheBooks = $this->peopleOnTheBooks($user);
+            $active = (clone $onTheBooks)->where('is_active', true)->count();
+            $inactive = (clone $onTheBooks)->where('is_active', false)->count();
+            $people = $active + $inactive;
 
             if ($people === 0) {
                 return new GlancePayload(
@@ -95,8 +99,8 @@ final class HrGlance implements Glance
             $stalledTotal = (int) ($stalled['total'] ?? 0);
 
             $slices = [
-                ['label' => 'Onboardings in flight', 'total' => $inFlightTotal],
-                ['label' => 'Invitations stalled', 'total' => $stalledTotal],
+                ['label' => 'Active', 'total' => $active],
+                ['label' => 'Inactive', 'total' => $inactive],
             ];
 
             $periodWord = $period->key;
@@ -147,6 +151,29 @@ final class HrGlance implements Glance
                     'sentences' => $sentences,
                 ],
             );
+        });
+    }
+
+    /**
+     * Distinct people Headcount would consider, including inactive.
+     *
+     * Nested so unplaced people (organization view only) cannot invert into
+     * "assigned nowhere means see everybody".
+     */
+    private function peopleOnTheBooks(User $user): Builder
+    {
+        $places = $this->placesInView($user);
+        $withUnplaced = $this->countsUnplaced($places);
+
+        return User::query()->where(function (Builder $visible) use ($places, $withUnplaced) {
+            $visible->whereHas(
+                'assignments',
+                fn (Builder $a) => $this->constrainToPlaces($a, $places),
+            );
+
+            if ($withUnplaced) {
+                $visible->orWhereDoesntHave('assignments');
+            }
         });
     }
 }
