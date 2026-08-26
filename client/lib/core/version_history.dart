@@ -8,6 +8,19 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0098',
+      date: '26 Aug 2026',
+      items: [
+        'EzBizi installs on Windows and on Android. One release script builds '
+            'the website, the Windows installer and the Play app bundle from '
+            'the same commit, so all three report the same version.',
+        'A social account can be disconnected, says Connected once it is, and '
+            'offers Reconnect. The sign-in window is EzBizi\'s own, and shows '
+            'the network it is joining.',
+        'TikTok and Pinterest can be connected for real.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0097',
       date: '25 Aug 2026',
       items: [
