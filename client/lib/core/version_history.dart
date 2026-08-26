@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0099',
+      date: '26 Aug 2026',
+      items: [
+        'Nothing changed in the app. This build exists so Google Play has a '
+            'bundle made after the store artwork and the new icon, and so its '
+            '"upload your bundle again" notice clears. Said plainly rather '
+            'than dressed up: a version whose note invents a feature is worse '
+            'than one that admits it is a rebuild.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0098',
       date: '26 Aug 2026',
       items: [
