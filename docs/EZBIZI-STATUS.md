@@ -37,6 +37,17 @@ rather than for trying harder.
 
 The owner accepted the Codex–Grok consensus and selected **A — Dense Grid** on 2026-08-26. The desktop/375px alternatives and decision record are in `docs/previews/tasks-layouts.html` and `docs/previews/tasks-layouts-review.md`. Tasks is not built; it is ready for explicit implementation authorization. Production-capable file paths remain gated on the Phase 1 plan's Task 10A off-instance restore proof.
 
+## Tasks — restore gate staged, 2026-08-26
+
+Task 0's encrypted `storage/app/private` archive and exact restore verifier are implemented
+and green against a disposable local fixture. The encrypted archive contains a versioned
+manifest of each relative path, byte count, and SHA-256; restore rejects missing or extra
+rows, mismatches, unsafe paths, links, non-file entries, and corrupt encryption or archives
+before accepting the result. This is **not yet the production durability proof**: Task 10A
+must deploy through the normal release path and verify a production-sized off-instance copy.
+Until that passes, production-capable Tasks imports, update attachments, and File-column
+upload or selection remain closed, and FileStore's instance-loss warning remains accurate.
+
 ## EZ Leads — all three modules live, 2026-08-27
 
 The first expansion work that depends on an outside party's approval rather than on us. Rodrigo's

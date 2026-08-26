@@ -93,6 +93,19 @@ green gate. Three are missing libraries; one was fixed.
 
 Run the full suite with `php -d memory_limit=1G vendor/bin/phpunit`. Plain `php artisan test` dies with a 128M exhaustion partway through — the parent's `-d` does not reach the processes it spawns.
 
+The private customer-file backup has a disposable, database-free proof that uses the same
+archive creator and restore verifier as the nightly scripts:
+
+```bash
+bash -n deploy/backup.sh
+bash -n deploy/restore-check.sh
+python3 deploy/tests/private-files-backup-restore-fixture.py
+```
+
+It creates only synthetic bytes under a fresh temporary directory. A green local fixture is
+the Task 0 development gate, not the production durability verdict; the latter remains the
+off-instance, production-sized Task 10A check after a normal deployment.
+
 **The OpenSSL fix.** Windows PHP shipped no `openssl.cnf` and `OPENSSL_CONF` was unset, so
 `openssl_pkey_new()` failed for *any* key — which meant every test that mints a keypair
 (the Google Workspace service-account tests) errored before testing anything. PHP ships a
@@ -146,6 +159,6 @@ php8.4 artisan config:clear
 | Remove unused PHP 8.2 packages | ⬜ nothing uses them; safe to purge |
 | GitHub remote | ⬜ name/owner undecided |
 | CI pipeline | ⬜ |
-| Automated backups (this box) | ⬜ none since the wipe |
+| Automated backups (this box) | ✅ encrypted, off-instance, restore-checked nightly; the versioned private-file manifest is locally proven and awaits the Task 10A production-sized off-instance proof |
 | Staging/production split (`app.ezbizi.com`) | ⬜ dev only so far |
 | BIND secondary on the Websites box | ⬜ per README — removes the single-nameserver weakness |

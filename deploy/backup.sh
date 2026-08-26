@@ -36,6 +36,156 @@
 
 set -uo pipefail
 
+# Build the customer-file archive without ever writing its manifest beside the
+# encrypted backup. The manifest contains relative customer paths, so it belongs
+# inside the ciphertext with the bytes it describes.
+build_private_archive() {
+  local source=$1
+  local output=$2
+
+  python3 - "$source" "$output" <<'PY'
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import stat
+import sys
+import tarfile
+
+source = Path(sys.argv[1])
+output = Path(sys.argv[2])
+
+
+class HashingReader:
+    def __init__(self, stream):
+        self.stream = stream
+        self.digest = hashlib.sha256()
+        self.bytes = 0
+
+    def read(self, size=-1):
+        chunk = self.stream.read(size)
+        self.digest.update(chunk)
+        self.bytes += len(chunk)
+        return chunk
+
+try:
+    if not source.is_dir() or source.is_symlink():
+        raise ValueError("source")
+
+    files = []
+    for root, directories, names in os.walk(source, topdown=True, followlinks=False):
+        root_path = Path(root)
+        for directory in directories:
+            if (root_path / directory).is_symlink():
+                raise ValueError("symlink")
+        for name in names:
+            path = root_path / name
+            metadata = path.lstat()
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError("non-regular")
+            relative = "/".join(path.relative_to(source).parts)
+            digest = hashlib.sha256()
+            size = 0
+            flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            descriptor = os.open(path, flags)
+            try:
+                opened = os.fstat(descriptor)
+                if not stat.S_ISREG(opened.st_mode):
+                    raise ValueError("non-regular")
+                with os.fdopen(descriptor, "rb", closefd=False) as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                        size += len(chunk)
+            finally:
+                os.close(descriptor)
+            files.append({"path": relative, "bytes": size, "sha256": digest.hexdigest()})
+
+    files.sort(key=lambda row: row["path"])
+    manifest = json.dumps(
+        {"version": 1, "files": files}, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+
+    with tarfile.open(output, "w:gz", format=tarfile.PAX_FORMAT) as archive:
+        info = tarfile.TarInfo("manifest.v1.json")
+        info.size = len(manifest)
+        info.mode = 0o600
+        archive.addfile(info, io.BytesIO(manifest))
+
+        for row in files:
+            path = source.joinpath(*row["path"].split("/"))
+            flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            descriptor = os.open(path, flags)
+            try:
+                opened = os.fstat(descriptor)
+                if not stat.S_ISREG(opened.st_mode) or opened.st_size != row["bytes"]:
+                    raise ValueError("changed")
+                info = tarfile.TarInfo("files/" + row["path"])
+                info.size = row["bytes"]
+                info.mode = 0o600
+                with os.fdopen(descriptor, "rb", closefd=False) as stream:
+                    hashing_stream = HashingReader(stream)
+                    archive.addfile(info, hashing_stream)
+                    if (
+                        hashing_stream.bytes != row["bytes"]
+                        or hashing_stream.digest.hexdigest() != row["sha256"]
+                    ):
+                        raise ValueError("changed")
+            finally:
+                os.close(descriptor)
+except Exception:
+    try:
+        output.unlink(missing_ok=True)
+    except Exception:
+        pass
+    print("private-file archive creation failed", file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
+encrypt_private_files() (
+  local source=$1
+  local output=$2
+  local keyfile=$3
+  local work
+  local complete=false
+
+  work=$(mktemp -d) || exit 1
+  cleanup_private_work() {
+    rm -rf -- "$work"
+    [[ "$complete" == true ]] || rm -f -- "$output"
+  }
+  trap cleanup_private_work EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  rm -f -- "$output"
+
+  if ! build_private_archive "$source" "$work/private-files.tar.gz"; then
+    exit 1
+  fi
+
+  gpg --batch --yes --quiet --symmetric --cipher-algo AES256 \
+      --passphrase-file "$keyfile" --output "$output" "$work/private-files.tar.gz" \
+    || exit 1
+  complete=true
+)
+
+# The test entry point exercises the same creator and encryption path as the
+# nightly job while avoiding databases, /var, ssh and production configuration.
+if [[ "${1:-}" == "--private-files-fixture" ]]; then
+  [[ $# -eq 4 && -d "$2" && -r "$4" ]] || {
+    echo "private-file fixture setup failed" >&2
+    exit 1
+  }
+  umask 077
+  encrypt_private_files "$2" "$3" "$4"
+  exit $?
+fi
+
 # Nothing this script writes is for anyone but root.
 #
 # The default umask is 022, which made every artefact -rw-r--r-- in a
@@ -135,6 +285,16 @@ tar -czf - \
     2>/dev/null | encrypt_to "$DEST/app-${STAMP}.tar.gz.gpg"
 
 all_ok "${PIPESTATUS[@]}" || errors+=("app-archive")
+
+# `storage` remains in the application archive above to preserve the existing
+# backup exactly. This second encrypted archive gives customer files the
+# independently verifiable, versioned manifest that a restore can prove.
+if ! encrypt_private_files \
+    /var/www/ezbizi/storage/app/private \
+    "$DEST/private-files-${STAMP}.tar.gz.gpg" \
+    "$KEYFILE"; then
+  errors+=("private-files-archive")
+fi
 
 # ── 3. server configuration ──────────────────────────────────────
 #
