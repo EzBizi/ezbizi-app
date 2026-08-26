@@ -184,9 +184,16 @@ if wants windows; then
   fi
 
   echo "→ windows — wrapping into an installer"
-  # ISCC is a native Windows exe and cannot read /c/... paths, so every path
-  # crossing this boundary goes through cygpath.
-  run "$ISCC" \
+  # Two separate Windows/POSIX boundaries here, and both bite.
+  #
+  # cygpath, because ISCC is a native Windows exe and cannot read /c/... paths.
+  #
+  # MSYS_NO_PATHCONV, because Git Bash rewrites any argument that starts with a
+  # slash into a Windows path — so /DAppVersion=0.0.0097 arrived as something
+  # ISCC read as a *filename*, and it refused with "You may not specify more
+  # than one script filename". Both spellings are set: Git Bash reads the first,
+  # MSYS2 the second.
+  run env MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "$ISCC" \
     "/DAppVersion=${VERSION}" \
     "/DSourceDir=$(cygpath -w "$PWD/$WIN_BUILD")" \
     "/DOutputDir=$(cygpath -w "$PWD/$DIST")" \
