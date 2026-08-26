@@ -97,15 +97,24 @@ if wants android && [ ! -f client/android/key.properties ]; then
   rejects the upload. Create one — you choose the passwords, they are never
   stored anywhere but the two files below, and both are already gitignored:
 
-    keytool -genkey -v -keystore "$HOME/ezbizi-upload.jks" \
+    "/c/Program Files/Android/Android Studio/jbr/bin/keytool.exe" -genkey -v \
+      -keystore "/h/Development/Credentials/ezbizi-upload.jks" \
       -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+
+  keytool ships with Android Studio's JDK and is not on PATH, hence the full
+  path. H:\Development\Credentials is where this project's other credentials
+  live and is not a git repo.
 
   Then write client/android/key.properties:
 
     storePassword=<the store password you just chose>
     keyPassword=<the key password you just chose>
     keyAlias=upload
-    storeFile=<absolute path to ezbizi-upload.jks>
+    storeFile=H:/Development/Credentials/ezbizi-upload.jks
+
+  Forward slashes in storeFile. That is a Java .properties file, where a
+  backslash escapes the next character, so a Windows path written the Windows
+  way is silently mangled into a keystore that cannot be found.
 
   Back that .jks up somewhere you will still have in five years. Losing it
   means asking Play for a key reset; leaking it means the same. It is not in
