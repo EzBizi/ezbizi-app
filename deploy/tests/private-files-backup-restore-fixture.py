@@ -27,17 +27,22 @@ else:
 
 
 class PrivateFilesBackupRestoreFixtureTest(unittest.TestCase):
+    SENSITIVE_FILENAME_MARKER = "fixture-sensitive-customer-filename.secret"
+    SENSITIVE_VALUE_MARKER = "fixture-sensitive-customer-value"
+    SECOND_PATH = "org-b/nested/other.bin"
+    SECOND_CONTENTS = b"\x00\x01\x02"
+
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory(prefix="ezbizi-private-files-")
         self.root = Path(self.temp.name)
         self.source = self.root / "source"
         self.source.mkdir()
         (self.source / "org-a").mkdir()
-        (self.source / "org-a" / "customer-secret-name.pdf").write_bytes(
-            b"customer-value-that-must-never-be-logged"
+        (self.source / "org-a" / self.SENSITIVE_FILENAME_MARKER).write_bytes(
+            self.SENSITIVE_VALUE_MARKER.encode()
         )
-        (self.source / "org-b").mkdir()
-        (self.source / "org-b" / "other.bin").write_bytes(b"\x00\x01\x02")
+        (self.source / "org-b" / "nested").mkdir(parents=True)
+        (self.source / self.SECOND_PATH).write_bytes(self.SECOND_CONTENTS)
         self.key = self.root / "key"
         self.key.write_text("disposable-fixture-passphrase\n", encoding="utf-8")
         self.archive = self.root / "private-files-fixture.tar.gz.gpg"
@@ -61,12 +66,16 @@ class PrivateFilesBackupRestoreFixtureTest(unittest.TestCase):
             timeout=30,
         )
 
-    def create_with_backup(self) -> subprocess.CompletedProcess[str]:
+    def create_with_backup(
+        self,
+        source: Path | None = None,
+        archive: Path | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         return self.run_script(
             BACKUP,
             "--private-files-fixture",
-            self.source,
-            self.archive,
+            source or self.source,
+            archive or self.archive,
             self.key,
         )
 
@@ -92,7 +101,7 @@ class PrivateFilesBackupRestoreFixtureTest(unittest.TestCase):
                 info.mode = 0o600
                 if kind == "symlink":
                     info.type = tarfile.SYMTYPE
-                    info.linkname = "../../escape"
+                    info.linkname = contents.decode("utf-8")
                     bundle.addfile(info)
                 else:
                     info.size = len(contents)
@@ -129,24 +138,87 @@ class PrivateFilesBackupRestoreFixtureTest(unittest.TestCase):
     def assert_generic_failure(self, result: subprocess.CompletedProcess[str]) -> None:
         self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
         combined = result.stdout + result.stderr
-        self.assertNotIn("customer-secret-name", combined)
-        self.assertNotIn("customer-value", combined)
+        self.assertNotIn(self.SENSITIVE_FILENAME_MARKER, combined)
+        self.assertNotIn(self.SENSITIVE_VALUE_MARKER, combined)
         self.assertTrue(self.sentinel.exists(), "verifier deleted outside its own temporary directory")
+        self.assertEqual(
+            {self.sentinel},
+            set(self.tmpdir.iterdir()),
+            "failed operation left decrypted or plaintext temporary data behind",
+        )
+
+    def assert_archive_exactly_matches_source_without_using_the_verifier(self) -> None:
+        plain = self.root / "independent-inspection.tar.gz"
+        try:
+            decrypted = subprocess.run(
+                [
+                    GPG,
+                    "--batch",
+                    "--yes",
+                    "--quiet",
+                    "--decrypt",
+                    "--passphrase-file",
+                    str(self.key),
+                    "--output",
+                    str(plain),
+                    str(self.archive),
+                ],
+                text=True,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(0, decrypted.returncode, decrypted.stdout + decrypted.stderr)
+
+            sensitive_path = f"org-a/{self.SENSITIVE_FILENAME_MARKER}"
+            expected_contents = {
+                sensitive_path: self.SENSITIVE_VALUE_MARKER.encode(),
+                self.SECOND_PATH: self.SECOND_CONTENTS,
+            }
+            expected_rows = [
+                self.row(path, contents)
+                for path, contents in sorted(expected_contents.items())
+            ]
+            expected_members = {
+                "manifest.v1.json",
+                *(f"files/{path}" for path in expected_contents),
+            }
+
+            with tarfile.open(plain, "r:gz") as bundle:
+                members = bundle.getmembers()
+                self.assertEqual(len(expected_members), len(members))
+                self.assertEqual(expected_members, {member.name for member in members})
+                self.assertTrue(all(member.isreg() for member in members))
+
+                manifest_stream = bundle.extractfile("manifest.v1.json")
+                self.assertIsNotNone(manifest_stream)
+                manifest = json.loads(manifest_stream.read().decode("utf-8"))
+                self.assertEqual({"version": 1, "files": expected_rows}, manifest)
+
+                for path, expected in expected_contents.items():
+                    payload = bundle.extractfile(f"files/{path}")
+                    self.assertIsNotNone(payload)
+                    self.assertEqual(expected, payload.read())
+        finally:
+            plain.unlink(missing_ok=True)
 
     def test_valid_encrypted_archive_round_trips_and_cleans_its_temporary_directory(self) -> None:
         made = self.create_with_backup()
         self.assertEqual(0, made.returncode, made.stdout + made.stderr)
         self.assertTrue(self.archive.is_file())
+        self.assert_archive_exactly_matches_source_without_using_the_verifier()
 
         checked = self.verify()
         self.assertEqual(0, checked.returncode, checked.stdout + checked.stderr)
-        self.assertNotIn("customer-secret-name", checked.stdout + checked.stderr)
-        self.assertNotIn("customer-value", checked.stdout + checked.stderr)
+        self.assertNotIn(self.SENSITIVE_FILENAME_MARKER, checked.stdout + checked.stderr)
+        self.assertNotIn(self.SENSITIVE_VALUE_MARKER, checked.stdout + checked.stderr)
         self.assertTrue(self.sentinel.exists())
         self.assertEqual({self.sentinel}, set(self.tmpdir.iterdir()))
 
     def test_missing_archive_wrong_key_and_bad_encrypted_payload_fail(self) -> None:
-        missing = self.verify(self.root / "missing.tar.gz.gpg")
+        missing = self.verify(
+            self.root
+            / f"{self.SENSITIVE_FILENAME_MARKER}-{self.SENSITIVE_VALUE_MARKER}-missing.tar.gz.gpg"
+        )
         self.assert_generic_failure(missing)
 
         self.assertEqual(0, self.create_with_backup().returncode)
@@ -155,7 +227,9 @@ class PrivateFilesBackupRestoreFixtureTest(unittest.TestCase):
         self.assert_generic_failure(self.verify(key=wrong_key))
 
         plain = self.root / "not-an-archive"
-        plain.write_bytes(b"not a gzip or tar archive")
+        plain.write_bytes(
+            f"{self.SENSITIVE_FILENAME_MARKER}:{self.SENSITIVE_VALUE_MARKER}".encode()
+        )
         bad = self.root / "bad-payload.gpg"
         subprocess.run(
             [GPG, "--batch", "--yes", "--quiet", "--symmetric", "--cipher-algo", "AES256",
@@ -166,24 +240,38 @@ class PrivateFilesBackupRestoreFixtureTest(unittest.TestCase):
         self.assert_generic_failure(self.verify(bad))
 
     def test_manifest_missing_extra_and_mismatched_rows_fail(self) -> None:
-        alpha = b"alpha"
-        beta = b"beta"
+        sensitive_path = self.SENSITIVE_FILENAME_MARKER
+        sensitive_value = self.SENSITIVE_VALUE_MARKER.encode()
+        second_path = f"second-{self.SENSITIVE_FILENAME_MARKER}"
+        second_value = f"second-{self.SENSITIVE_VALUE_MARKER}".encode()
         cases = {
             "missing-row": (
-                {"version": 1, "files": [self.row("alpha.txt", alpha)]},
-                [("files/alpha.txt", alpha, "file"), ("files/beta.txt", beta, "file")],
+                {"version": 1, "files": [self.row(sensitive_path, sensitive_value)]},
+                [
+                    (f"files/{sensitive_path}", sensitive_value, "file"),
+                    (f"files/{second_path}", second_value, "file"),
+                ],
             ),
             "extra-row": (
-                {"version": 1, "files": [self.row("alpha.txt", alpha), self.row("beta.txt", beta)]},
-                [("files/alpha.txt", alpha, "file")],
+                {
+                    "version": 1,
+                    "files": [
+                        self.row(sensitive_path, sensitive_value),
+                        self.row(second_path, second_value),
+                    ],
+                },
+                [(f"files/{sensitive_path}", sensitive_value, "file")],
             ),
             "bad-size": (
-                {"version": 1, "files": [self.row("alpha.txt", alpha, size=99)]},
-                [("files/alpha.txt", alpha, "file")],
+                {"version": 1, "files": [self.row(sensitive_path, sensitive_value, size=99)]},
+                [(f"files/{sensitive_path}", sensitive_value, "file")],
             ),
             "bad-sha": (
-                {"version": 1, "files": [self.row("alpha.txt", alpha, digest="0" * 64)]},
-                [("files/alpha.txt", alpha, "file")],
+                {
+                    "version": 1,
+                    "files": [self.row(sensitive_path, sensitive_value, digest="0" * 64)],
+                },
+                [(f"files/{sensitive_path}", sensitive_value, "file")],
             ),
         }
         for name, (manifest, members) in cases.items():
@@ -191,21 +279,59 @@ class PrivateFilesBackupRestoreFixtureTest(unittest.TestCase):
                 self.assert_generic_failure(self.verify(self.encrypted_tar(name, manifest, members)))
 
     def test_traversal_symlink_and_extra_archive_entries_are_rejected_before_extraction(self) -> None:
-        contents = b"safe"
-        valid = {"version": 1, "files": [self.row("safe.txt", contents)]}
+        contents = self.SENSITIVE_VALUE_MARKER.encode()
+        safe_path = self.SENSITIVE_FILENAME_MARKER
+        valid = {"version": 1, "files": [self.row(safe_path, contents)]}
         cases = {
-            "traversal": (valid, [("files/../escape", contents, "file")]),
-            "manifest-traversal": (
-                {"version": 1, "files": [self.row("../escape", contents)]},
-                [("files/../escape", contents, "file")],
+            "traversal": (
+                valid,
+                [(f"files/../{self.SENSITIVE_FILENAME_MARKER}", contents, "file")],
             ),
-            "symlink": (valid, [("files/safe.txt", b"", "symlink")]),
-            "surprise": (valid, [("files/safe.txt", contents, "file"), ("unexpected", b"x", "file")]),
+            "manifest-traversal": (
+                {
+                    "version": 1,
+                    "files": [self.row(f"../{self.SENSITIVE_FILENAME_MARKER}", contents)],
+                },
+                [(f"files/../{self.SENSITIVE_FILENAME_MARKER}", contents, "file")],
+            ),
+            "symlink": (
+                valid,
+                [
+                    (
+                        f"files/{self.SENSITIVE_FILENAME_MARKER}",
+                        self.SENSITIVE_VALUE_MARKER.encode(),
+                        "symlink",
+                    )
+                ],
+            ),
+            "surprise": (
+                valid,
+                [
+                    (f"files/{safe_path}", contents, "file"),
+                    (
+                        f"unexpected-{self.SENSITIVE_FILENAME_MARKER}",
+                        contents,
+                        "file",
+                    ),
+                ],
+            ),
         }
         for name, (manifest, members) in cases.items():
             with self.subTest(name=name):
                 self.assert_generic_failure(self.verify(self.encrypted_tar(name, manifest, members)))
                 self.assertFalse((self.root / "escape").exists())
+
+    def test_backup_rejects_a_sensitive_symlink_without_logging_or_leaving_plaintext(self) -> None:
+        target = self.source / "org-a" / f"target-{self.SENSITIVE_FILENAME_MARKER}"
+        target.write_text(self.SENSITIVE_VALUE_MARKER, encoding="utf-8")
+        link = self.source / "org-a" / f"link-{self.SENSITIVE_FILENAME_MARKER}"
+        link.symlink_to(target)
+        failed_archive = self.root / "failed-private-files.tar.gz.gpg"
+
+        result = self.create_with_backup(archive=failed_archive)
+
+        self.assert_generic_failure(result)
+        self.assertFalse(failed_archive.exists())
 
 
 if __name__ == "__main__":
