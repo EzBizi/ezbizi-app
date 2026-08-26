@@ -34,9 +34,16 @@ class TaskRecordSchemaTest extends TestCase
         $alphaLabel = $this->insertColumn($alpha, $alphaBoard, 'label', $now);
         $alphaFile = $this->insertColumn($alpha, $alphaBoard, 'file', $now);
         $alphaOption = $this->insertOption($alpha, $alphaBoard, $alphaLabel, $now);
+        $alphaOtherLabel = $this->insertColumn($alpha, $alphaBoard, 'label', $now);
+        $alphaOtherOption = $this->insertOption($alpha, $alphaBoard, $alphaOtherLabel, $now);
+        $betaText = $this->insertColumn($beta, $betaBoard, 'text', $now);
+        $betaPeople = $this->insertColumn($beta, $betaBoard, 'people', $now);
+        $betaLabel = $this->insertColumn($beta, $betaBoard, 'label', $now);
+        $betaFile = $this->insertColumn($beta, $betaBoard, 'file', $now);
 
         $parentId = $this->insertTask($alpha, $alphaBoard, $alphaGroup, null, $alphaStatus, $alphaPriority, $now);
         $childId = $this->insertTask($alpha, $alphaBoard, null, $parentId, $alphaStatus, null, $now, position: -2);
+        $betaTask = $this->insertTask($beta, $betaBoard, $betaGroup, null, $betaStatus, $betaPriority, $now);
 
         $parent = DB::table('tasks')->find($parentId);
         $child = DB::table('tasks')->find($childId);
@@ -81,6 +88,11 @@ class TaskRecordSchemaTest extends TestCase
             ...$this->taskRow($alpha, $alphaBoard, $alphaGroup, null, $alphaStatus, null, $now),
             'created_by' => $beta['admin']->id,
         ]), 'tasks_created_by_foreign');
+
+        $this->assertConstraintRejects(fn () => DB::table('tasks')->insert([
+            ...$this->taskRow($alpha, $alphaBoard, $alphaGroup, null, $alphaStatus, null, $now),
+            'updated_by' => $beta['admin']->id,
+        ]), 'tasks_updated_by_foreign');
 
         $this->assertConstraintRejects(fn () => DB::table('tasks')->insert([
             ...$this->taskRow($alpha, $alphaBoard, $alphaGroup, null, $alphaStatus, null, $now),
@@ -149,21 +161,54 @@ class TaskRecordSchemaTest extends TestCase
             'id' => (string) Str::uuid7(), 'organization_id' => $alpha['org']->id, 'board_id' => $alphaBoard,
             'task_id' => $parentId, 'column_definition_id' => $alphaText, 'created_at' => $now, 'updated_at' => $now,
         ]), 'task_column_values_task_definition_unique');
+        $this->assertConstraintRejects(fn () => DB::table('task_column_values')->insert(
+            $this->scalarValueRow($alpha, $alphaBoard, $betaTask, $alphaText, $now),
+        ), 'task_column_values_task_foreign');
+        $this->assertConstraintRejects(fn () => DB::table('task_column_values')->insert(
+            $this->scalarValueRow($alpha, $alphaBoard, $parentId, $betaText, $now),
+        ), 'task_column_values_definition_foreign');
         $this->assertConstraintRejects(fn () => DB::table('task_column_people')->insert([
             'id' => (string) Str::uuid7(), 'organization_id' => $alpha['org']->id, 'board_id' => $alphaBoard,
             'task_id' => $parentId, 'column_definition_id' => $alphaPeople, 'user_id' => $beta['admin']->id,
             'created_at' => $now, 'updated_at' => $now,
         ]), 'task_column_people_user_foreign');
+        $this->assertConstraintRejects(fn () => DB::table('task_column_people')->insert(
+            $this->peopleValueRow($alpha, $alphaBoard, $betaTask, $alphaPeople, $alpha['admin']->id, $now),
+        ), 'task_column_people_task_foreign');
+        $this->assertConstraintRejects(fn () => DB::table('task_column_people')->insert(
+            $this->peopleValueRow($alpha, $alphaBoard, $parentId, $betaPeople, $alpha['admin']->id, $now),
+        ), 'task_column_people_definition_foreign');
+        $this->assertConstraintRejects(fn () => DB::table('task_column_people')->insert(
+            $this->peopleValueRow($alpha, $alphaBoard, $parentId, $alphaPeople, $alpha['admin']->id, $now),
+        ), 'task_column_people_target_unique');
         $this->assertConstraintRejects(fn () => DB::table('task_column_labels')->insert([
             'id' => (string) Str::uuid7(), 'organization_id' => $alpha['org']->id, 'board_id' => $alphaBoard,
-            'task_id' => $parentId, 'column_definition_id' => $alphaLabel, 'column_option_id' => $this->insertOption($beta, $betaBoard, $this->insertColumn($beta, $betaBoard, 'label', $now), $now),
+            'task_id' => $parentId, 'column_definition_id' => $alphaLabel, 'column_option_id' => $alphaOtherOption,
             'created_at' => $now, 'updated_at' => $now,
         ]), 'task_column_labels_option_foreign');
+        $this->assertConstraintRejects(fn () => DB::table('task_column_labels')->insert(
+            $this->labelValueRow($alpha, $alphaBoard, $betaTask, $alphaLabel, $alphaOption, $now),
+        ), 'task_column_labels_task_foreign');
+        $this->assertConstraintRejects(fn () => DB::table('task_column_labels')->insert(
+            $this->labelValueRow($alpha, $alphaBoard, $parentId, $betaLabel, $alphaOption, $now),
+        ), 'task_column_labels_definition_foreign');
+        $this->assertConstraintRejects(fn () => DB::table('task_column_labels')->insert(
+            $this->labelValueRow($alpha, $alphaBoard, $parentId, $alphaLabel, $alphaOption, $now),
+        ), 'task_column_labels_target_unique');
         $this->assertConstraintRejects(fn () => DB::table('task_column_files')->insert([
             'id' => (string) Str::uuid7(), 'organization_id' => $alpha['org']->id, 'board_id' => $alphaBoard,
             'task_id' => $parentId, 'column_definition_id' => $alphaFile, 'attachment_id' => (string) Str::uuid7(),
             'created_at' => $now, 'updated_at' => $now,
         ]), 'task_column_files_attachment_foreign');
+        $this->assertConstraintRejects(fn () => DB::table('task_column_files')->insert(
+            $this->fileValueRow($alpha, $alphaBoard, $betaTask, $alphaFile, $attachmentId, $now),
+        ), 'task_column_files_task_foreign');
+        $this->assertConstraintRejects(fn () => DB::table('task_column_files')->insert(
+            $this->fileValueRow($alpha, $alphaBoard, $parentId, $betaFile, $attachmentId, $now),
+        ), 'task_column_files_definition_foreign');
+        $this->assertConstraintRejects(fn () => DB::table('task_column_files')->insert(
+            $this->fileValueRow($alpha, $alphaBoard, $parentId, $alphaFile, $attachmentId, $now),
+        ), 'task_column_files_target_unique');
 
         $reusablePosition = -100;
         $this->insertTask($alpha, $alphaBoard, $alphaGroup, null, $alphaStatus, null, $now, $reusablePosition);
@@ -277,6 +322,47 @@ class TaskRecordSchemaTest extends TestCase
             'created_by' => $tenant['admin']->id, 'updated_by' => $tenant['admin']->id,
             'position' => $position === 0 ? random_int(1, 999999) : $position,
             'version' => 1, 'detail_version' => 1, 'archived_with_parent_id' => null, 'archived_at' => null,
+            'created_at' => $now, 'updated_at' => $now,
+        ];
+    }
+
+    /** @param array{org: object} $tenant @return array<string, mixed> */
+    private function scalarValueRow(array $tenant, string $boardId, string $taskId, string $definitionId, mixed $now): array
+    {
+        return [
+            'id' => (string) Str::uuid7(), 'organization_id' => $tenant['org']->id, 'board_id' => $boardId,
+            'task_id' => $taskId, 'column_definition_id' => $definitionId, 'text_value' => 'value',
+            'number_value' => null, 'boolean_value' => null, 'date_value' => null, 'url_value' => null, 'link_label_value' => null,
+            'created_at' => $now, 'updated_at' => $now,
+        ];
+    }
+
+    /** @param array{org: object} $tenant @return array<string, mixed> */
+    private function peopleValueRow(array $tenant, string $boardId, string $taskId, string $definitionId, string $userId, mixed $now): array
+    {
+        return [
+            'id' => (string) Str::uuid7(), 'organization_id' => $tenant['org']->id, 'board_id' => $boardId,
+            'task_id' => $taskId, 'column_definition_id' => $definitionId, 'user_id' => $userId,
+            'created_at' => $now, 'updated_at' => $now,
+        ];
+    }
+
+    /** @param array{org: object} $tenant @return array<string, mixed> */
+    private function labelValueRow(array $tenant, string $boardId, string $taskId, string $definitionId, string $optionId, mixed $now): array
+    {
+        return [
+            'id' => (string) Str::uuid7(), 'organization_id' => $tenant['org']->id, 'board_id' => $boardId,
+            'task_id' => $taskId, 'column_definition_id' => $definitionId, 'column_option_id' => $optionId,
+            'created_at' => $now, 'updated_at' => $now,
+        ];
+    }
+
+    /** @param array{org: object} $tenant @return array<string, mixed> */
+    private function fileValueRow(array $tenant, string $boardId, string $taskId, string $definitionId, string $attachmentId, mixed $now): array
+    {
+        return [
+            'id' => (string) Str::uuid7(), 'organization_id' => $tenant['org']->id, 'board_id' => $boardId,
+            'task_id' => $taskId, 'column_definition_id' => $definitionId, 'attachment_id' => $attachmentId,
             'created_at' => $now, 'updated_at' => $now,
         ];
     }

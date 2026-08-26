@@ -234,12 +234,31 @@ return new class extends Migration
             return;
         }
 
-        Schema::table('task_column_options', fn (Blueprint $table) => $table->dropForeign('task_column_options_definition_foreign'));
+        Schema::table('task_column_options', function (Blueprint $table) {
+            $table->dropForeign('task_column_options_definition_foreign');
+            $table->dropForeign('task_column_options_organization_id_foreign');
+        });
+        $this->dropIndexIfPresent('task_column_options', self::OPTION_DEFINITION_INDEX);
         Schema::table('task_column_options', fn (Blueprint $table) => $table->dropUnique(self::OPTION_CANDIDATE_KEY));
         Schema::table('task_column_options', function (Blueprint $table) {
+            $table->foreign('organization_id', 'task_column_options_organization_id_foreign')
+                ->references('id')->on('organizations')->restrictOnDelete();
             $table->foreign(['organization_id', 'board_id', 'column_definition_id'], 'task_column_options_definition_foreign')
                 ->references(['organization_id', 'board_id', 'id'])->on('task_column_definitions')->restrictOnDelete();
         });
+    }
+
+    private function dropIndexIfPresent(string $table, string $name): void
+    {
+        if (! DB::table('information_schema.statistics')
+            ->whereRaw('table_schema = DATABASE()')
+            ->where('table_name', $table)
+            ->where('index_name', $name)
+            ->exists()) {
+            return;
+        }
+
+        Schema::table($table, fn (Blueprint $blueprint) => $blueprint->dropIndex($name));
     }
 
 };
