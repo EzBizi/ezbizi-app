@@ -353,6 +353,67 @@ class TaskBoardSchemaTest extends TestCase
         }
     }
 
+    public function test_board_children_reject_cross_tenant_compound_foreign_keys(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $beta = $this->provisionTenant('Beta');
+        $alphaBoard = $this->insertBoard($alpha, companyId: null, franchiseId: null, position: 0);
+        $betaBoard = $this->insertBoard($beta, companyId: null, franchiseId: null, position: 0);
+        $betaColumn = $this->insertColumn($beta, $betaBoard, 0, 'label');
+        $now = now();
+
+        $this->assertConstraintRejects(fn () => DB::table('task_board_members')->insert([
+            'id' => (string) Str::uuid(), 'organization_id' => $beta['org']->id, 'board_id' => $alphaBoard,
+            'user_id' => $beta['admin']->id, 'role' => 'member', 'is_active' => true, 'archived_at' => null,
+            'created_at' => $now, 'updated_at' => $now,
+        ]), 'task_board_members_board_foreign');
+        $this->assertConstraintRejects(fn () => DB::table('task_board_members')->insert([
+            'id' => (string) Str::uuid(), 'organization_id' => $alpha['org']->id, 'board_id' => $alphaBoard,
+            'user_id' => $beta['admin']->id, 'role' => 'member', 'is_active' => true, 'archived_at' => null,
+            'created_at' => $now, 'updated_at' => $now,
+        ]), 'task_board_members_user_foreign');
+
+        $this->assertConstraintRejects(fn () => DB::table('task_board_preferences')->insert([
+            'id' => (string) Str::uuid(), 'organization_id' => $beta['org']->id, 'board_id' => $alphaBoard,
+            'user_id' => $beta['admin']->id, 'is_favorite' => false, 'last_opened_at' => null,
+            'created_at' => $now, 'updated_at' => $now,
+        ]), 'task_board_preferences_board_foreign');
+        $this->assertConstraintRejects(fn () => DB::table('task_board_preferences')->insert([
+            'id' => (string) Str::uuid(), 'organization_id' => $alpha['org']->id, 'board_id' => $alphaBoard,
+            'user_id' => $beta['admin']->id, 'is_favorite' => false, 'last_opened_at' => null,
+            'created_at' => $now, 'updated_at' => $now,
+        ]), 'task_board_preferences_user_foreign');
+
+        foreach ([
+            ['task_core_column_settings', ['core_key' => 'foreign-core', 'display_label' => 'Foreign core'], 'task_core_column_settings_board_foreign'],
+            ['task_status_options', ['name' => 'Foreign status', 'color' => 'blue', 'category' => 'active', 'position' => 10, 'archived_at' => null], 'task_status_options_board_foreign'],
+            ['task_priority_options', ['name' => 'Foreign priority', 'color' => 'blue', 'rank' => 'normal', 'position' => 10, 'archived_at' => null], 'task_priority_options_board_foreign'],
+            ['task_column_definitions', ['name' => 'Foreign definition', 'type' => 'text', 'number_suffix' => null, 'position' => 10, 'archived_at' => null], 'task_column_definitions_board_foreign'],
+        ] as [$table, $columns, $constraint]) {
+            $this->assertConstraintRejects(fn () => DB::table($table)->insert([
+                'id' => (string) Str::uuid(),
+                'organization_id' => $beta['org']->id,
+                'board_id' => $alphaBoard,
+                ...$columns,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]), $constraint);
+        }
+
+        $this->assertConstraintRejects(fn () => DB::table('task_column_options')->insert([
+            'id' => (string) Str::uuid(),
+            'organization_id' => $alpha['org']->id,
+            'board_id' => $alphaBoard,
+            'column_definition_id' => $betaColumn,
+            'name' => 'Foreign option',
+            'color' => 'blue',
+            'position' => 10,
+            'archived_at' => null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]), 'task_column_options_definition_foreign');
+    }
+
     /** @param array{org: object, admin: object, company: object, franchise: object} $tenant */
     private function insertFolder(array $tenant, ?string $companyId, ?string $franchiseId, int $position = 0): string
     {
