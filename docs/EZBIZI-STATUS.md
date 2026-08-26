@@ -37,7 +37,7 @@ rather than for trying harder.
 
 The owner accepted the Codex–Grok consensus and selected **A — Dense Grid** on 2026-08-26. The desktop/375px alternatives and decision record are in `docs/previews/tasks-layouts.html` and `docs/previews/tasks-layouts-review.md`. Tasks is not built; it is ready for explicit implementation authorization. Production-capable file paths remain gated on the Phase 1 plan's Task 10A off-instance restore proof.
 
-## EZ Leads — `leads` is live, 2026-08-25
+## EZ Leads — `leads` and `reviews` are live
 
 The first expansion work that depends on an outside party's approval rather than on us. Rodrigo's
 A1 Leads — a local Node/SQLite system on his own PC — becomes native EzBizi modules. Read as
@@ -56,9 +56,29 @@ same empty list and mean opposite things, so `meta.connections` travels with eve
 screen says different sentences for each — the same rule as Email's stale-source behaviour, and
 the failure the whole module exists to avoid.
 
-**Not built yet:** `reviews` and `business_profile`, scheduled sync (fetching is on demand),
-classification and transcription (`lead.classified` is declared and marked not raised), and
-conversion to a customer and job (`lead.converted`, likewise).
+**`reviews` shipped 2026-08-26.** Reviews on a connected Business Profile, and the replies to
+them. Two tables — a review is what a member of the public wrote, a reply is a public statement
+the organization is about to make in its own name, and when one goes wrong the first question is
+who approved it, which a column cannot answer.
+
+**Drafting and publishing are deliberately separate**, with their own permissions
+(`reviews.edit` and the fifth action, `reviews.publish`). A draft is private; publishing puts
+words on Google under the business's name, in public, permanently. Those are routinely different
+people — whoever writes the answer to an angry review is very often not whoever should decide it
+goes out — and one grant covering both could not express that on Roles. Same split as
+`inventory.financials`. The list opens on Unanswered, because an unanswered one-star sits at the
+top of a listing being the first thing a stranger reads.
+
+No automation can publish. `review.draft_reply` is offered and `review.publish_reply` is
+deliberately absent: the reply most worth automating is the one to a furious customer, and that is
+exactly the one a person must see first.
+
+Everything touching the legacy v4 host lives in one class, `BusinessProfileReviews`, so the day it
+is retired there is one place to start.
+
+**Not built yet:** `business_profile` (locations, hours, posts, media), scheduled sync for both
+modules (fetching is on demand), classification and transcription (`lead.classified` is declared
+and marked not raised), and conversion to a customer and job (`lead.converted`, likewise).
 
 **Three modules, not one.** `ModuleDefinition` holds one `AutomationSubject` and
 `assertKeysMatchSubject` refuses a trigger key whose prefix disagrees with it, so leads, reviews

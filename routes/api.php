@@ -36,6 +36,7 @@ use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\LeadsController;
+use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\VehicleAssignmentsController;
 use App\Http\Controllers\Api\VehicleInsuranceController;
 use App\Http\Controllers\Api\VehicleOwnershipController;
@@ -341,6 +342,18 @@ Route::prefix('v1')
         // No `store`. Every lead arrives from a connected account; one somebody
         // typed in would be indistinguishable from one a member of the public
         // actually sent, and the record is only worth holding because it is not.
+        // Reviews — what the public said on a connected Business Profile.
+        //
+        // Drafting and publishing are separate routes carrying separate
+        // permissions: one writes text nobody outside can see, the other speaks
+        // in public under the organization's name. No `store` — every review is
+        // fetched from Google, and one somebody typed in would be a fake.
+        Route::post('reviews/sync', [ReviewsController::class, 'sync']);
+        Route::get('reviews', [ReviewsController::class, 'index']);
+        Route::get('reviews/{review}', [ReviewsController::class, 'show']);
+        Route::put('reviews/{review}/reply', [ReviewsController::class, 'draftReply']);
+        Route::delete('reviews/{review}/reply', [ReviewsController::class, 'discardReply']);
+        Route::post('reviews/{review}/reply/publish', [ReviewsController::class, 'publishReply']);
         Route::post('leads/sync', [LeadsController::class, 'sync']);
         Route::get('leads', [LeadsController::class, 'index']);
         Route::get('leads/{lead}', [LeadsController::class, 'show']);

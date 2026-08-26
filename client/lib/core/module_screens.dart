@@ -10,6 +10,7 @@ import '../screens/fleet_screen.dart';
 import '../screens/inventory_screen.dart';
 import '../screens/jobs_screen.dart';
 import '../screens/leads_screen.dart';
+import '../screens/reviews_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../screens/phone_screen.dart';
 import '../screens/services_screen.dart';
@@ -110,6 +111,12 @@ final Map<String, ModuleScreen> moduleScreens = {
   'leads': ModuleScreen(
     Icons.call_received_outlined,
     (api, session) => LeadsScreen(api: api, session: session),
+  ),
+  // A star, not a speech bubble. What the tab is about is the public verdict
+  // on this business; the replying is what you do about it, not what it is.
+  'reviews': ModuleScreen(
+    Icons.star_outline,
+    (api, session) => ReviewsScreen(api: api, session: session),
   ),
   'automations': ModuleScreen(
     Icons.bolt_outlined,

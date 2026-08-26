@@ -10,6 +10,7 @@ use App\Models\Job;
 use App\Models\Lead;
 use App\Models\Service;
 use App\Models\Organization;
+use App\Models\Review;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Support\Modules\ActionDefinition;
@@ -1421,6 +1422,86 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Sets one field on the lead that triggered the rule: its '
                             .'status, or the summary kept against it. It cannot change the contact '
                             .'details the enquirer gave, which are a record of what they said.',
+                    ),
+                ],
+            ),
+
+            /*
+             * ── Reviews: what the public said, and the answer ────
+             *
+             * Sold separately from Leads on purpose. A business with three Maps
+             * listings and no advertising at all wants this and has no use for
+             * Local Services enquiries; the reverse is just as common.
+             *
+             * ── Five actions, and the fifth is the whole point ───
+             *
+             * DEFAULT_ACTIONS plus `publish`. `edit` writes a draft nobody
+             * outside the building can see. `publish` puts words on Google
+             * under the organization's name, in public, permanently, where a
+             * stranger reads them next to the review they wrote. Those are
+             * routinely different people — whoever composes the answer to an
+             * angry review is very often not whoever should decide it goes out
+             * — and one grant covering both would make that impossible to say
+             * on the Roles screen.
+             *
+             * Same split as `inventory.financials`: a second permission for the
+             * half of a module that carries the consequence.
+             *
+             * `create` is granted and nothing calls it. Nobody writes a review
+             * here; every row is fetched from Google. It stays because
+             * DEFAULT_ACTIONS carries it and a gap in the set reads as an
+             * oversight rather than a decision.
+             *
+             * ── What is deliberately NOT declared ────────────────
+             *
+             * `review.publish_reply` as an ACTION. A rule that could publish
+             * would be a rule that speaks for the business to the public with
+             * nobody reading it first, and the failure is not hypothetical: the
+             * reply most worth automating is the one to a furious customer, and
+             * that is exactly the one a person must see. Drafting is offered
+             * instead — it removes the blank page, not the judgement.
+             *
+             * Marketing refused to let a rule compose a newsletter for the same
+             * reason, and the reason survives the change of audience.
+             */
+            new ModuleDefinition(
+                key:     'reviews',
+                label:   'Reviews',
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish'],
+                subject: new AutomationSubject(Review::class, 'Review'),
+                triggers: [
+                    new TriggerDefinition(
+                        key:   'review.received',
+                        label: 'Review received',
+                        description: 'A new review arrived on a connected Business Profile. It '
+                            .'carries the rating, the text as the reviewer wrote it, and which '
+                            .'location it is about.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'review.reply_published',
+                        label: 'Reply published',
+                        // The distinction somebody will get wrong. Drafting
+                        // produces text; publishing is the moment it becomes
+                        // public under the customer's name. Only the second
+                        // raises this.
+                        description: 'An approved reply went live on Google. Drafting a reply does '
+                            .'not raise this — only publication does.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'review.reply_failed',
+                        label: 'Reply failed to publish',
+                        description: 'Google refused a reply somebody tried to publish. It carries '
+                            .'the reason, and the wording is kept rather than retried silently, so '
+                            .'a person decides what happens next.',
+                    ),
+                ],
+                automationActions: [
+                    new ActionDefinition(
+                        key:   'review.draft_reply',
+                        label: 'Draft a reply',
+                        description: 'Writes a suggested reply to the review that triggered the '
+                            .'rule and leaves it waiting for a person. It does not publish, and '
+                            .'nothing in this module can.',
                     ),
                 ],
             ),
