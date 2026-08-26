@@ -191,6 +191,44 @@ a **500 with no log entry** — because the thing that failed *was* the logging.
 That cost me a confusing ten minutes; the bit is there so it doesn't cost anyone
 else more.
 
+### Changing `.env` between deploys — two traps, both silent
+
+Adding a credential to the live `.env` does **not** reach the running app. Found
+the hard way on 2026-08-26 while wiring the EZ Leads Google clients.
+
+**1. The release has its own copy.** `/var/www/ezbizi/.env` is the master, and
+step 2 of the hook *copies* it into each timestamped release. Editing the master
+changes what the NEXT deploy gets and nothing about what is serving now:
+
+```bash
+# after editing /var/www/ezbizi/.env, push it into the live release too
+ssh app 'REL=$(readlink -f /var/www/ezbizi-current)
+         sudo cp -p /var/www/ezbizi/.env "$REL/.env"
+         sudo chown ubuntu:www-data "$REL/.env" && sudo chmod 0640 "$REL/.env"'
+```
+
+**2. `config:cache` runs as `ubuntu`, not `www-data`.** `bootstrap/cache` is
+`ubuntu:ubuntu`, so `sudo -u www-data php artisan config:cache` fails with
+*Permission denied* — and if its output is piped anywhere, it fails looking like
+it did nothing. The hook builds caches as `ubuntu` and only *health-checks* as
+`www-data`; do the same by hand.
+
+```bash
+ssh app 'cd /var/www/ezbizi-current && php artisan config:cache'   # as ubuntu
+```
+
+Together these are worse than either alone: the master file is right, the
+release file is stale, the cache build silently fails, and every check that
+reads `config()` keeps returning null with nothing on screen explaining why.
+Verify with the thing that actually matters rather than with `env()` — which is
+always null once config is cached:
+
+```bash
+ssh app 'cd /var/www/ezbizi-current && sudo -u www-data php artisan tinker   --execute="var_dump(config(\"services.google_ads.client_id\") !== null);"'
+```
+
+Or just redeploy, which does all of it in the right order.
+
 ### The `.env` trap
 
 **`/var/www/ezbizi/.env` must be `ubuntu:www-data`, mode `0640`. This is
