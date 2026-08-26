@@ -46,6 +46,7 @@ class RecordNumberGenerator
     public const ISSUES          = 'inventory_issue';
     public const SALES           = 'inventory_sale';
     public const SERVICES        = 'service';
+    public const TASKS           = 'task';
 
     public function __construct(
         private readonly TenantContext $tenant,
@@ -128,6 +129,7 @@ class RecordNumberGenerator
             self::ISSUES          => 'IS-',
             self::SALES           => 'SO-',
             self::SERVICES        => 'SVC-',
+            self::TASKS           => (string) $this->settings->get('numbering.task_prefix', $scope),
             default         => '',
         };
 

@@ -447,6 +447,10 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_STRING, default: 'V-',
             ),
             new SettingDefinition(
+                key: 'numbering.task_prefix', label: 'Task number prefix',
+                type: SettingDefinition::TYPE_STRING, default: 'T-',
+            ),
+            new SettingDefinition(
                 key: 'numbering.item_prefix', label: 'Item number prefix',
                 type: SettingDefinition::TYPE_STRING, default: 'I-',
             ),
