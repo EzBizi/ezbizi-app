@@ -40,3 +40,8 @@ Thumbs.db
 # almost all CanvasKit, and a new blob on every rebuild: committing it would
 # bloat the repo permanently for no gain.
 /public/app
+
+# Release artefacts — installers and app bundles, produced by scripts/release.sh.
+# Derived from a commit, tens of MB each, and a fresh blob on every build. They
+# are uploaded to Play and handed to testers, not versioned here.
+/dist

@@ -106,7 +106,12 @@ wants() { printf '%s\n' "${TARGETS[@]}" | grep -qx "$1"; }
 # ── the targets this machine can build itself ────────────────────
 build_locally() {
   case "$1" in
-    android) (cd client && flutter build apk --release "${DEFINES[@]}") ;;
+    # appbundle, not apk. Play has not accepted an APK for a new app since 2021,
+    # and the AAB is what the internal testing track distributes from — so the
+    # thing you install on a phone to test comes from this artefact too. An APK
+    # is only worth building to sideload without Play, which is not the path
+    # here; `flutter build apk` is still there by hand if that day comes.
+    android) (cd client && flutter build appbundle --release "${DEFINES[@]}") ;;
     *)       (cd client && flutter build "$1" --release "${DEFINES[@]}") ;;
   esac
 }
