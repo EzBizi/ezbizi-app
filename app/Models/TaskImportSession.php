@@ -25,7 +25,7 @@ class TaskImportSession extends Model implements HoldsPersonalData
 
     public static function retention(): RetentionPolicy
     {
-        return RetentionPolicy::elsewhere('the locked import-session expiry cleanup', 'Unconsumed staging metadata and bytes are removed after 30 minutes; consumed sessions are removed after commit cleanup.');
+        return RetentionPolicy::forever('No expiry cleanup is active yet, so import sessions are truthfully retained until the locked cleaner ships; consumed sessions will then be removed after commit cleanup.');
     }
 
     public static function personalDataPurpose(): string

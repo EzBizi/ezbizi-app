@@ -12,9 +12,18 @@ use App\Models\Notification;
 use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
 use App\Models\OnboardingDocument;
+use App\Models\Organization;
 use App\Models\PasswordReset;
 use App\Models\Role;
+use App\Models\Task;
+use App\Models\TaskBoard;
+use App\Models\TaskGroup;
+use App\Models\TaskRecordLink;
+use App\Models\TaskStatusOption;
+use App\Models\TaskView;
+use App\Models\TaskViewPreference;
 use App\Models\User;
+use App\Services\Auth\PasswordResets;
 use App\Support\Privacy\Anonymiser;
 use App\Support\Privacy\DeclaringModels;
 use App\Support\Privacy\Erasure;
@@ -55,6 +64,90 @@ class PersonalDataPurgeTest extends TestCase
         Storage::fake('local');
     }
 
+    public function test_a_personal_task_view_and_its_preferences_are_dropped_in_dependency_order(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        [$viewId, $preferenceId] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $board = $this->taskBoard($alpha);
+
+            $view = TaskView::create([
+                'board_id' => $board->id,
+                'owner_user_id' => $alpha['admin']->id,
+                'visibility' => 'personal',
+                'name' => 'My work',
+                'is_locked' => false,
+                'configuration' => [],
+            ]);
+
+            $preference = TaskViewPreference::create([
+                'board_id' => $board->id,
+                'view_id' => $view->id,
+                'user_id' => $alpha['admin']->id,
+                'collapsed_group_ids' => [],
+                'density' => 'compact',
+                'is_last_active' => true,
+                'scroll_left' => 12,
+                'scroll_top' => 34,
+            ]);
+
+            return [$view->id, $preference->id];
+        });
+
+        $this->purgeWalking([TaskView::class, TaskViewPreference::class], $alpha['admin']);
+
+        $this->inTenant($alpha['org'], function () use ($viewId, $preferenceId) {
+            $this->assertNull(TaskView::find($viewId));
+            $this->assertNull(TaskViewPreference::find($preferenceId));
+        });
+    }
+
+    public function test_a_governed_task_link_redacts_only_the_erased_targets_snapshot(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        [$customer, $customerLinkId, $personLinkId] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $customer = Customer::create([
+                'owning_franchise_id' => $alpha['franchise']->id,
+                'number' => 'C-TASKS-1',
+                'name' => 'Marta Ruiz',
+            ]);
+            $task = $this->taskFor($alpha);
+
+            $customerLink = TaskRecordLink::create([
+                'board_id' => $task->board_id,
+                'task_id' => $task->id,
+                'record_type' => 'customer',
+                'record_id' => $customer->id,
+                'display_snapshot' => ['label' => 'Marta Ruiz'],
+                'created_by' => $alpha['admin']->id,
+            ]);
+            $personLink = TaskRecordLink::create([
+                'board_id' => $task->board_id,
+                'task_id' => $task->id,
+                'record_type' => 'hr_person',
+                'record_id' => $alpha['admin']->id,
+                'display_snapshot' => ['label' => 'Alpha Admin'],
+                'created_by' => $alpha['admin']->id,
+            ]);
+
+            return [$customer, $customerLink->id, $personLink->id];
+        });
+
+        $this->purgeWalking([TaskRecordLink::class], $alpha['admin']);
+
+        $this->inTenant($alpha['org'], function () use ($customerLinkId, $personLinkId) {
+            $this->assertSame(['label' => 'Marta Ruiz'], TaskRecordLink::findOrFail($customerLinkId)->display_snapshot);
+            $this->assertNull(TaskRecordLink::findOrFail($personLinkId)->display_snapshot);
+        });
+
+        $this->purgeWalking([TaskRecordLink::class], $customer);
+
+        $this->inTenant($alpha['org'], fn () => $this->assertNull(
+            TaskRecordLink::findOrFail($customerLinkId)->display_snapshot,
+        ));
+    }
+
     // ── 1. anonymise in place, which is the whole design ─────────
 
     /**
@@ -81,7 +174,7 @@ class PersonalDataPurgeTest extends TestCase
 
             $job = Job::create([
                 'franchise_id' => $alpha['franchise']->id,
-                'customer_id'  => $customer->id,
+                'customer_id' => $customer->id,
                 'number' => 'J-00007', 'title' => 'Annual service',
                 'status' => 'scheduled',
             ]);
@@ -178,7 +271,7 @@ class PersonalDataPurgeTest extends TestCase
 
             $job = Job::create([
                 'franchise_id' => $alpha['franchise']->id,
-                'customer_id'  => $customer->id,
+                'customer_id' => $customer->id,
                 'number' => 'J-1', 'title' => 'Annual service', 'status' => 'scheduled',
             ]);
 
@@ -187,13 +280,13 @@ class PersonalDataPurgeTest extends TestCase
             $attachment->forceFill([
                 'organization_id' => $alpha['org']->id,
                 'attachable_type' => $job->getMorphClass(),
-                'attachable_id'   => $job->getKey(),
-                'original_name'   => 'marta-front-door.jpg',
-                'mime'            => 'image/jpeg',
-                'disk'            => 'local',
-                'path'            => 'attachments/marta-front-door.jpg',
-                'size_bytes'      => 12,
-                'checksum'        => hash('sha256', 'x'),
+                'attachable_id' => $job->getKey(),
+                'original_name' => 'marta-front-door.jpg',
+                'mime' => 'image/jpeg',
+                'disk' => 'local',
+                'path' => 'attachments/marta-front-door.jpg',
+                'size_bytes' => 12,
+                'checksum' => hash('sha256', 'x'),
             ])->save();
 
             Storage::disk('local')->put('attachments/marta-front-door.jpg', 'xxxxxxxxxxxx');
@@ -278,7 +371,7 @@ class PersonalDataPurgeTest extends TestCase
     {
         [$alpha, $employee] = $this->anEmployee();
 
-        app(\App\Services\Auth\PasswordResets::class)->issue($employee, '203.0.113.9');
+        app(PasswordResets::class)->issue($employee, '203.0.113.9');
 
         $this->assertSame(1, PasswordReset::query()
             ->where('subject_id', $employee->getKey())->count());
@@ -459,7 +552,7 @@ class PersonalDataPurgeTest extends TestCase
     public function test_a_purge_touches_nothing_in_another_organization(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $beta  = $this->provisionTenant('Beta');
+        $beta = $this->provisionTenant('Beta');
 
         $theirs = $this->inTenant($beta['org'], fn () => Customer::create([
             'owning_franchise_id' => $beta['franchise']->id,
@@ -536,18 +629,18 @@ class PersonalDataPurgeTest extends TestCase
         [$alpha, $employee] = $this->aSignedOnboarding();
 
         $preview = app(Anonymiser::class)->preview($employee);
-        $real    = $this->purge($employee);
+        $real = $this->purge($employee);
 
         $comparable = fn (array $report) => collect($report['tables'])
             ->keyBy('table')
             ->map(fn (array $line) => [
-                'applies'        => $line['applies'],
-                'rows'           => $line['rows'],
-                'rows_dropped'   => $line['rows_dropped'],
-                'files_removed'  => $line['files_removed'],
+                'applies' => $line['applies'],
+                'rows' => $line['rows'],
+                'rows_dropped' => $line['rows_dropped'],
+                'files_removed' => $line['files_removed'],
                 'columns_erased' => $line['columns_erased'],
-                'refusals'       => array_column($line['refusals'], 'because'),
-                'kept'           => $line['kept'],
+                'refusals' => array_column($line['refusals'], 'because'),
+                'kept' => $line['kept'],
             ])
             ->all();
 
@@ -605,7 +698,7 @@ class PersonalDataPurgeTest extends TestCase
     {
         [$alpha, $employee] = $this->anEmployee();
 
-        $name  = $employee->name;
+        $name = $employee->name;
         $email = $employee->email;
 
         $this->purge($employee);
@@ -738,7 +831,7 @@ class PersonalDataPurgeTest extends TestCase
         $walk = [SignatureThatRefusesTheErase::class, User::class];
 
         $preview = $this->purgeWalking($walk, $employee, dryRun: true);
-        $report  = $this->purgeWalking($walk, $employee);
+        $report = $this->purgeWalking($walk, $employee);
 
         $line = $this->tableLine($report, 'contract_signatures');
 
@@ -899,7 +992,7 @@ class PersonalDataPurgeTest extends TestCase
 
             Job::create([
                 'franchise_id' => $alpha['franchise']->id,
-                'customer_id'  => $customer->id,
+                'customer_id' => $customer->id,
                 'number' => 'J-00007', 'title' => 'Annual service',
                 'status' => 'scheduled',
             ]);
@@ -929,6 +1022,64 @@ class PersonalDataPurgeTest extends TestCase
     }
 
     // ── helpers ──────────────────────────────────────────────────
+
+    /** @param array{org: Organization, admin: User} $tenant */
+    private function taskBoard(array $tenant): TaskBoard
+    {
+        $board = new TaskBoard;
+        $board->forceFill([
+            'organization_id' => $tenant['org']->id,
+            'company_id' => null,
+            'franchise_id' => null,
+            'folder_id' => null,
+            'name' => 'Privacy test board',
+            'visibility' => 'scope',
+            'position' => 0,
+            'created_by' => $tenant['admin']->id,
+            'updated_by' => $tenant['admin']->id,
+        ])->save();
+
+        return $board;
+    }
+
+    /** @param array{org: Organization, admin: User} $tenant */
+    private function taskFor(array $tenant): Task
+    {
+        $board = $this->taskBoard($tenant);
+
+        $group = new TaskGroup;
+        $group->forceFill([
+            'organization_id' => $tenant['org']->id,
+            'board_id' => $board->id,
+            'name' => 'To do',
+            'position' => 0,
+        ])->save();
+
+        $status = new TaskStatusOption;
+        $status->forceFill([
+            'organization_id' => $tenant['org']->id,
+            'board_id' => $board->id,
+            'name' => 'Working on it',
+            'color' => '#fdab3d',
+            'category' => 'active',
+            'position' => 0,
+        ])->save();
+
+        $task = new Task;
+        $task->forceFill([
+            'organization_id' => $tenant['org']->id,
+            'board_id' => $board->id,
+            'group_id' => $group->id,
+            'number' => 'T-1',
+            'title' => 'Privacy test task',
+            'status_option_id' => $status->id,
+            'position' => 0,
+            'created_by' => $tenant['admin']->id,
+            'updated_by' => $tenant['admin']->id,
+        ])->save();
+
+        return $task;
+    }
 
     private function purge(Model $subject): array
     {
@@ -969,15 +1120,15 @@ class PersonalDataPurgeTest extends TestCase
     private function anEmployee(): array
     {
         $alpha = $this->provisionTenant('Alpha');
-        $role  = $this->roleFor($alpha);
+        $role = $this->roleFor($alpha);
 
         $invitation = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/invitations', [
-            'email'      => 'newstarter@example.test',
+            'email' => 'newstarter@example.test',
             'first_name' => 'Marta',
-            'last_name'  => 'Ruiz',
-            'role_id'    => $role->id,
+            'last_name' => 'Ruiz',
+            'role_id' => $role->id,
             'scope_type' => 'franchise',
-            'scope_id'   => $alpha['franchise']->id,
+            'scope_id' => $alpha['franchise']->id,
         ])->assertCreated();
 
         $this->accept($this->tokenFrom($invitation->json('data.accept_url')), $alpha);
@@ -996,7 +1147,7 @@ class PersonalDataPurgeTest extends TestCase
         [$alpha, $employee, $invitationId] = $this->anEmployee();
 
         $contractId = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
-            'name'   => 'Driver',
+            'name' => 'Driver',
             'fields' => [
                 ['key' => 'wage', 'label' => 'Hourly wage', 'type' => 'number',
                     'filled_by' => 'employer', 'required' => true],
@@ -1011,7 +1162,7 @@ class PersonalDataPurgeTest extends TestCase
 
         $id = $this->as($alpha['admin'])->postJson('/api/v1/hr/onboardings', [
             'invitation_id' => $invitationId,
-            'contract_id'   => $contractId,
+            'contract_id' => $contractId,
         ])->assertCreated()->json('data.id');
 
         $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", [
@@ -1030,9 +1181,9 @@ class PersonalDataPurgeTest extends TestCase
             ->assertOk()->json('data.content_hash');
 
         return $this->as($actor)->postJson("/api/v1/hr/onboardings/{$id}/sign", [
-            'field_key'     => $field,
-            'affirmation'   => $name,
-            'consent'       => true,
+            'field_key' => $field,
+            'affirmation' => $name,
+            'consent' => true,
             'document_hash' => $hash,
         ])->assertCreated();
     }
@@ -1042,8 +1193,8 @@ class PersonalDataPurgeTest extends TestCase
         return $this->inTenant($tenant['org'], function () use ($tenant) {
             $role = Role::create([
                 'organization_id' => $tenant['org']->id,
-                'name'            => 'Technician',
-                'is_system'       => false,
+                'name' => 'Technician',
+                'is_system' => false,
             ]);
 
             $role->syncPermissionKeys(['customers.view']);
@@ -1058,10 +1209,10 @@ class PersonalDataPurgeTest extends TestCase
         $this->app->forgetScopedInstances();
 
         $this->postJson('/api/v1/invitations/accept', [
-            'token'         => $token,
-            'password'      => 'a-real-password',
-            'phone'         => '+34 600 000 000',
-            'address'       => '1 Test Street',
+            'token' => $token,
+            'password' => 'a-real-password',
+            'phone' => '+34 600 000 000',
+            'address' => '1 Test Street',
             'date_of_birth' => '1990-04-03',
         ])->assertCreated();
     }

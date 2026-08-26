@@ -47,6 +47,16 @@ class TaskUpdate extends Model implements HoldsPersonalData
         return $subject instanceof User ? static::query()->where(fn (Builder $query) => $query->where('author_user_id', $subject->getKey())->orWhere('archived_by', $subject->getKey())) : null;
     }
 
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->whereNull('archived_at');
+    }
+
+    public function scopeArchived(Builder $query): Builder
+    {
+        return $query->whereNotNull('archived_at');
+    }
+
     public function task(): BelongsTo
     {
         return $this->belongsTo(Task::class);

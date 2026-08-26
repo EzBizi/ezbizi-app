@@ -25,7 +25,7 @@ class TaskUpdateAttachmentCandidate extends Model implements HoldsPersonalData
 
     public static function retention(): RetentionPolicy
     {
-        return RetentionPolicy::elsewhere('the locked hourly expired-candidate cleanup', 'Unclaimed staging metadata is removed after its 24-hour expiry; claimed rows are removed in the successful update transaction.');
+        return RetentionPolicy::forever('No expiry cleanup is active yet, so candidates are truthfully retained until the locked hourly cleaner ships; claimed rows will then be removed in the successful update transaction.');
     }
 
     public static function personalDataPurpose(): string

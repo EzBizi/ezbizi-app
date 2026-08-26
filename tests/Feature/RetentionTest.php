@@ -2,11 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
-use App\Models\AuditEvent;
 use App\Models\Contract;
 use App\Models\ContractVersion;
 use App\Models\Invitation;
@@ -24,6 +24,8 @@ use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use ReflectionMethod;
 use Tests\Concerns\BuildsTenants;
@@ -53,8 +55,8 @@ class RetentionTest extends TestCase
         }
 
         foreach ([TaskUpdateAttachmentCandidate::class, TaskImportSession::class] as $class) {
-            $this->assertSame(RetentionPolicy::ELSEWHERE, $class::retention()->kind);
-            $this->assertNotEmpty($class::retention()->enforcedBy);
+            $this->assertSame(RetentionPolicy::FOREVER, $class::retention()->kind);
+            $this->assertStringContainsString('cleanup', $class::retention()->because);
         }
     }
 
@@ -231,7 +233,7 @@ class RetentionTest extends TestCase
     public function test_the_sweep_reaches_every_organization(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $beta  = $this->provisionTenant('Beta');
+        $beta = $this->provisionTenant('Beta');
 
         foreach ([$alpha, $beta] as $tenant) {
             $this->inTenant($tenant['org'], fn () => Notification::create([
@@ -322,19 +324,19 @@ class RetentionTest extends TestCase
 
             $version = ContractVersion::create([
                 'organization_id' => $alpha['org']->id,
-                'contract_id'     => $contract->getKey(),
-                'version'         => 1,
-                'fields'          => [],
-                'created_by'      => $alpha['admin']->getKey(),
+                'contract_id' => $contract->getKey(),
+                'version' => 1,
+                'fields' => [],
+                'created_by' => $alpha['admin']->getKey(),
             ]);
 
             return Onboarding::create([
-                'organization_id'     => $alpha['org']->id,
-                'invitation_id'       => $invitation->getKey(),
+                'organization_id' => $alpha['org']->id,
+                'invitation_id' => $invitation->getKey(),
                 'contract_version_id' => $version->getKey(),
-                'status'              => Onboarding::COMPLETED,
-                'started_at'          => now()->subMonths(30),
-                'started_by_user_id'  => $alpha['admin']->getKey(),
+                'status' => Onboarding::COMPLETED,
+                'started_at' => now()->subMonths(30),
+                'started_by_user_id' => $alpha['admin']->getKey(),
             ])->getKey();
         });
 
@@ -592,10 +594,10 @@ class RetentionTest extends TestCase
             // Laravel's own plumbing. Each row is transient by construction —
             // written, consumed and removed by the framework — and none of them
             // is a record of anybody's dealings with an organization.
-            'migrations'  => 'the ledger of which migrations have run',
-            'cache'       => 'framework cache, evicted by its own TTL',
+            'migrations' => 'the ledger of which migrations have run',
+            'cache' => 'framework cache, evicted by its own TTL',
             'cache_locks' => 'framework cache locks, released on use',
-            'queue_jobs'  => 'pending queue payloads, deleted as they are processed. Named '
+            'queue_jobs' => 'pending queue payloads, deleted as they are processed. Named '
                 .'`queue_jobs` rather than `jobs` because `jobs` is the business table — see '
                 .'the rename migration, which exists so the two can never be confused.',
             'job_batches' => 'queue batch bookkeeping, pruned by queue:prune-batches',
@@ -640,15 +642,15 @@ class RetentionTest extends TestCase
             'organizations' => 'the tenant itself. Every other retention window is measured '
                 .'inside one of these rows, and removing it is what removes them — a sweep '
                 .'here would not be retention, it would be deleting clients on a timer',
-            'companies'  => 'a level of the organization\'s own structure (§3): one row per '
+            'companies' => 'a level of the organization\'s own structure (§3): one row per '
                 .'company, edited in place, soft-deleted when the client closes one and gone '
                 .'with the tenant',
             'franchises' => 'the operating units of that same structure (§5), on exactly the '
                 .'terms above. Whatever the organization has renamed them to (§8)',
-            'roles'      => 'the permission sets an organization composed for itself (§4). '
+            'roles' => 'the permission sets an organization composed for itself (§4). '
                 .'One row per role, edited in place; it names nobody, and it grows only when '
                 .'somebody creates a role',
-            'settings'   => 'one override per setting per scope (§6), overwritten when the '
+            'settings' => 'one override per setting per scope (§6), overwritten when the '
                 .'value changes rather than appended to. Absence means inherit, so a stale '
                 .'row is a wrong answer rather than clutter, and it is corrected rather than '
                 .'expired',
@@ -656,7 +658,7 @@ class RetentionTest extends TestCase
                 .'the version that is live (§5.5). The three tables that accumulate beneath '
                 .'it — automation_versions, automation_runs, automation_events — each state a '
                 .'policy of their own',
-            'contracts'  => 'the template, never the signed thing. `contract_versions` and '
+            'contracts' => 'the template, never the signed thing. `contract_versions` and '
                 .'`contract_signatures` are the records that matter and both state a policy; '
                 .'this row is a name and a pointer at the current version',
 
@@ -726,9 +728,9 @@ class RetentionTest extends TestCase
             $declared[(new $class)->getTable()] = $class;
         }
 
-        $database = \Illuminate\Support\Facades\DB::connection()->getDatabaseName();
+        $database = DB::connection()->getDatabaseName();
 
-        foreach (\Illuminate\Support\Facades\Schema::getTables() as $table) {
+        foreach (Schema::getTables() as $table) {
             $name = $table['name'];
 
             if (($table['schema'] ?? $database) !== $database) {
@@ -764,7 +766,7 @@ class RetentionTest extends TestCase
         foreach (array_keys($needsNoPolicy) as $name) {
             if (isset($declared[$name])) {
                 $stale[] = "{$name} (states retention now: {$declared[$name]})";
-            } elseif (! \Illuminate\Support\Facades\Schema::hasTable($name)) {
+            } elseif (! Schema::hasTable($name)) {
                 $stale[] = "{$name} (no such table)";
             }
         }
@@ -791,14 +793,14 @@ class RetentionTest extends TestCase
      * this test pass for the wrong reason: the event looked undelivered, the
      * sweep correctly left it alone, and the assertion about expiry failed.
      */
-    private function anEvent(array $tenant, string $key, ?\Illuminate\Support\Carbon $deliveredAt): AutomationEvent
+    private function anEvent(array $tenant, string $key, ?Carbon $deliveredAt): AutomationEvent
     {
         $event = new AutomationEvent;
 
         $event->forceFill([
             'organization_id' => $tenant['org']->id,
-            'event_key'   => $key,
-            'payload'     => [],
+            'event_key' => $key,
+            'payload' => [],
             'occurred_at' => now()->subYear(),
             'available_at' => now()->subYear(),
             'delivered_at' => $deliveredAt,

@@ -38,14 +38,29 @@ class TaskRecordLink extends Model implements HoldsPersonalData
     public static function personalDataHeld(): array
     {
         return [
-            new PersonalDataEntry('record_type, record_id, display_snapshot', PersonalDataEntry::CONTENT, 'Opaque target identity plus the allowlisted display snapshot, which can name a customer, worker, or other person.', Erasure::keep('The target registry owns reauthorization and redaction; the snapshot remains until that declaration privacy handler removes or redacts it.')),
+            new PersonalDataEntry('record_type, record_id', PersonalDataEntry::CONTENT, 'The opaque type and identifier of the governed record connected to this task.', Erasure::keep('The identity is required to reauthorize the target and render an unavailable link without retaining its display data.')),
+            new PersonalDataEntry('display_snapshot', PersonalDataEntry::CONTENT, 'The target declaration allowlisted display snapshot, which can name a customer, worker, or other person.', Erasure::erase()),
             new PersonalDataEntry('created_by', PersonalDataEntry::ACTIVITY, 'The person who created the governed link.', Erasure::keep('The referenced account is anonymised at its source while link history remains.')),
         ];
     }
 
     public static function personalDataAbout(Model $subject): ?Builder
     {
-        return $subject instanceof User ? static::query()->where('created_by', $subject->getKey()) : null;
+        $type = match ($subject::class) {
+            Customer::class => 'customer',
+            Job::class => 'job',
+            Vehicle::class => 'vehicle',
+            InventoryItem::class => 'inventory_item',
+            InspectionReport::class => 'inspection_report',
+            InspectionRun::class => 'inspection_run',
+            User::class => 'hr_person',
+            Service::class => 'service',
+            default => null,
+        };
+
+        return $type === null ? null : static::query()
+            ->where('record_type', $type)
+            ->where('record_id', $subject->getKey());
     }
 
     public function task(): BelongsTo

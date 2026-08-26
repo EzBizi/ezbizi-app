@@ -85,6 +85,15 @@ class TaskModelTest extends TestCase
         $this->assertSame('array', (new TaskActivity)->getCasts()['data']);
     }
 
+    public function test_task_update_archive_scopes_are_explicit(): void
+    {
+        $active = TaskUpdate::withoutGlobalScopes()->active()->getQuery()->wheres;
+        $archived = TaskUpdate::withoutGlobalScopes()->archived()->getQuery()->wheres;
+
+        $this->assertSame(['type' => 'Null', 'column' => 'archived_at', 'boolean' => 'and'], $active[0]);
+        $this->assertSame(['type' => 'NotNull', 'column' => 'archived_at', 'boolean' => 'and'], $archived[0]);
+    }
+
     public function test_board_and_task_factories_build_their_domain_models(): void
     {
         $this->assertInstanceOf(TaskBoard::class, TaskBoard::factory()->make());

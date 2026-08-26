@@ -47,6 +47,13 @@ class TaskView extends Model implements HoldsPersonalData
         return $subject instanceof User ? static::query()->where('owner_user_id', $subject->getKey()) : null;
     }
 
+    protected static function booted(): void
+    {
+        static::deleting(function (self $view): void {
+            $view->preferences()->delete();
+        });
+    }
+
     public function scopePersonal(Builder $query): Builder
     {
         return $query->where('visibility', 'personal');
