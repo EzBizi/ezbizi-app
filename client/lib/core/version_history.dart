@@ -8,6 +8,24 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0103',
+      date: '26 Aug 2026',
+      items: [
+        'The Windows app keeps itself up to date. It looks for a newer build '
+            'when it starts and once an hour after that, and installs what it '
+            'finds — after a minute of warning you can put off, so an update '
+            'never arrives in the middle of something you were typing.',
+        'The version number at the foot of the sidebar, and on the sign-in '
+            'screen, has a button beside it: check now, or install the build '
+            'that is waiting.',
+        'The installer no longer fails when EzBizi is already open. It closes '
+            'the app, replaces it, and starts it again.',
+        'The installer looks like software now — its own icon, artwork that '
+            'stays sharp on any screen, and a proper welcome page.',
+        'The app icon lost the dark edges around its corners.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0102',
       date: '26 Aug 2026',
       items: [
