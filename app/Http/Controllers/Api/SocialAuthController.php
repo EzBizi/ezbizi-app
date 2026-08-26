@@ -230,6 +230,15 @@ class SocialAuthController extends Controller
                         'handle'       => $account->handle,
                     ]);
 
+                    // Only Meta issues one, and only Meta's callbacks need it.
+                    // Written on every reconnect so a row made before the
+                    // column existed picks it up rather than staying unmatched.
+                    $metaUser = $grant->extra['meta_user_id'] ?? null;
+
+                    if (is_string($metaUser) && $metaUser !== '') {
+                        $connection->forceFill(['meta_user_id' => $metaUser]);
+                    }
+
                     $tokens = [
                         'refresh_token' => $account->refreshToken ?? $grant->refreshToken,
                         'access_token'  => $account->accessToken ?? $grant->accessToken,

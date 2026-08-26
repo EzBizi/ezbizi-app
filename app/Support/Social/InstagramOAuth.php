@@ -104,6 +104,12 @@ final class InstagramOAuth implements SocialOAuth
             throw SocialOAuthRefused::exchangeFailed('Instagram');
         }
 
+        // Kept because Meta's deauthorize and data-deletion callbacks arrive
+        // carrying only this id. Without it there is no way to find what the
+        // person who removed the app had authorised.
+        $metaUser = $short->json('user_id');
+        $metaUser = is_scalar($metaUser) ? (string) $metaUser : null;
+
         try {
             $long = Http::timeout(self::TIMEOUT)->get('https://graph.instagram.com/access_token', [
                 'grant_type'    => 'ig_exchange_token',
@@ -111,7 +117,10 @@ final class InstagramOAuth implements SocialOAuth
                 'access_token'  => $shortToken,
             ]);
         } catch (ConnectionException) {
-            return new SocialOAuthGrant(accessToken: $shortToken);
+            return new SocialOAuthGrant(
+                accessToken: $shortToken,
+                extra: $metaUser === null ? [] : ['meta_user_id' => $metaUser],
+            );
         }
 
         $access = is_string($long->json('access_token')) ? $long->json('access_token') : $shortToken;
@@ -119,6 +128,7 @@ final class InstagramOAuth implements SocialOAuth
         return new SocialOAuthGrant(
             accessToken: $access,
             expiresIn: is_numeric($long->json('expires_in')) ? (int) $long->json('expires_in') : null,
+            extra: $metaUser === null ? [] : ['meta_user_id' => $metaUser],
         );
     }
 

@@ -47,6 +47,7 @@ use App\Http\Controllers\Api\MailboxesController;
 use App\Http\Controllers\Api\MailboxMessagesController;
 use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\BlueskyConnectController;
+use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\SocialConnectionsController;
 use App\Http\Controllers\Api\SocialProvidersController;
@@ -236,6 +237,22 @@ Route::get('v1/email/google/callback', [GoogleMailAuthController::class, 'callba
 Route::get('v1/email/microsoft/callback', [MicrosoftMailAuthController::class, 'callback'])
     ->middleware('throttle:30,1')
     ->name('email.microsoft.callback');
+
+/*
+| The two callbacks Meta requires. Unauthenticated by necessity - Meta calls
+| them, so there is no session and no token. The signed_request's HMAC is the
+| authentication; see MetaCallbacksController.
+|
+| Throttled harder than the OAuth routes because these are public, take no
+| credential, and delete things when they verify.
+*/
+Route::post('v1/social/meta/deauthorize', [MetaCallbacksController::class, 'deauthorize'])
+    ->middleware('throttle:60,1')
+    ->name('social.meta.deauthorize');
+
+Route::post('v1/social/meta/data-deletion', [MetaCallbacksController::class, 'dataDeletion'])
+    ->middleware('throttle:60,1')
+    ->name('social.meta.data-deletion');
 
 Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callback'])
     ->middleware('throttle:30,1')

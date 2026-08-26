@@ -130,6 +130,14 @@ return [
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/facebook/callback',
         'instagram_redirect' => env('META_INSTAGRAM_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/instagram/callback',
+        /*
+        | Threads is its OWN app inside the same Meta app, with its own id and
+        | its own secret - the console shows both side by side. Signing a
+        | Threads request with the Facebook pair is rejected, so these are
+        | separate keys rather than a reuse of the two above.
+        */
+        'threads_id'     => env('META_THREADS_APP_ID'),
+        'threads_secret' => env('META_THREADS_APP_SECRET'),
         'threads_redirect' => env('META_THREADS_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/threads/callback',
     ],
