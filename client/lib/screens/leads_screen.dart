@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
+import '../widgets/connect_account.dart';
 
 /// Leads — enquiries from connected advertising (EZ Leads).
 ///
@@ -278,10 +279,16 @@ class _LeadsScreenState extends State<LeadsScreen> {
               textAlign: TextAlign.center,
             ),
             if (!connected) ...[
-              const SizedBox(height: 16),
-              Text(
-                'Connect one on Marketing → Connections.',
-                style: theme.textTheme.bodySmall,
+              const SizedBox(height: 18),
+              // The button lives HERE rather than in Marketing: this is the
+              // module that reads the account, and `leads.edit` is what gates
+              // it. Somebody looking at an empty Leads tab should not have to
+              // learn which other tab owns the connection.
+              ConnectAccount(
+                api: widget.api,
+                label: 'Google Ads',
+                startPath: '/social/google-ads/start',
+                onConnected: _load,
               ),
             ],
           ],

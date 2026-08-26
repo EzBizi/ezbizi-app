@@ -106,6 +106,63 @@ enum SocialProvider: string
         return [self::GoogleBusinessProfile, self::GoogleAds];
     }
 
+    /**
+     * Which permission lets somebody connect this account.
+     *
+     * Not one answer for all eleven, and the reason is what the connection is
+     * FOR. Connecting a Facebook page is a Marketing act — it is a place the
+     * tenant will publish. Connecting a Google Ads account is not: nobody
+     * posts as it, and the only screen that reads it is Leads. Gating it on
+     * `marketing.edit` would mean somebody holding every `leads.*` permission
+     * could not connect the account the module runs on, while somebody with
+     * Marketing and no access to Leads at all could.
+     *
+     * The rule is that the permission follows the module that USES the
+     * connection, because that is who can tell whether it is the right account.
+     */
+    public function connectPermission(): string
+    {
+        return match ($this) {
+            self::GoogleAds => 'leads.edit',
+            self::GoogleBusinessProfile => 'reviews.edit',
+            default => 'marketing.edit',
+        };
+    }
+
+    /**
+     * The route constraint for `/social/{network}/…`, built from the enum.
+     *
+     * It used to be eight names typed into `routes/api.php` three times over.
+     * Adding a provider then meant remembering all three, and forgetting was
+     * silent in the worst way: the driver loads, `notReadyBecause()` answers
+     * READY, the config resolves — and every request 404s, because the route
+     * that would reach it does not exist. That is exactly what happened to
+     * Google Ads and Business Profile.
+     *
+     * Derived here so the list cannot drift from the providers again. Bluesky
+     * is absent because it connects with a handle and an app password rather
+     * than a consent window, and has its own route.
+     */
+    public static function oauthRoutePattern(): string
+    {
+        $keys = array_map(
+            fn (self $p) => preg_quote($p->routeKey(), '/'),
+            array_filter(self::cases(), fn (self $p) => $p !== self::Bluesky),
+        );
+
+        return implode('|', $keys);
+    }
+
+    /** What the refusal calls the act, when somebody may not do it. */
+    public function connectAct(): string
+    {
+        return match ($this) {
+            self::GoogleAds => 'connect a Google Ads account',
+            self::GoogleBusinessProfile => 'connect a Business Profile',
+            default => 'connect a social account',
+        };
+    }
+
     public function startPath(): string
     {
         return $this === self::Bluesky

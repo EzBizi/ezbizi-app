@@ -43,10 +43,12 @@ class SocialAuthController extends Controller
         $oauth = $this->driverOrAbort($network);
         $user  = $request->user();
 
+        // The permission follows the module that USES the connection, not this
+        // controller. A Google Ads account is connected by whoever runs Leads.
         abort_unless(
-            $user->hasPermission('marketing.edit'),
+            $user->hasPermission($oauth->provider()->connectPermission()),
             Status::HTTP_FORBIDDEN,
-            Refusal::permission('connect a social account')->message(),
+            Refusal::permission($oauth->provider()->connectAct())->message(),
         );
 
         $notReady = $oauth->notReadyBecause();
@@ -82,13 +84,13 @@ class SocialAuthController extends Controller
 
     public function status(Request $request, string $network): JsonResponse
     {
-        $this->driverOrAbort($network);
-        $user = $request->user();
+        $oauth = $this->driverOrAbort($network);
+        $user  = $request->user();
 
         abort_unless(
-            $user->hasPermission('marketing.edit'),
+            $user->hasPermission($oauth->provider()->connectPermission()),
             Status::HTTP_FORBIDDEN,
-            Refusal::permission('connect a social account')->message(),
+            Refusal::permission($oauth->provider()->connectAct())->message(),
         );
 
         $flow = $request->query('flow');
@@ -154,12 +156,13 @@ class SocialAuthController extends Controller
             $user = User::find($signIn->user_id);
 
             if ($user === null || ! $user->is_active
-                || ! $user->hasPermission('marketing.edit')
+                || ! $user->hasPermission($oauth->provider()->connectPermission())
                 || ! $this->access->reachesScope($user, $signIn->scope_type, $signIn->scope_id)) {
-                throw SocialOAuthRefused::noLongerPermitted(
-                    'The person who started it is no longer able to connect a social account. '
-                    .'Somebody who can manage Marketing needs to connect it.',
-                );
+                throw SocialOAuthRefused::noLongerPermitted(sprintf(
+                    'The person who started it is no longer able to %s. Somebody who still can '
+                    .'needs to connect it.',
+                    $oauth->provider()->connectAct(),
+                ));
             }
 
             $grant    = $oauth->exchange($code, $signIn->code_verifier);

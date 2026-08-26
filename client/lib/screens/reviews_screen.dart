@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
+import '../widgets/connect_account.dart';
 
 /// Reviews — what the public said, and the answer.
 ///
@@ -296,6 +297,17 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
+            if (!_connected) ...[
+              const SizedBox(height: 18),
+              // Same reasoning as Leads: the module that reads the profile is
+              // the one that offers to connect it, gated on `reviews.edit`.
+              ConnectAccount(
+                api: widget.api,
+                label: 'Business Profile',
+                startPath: '/social/business-profile/start',
+                onConnected: _load,
+              ),
+            ],
           ],
         ),
       ),

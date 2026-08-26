@@ -37,6 +37,7 @@ use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\LeadsController;
 use App\Http\Controllers\Api\ReviewsController;
+use App\Support\Social\SocialProvider;
 use App\Http\Controllers\Api\VehicleAssignmentsController;
 use App\Http\Controllers\Api\VehicleInsuranceController;
 use App\Http\Controllers\Api\VehicleOwnershipController;
@@ -256,7 +257,7 @@ Route::post('v1/social/meta/data-deletion', [MetaCallbacksController::class, 'da
 
 Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callback'])
     ->middleware('throttle:30,1')
-    ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x')
+    ->where('network', SocialProvider::oauthRoutePattern())
     ->name('social.callback');
 
 /*
@@ -659,9 +660,9 @@ Route::prefix('v1')
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
         Route::post('social/bluesky/connect', [BlueskyConnectController::class, 'store']);
         Route::post('social/{network}/start', [SocialAuthController::class, 'start'])
-            ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x');
+            ->where('network', SocialProvider::oauthRoutePattern());
         Route::get('social/{network}/status', [SocialAuthController::class, 'status'])
-            ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x');
+            ->where('network', SocialProvider::oauthRoutePattern());
 
         // ── Phone: Twilio connections (org / company) ────────────
         //
