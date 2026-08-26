@@ -39,7 +39,7 @@ class MetaCallbacksTest extends TestCase
         ]));
 
         $signature = $this->base64url(
-            hash_hmac('sha256', $payload, $secret ?? self::SECRET, raw_output: true),
+            hash_hmac('sha256', $payload, $secret ?? self::SECRET, binary: true),
         );
 
         return $signature.'.'.$payload;

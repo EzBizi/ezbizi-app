@@ -59,7 +59,7 @@ final class MetaSignedRequest
             return null;
         }
 
-        $expected = hash_hmac('sha256', $encodedPayload, $secret, raw_output: true);
+        $expected = hash_hmac('sha256', $encodedPayload, $secret, binary: true);
 
         // hash_equals, not ===. A timing-safe compare costs nothing here and a
         // signature check is exactly the place a byte-at-a-time comparison
