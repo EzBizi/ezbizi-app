@@ -47,7 +47,8 @@ class DataInventoryTest extends TestCase
         // inventory listing only `users` and `customers` would be worse than
         // none — because it would be believed.
         foreach (['users', 'customers', 'invitations', 'attachments',
-            'audit_events', 'notifications'] as $table) {
+            'audit_events', 'notifications', 'task_boards', 'tasks', 'task_updates',
+            'task_record_links', 'task_views', 'task_import_sessions'] as $table) {
             $this->assertContains($table, $tables, "The inventory does not mention {$table}.");
         }
 

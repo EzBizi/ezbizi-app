@@ -12,6 +12,13 @@ use App\Models\ContractVersion;
 use App\Models\Invitation;
 use App\Models\Notification;
 use App\Models\Onboarding;
+use App\Models\Task;
+use App\Models\TaskActivity;
+use App\Models\TaskImportSession;
+use App\Models\TaskRecordLink;
+use App\Models\TaskUpdate;
+use App\Models\TaskUpdateAttachmentCandidate;
+use App\Models\TaskUpdateVersion;
 use App\Support\Privacy\DeclaringModels;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
@@ -37,6 +44,19 @@ class RetentionTest extends TestCase
     use RefreshDatabase;
 
     // ── 1. every table has an answer, and it is a real one ───────
+
+    public function test_tasks_retention_matches_the_actual_restrictive_and_cleanup_boundaries(): void
+    {
+        foreach ([Task::class, TaskUpdate::class, TaskUpdateVersion::class,
+            TaskActivity::class, TaskRecordLink::class] as $class) {
+            $this->assertSame(RetentionPolicy::FOREVER, $class::retention()->kind);
+        }
+
+        foreach ([TaskUpdateAttachmentCandidate::class, TaskImportSession::class] as $class) {
+            $this->assertSame(RetentionPolicy::ELSEWHERE, $class::retention()->kind);
+            $this->assertNotEmpty($class::retention()->enforcedBy);
+        }
+    }
 
     public function test_every_table_that_states_retention_states_something_readable(): void
     {
