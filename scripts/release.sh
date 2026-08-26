@@ -37,6 +37,13 @@ DIST="dist"
 TARGETS="web,windows,android"
 DRY_RUN=0
 
+# The marketing site's box, which is NOT the app box — see AGENTS/DEPLOY. The
+# installer is served from www.ezbizi.com because that is where a person who
+# has not installed anything yet goes looking, and because the update manifest
+# has to be reachable by a client the app server may already be refusing.
+WEB_REMOTE="app"
+WEB_DOWNLOADS="/var/www/www/download"
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --only)    TARGETS="$2"; shift 2 ;;
@@ -207,6 +214,44 @@ if wants windows; then
     "/DSourceDir=$(cygpath -w "$PWD/$WIN_BUILD")" \
     "/DOutputDir=$(cygpath -w "$PWD/$DIST")" \
     "$(cygpath -w "$PWD/scripts/windows-installer.iss")"
+
+  # ── publish it, so installed copies can find it ──────────────────
+  #
+  # An installer nobody can download updates nobody. The app asks
+  # https://www.ezbizi.com/download/windows.json on launch and offers what it
+  # finds; see client/lib/core/desktop_update.dart.
+  #
+  # Two names for one file, deliberately. The versioned copy is the archive —
+  # it never changes, so a specific build stays fetchable for as long as anyone
+  # needs to reproduce a bug report. `EzBizi-setup.exe` is the moving target
+  # the manifest points at, so the URL in the manifest is stable and the
+  # download is always the newest.
+  #
+  # The manifest is written AFTER both uploads. A manifest announcing a version
+  # whose installer has not landed yet sends every client to a 404 for as long
+  # as the upload takes, and they would all try at once.
+  WIN_EXE="$DIST/EzBizi-${VERSION}-windows-x64.exe"
+
+  if [ "$DRY_RUN" -eq 0 ] && [ ! -f "$WIN_EXE" ]; then
+    echo "✗ Inno reported success but $WIN_EXE is not there." >&2
+    exit 1
+  fi
+
+  echo "→ windows — publishing the installer and its manifest"
+  run ssh "$WEB_REMOTE" "sudo mkdir -p '$WEB_DOWNLOADS' && sudo chown www-data:www-data '$WEB_DOWNLOADS'"
+
+  if [ "$DRY_RUN" -eq 0 ]; then
+    gzip -c "$WIN_EXE" | ssh "$WEB_REMOTE" "
+      set -e
+      gunzip -c | sudo tee '$WEB_DOWNLOADS/EzBizi-${VERSION}-windows-x64.exe' >/dev/null
+      sudo cp '$WEB_DOWNLOADS/EzBizi-${VERSION}-windows-x64.exe' '$WEB_DOWNLOADS/EzBizi-setup.exe'
+      printf '%s' '{\"version\":\"${VERSION}\",\"url\":\"https://www.ezbizi.com/download/EzBizi-setup.exe\",\"built\":\"${COMMIT}\"}' \
+        | sudo tee '$WEB_DOWNLOADS/windows.json' >/dev/null
+      sudo chown -R www-data:www-data '$WEB_DOWNLOADS'
+    "
+  else
+    echo "   would upload $WIN_EXE and write windows.json"
+  fi
 fi
 
 # ── 3. android ───────────────────────────────────────────────────

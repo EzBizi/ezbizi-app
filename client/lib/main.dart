@@ -5,6 +5,7 @@ import 'core/address.dart';
 import 'core/api_client.dart';
 import 'core/contracts.dart';
 import 'core/deployment.dart';
+import 'core/desktop_update.dart';
 import 'core/files.dart';
 import 'core/module_screens.dart';
 import 'core/session.dart';
@@ -322,6 +323,14 @@ class _HomeShellState extends State<HomeShell> {
   _Rail _rail = _Rail.modules;
   void Function()? _stopListening;
 
+  /// A newer installed build, once the check has found one. See
+  /// core/desktop_update.dart.
+  AvailableUpdate? _update;
+
+  /// Set while the installer is being fetched, and to the reason if it failed.
+  bool _updating = false;
+  String? _updateError;
+
   @override
   void initState() {
     super.initState();
@@ -329,6 +338,37 @@ class _HomeShellState extends State<HomeShell> {
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
       setState(() => _apply(path));
+    });
+
+    // Not awaited, and deliberately so: an update check is never a reason to
+    // delay drawing the app. It returns null on the web, on Android, and on
+    // any failure at all, so the common path is a future nobody notices.
+    DesktopUpdate.check().then((found) {
+      if (!mounted || found == null) return;
+      setState(() => _update = found);
+    });
+  }
+
+  Future<void> _installUpdate() async {
+    final update = _update;
+
+    if (update == null || _updating) return;
+
+    setState(() {
+      _updating = true;
+      _updateError = null;
+    });
+
+    final failure = await DesktopUpdate.install(update);
+
+    if (!mounted) return;
+
+    // Success closes this process, so reaching here at all with null means the
+    // installer took over and there is nothing left to draw. Only the failure
+    // path has a person still looking at the screen.
+    setState(() {
+      _updating = false;
+      _updateError = failure;
     });
   }
 
@@ -617,12 +657,12 @@ class _HomeShellState extends State<HomeShell> {
     final shownId = showingProfile
         ? 'account'
         : pinnedIndex != null
-            ? pinned[pinnedIndex].id
-            : staffIndex != null
-                ? staffOnly[staffIndex].id
-                : railIndex != null
-                    ? destinations[railIndex].id
-                    : 'account';
+        ? pinned[pinnedIndex].id
+        : staffIndex != null
+        ? staffOnly[staffIndex].id
+        : railIndex != null
+        ? destinations[railIndex].id
+        : 'account';
     _syncShown(Address.pathOf(shownId));
 
     return Scaffold(
@@ -717,13 +757,15 @@ class _HomeShellState extends State<HomeShell> {
                   );
                 }
                 return Row(
-                  children: [...brand, Flexible(child: switcher)],
+                  children: [
+                    ...brand,
+                    Flexible(child: switcher),
+                  ],
                 );
               },
             ),
             actions: [
-              if (me.timeClock.showButton)
-                _clockButton(context, me),
+              if (me.timeClock.showButton) _clockButton(context, me),
               // Light / dark, one tap, from anywhere.
               //
               // It is the same preference the account screen holds (§2.1 category
@@ -774,7 +816,8 @@ class _HomeShellState extends State<HomeShell> {
                   child: ActionChip(
                     avatar: const Icon(Icons.shield_outlined, size: 16),
                     label: const Text('Set up two-factor'),
-                    tooltip: 'Your organization requires two-factor '
+                    tooltip:
+                        'Your organization requires two-factor '
                         'authentication. The rest of the app is on hold until '
                         'your authenticator is set up.',
                     backgroundColor: Theme.of(
@@ -796,7 +839,8 @@ class _HomeShellState extends State<HomeShell> {
                   ),
                 ),
               PopupMenuButton<String>(
-                tooltip: '${UiStrings.t('shell.your_account')} — ${me.name} (${me.email})',
+                tooltip:
+                    '${UiStrings.t('shell.your_account')} — ${me.name} (${me.email})',
                 // The photo, not just the initial. It was an initial always: the
                 // profile screen was the only place a picture appeared, and even
                 // there it did not, because it was fetched without the token the
@@ -828,8 +872,14 @@ class _HomeShellState extends State<HomeShell> {
                     ),
                   ),
                   const PopupMenuDivider(),
-                  PopupMenuItem(value: 'me', child: Text(UiStrings.t('shell.your_account'))),
-                  PopupMenuItem(value: 'out', child: Text(UiStrings.t('shell.sign_out'))),
+                  PopupMenuItem(
+                    value: 'me',
+                    child: Text(UiStrings.t('shell.your_account')),
+                  ),
+                  PopupMenuItem(
+                    value: 'out',
+                    child: Text(UiStrings.t('shell.sign_out')),
+                  ),
                 ],
                 onSelected: (v) {
                   if (v == 'out') {
@@ -845,149 +895,242 @@ class _HomeShellState extends State<HomeShell> {
           ),
         ),
       ),
-      body: Column(
-        children: [
-          if (_timeClockNotice != null)
-            Material(
-              color: Theme.of(context)
-                  .colorScheme
-                  .errorContainer
-                  .withValues(alpha: 0.4),
-              child: SizedBox(
-                width: double.infinity,
+      /*
+       * Edge to edge, handled rather than hoped for.
+       *
+       * The app targets SDK 36, and from Android 15 that means the system draws
+       * the app under the status bar and under the gesture bar unless the app
+       * says where its content may go. Play flagged this on release 97, and the
+       * whole client had exactly one SafeArea in it — on the screen that tells
+       * you to update, of all places.
+       *
+       * `top: false` because the AppBar above already consumes the status bar
+       * inset; taking it twice would leave a band of empty chrome. The sides
+       * matter in landscape, where a display cutout eats into the row.
+       */
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            /*
+             * A newer build, offered rather than imposed.
+             *
+             * A strip above the work, dismissed by acting on it, and never a
+             * modal: somebody halfway through writing up a job should not have
+             * the app taken away because a release happened. The wall is
+             * VersionGate's job, and only once the server actually refuses this
+             * build — see core/desktop_update.dart for why both exist.
+             */
+            if (_update != null)
+              Material(
+                color: Theme.of(context).colorScheme.primaryContainer,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: Text(
-                    _timeClockNotice!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.system_update_alt, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _updateError ??
+                              'EzBizi ${_update!.version} is available. '
+                                  'Updating closes the app and reopens it.',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (_updating)
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      else ...[
+                        TextButton(
+                          onPressed: () => setState(() => _update = null),
+                          child: const Text('Later'),
+                        ),
+                        FilledButton(
+                          onPressed: _installUpdate,
+                          child: Text(
+                            _updateError == null ? 'Update' : 'Try again',
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
-            ),
-          Expanded(
-            child: Row(
-              children: [
-                if (wide)
-                  // Two shapes, and the default is the list.
-                  //
-                  // A list reads faster: the eye scans labels down a column, and the
-                  // icons are a secondary cue rather than the thing being read.
-                  // Blocks fit more in less width and some people prefer them, so
-                  // they stay available — as the user's own preference, not an
-                  // opinion imposed by whoever wrote this.
-                  _maybeThemed(
-                    // In a mixed mode the sidebar runs on the opposite theme to the
-                    // page. Wrapping only the sidebar — rather than building two
-                    // MaterialApps or threading colours by hand — means every widget
-                    // inside it, including NavigationRail's own indicator and hover
-                    // colours, resolves against the right scheme without knowing that
-                    // anything unusual is happening.
-                    //
-                    // The top bar takes this same override, so the chrome is one
-                    // theme and the page is the other.
-                    EzBiziTheme.navigationOverride(me.theme),
-                    builder: (context) => NavigationSidebar(
-                      expanded: expanded,
-                      width: me.navigationWidth,
-                      destinations: destinations,
-                      pinned: pinned,
-                      staffOnly: staffOnly,
-                      selectedIndex: railIndex,
-                      pinnedIndex: pinnedIndex,
-                      staffIndex: staffIndex,
-                      onSelected: (i) =>
-                          _show(_Rail.modules, destinations[i].id),
-                      onPinnedSelected: (i) =>
-                          _show(_Rail.pinned, pinned[i].id),
-                      onStaffSelected: (i) =>
-                          _show(_Rail.staff, staffOnly[i].id),
-                      // Written through the same path as every other preference, once
-                      // the drag settles.
-                      onResized: (w) => widget.session
-                          .setPreference('navigation.width', w.round()),
+            if (_timeClockNotice != null)
+              Material(
+                color: Theme.of(
+                  context,
+                ).colorScheme.errorContainer.withValues(alpha: 0.4),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      _timeClockNotice!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                Expanded(
-                  // Keyed by the current view, so changing it REMOUNTS the screen and
-                  // its initState fetches again.
-                  //
-                  // Every screen loads once in initState — the ordinary Flutter
-                  // shape — so without this the switcher changed the label and left
-                  // Connecticut's jobs on the page while claiming to be in Texas.
-                  // Making the scope part of the screen's identity is the fix that
-                  // needs no screen to know the switcher exists.
-                  child: KeyedSubtree(
-                    key: ValueKey('${me.scope.type}:${me.scope.id}'),
-                    // Their own account is the last fallback, and the only honest
-                    // one: it is the single screen that is theirs by definition and
-                    // cannot answer 403. It is what somebody whose role reaches no
-                    // module at all lands on, rather than an empty frame.
-                    child: pinnedIndex != null
-                        ? pinned[pinnedIndex].screen
-                        : staffIndex != null
-                        ? staffOnly[staffIndex].screen
-                        : (showingProfile || railIndex == null)
-                        ? ProfileScreen(
-                            api: widget.api,
-                            session: widget.session,
-                          )
-                        : destinations[railIndex].screen,
-                  ),
                 ),
-              ],
+              ),
+            Expanded(
+              child: Row(
+                children: [
+                  if (wide)
+                    // Two shapes, and the default is the list.
+                    //
+                    // A list reads faster: the eye scans labels down a column, and the
+                    // icons are a secondary cue rather than the thing being read.
+                    // Blocks fit more in less width and some people prefer them, so
+                    // they stay available — as the user's own preference, not an
+                    // opinion imposed by whoever wrote this.
+                    _maybeThemed(
+                      // In a mixed mode the sidebar runs on the opposite theme to the
+                      // page. Wrapping only the sidebar — rather than building two
+                      // MaterialApps or threading colours by hand — means every widget
+                      // inside it, including NavigationRail's own indicator and hover
+                      // colours, resolves against the right scheme without knowing that
+                      // anything unusual is happening.
+                      //
+                      // The top bar takes this same override, so the chrome is one
+                      // theme and the page is the other.
+                      EzBiziTheme.navigationOverride(me.theme),
+                      builder: (context) => NavigationSidebar(
+                        expanded: expanded,
+                        width: me.navigationWidth,
+                        destinations: destinations,
+                        pinned: pinned,
+                        staffOnly: staffOnly,
+                        selectedIndex: railIndex,
+                        pinnedIndex: pinnedIndex,
+                        staffIndex: staffIndex,
+                        onSelected: (i) =>
+                            _show(_Rail.modules, destinations[i].id),
+                        onPinnedSelected: (i) =>
+                            _show(_Rail.pinned, pinned[i].id),
+                        onStaffSelected: (i) =>
+                            _show(_Rail.staff, staffOnly[i].id),
+                        // Written through the same path as every other preference, once
+                        // the drag settles.
+                        onResized: (w) => widget.session.setPreference(
+                          'navigation.width',
+                          w.round(),
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    // Keyed by the current view, so changing it REMOUNTS the screen and
+                    // its initState fetches again.
+                    //
+                    // Every screen loads once in initState — the ordinary Flutter
+                    // shape — so without this the switcher changed the label and left
+                    // Connecticut's jobs on the page while claiming to be in Texas.
+                    // Making the scope part of the screen's identity is the fix that
+                    // needs no screen to know the switcher exists.
+                    child: KeyedSubtree(
+                      key: ValueKey('${me.scope.type}:${me.scope.id}'),
+                      // Their own account is the last fallback, and the only honest
+                      // one: it is the single screen that is theirs by definition and
+                      // cannot answer 403. It is what somebody whose role reaches no
+                      // module at all lands on, rather than an empty frame.
+                      child: pinnedIndex != null
+                          ? pinned[pinnedIndex].screen
+                          : staffIndex != null
+                          ? staffOnly[staffIndex].screen
+                          : (showingProfile || railIndex == null)
+                          ? ProfileScreen(
+                              api: widget.api,
+                              session: widget.session,
+                            )
+                          : destinations[railIndex].screen,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       /*
-       * Narrow layout. Everything gets an ordinary tab, in the same order.
+       * Narrow layout: a drawer, not a bar along the bottom.
        *
-       * The grouping the sidebar draws with rules cannot be expressed here —
-       * NavigationBar has no separators — and hiding the tail would make
-       * Settings, and Development for staff, unreachable on a phone. Order is
-       * the only signal available, so order is what carries it.
+       * It was a NavigationBar holding every destination flat, and that could
+       * not work. NavigationBar divides its width evenly between destinations,
+       * and this app has fifteen — on a 360px phone that is twenty-four pixels
+       * each, which is the icon with nothing left over. Every label broke
+       * mid-word: "Huma n Res ources", "Fleet Mana geme nt", "Auto matio ns".
+       * It was visible in all six Play store screenshots.
        *
-       * One flat list here, so the tab index is a position in it and nothing
-       * else. NavigationBar demands a selected index in range and at least two
-       * destinations; the pinned pair guarantees both, whatever the modules
-       * above them come to.
+       * The old comment reasoned that hiding the tail would make Settings, and
+       * Development for staff, unreachable on a phone — which is true, and is
+       * the argument against a bar, not against showing everything. A drawer
+       * shows everything, at full width, and scrolls when there is more.
        *
-       * The profile has no tab — it is reached from the avatar, on this layout
-       * as on the wide one — so while it is showing, the first tab carries the
-       * highlight. A bar cannot say "none of these".
+       * It also restores the grouping the bar had to throw away: the sidebar
+       * separates modules from pinned from staff with rules, and a drawer can
+       * draw exactly the same rules. Order stops having to carry meaning on its
+       * own.
+       *
+       * No `leading` is set on this layout, so Scaffold supplies the button
+       * that opens it.
        */
-      bottomNavigationBar: wide
-          ? null
-          : Builder(
-              builder: (context) {
-                final tabs = [...destinations, ...pinned, ...staffOnly];
+      drawer: wide ? null : _navigationDrawer(destinations, pinned, staffOnly),
+    );
+  }
 
-                return NavigationBar(
-                  selectedIndex: pinnedIndex != null
-                      ? destinations.length + pinnedIndex
-                      : staffIndex != null
-                      ? destinations.length + pinned.length + staffIndex
-                      : railIndex ?? 0,
-                  onDestinationSelected: (i) {
-                    if (i < destinations.length) {
-                      _show(_Rail.modules, tabs[i].id);
-                    } else if (i < destinations.length + pinned.length) {
-                      _show(_Rail.pinned, tabs[i].id);
-                    } else {
-                      _show(_Rail.staff, tabs[i].id);
-                    }
-                  },
-                  destinations: [
-                    for (final d in tabs)
-                      NavigationDestination(icon: Icon(d.icon), label: d.label),
-                  ],
-                );
-              },
-            ),
+  /// Every destination, grouped as the sidebar groups them.
+  Widget _navigationDrawer(
+    List<Destination> destinations,
+    List<Destination> pinned,
+    List<Destination> staffOnly,
+  ) {
+    return Drawer(
+      child: Builder(
+        builder: (context) {
+          Widget tile(Destination d, _Rail rail) => ListTile(
+            leading: Icon(d.icon),
+            title: Text(d.label),
+            selected: _rail == rail && _selected == d.id,
+            onTap: () {
+              Navigator.of(context).pop();
+              _show(rail, d.id);
+            },
+          );
+
+          return ListView(
+            // SafeArea rather than a bare ListView: from Android 15 an app
+            // targeting SDK 35+ draws edge to edge by default, so without this
+            // the first tile sits under the status bar and the last under the
+            // gesture bar.
+            padding: EdgeInsets.zero,
+            children: [
+              SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: EzBiziTheme.wordmark(context, size: 20),
+                ),
+              ),
+              const Divider(height: 1),
+              for (final d in destinations) tile(d, _Rail.modules),
+              if (pinned.isNotEmpty) const Divider(),
+              for (final d in pinned) tile(d, _Rail.pinned),
+              if (staffOnly.isNotEmpty) const Divider(),
+              for (final d in staffOnly) tile(d, _Rail.staff),
+              SizedBox(height: MediaQuery.paddingOf(context).bottom + 8),
+            ],
+          );
+        },
+      ),
     );
   }
 

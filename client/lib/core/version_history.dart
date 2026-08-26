@@ -8,6 +8,21 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0100',
+      date: '26 Aug 2026',
+      items: [
+        'On a phone, the sidebar is a drawer. It was a bar across the bottom '
+            'holding all fifteen destinations, which left twenty-four pixels '
+            'each and broke every label mid-word. The drawer shows them at '
+            'full width, grouped the way the sidebar groups them.',
+        'The app no longer draws underneath the status bar or the gesture bar '
+            'on Android 15.',
+        'The Windows app updates itself. It checks for a newer build on '
+            'launch, offers it in a strip you can dismiss, and on Update '
+            'downloads the installer and restarts into it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0099',
       date: '26 Aug 2026',
       items: [
