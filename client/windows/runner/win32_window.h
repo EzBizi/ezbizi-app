@@ -52,6 +52,26 @@ class Win32Window {
   // If true, closing this window will quit the application.
   void SetQuitOnClose(bool quit_on_close);
 
+  /*
+   * Closing hides to the notification area instead of quitting.
+   *
+   * EzBizi is open all day and gets closed by reflex, and quitting on that
+   * loses the session, the sidebar state and anything half-typed. So the X
+   * hides the window and the app keeps running, which is what Teams, Slack and
+   * every other tool of this shape do.
+   *
+   * A tray icon is not decoration here, it is the requirement. Hiding a window
+   * with no way to bring it back leaves an app that is running, invisible, and
+   * only killable through Task Manager — strictly worse than quitting. So the
+   * icon is added before the window can ever be hidden, and it carries the only
+   * two commands that matter: open it, or actually quit.
+   */
+  void ShowFromTray();
+
+  // Really exit, as opposed to hiding. Used by the tray menu and by Windows
+  // when it is shutting down or an installer has asked us to close.
+  void RequestQuit();
+
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 
@@ -90,7 +110,22 @@ class Win32Window {
   // Update the window frame's theme to match the system theme.
   static void UpdateTheme(HWND const window);
 
+  // Put the icon in the notification area, or take it out again.
+  void AddTrayIcon();
+  void RemoveTrayIcon();
+
+  // The right-click menu: open, and quit.
+  void ShowTrayMenu();
+
   bool quit_on_close_ = false;
+
+  // True once something has asked to genuinely exit — the tray's Quit, or
+  // Windows shutting down. Without it, WM_CLOSE can never mean close and the
+  // process would survive a logoff and an installer alike.
+  bool really_quitting_ = false;
+
+  // Whether the notification-area icon is currently registered.
+  bool tray_added_ = false;
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;

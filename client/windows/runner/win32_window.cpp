@@ -2,10 +2,35 @@
 
 #include <dwmapi.h>
 #include <flutter_windows.h>
+#include <shellapi.h>
 
 #include "resource.h"
 
 namespace {
+
+// Our own message for notification-area callbacks. WM_APP and above are
+// reserved for the application, so this cannot collide with anything Windows
+// or Flutter sends.
+constexpr UINT kTrayCallbackMessage = WM_APP + 1;
+constexpr UINT kTrayIconId = 1;
+
+// Menu command ids for the right-click menu.
+constexpr UINT kTrayCommandOpen = 1001;
+constexpr UINT kTrayCommandQuit = 1002;
+
+/// Sent to every top-level window when Explorer restarts.
+///
+/// Not a nicety. Explorer crashes and restarts on its own, and when it does it
+/// throws away the notification area — every icon in it disappears, including
+/// ours. Without re-adding on this message the app becomes a running process
+/// with no window and no icon, which is precisely the trap that made a tray
+/// icon mandatory in the first place. Registered lazily on first use because
+/// the string is only resolvable once at runtime.
+UINT TaskbarCreatedMessage() {
+  static const UINT id = RegisterWindowMessage(L"TaskbarCreated");
+
+  return id;
+}
 
 /// Window attribute that enables dark mode window decorations.
 ///
@@ -178,7 +203,88 @@ Win32Window::MessageHandler(HWND hwnd,
                             UINT const message,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
+  // Explorer restarted and threw the notification area away with it. Put the
+  // icon back, or the app is running with no way to reach it.
+  if (message == TaskbarCreatedMessage()) {
+    tray_added_ = false;
+    AddTrayIcon();
+
+    return 0;
+  }
+
   switch (message) {
+    /*
+     * The X hides; it does not quit. See win32_window.h for why.
+     *
+     * `really_quitting_` is the whole safety of this. Windows sends WM_CLOSE
+     * for more than somebody clicking X: a logoff, a shutdown, Task Manager's
+     * "End task", and — the one that matters most here — the Restart Manager
+     * that our own installer drives with /CLOSEAPPLICATIONS when the in-app
+     * updater runs it. If WM_CLOSE always meant hide, the updater would ask the
+     * app to close, the app would hide instead, and the update would fail on
+     * files it could not replace. So the shutdown messages below set the flag
+     * first, and then this case lets the close through.
+     */
+    case WM_CLOSE:
+      /*
+       * Hide only when there is a visible window to hide.
+       *
+       * Already hidden and asked to close again means it was not a person
+       * clicking X — nobody can click the X of a window they cannot see. It is
+       * something else asking us to go away, and the case that matters is the
+       * Restart Manager: it is documented to send the session messages below to
+       * anything with a message queue, but if it ever reaches only for WM_CLOSE
+       * then swallowing it would leave our own updater unable to replace files
+       * it has the app sitting on. Letting a close through to an already
+       * invisible window costs nothing and closes that hole.
+       */
+      if (!really_quitting_ && IsWindowVisible(window_handle_)) {
+        AddTrayIcon();
+        ShowWindow(window_handle_, SW_HIDE);
+
+        return 0;
+      }
+
+      really_quitting_ = true;
+      RemoveTrayIcon();
+      break;
+
+    // Windows asking whether it may end the session, and then telling us it
+    // is. Both mean this is not a click on X, so stop intercepting the close.
+    case WM_QUERYENDSESSION:
+      really_quitting_ = true;
+      return TRUE;
+
+    case WM_ENDSESSION:
+      really_quitting_ = true;
+      break;
+
+    case kTrayCallbackMessage:
+      switch (LOWORD(lparam)) {
+        case WM_LBUTTONDBLCLK:
+        case WM_LBUTTONUP:
+          ShowFromTray();
+          return 0;
+
+        case WM_RBUTTONUP:
+        case WM_CONTEXTMENU:
+          ShowTrayMenu();
+          return 0;
+      }
+      return 0;
+
+    case WM_COMMAND:
+      switch (LOWORD(wparam)) {
+        case kTrayCommandOpen:
+          ShowFromTray();
+          return 0;
+
+        case kTrayCommandQuit:
+          RequestQuit();
+          return 0;
+      }
+      break;
+
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();
@@ -221,7 +327,89 @@ Win32Window::MessageHandler(HWND hwnd,
   return DefWindowProc(window_handle_, message, wparam, lparam);
 }
 
+void Win32Window::AddTrayIcon() {
+  if (tray_added_ || !window_handle_) {
+    return;
+  }
+
+  NOTIFYICONDATA data = {};
+  data.cbSize = sizeof(data);
+  data.hWnd = window_handle_;
+  data.uID = kTrayIconId;
+  data.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+  data.uCallbackMessage = kTrayCallbackMessage;
+  // The same icon the taskbar and Alt-Tab use, from Runner.rc, so there is one
+  // place to change it and no second asset to forget.
+  data.hIcon = LoadIcon(GetModuleHandle(nullptr), MAKEINTRESOURCE(IDI_APP_ICON));
+  wcscpy_s(data.szTip, L"EzBizi");
+
+  tray_added_ = Shell_NotifyIcon(NIM_ADD, &data) == TRUE;
+}
+
+void Win32Window::RemoveTrayIcon() {
+  if (!tray_added_) {
+    return;
+  }
+
+  NOTIFYICONDATA data = {};
+  data.cbSize = sizeof(data);
+  data.hWnd = window_handle_;
+  data.uID = kTrayIconId;
+  Shell_NotifyIcon(NIM_DELETE, &data);
+  tray_added_ = false;
+}
+
+void Win32Window::ShowFromTray() {
+  if (!window_handle_) {
+    return;
+  }
+
+  ShowWindow(window_handle_, SW_SHOW);
+
+  // Restore first if it was minimised, or showing leaves it on the taskbar
+  // still minimised and the click appears to have done nothing.
+  if (IsIconic(window_handle_)) {
+    ShowWindow(window_handle_, SW_RESTORE);
+  }
+
+  SetForegroundWindow(window_handle_);
+}
+
+void Win32Window::RequestQuit() {
+  really_quitting_ = true;
+  RemoveTrayIcon();
+
+  if (window_handle_) {
+    // Through the normal path, so Flutter's engine shuts down the way it
+    // expects rather than having the process pulled out from under it.
+    PostMessage(window_handle_, WM_CLOSE, 0, 0);
+  }
+}
+
+void Win32Window::ShowTrayMenu() {
+  HMENU menu = CreatePopupMenu();
+
+  if (!menu) {
+    return;
+  }
+
+  AppendMenu(menu, MF_STRING, kTrayCommandOpen, L"Open EzBizi");
+  AppendMenu(menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenu(menu, MF_STRING, kTrayCommandQuit, L"Quit EzBizi");
+
+  POINT cursor;
+  GetCursorPos(&cursor);
+
+  // Required, and easy to miss: without foregrounding first, the menu does not
+  // dismiss when you click elsewhere and sits on top of everything.
+  SetForegroundWindow(window_handle_);
+  TrackPopupMenu(menu, TPM_RIGHTBUTTON, cursor.x, cursor.y, 0, window_handle_,
+                 nullptr);
+  DestroyMenu(menu);
+}
+
 void Win32Window::Destroy() {
+  RemoveTrayIcon();
   OnDestroy();
 
   if (window_handle_) {

@@ -8,6 +8,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0102',
+      date: '26 Aug 2026',
+      items: [
+        'Closing the Windows app puts it in the notification area instead of '
+            'quitting it, the way Teams and Slack do. Click the icon to bring '
+            'it back, or right-click it to quit properly. Signing out of '
+            'Windows, and the updater, still close it for real.',
+        'There is a download page at ezbizi.com/download, which always shows '
+            'the version it is actually offering.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0101',
       date: '26 Aug 2026',
       items: [
