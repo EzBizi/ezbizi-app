@@ -174,6 +174,8 @@ class AutomationsController extends Controller
                     'key'         => $a->key,
                     'label'       => $a->label,
                     'description' => $a->description,
+                    'type' => $a->type(),
+                    'subject_bound' => $a->subjectBound,
                     'implemented' => in_array($a->type(), self::IMPLEMENTED_ACTIONS, strict: true),
                 ], $module->automationActions),
             ];

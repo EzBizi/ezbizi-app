@@ -103,9 +103,11 @@ class AutomationsApiTest extends TestCase
 
             foreach ($module['declared_actions'] as $action) {
                 $this->assertSame(
-                    ['key', 'label', 'description', 'implemented'],
+                    ['key', 'label', 'description', 'type', 'subject_bound', 'implemented'],
                     array_keys($action)
                 );
+                $this->assertIsString($action['type']);
+                $this->assertIsBool($action['subject_bound']);
                 $this->assertIsBool($action['implemented']);
             }
         }
@@ -180,6 +182,25 @@ class AutomationsApiTest extends TestCase
 
         $this->assertContains('job.update_field', $implemented);
         $this->assertContains('customer.update_field', $implemented);
+    }
+
+    public function test_task_actions_publish_explicit_execution_identity_and_applicability(): void
+    {
+        $modules = collect($this->as()->getJson('/api/v1/automations/catalogue')
+            ->assertOk()->json('data.modules'))->keyBy('key');
+
+        $tasks = collect($modules['tasks']['declared_actions'])->keyBy('key');
+        $this->assertSame('task.create', $tasks['task.create']['type']);
+        $this->assertFalse($tasks['task.create']['subject_bound']);
+        $this->assertFalse($tasks['task.create']['implemented']);
+        $this->assertSame('task.assign_owner', $tasks['task.assign_owner']['type']);
+        $this->assertTrue($tasks['task.assign_owner']['subject_bound']);
+
+        $jobs = collect($modules['jobs']['declared_actions'])->keyBy('key');
+        $customers = collect($modules['customers']['declared_actions'])->keyBy('key');
+        $this->assertSame('create', $jobs['job.create']['type']);
+        $this->assertFalse($jobs['job.create']['implemented']);
+        $this->assertSame('update_field', $customers['customer.update_field']['type']);
     }
 
     /**

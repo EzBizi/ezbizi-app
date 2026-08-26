@@ -9,6 +9,7 @@ use App\Models\InventoryItem;
 use App\Models\Job;
 use App\Models\Lead;
 use App\Models\Service;
+use App\Models\Task;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -106,6 +107,109 @@ class ModuleServiceProvider extends ServiceProvider
                 automationExemptBecause:
                     'The dashboard only reads what other modules already record; '
                     .'there is no event here that another module does not raise first.',
+            ),
+
+            new ModuleDefinition(
+                key: 'tasks',
+                label: 'Tasks',
+                actions: ['view', 'create', 'edit', 'comment', 'delete', 'export', 'manage'],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'task.created',
+                        label: 'Created',
+                        description: 'A task or one-level subtask was created.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.owner_changed',
+                        label: 'Owner changed',
+                        description: 'The accountable owner was assigned, changed, or cleared.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.status_changed',
+                        label: 'Status changed',
+                        description: 'The selected workflow status changed on a task.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.due_date_changed',
+                        label: 'Due date changed',
+                        description: 'The due date was set, changed, or cleared.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.completed',
+                        label: 'Completed',
+                        description: 'The workflow status entered its completed category.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.reopened',
+                        label: 'Reopened',
+                        description: 'The workflow status left completed for active work.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.update_added',
+                        label: 'Update added',
+                        description: 'A person added an update to the conversation.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.archived',
+                        label: 'Archived',
+                        description: 'A task was archived from its active board.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.overdue',
+                        label: 'Overdue',
+                        description: 'The scheduled check first observed unfinished late work.',
+                        isRaised: false,
+                    ),
+                ],
+                automationActions: [
+                    new ActionDefinition(
+                        key: 'task.create',
+                        label: 'Create a task',
+                        description: 'Creates follow-up work on a selected board and group.',
+                        executionType: 'task.create',
+                        subjectBound: false,
+                    ),
+                    new ActionDefinition(
+                        key: 'task.assign_owner',
+                        label: 'Assign the owner',
+                        description: 'Assigns or clears the accountable owner on the triggering task.',
+                        executionType: 'task.assign_owner',
+                    ),
+                    new ActionDefinition(
+                        key: 'task.set_status',
+                        label: 'Set the status',
+                        description: 'Changes the triggering task to a status on its board.',
+                        executionType: 'task.set_status',
+                    ),
+                    new ActionDefinition(
+                        key: 'task.set_due_date',
+                        label: 'Set the due date',
+                        description: 'Sets or clears the due date on the triggering task.',
+                        executionType: 'task.set_due_date',
+                    ),
+                    new ActionDefinition(
+                        key: 'task.move_group',
+                        label: 'Move to a group',
+                        description: 'Moves the triggering task within its existing board.',
+                        executionType: 'task.move_group',
+                    ),
+                    new ActionDefinition(
+                        key: 'task.add_update',
+                        label: 'Add an update',
+                        description: 'Adds a system-authored update to the triggering task.',
+                        executionType: 'task.add_update',
+                    ),
+                ],
+                subject: new AutomationSubject(Task::class, 'Task'),
+                sidebar: false,
             ),
 
             new ModuleDefinition(

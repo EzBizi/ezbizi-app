@@ -13,6 +13,29 @@ namespace App\Support\Modules;
  */
 final class ActionDefinition extends AutomationDeclaration
 {
+    private readonly string $executionType;
+
+    public function __construct(
+        string $key,
+        string $label,
+        string $description,
+        ?string $executionType = null,
+        public readonly bool $subjectBound = true,
+    ) {
+        parent::__construct($key, $label, $description);
+
+        $this->executionType = $executionType
+            ?? substr($key, strpos($key, '.') + 1);
+
+        if ($executionType !== null
+            && ! preg_match('/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/', $this->executionType)) {
+            throw new \InvalidArgumentException(
+                "Action execution type '{$this->executionType}' must use a dotted "
+                .'lower_snake_case key such as task.create.'
+            );
+        }
+    }
+
     /**
      * The generic action the engine performs for this, e.g. `update_field`.
      *
@@ -21,6 +44,6 @@ final class ActionDefinition extends AutomationDeclaration
      */
     public function type(): string
     {
-        return substr($this->key, strpos($this->key, '.') + 1);
+        return $this->executionType;
     }
 }
