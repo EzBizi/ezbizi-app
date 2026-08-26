@@ -112,6 +112,7 @@ return new class extends Migration
             $this->identity($table);
             $table->string('record_type', 80);
             $table->uuid('record_id');
+            $table->json('display_snapshot');
             $table->uuid('created_by');
             $table->timestamp('created_at')->useCurrent();
 

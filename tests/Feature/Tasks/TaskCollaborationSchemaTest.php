@@ -198,9 +198,11 @@ class TaskCollaborationSchemaTest extends TestCase
 
         $link = [
             ...$this->identityRow($alpha, $alphaBoard, $alphaTask), 'record_type' => 'customer',
-            'record_id' => (string) Str::uuid7(), 'created_by' => $alpha['admin']->id, 'created_at' => $now,
+            'record_id' => (string) Str::uuid7(), 'display_snapshot' => json_encode(['label' => 'Acme']),
+            'created_by' => $alpha['admin']->id, 'created_at' => $now,
         ];
         DB::table('task_record_links')->insert($link);
+        $this->assertSame(['label' => 'Acme'], json_decode(DB::table('task_record_links')->value('display_snapshot'), true));
         $this->assertConstraintRejects(fn () => DB::table('task_record_links')->insert([
             ...$link, 'id' => (string) Str::uuid7(),
         ]), 'task_record_links_record_unique');
