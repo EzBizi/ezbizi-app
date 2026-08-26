@@ -46,7 +46,35 @@ class TaskRecordLink extends Model implements HoldsPersonalData
 
     public static function personalDataAbout(Model $subject): ?Builder
     {
-        $type = match ($subject::class) {
+        $type = static::recordTypeFor($subject);
+
+        if ($type === null) {
+            return null;
+        }
+
+        return static::query()->where(function (Builder $query) use ($subject, $type): void {
+            $query->where(fn (Builder $target) => $target
+                ->where('record_type', $type)
+                ->where('record_id', $subject->getKey()));
+
+            if ($subject instanceof User) {
+                $query->orWhere('created_by', $subject->getKey());
+            }
+        });
+    }
+
+    /** @return list<string> */
+    public function personalDataToErase(Model $subject): array
+    {
+        return $this->record_type === static::recordTypeFor($subject)
+            && $this->record_id === $subject->getKey()
+                ? ['display_snapshot']
+                : [];
+    }
+
+    private static function recordTypeFor(Model $subject): ?string
+    {
+        return match ($subject::class) {
             Customer::class => 'customer',
             Job::class => 'job',
             Vehicle::class => 'vehicle',
@@ -57,10 +85,6 @@ class TaskRecordLink extends Model implements HoldsPersonalData
             Service::class => 'service',
             default => null,
         };
-
-        return $type === null ? null : static::query()
-            ->where('record_type', $type)
-            ->where('record_id', $subject->getKey());
     }
 
     public function task(): BelongsTo

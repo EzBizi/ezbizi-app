@@ -134,7 +134,10 @@ class PersonalDataPurgeTest extends TestCase
             return [$customer, $customerLink->id, $personLink->id];
         });
 
-        $this->purgeWalking([TaskRecordLink::class], $alpha['admin']);
+        $userReport = $this->purgeWalking([TaskRecordLink::class], $alpha['admin']);
+
+        $this->assertSame(2, $this->tableLine($userReport, 'task_record_links')['rows'],
+            'The link the user created is personal activity and must remain visible in the purge report even though its target snapshot belongs to somebody else.');
 
         $this->inTenant($alpha['org'], function () use ($customerLinkId, $personLinkId) {
             $this->assertSame(['label' => 'Marta Ruiz'], TaskRecordLink::findOrFail($customerLinkId)->display_snapshot);

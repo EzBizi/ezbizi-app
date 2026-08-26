@@ -273,7 +273,7 @@ class Anonymiser
 
         return $drops !== []
             ? $this->dropRows($line, $rows, $dryRun, $doomed)
-            : $this->eraseColumns($line, $rows, $entries, $table, $dryRun, $doomed);
+            : $this->eraseColumns($line, $rows, $entries, $table, $subject, $dryRun, $doomed);
     }
 
     /**
@@ -468,7 +468,7 @@ class Anonymiser
      * costs the dry run, and why asking the deletion question here would be the
      * wrong answer rather than a cheap one.
      */
-    private function eraseColumns(array $line, $rows, array $entries, string $table, bool $dryRun, array &$doomed): array
+    private function eraseColumns(array $line, $rows, array $entries, string $table, Model $subject, bool $dryRun, array &$doomed): array
     {
         $erasable = array_values(array_filter(
             $entries, fn (PersonalDataEntry $e) => $e->erasure->disposition === Erasure::ERASE,
@@ -478,41 +478,43 @@ class Anonymiser
             return $line;
         }
 
-        /*
-         * What each column BECOMES, worked out once from the schema rather than
-         * per row: it is the same answer every time, and reporting it from the
-         * last row processed would make an empty result print an empty plan.
-         *
-         * The stand-in shown here is the template, `{ref}` and all. Rendering one
-         * row's resolved value would put a row key into the report as if it were
-         * the policy.
-         */
-        $plan = [];
-
-        foreach ($erasable as $entry) {
-            foreach ($entry->columns() as $column) {
-                /*
-                 * A stand-in the model stated wins over the schema; otherwise the
-                 * schema decides. See Erasure: `audit_events.actor_label` is
-                 * nullable and must still read "Removed account", because an empty
-                 * label in a log that writes 'system' for an unattributed action
-                 * is ambiguous rather than erased.
-                 */
-                $plan[$column] = $entry->erasure->hasStatedStandIn()
-                    || ! $this->isNullable($table, $column)
-                        ? $entry->erasure
-                        : null;
-            }
-        }
-
-        // The template, `{ref}` and all — not one row's resolved value, which
-        // would put a row key into the report as if it were the policy.
-        $line['columns_erased'] = array_map(
-            fn (?Erasure $e) => $e === null ? 'null' : ($e->standIn ?? Erasure::DEFAULT_STAND_IN),
-            $plan,
-        );
-
         foreach ($rows as $row) {
+            $selected = method_exists($row, 'personalDataToErase')
+                ? array_flip($row->personalDataToErase($subject))
+                : null;
+            $plan = [];
+
+            foreach ($erasable as $entry) {
+                foreach ($entry->columns() as $column) {
+                    if ($selected !== null && ! isset($selected[$column])) {
+                        continue;
+                    }
+
+                    /*
+                     * A stand-in the model stated wins over the schema; otherwise
+                     * the schema decides. See Erasure for the nullable distinction.
+                     */
+                    $plan[$column] = $entry->erasure->hasStatedStandIn()
+                        || ! $this->isNullable($table, $column)
+                            ? $entry->erasure
+                            : null;
+                }
+            }
+
+            if ($plan === []) {
+                continue;
+            }
+
+            // Report the union of columns erased across matching row roles. The
+            // template, `{ref}` and all, is policy rather than one row's value.
+            $line['columns_erased'] = array_replace(
+                $line['columns_erased'],
+                array_map(
+                    fn (?Erasure $e) => $e === null ? 'null' : ($e->standIn ?? Erasure::DEFAULT_STAND_IN),
+                    $plan,
+                ),
+            );
+
             $values = array_map(
                 fn (?Erasure $e) => $e?->standInFor((string) $row->getKey()),
                 $plan,

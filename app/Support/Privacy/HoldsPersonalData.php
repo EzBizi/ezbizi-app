@@ -49,6 +49,14 @@ use Illuminate\Database\Eloquent\Model;
  * down twice. WHICH ROWS is a join — through `tokenable`, through an onboarding,
  * through a morph — and nothing but the model can state it, which is why it is a
  * method here and not something the Anonymiser guesses from a column name.
+ *
+ * A row can be about the same person in more than one role while only one role
+ * owns an erasable value. Such a model may additionally expose the optional
+ * instance method `personalDataToErase(Model $subject): array`, returning the
+ * declared column names erasable for that subject on that row. The Anonymiser
+ * still reports every row returned by `personalDataAbout()`; it only narrows the
+ * overwrite. This keeps a creator's activity visible without erasing a snapshot
+ * that belongs to the linked target.
  */
 interface HoldsPersonalData extends StatesRetention
 {
