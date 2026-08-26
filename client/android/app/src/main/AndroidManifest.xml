@@ -1,4 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      EzBizi is a client for an API and does nothing at all without the network.
+
+      Flutter's template declares INTERNET in src/debug and src/profile only.
+      Release builds merge src/main, so a release AAB built from the template
+      ships with no permissions and every request fails — while debug and
+      profile builds work perfectly, which is what makes it so easy to miss.
+      Caught here on the first Android build, before any tester saw it.
+    -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="EzBizi"
         android:name="${applicationName}"
