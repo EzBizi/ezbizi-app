@@ -103,11 +103,16 @@ class SocialProvidersApiTest extends TestCase
         $this->assertSame('password', $byValue['bluesky']['connects_by']);
     }
 
-    public function test_facebook_instagram_and_threads_share_the_meta_app(): void
+    public function test_facebook_instagram_and_threads_become_usable_with_their_meta_keys(): void
     {
         config([
             'services.meta.client_id'     => 'a-meta-app-id',
             'services.meta.client_secret' => 'a-meta-app-secret',
+            // Threads is its own app inside the same Meta app, with its own
+            // id and secret. Setting only the Facebook pair leaves Threads
+            // not-ready, which is the point.
+            'services.meta.threads_id'     => 'a-threads-app-id',
+            'services.meta.threads_secret' => 'a-threads-app-secret',
         ]);
 
         $t = $this->provisionTenant('A1-Group');
