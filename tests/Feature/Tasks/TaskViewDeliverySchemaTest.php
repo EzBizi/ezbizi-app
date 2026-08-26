@@ -50,6 +50,11 @@ class TaskViewDeliverySchemaTest extends TestCase
         DB::table('task_views')->insert($personal);
         DB::table('task_views')->insert($this->viewRow($alpha, $alphaBoard, $alphaOther->id, 'personal', 'My work', 0, $now));
         $this->assertSame(1, DB::table('task_views')->find($main['id'])->version);
+        $this->rejectsAny(fn () => DB::table('task_views')->where('id', $main['id'])
+            ->update(['is_permanent_main' => false]));
+        $this->rejectsAny(fn () => DB::table('task_views')->where('id', $personal['id'])
+            ->update(['is_permanent_main' => true]));
+        $this->rejectsAny(fn () => DB::table('task_views')->where('id', $main['id'])->delete());
         $this->rejects(fn () => DB::table('task_views')->insert([
             ...$main, 'id' => (string) Str::uuid7(), 'name' => 'Main copy', 'position' => 1,
         ]), 'task_views_board_main_unique');
