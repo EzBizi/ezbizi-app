@@ -662,7 +662,7 @@ class Anonymiser
                 .'phone number being corrected. Those are not blanked, because the entry '
                 .'exists to record the change; they expire instead, under the §10 retention '
                 .'the audit log states.',
-            'Anything already exported to somebody\'s own machine has left this system.',
+            'Anything already exported to somebody\'s own computer has left this system.',
         ];
     }
 

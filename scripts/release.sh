@@ -213,6 +213,7 @@ if wants windows; then
     "/DAppVersion=${VERSION}" \
     "/DSourceDir=$(cygpath -w "$PWD/$WIN_BUILD")" \
     "/DOutputDir=$(cygpath -w "$PWD/$DIST")" \
+    "/DAssetDir=$(cygpath -w "$PWD/assets/installer")" \
     "$(cygpath -w "$PWD/scripts/windows-installer.iss")"
 
   # ── publish it, so installed copies can find it ──────────────────

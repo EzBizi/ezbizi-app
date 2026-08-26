@@ -5,7 +5,7 @@ import 'core/address.dart';
 import 'core/api_client.dart';
 import 'core/contracts.dart';
 import 'core/deployment.dart';
-import 'core/desktop_update.dart';
+import 'core/desktop_updater.dart';
 import 'core/files.dart';
 import 'core/module_screens.dart';
 import 'core/session.dart';
@@ -61,11 +61,40 @@ class _EzBiziAppState extends State<EzBiziApp> {
   /// stale build must both be told — see core/version_gate.dart.
   final VersionGate _versionGate = VersionGate();
 
+  /// An update that closes the app has something to interrupt only once
+  /// somebody is signed in. On the sign-in screen it goes straight ahead.
+  void _tellUpdaterWhoIsHere() {
+    DesktopUpdater.instance.signedIn =
+        _session.me != null || _staffSession.me != null;
+  }
+
+  @override
+  void dispose() {
+    // The window is closing, so stop looking for updates. Without this the
+    // hourly timer outlives the widget tree, which in a running app is a leak
+    // and in a widget test is a hard failure on every test in the file.
+    DesktopUpdater.instance.stop();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
     _session.addListener(() => setState(() {}));
     _staffSession.addListener(() => setState(() {}));
+
+    /*
+     * Kept current from here, not from the shell inside it.
+     *
+     * The check has to run whether anybody is signed in or not — a desktop left
+     * sitting on the sign-in screen is exactly the one that goes a month behind
+     * — so it starts at the root and keeps going for as long as the window is
+     * open. See core/desktop_updater.dart for the hourly sweep and for why a
+     * found update waits a minute before it closes the app.
+     */
+    DesktopUpdater.instance.start();
+    _session.addListener(_tellUpdaterWhoIsHere);
+    _staffSession.addListener(_tellUpdaterWhoIsHere);
 
     _versionGate
       ..addListener(() => setState(() {}))
@@ -323,13 +352,6 @@ class _HomeShellState extends State<HomeShell> {
   _Rail _rail = _Rail.modules;
   void Function()? _stopListening;
 
-  /// A newer installed build, once the check has found one. See
-  /// core/desktop_update.dart.
-  AvailableUpdate? _update;
-
-  /// Set while the installer is being fetched, and to the reason if it failed.
-  bool _updating = false;
-  String? _updateError;
 
   @override
   void initState() {
@@ -338,37 +360,6 @@ class _HomeShellState extends State<HomeShell> {
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
       setState(() => _apply(path));
-    });
-
-    // Not awaited, and deliberately so: an update check is never a reason to
-    // delay drawing the app. It returns null on the web, on Android, and on
-    // any failure at all, so the common path is a future nobody notices.
-    DesktopUpdate.check().then((found) {
-      if (!mounted || found == null) return;
-      setState(() => _update = found);
-    });
-  }
-
-  Future<void> _installUpdate() async {
-    final update = _update;
-
-    if (update == null || _updating) return;
-
-    setState(() {
-      _updating = true;
-      _updateError = null;
-    });
-
-    final failure = await DesktopUpdate.install(update);
-
-    if (!mounted) return;
-
-    // Success closes this process, so reaching here at all with null means the
-    // installer took over and there is nothing left to draw. Only the failure
-    // path has a person still looking at the screen.
-    setState(() {
-      _updating = false;
-      _updateError = failure;
     });
   }
 
@@ -921,47 +912,83 @@ class _HomeShellState extends State<HomeShell> {
              * VersionGate's job, and only once the server actually refuses this
              * build — see core/desktop_update.dart for why both exist.
              */
-            if (_update != null)
-              Material(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.system_update_alt, size: 18),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _updateError ??
-                              'EzBizi ${_update!.version} is available. '
-                                  'Updating closes the app and reopens it.',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+            /*
+             * A newer build, announced rather than sprung.
+             *
+             * The updater installs this by itself after a minute — see
+             * core/desktop_updater.dart — so this strip is the warning, not the
+             * offer. It says how long is left and gives a way out, because the
+             * install closes the app and somebody halfway through writing up a
+             * job should be able to say "not now". Postponing does not cancel
+             * anything permanently: the next hourly sweep finds it again.
+             *
+             * A strip above the work, never a modal. The wall is VersionGate's
+             * job, and only once the server actually refuses this build — see
+             * core/desktop_update.dart for why both exist.
+             */
+            AnimatedBuilder(
+              animation: DesktopUpdater.instance,
+              builder: (context, _) {
+                final u = DesktopUpdater.instance;
+                final left = u.secondsLeft;
+
+                if (u.available == null && u.error == null) {
+                  return const SizedBox.shrink();
+                }
+
+                return Material(
+                  color: u.error != null
+                      ? Theme.of(context).colorScheme.errorContainer
+                      : Theme.of(context).colorScheme.primaryContainer,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          u.error != null
+                              ? Icons.error_outline
+                              : Icons.system_update_alt,
+                          size: 18,
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      if (_updating)
-                        const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      else ...[
-                        TextButton(
-                          onPressed: () => setState(() => _update = null),
-                          child: const Text('Later'),
-                        ),
-                        FilledButton(
-                          onPressed: _installUpdate,
+                        const SizedBox(width: 10),
+                        Expanded(
                           child: Text(
-                            _updateError == null ? 'Update' : 'Try again',
+                            u.error ??
+                                (left != null
+                                    ? 'EzBizi ${u.available!.version} installs in '
+                                          '$left seconds. The app closes and reopens.'
+                                    : 'EzBizi ${u.available!.version} is ready to '
+                                          'install. The app closes and reopens.'),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        if (u.busy)
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        else ...[
+                          if (left != null)
+                            TextButton(
+                              onPressed: u.postpone,
+                              child: const Text('Not now'),
+                            ),
+                          FilledButton(
+                            onPressed: u.install,
+                            child: Text(
+                              u.error == null ? 'Update now' : 'Try again',
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
+            ),
             if (_timeClockNotice != null)
               Material(
                 color: Theme.of(
