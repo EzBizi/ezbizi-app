@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0101',
+      date: '26 Aug 2026',
+      items: [
+        'The Windows app carries the EzBizi icon. It was still Flutter\'s — in '
+            'the taskbar, in Alt-Tab, and on the installer itself.',
+        'The installer offers to start EzBizi when you sign in to Windows. It '
+            'is a checkbox, it shows up in Task Manager\'s Startup tab like '
+            'anything else, and turning it off survives later updates.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0100',
       date: '26 Aug 2026',
       items: [

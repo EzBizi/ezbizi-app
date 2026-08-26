@@ -59,6 +59,20 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"
 
+; Start with Windows, offered as a checkbox rather than done silently.
+;
+; A shortcut in the Startup folder, not a Run key in the registry. Both start
+; the app; only this one appears in Task Manager's Startup tab where a person
+; can see it and turn it off, and only this one is removed by uninstalling.
+; Something that launches itself every morning and cannot be found is the
+; behaviour people install cleanup tools to stop.
+;
+; Checked by default because this is a work tool people open every day anyway.
+; UsePreviousTasks is on by default in Inno, so somebody who unchecks it stays
+; unchecked through every later update — including the silent ones the in-app
+; updater runs, which would otherwise quietly switch it back on.
+Name: "startupicon"; Description: "Start EzBizi when I sign in to Windows"; GroupDescription: "Startup:"
+
 [Files]
 ; The whole build folder. Flutter's data\ directory holds the compiled Dart and
 ; every asset; leave one file behind and the app starts and then dies looking
@@ -69,6 +83,7 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 Name: "{group}\EzBizi"; Filename: "{app}\ezbizi.exe"
 Name: "{group}\Uninstall EzBizi"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\EzBizi"; Filename: "{app}\ezbizi.exe"; Tasks: desktopicon
+Name: "{userstartup}\EzBizi"; Filename: "{app}\ezbizi.exe"; Tasks: startupicon
 
 [Run]
 Filename: "{app}\ezbizi.exe"; Description: "Start EzBizi"; Flags: nowait postinstall skipifsilent
