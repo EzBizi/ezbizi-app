@@ -22,9 +22,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class Notification extends Model implements HoldsPersonalData
 {
+    use BelongsToTenant;
     use HasFactory;
     use HasUuids;
-    use BelongsToTenant;
 
     // ── §9 data inventory ────────────────────────────────────────
 
@@ -104,14 +104,14 @@ class Notification extends Model implements HoldsPersonalData
     public const UPDATED_AT = null;   // read_at is the only mutation
 
     protected $fillable = [
-        'organization_id', 'user_id', 'source', 'title', 'body',
+        'organization_id', 'user_id', 'source', 'delivery_key', 'title', 'body',
         'subject_type', 'subject_id', 'automation_id', 'event_id', 'created_at',
     ];
 
     protected function casts(): array
     {
         return [
-            'read_at'    => 'datetime',
+            'read_at' => 'datetime',
             'created_at' => 'datetime',
         ];
     }
