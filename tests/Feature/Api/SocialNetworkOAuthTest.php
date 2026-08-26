@@ -36,6 +36,8 @@ class SocialNetworkOAuthTest extends TestCase
             'services.meta.facebook_redirect'    => 'https://app.ezbizi.test'.FacebookOAuth::CALLBACK_PATH,
             'services.meta.instagram_redirect'   => 'https://app.ezbizi.test'.InstagramOAuth::CALLBACK_PATH,
             'services.meta.threads_redirect'     => 'https://app.ezbizi.test'.ThreadsOAuth::CALLBACK_PATH,
+            'services.meta.instagram_id'         => 'an-instagram-app-id',
+            'services.meta.instagram_secret'     => 'an-instagram-app-secret',
             'services.meta.threads_id'           => 'a-threads-app-id',
             'services.meta.threads_secret'       => 'a-threads-app-secret',
             'services.linkedin.client_id'        => 'a-linkedin-id',

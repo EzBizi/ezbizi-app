@@ -128,6 +128,13 @@ return [
         'client_secret' => env('META_APP_SECRET'),
         'facebook_redirect' => env('META_FACEBOOK_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/facebook/callback',
+        /*
+        | Instagram is its own app inside the same Meta app too - the console
+        | calls it EzBizi-IG and gives it an Instagram app id and secret
+        | separate from the Facebook ones. Same story as Threads below.
+        */
+        'instagram_id'     => env('META_INSTAGRAM_APP_ID'),
+        'instagram_secret' => env('META_INSTAGRAM_APP_SECRET'),
         'instagram_redirect' => env('META_INSTAGRAM_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/instagram/callback',
         /*

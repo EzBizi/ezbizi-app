@@ -111,6 +111,8 @@ class SocialProvidersApiTest extends TestCase
             // Threads is its own app inside the same Meta app, with its own
             // id and secret. Setting only the Facebook pair leaves Threads
             // not-ready, which is the point.
+            'services.meta.instagram_id'     => 'an-instagram-app-id',
+            'services.meta.instagram_secret' => 'an-instagram-app-secret',
             'services.meta.threads_id'     => 'a-threads-app-id',
             'services.meta.threads_secret' => 'a-threads-app-secret',
         ]);

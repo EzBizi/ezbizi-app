@@ -21,6 +21,34 @@ final class MetaApp
     }
 
     /**
+     * Instagram signs with its own pair.
+     *
+     * The console issues an Instagram app id and secret beside the Facebook
+     * ones - it even names the app separately, EzBizi-IG. Signing an Instagram
+     * request with the Facebook pair is rejected.
+     */
+    public static function instagramId(): string
+    {
+        return (string) config('services.meta.instagram_id');
+    }
+
+    public static function instagramSecret(): string
+    {
+        return (string) config('services.meta.instagram_secret');
+    }
+
+    public static function instagramNotReadyBecause(): ?string
+    {
+        if (RedirectUri::credentialsPresent(config('services.meta.instagram_id'), config('services.meta.instagram_secret'))) {
+            return null;
+        }
+
+        return 'EzBizi has no Instagram app set up on this installation yet, so an Instagram '
+            .'professional account cannot be connected. Instagram uses its own keys, separate '
+            .'from Facebook - the missing piece is at EzBizi\'s end.';
+    }
+
+    /**
      * Threads signs with its own pair.
      *
      * Meta issues a separate Threads app id and secret alongside the Facebook

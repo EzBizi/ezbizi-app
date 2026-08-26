@@ -155,10 +155,10 @@ class MetaCallbacksController extends Controller
 
     private function userId(Request $request): ?string
     {
-        // Threads is a separate app with its own secret, so a signature could be
-        // keyed with either. Try both rather than assume which product the
-        // person was removing.
-        foreach ([MetaApp::secret(), MetaApp::threadsSecret()] as $secret) {
+        // Facebook, Instagram and Threads are three apps inside one, each with
+        // its own secret, so a signature could be keyed with any of them. Try
+        // all three rather than assume which product the person was removing.
+        foreach ([MetaApp::secret(), MetaApp::instagramSecret(), MetaApp::threadsSecret()] as $secret) {
             if ($secret === '') {
                 continue;
             }
