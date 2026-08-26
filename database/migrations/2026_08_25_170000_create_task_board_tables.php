@@ -32,15 +32,17 @@ return new class extends Migration
             $table->foreignUuid('organization_id')->constrained()->restrictOnDelete();
             $this->placeColumns($table, 'task_folders');
             $table->string('name', 191);
-            $table->unsignedInteger('position')->default(0);
+            $table->integer('position')->default(0);
             $table->string('place_key', 80)
                 ->storedAs("CONCAT(IFNULL(`company_id`,'org'), ':', IFNULL(`franchise_id`,'*'))");
+            $table->integer('active_position')->nullable()
+                ->storedAs('IF(`archived_at` IS NULL, `position`, NULL)');
             $table->timestamp('archived_at')->nullable();
             $table->timestamps();
 
             $table->unique(['organization_id', 'id', 'place_key'], 'task_folders_organization_id_id_place_key_unique');
             $table->unique(['organization_id', 'place_key', 'name'], 'task_folders_place_name_unique');
-            $table->unique(['organization_id', 'place_key', 'position'], 'task_folders_place_position_unique');
+            $table->unique(['organization_id', 'place_key', 'active_position'], 'task_folders_place_active_position_unique');
         });
 
         Schema::create('task_boards', function (Blueprint $table) {
@@ -52,16 +54,20 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->string('visibility', 16);
             $table->unsignedInteger('structure_version')->default(1);
-            $table->unsignedInteger('position')->default(0);
+            $table->integer('position')->default(0);
             $table->uuid('created_by');
             $table->uuid('updated_by');
             $table->string('place_key', 80)
                 ->storedAs("CONCAT(IFNULL(`company_id`,'org'), ':', IFNULL(`franchise_id`,'*'))");
+            $table->string('ordering_parent_key', 160)
+                ->storedAs("CONCAT(IFNULL(`company_id`,'org'), ':', IFNULL(`franchise_id`,'*'), ':', IFNULL(`folder_id`,'root'))");
+            $table->integer('active_position')->nullable()
+                ->storedAs('IF(`archived_at` IS NULL, `position`, NULL)');
             $table->timestamp('archived_at')->nullable();
             $table->timestamps();
 
             $table->unique(['organization_id', 'id'], 'task_boards_organization_id_id_unique');
-            $table->unique(['organization_id', 'folder_id', 'position'], 'task_boards_folder_position_unique');
+            $table->unique(['organization_id', 'ordering_parent_key', 'active_position'], 'task_boards_parent_active_position_unique');
             $table->foreign(['organization_id', 'folder_id', 'place_key'], 'task_boards_folder_place_foreign')
                 ->references(['organization_id', 'id', 'place_key'])->on('task_folders')->restrictOnDelete();
             $table->foreign(['organization_id', 'created_by'], 'task_boards_created_by_foreign')
@@ -109,14 +115,16 @@ return new class extends Migration
             $table->uuid('board_id');
             $table->string('name', 191);
             $table->string('color', 32)->nullable();
-            $table->unsignedInteger('position')->default(0);
+            $table->integer('position')->default(0);
             $table->unsignedInteger('order_version')->default(1);
+            $table->integer('active_position')->nullable()
+                ->storedAs('IF(`archived_at` IS NULL, `position`, NULL)');
             $table->timestamp('archived_at')->nullable();
             $table->timestamps();
 
             $table->unique(['organization_id', 'board_id', 'id'], 'task_groups_organization_board_id_unique');
             $table->unique(['board_id', 'name'], 'task_groups_board_name_unique');
-            $table->unique(['board_id', 'position'], 'task_groups_board_position_unique');
+            $table->unique(['board_id', 'active_position'], 'task_groups_board_active_position_unique');
             $table->foreign(['organization_id', 'board_id'], 'task_groups_board_foreign')
                 ->references(['organization_id', 'id'])->on('task_boards')->restrictOnDelete();
         });
@@ -141,13 +149,15 @@ return new class extends Migration
             $table->string('name', 191);
             $table->string('color', 32)->nullable();
             $table->string('category', 16);
-            $table->unsignedInteger('position')->default(0);
+            $table->integer('position')->default(0);
+            $table->integer('active_position')->nullable()
+                ->storedAs('IF(`archived_at` IS NULL, `position`, NULL)');
             $table->timestamp('archived_at')->nullable();
             $table->timestamps();
 
             $table->unique(['organization_id', 'board_id', 'id'], 'task_status_options_organization_board_id_unique');
             $table->unique(['board_id', 'name'], 'task_status_options_board_name_unique');
-            $table->unique(['board_id', 'position'], 'task_status_options_board_position_unique');
+            $table->unique(['board_id', 'active_position'], 'task_status_options_board_active_position_unique');
             $table->foreign(['organization_id', 'board_id'], 'task_status_options_board_foreign')
                 ->references(['organization_id', 'id'])->on('task_boards')->restrictOnDelete();
         });
@@ -159,14 +169,18 @@ return new class extends Migration
             $table->string('name', 191);
             $table->string('color', 32)->nullable();
             $table->string('rank', 16);
-            $table->unsignedInteger('position')->default(0);
+            $table->integer('position')->default(0);
+            $table->string('active_rank', 16)->nullable()
+                ->storedAs('IF(`archived_at` IS NULL, `rank`, NULL)');
+            $table->integer('active_position')->nullable()
+                ->storedAs('IF(`archived_at` IS NULL, `position`, NULL)');
             $table->timestamp('archived_at')->nullable();
             $table->timestamps();
 
             $table->unique(['organization_id', 'board_id', 'id'], 'task_priority_options_organization_board_id_unique');
             $table->unique(['board_id', 'name'], 'task_priority_options_board_name_unique');
-            $table->unique(['board_id', 'rank'], 'task_priority_options_board_rank_unique');
-            $table->unique(['board_id', 'position'], 'task_priority_options_board_position_unique');
+            $table->unique(['board_id', 'active_rank'], 'task_priority_options_board_active_rank_unique');
+            $table->unique(['board_id', 'active_position'], 'task_priority_options_board_active_position_unique');
             $table->foreign(['organization_id', 'board_id'], 'task_priority_options_board_foreign')
                 ->references(['organization_id', 'id'])->on('task_boards')->restrictOnDelete();
         });
@@ -178,13 +192,15 @@ return new class extends Migration
             $table->string('name', 191);
             $table->string('type', 16);
             $table->string('number_suffix', 32)->nullable();
-            $table->unsignedInteger('position')->default(0);
+            $table->integer('position')->default(0);
+            $table->integer('active_position')->nullable()
+                ->storedAs('IF(`archived_at` IS NULL, `position`, NULL)');
             $table->timestamp('archived_at')->nullable();
             $table->timestamps();
 
             $table->unique(['organization_id', 'board_id', 'id'], 'task_column_definitions_organization_board_id_unique');
             $table->unique(['board_id', 'name'], 'task_column_definitions_board_name_unique');
-            $table->unique(['board_id', 'position'], 'task_column_definitions_board_position_unique');
+            $table->unique(['board_id', 'active_position'], 'task_column_definitions_board_active_position_unique');
             $table->foreign(['organization_id', 'board_id'], 'task_column_definitions_board_foreign')
                 ->references(['organization_id', 'id'])->on('task_boards')->restrictOnDelete();
         });
@@ -196,12 +212,14 @@ return new class extends Migration
             $table->uuid('column_definition_id');
             $table->string('name', 191);
             $table->string('color', 32)->nullable();
-            $table->unsignedInteger('position')->default(0);
+            $table->integer('position')->default(0);
+            $table->integer('active_position')->nullable()
+                ->storedAs('IF(`archived_at` IS NULL, `position`, NULL)');
             $table->timestamp('archived_at')->nullable();
             $table->timestamps();
 
             $table->unique(['column_definition_id', 'name'], 'task_column_options_definition_name_unique');
-            $table->unique(['column_definition_id', 'position'], 'task_column_options_definition_position_unique');
+            $table->unique(['column_definition_id', 'active_position'], 'task_column_options_definition_active_position_unique');
             $table->foreign(['organization_id', 'board_id', 'column_definition_id'], 'task_column_options_definition_foreign')
                 ->references(['organization_id', 'board_id', 'id'])->on('task_column_definitions')->restrictOnDelete();
         });

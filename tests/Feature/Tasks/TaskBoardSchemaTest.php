@@ -79,19 +79,35 @@ class TaskBoardSchemaTest extends TestCase
             $alpha,
             companyId: $beta['company']->id,
             franchiseId: null,
-        ));
+        ), 'task_folders_company_place_foreign');
 
         $this->assertConstraintRejects(fn () => $this->insertFolder(
             $alpha,
             companyId: $alpha['company']->id,
             franchiseId: $beta['franchise']->id,
-        ));
+        ), 'task_folders_franchise_place_foreign');
 
         $this->assertConstraintRejects(fn () => $this->insertFolder(
             $alpha,
             companyId: null,
             franchiseId: $alpha['franchise']->id,
-        ));
+        ), 'task_folders_franchise_requires_company_check');
+
+        $this->assertConstraintRejects(fn () => $this->insertBoard(
+            $alpha,
+            companyId: null,
+            franchiseId: null,
+            position: 100,
+            createdBy: $beta['admin']->id,
+        ), 'task_boards_created_by_foreign');
+
+        $this->assertConstraintRejects(fn () => $this->insertBoard(
+            $alpha,
+            companyId: null,
+            franchiseId: null,
+            position: 101,
+            updatedBy: $beta['admin']->id,
+        ), 'task_boards_updated_by_foreign');
     }
 
     public function test_folders_and_boards_support_all_place_shapes_and_require_exact_folder_equality(): void
@@ -115,7 +131,8 @@ class TaskBoardSchemaTest extends TestCase
             companyId: $tenant['company']->id,
             franchiseId: null,
             folderId: $organizationFolder,
-        ));
+            position: 10,
+        ), 'task_boards_folder_place_foreign');
     }
 
     public function test_membership_preferences_and_board_configuration_are_scoped_and_ordered(): void
@@ -158,19 +175,20 @@ class TaskBoardSchemaTest extends TestCase
             'archived_at' => null,
             'created_at' => now(),
             'updated_at' => now(),
-        ]));
+        ]), 'task_board_members_board_user_unique');
 
+        $secondUser = $this->userWithRole($tenant, 'Task Member');
         $this->assertConstraintRejects(fn () => DB::table('task_board_members')->insert([
             'id' => (string) Str::uuid(),
             'organization_id' => $tenant['org']->id,
             'board_id' => $boardId,
-            'user_id' => $tenant['admin']->id,
+            'user_id' => $secondUser->id,
             'role' => 'administrator',
             'is_active' => true,
             'archived_at' => null,
             'created_at' => now(),
             'updated_at' => now(),
-        ]));
+        ]), 'task_board_members_role_check');
 
         $this->assertConstraintRejects(fn () => DB::table('task_board_preferences')->insert([
             'id' => (string) Str::uuid(),
@@ -181,10 +199,13 @@ class TaskBoardSchemaTest extends TestCase
             'last_opened_at' => null,
             'created_at' => now(),
             'updated_at' => now(),
-        ]));
+        ]), 'task_board_preferences_board_user_unique');
 
         $this->insertGroup($tenant, $boardId, 0);
-        $this->assertConstraintRejects(fn () => $this->insertGroup($tenant, $boardId, 0));
+        $this->assertConstraintRejects(
+            fn () => $this->insertGroup($tenant, $boardId, 0, 'Second group'),
+            'task_groups_board_active_position_unique',
+        );
 
         DB::table('task_core_column_settings')->insert([
             'id' => (string) Str::uuid(),
@@ -203,7 +224,21 @@ class TaskBoardSchemaTest extends TestCase
             'display_label' => 'Stage',
             'created_at' => now(),
             'updated_at' => now(),
-        ]));
+        ]), 'task_core_column_settings_board_key_unique');
+
+        $otherTenant = $this->provisionTenant('Beta');
+        $this->assertConstraintRejects(fn () => DB::table('task_groups')->insert([
+            'id' => (string) Str::uuid(),
+            'organization_id' => $otherTenant['org']->id,
+            'board_id' => $boardId,
+            'name' => 'Foreign board group',
+            'color' => 'blue',
+            'position' => 5,
+            'order_version' => 1,
+            'archived_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]), 'task_groups_board_foreign');
     }
 
     public function test_visibility_status_priority_and_column_categories_are_constrained(): void
@@ -211,23 +246,115 @@ class TaskBoardSchemaTest extends TestCase
         $tenant = $this->provisionTenant('Alpha');
         $boardId = $this->insertBoard($tenant, companyId: null, franchiseId: null);
 
-        $this->assertConstraintRejects(fn () => $this->insertBoard($tenant, companyId: null, franchiseId: null, visibility: 'team'));
+        $this->assertConstraintRejects(
+            fn () => $this->insertBoard($tenant, companyId: null, franchiseId: null, visibility: 'team'),
+            'task_boards_visibility_check',
+        );
 
         $statusId = $this->insertStatus($tenant, $boardId, 0, 'active');
         $this->assertNotEmpty($statusId);
-        $this->assertConstraintRejects(fn () => $this->insertStatus($tenant, $boardId, 1, 'waiting'));
+        $this->assertConstraintRejects(
+            fn () => $this->insertStatus($tenant, $boardId, 1, 'waiting'),
+            'task_status_options_category_check',
+        );
 
         $priorityId = $this->insertPriority($tenant, $boardId, 0, 'normal');
         $this->assertNotEmpty($priorityId);
-        $this->assertConstraintRejects(fn () => $this->insertPriority($tenant, $boardId, 1, 'none'));
+        $this->assertConstraintRejects(
+            fn () => $this->insertPriority($tenant, $boardId, 1, 'none'),
+            'task_priority_options_rank_check',
+        );
 
         $columnId = $this->insertColumn($tenant, $boardId, 0, 'number');
         $this->assertSame('number', DB::table('task_column_definitions')->find($columnId)->type);
-        $this->assertConstraintRejects(fn () => $this->insertColumn($tenant, $boardId, 1, 'formula'));
+        $this->assertConstraintRejects(
+            fn () => $this->insertColumn($tenant, $boardId, 1, 'formula'),
+            'task_column_definitions_type_check',
+        );
+    }
+
+    public function test_active_priority_ranks_and_sibling_positions_can_be_reused_after_archive(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $boardId = $this->insertBoard($tenant, companyId: null, franchiseId: null, position: 0);
+        $priorityId = $this->insertPriority($tenant, $boardId, 0, 'normal', 'Normal');
+
+        $this->assertConstraintRejects(
+            fn () => $this->insertPriority($tenant, $boardId, 1, 'normal', 'Replacement normal'),
+            'task_priority_options_board_active_rank_unique',
+        );
+
+        DB::table('task_priority_options')->where('id', $priorityId)->update(['archived_at' => now()]);
+        $this->assertNotEmpty($this->insertPriority($tenant, $boardId, 0, 'normal', 'Replacement normal'));
+
+        DB::table('task_boards')->where('id', $boardId)->update(['archived_at' => now()]);
+        $this->assertNotEmpty($this->insertBoard($tenant, companyId: null, franchiseId: null, position: 0));
+    }
+
+    public function test_folderless_board_ordering_is_exact_place_scoped_and_positions_are_signed(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $firstBoard = $this->insertBoard($tenant, companyId: null, franchiseId: null, position: -100);
+
+        $this->assertConstraintRejects(
+            fn () => $this->insertBoard($tenant, companyId: null, franchiseId: null, position: -100),
+            'task_boards_parent_active_position_unique',
+        );
+
+        $this->assertSame(-100, DB::table('task_boards')->find($firstBoard)->position);
+
+        $folderId = $this->insertFolder($tenant, companyId: null, franchiseId: null, position: -99);
+        $groupId = $this->insertGroup($tenant, $firstBoard, -98);
+        $statusId = $this->insertStatus($tenant, $firstBoard, -97, 'active');
+        $priorityId = $this->insertPriority($tenant, $firstBoard, -96, 'normal');
+        $columnId = $this->insertColumn($tenant, $firstBoard, -95, 'label');
+        $optionId = (string) Str::uuid();
+
+        DB::table('task_column_options')->insert([
+            'id' => $optionId,
+            'organization_id' => $tenant['org']->id,
+            'board_id' => $firstBoard,
+            'column_definition_id' => $columnId,
+            'name' => 'Negative temporary option',
+            'color' => 'blue',
+            'position' => -94,
+            'archived_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        foreach ([
+            'task_folders' => $folderId,
+            'task_groups' => $groupId,
+            'task_status_options' => $statusId,
+            'task_priority_options' => $priorityId,
+            'task_column_definitions' => $columnId,
+            'task_column_options' => $optionId,
+        ] as $table => $id) {
+            $this->assertLessThan(0, DB::table($table)->find($id)->position, $table);
+        }
+
+        foreach ([
+            'task_folders',
+            'task_boards',
+            'task_groups',
+            'task_status_options',
+            'task_priority_options',
+            'task_column_definitions',
+            'task_column_options',
+        ] as $table) {
+            $column = DB::table('information_schema.columns')
+                ->whereRaw('table_schema = DATABASE()')
+                ->where('table_name', $table)
+                ->where('column_name', 'position')
+                ->value('column_type');
+
+            $this->assertStringNotContainsString('unsigned', $column, $table);
+        }
     }
 
     /** @param array{org: object, admin: object, company: object, franchise: object} $tenant */
-    private function insertFolder(array $tenant, ?string $companyId, ?string $franchiseId): string
+    private function insertFolder(array $tenant, ?string $companyId, ?string $franchiseId, int $position = 0): string
     {
         $id = (string) Str::uuid();
         $now = now();
@@ -238,7 +365,7 @@ class TaskBoardSchemaTest extends TestCase
             'company_id' => $companyId,
             'franchise_id' => $franchiseId,
             'name' => "Folder {$id}",
-            'position' => 0,
+            'position' => $position,
             'archived_at' => null,
             'created_at' => $now,
             'updated_at' => $now,
@@ -248,7 +375,16 @@ class TaskBoardSchemaTest extends TestCase
     }
 
     /** @param array{org: object, admin: object, company: object, franchise: object} $tenant */
-    private function insertBoard(array $tenant, ?string $companyId, ?string $franchiseId, ?string $folderId = null, string $visibility = 'scope'): string
+    private function insertBoard(
+        array $tenant,
+        ?string $companyId,
+        ?string $franchiseId,
+        ?string $folderId = null,
+        string $visibility = 'scope',
+        int $position = 0,
+        ?string $createdBy = null,
+        ?string $updatedBy = null,
+    ): string
     {
         $id = (string) Str::uuid();
         $now = now();
@@ -262,9 +398,9 @@ class TaskBoardSchemaTest extends TestCase
             'name' => "Board {$id}",
             'description' => null,
             'visibility' => $visibility,
-            'position' => 0,
-            'created_by' => $tenant['admin']->id,
-            'updated_by' => $tenant['admin']->id,
+            'position' => $position,
+            'created_by' => $createdBy ?? $tenant['admin']->id,
+            'updated_by' => $updatedBy ?? $tenant['admin']->id,
             'archived_at' => null,
             'created_at' => $now,
             'updated_at' => $now,
@@ -274,7 +410,7 @@ class TaskBoardSchemaTest extends TestCase
     }
 
     /** @param array{org: object} $tenant */
-    private function insertGroup(array $tenant, string $boardId, int $position): string
+    private function insertGroup(array $tenant, string $boardId, int $position, ?string $name = null): string
     {
         $id = (string) Str::uuid();
         $now = now();
@@ -283,7 +419,7 @@ class TaskBoardSchemaTest extends TestCase
             'id' => $id,
             'organization_id' => $tenant['org']->id,
             'board_id' => $boardId,
-            'name' => "Group {$position}",
+            'name' => $name ?? "Group {$position}",
             'color' => 'blue',
             'position' => $position,
             'archived_at' => null,
@@ -317,7 +453,7 @@ class TaskBoardSchemaTest extends TestCase
     }
 
     /** @param array{org: object} $tenant */
-    private function insertPriority(array $tenant, string $boardId, int $position, string $rank): string
+    private function insertPriority(array $tenant, string $boardId, int $position, string $rank, ?string $name = null): string
     {
         $id = (string) Str::uuid();
         $now = now();
@@ -326,7 +462,7 @@ class TaskBoardSchemaTest extends TestCase
             'id' => $id,
             'organization_id' => $tenant['org']->id,
             'board_id' => $boardId,
-            'name' => "Priority {$position}",
+            'name' => $name ?? "Priority {$position}",
             'color' => 'blue',
             'rank' => $rank,
             'position' => $position,
@@ -372,12 +508,15 @@ class TaskBoardSchemaTest extends TestCase
             ->contains(fn (object $index): bool => $index->columns === $columns);
     }
 
-    private function assertConstraintRejects(Closure $write): void
+    private function assertConstraintRejects(Closure $write, ?string $constraint = null): void
     {
         try {
             $write();
             $this->fail('Expected MySQL to reject the invalid row.');
-        } catch (QueryException) {
+        } catch (QueryException $exception) {
+            if ($constraint !== null) {
+                $this->assertStringContainsString($constraint, $exception->getMessage());
+            }
             $this->addToAssertionCount(1);
         }
     }
