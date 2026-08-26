@@ -114,6 +114,19 @@ MISSING
   exit 1
 fi
 
+# ── untracked files in the directories that ship ─────────────────
+#
+# A warning, not a stop: plenty of untracked files are meant to be untracked.
+# But `git archive main` carries only what is committed, so an untracked
+# migration deploys as "Nothing to migrate" and an untracked screen is simply
+# absent — both of which read as a broken feature rather than a missing commit.
+# Narrow on purpose: only the directories whose contents actually ship.
+UNTRACKED=$(git ls-files --others --exclude-standard -- app database routes config client/lib 2>/dev/null || true)
+if [ -n "$UNTRACKED" ]; then
+  echo "   ⚠ untracked files in shipping directories — these will NOT be released:"
+  printf '%s\n' "$UNTRACKED" | sed 's/^/     /'
+fi
+
 run() {
   if [ "$DRY_RUN" -eq 1 ]; then
     echo "   would run: $*"

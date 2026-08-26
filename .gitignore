@@ -45,3 +45,8 @@ Thumbs.db
 # Derived from a commit, tens of MB each, and a fresh blob on every build. They
 # are uploaded to Play and handed to testers, not versioned here.
 /dist
+
+# PHPUnit's test-result cache. Rewritten by every run, so tracking it made the
+# tree dirty after any test and blocked release.sh. Laravel gitignores it by
+# default; this repo had it committed.
+.phpunit.result.cache
