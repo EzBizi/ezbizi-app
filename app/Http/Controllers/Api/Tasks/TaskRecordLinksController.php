@@ -33,11 +33,11 @@ final class TaskRecordLinksController extends TaskApiController
 
     public function search(Request $request, Task $task): JsonResponse
     {
+        [$board, $scope] = $this->context($request, $task);
         $input = $request->validate([
             'type' => ['required', 'string', 'max:80'],
             'q' => ['present', 'string', 'max:100'],
         ]);
-        [$board, $scope] = $this->context($request, $task);
         $definition = $this->definition($input['type']);
 
         return response()->json(['data' => $definition->search($request->user(), $board, $scope, $input['q'])]);
@@ -45,6 +45,7 @@ final class TaskRecordLinksController extends TaskApiController
 
     public function store(Request $request, Task $task): JsonResponse
     {
+        $this->context($request, $task);
         $input = $request->validate([
             'expected_task_version' => ['required', 'integer', 'min:1'],
             'record_type' => ['required', 'string', 'max:80'],
@@ -66,6 +67,7 @@ final class TaskRecordLinksController extends TaskApiController
 
     public function destroy(Request $request, Task $task, TaskRecordLink $link): JsonResponse
     {
+        $this->context($request, $task);
         abort_unless($link->task_id === $task->id, Response::HTTP_NOT_FOUND);
         $input = $request->validate(['expected_task_version' => ['required', 'integer', 'min:1']]);
         try {

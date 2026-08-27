@@ -37,16 +37,26 @@ abstract class AbstractTaskRecordLinkDefinition implements TaskRecordLinkDefinit
     public function search(User $user, TaskBoard $board, ViewScope $scope, string $query): Collection
     {
         $class = $this->modelClass();
+        $needle = $this->like($query);
         $records = $class::query()->with($this->relations())
-            ->where(function (Builder $builder) use ($query): void {
+            ->where(function (Builder $builder) use ($needle): void {
                 foreach ($this->searchColumns() as $index => $column) {
                     $method = $index === 0 ? 'where' : 'orWhere';
-                    $builder->{$method}($column, 'like', '%'.$query.'%');
+                    $builder->{$method}($column, 'like', '%'.$needle.'%');
                 }
-            })->limit(100)->get();
+            })->lazyById(100);
 
-        return $records->filter(fn (Model $record) => $this->available($user, $board, $scope, $record))
-            ->take(20)->map(fn (Model $record) => $this->present($record))->values();
+        $visible = collect();
+        foreach ($records as $record) {
+            if ($this->available($user, $board, $scope, $record)) {
+                $visible->push($this->present($record));
+                if ($visible->count() === 20) {
+                    break;
+                }
+            }
+        }
+
+        return $visible;
     }
 
     public function resolve(User $user, TaskBoard $board, ViewScope $scope, string $id): ?Model
@@ -66,5 +76,10 @@ abstract class AbstractTaskRecordLinkDefinition implements TaskRecordLinkDefinit
     {
         return Gate::forUser($user)->allows('view', $record)
             && $this->scopeFilter->contains($record, $board, $scope);
+    }
+
+    private function like(string $value): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
     }
 }

@@ -84,6 +84,11 @@ final class TaskRecordLinkWriter
         if (! $actor->hasPermission('tasks.edit')) {
             Refusal::permission('change task record links')->authorize();
         }
+        if ($actor->organization?->isReadOnly()) {
+            throw ValidationException::withMessages([
+                'organization' => 'This organization is read-only because its subscription has ended.',
+            ]);
+        }
         $locked = Task::query()->where('board_id', $board->id)->active()->lockForUpdate()->findOrFail($task->id);
         if ((int) $locked->version !== $expectedVersion) {
             throw new TaskRecordLinkConflict((int) $locked->version);

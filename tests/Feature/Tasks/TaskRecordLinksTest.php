@@ -96,10 +96,15 @@ final class TaskRecordLinksTest extends TestCase
             'record_type' => 'customer', 'record_id' => $customer->id,
         ])->assertCreated();
 
+        $before = $this->getJson("/api/v1/tasks/boards/{$this->task->board_id}/tasks/{$this->task->id}")
+            ->assertOk();
+        $etag = $before->headers->get('ETag');
+
         $this->enterTenant();
         $customer->delete();
         $this->signedInAs($this->tenant['admin']->fresh());
-        $data = $this->getJson("/api/v1/tasks/boards/{$this->task->board_id}/tasks/{$this->task->id}")
+        $data = $this->withHeader('If-None-Match', $etag)
+            ->getJson("/api/v1/tasks/boards/{$this->task->board_id}/tasks/{$this->task->id}")
             ->assertOk()->json('data.record_links.0');
         $this->assertSame(['link_id', 'available', 'type'], array_keys($data));
         $this->assertFalse($data['available']);

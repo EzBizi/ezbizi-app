@@ -33,12 +33,6 @@ final class TaskDetailsController extends TaskApiController
             'activities' => fn ($query) => $query->latest('created_at')->limit(200),
             'subtasks' => fn ($query) => $query->active()->orderBy('position'),
         ])->findOrFail($taskId);
-        $etag = hash('sha256', json_encode([
-            $task->id, (int) $task->version, (int) $task->detail_version,
-            $task->subtasks->map(fn (Task $subtask) => [
-                $subtask->id, (int) $subtask->version, (int) $subtask->detail_version,
-            ])->values()->all(),
-        ], JSON_THROW_ON_ERROR));
         $data = $this->presentTask($task);
         $data['custom_values'] = $this->customValues($task);
         $data['updates'] = $task->updates->map(fn ($update) => [
@@ -85,6 +79,14 @@ final class TaskDetailsController extends TaskApiController
             'data' => $activity->data,
             'created_at' => $activity->created_at?->toIso8601String(),
         ])->values();
+
+        $etag = hash('sha256', json_encode([
+            $task->id, (int) $task->version, (int) $task->detail_version,
+            $task->subtasks->map(fn (Task $subtask) => [
+                $subtask->id, (int) $subtask->version, (int) $subtask->detail_version,
+            ])->values()->all(),
+            $data['record_links']->all(),
+        ], JSON_THROW_ON_ERROR));
 
         $response = response()->json(['data' => $data])->setEtag($etag);
         $response->isNotModified($request);
