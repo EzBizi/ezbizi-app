@@ -59,6 +59,65 @@ void main() {
       expect(selected?.id, 'task-1');
     },
   );
+
+  testWidgets('bulk lock preserves selection and ignores table shortcuts', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var interactionLocked = false;
+    var selectionCount = 0;
+    var selectionCleared = false;
+    final selectedTaskIds = <String>[];
+    late StateSetter rebuild;
+
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (context, setState) {
+          rebuild = setState;
+          return MaterialApp(
+            theme: EzBiziTheme.light(),
+            home: Scaffold(
+              body: TaskTable(
+                board: _board,
+                rows: const [_row, _secondRow],
+                selectedTaskId: _row.id,
+                onSelected: (row) => selectedTaskIds.add(row.id),
+                onTitleChanged: (_, _) {},
+                onSelectionChanged: (count) => selectionCount = count,
+                onSelectionCleared: () => selectionCleared = true,
+                interactionLocked: interactionLocked,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pump();
+    expect(selectionCount, 1);
+    expect(find.text('1 selected'), findsOneWidget);
+
+    rebuild(() => interactionLocked = true);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+
+    expect(selectionCount, 1);
+    expect(selectionCleared, isFalse);
+    expect(selectedTaskIds, isEmpty);
+    expect(find.text('1 selected'), findsOneWidget);
+
+    rebuild(() => interactionLocked = false);
+    await tester.pump();
+    expect(selectionCount, 1);
+    expect(find.text('1 selected'), findsOneWidget);
+  });
 }
 
 const _board = TaskBoard(
@@ -114,6 +173,27 @@ const _row = TaskRow(
   startOn: null,
   dueOn: null,
   position: 1,
+  version: 1,
+  detailVersion: 1,
+  values: {},
+  groupByValue: 'group-1',
+  subtasks: [],
+);
+
+const _secondRow = TaskRow(
+  id: 'task-2',
+  boardId: 'board-1',
+  groupId: 'group-1',
+  parentTaskId: null,
+  number: 'TASK-2',
+  title: 'Install the opening',
+  ownerUserId: null,
+  collaboratorUserIds: [],
+  statusOptionId: 'status-1',
+  priorityOptionId: null,
+  startOn: null,
+  dueOn: null,
+  position: 2,
   version: 1,
   detailVersion: 1,
   values: {},

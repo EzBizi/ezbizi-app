@@ -129,6 +129,7 @@ class _TaskTableState extends State<TaskTable> {
       actions: {
         _ClearIntent: CallbackAction<_ClearIntent>(
           onInvoke: (_) {
+            if (widget.interactionLocked) return null;
             _clear();
             widget.onSelectionCleared?.call();
             return null;
@@ -136,6 +137,7 @@ class _TaskTableState extends State<TaskTable> {
         ),
         _MoveIntent: CallbackAction<_MoveIntent>(
           onInvoke: (intent) {
+            if (widget.interactionLocked) return null;
             if (widget.rows.isNotEmpty) {
               final at = widget.rows.indexWhere(
                 (row) => row.id == widget.selectedTaskId,
@@ -152,6 +154,7 @@ class _TaskTableState extends State<TaskTable> {
         ),
         _ActivateIntent: CallbackAction<_ActivateIntent>(
           onInvoke: (_) {
+            if (widget.interactionLocked) return null;
             final found = widget.rows.where(
               (row) => row.id == widget.selectedTaskId,
             );
