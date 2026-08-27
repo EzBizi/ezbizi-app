@@ -8,6 +8,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tarfile
@@ -118,6 +119,20 @@ class PrivateFilesBackupRestoreFixtureTest(unittest.TestCase):
             status,
             local,
             remote,
+        )
+
+    def create_outer_manifest(
+        self,
+        artifacts: Path,
+        run: str,
+        output: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        return self.run_script(
+            BACKUP,
+            "--outer-manifest-fixture",
+            artifacts,
+            run,
+            output,
         )
 
     def encrypted_tar(
@@ -255,6 +270,29 @@ class PrivateFilesBackupRestoreFixtureTest(unittest.TestCase):
                     self.assertEqual(expected, payload.read())
         finally:
             plain.unlink(missing_ok=True)
+
+    def test_outer_manifest_uses_parser_compatible_basenames(self) -> None:
+        run = "2026-08-27T230000Z-fixture"
+        artifacts = self.root / "outer"
+        artifacts.mkdir()
+        names = {
+            f"app-{run}.tar.gz.gpg",
+            f"db-ezbizi-{run}.sql.gz.gpg",
+        }
+        for name in names:
+            (artifacts / name).write_bytes(name.encode())
+        output = self.root / "outer-manifest.txt"
+
+        made = self.create_outer_manifest(artifacts, run, output)
+        self.assertEqual(0, made.returncode, made.stdout + made.stderr)
+        lines = output.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(f"# EZBIZI-BACKUP-MANIFEST\t1\t{run}", lines[0])
+        parsed = []
+        for line in lines[1:]:
+            match = re.fullmatch(r"([0-9a-f]{64})  ([A-Za-z0-9._-]+)", line)
+            self.assertIsNotNone(match, line)
+            parsed.append(match.group(2))
+        self.assertEqual(names, set(parsed))
 
     def test_valid_encrypted_archive_round_trips_and_cleans_its_temporary_directory(self) -> None:
         made = self.create_with_backup()
