@@ -97,7 +97,13 @@ class TaskColumnCell extends StatelessWidget {
       // can be changed.
       TaskColumnKind.file => Semantics(
         readOnly: true,
-        child: Text('Files are unavailable until the restore gate passes.'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (value.rawValue != null) Text(_rawText(value.rawValue)),
+            const Text('Files are unavailable until the restore gate passes.'),
+          ],
+        ),
       ),
       TaskColumnKind.unknown => Text(_rawText(value.rawValue)),
     };
@@ -162,6 +168,7 @@ class _NumberCellState extends State<_NumberCell> {
   late final TextEditingController _controller = TextEditingController(
     text: widget.initial?.toString() ?? '',
   );
+  String? _error;
   @override
   void dispose() {
     _controller.dispose();
@@ -179,9 +186,22 @@ class _NumberCellState extends State<_NumberCell> {
       isDense: true,
       labelText: widget.label,
       suffixText: widget.suffix,
+      errorText: _error,
     ),
-    onSubmitted: (text) =>
-        widget.onSaved(text.trim().isEmpty ? null : num.tryParse(text)),
+    onSubmitted: (text) {
+      final trimmed = text.trim();
+      if (trimmed.isEmpty) {
+        widget.onSaved(null);
+        return;
+      }
+      final parsed = num.tryParse(trimmed);
+      if (parsed == null || !parsed.isFinite) {
+        setState(() => _error = 'Enter a valid number.');
+        return;
+      }
+      setState(() => _error = null);
+      widget.onSaved(parsed);
+    },
   );
 }
 

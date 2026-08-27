@@ -27,6 +27,12 @@ void main() {
     expect(malformed.rawValue, 'not-a-number');
   });
 
+  test('accepts the canonical decimal-string Number response without losing raw wire value', () {
+    final value = TaskCellValue.fromJson('3.500000', definition: _column('Decimal', TaskColumnKind.number));
+    expect(value.value, 3.5);
+    expect(value.rawValue, '3.500000');
+  });
+
   testWidgets('renders each declared custom type and keeps File unavailable', (
     tester,
   ) async {

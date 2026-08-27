@@ -42,3 +42,20 @@
   not turn an empty candidate list into inferred eligibility.
 - No raw reach picker, modal, hard-coded colors, upload path, or production
   change was introduced.
+
+## Fix round 1/5
+
+- Partial scalar and bulk task projections now merge into the existing displayed
+  row, retaining custom values and compact detail while accepting the server's
+  changed core fields and versions.
+- Per-task mutation queues acquire the latest displayed version only when each
+  dependent request begins. Candidate lists are cleared while a board changes.
+- Number accepts the API's canonical decimal-string representation; invalid
+  nonempty entry remains local validation rather than becoming a null clear.
+  Existing File values remain visible beside the restore-gate explanation.
+- Status/priority menus omit archived options, and operational fields no longer
+  exclude screen-reader semantics.
+
+Verification: focused Task17A/API/model/table/screen Flutter run passed 26
+tests; targeted analyze completed with no errors (informational diagnostics
+remain).

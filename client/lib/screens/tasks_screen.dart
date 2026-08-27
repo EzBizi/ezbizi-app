@@ -49,6 +49,7 @@ class _TasksScreenState extends State<TasksScreen> {
   String? _announcement;
   List<TaskParticipant> _owners = const [];
   List<TaskParticipant> _people = const [];
+  final Map<String, Future<void>> _mutationQueues = <String, Future<void>>{};
   int _intentGeneration = 0;
   int _requestGeneration = 0;
   int _page = 1;
@@ -139,6 +140,8 @@ class _TasksScreenState extends State<TasksScreen> {
       _detail = null;
       _selectedTaskId = null;
       _page = 1;
+      _owners = const [];
+      _people = const [];
     });
     final result = await _tasks.boardRows(board.id, page: _page);
     if (!mounted || request != _requestGeneration) return;
@@ -340,7 +343,43 @@ class _TasksScreenState extends State<TasksScreen> {
         .toList(growable: false),
   );
 
-  Future<void> _saveCore(TaskRow task, String field, Object? value) async {
+  Future<void> _enqueue(String taskId, Future<void> Function() operation) {
+    final prior = _mutationQueues[taskId] ?? Future<void>.value();
+    final next = prior.catchError((_) {}).then((_) => operation());
+    _mutationQueues[taskId] = next;
+    return next.whenComplete(() {
+      if (identical(_mutationQueues[taskId], next))
+        _mutationQueues.remove(taskId);
+    });
+  }
+
+  TaskRow _mergeServerRow(TaskRow prior, TaskRow server) => TaskRow(
+    id: server.id,
+    boardId: server.boardId,
+    groupId: server.groupId,
+    parentTaskId: server.parentTaskId,
+    number: server.number,
+    title: server.title,
+    ownerUserId: server.ownerUserId,
+    collaboratorUserIds: server.collaboratorUserIds,
+    statusOptionId: server.statusOptionId,
+    priorityOptionId: server.priorityOptionId,
+    startOn: server.startOn,
+    dueOn: server.dueOn,
+    position: server.position,
+    version: server.version,
+    detailVersion: server.detailVersion,
+    values: prior.values,
+    groupByValue: server.groupByValue,
+    subtasks: prior.subtasks,
+  );
+
+  Future<void> _saveCore(TaskRow task, String field, Object? value) =>
+      _enqueue(task.id, () => _saveCoreNow(task.id, field, value));
+
+  Future<void> _saveCoreNow(String taskId, String field, Object? value) async {
+    final task = _rows.where((row) => row.id == taskId).firstOrNull;
+    if (task == null) return;
     final optimistic = switch (field) {
       'title' => _replaceRow(task, title: value as String),
       'owner_user_id' => _replaceRow(
@@ -374,7 +413,7 @@ class _TasksScreenState extends State<TasksScreen> {
     );
     if (!mounted) return;
     if (result is TaskApiSuccess<TaskRow>) {
-      _putRow(result.data);
+      _putRow(_mergeServerRow(task, result.data));
       _announce('${field.replaceAll('_', ' ')} saved.');
     } else if (result is TaskApiUnavailable<TaskRow>) {
       _evict(result.message);
@@ -390,7 +429,15 @@ class _TasksScreenState extends State<TasksScreen> {
     TaskRow task,
     TaskColumnDefinition column,
     Object? value,
+  ) => _enqueue(task.id, () => _saveCustomNow(task.id, column, value));
+
+  Future<void> _saveCustomNow(
+    String taskId,
+    TaskColumnDefinition column,
+    Object? value,
   ) async {
+    final task = _rows.where((row) => row.id == taskId).firstOrNull;
+    if (task == null) return;
     _announce('Saving ${column.name}.');
     final result = await _tasks.updateColumnValue(
       task.id,
@@ -440,7 +487,12 @@ class _TasksScreenState extends State<TasksScreen> {
     );
     if (!mounted) return;
     if (result is TaskApiSuccess<List<TaskRow>>) {
-      for (final row in result.data) _putRow(row);
+      for (final row in result.data) {
+        final previous = _rows
+            .where((current) => current.id == row.id)
+            .firstOrNull;
+        _putRow(previous == null ? row : _mergeServerRow(previous, row));
+      }
       _announce('Changes saved for ${result.data.length} tasks.');
     } else if (result is TaskApiUnavailable<List<TaskRow>>) {
       _evict(result.message);
@@ -751,6 +803,10 @@ class TaskDetailDivider extends StatelessWidget {
 class _ResizeDetailIntent extends Intent {
   const _ResizeDetailIntent(this.delta);
   final double delta;
+}
+
+extension _TasksFirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }
 
 class _EmptyDirectory extends StatelessWidget {

@@ -473,7 +473,9 @@ class _OperationalRow extends StatelessWidget {
   final Future<void> Function(String, Object?) onCore;
   final Future<void> Function(TaskColumnDefinition, Object?) onCustom;
   @override
-  Widget build(BuildContext context) => ExcludeSemantics(
+  Widget build(BuildContext context) => Semantics(
+    container: true,
+    label: 'Task ${task.number} operational fields',
     child: Container(
       height: 52,
       decoration: BoxDecoration(
@@ -487,36 +489,54 @@ class _OperationalRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 150,
-            child: _Option(
-              value: task.statusOptionId,
-              hint: 'No status',
-              options: board.statuses.map((s) => (s.id, s.name)).toList(),
-              changed: (value) => onCore('status_option_id', value),
+            child: Semantics(
+              label: 'Task ${task.number} status',
+              child: _Option(
+                value: task.statusOptionId,
+                hint: 'No status',
+                options: board.statuses
+                    .where((s) => !s.archived)
+                    .map((s) => (s.id, s.name))
+                    .toList(),
+                changed: (value) => onCore('status_option_id', value),
+              ),
             ),
           ),
           SizedBox(
             width: 150,
-            child: _Option(
-              value: task.ownerUserId,
-              hint: 'Unassigned',
-              options: owners.map((p) => (p.id, p.name)).toList(),
-              changed: (value) => onCore('owner_user_id', value),
+            child: Semantics(
+              label: 'Task ${task.number} owner',
+              child: _Option(
+                value: task.ownerUserId,
+                hint: 'Unassigned',
+                options: owners.map((p) => (p.id, p.name)).toList(),
+                changed: (value) => onCore('owner_user_id', value),
+              ),
             ),
           ),
           SizedBox(
             width: 150,
-            child: _Option(
-              value: task.priorityOptionId,
-              hint: 'No priority',
-              options: board.priorities.map((p) => (p.id, p.name)).toList(),
-              changed: (value) => onCore('priority_option_id', value),
+            child: Semantics(
+              label: 'Task ${task.number} priority',
+              child: _Option(
+                value: task.priorityOptionId,
+                hint: 'No priority',
+                options: board.priorities
+                    .where((p) => !p.archived)
+                    .map((p) => (p.id, p.name))
+                    .toList(),
+                changed: (value) => onCore('priority_option_id', value),
+              ),
             ),
           ),
           SizedBox(
             width: 160,
-            child: _Date(
-              value: task.dueOn,
-              changed: (value) => onCore('due_on', value),
+            child: Semantics(
+              label: 'Task ${task.number} due date',
+              child: _Date(
+                value: task.dueOn,
+                changed: (value) => onCore('due_on', value),
+              ),
             ),
           ),
           for (final c in custom)

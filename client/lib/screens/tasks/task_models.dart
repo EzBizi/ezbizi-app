@@ -577,7 +577,7 @@ final class TaskCellValue {
     try {
       value = switch (kind) {
         TaskColumnKind.text => _expectType<String>(raw, 'custom text value'),
-        TaskColumnKind.number => _expectType<num>(raw, 'custom number value'),
+        TaskColumnKind.number => _numberValue(raw),
         TaskColumnKind.checkbox => _expectType<bool>(
           raw,
           'custom checkbox value',
@@ -1202,6 +1202,15 @@ TaskColumnKind _columnKind(String raw) => switch (raw) {
   'file' => TaskColumnKind.file,
   _ => TaskColumnKind.unknown,
 };
+
+num _numberValue(Object? raw) {
+  if (raw is num) return raw;
+  if (raw is String && RegExp(r'^-?\d+(?:\.\d+)?$').hasMatch(raw)) {
+    final value = num.tryParse(raw);
+    if (value != null) return value;
+  }
+  throw const FormatException('custom number value must be a number.');
+}
 
 TaskViewVisibility _viewVisibility(String raw) => switch (raw) {
   'personal' => TaskViewVisibility.personal,
