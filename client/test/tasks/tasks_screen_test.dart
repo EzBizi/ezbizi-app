@@ -58,6 +58,120 @@ void main() {
     expect(delta, 24);
   });
 
+  testWidgets('mobile detail replaces an access-lost governed link in place', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var detailReads = 0;
+    final api = ApiClient(
+      client: MockClient((request) async {
+        switch (request.url.path) {
+          case '/api/v1/tasks/boards':
+            return _json(<String, Object?>{
+              'data': <Object?>[_board()],
+            });
+          case '/api/v1/tasks/boards/board-1/rows':
+            return _json(<String, Object?>{
+              'data': <Object?>[_task()],
+              'meta': _rowsMeta(),
+            });
+          case '/api/v1/tasks/boards/board-1/tasks/task-1':
+            detailReads++;
+            return _json(<String, Object?>{
+              'data': _task(
+                recordLinks: detailReads == 1
+                    ? <Object?>[_availableLink()]
+                    : <Object?>[_unavailableLink()],
+              ),
+            });
+          case '/api/v1/tasks/task-1/record-links/link-1':
+            return _json(<String, Object?>{
+              'data': <String, Object?>{'removed': true},
+            });
+        }
+        return _json(<String, Object?>{'message': 'Unexpected request'}, 500);
+      }),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: TasksScreen(api: api, session: Session(api)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Operations'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Inspect the constrained layout'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Visible customer'), findsOneWidget);
+    await tester.tap(find.byTooltip('Unlink customer'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Customer unavailable'), findsOneWidget);
+    expect(find.text('Visible customer'), findsNothing);
+    expect(find.text('C-100'), findsNothing);
+  });
+
+  testWidgets(
+    'mobile linked-record navigation closes detail before forwarding',
+    (tester) async {
+      tester.view.physicalSize = const Size(600, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      String? opened;
+      final api = ApiClient(
+        client: MockClient((request) async {
+          switch (request.url.path) {
+            case '/api/v1/tasks/boards':
+              return _json(<String, Object?>{
+                'data': <Object?>[_board()],
+              });
+            case '/api/v1/tasks/boards/board-1/rows':
+              return _json(<String, Object?>{
+                'data': <Object?>[_task()],
+                'meta': _rowsMeta(),
+              });
+            case '/api/v1/tasks/boards/board-1/tasks/task-1':
+              return _json(<String, Object?>{
+                'data': _task(recordLinks: <Object?>[_availableLink()]),
+              });
+          }
+          return _json(<String, Object?>{'message': 'Unexpected request'}, 500);
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            body: TasksScreen(
+              api: api,
+              session: Session(api),
+              onOpenRecordRoute: (route) => opened = route,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Operations'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Inspect the constrained layout'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Visible customer'));
+      await tester.pumpAndSettle();
+
+      expect(opened, '/customers/customer-1');
+      expect(find.byTooltip('Back to board'), findsNothing);
+    },
+  );
+
   testWidgets('keeps loaded detail usable when shell provides exactly 750px', (
     tester,
   ) async {
@@ -148,7 +262,16 @@ Map<String, Object?> _board() => <String, Object?>{
   'archived': false,
   'is_favorite': false,
   'last_opened_at': null,
-  'groups': <Object?>[],
+  'groups': <Object?>[
+    <String, Object?>{
+      'id': 'group-1',
+      'name': 'To do',
+      'color': null,
+      'position': 1,
+      'order_version': 1,
+      'archived': false,
+    },
+  ],
   'statuses': <Object?>[],
   'priorities': <Object?>[],
   'core_columns': <Object?>[],
@@ -156,26 +279,55 @@ Map<String, Object?> _board() => <String, Object?>{
   'views': <Object?>[],
 };
 
-Map<String, Object?> _task() => <String, Object?>{
-  'id': 'task-1',
-  'board_id': 'board-1',
-  'group_id': 'group-1',
-  'parent_task_id': null,
-  'number': 'TASK-1',
-  'title': 'Inspect the constrained layout',
-  'owner_user_id': null,
-  'collaborator_user_ids': <Object?>[],
-  'status_option_id': null,
-  'priority_option_id': null,
-  'start_on': null,
-  'due_on': null,
-  'position': 1,
-  'version': 1,
-  'detail_version': 1,
-  'custom_values': <String, Object?>{},
-  'group_by_value': 'group-1',
-  'subtasks': <Object?>[],
-  'record_links': <Object?>[],
+Map<String, Object?> _task({List<Object?> recordLinks = const <Object?>[]}) =>
+    <String, Object?>{
+      'id': 'task-1',
+      'board_id': 'board-1',
+      'group_id': 'group-1',
+      'parent_task_id': null,
+      'number': 'TASK-1',
+      'title': 'Inspect the constrained layout',
+      'owner_user_id': null,
+      'collaborator_user_ids': <Object?>[],
+      'status_option_id': null,
+      'priority_option_id': null,
+      'start_on': null,
+      'due_on': null,
+      'position': 1,
+      'version': 1,
+      'detail_version': 1,
+      'custom_values': <String, Object?>{},
+      'group_by_value': 'group-1',
+      'subtasks': <Object?>[],
+      'record_links': recordLinks,
+    };
+
+Map<String, Object?> _availableLink() => <String, Object?>{
+  'link_id': 'link-1',
+  'available': true,
+  'type': 'customer',
+  'id': 'customer-1',
+  'label': 'Visible customer',
+  'subtitle': 'C-100',
+  'route': '/customers/customer-1',
+};
+
+Map<String, Object?> _unavailableLink() => <String, Object?>{
+  'link_id': 'link-1',
+  'available': false,
+  'type': 'Customer',
+};
+
+Map<String, Object?> _rowsMeta() => <String, Object?>{
+  'total': 1,
+  'page': 1,
+  'per_page': 50,
+  'last_page': 1,
+  'group_counts': <Object?>[],
+  'status_summaries': <Object?>[],
+  'view_id': 'view-1',
+  'view_version': 1,
+  'configuration': _configuration(),
 };
 
 Map<String, Object?> _configuration() => <String, Object?>{

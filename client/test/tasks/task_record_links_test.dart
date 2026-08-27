@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -124,6 +125,71 @@ void main() {
       expect(find.text('Allowed customer'), findsNothing);
       expect(find.text('C-100'), findsNothing);
       expect(find.byTooltip('Open Customer'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'drops a delayed search result after access replaces the task snapshot',
+    (tester) async {
+      final delayedSearch = Completer<http.Response>();
+      final api = TaskApi(
+        ApiClient(
+          client: MockClient((request) async {
+            if (request.url.path.endsWith('/types')) {
+              return _json(200, <String, Object?>{
+                'data': <Object?>[
+                  <String, Object?>{'key': 'customer', 'label': 'Customer'},
+                ],
+              });
+            }
+            if (request.url.path.endsWith('/search')) {
+              return delayedSearch.future;
+            }
+            throw StateError('Unexpected request: ${request.url}');
+          }),
+        ),
+      );
+      var snapshot = _snapshot();
+      late StateSetter setHostState;
+      await tester.pumpWidget(
+        StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return _host(api: api, snapshot: snapshot);
+          },
+        ),
+      );
+      await tester.tap(find.text('Link record'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Allowed');
+      await tester.pump();
+
+      setHostState(
+        () => snapshot = _snapshot(
+          links: <TaskRecordLink>[
+            const TaskRecordLink(
+              linkId: 'link-1',
+              available: false,
+              typeLabel: 'Customer',
+              recordId: null,
+              label: null,
+              subtitle: null,
+              route: null,
+            ),
+          ],
+        ),
+      );
+      await tester.pump();
+      delayedSearch.complete(
+        _json(200, <String, Object?>{
+          'data': <Object?>[_candidate()],
+        }),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Customer unavailable'), findsOneWidget);
+      expect(find.text('Allowed customer'), findsNothing);
+      expect(find.text('C-100'), findsNothing);
     },
   );
 

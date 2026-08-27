@@ -41,6 +41,8 @@ class _TasksScreenState extends State<TasksScreen> {
   TaskBoard? _board;
   List<TaskRow> _rows = const [];
   TaskDetailSnapshot? _detail;
+  final ValueNotifier<TaskDetailSnapshot?> _mobileDetail =
+      ValueNotifier<TaskDetailSnapshot?>(null);
   String? _selectedTaskId;
   double _detailWidth = 390;
   bool _detailOpen = true;
@@ -58,6 +60,12 @@ class _TasksScreenState extends State<TasksScreen> {
   int _requestGeneration = 0;
   int _page = 1;
   int _lastPage = 1;
+
+  @override
+  void dispose() {
+    _mobileDetail.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -148,6 +156,7 @@ class _TasksScreenState extends State<TasksScreen> {
       _owners = const [];
       _people = const [];
     });
+    _mobileDetail.value = null;
     final result = await _tasks.boardRows(board.id, page: _page);
     if (!mounted || request != _requestGeneration) return;
     if (result is TaskApiUnavailable<TaskRowsPage>) {
@@ -212,6 +221,7 @@ class _TasksScreenState extends State<TasksScreen> {
       _selectedTaskId = taskId;
       _detail = null;
     });
+    _mobileDetail.value = null;
     final result = await _tasks.taskDetail(board.id, taskId);
     if (consumeIntent
         ? (!_isCurrentIntent(intent!, generation!) ||
@@ -234,18 +244,22 @@ class _TasksScreenState extends State<TasksScreen> {
       _detail = result.data;
       _detailOpen = true;
     });
+    _mobileDetail.value = result.data;
     if (consumeIntent) widget.onIntentConsumed?.call();
     if (MediaQuery.sizeOf(context).width < 700) {
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
           builder: (_) => Scaffold(
-            body: TaskDetailPanel(
-              task: result.data,
-              taskApi: _tasks,
-              onTaskChanged: _replaceDetail,
-              onOpenRecordRoute: _openRecordRoute,
-              fullScreen: true,
-              onClose: () => Navigator.of(context).pop(),
+            body: ValueListenableBuilder<TaskDetailSnapshot?>(
+              valueListenable: _mobileDetail,
+              builder: (context, detail, _) => TaskDetailPanel(
+                task: detail,
+                taskApi: _tasks,
+                onTaskChanged: _replaceDetail,
+                onOpenRecordRoute: _openRecordRoute,
+                fullScreen: true,
+                onClose: () => Navigator.of(context).pop(),
+              ),
             ),
           ),
         ),
@@ -261,9 +275,16 @@ class _TasksScreenState extends State<TasksScreen> {
   void _replaceDetail(TaskDetailSnapshot detail) {
     if (!mounted) return;
     setState(() => _detail = detail);
+    _mobileDetail.value = detail;
   }
 
-  void _openRecordRoute(String route) => widget.onOpenRecordRoute?.call(route);
+  Future<void> _openRecordRoute(String route) async {
+    final onOpenRecordRoute = widget.onOpenRecordRoute;
+    if (MediaQuery.sizeOf(context).width < 700) {
+      await Navigator.of(context).maybePop();
+    }
+    onOpenRecordRoute?.call(route);
+  }
 
   Future<void> _goToPage(int page) async {
     if (_bulkBusy) return;
@@ -583,6 +604,7 @@ class _TasksScreenState extends State<TasksScreen> {
       _error = null;
       _unavailable = true;
     });
+    _mobileDetail.value = null;
   }
 
   @override

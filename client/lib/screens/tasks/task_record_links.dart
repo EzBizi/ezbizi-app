@@ -45,6 +45,7 @@ class _TaskRecordLinksState extends State<TaskRecordLinks> {
     // A freshly authorized snapshot replaces the list rather than merging it.
     // That is what drops identity fields immediately after target access loss.
     if (oldWidget.snapshot != widget.snapshot) {
+      _searchGeneration++;
       _notice = null;
       _matches = const [];
       _search.clear();
@@ -71,6 +72,7 @@ class _TaskRecordLinksState extends State<TaskRecordLinks> {
   }
 
   Future<void> _searchFor(String text) async {
+    final snapshot = widget.snapshot;
     final type = _selectedType;
     final query = text.trim();
     final generation = ++_searchGeneration;
@@ -79,11 +81,15 @@ class _TaskRecordLinksState extends State<TaskRecordLinks> {
       return;
     }
     final result = await widget.api.searchRecordLinks(
-      widget.snapshot.task.id,
+      snapshot.task.id,
       type: type,
       query: query,
     );
-    if (!mounted || generation != _searchGeneration) return;
+    if (!mounted ||
+        generation != _searchGeneration ||
+        !identical(widget.snapshot, snapshot)) {
+      return;
+    }
     if (result is TaskApiSuccess<List<TaskRecordLinkCandidate>>) {
       setState(() => _matches = result.data);
     } else {
