@@ -100,6 +100,10 @@ class SocialPublishingTest extends TestCase
         $file = $this->temp('mp4', str_repeat('V', 500));
 
         Http::fake([
+            'open.tiktokapis.com/v2/post/publish/creator_info/query/' => Http::response([
+                'data'  => ['privacy_level_options' => ['PUBLIC_TO_EVERYONE', 'SELF_ONLY']],
+                'error' => ['code' => 'ok'],
+            ]),
             'open.tiktokapis.com/v2/post/publish/video/init/' => Http::response([
                 'data'  => ['upload_url' => 'https://upload.tiktok.test/put', 'publish_id' => 'pub-7'],
                 'error' => ['code' => 'ok'],

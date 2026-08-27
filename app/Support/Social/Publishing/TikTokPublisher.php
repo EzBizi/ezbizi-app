@@ -43,10 +43,25 @@ final class TikTokPublisher implements SocialPublisher
         $bytes = $post->bytes();
         $size  = strlen($bytes);
 
+        /*
+         * Ask the creator what they allow, before posting as them.
+         *
+         * Not optional politeness — TikTok's content-sharing guidelines require
+         * it, and skipping it is answered by init with "Please review our
+         * integration guidelines", which names no field and reads like the video
+         * was rejected. The call also returns the privacy levels this creator
+         * offers, and posting outside them is refused the same way.
+         *
+         * It doubles as the thing a composer will need: the account's name and
+         * avatar, and which privacy levels to draw.
+         */
+        $creator = $this->creatorInfo($token);
+        $privacy = $this->privacyFor($creator);
+
         $init = $this->call($token, '/post/publish/video/init/', [
             'post_info' => [
                 'title'          => mb_substr($post->body !== '' ? $post->body : ($post->title ?? 'EzBizi'), 0, 2200),
-                'privacy_level'  => 'SELF_ONLY',
+                'privacy_level'  => $privacy,
                 'disable_comment' => false,
                 'disable_duet'    => false,
                 'disable_stitch'  => false,
@@ -93,6 +108,59 @@ final class TikTokPublisher implements SocialPublisher
         if ($response->failed()) {
             throw SocialPublishFailed::network('TikTok', 'the upload was rejected, HTTP '.$response->status().'.');
         }
+    }
+
+    /**
+     * The account's own name, avatar and what it permits.
+     *
+     * @return array<string, mixed>
+     */
+    public function creatorInfo(string $token): array
+    {
+        // An empty JSON OBJECT. `->post($url)` with no data sends `[]`, which
+        // TikTok answers with "The request parameter type is incorrect" — an
+        // array and an object are not the same thing to it.
+        try {
+            $response = Http::withToken($token)
+                ->timeout(self::TIMEOUT)
+                ->withBody('{}', 'application/json')
+                ->post(self::API.'/post/publish/creator_info/query/');
+        } catch (ConnectionException) {
+            throw SocialPublishFailed::network('TikTok', 'EzBizi could not reach it.');
+        }
+
+        $body = (array) $response->json();
+
+        if ($response->failed() || (($body['error']['code'] ?? null) !== 'ok')) {
+            throw SocialPublishFailed::network('TikTok', (string) (
+                $body['error']['message'] ?? 'it would not say what this account allows.'
+            ));
+        }
+
+        return (array) ($body['data'] ?? []);
+    }
+
+    /**
+     * The most private level this creator offers.
+     *
+     * Private on purpose. An unaudited app may only post SELF_ONLY, and until a
+     * composer exists to ask a person what they want, choosing anything more
+     * public would be EzBizi deciding to publish on their behalf.
+     */
+    private function privacyFor(array $creator): string
+    {
+        $offered = (array) ($creator['privacy_level_options'] ?? []);
+
+        foreach (['SELF_ONLY', 'MUTUAL_FOLLOW_FRIENDS', 'PUBLIC_TO_EVERYONE'] as $level) {
+            if (in_array($level, $offered, strict: true)) {
+                return $level;
+            }
+        }
+
+        throw SocialPublishFailed::network(
+            'TikTok',
+            'that account offers no privacy level EzBizi can post at.',
+        );
     }
 
     /** Where a publish got to. TikTok processes after the bytes land. */
