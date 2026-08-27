@@ -249,6 +249,16 @@ return [
         'platform_account_sid' => env('TWILIO_PLATFORM_ACCOUNT_SID'),
         'platform_api_key_sid' => env('TWILIO_PLATFORM_API_KEY_SID'),
         'platform_api_secret'  => env('TWILIO_PLATFORM_API_SECRET'),
+
+        // The parent account's own auth token.
+        //
+        // An API key — even a Main one — is not enough to PROVISION with.
+        // Twilio withholds `auth_token` from an account resource fetched or
+        // created with key auth, so creating a subaccount that way returns a
+        // real account with no token, and §5 needs that token to validate the
+        // connection's webhooks. The same restriction is why key auth cannot
+        // read into a subaccount, delete a key in one, or move a number out.
+        'platform_auth_token'  => env('TWILIO_PLATFORM_AUTH_TOKEN'),
     ],
 
 ];

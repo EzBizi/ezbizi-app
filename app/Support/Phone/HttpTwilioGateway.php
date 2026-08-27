@@ -29,9 +29,33 @@ final class HttpTwilioGateway implements TwilioGateway
         ];
     }
 
+    /**
+     * A subaccount for this business, reusing one of the same name if it is
+     * already there.
+     *
+     * Reuse rather than create, because this is retried. The token check
+     * downstream used to fail AFTER the account existed, so every retry left
+     * another identically-named subaccount behind — two "A-1 Chimney" accounts
+     * appeared exactly that way. Creating is the fallback, not the default.
+     */
     public function createSubaccount(string $friendlyName): array
     {
-        $account = $this->platformClient()->api->v2010->accounts->create([
+        $client = $this->platformClient();
+
+        foreach ($this->listSubaccounts() as $existing) {
+            if (strcasecmp(trim($existing['friendly_name']), trim($friendlyName)) !== 0) {
+                continue;
+            }
+
+            $account = $client->api->v2010->accounts($existing['account_sid'])->fetch();
+
+            return [
+                'account_sid' => $account->sid,
+                'auth_token' => $account->authToken,
+            ];
+        }
+
+        $account = $client->api->v2010->accounts->create([
             'friendlyName' => $friendlyName,
         ]);
 
@@ -496,9 +520,23 @@ final class HttpTwilioGateway implements TwilioGateway
         return new Client($apiKeySid, $apiSecret, $accountSid);
     }
 
+    /**
+     * The parent account, authenticated the strongest way available.
+     *
+     * Account SID + auth token when we have it, API key otherwise. The
+     * difference is not cosmetic: Twilio withholds `auth_token` from an
+     * account resource under key auth, so creating a subaccount with a key
+     * yields an account we cannot validate webhooks for — and §5 refuses a
+     * global token, so there is nothing to fall back on.
+     */
     private function platformClient(): Client
     {
         [$accountSid, $apiKeySid, $apiSecret] = $this->platformCredentials();
+        $authToken = config('services.twilio.platform_auth_token');
+
+        if (is_string($authToken) && $authToken !== '') {
+            return new Client($accountSid, $authToken);
+        }
 
         return new Client($apiKeySid, $apiSecret, $accountSid);
     }
@@ -508,7 +546,15 @@ final class HttpTwilioGateway implements TwilioGateway
      */
     private function platformClientForAccount(string $accountSid): Client
     {
-        [, $apiKeySid, $apiSecret] = $this->platformCredentials();
+        [$platformSid, $apiKeySid, $apiSecret] = $this->platformCredentials();
+        $authToken = config('services.twilio.platform_auth_token');
+
+        // Acting AS the subaccount, authenticated as the parent. Key auth can
+        // create here but cannot read or delete, which is why the token is
+        // preferred wherever it exists.
+        if (is_string($authToken) && $authToken !== '') {
+            return new Client($platformSid, $authToken, $accountSid);
+        }
 
         return new Client($apiKeySid, $apiSecret, $accountSid);
     }

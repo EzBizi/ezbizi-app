@@ -46,9 +46,31 @@ final class FakeTwilioGateway implements TwilioGateway
     {
         $this->record(__FUNCTION__, func_get_args());
 
-        return [
+        // Mirrors the live gateway: an existing account of the same name is
+        // reused, never duplicated. Two "A-1 Chimney" subaccounts appeared in
+        // production because a failure downstream left the created account
+        // behind and the customer pressed the button again.
+        foreach ($this->subaccounts as $existing) {
+            if (strcasecmp(trim($existing['friendly_name']), trim($friendlyName)) === 0) {
+                return [
+                    'account_sid' => $existing['account_sid'],
+                    'auth_token' => $this->adoptableAuthToken,
+                ];
+            }
+        }
+
+        $created = [
             'account_sid' => 'AC'.bin2hex(random_bytes(16)),
-            'auth_token' => bin2hex(random_bytes(16)),
+            'friendly_name' => $friendlyName,
+            'status' => 'active',
+        ];
+        $this->subaccounts[] = $created;
+
+        return [
+            'account_sid' => $created['account_sid'],
+            'auth_token' => $this->subaccountReturnsNoAuthToken
+                ? ''
+                : bin2hex(random_bytes(16)),
         ];
     }
 
@@ -62,6 +84,13 @@ final class FakeTwilioGateway implements TwilioGateway
 
     /** Auth token [adoptSubaccount] will accept. Anything else is refused. */
     public string $adoptableAuthToken = 'the-real-auth-token';
+
+    /**
+     * Reproduce the production failure: Twilio creates the subaccount but
+     * returns no auth token, which is what key auth does. The controller then
+     * refuses AFTER a real account exists.
+     */
+    public bool $subaccountReturnsNoAuthToken = false;
 
     public function listSubaccounts(): array
     {

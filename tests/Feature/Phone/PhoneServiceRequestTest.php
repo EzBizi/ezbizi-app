@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Phone;
 
+use App\Models\PhoneConnection;
 use App\Models\PhoneServiceRequest;
 use App\Models\PhoneServiceRequestCompany;
 use App\Support\Phone\FakeTwilioGateway;
@@ -108,6 +109,68 @@ class PhoneServiceRequestTest extends TestCase
         $this->assertNull(
             $this->inTenant($t['org'], fn () => \App\Models\PhoneConnection::query()->first()),
         );
+    }
+
+    /**
+     * Activating twice must not leave two accounts behind.
+     *
+     * This is a production incident, not a hypothetical. The token check ran
+     * AFTER the subaccount was created, so a failure there left a real Twilio
+     * account orphaned; the customer pressed the button again and got a second
+     * one. Two "A-1 Chimney" subaccounts existed by the time anybody looked.
+     */
+    public function test_activating_twice_reuses_the_account_rather_than_making_a_second(): void
+    {
+        $this->withPlatformTwilio();
+
+        $t = $this->provisionTenant();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $request = PhoneServiceRequest::create([
+                'status' => PhoneServiceRequest::STATUS_APPROVED,
+                'expected_volume' => 'under_100',
+                'wants_sms' => false,
+                'purpose' => 'Booking chimney sweeps and calling customers back.',
+            ]);
+
+            PhoneServiceRequestCompany::create([
+                'request_id' => $request->id,
+                'company_id' => $t['company']->id,
+                'approved' => true,
+            ]);
+        });
+
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+
+        $body = [
+            'scope_type' => 'company',
+            'scope_id' => $t['company']->id,
+            'kind' => 'subaccount',
+        ];
+
+        // First attempt: Twilio makes the account but hands back no token, so
+        // the request is refused and NO connection row is written. This is the
+        // exact production failure — the account is real and orphaned.
+        $gateway->subaccountReturnsNoAuthToken = true;
+        $this->signedInAs($editor)->postJson('/api/v1/phone/connections', $body)->assertStatus(422);
+        $this->assertNull($this->inTenant($t['org'], fn () => PhoneConnection::query()->first()));
+
+        // The customer presses it again once the token problem is fixed.
+        $gateway->subaccountReturnsNoAuthToken = false;
+        $this->signedInAs($editor)->postJson('/api/v1/phone/connections', $body)->assertCreated();
+        $first = $this->inTenant($t['org'], fn () => PhoneConnection::query()->first()->account_sid);
+
+        // Exactly one Twilio account exists for that name — the retry took over
+        // the orphan rather than making a second.
+        $named = array_filter(
+            $gateway->subaccounts,
+            fn (array $a) => $a['friendly_name'] === $t['company']->name,
+        );
+
+        $this->assertCount(1, $named, 'A second subaccount was created for the same company.');
+        $this->assertSame($first, array_values($named)[0]['account_sid']);
     }
 
     public function test_asking_records_the_companies_the_volume_and_whether_they_want_texting(): void
