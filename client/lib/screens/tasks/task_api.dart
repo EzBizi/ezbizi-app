@@ -22,6 +22,25 @@ final class TaskApiSuccess<T> extends TaskApiResult<T> {
   T get value => data;
 }
 
+final class TaskApiNotModified<T> extends TaskApiResult<T> {
+  const TaskApiNotModified({required this.etag, super.correlationId})
+    : super(message: null);
+
+  final String? etag;
+}
+
+final class TaskApiViewConflict<T> extends TaskApiResult<T> {
+  const TaskApiViewConflict({
+    required this.currentView,
+    required this.currentVersion,
+    required super.message,
+    super.correlationId,
+  });
+
+  final TaskViewDefinition currentView;
+  final int currentVersion;
+}
+
 final class TaskApiConflictResult<T> extends TaskApiResult<T> {
   TaskApiConflictResult(this.details, {super.correlationId})
     : super(message: details.message);
@@ -90,7 +109,7 @@ final class TaskApi {
       'visibility': visibility == TaskBoardVisibility.private
           ? 'private'
           : 'scope',
-      if (description case final description?) 'description': description,
+      'description': ?description,
     });
     return _decode(response, (data) {
       final board = TaskBoard.fromJson(_map(data, 'data'));
@@ -105,6 +124,7 @@ final class TaskApi {
     TaskViewConfiguration? configuration,
     int page = 1,
     int perPage = 50,
+    String? etag,
   }) async {
     final definition = _boards[boardId];
     if (definition == null) {
@@ -115,32 +135,86 @@ final class TaskApi {
     }
     final response = await _api
         .get('/tasks/boards/$boardId/rows', <String, String>{
-          if (viewId case final viewId?) 'view_id': viewId,
+          'view_id': ?viewId,
           if (configuration case final configuration?)
             'configuration': jsonEncode(configuration.toJson()),
           'page': '$page',
           'per_page': '$perPage',
-        });
+        }, _etagHeader(etag));
+    if (response.statusCode == 304) {
+      return TaskApiNotModified<TaskRowsPage>(
+        etag: response.headers['etag'] ?? etag,
+        correlationId: response.correlationId,
+      );
+    }
     return _decode(
       response,
       (_) => TaskRowsPage.fromJson(
         Map<String, Object?>.from(response.body),
         board: definition,
+        etag: response.headers['etag'],
       ),
     );
   }
 
   Future<TaskApiResult<TaskDetailSnapshot>> taskDetail(
     String boardId,
-    String taskId,
-  ) async {
-    final response = await _api.get('/tasks/boards/$boardId/tasks/$taskId');
+    String taskId, {
+    String? etag,
+  }) async {
+    final response = await _api.get(
+      '/tasks/boards/$boardId/tasks/$taskId',
+      null,
+      _etagHeader(etag),
+    );
+    if (response.statusCode == 304) {
+      return TaskApiNotModified<TaskDetailSnapshot>(
+        etag: response.headers['etag'] ?? etag,
+        correlationId: response.correlationId,
+      );
+    }
     return _decode(
       response,
       (data) => TaskDetailSnapshot.fromJson(
         _map(data, 'data'),
         board: _boards[boardId],
         etag: response.headers['etag'],
+      ),
+    );
+  }
+
+  Future<TaskApiResult<List<TaskViewDefinition>>> views(String boardId) async {
+    final response = await _api.get('/tasks/boards/$boardId/views');
+    return _decode(response, (data) {
+      if (data is! List) throw const FormatException('data must be a list.');
+      return data
+          .map((entry) => TaskViewDefinition.fromJson(_map(entry, 'data[]')))
+          .toList(growable: false);
+    });
+  }
+
+  Future<TaskApiResult<TaskViewMutationResult>> createView(
+    String boardId, {
+    required String name,
+    required TaskViewVisibility visibility,
+    required TaskViewConfiguration configuration,
+    bool isLocked = false,
+    int? expectedStructureVersion,
+  }) async {
+    final response = await _api.post('/tasks/boards/$boardId/views', {
+      'name': name,
+      'visibility': visibility == TaskViewVisibility.shared
+          ? 'shared'
+          : 'personal',
+      'is_locked': isLocked,
+      'configuration': configuration.toJson(),
+      'expected_structure_version': ?expectedStructureVersion,
+    });
+    return _decode(
+      response,
+      (data) => TaskViewMutationResult(
+        definition: TaskViewDefinition.fromJson(_map(data, 'data')),
+        structureVersion: _optionalMetaInteger(response, 'structure_version'),
       ),
     );
   }
@@ -311,7 +385,7 @@ final class TaskApi {
     return _decode(response, (data) => TaskUpdate.fromJson(_map(data, 'data')));
   }
 
-  Future<TaskApiResult<TaskViewDefinition>> updateView(
+  Future<TaskApiResult<TaskViewMutationResult>> updateView(
     String boardId,
     String viewId, {
     required int expectedViewVersion,
@@ -330,10 +404,122 @@ final class TaskApi {
       '/tasks/boards/$boardId/views/$viewId',
       mutation,
     );
+    if (response.statusCode == 409) {
+      try {
+        final meta = _map(response.body['meta'], 'meta');
+        final version = meta['current_view_version'];
+        if (version is! int) {
+          throw const FormatException(
+            'meta.current_view_version must be an int.',
+          );
+        }
+        return TaskApiViewConflict<TaskViewMutationResult>(
+          currentView: TaskViewDefinition.fromJson(
+            _map(response.body['data'], 'data'),
+          ),
+          currentVersion: version,
+          message: response.message,
+          correlationId: response.correlationId,
+        );
+      } on FormatException catch (error) {
+        return TaskApiFailure<TaskViewMutationResult>(
+          statusCode: response.statusCode,
+          message: error.message.toString(),
+          correlationId: response.correlationId,
+        );
+      }
+    }
+    return _decode(
+      response,
+      (data) => TaskViewMutationResult(
+        definition: TaskViewDefinition.fromJson(_map(data, 'data')),
+        structureVersion: _optionalMetaInteger(response, 'structure_version'),
+      ),
+    );
+  }
+
+  Future<TaskApiResult<TaskViewDefinition>> duplicateView(
+    String boardId,
+    String viewId, {
+    required String name,
+    required int expectedViewVersion,
+  }) async {
+    final response = await _api.post(
+      '/tasks/boards/$boardId/views/$viewId/duplicate',
+      {'name': name, 'expected_view_version': expectedViewVersion},
+    );
     return _decode(
       response,
       (data) => TaskViewDefinition.fromJson(_map(data, 'data')),
     );
+  }
+
+  Future<TaskApiResult<TaskViewPreference>> saveViewPreference(
+    String boardId,
+    String viewId,
+    TaskViewPreferenceMutation mutation,
+  ) async {
+    final response = await _api.put(
+      '/tasks/boards/$boardId/views/$viewId/preference',
+      mutation.toJson(),
+    );
+    return _decode(
+      response,
+      (data) => TaskViewPreference.fromJson(_map(data, 'data')),
+    );
+  }
+
+  Future<TaskApiResult<bool>> deleteView(
+    String boardId,
+    String viewId, {
+    int? expectedViewVersion,
+    int? expectedStructureVersion,
+  }) async {
+    final response = await _api
+        .deleteWithBody('/tasks/boards/$boardId/views/$viewId', {
+          'expected_view_version': ?expectedViewVersion,
+          'expected_structure_version': ?expectedStructureVersion,
+        });
+    if (response.statusCode == 204) {
+      return TaskApiSuccess<bool>(true, correlationId: response.correlationId);
+    }
+    return _decode(response, (_) => false);
+  }
+
+  Future<TaskApiResult<TaskMyTasksPage>> myTasks({
+    int page = 1,
+    int perPage = 50,
+    String? etag,
+  }) async {
+    final response = await _api.get('/tasks/my', {
+      'page': '$page',
+      'per_page': '$perPage',
+    }, _etagHeader(etag));
+    if (response.statusCode == 304) {
+      return TaskApiNotModified<TaskMyTasksPage>(
+        etag: response.headers['etag'] ?? etag,
+        correlationId: response.correlationId,
+      );
+    }
+    return _decode(
+      response,
+      (_) => TaskMyTasksPage.fromJson(
+        Map<String, Object?>.from(response.body),
+        etag: response.headers['etag'],
+      ),
+    );
+  }
+
+  Future<TaskApiResult<List<TaskQuickSearchResult>>> quickSearch(
+    String query,
+  ) async {
+    final response = await _api.get('/tasks/search', {'q': query.trim()});
+    return _decode(response, (data) {
+      if (data is! List) throw const FormatException('data must be a list.');
+      return data
+          .map((entry) => TaskQuickSearchResult.fromJson(_map(entry, 'data[]')))
+          .toList(growable: false);
+    });
   }
 
   Future<TaskApiResult<TaskBoard>> updateBoard(
@@ -424,6 +610,16 @@ String _participantPurpose(TaskParticipantPurpose purpose) => switch (purpose) {
   TaskParticipantPurpose.collaborator => 'collaborator',
   TaskParticipantPurpose.mention => 'mention',
 };
+
+Map<String, String>? _etagHeader(String? etag) =>
+    etag == null ? null : <String, String>{'If-None-Match': etag};
+
+int? _optionalMetaInteger(ApiResponse response, String key) {
+  final meta = response.body['meta'];
+  if (meta is! Map) return null;
+  final value = meta[key];
+  return value is int ? value : null;
+}
 
 Map<String, Object?> _ownedMutation(
   Map<String, Object?> changes, {

@@ -94,6 +94,18 @@ enum TaskViewDensity { compact, comfortable, unknown }
 
 enum TaskConflictKind { task, update, groupOrder, view, structure, unknown }
 
+final class TaskViewCapabilities {
+  const TaskViewCapabilities({
+    required this.personalViews,
+    required this.sharedUnlockedViews,
+    required this.sharedLockedViews,
+  });
+
+  final bool personalViews;
+  final bool sharedUnlockedViews;
+  final bool sharedLockedViews;
+}
+
 final class TaskBoard {
   const TaskBoard({
     required this.id,
@@ -398,11 +410,13 @@ final class TaskRowsPage {
     required this.viewId,
     required this.viewVersion,
     required this.configuration,
+    this.etag,
   });
 
   factory TaskRowsPage.fromJson(
     Map<String, Object?> json, {
     required TaskBoard board,
+    String? etag,
   }) {
     final meta = _object(json, 'meta');
     return TaskRowsPage(
@@ -426,6 +440,7 @@ final class TaskRowsPage {
       configuration: TaskViewConfiguration.fromJson(
         _object(meta, 'configuration'),
       ),
+      etag: etag,
     );
   }
 
@@ -439,6 +454,7 @@ final class TaskRowsPage {
   final String viewId;
   final int viewVersion;
   final TaskViewConfiguration configuration;
+  final String? etag;
 }
 
 final class TaskRow {
@@ -730,6 +746,26 @@ final class TaskViewConfiguration {
     required this.search,
   });
 
+  static const empty = TaskViewConfiguration(
+    schema: 1,
+    presentation: TaskViewPresentation.table,
+    rawPresentation: 'table',
+    filters: <TaskFilter>[],
+    sorts: <TaskSort>[],
+    hiddenColumns: <String>[],
+    columnOrder: <String>[
+      'task',
+      'owner',
+      'status',
+      'priority',
+      'start_on',
+      'due_on',
+    ],
+    columnWidths: <String, int>{},
+    groupBy: null,
+    search: '',
+  );
+
   factory TaskViewConfiguration.fromJson(Map<String, Object?> json) {
     final rawPresentation = _string(json, 'presentation');
     return TaskViewConfiguration(
@@ -783,6 +819,152 @@ final class TaskViewConfiguration {
   final Map<String, int> columnWidths;
   final String? groupBy;
   final String search;
+
+  TaskViewConfiguration copyWith({
+    List<TaskFilter>? filters,
+    List<TaskSort>? sorts,
+    List<String>? hiddenColumns,
+    List<String>? columnOrder,
+    Map<String, int>? columnWidths,
+    Object? groupBy = _taskAbsent,
+    String? search,
+  }) => TaskViewConfiguration(
+    schema: schema,
+    presentation: presentation,
+    rawPresentation: rawPresentation,
+    filters: filters ?? this.filters,
+    sorts: sorts ?? this.sorts,
+    hiddenColumns: hiddenColumns ?? this.hiddenColumns,
+    columnOrder: columnOrder ?? this.columnOrder,
+    columnWidths: columnWidths ?? this.columnWidths,
+    groupBy: identical(groupBy, _taskAbsent)
+        ? this.groupBy
+        : groupBy as String?,
+    search: search ?? this.search,
+  );
+}
+
+const Object _taskAbsent = Object();
+
+final class TaskViewMutationResult {
+  const TaskViewMutationResult({
+    required this.definition,
+    required this.structureVersion,
+  });
+
+  final TaskViewDefinition definition;
+  final int? structureVersion;
+}
+
+final class TaskViewPreferenceMutation {
+  const TaskViewPreferenceMutation({
+    required this.collapsedGroupIds,
+    required this.density,
+    required this.isLastActive,
+    required this.scrollLeft,
+    required this.scrollTop,
+  });
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'collapsed_group_ids': collapsedGroupIds,
+    'density': density == TaskViewDensity.comfortable
+        ? 'comfortable'
+        : 'compact',
+    'is_last_active': isLastActive,
+    'scroll_left': scrollLeft,
+    'scroll_top': scrollTop,
+  };
+
+  final List<String> collapsedGroupIds;
+  final TaskViewDensity density;
+  final bool isLastActive;
+  final int scrollLeft;
+  final int scrollTop;
+}
+
+final class TaskMyTask {
+  const TaskMyTask({
+    required this.task,
+    required this.boardId,
+    required this.boardName,
+  });
+
+  factory TaskMyTask.fromJson(Map<String, Object?> json) {
+    final board = _object(json, 'board');
+    return TaskMyTask(
+      task: TaskRow.fromJson(json),
+      boardId: _string(board, 'id'),
+      boardName: _string(board, 'name'),
+    );
+  }
+
+  final TaskRow task;
+  final String boardId;
+  final String boardName;
+}
+
+final class TaskMyTasksPage {
+  const TaskMyTasksPage({
+    required this.items,
+    required this.total,
+    required this.page,
+    required this.perPage,
+    required this.lastPage,
+    required this.etag,
+  });
+
+  factory TaskMyTasksPage.fromJson(
+    Map<String, Object?> json, {
+    required String? etag,
+  }) {
+    final meta = _object(json, 'meta');
+    return TaskMyTasksPage(
+      items: _objects(
+        json,
+        'data',
+      ).map(TaskMyTask.fromJson).toList(growable: false),
+      total: _integer(meta, 'total'),
+      page: _integer(meta, 'page'),
+      perPage: _integer(meta, 'per_page'),
+      lastPage: _integer(meta, 'last_page'),
+      etag: etag,
+    );
+  }
+
+  final List<TaskMyTask> items;
+  final int total;
+  final int page;
+  final int perPage;
+  final int lastPage;
+  final String? etag;
+}
+
+final class TaskQuickSearchResult {
+  const TaskQuickSearchResult({
+    required this.boardId,
+    required this.boardName,
+    required this.taskId,
+    required this.number,
+    required this.title,
+    required this.deepLink,
+  });
+
+  factory TaskQuickSearchResult.fromJson(Map<String, Object?> json) =>
+      TaskQuickSearchResult(
+        boardId: _string(json, 'board_id'),
+        boardName: _string(json, 'board_name'),
+        taskId: _string(json, 'task_id'),
+        number: _string(json, 'number'),
+        title: _string(json, 'title'),
+        deepLink: _string(json, 'deep_link'),
+      );
+
+  final String boardId;
+  final String boardName;
+  final String taskId;
+  final String number;
+  final String title;
+  final String deepLink;
 }
 
 final class TaskFilter {
@@ -1338,8 +1520,9 @@ DateTime? _nullableDateTime(Map<String, Object?> json, String key) {
 DateTime _parseDateTimeValue(Object? value, String path) {
   final raw = _expectType<String>(value, path);
   final parsed = DateTime.tryParse(raw);
-  if (parsed == null)
+  if (parsed == null) {
     throw FormatException('$path must be an ISO-8601 timestamp.');
+  }
   return parsed;
 }
 
@@ -1394,8 +1577,9 @@ List<String> _optionalStrings(Map<String, Object?> json, String key) {
 }
 
 Object? _required(Map<String, Object?> json, String key) {
-  if (!json.containsKey(key))
+  if (!json.containsKey(key)) {
     throw FormatException('Missing required field $key.');
+  }
   return json[key];
 }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,11 +9,15 @@ import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/tab_bar_like.dart';
 import 'tasks/board_directory.dart';
+import 'tasks/my_tasks_view.dart';
 import 'tasks/task_api.dart';
 import 'tasks/task_detail_panel.dart';
+import 'tasks/task_filters_panel.dart';
 import 'tasks/task_mobile_list.dart';
 import 'tasks/task_models.dart';
+import 'tasks/task_quick_search.dart';
 import 'tasks/task_table.dart';
+import 'tasks/task_views_bar.dart';
 
 /// Dense Grid Tasks shell. Address IDs are held as opaque intents until their
 /// own authorized board/task reads complete.
@@ -23,17 +29,19 @@ class TasksScreen extends StatefulWidget {
     this.pendingIntent,
     this.onIntentConsumed,
     this.onOpenRecordRoute,
+    this.pollInterval = const Duration(seconds: 30),
   });
   final ApiClient api;
   final Session session;
   final TaskAddressIntent? pendingIntent;
   final VoidCallback? onIntentConsumed;
   final ValueChanged<String>? onOpenRecordRoute;
+  final Duration pollInterval;
   @override
   State<TasksScreen> createState() => _TasksScreenState();
 }
 
-class _TasksScreenState extends State<TasksScreen> {
+class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   late final TaskApi _tasks = TaskApi(widget.api);
   bool _loading = true;
   String? _error;
@@ -60,9 +68,32 @@ class _TasksScreenState extends State<TasksScreen> {
   int _requestGeneration = 0;
   int _page = 1;
   int _lastPage = 1;
+  int _total = 0;
+  List<TaskStatusSummary> _statusSummaries = const [];
+  List<TaskViewDefinition> _views = const [];
+  String? _activeViewId;
+  int _activeViewVersion = 1;
+  TaskViewConfiguration _configuration = TaskViewConfiguration.empty;
+  String? _boardEtag;
+  TaskMyTasksPage? _myTasks;
+  String? _myTasksError;
+  bool _myTasksLoading = false;
+  bool _showMyTasks = false;
+  bool _showFilters = false;
+  bool _showViewEditor = false;
+  bool _viewDirty = false;
+  bool _editorDirty = false;
+  bool _foreground = true;
+  int _queryToken = 0;
+  Timer? _poller;
+  Timer? _queryDebounce;
+  int _privacyGeneration = 0;
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _poller?.cancel();
+    _queryDebounce?.cancel();
     _mobileDetail.dispose();
     super.dispose();
   }
@@ -70,7 +101,15 @@ class _TasksScreenState extends State<TasksScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _poller = Timer.periodic(widget.pollInterval, (_) => _pollVisible());
     _loadDirectory();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (_foreground) _refreshVisible();
   }
 
   @override
@@ -100,8 +139,9 @@ class _TasksScreenState extends State<TasksScreen> {
         _loading = false;
         _boards = result.data;
       });
-      if (widget.pendingIntent case final intent?)
+      if (widget.pendingIntent case final intent?) {
         await _consumeIntent(intent, _intentGeneration);
+      }
     } else if (result is TaskApiUnavailable<List<TaskBoard>>) {
       _evict(result.message);
     } else {
@@ -155,14 +195,27 @@ class _TasksScreenState extends State<TasksScreen> {
       _page = 1;
       _owners = const [];
       _people = const [];
+      _views = const [];
+      _activeViewId = null;
+      _activeViewVersion = 1;
+      _configuration = TaskViewConfiguration.empty;
+      _boardEtag = null;
+      _total = 0;
+      _statusSummaries = const [];
+      _privacyGeneration++;
+      _viewDirty = false;
+      _editorDirty = false;
+      _showMyTasks = false;
+      _showFilters = false;
     });
     _mobileDetail.value = null;
     final result = await _tasks.boardRows(board.id, page: _page);
     if (!mounted || request != _requestGeneration) return;
     if (result is TaskApiUnavailable<TaskRowsPage>) {
       _evict(result.message);
-      if (consumeIntent && _isCurrentIntent(intent!, generation!))
+      if (consumeIntent && _isCurrentIntent(intent!, generation!)) {
         widget.onIntentConsumed?.call();
+      }
       return;
     }
     if (result is! TaskApiSuccess<TaskRowsPage>) {
@@ -177,7 +230,14 @@ class _TasksScreenState extends State<TasksScreen> {
       _rows = result.data.rows;
       _page = result.data.page;
       _lastPage = result.data.lastPage;
+      _total = result.data.total;
+      _statusSummaries = result.data.statusSummaries;
+      _activeViewId = result.data.viewId;
+      _activeViewVersion = result.data.viewVersion;
+      _configuration = result.data.configuration;
+      _boardEtag = result.data.etag;
     });
+    _loadViews(board.id);
     _loadParticipants(board.id);
     if (selectedTaskId != null) {
       await _selectTaskId(
@@ -186,6 +246,24 @@ class _TasksScreenState extends State<TasksScreen> {
         intent: intent,
         generation: generation,
       );
+    }
+  }
+
+  Future<void> _loadViews(String boardId) async {
+    final result = await _tasks.views(boardId);
+    if (!mounted || _board?.id != boardId) return;
+    if (result is TaskApiUnavailable<List<TaskViewDefinition>>) {
+      _evict(result.message);
+      return;
+    }
+    if (result is TaskApiSuccess<List<TaskViewDefinition>>) {
+      setState(() {
+        _views = result.data;
+        final active = result.data
+            .where((view) => view.id == _activeViewId)
+            .firstOrNull;
+        if (active != null) _activeViewVersion = active.version;
+      });
     }
   }
 
@@ -204,6 +282,142 @@ class _TasksScreenState extends State<TasksScreen> {
     }
     if (people is TaskApiSuccess<List<TaskParticipant>>) {
       setState(() => _people = people.data);
+    }
+  }
+
+  Future<void> _pollVisible() async {
+    if (!_foreground || !mounted || _loading) return;
+    await _refreshVisible(conditional: true);
+  }
+
+  Future<void> _refreshVisible({bool conditional = false}) async {
+    if (_showMyTasks) {
+      await _loadMyTasks(conditional: conditional);
+      return;
+    }
+    final board = _board;
+    if (board == null) {
+      await _loadDirectory();
+      return;
+    }
+    await _refreshBoardRows(board, conditional: conditional);
+    if (!mounted || _board?.id != board.id) return;
+    final detail = _detail;
+    if (detail != null) {
+      final result = await _tasks.taskDetail(
+        board.id,
+        detail.task.id,
+        etag: conditional ? detail.etag : null,
+      );
+      if (!mounted || _board?.id != board.id) return;
+      if (result is TaskApiUnavailable<TaskDetailSnapshot>) {
+        _evict(result.message);
+      } else if (result is TaskApiSuccess<TaskDetailSnapshot>) {
+        if (_editorDirty || _mutationQueues.isNotEmpty) {
+          setState(() => _conflict = true);
+        } else {
+          _replaceDetail(result.data);
+        }
+      }
+    }
+  }
+
+  Future<void> _refreshBoardRows(
+    TaskBoard board, {
+    bool conditional = false,
+  }) async {
+    final token = ++_queryToken;
+    final result = await _tasks.boardRows(
+      board.id,
+      viewId: _activeViewId,
+      configuration: _configuration,
+      page: _page,
+      etag: conditional ? _boardEtag : null,
+    );
+    if (!mounted || token != _queryToken || _board?.id != board.id) return;
+    if (result is TaskApiUnavailable<TaskRowsPage>) {
+      _evict(result.message);
+      return;
+    }
+    if (result is TaskApiNotModified<TaskRowsPage>) return;
+    if (result is! TaskApiSuccess<TaskRowsPage>) {
+      if (!conditional) setState(() => _error = result.message);
+      return;
+    }
+    final page = result.data;
+    if (_editorDirty || _mutationQueues.isNotEmpty) {
+      setState(() => _conflict = true);
+      return;
+    }
+    if (_viewDirty && page.viewVersion != _activeViewVersion) {
+      setState(() => _conflict = true);
+      return;
+    }
+    setState(() {
+      _rows = page.rows;
+      _page = page.page;
+      _lastPage = page.lastPage;
+      _total = page.total;
+      _statusSummaries = page.statusSummaries;
+      _boardEtag = page.etag;
+      _activeViewVersion = page.viewVersion;
+      if (!_viewDirty) _configuration = page.configuration;
+    });
+  }
+
+  Future<void> _loadMyTasks({bool conditional = false}) async {
+    if (!conditional) {
+      setState(() {
+        _myTasksLoading = _myTasks == null;
+        _myTasksError = null;
+      });
+    }
+    final result = await _tasks.myTasks(
+      page: _myTasks?.page ?? 1,
+      etag: conditional ? _myTasks?.etag : null,
+    );
+    if (!mounted) return;
+    if (result is TaskApiUnavailable<TaskMyTasksPage>) {
+      _evict(result.message);
+      return;
+    }
+    if (result is TaskApiNotModified<TaskMyTasksPage>) return;
+    setState(() {
+      _myTasksLoading = false;
+      if (result is TaskApiSuccess<TaskMyTasksPage>) {
+        _myTasks = result.data;
+        _myTasksError = null;
+      } else if (!conditional) {
+        _myTasksError = result.message;
+      }
+    });
+  }
+
+  void _openMyTasks() {
+    setState(() {
+      _showMyTasks = true;
+      _showDirectory = false;
+    });
+    _loadMyTasks();
+  }
+
+  Future<void> _openMyTask(TaskMyTask item) async {
+    final result = await _tasks.board(item.boardId);
+    if (!mounted) return;
+    if (result is TaskApiUnavailable<TaskBoard>) {
+      _evict(result.message);
+    } else if (result is TaskApiSuccess<TaskBoard>) {
+      await _loadBoard(result.data, selectedTaskId: item.task.id);
+    }
+  }
+
+  Future<void> _openSearchResult(TaskQuickSearchResult result) async {
+    final board = await _tasks.board(result.boardId);
+    if (!mounted) return;
+    if (board is TaskApiUnavailable<TaskBoard>) {
+      _evict(board.message);
+    } else if (board is TaskApiSuccess<TaskBoard>) {
+      await _loadBoard(board.data, selectedTaskId: result.taskId);
     }
   }
 
@@ -226,8 +440,9 @@ class _TasksScreenState extends State<TasksScreen> {
     if (consumeIntent
         ? (!_isCurrentIntent(intent!, generation!) ||
               request != _requestGeneration)
-        : (!mounted || request != _requestGeneration))
+        : (!mounted || request != _requestGeneration)) {
       return;
+    }
     if (result is TaskApiUnavailable<TaskDetailSnapshot>) {
       _evict(result.message);
       if (consumeIntent) widget.onIntentConsumed?.call();
@@ -246,6 +461,7 @@ class _TasksScreenState extends State<TasksScreen> {
     });
     _mobileDetail.value = result.data;
     if (consumeIntent) widget.onIntentConsumed?.call();
+    if (!mounted) return;
     if (MediaQuery.sizeOf(context).width < 700) {
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
@@ -290,18 +506,189 @@ class _TasksScreenState extends State<TasksScreen> {
     if (_bulkBusy) return;
     final board = _board;
     if (board == null || page < 1 || page > _lastPage) return;
-    final result = await _tasks.boardRows(board.id, page: page);
+    final result = await _tasks.boardRows(
+      board.id,
+      viewId: _activeViewId,
+      configuration: _configuration,
+      page: page,
+    );
     if (!mounted) return;
     if (result is TaskApiUnavailable<TaskRowsPage>) {
       _evict(result.message);
       return;
     }
-    if (result is TaskApiSuccess<TaskRowsPage>)
+    if (result is TaskApiSuccess<TaskRowsPage>) {
       setState(() {
         _rows = result.data.rows;
         _page = result.data.page;
         _lastPage = result.data.lastPage;
+        _total = result.data.total;
+        _statusSummaries = result.data.statusSummaries;
+        _boardEtag = result.data.etag;
       });
+    }
+  }
+
+  void _changeConfiguration(TaskViewConfiguration configuration) {
+    setState(() {
+      _configuration = configuration;
+      _viewDirty = true;
+      _page = 1;
+    });
+    _queryDebounce?.cancel();
+    _queryDebounce = Timer(const Duration(milliseconds: 300), () {
+      final board = _board;
+      if (board != null) _refreshBoardRows(board);
+    });
+  }
+
+  Future<void> _selectView(TaskViewDefinition view) async {
+    final board = _board;
+    if (board == null || view.id == _activeViewId) return;
+    setState(() {
+      _activeViewId = view.id;
+      _activeViewVersion = view.version;
+      _configuration = view.configuration;
+      _viewDirty = false;
+      _conflict = false;
+      _page = 1;
+      _boardEtag = null;
+    });
+    await _refreshBoardRows(board);
+    if (mounted) {
+      final preference = await _tasks.saveViewPreference(
+        board.id,
+        view.id,
+        TaskViewPreferenceMutation(
+          collapsedGroupIds:
+              view.preference?.collapsedGroupIds ?? const <String>[],
+          density: view.preference?.density ?? TaskViewDensity.compact,
+          isLastActive: true,
+          scrollLeft: view.preference?.scrollLeft ?? 0,
+          scrollTop: view.preference?.scrollTop ?? 0,
+        ),
+      );
+      if (mounted && preference is TaskApiUnavailable<TaskViewPreference>) {
+        _evict(preference.message);
+      }
+    }
+  }
+
+  Future<void> _saveView(TaskViewDefinition view) async {
+    final board = _board;
+    if (board == null || !_viewDirty) return;
+    final result = await _tasks.updateView(
+      board.id,
+      view.id,
+      expectedViewVersion: view.version,
+      changes: <String, Object?>{'configuration': _configuration.toJson()},
+    );
+    if (!mounted) return;
+    if (result is TaskApiUnavailable<TaskViewMutationResult>) {
+      _evict(result.message);
+    } else if (result is TaskApiConflictResult<TaskViewMutationResult> ||
+        result is TaskApiViewConflict<TaskViewMutationResult>) {
+      setState(() => _conflict = true);
+    } else if (result is TaskApiSuccess<TaskViewMutationResult>) {
+      setState(() {
+        _views = _views
+            .map(
+              (current) =>
+                  current.id == view.id ? result.data.definition : current,
+            )
+            .toList(growable: false);
+        _activeViewVersion = result.data.definition.version;
+        _viewDirty = false;
+      });
+    }
+  }
+
+  Future<void> _createView(
+    String name,
+    TaskViewVisibility visibility,
+    bool locked,
+  ) async {
+    final board = _board;
+    if (board == null || name.trim().isEmpty) return;
+    final result = await _tasks.createView(
+      board.id,
+      name: name.trim(),
+      visibility: visibility,
+      isLocked: locked,
+      configuration: _configuration,
+      expectedStructureVersion: visibility == TaskViewVisibility.shared
+          ? board.structureVersion
+          : null,
+    );
+    if (!mounted) return;
+    if (result is TaskApiUnavailable<TaskViewMutationResult>) {
+      _evict(result.message);
+    } else if (result is TaskApiConflictResult<TaskViewMutationResult>) {
+      setState(() => _conflict = true);
+    } else if (result is TaskApiSuccess<TaskViewMutationResult>) {
+      setState(() {
+        _showViewEditor = false;
+        _views = [..._views, result.data.definition];
+        _activeViewId = result.data.definition.id;
+        _activeViewVersion = result.data.definition.version;
+        _viewDirty = false;
+      });
+      if (visibility == TaskViewVisibility.shared) {
+        final refreshed = await _tasks.board(board.id);
+        if (mounted && refreshed is TaskApiSuccess<TaskBoard>) {
+          setState(() => _board = refreshed.data);
+        }
+      }
+    }
+  }
+
+  Future<void> _duplicateView(TaskViewDefinition view) async {
+    final board = _board;
+    if (board == null) return;
+    final result = await _tasks.duplicateView(
+      board.id,
+      view.id,
+      name: '${view.name} copy',
+      expectedViewVersion: view.version,
+    );
+    if (!mounted) return;
+    if (result is TaskApiUnavailable<TaskViewDefinition>) {
+      _evict(result.message);
+    } else if (result is TaskApiConflictResult<TaskViewDefinition>) {
+      setState(() => _conflict = true);
+    } else if (result is TaskApiSuccess<TaskViewDefinition>) {
+      setState(() => _views = [..._views, result.data]);
+      await _selectView(result.data);
+    }
+  }
+
+  Future<void> _deleteView(TaskViewDefinition view) async {
+    final board = _board;
+    if (board == null) return;
+    final result = await _tasks.deleteView(
+      board.id,
+      view.id,
+      expectedViewVersion: view.visibility == TaskViewVisibility.personal
+          ? view.version
+          : null,
+      expectedStructureVersion: view.visibility == TaskViewVisibility.shared
+          ? board.structureVersion
+          : null,
+    );
+    if (!mounted) return;
+    if (result is TaskApiUnavailable<bool>) {
+      _evict(result.message);
+    } else if (result is TaskApiConflictResult<bool>) {
+      setState(() => _conflict = true);
+    } else if (result is TaskApiSuccess<bool>) {
+      setState(() {
+        _views = _views.where((current) => current.id != view.id).toList();
+      });
+      final next = _views
+          .where((candidate) => candidate.isPermanentMain)
+          .firstOrNull;
+      if (next != null) await _selectView(next);
+    }
   }
 
   Future<void> _rename(TaskRow task, String title) async {
@@ -385,8 +772,9 @@ class _TasksScreenState extends State<TasksScreen> {
     final next = prior.catchError((_) {}).then((_) => operation());
     _mutationQueues[taskId] = next;
     return next.whenComplete(() {
-      if (identical(_mutationQueues[taskId], next))
+      if (identical(_mutationQueues[taskId], next)) {
         _mutationQueues.remove(taskId);
+      }
     });
   }
 
@@ -508,8 +896,9 @@ class _TasksScreenState extends State<TasksScreen> {
     } else if (result is TaskApiUnavailable<TaskColumnValueMutation>) {
       _evict(result.message);
     } else {
-      if (result is TaskApiConflictResult<TaskColumnValueMutation>)
+      if (result is TaskApiConflictResult<TaskColumnValueMutation>) {
         _conflict = true;
+      }
       _announce(result.message ?? 'The change could not be saved.');
       setState(() {});
     }
@@ -564,11 +953,12 @@ class _TasksScreenState extends State<TasksScreen> {
         setState(() {});
       }
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _bulkBusy = false;
           _bulkLockedTaskIds = const <String>{};
         });
+      }
     }
   }
 
@@ -603,6 +993,16 @@ class _TasksScreenState extends State<TasksScreen> {
       _selectedTaskId = null;
       _error = null;
       _unavailable = true;
+      _views = const [];
+      _activeViewId = null;
+      _configuration = TaskViewConfiguration.empty;
+      _boardEtag = null;
+      _myTasks = null;
+      _myTasksError = null;
+      _showMyTasks = false;
+      _total = 0;
+      _statusSummaries = const [];
+      _privacyGeneration++;
     });
     _mobileDetail.value = null;
   }
@@ -634,7 +1034,7 @@ class _TasksScreenState extends State<TasksScreen> {
                         if (_conflict)
                           MaterialBanner(
                             content: const Text(
-                              'This task changed while you were editing it.',
+                              'This task or saved view changed while you were editing it.',
                             ),
                             actions: [
                               TextButton(
@@ -661,11 +1061,37 @@ class _TasksScreenState extends State<TasksScreen> {
           onCancel: () => setState(() => _creating = false),
           onCreate: _createBoard,
         )
+      : _showViewEditor
+      ? _NewViewPane(
+          canShare: widget.session.me?.can('tasks.manage') ?? false,
+          onCancel: () => setState(() => _showViewEditor = false),
+          onCreate: _createView,
+        )
+      : _showMyTasks
+      ? MyTasksView(
+          page: _myTasks,
+          loading: _myTasksLoading,
+          error: _myTasksError,
+          onRetry: _loadMyTasks,
+          onOpen: _openMyTask,
+        )
       : _showDirectory || _board == null
       ? _directoryOnly()
       : mobile
       ? Column(
           children: [
+            _boardControls(),
+            if (_showFilters)
+              SizedBox(
+                height: 330,
+                child: TaskFiltersPanel(
+                  board: _board!,
+                  configuration: _configuration,
+                  people: _people,
+                  onChanged: _changeConfiguration,
+                  onClose: () => setState(() => _showFilters = false),
+                ),
+              ),
             Expanded(
               child: TaskMobileList(
                 board: _board!,
@@ -708,40 +1134,92 @@ class _TasksScreenState extends State<TasksScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 14, 16, 4),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Tasks',
-                      style: TextStyle(
-                        fontSize: 25,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(height: 3),
-                    Text('Plan, assign, and finish work in this view.'),
-                  ],
-                ),
-              ),
-              if (_board != null)
-                IconButton(
-                  tooltip: _detailOpen ? 'Hide details' : 'Show details',
-                  icon: Icon(
-                    _detailOpen ? Icons.close_fullscreen : Icons.open_in_full,
+          padding: const EdgeInsets.fromLTRB(20, 14, 16, 8),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final heading = const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Tasks',
+                    style: TextStyle(fontSize: 25, fontWeight: FontWeight.w700),
                   ),
-                  onPressed: () => setState(() => _detailOpen = !_detailOpen),
+                  SizedBox(height: 3),
+                  Text('Plan, assign, and finish work in this view.'),
+                ],
+              );
+              final search = SizedBox(
+                width: constraints.maxWidth < 700 ? constraints.maxWidth : 320,
+                child: TaskQuickSearch(
+                  key: ValueKey('task-search-$_privacyGeneration'),
+                  api: _tasks,
+                  onOpen: _openSearchResult,
+                  onUnavailable: () => _evict(null),
                 ),
-            ],
+              );
+              final actions = Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Refresh tasks',
+                    onPressed: _refreshVisible,
+                    icon: const Icon(Icons.refresh),
+                  ),
+                  if (_board != null)
+                    IconButton(
+                      tooltip: _detailOpen ? 'Hide details' : 'Show details',
+                      icon: Icon(
+                        _detailOpen
+                            ? Icons.close_fullscreen
+                            : Icons.open_in_full,
+                      ),
+                      onPressed: () =>
+                          setState(() => _detailOpen = !_detailOpen),
+                    ),
+                ],
+              );
+              if (constraints.maxWidth < 700) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: heading),
+                        actions,
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    search,
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: heading),
+                  search,
+                  const SizedBox(width: 8),
+                  actions,
+                ],
+              );
+            },
           ),
         ),
         TabBarLike(
-          labels: const [('Boards', Icons.view_list_outlined)],
-          selected: 0,
-          onSelected: (_) => setState(() => _showDirectory = true),
+          labels: const [
+            ('Boards', Icons.view_list_outlined),
+            ('My Tasks', Icons.assignment_ind_outlined),
+          ],
+          selected: _showMyTasks ? 1 : 0,
+          onSelected: (index) {
+            if (index == 1) {
+              _openMyTasks();
+            } else {
+              setState(() {
+                _showMyTasks = false;
+                _showDirectory = true;
+              });
+            }
+          },
         ),
       ],
     ),
@@ -758,6 +1236,73 @@ class _TasksScreenState extends State<TasksScreen> {
           },
           onCreate: () => setState(() => _creating = true),
         );
+
+  Widget _boardControls() {
+    final me = widget.session.me;
+    final writable = me != null && !me.organization.isReadOnly;
+    final capabilities = TaskViewCapabilities(
+      personalViews: writable,
+      sharedUnlockedViews: writable && me.can('tasks.edit'),
+      sharedLockedViews: writable && me.can('tasks.manage'),
+    );
+    final statusNames = <String?, String>{
+      for (final status in _board?.statuses ?? const <TaskStatusOption>[])
+        status.id: status.name,
+      null: 'No status',
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_views.isNotEmpty)
+          TaskViewsBar(
+            views: _views,
+            activeViewId: _activeViewId,
+            capabilities: capabilities,
+            dirty: _viewDirty,
+            onSelected: _selectView,
+            onCreate: () => setState(() => _showViewEditor = true),
+            onSave: _saveView,
+            onDuplicate: _duplicateView,
+            onDelete: _deleteView,
+          ),
+        Material(
+          color: Theme.of(context).colorScheme.surfaceContainerLowest,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(
+                children: [
+                  Text('$_total ${_total == 1 ? 'task' : 'tasks'}'),
+                  for (final summary in _statusSummaries) ...[
+                    const SizedBox(width: 8),
+                    Chip(
+                      visualDensity: VisualDensity.compact,
+                      label: Text(
+                        '${statusNames[summary.statusOptionId] ?? 'Status'} ${summary.count}',
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        setState(() => _showFilters = !_showFilters),
+                    icon: const Icon(Icons.filter_list),
+                    label: const Text('Filters'),
+                  ),
+                  if (_viewDirty) ...[
+                    const SizedBox(width: 8),
+                    const Text('Unsaved view changes'),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _workspace(bool wide) => LayoutBuilder(
     builder: (context, constraints) {
       final showDirectory = wide && constraints.maxWidth >= 1100;
@@ -792,6 +1337,18 @@ class _TasksScreenState extends State<TasksScreen> {
           Expanded(
             child: Column(
               children: [
+                _boardControls(),
+                if (_showFilters)
+                  SizedBox(
+                    height: 330,
+                    child: TaskFiltersPanel(
+                      board: _board!,
+                      configuration: _configuration,
+                      people: _people,
+                      onChanged: _changeConfiguration,
+                      onClose: () => setState(() => _showFilters = false),
+                    ),
+                  ),
                 Expanded(
                   child: TaskTable(
                     board: _board!,
@@ -806,6 +1363,9 @@ class _TasksScreenState extends State<TasksScreen> {
                     interactionLocked: _bulkBusy,
                     owners: _owners,
                     people: _people,
+                    configuration: _configuration,
+                    onEditorDirtyChanged: (dirty) =>
+                        setState(() => _editorDirty = dirty),
                     onSelectionChanged: (count) => _announce(
                       count == 0
                           ? 'Selection cleared.'
@@ -983,6 +1543,115 @@ class _NewBoardPaneState extends State<_NewBoardPane> {
             ),
           ],
         ),
+      ),
+    ),
+  );
+}
+
+class _NewViewPane extends StatefulWidget {
+  const _NewViewPane({
+    required this.canShare,
+    required this.onCancel,
+    required this.onCreate,
+  });
+
+  final bool canShare;
+  final VoidCallback onCancel;
+  final Future<void> Function(String, TaskViewVisibility, bool) onCreate;
+
+  @override
+  State<_NewViewPane> createState() => _NewViewPaneState();
+}
+
+class _NewViewPaneState extends State<_NewViewPane> {
+  final _name = TextEditingController();
+  TaskViewVisibility _visibility = TaskViewVisibility.personal;
+  bool _locked = false;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_saving || _name.text.trim().isEmpty) return;
+    setState(() => _saving = true);
+    await widget.onCreate(_name.text, _visibility, _locked);
+    if (mounted) setState(() => _saving = false);
+  }
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.topCenter,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 540),
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        shrinkWrap: true,
+        children: [
+          Text(
+            'New saved view',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Filters, sorting, grouping, columns, and widths stay with this view.',
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _name,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'View name'),
+            onSubmitted: (_) => _save(),
+          ),
+          const SizedBox(height: 12),
+          SegmentedButton<TaskViewVisibility>(
+            segments: [
+              const ButtonSegment(
+                value: TaskViewVisibility.personal,
+                label: Text('Personal'),
+                icon: Icon(Icons.person_outline),
+              ),
+              ButtonSegment(
+                value: TaskViewVisibility.shared,
+                enabled: widget.canShare,
+                label: const Text('Shared'),
+                icon: const Icon(Icons.groups_outlined),
+              ),
+            ],
+            selected: <TaskViewVisibility>{_visibility},
+            onSelectionChanged: (selection) => setState(() {
+              _visibility = selection.single;
+              if (_visibility == TaskViewVisibility.personal) _locked = false;
+            }),
+          ),
+          if (_visibility == TaskViewVisibility.shared)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Lock this shared view'),
+              subtitle: const Text(
+                'Only task managers can change a locked view.',
+              ),
+              value: _locked,
+              onChanged: (value) => setState(() => _locked = value),
+            ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              TextButton(
+                onPressed: _saving ? null : widget.onCancel,
+                child: const Text('Cancel'),
+              ),
+              const Spacer(),
+              FilledButton(
+                onPressed: _saving ? null : _save,
+                child: Text(_saving ? 'Saving…' : 'Save view'),
+              ),
+            ],
+          ),
+        ],
       ),
     ),
   );

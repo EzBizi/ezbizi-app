@@ -21,7 +21,10 @@ class ApiClient {
   final http.Client _http;
   String? _token;
 
-  static const String baseUrl = String.fromEnvironment('API_BASE', defaultValue: '');
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE',
+    defaultValue: '',
+  );
 
   static String get _root => baseUrl.isEmpty ? '' : baseUrl;
 
@@ -148,27 +151,33 @@ class ApiClient {
   /// a proxy stripped. Suppressing it would make a developer's own build
   /// indistinguishable from a broken one.
   Map<String, String> get _identity => {
-        if (ClientPlatform.name.isNotEmpty) platformHeader: ClientPlatform.name,
-        if (BuildInfo.version.isNotEmpty) versionHeader: BuildInfo.version,
-      };
+    if (ClientPlatform.name.isNotEmpty) platformHeader: ClientPlatform.name,
+    if (BuildInfo.version.isNotEmpty) versionHeader: BuildInfo.version,
+  };
 
   Map<String, String> get _headers => {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        // Always sent, so a forgotten header can never produce an HTML error
-        // page the client cannot parse (the bug found on the deployed API).
-        if (_token != null) 'Authorization': 'Bearer $_token',
-        ..._identity,
-      };
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    // Always sent, so a forgotten header can never produce an HTML error
+    // page the client cannot parse (the bug found on the deployed API).
+    if (_token != null) 'Authorization': 'Bearer $_token',
+    ..._identity,
+  };
 
-  Future<ApiResponse> get(String path, [Map<String, String>? query]) async {
+  Future<ApiResponse> get(
+    String path, [
+    Map<String, String>? query,
+    Map<String, String>? headers,
+  ]) async {
     final uri = Uri.parse('$_root/api/v1$path').replace(queryParameters: query);
-    return _send(() => _http.get(uri, headers: _headers));
+    return _send(() => _http.get(uri, headers: {..._headers, ...?headers}));
   }
 
   Future<ApiResponse> post(String path, Map<String, dynamic> body) async {
     final uri = Uri.parse('$_root/api/v1$path');
-    return _send(() => _http.post(uri, headers: _headers, body: jsonEncode(body)));
+    return _send(
+      () => _http.post(uri, headers: _headers, body: jsonEncode(body)),
+    );
   }
 
   /// PUT, for endpoints that replace a whole thing rather than amend one.
@@ -176,13 +185,20 @@ class ApiClient {
   /// different operation, not a partial version of this one.
   Future<ApiResponse> put(String path, Map<String, dynamic> body) async {
     final uri = Uri.parse('$_root/api/v1$path');
-    return _send(() => _http.put(uri, headers: _headers, body: jsonEncode(body)));
+    return _send(
+      () => _http.put(uri, headers: _headers, body: jsonEncode(body)),
+    );
   }
 
-  Future<ApiResponse> patch(String path, Map<String, dynamic> body,
-      [Map<String, String>? query]) async {
+  Future<ApiResponse> patch(
+    String path,
+    Map<String, dynamic> body, [
+    Map<String, String>? query,
+  ]) async {
     final uri = Uri.parse('$_root/api/v1$path').replace(queryParameters: query);
-    return _send(() => _http.patch(uri, headers: _headers, body: jsonEncode(body)));
+    return _send(
+      () => _http.patch(uri, headers: _headers, body: jsonEncode(body)),
+    );
   }
 
   Future<ApiResponse> delete(String path, [Map<String, String>? query]) async {
@@ -197,9 +213,14 @@ class ApiClient {
   /// Referer header the page emits. A body is not encryption, but it is the
   /// difference between a secret in transit and a secret written to disk in
   /// three places.
-  Future<ApiResponse> deleteWithBody(String path, Map<String, dynamic> body) async {
+  Future<ApiResponse> deleteWithBody(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
     final uri = Uri.parse('$_root/api/v1$path');
-    return _send(() => _http.delete(uri, headers: _headers, body: jsonEncode(body)));
+    return _send(
+      () => _http.delete(uri, headers: _headers, body: jsonEncode(body)),
+    );
   }
 
   /// Upload a file.
@@ -350,7 +371,9 @@ class ApiClient {
       // the request, not that the API rejected it.
       return const ApiResponse(
         statusCode: 0,
-        body: {'message': 'The server returned a response the app could not read.'},
+        body: {
+          'message': 'The server returned a response the app could not read.',
+        },
       );
     } catch (e) {
       return ApiResponse(

@@ -792,7 +792,10 @@ class _HomeShellState extends State<HomeShell> {
                   },
                 ),
               ),
-              NotificationBell(api: widget.api),
+              NotificationBell(
+                api: widget.api,
+                onOpenRoute: _openAuthorizedRecordRoute,
+              ),
               // The organization requires a second factor and this person has
               // not set one up (§6). Every screen except their own account is
               // answering 403 until they do, so the chrome has to say why and

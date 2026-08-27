@@ -21,6 +21,8 @@ class TaskTable extends StatefulWidget {
     this.onSelectionCleared,
     this.bulkBusy = false,
     this.interactionLocked = false,
+    this.configuration = TaskViewConfiguration.empty,
+    this.onEditorDirtyChanged,
   });
   final TaskBoard board;
   final List<TaskRow> rows;
@@ -38,6 +40,8 @@ class TaskTable extends StatefulWidget {
   final VoidCallback? onSelectionCleared;
   final bool bulkBusy;
   final bool interactionLocked;
+  final TaskViewConfiguration configuration;
+  final ValueChanged<bool>? onEditorDirtyChanged;
   @override
   State<TaskTable> createState() => _TaskTableState();
 }
@@ -46,7 +50,7 @@ class _TaskTableState extends State<TaskTable> {
   final _selection = TaskSelection();
   final _pinned = ScrollController();
   final _columns = ScrollController();
-  final _collapsed = <String>{};
+  final _collapsed = <Object?>{};
   bool _syncing = false;
   @override
   void initState() {
@@ -85,8 +89,9 @@ class _TaskTableState extends State<TaskTable> {
   });
   Future<void> _core(TaskRow task, String field, Object? value) async {
     if (widget.interactionLocked) return;
-    if (field == 'title' && widget.onCoreChanged == null)
+    if (field == 'title' && widget.onCoreChanged == null) {
       widget.onTitleChanged(task, value as String);
+    }
     await widget.onCoreChanged?.call(task, field, value);
   }
 
@@ -108,17 +113,24 @@ class _TaskTableState extends State<TaskTable> {
 
   @override
   Widget build(BuildContext context) {
-    final groups = <String?, List<TaskRow>>{};
+    final groups = <Object?, List<TaskRow>>{};
     for (final row in widget.rows) {
-      (groups[row.groupId] ??= []).add(row);
+      final key = widget.configuration.groupBy == null
+          ? row.groupId
+          : row.groupByValue;
+      (groups[key] ??= []).add(row);
     }
-    final ids = <String?>[
-      ...widget.board.groups.where((g) => !g.archived).map((g) => g.id),
-      ...groups.keys.where((id) => !widget.board.groups.any((g) => g.id == id)),
-    ];
-    final custom = widget.board.customColumns
-        .where((c) => !c.archived)
-        .toList();
+    final ids = widget.configuration.groupBy == null
+        ? <Object?>[
+            ...widget.board.groups.where((g) => !g.archived).map((g) => g.id),
+            ...groups.keys.where(
+              (id) => !widget.board.groups.any((g) => g.id == id),
+            ),
+          ]
+        : groups.keys.toList(growable: false);
+    final columns = _visibleColumns();
+    final taskWidth = (widget.configuration.columnWidths['task'] ?? 300)
+        .toDouble();
     return FocusableActionDetector(
       shortcuts: const {
         SingleActivator(LogicalKeyboardKey.escape): _ClearIntent(),
@@ -181,7 +193,7 @@ class _TaskTableState extends State<TaskTable> {
                 children: [
                   SizedBox(
                     key: const Key('pinned-task-column'),
-                    width: 300,
+                    width: taskWidth,
                     child: ListView(
                       controller: _pinned,
                       children: [
@@ -190,16 +202,12 @@ class _TaskTableState extends State<TaskTable> {
                           if (groups[id] case final rows?) ...[
                             _group(
                               context,
-                              widget.board.groups
-                                      .where((g) => g.id == id)
-                                      .map((g) => g.name)
-                                      .firstOrNull ??
-                                  'Ungrouped',
+                              _groupName(id),
                               _collapsed.contains(id),
                               () => setState(
                                 () => _collapsed.contains(id)
                                     ? _collapsed.remove(id)
-                                    : _collapsed.add(id ?? ''),
+                                    : _collapsed.add(id),
                               ),
                             ),
                             if (!_collapsed.contains(id))
@@ -212,6 +220,8 @@ class _TaskTableState extends State<TaskTable> {
                                   onCheck: () => _toggle(row),
                                   onTitle: (title) =>
                                       _core(row, 'title', title),
+                                  onDirtyChanged: (dirty) =>
+                                      widget.onEditorDirtyChanged?.call(dirty),
                                 ),
                           ],
                       ],
@@ -221,11 +231,14 @@ class _TaskTableState extends State<TaskTable> {
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: SizedBox(
-                        width: 610.0 + 180 * custom.length,
+                        width: columns.fold<double>(
+                          0,
+                          (total, column) => total + column.width,
+                        ),
                         child: ListView(
                           controller: _columns,
                           children: [
-                            _OperationalHeader(custom: custom),
+                            _OperationalHeader(columns: columns),
                             for (final id in ids)
                               if (groups[id] case final rows?) ...[
                                 _groupSpacer(context),
@@ -234,7 +247,7 @@ class _TaskTableState extends State<TaskTable> {
                                     _OperationalRow(
                                       task: row,
                                       board: widget.board,
-                                      custom: custom,
+                                      columns: columns,
                                       owners: widget.owners,
                                       people: widget.people,
                                       onCore: (field, value) =>
@@ -255,6 +268,97 @@ class _TaskTableState extends State<TaskTable> {
         ),
       ),
     );
+  }
+
+  List<_TableColumn> _visibleColumns() {
+    final definitions = <String, _TableColumn>{
+      'owner': _TableColumn(
+        key: 'owner',
+        label: _coreLabel('owner', 'Person'),
+        width: _width('owner', 150),
+      ),
+      'status': _TableColumn(
+        key: 'status',
+        label: _coreLabel('status', 'Status'),
+        width: _width('status', 150),
+      ),
+      'priority': _TableColumn(
+        key: 'priority',
+        label: _coreLabel('priority', 'Priority'),
+        width: _width('priority', 150),
+      ),
+      'start_on': _TableColumn(
+        key: 'start_on',
+        label: _coreLabel('start_on', 'Start date'),
+        width: _width('start_on', 160),
+      ),
+      'due_on': _TableColumn(
+        key: 'due_on',
+        label: _coreLabel('due_on', 'Due date'),
+        width: _width('due_on', 160),
+      ),
+      for (final custom in widget.board.customColumns.where((c) => !c.archived))
+        'custom:${custom.id}': _TableColumn(
+          key: 'custom:${custom.id}',
+          label: custom.name,
+          width: _width('custom:${custom.id}', 180),
+          custom: custom,
+        ),
+    };
+    final ordered = <_TableColumn>[];
+    for (final key in widget.configuration.columnOrder) {
+      final column = definitions.remove(key);
+      if (column != null && !widget.configuration.hiddenColumns.contains(key)) {
+        ordered.add(column);
+      }
+    }
+    for (final entry in definitions.entries) {
+      if (!widget.configuration.hiddenColumns.contains(entry.key)) {
+        ordered.add(entry.value);
+      }
+    }
+    return ordered;
+  }
+
+  double _width(String key, double fallback) =>
+      (widget.configuration.columnWidths[key] ?? fallback.round()).toDouble();
+
+  String _coreLabel(String key, String fallback) =>
+      widget.board.coreColumns
+          .where((column) => column.key == key)
+          .map((column) => column.displayLabel)
+          .firstOrNull ??
+      fallback;
+
+  String _groupName(Object? value) {
+    if (widget.configuration.groupBy == null) {
+      return widget.board.groups
+              .where((group) => group.id == value)
+              .map((group) => group.name)
+              .firstOrNull ??
+          'Ungrouped';
+    }
+    return switch (widget.configuration.groupBy) {
+      'status' =>
+        widget.board.statuses
+                .where((status) => status.id == value)
+                .map((status) => status.name)
+                .firstOrNull ??
+            'No status',
+      'priority' =>
+        widget.board.priorities
+                .where((priority) => priority.id == value)
+                .map((priority) => priority.name)
+                .firstOrNull ??
+            'No priority',
+      'owner' =>
+        widget.owners
+                .where((person) => person.id == value)
+                .map((person) => person.name)
+                .firstOrNull ??
+            'Unassigned',
+      _ => value?.toString() ?? 'No value',
+    };
   }
 }
 
@@ -378,6 +482,7 @@ class _PinnedRow extends StatefulWidget {
     required this.onSelect,
     required this.onCheck,
     required this.onTitle,
+    required this.onDirtyChanged,
   });
   final TaskRow task;
   final bool selected;
@@ -385,6 +490,7 @@ class _PinnedRow extends StatefulWidget {
   final VoidCallback onSelect;
   final VoidCallback onCheck;
   final ValueChanged<String> onTitle;
+  final ValueChanged<bool> onDirtyChanged;
   @override
   State<_PinnedRow> createState() => _PinnedRowState();
 }
@@ -395,8 +501,9 @@ class _PinnedRowState extends State<_PinnedRow> {
   @override
   void didUpdateWidget(covariant _PinnedRow old) {
     super.didUpdateWidget(old);
-    if (!_focus.hasFocus && old.task.title != widget.task.title)
+    if (!_focus.hasFocus && old.task.title != widget.task.title) {
       _title.text = widget.task.title;
+    }
   }
 
   @override
@@ -438,7 +545,12 @@ class _PinnedRowState extends State<_PinnedRow> {
                   isDense: true,
                 ),
                 onTap: widget.onSelect,
-                onSubmitted: widget.onTitle,
+                onChanged: (value) =>
+                    widget.onDirtyChanged(value != widget.task.title),
+                onSubmitted: (value) {
+                  widget.onTitle(value);
+                  widget.onDirtyChanged(false);
+                },
               ),
             ),
           ],
@@ -448,34 +560,36 @@ class _PinnedRowState extends State<_PinnedRow> {
   );
 }
 
+class _TableColumn {
+  const _TableColumn({
+    required this.key,
+    required this.label,
+    required this.width,
+    this.custom,
+  });
+
+  final String key;
+  final String label;
+  final double width;
+  final TaskColumnDefinition? custom;
+}
+
 class _OperationalHeader extends StatelessWidget {
-  const _OperationalHeader({required this.custom});
-  final List<TaskColumnDefinition> custom;
+  const _OperationalHeader({required this.columns});
+  final List<_TableColumn> columns;
   @override
   Widget build(BuildContext context) => Container(
     height: 44,
     color: Theme.of(context).colorScheme.surfaceContainerHighest,
     child: Row(
       children: [
-        for (final label in ['Status', 'Owner', 'Priority'])
+        for (final column in columns)
           SizedBox(
-            width: 150,
+            width: column.width,
             child: Text(
-              label,
+              column.label,
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
-          ),
-        const SizedBox(
-          width: 160,
-          child: Text(
-            'Due date',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-        ),
-        for (final c in custom)
-          SizedBox(
-            width: 180,
-            child: Text(c.name, style: TextStyle(fontWeight: FontWeight.w700)),
           ),
       ],
     ),
@@ -486,7 +600,7 @@ class _OperationalRow extends StatelessWidget {
   const _OperationalRow({
     required this.task,
     required this.board,
-    required this.custom,
+    required this.columns,
     required this.owners,
     required this.people,
     required this.onCore,
@@ -494,7 +608,7 @@ class _OperationalRow extends StatelessWidget {
   });
   final TaskRow task;
   final TaskBoard board;
-  final List<TaskColumnDefinition> custom;
+  final List<_TableColumn> columns;
   final List<TaskParticipant> owners;
   final List<TaskParticipant> people;
   final Future<void> Function(String, Object?) onCore;
@@ -514,78 +628,85 @@ class _OperationalRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          SizedBox(
-            width: 150,
-            child: Semantics(
-              label: 'Task ${task.number} status',
-              child: _ArchivedOrOption(
-                value: task.statusOptionId,
-                hint: 'No status',
-                options: board.statuses
-                    .map((s) => _OptionEntry(s.id, s.name, s.archived))
-                    .toList(),
-                changed: (value) => onCore('status_option_id', value),
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 150,
-            child: Semantics(
-              label: 'Task ${task.number} owner',
-              child: _Option(
-                value: task.ownerUserId,
-                hint: 'Unassigned',
-                options: owners.map((p) => (p.id, p.name)).toList(),
-                changed: (value) => onCore('owner_user_id', value),
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 150,
-            child: Semantics(
-              label: 'Task ${task.number} priority',
-              child: _ArchivedOrOption(
-                value: task.priorityOptionId,
-                hint: 'No priority',
-                options: board.priorities
-                    .map((p) => _OptionEntry(p.id, p.name, p.archived))
-                    .toList(),
-                changed: (value) => onCore('priority_option_id', value),
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 160,
-            child: Semantics(
-              label: 'Task ${task.number} due date',
-              child: _Date(
-                value: task.dueOn,
-                changed: (value) => onCore('due_on', value),
-              ),
-            ),
-          ),
-          for (final c in custom)
-            SizedBox(
-              width: 180,
-              child: TaskColumnCell(
-                task: task,
-                definition: c,
-                value:
-                    task.values[c.id] ??
-                    TaskCellValue(
-                      kind: c.kind,
-                      value: null,
-                      rawValue: null,
-                      isReadOnly: c.isReadOnly,
-                    ),
-                participants: people,
-                onChanged: onCustom,
-              ),
-            ),
+          for (final column in columns)
+            SizedBox(width: column.width, child: _cell(column)),
         ],
       ),
     ),
   );
+
+  Widget _cell(_TableColumn column) {
+    if (column.custom case final custom?) {
+      return TaskColumnCell(
+        task: task,
+        definition: custom,
+        value:
+            task.values[custom.id] ??
+            TaskCellValue(
+              kind: custom.kind,
+              value: null,
+              rawValue: null,
+              isReadOnly: custom.isReadOnly,
+            ),
+        participants: people,
+        onChanged: onCustom,
+      );
+    }
+    return switch (column.key) {
+      'status' => Semantics(
+        label: 'Task ${task.number} status',
+        child: _ArchivedOrOption(
+          value: task.statusOptionId,
+          hint: 'No status',
+          options: board.statuses
+              .map(
+                (status) =>
+                    _OptionEntry(status.id, status.name, status.archived),
+              )
+              .toList(),
+          changed: (value) => onCore('status_option_id', value),
+        ),
+      ),
+      'owner' => Semantics(
+        label: 'Task ${task.number} owner',
+        child: _Option(
+          value: task.ownerUserId,
+          hint: 'Unassigned',
+          options: owners.map((person) => (person.id, person.name)).toList(),
+          changed: (value) => onCore('owner_user_id', value),
+        ),
+      ),
+      'priority' => Semantics(
+        label: 'Task ${task.number} priority',
+        child: _ArchivedOrOption(
+          value: task.priorityOptionId,
+          hint: 'No priority',
+          options: board.priorities
+              .map(
+                (priority) =>
+                    _OptionEntry(priority.id, priority.name, priority.archived),
+              )
+              .toList(),
+          changed: (value) => onCore('priority_option_id', value),
+        ),
+      ),
+      'start_on' => Semantics(
+        label: 'Task ${task.number} start date',
+        child: _Date(
+          value: task.startOn,
+          changed: (value) => onCore('start_on', value),
+        ),
+      ),
+      'due_on' => Semantics(
+        label: 'Task ${task.number} due date',
+        child: _Date(
+          value: task.dueOn,
+          changed: (value) => onCore('due_on', value),
+        ),
+      ),
+      _ => const SizedBox.shrink(),
+    };
+  }
 }
 
 class _Option extends StatelessWidget {
@@ -632,12 +753,13 @@ class _ArchivedOrOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final current = options.where((option) => option.id == value).firstOrNull;
-    if (current?.archived ?? false)
+    if (current?.archived ?? false) {
       return Semantics(
         readOnly: true,
         label: '$hint ${current!.name}. Archived.',
         child: Text(current.name),
       );
+    }
     return _Option(
       value: value,
       hint: hint,

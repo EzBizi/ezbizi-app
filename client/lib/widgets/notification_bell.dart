@@ -9,9 +9,10 @@ import 'tag.dart';
 /// and neither is built; a poll on open plus a refresh is honest about that and
 /// costs one query. When push arrives this widget is what changes, not the API.
 class NotificationBell extends StatefulWidget {
-  const NotificationBell({super.key, required this.api});
+  const NotificationBell({super.key, required this.api, this.onOpenRoute});
 
   final ApiClient api;
+  final ValueChanged<String>? onOpenRoute;
 
   @override
   State<NotificationBell> createState() => _NotificationBellState();
@@ -146,30 +147,42 @@ class _NotificationBellState extends State<NotificationBell> {
                       trailing: (n['source'] == 'automation')
                           ? const Tag('Rule')
                           : null,
-                      onTap: unread
-                          ? () async {
-                              final r = await widget.api.post(
-                                '/notifications/${n['id']}/read',
-                                {},
-                              );
+                      onTap: () async {
+                        if (unread) {
+                          final r = await widget.api.post(
+                            '/notifications/${n['id']}/read',
+                            {},
+                          );
 
-                              if (!context.mounted) return;
+                          if (!context.mounted) return;
 
-                              if (!r.ok) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(r.message)),
-                                );
-                                return;
-                              }
+                          if (!r.ok) {
+                            ScaffoldMessenger.of(
+                              context,
+                            ).showSnackBar(SnackBar(content: Text(r.message)));
+                            return;
+                          }
 
-                              await _refresh();
+                          await _refresh();
+                        }
 
-                              // repaint, not setState: setState rebuilds the
-                              // bell behind the panel, and the panel's own
-                              // page is cached by the route.
-                              if (context.mounted) repaint(() {});
-                            }
-                          : null,
+                        final meta = n['meta'];
+                        final route = meta is Map ? meta['route'] : null;
+                        if (route is String &&
+                            route.isNotEmpty &&
+                            widget.onOpenRoute != null) {
+                          if (context.mounted) {
+                            Navigator.of(context).pop();
+                            widget.onOpenRoute!(route);
+                          }
+                          return;
+                        }
+
+                        // repaint, not setState: setState rebuilds the
+                        // bell behind the panel, and the panel's own
+                        // page is cached by the route.
+                        if (context.mounted) repaint(() {});
+                      },
                     );
                   },
                 ),
