@@ -6,6 +6,7 @@ use App\Models\Assignment;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\TaskBoard;
+use App\Models\TaskFolder;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
 use App\Support\Scoping\ViewScope;
@@ -33,6 +34,16 @@ final class TaskPlace
                 'company_id' => null,
                 'franchise_id' => null,
             ],
+        };
+    }
+
+    /** @return array{type:string,id:string} */
+    public static function auditScope(TaskBoard|TaskFolder $record): array
+    {
+        return match (true) {
+            $record->franchise_id !== null => ['type' => ViewScope::FRANCHISE, 'id' => $record->franchise_id],
+            $record->company_id !== null => ['type' => ViewScope::COMPANY, 'id' => $record->company_id],
+            default => ['type' => ViewScope::ORGANIZATION, 'id' => $record->organization_id],
         };
     }
 

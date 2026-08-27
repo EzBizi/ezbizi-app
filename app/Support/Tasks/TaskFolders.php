@@ -30,7 +30,11 @@ final class TaskFolders
                 'name' => $name,
                 'position' => $this->nextPosition($place),
             ])->save();
-            $this->audit->log('task_folder.created', metadata: ['folder_id' => $folder->id], actor: $actor);
+            $auditScope = TaskPlace::auditScope($folder);
+            $this->audit->log('task_folder.created', target: $folder,
+                changes: ['before' => [], 'after' => ['name' => $folder->name, 'position' => $folder->position]],
+                metadata: ['folder_id' => $folder->id], actor: $actor,
+                scopeType: $auditScope['type'], scopeId: $auditScope['id']);
 
             return $folder->fresh();
         });
@@ -42,8 +46,13 @@ final class TaskFolders
             $locked = TaskFolder::query()->lockForUpdate()->findOrFail($folder->id);
             $place = $this->authorizeAtCurrentPlace($actor, $locked, $scope);
             $this->assertNameAvailable($place, $name, $locked->id);
+            $beforeName = $locked->name;
             $locked->forceFill(['name' => $name])->save();
-            $this->audit->log('task_folder.updated', metadata: ['folder_id' => $locked->id], actor: $actor);
+            $auditScope = TaskPlace::auditScope($locked);
+            $this->audit->log('task_folder.updated', target: $locked,
+                changes: ['before' => ['name' => $beforeName], 'after' => ['name' => $locked->name]],
+                metadata: ['folder_id' => $locked->id], actor: $actor,
+                scopeType: $auditScope['type'], scopeId: $auditScope['id']);
 
             return $locked->fresh();
         });
@@ -68,11 +77,14 @@ final class TaskFolders
                 $locked->position = $this->nextPosition($place);
             }
 
+            $beforeArchivedAt = $locked->archived_at?->toIso8601String();
             $locked->archived_at = $archived ? now() : null;
             $locked->save();
-            $this->audit->log($archived ? 'task_folder.archived' : 'task_folder.restored', metadata: [
+            $auditScope = TaskPlace::auditScope($locked);
+            $this->audit->log($archived ? 'task_folder.archived' : 'task_folder.restored', target: $locked,
+                changes: ['before' => ['archived_at' => $beforeArchivedAt], 'after' => ['archived_at' => $locked->archived_at?->toIso8601String()]], metadata: [
                 'folder_id' => $locked->id,
-            ], actor: $actor);
+            ], actor: $actor, scopeType: $auditScope['type'], scopeId: $auditScope['id']);
 
             return $locked->fresh();
         });

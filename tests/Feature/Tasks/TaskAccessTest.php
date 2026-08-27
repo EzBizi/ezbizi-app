@@ -145,6 +145,18 @@ class TaskAccessTest extends TestCase
         $this->assertTrue($access->backgroundViewDecision($user, $private)->allowed());
     }
 
+    public function test_direct_out_of_view_board_decision_is_non_enumerating(): void
+    {
+        [$siblingCompany, $siblingFranchise] = $this->secondCompany();
+        $user = $this->userAt('Wide viewer', Assignment::SCOPE_ORGANIZATION, $this->alpha['org']->id);
+        $scope = $this->lookingAt($user, ViewScope::COMPANY, $this->alpha['company']->id);
+        $sibling = $this->board($siblingCompany, $siblingFranchise, 'scope');
+
+        $decision = app(TaskBoardAccess::class)->viewDecision($user, $sibling, $scope);
+        $this->assertFalse($decision->allowed());
+        $this->assertSame(404, $decision->status());
+    }
+
     public function test_creation_does_not_trust_organization_fallback_or_raw_reach(): void
     {
         $companyUser = $this->userAt('Company creator', Assignment::SCOPE_COMPANY, $this->alpha['company']->id);

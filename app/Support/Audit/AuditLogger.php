@@ -138,6 +138,8 @@ class AuditLogger
         array $metadata = [],
         ?User $actor = null,
         ?string $causationId = null,
+        ?string $scopeType = null,
+        ?string $scopeId = null,
     ): ?AuditEvent {
         if ($this->suppressed) {
             return null;
@@ -155,6 +157,8 @@ class AuditLogger
             'target_type'     => $target ? $target::class : null,
             'target_id'       => $target?->getKey(),
             'target_label'    => $this->labelFor($target),
+            'scope_type'      => $scopeType,
+            'scope_id'        => $scopeId,
             'changes'         => $this->redact($changes) ?: null,
             'metadata'        => $this->redact($metadata) ?: null,
             'correlation_id'  => $this->correlationId(),

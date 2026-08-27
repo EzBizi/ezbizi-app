@@ -7,6 +7,7 @@ use App\Models\TaskBoard;
 use App\Models\TaskBoardMember;
 use App\Models\TaskColumnDefinition;
 use App\Models\TaskGroup;
+use App\Models\TaskView;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\StatusCategory;
 use App\Support\Tenancy\TenantContext;
@@ -195,6 +196,67 @@ class TaskBoardConfigurationApiTest extends TestCase
             'company_id' => $this->alpha['company']->id,
             'expected_structure_version' => 3,
         ])->assertUnprocessable();
+    }
+
+    public function test_archived_board_is_unavailable_except_through_owner_restore(): void
+    {
+        $board = $this->createBoard('Archived');
+        $this->postJson("/api/v1/tasks/boards/{$board->id}/archive", [
+            'expected_structure_version' => 1,
+        ])->assertOk();
+
+        $this->getJson("/api/v1/tasks/boards/{$board->id}")->assertNotFound();
+        $this->postJson("/api/v1/tasks/boards/{$board->id}/groups", [
+            'name' => 'Backdoor',
+            'expected_structure_version' => 2,
+        ])->assertNotFound();
+        $this->postJson("/api/v1/tasks/boards/{$board->id}/restore", [
+            'expected_structure_version' => 2,
+        ])->assertOk()->assertJsonPath('data.archived', false);
+    }
+
+    public function test_moving_a_board_to_a_populated_folder_appends_without_position_collision(): void
+    {
+        $folderId = $this->postJson('/api/v1/tasks/folders', ['name' => 'Destination'])
+            ->assertCreated()->json('data.id');
+        $destination = $this->postJson('/api/v1/tasks/boards', [
+            'name' => 'Already there', 'visibility' => 'scope', 'folder_id' => $folderId,
+        ])->assertCreated()->json('data.id');
+        $moving = $this->createBoard('Moving');
+
+        $this->patchJson("/api/v1/tasks/boards/{$moving->id}", [
+            'folder_id' => $folderId,
+            'expected_structure_version' => 1,
+        ])->assertOk()->assertJsonPath('data.folder_id', $folderId);
+
+        $this->enterTenant();
+        $positions = TaskBoard::query()->whereIn('id', [$destination, $moving->id])
+            ->orderBy('position')->pluck('position')->all();
+        $this->assertSame([1, 2], $positions);
+    }
+
+    public function test_board_detail_hides_archived_groups_and_other_users_personal_views(): void
+    {
+        $board = $this->createBoard('Visible configuration');
+        $other = $this->userWithRole($this->alpha, 'Other viewer', ['tasks.view']);
+        $this->enterTenant();
+        $group = $board->groups()->firstOrFail();
+        $group->forceFill(['archived_at' => now()])->save();
+        $view = new TaskView;
+        $view->forceFill([
+            'board_id' => $board->id,
+            'owner_user_id' => $other->id,
+            'visibility' => 'personal',
+            'name' => 'Private plan',
+            'is_locked' => false,
+            'is_permanent_main' => false,
+            'configuration' => ['schema' => 1],
+            'position' => 1,
+        ])->save();
+
+        $response = $this->getJson("/api/v1/tasks/boards/{$board->id}")->assertOk();
+        $this->assertNotContains($group->id, collect($response->json('data.groups'))->pluck('id')->all());
+        $this->assertNotContains('Private plan', collect($response->json('data.views'))->pluck('name')->all());
     }
 
     private function createBoard(string $name = 'Operations'): TaskBoard

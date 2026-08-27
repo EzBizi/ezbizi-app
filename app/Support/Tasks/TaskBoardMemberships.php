@@ -26,6 +26,17 @@ final class TaskBoardMemberships
             $this->participants->forMembership($candidate, $lockedBoard)->authorize();
 
             $membership = $memberships->firstWhere('user_id', $candidate->id) ?? new TaskBoardMember;
+            if ($membership->exists
+                && $membership->is_active
+                && $membership->role === BoardMemberRole::Owner
+                && $role !== BoardMemberRole::Owner) {
+                $this->assertAnotherEligibleOwner($lockedBoard, $memberships, $membership->id);
+            }
+            $before = $membership->exists ? [
+                'role' => $membership->role->value,
+                'is_active' => $membership->is_active,
+                'archived_at' => $membership->archived_at?->toIso8601String(),
+            ] : [];
             $membership->forceFill([
                 'organization_id' => $lockedBoard->organization_id,
                 'board_id' => $lockedBoard->id,
@@ -35,12 +46,16 @@ final class TaskBoardMemberships
                 'archived_at' => null,
             ])->save();
 
-            $this->audit->log('task_board.member_saved', metadata: [
+            $auditScope = TaskPlace::auditScope($lockedBoard);
+            $this->audit->log('task_board.member_saved', target: $membership, changes: [
+                'before' => $before,
+                'after' => ['role' => $role->value, 'is_active' => true, 'archived_at' => null],
+            ], metadata: [
                 'board_id' => $lockedBoard->id,
                 'membership_id' => $membership->id,
                 'user_id' => $candidate->id,
                 'role' => $role->value,
-            ], actor: $actor);
+            ], actor: $actor, scopeType: $auditScope['type'], scopeId: $auditScope['id']);
 
             return $membership->fresh('user');
         });
@@ -67,13 +82,16 @@ final class TaskBoardMemberships
                 $this->participants->forMembership($candidate, $lockedBoard)->authorize();
             }
 
+            $beforeRole = $lockedMembership->role->value;
             $lockedMembership->forceFill(['role' => $role->value])->save();
-            $this->audit->log('task_board.member_role_changed', metadata: [
+            $auditScope = TaskPlace::auditScope($lockedBoard);
+            $this->audit->log('task_board.member_role_changed', target: $lockedMembership,
+                changes: ['before' => ['role' => $beforeRole], 'after' => ['role' => $role->value]], metadata: [
                 'board_id' => $lockedBoard->id,
                 'membership_id' => $lockedMembership->id,
                 'user_id' => $lockedMembership->user_id,
                 'role' => $role->value,
-            ], actor: $actor);
+            ], actor: $actor, scopeType: $auditScope['type'], scopeId: $auditScope['id']);
 
             return $lockedMembership->fresh('user');
         });
@@ -90,12 +108,17 @@ final class TaskBoardMemberships
                 $this->assertAnotherEligibleOwner($lockedBoard, $memberships, $lockedMembership->id);
             }
 
+            $before = ['is_active' => $lockedMembership->is_active, 'archived_at' => $lockedMembership->archived_at?->toIso8601String()];
             $lockedMembership->forceFill(['is_active' => false, 'archived_at' => now()])->save();
-            $this->audit->log('task_board.member_revoked', metadata: [
+            $auditScope = TaskPlace::auditScope($lockedBoard);
+            $this->audit->log('task_board.member_revoked', target: $lockedMembership, changes: [
+                'before' => $before,
+                'after' => ['is_active' => false, 'archived_at' => $lockedMembership->archived_at?->toIso8601String()],
+            ], metadata: [
                 'board_id' => $lockedBoard->id,
                 'membership_id' => $lockedMembership->id,
                 'user_id' => $lockedMembership->user_id,
-            ], actor: $actor);
+            ], actor: $actor, scopeType: $auditScope['type'], scopeId: $auditScope['id']);
 
             return $lockedMembership->fresh('user');
         });

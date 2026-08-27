@@ -192,8 +192,13 @@ final class TaskBoardsController extends TaskApiController
     private function relations(string $userId): array
     {
         return [
-            'groups', 'statusOptions', 'priorityOptions', 'coreColumnSettings',
-            'columnDefinitions.options', 'views', 'members',
+            'groups' => fn ($query) => $query->active()->orderBy('position'),
+            'statusOptions', 'priorityOptions', 'coreColumnSettings',
+            'columnDefinitions.options',
+            'views' => fn ($query) => $query->where(fn ($visible) => $visible
+                ->where('visibility', 'shared')
+                ->orWhere('owner_user_id', $userId)),
+            'members',
             'preferences' => fn ($query) => $query->where('user_id', $userId),
         ];
     }

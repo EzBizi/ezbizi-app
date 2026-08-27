@@ -4,7 +4,6 @@ namespace App\Policies;
 
 use App\Models\TaskBoard;
 use App\Models\User;
-use App\Support\Access\Refusal;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\TaskBoardAccess;
 use Illuminate\Auth\Access\Response;
@@ -15,9 +14,7 @@ final class TaskBoardPolicy
 
     public function viewAny(User $user): Response
     {
-        return $user->hasPermission('tasks.view')
-            ? Response::allow()
-            : Refusal::permission('view Tasks');
+        return $this->access->directoryDecision($user, ViewScope::forUser($user));
     }
 
     public function view(User $user, TaskBoard $board): Response

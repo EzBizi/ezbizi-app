@@ -86,8 +86,12 @@ final class TaskBoardAccess
             return $base;
         }
 
+        if ($board->archived_at !== null) {
+            return Response::denyAsNotFound();
+        }
+
         if (! TaskPlace::coveredBy($user, $board, $scope, $this->reach)) {
-            return Response::deny('This board is outside your active view or assignment.');
+            return Response::denyAsNotFound();
         }
 
         return $this->privateMembershipDecision($user, $board);
@@ -134,6 +138,28 @@ final class TaskBoardAccess
             : Response::deny('You are not assigned at the exact active view, so you cannot file a board there.');
     }
 
+    public function directoryDecision(User $user, ViewScope $scope): Response
+    {
+        if (! $this->availability->isAvailable('tasks', $user->organization)) {
+            return Response::deny('Tasks are not available for this organization.');
+        }
+
+        if (! $user->hasPermission('tasks.view')) {
+            return Refusal::permission('view Tasks');
+        }
+
+        $place = TaskPlace::fromView($scope);
+        $covered = match ($scope->type) {
+            ViewScope::COMPANY => $this->reach->covers($user, 'company', $place['company_id']),
+            ViewScope::FRANCHISE => $this->reach->covers($user, 'franchise', $place['franchise_id']),
+            default => $this->reach->covers($user, 'organization', $place['organization_id']),
+        };
+
+        return $covered
+            ? Response::allow()
+            : Response::deny('Your active view is outside where you are assigned.');
+    }
+
     public function manageDecision(User $user, TaskBoard $board, ViewScope $scope): Response
     {
         $view = $this->viewDecision($user, $board, $scope);
@@ -141,6 +167,32 @@ final class TaskBoardAccess
         if ($view->denied()) {
             return $view;
         }
+
+        return $this->ownerManagementDecision($user, $board);
+    }
+
+    public function manageArchivedDecision(User $user, TaskBoard $board, ViewScope $scope): Response
+    {
+        $base = $this->baseDecision($user, $board);
+
+        if ($base->denied()) {
+            return $base;
+        }
+
+        if (! TaskPlace::coveredBy($user, $board, $scope, $this->reach)) {
+            return Response::denyAsNotFound();
+        }
+
+        $membership = $this->privateMembershipDecision($user, $board);
+        if ($membership->denied()) {
+            return $membership;
+        }
+
+        return $this->ownerManagementDecision($user, $board);
+    }
+
+    private function ownerManagementDecision(User $user, TaskBoard $board): Response
+    {
 
         if (! $user->hasPermission('tasks.manage')) {
             return Refusal::permission('manage this task board');
@@ -219,10 +271,14 @@ final class TaskBoardAccess
                 'archived_at' => null,
             ])->save();
 
-            $this->audit->log('task_board.owner_recovered', metadata: [
+            $auditScope = TaskPlace::auditScope($lockedBoard);
+            $this->audit->log('task_board.owner_recovered', target: $lockedBoard, changes: [
+                'before' => ['eligible_owner_user_id' => null],
+                'after' => ['eligible_owner_user_id' => $newOwner->getKey()],
+            ], metadata: [
                 'board_id' => $lockedBoard->getKey(),
                 'owner_user_id' => $newOwner->getKey(),
-            ], actor: $administrator);
+            ], actor: $administrator, scopeType: $auditScope['type'], scopeId: $auditScope['id']);
 
             return ['board_id' => $lockedBoard->getKey(), 'owner_user_id' => $newOwner->getKey()];
         });

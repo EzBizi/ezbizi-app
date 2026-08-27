@@ -45,7 +45,11 @@ final class TaskBoardWriter
 
         return DB::transaction(function () use ($actor, $attributes, $place, $folder): TaskBoard {
             $board = $this->createRecord($actor, $attributes, $place, $folder, defaults: true);
-            $this->audit->log('task_board.created', metadata: ['board_id' => $board->id], actor: $actor);
+            $auditScope = TaskPlace::auditScope($board);
+            $this->audit->log('task_board.created', target: $board,
+                changes: ['before' => [], 'after' => $this->auditFields($board)],
+                metadata: ['board_id' => $board->id], actor: $actor,
+                scopeType: $auditScope['type'], scopeId: $auditScope['id']);
 
             return $board->fresh($this->configurationRelations());
         });
@@ -64,11 +68,14 @@ final class TaskBoardWriter
                 ])
                 : null;
 
+            if (array_key_exists('folder_id', $attributes) && $locked->folder_id !== $folder?->id) {
+                $this->moveBoardToFolder($locked, $folder?->id);
+            }
+
             $locked->fill(array_filter([
                 'name' => $attributes['name'] ?? null,
                 'description' => array_key_exists('description', $attributes) ? $attributes['description'] : null,
                 'visibility' => $attributes['visibility'] ?? null,
-                'folder_id' => array_key_exists('folder_id', $attributes) ? $folder?->id : null,
             ], fn ($value, $key) => array_key_exists($key, $attributes), ARRAY_FILTER_USE_BOTH));
 
             return $locked;
@@ -95,6 +102,7 @@ final class TaskBoardWriter
 
                 return $locked;
             },
+            allowArchived: ! $archived,
         );
     }
 
@@ -112,12 +120,11 @@ final class TaskBoardWriter
             ]);
         }
 
-        $this->access->viewDecision($actor, $source, $scope)->authorize();
-        $this->access->manageDecision($actor, $source, $scope)->authorize();
-        $this->access->createDecision($actor, $scope)->authorize();
-
         return DB::transaction(function () use ($actor, $source, $scope, $expected, $name): TaskBoard {
             $locked = TaskBoard::query()->lockForUpdate()->findOrFail($source->id);
+            $this->access->viewDecision($actor, $locked, $scope)->authorize();
+            $this->access->manageDecision($actor, $locked, $scope)->authorize();
+            $this->access->createDecision($actor, $scope)->authorize();
             if ((int) $locked->structure_version !== $expected) {
                 throw new TaskStructureConflict((int) $locked->structure_version);
             }
@@ -173,10 +180,12 @@ final class TaskBoardWriter
                 ])->save();
             }
 
-            $this->audit->log('task_board.duplicated', metadata: [
+            $auditScope = TaskPlace::auditScope($copy);
+            $this->audit->log('task_board.duplicated', target: $copy,
+                changes: ['before' => [], 'after' => $this->auditFields($copy)], metadata: [
                 'board_id' => $copy->id,
                 'source_board_id' => $locked->id,
-            ], actor: $actor);
+            ], actor: $actor, scopeType: $auditScope['type'], scopeId: $auditScope['id']);
 
             return $copy->fresh($this->configurationRelations());
         });
@@ -470,16 +479,30 @@ final class TaskBoardWriter
         });
     }
 
-    private function structure(User $actor, TaskBoard $board, ViewScope $scope, int $expected, string $action, callable $change): mixed
+    private function structure(
+        User $actor,
+        TaskBoard $board,
+        ViewScope $scope,
+        int $expected,
+        string $action,
+        callable $change,
+        bool $allowArchived = false,
+    ): mixed
     {
-        return DB::transaction(function () use ($actor, $board, $scope, $expected, $action, $change): mixed {
+        return DB::transaction(function () use ($actor, $board, $scope, $expected, $action, $change, $allowArchived): mixed {
             $locked = TaskBoard::query()->lockForUpdate()->findOrFail($board->id);
-            $this->access->manageDecision($actor, $locked, $scope)->authorize();
+            ($allowArchived
+                ? $this->access->manageArchivedDecision($actor, $locked, $scope)
+                : $this->access->manageDecision($actor, $locked, $scope))->authorize();
             if ((int) $locked->structure_version !== $expected) {
                 throw new TaskStructureConflict((int) $locked->structure_version);
             }
 
+            $boardBefore = $this->auditFields($locked);
             $result = $change($locked);
+            $recordBefore = $result instanceof Model && $result !== $locked
+                ? ($result->wasRecentlyCreated ? [] : $this->auditOriginalFields($result))
+                : $boardBefore;
             if ($result instanceof Model && $result !== $locked) {
                 $result->save();
             }
@@ -488,13 +511,16 @@ final class TaskBoardWriter
                 'updated_by' => $actor->id,
             ])->save();
             $record = $result instanceof Model ? $result : $locked;
-            $this->audit->log($action, metadata: [
+            $record = $record->fresh();
+            $auditScope = TaskPlace::auditScope($locked);
+            $this->audit->log($action, target: $record,
+                changes: ['before' => $recordBefore, 'after' => $this->auditFields($record)], metadata: [
                 'board_id' => $locked->id,
                 'record_type' => $record->getMorphClass(),
                 'record_id' => $record->getKey(),
-            ], actor: $actor);
+            ], actor: $actor, scopeType: $auditScope['type'], scopeId: $auditScope['id']);
 
-            return $result instanceof Model ? $result->fresh() : $result;
+            return $result instanceof Model ? $record : $result;
         });
     }
 
@@ -684,11 +710,72 @@ final class TaskBoardWriter
             ->where('folder_id', $folderId)->lockForUpdate()->max('position') + 1;
     }
 
+    private function moveBoardToFolder(TaskBoard $board, ?string $folderId): void
+    {
+        $sourceFolderId = $board->folder_id;
+        $siblings = TaskBoard::query()->active()
+            ->where('company_id', $board->company_id)
+            ->where('franchise_id', $board->franchise_id)
+            ->lockForUpdate()->get();
+        $destinationPosition = (int) $siblings
+            ->where('folder_id', $folderId)
+            ->where('id', '!==', $board->id)
+            ->max('position') + 1;
+
+        $board->forceFill(['folder_id' => $folderId, 'position' => $destinationPosition])->save();
+
+        $siblings->where('folder_id', $sourceFolderId)
+            ->where('id', '!==', $board->id)
+            ->sortBy('position')->values()
+            ->each(fn (TaskBoard $sibling, int $position) => $sibling
+                ->forceFill(['position' => $position + 1])->save());
+    }
+
     private function positionTaken(TaskBoard $board): bool
     {
         return TaskBoard::query()->active()->whereKeyNot($board->id)
             ->where('company_id', $board->company_id)->where('franchise_id', $board->franchise_id)
             ->where('folder_id', $board->folder_id)->where('position', $board->position)->exists();
+    }
+
+    private function auditOriginalFields(Model $record): array
+    {
+        $keys = array_keys($this->auditFields($record));
+
+        return $this->normalizeAuditValues(array_intersect_key(
+            $record->getOriginal(),
+            array_flip($keys),
+        ));
+    }
+
+    private function auditFields(Model $record): array
+    {
+        $keys = match (true) {
+            $record instanceof TaskBoard => ['name', 'description', 'visibility', 'folder_id', 'position', 'structure_version', 'archived_at'],
+            $record instanceof TaskGroup => ['name', 'color', 'position', 'order_version', 'archived_at'],
+            $record instanceof TaskStatusOption => ['name', 'color', 'category', 'position', 'archived_at'],
+            $record instanceof TaskPriorityOption => ['name', 'color', 'rank', 'position', 'archived_at'],
+            $record instanceof TaskCoreColumnSetting => ['core_key', 'display_label'],
+            $record instanceof TaskColumnDefinition => ['name', 'type', 'number_suffix', 'position', 'archived_at'],
+            $record instanceof TaskColumnOption => ['name', 'color', 'position', 'archived_at'],
+            default => [],
+        };
+
+        return $this->normalizeAuditValues($record->only($keys));
+    }
+
+    private function normalizeAuditValues(array $values): array
+    {
+        return array_map(static function (mixed $value): mixed {
+            if ($value instanceof \BackedEnum) {
+                return $value->value;
+            }
+            if ($value instanceof \DateTimeInterface) {
+                return $value->format(DATE_ATOM);
+            }
+
+            return $value;
+        }, $values);
     }
 
     private function replaceIds(mixed $value, array $ids): mixed

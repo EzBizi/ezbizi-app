@@ -55,6 +55,20 @@ class TaskBoardMembershipApiTest extends TestCase
             ->where('user_id', $candidate->id)->where('role', 'owner')->exists());
     }
 
+    public function test_readding_the_last_owner_cannot_demote_them(): void
+    {
+        $board = $this->createBoard('private');
+        $owner = $this->ownerMembership($board);
+
+        $this->postJson("/api/v1/tasks/boards/{$board->id}/members", [
+            'user_id' => $this->alpha['admin']->id,
+            'role' => 'member',
+        ])->assertUnprocessable();
+
+        $this->enterTenant();
+        $this->assertSame('owner', $owner->fresh()->role->value);
+    }
+
     public function test_recovery_endpoint_is_content_blind_and_cannot_install_the_acting_administrator(): void
     {
         $oldOwner = $this->user('Former owner', ['tasks.view']);
@@ -100,6 +114,17 @@ class TaskBoardMembershipApiTest extends TestCase
             'visibility' => 'scope',
             'folder_id' => $folderId,
         ])->assertUnprocessable();
+    }
+
+    public function test_folder_directory_refuses_an_organization_fallback_outside_assignment_reach(): void
+    {
+        $this->postJson('/api/v1/tasks/folders', ['name' => 'Company secrets'])->assertCreated();
+        $companyViewer = $this->user('Company only', ['tasks.view']);
+        $companyViewer->forceFill(['preferences' => []])->save();
+        $this->actingAs($companyViewer->fresh());
+
+        $this->getJson('/api/v1/tasks/folders')->assertForbidden()
+            ->assertJsonMissing(['name' => 'Company secrets']);
     }
 
     private function createBoard(string $visibility, ?string $folderId = null): TaskBoard

@@ -45,16 +45,14 @@ final class TaskParticipantsController extends TaskApiController
         }
 
         $search = trim((string) ($input['search'] ?? ''));
-        $candidates = User::query()->where('is_active', true)
+        $query = $input['purpose'] === 'membership'
+            ? $this->participants->constrainForMembership(User::query(), $board)
+            : $this->participants->constrainForTaskParticipation(User::query(), $board);
+        $candidates = $query
             ->when($search !== '', fn ($query) => $query->where(fn ($names) => $names
                 ->where('name', 'like', "%{$search}%")
                 ->orWhere('email', 'like', "%{$search}%")))
-            ->with(['role.permissions', 'assignments.assignedCompany', 'assignments.assignedFranchise'])
-            ->orderBy('name')->limit(100)->get()
-            ->filter(fn (User $candidate) => $input['purpose'] === 'membership'
-                ? $this->participants->forMembership($candidate, $board)->allowed()
-                : $this->participants->forTaskParticipation($candidate, $board)->allowed())
-            ->take(20)->values();
+            ->orderBy('name')->limit(20)->get();
 
         return response()->json(['data' => $candidates->map(fn (User $candidate) => [
             'id' => $candidate->id,
