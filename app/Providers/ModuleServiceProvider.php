@@ -153,7 +153,7 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'task.update_added',
                         label: 'Update added',
                         description: 'A person added an update to the conversation.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                     new TriggerDefinition(
                         key: 'task.archived',

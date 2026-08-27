@@ -5,10 +5,11 @@ namespace App\Support\Automations;
 use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
+use App\Models\Company;
+use App\Models\Franchise;
 use App\Support\Audit\AuditLogger;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -174,9 +175,9 @@ class AutomationEngine
         }
 
         $results = [];
-        $failed  = null;
+        $failed = null;
 
-        foreach ($version->actions ?? [] as $action) {
+        foreach ($version->actions ?? [] as $actionIndex => $action) {
             // Re-checked inside the loop: one version with two hundred actions
             // would otherwise blow through the cascade budget in a single run,
             // because the budget is only consulted between events.
@@ -191,7 +192,13 @@ class AutomationEngine
             }
 
             try {
-                $result = $this->actions->run($action, $event, $subject);
+                $result = $this->actions->run(
+                    $action,
+                    $event,
+                    $subject,
+                    automation: $automation,
+                    actionIndex: $actionIndex,
+                );
             } catch (Throwable $e) {
                 $result = ['type' => $action['type'] ?? 'unknown', 'ok' => false, 'detail' => $e->getMessage()];
             }
@@ -209,19 +216,19 @@ class AutomationEngine
             // what had already happened rather than an empty row.
             $run->forceFill([
                 'action_results' => $results,
-                'action_count'   => count($results),
+                'action_count' => count($results),
             ])->save();
         }
 
         $status = $failed === null ? AutomationRun::SUCCEEDED : AutomationRun::FAILED;
 
         $run->forceFill([
-            'status'         => $status,
+            'status' => $status,
             'condition_trace' => $verdict['trace'],
             'action_results' => $results ?: null,
-            'action_count'   => count($results),
-            'error'          => $failed,
-            'finished_at'    => now(),
+            'action_count' => count($results),
+            'error' => $failed,
+            'finished_at' => now(),
         ])->save();
 
         $failed === null ? $automation->noteSuccess() : $automation->noteFailure($failed);
@@ -242,12 +249,12 @@ class AutomationEngine
     {
         try {
             return AutomationRun::create([
-                'organization_id'       => $event->organization_id,
-                'automation_id'         => $automation->getKey(),
+                'organization_id' => $event->organization_id,
+                'automation_id' => $automation->getKey(),
                 'automation_version_id' => $version->getKey(),
-                'event_id'              => $event->getKey(),
-                'status'                => AutomationRun::MATCHED,
-                'started_at'            => $started,
+                'event_id' => $event->getKey(),
+                'status' => AutomationRun::MATCHED,
+                'started_at' => $started,
             ]);
         } catch (UniqueConstraintViolationException) {
             return null;
@@ -267,16 +274,16 @@ class AutomationEngine
     ): bool {
         try {
             AutomationRun::create([
-                'organization_id'       => $event->organization_id,
-                'automation_id'         => $automation->getKey(),
+                'organization_id' => $event->organization_id,
+                'automation_id' => $automation->getKey(),
                 'automation_version_id' => $version->getKey(),
-                'event_id'              => $event->getKey(),
-                'status'                => $status,
-                'condition_trace'       => $trace ?: null,
-                'action_results'        => $results ?: null,
-                'error'                 => $error,
-                'started_at'            => $started,
-                'finished_at'           => now(),
+                'event_id' => $event->getKey(),
+                'status' => $status,
+                'condition_trace' => $trace ?: null,
+                'action_results' => $results ?: null,
+                'error' => $error,
+                'started_at' => $started,
+                'finished_at' => now(),
             ]);
 
             return true;
@@ -300,11 +307,11 @@ class AutomationEngine
         $event->forceFill(['delivered_at' => now(), 'failed_at' => now(), 'last_error' => $reason])->save();
 
         $this->audit->logError('automation.cascade_stopped', [
-            'event'         => $event->event_key,
-            'event_id'      => $event->getKey(),
+            'event' => $event->event_key,
+            'event_id' => $event->getKey(),
             'root_event_id' => $event->rootId(),
-            'depth'         => $event->depth,
-            'reason'        => $reason,
+            'depth' => $event->depth,
+            'reason' => $reason,
         ]);
     }
 
@@ -371,9 +378,9 @@ class AutomationEngine
     private function companyChain(?string $scopeType, ?string $scopeId): array
     {
         $company = match ($scopeType) {
-            'company'   => \App\Models\Company::query()->find($scopeId),
-            'franchise' => \App\Models\Franchise::query()->find($scopeId)?->company,
-            default     => null,
+            'company' => Company::query()->find($scopeId),
+            'franchise' => Franchise::query()->find($scopeId)?->company,
+            default => null,
         };
 
         $chain = [];
@@ -408,15 +415,22 @@ class AutomationEngine
             $results = [];
 
             if ($verdict['matched']) {
-                foreach ($version?->actions ?? [] as $action) {
-                    $results[] = $this->actions->run($action, $event, $subject, isTest: true);
+                foreach ($version?->actions ?? [] as $actionIndex => $action) {
+                    $results[] = $this->actions->run(
+                        $action,
+                        $event,
+                        $subject,
+                        isTest: true,
+                        automation: $automation,
+                        actionIndex: $actionIndex,
+                    );
                 }
             }
 
             return [
-                'matched'         => $verdict['matched'],
+                'matched' => $verdict['matched'],
                 'condition_trace' => $verdict['trace'],
-                'would_do'        => $results,
+                'would_do' => $results,
             ];
         });
     }

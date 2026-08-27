@@ -120,6 +120,50 @@ void main() {
     expect(_saveButton(tester).onPressed, isNull);
   });
 
+  testWidgets('task actions appear once under Tasks and serialize their schema', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+    await _pump(
+      tester,
+      _handler(
+        catalogue: _catalogueWithTasks(),
+        onCreate: (body) => sent = body,
+      ),
+    );
+    await _tap(tester, find.text('Build'));
+    await _type(tester, 'Name', 'Open a follow-up');
+    await _tap(tester, find.text('Tasks'));
+    await _tap(tester, find.text('Created'));
+    await _tap(tester, find.text('Add a step'));
+
+    expect(
+      _inStep(find.text('Create a task')),
+      findsNothing,
+      reason:
+          'Module-only task actions must not be duplicated in the generic group.',
+    );
+    await _tap(tester, _inStep(find.text('Tasks')));
+    expect(_inStep(find.text('Create a task')), findsOneWidget);
+    await _tap(tester, _inStep(find.text('Create a task')));
+
+    await _type(tester, 'Board', '11111111-1111-4111-8111-111111111111');
+    await _type(tester, 'Group', '22222222-2222-4222-8222-222222222222');
+    await _type(tester, 'Status', '33333333-3333-4333-8333-333333333333');
+    await _type(tester, 'Task title', 'Call the customer');
+    await _tap(tester, find.text('Create automation'));
+
+    expect(sent?['actions'], [
+      {
+        'type': 'task.create',
+        'board_id': '11111111-1111-4111-8111-111111111111',
+        'group_id': '22222222-2222-4222-8222-222222222222',
+        'status_option_id': '33333333-3333-4333-8333-333333333333',
+        'title': 'Call the customer',
+      },
+    ]);
+  });
+
   /// ── The field, and the record it belongs to ──────────────────────
   ///
   /// It was a free-text box, and the server took whatever was in it:
@@ -372,10 +416,7 @@ void main() {
     testWidgets('is refused the controls it cannot use, and told why', (
       tester,
     ) async {
-      await _pump(
-        tester,
-        _handler(permissions: const ['automations.view']),
-      );
+      await _pump(tester, _handler(permissions: const ['automations.view']));
 
       // Still on screen. Hiding it is not compliance — somebody looking for
       // "New automation" and not finding it concludes the app is broken.
@@ -391,7 +432,8 @@ void main() {
           'add it to yours.',
         ),
         findsOneWidget,
-        reason: 'A dead button with no explanation is indistinguishable from a bug.',
+        reason:
+            'A dead button with no explanation is indistinguishable from a bug.',
       );
 
       // The switch is `automations.edit`, the same authority as opening the
@@ -403,10 +445,7 @@ void main() {
     testWidgets('sees the reason inside the row menu, not a grey line', (
       tester,
     ) async {
-      await _pump(
-        tester,
-        _handler(permissions: const ['automations.view']),
-      );
+      await _pump(tester, _handler(permissions: const ['automations.view']));
 
       await _tap(tester, find.byType(PopupMenuButton<String>));
 
@@ -431,10 +470,7 @@ void main() {
     testWidgets('cannot reach the builder by opening the tab directly', (
       tester,
     ) async {
-      await _pump(
-        tester,
-        _handler(permissions: const ['automations.view']),
-      );
+      await _pump(tester, _handler(permissions: const ['automations.view']));
 
       await _tap(tester, find.text('Build'));
 
@@ -830,6 +866,73 @@ Map<String, Object?> _catalogueWithoutSubjects() => {
         for (final entry in (module as Map).entries)
           if (entry.key != 'subject') entry.key: entry.value,
       },
+  ],
+};
+
+Map<String, Object?> _catalogueWithTasks() => {
+  ..._catalogue,
+  'modules': [
+    ...(_catalogue['modules'] as List),
+    {
+      'key': 'tasks',
+      'label': 'Tasks',
+      'subject': {'key': 'task', 'label': 'Task', 'writable_fields': []},
+      'triggers': [
+        {
+          'key': 'task.created',
+          'label': 'Created',
+          'description': 'A task was created.',
+        },
+      ],
+      'declared_actions': [
+        {
+          'key': 'task.create',
+          'label': 'Create a task',
+          'description': 'Creates follow-up work.',
+          'type': 'task.create',
+          'subject_bound': false,
+          'implemented': true,
+        },
+      ],
+    },
+  ],
+  'action_types': [
+    ...(_catalogue['action_types'] as List),
+    {
+      'key': 'task.create',
+      'label': 'Create a task',
+      'module_only': true,
+      'parameters': [
+        {
+          'key': 'board_id',
+          'label': 'Board',
+          'kind': 'uuid',
+          'required': true,
+          'nullable': false,
+        },
+        {
+          'key': 'group_id',
+          'label': 'Group',
+          'kind': 'uuid',
+          'required': true,
+          'nullable': false,
+        },
+        {
+          'key': 'status_option_id',
+          'label': 'Status',
+          'kind': 'uuid',
+          'required': true,
+          'nullable': false,
+        },
+        {
+          'key': 'title',
+          'label': 'Task title',
+          'kind': 'text',
+          'required': true,
+          'nullable': false,
+        },
+      ],
+    },
   ],
 };
 

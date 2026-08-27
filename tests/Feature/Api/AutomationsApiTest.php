@@ -3,7 +3,12 @@
 namespace Tests\Feature\Api;
 
 use App\Models\Automation;
+use App\Models\Customer;
+use App\Models\Job;
 use App\Services\Organizations\ProvisionOrganization;
+use App\Support\Automations\ActionRunner;
+use App\Support\Modules\ModuleRegistry;
+use App\Support\Modules\TriggerDefinition;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -112,8 +117,19 @@ class AutomationsApiTest extends TestCase
             }
         }
 
-        foreach ([...$data['operators'], ...$data['action_types']] as $entry) {
+        foreach ($data['operators'] as $entry) {
             $this->assertSame(['key', 'label'], array_keys($entry));
+        }
+
+        foreach ($data['action_types'] as $entry) {
+            $this->assertSame(['key', 'label', 'module_only', 'parameters'], array_keys($entry));
+            $this->assertIsBool($entry['module_only']);
+            foreach ($entry['parameters'] as $parameter) {
+                $this->assertSame(
+                    ['key', 'label', 'kind', 'required', 'nullable'],
+                    array_keys($parameter),
+                );
+            }
         }
 
         $this->assertSame(['max_depth', 'action_budget'], array_keys($data['limits']));
@@ -192,15 +208,41 @@ class AutomationsApiTest extends TestCase
         $tasks = collect($modules['tasks']['declared_actions'])->keyBy('key');
         $this->assertSame('task.create', $tasks['task.create']['type']);
         $this->assertFalse($tasks['task.create']['subject_bound']);
-        $this->assertFalse($tasks['task.create']['implemented']);
+        $this->assertTrue($tasks['task.create']['implemented']);
         $this->assertSame('task.assign_owner', $tasks['task.assign_owner']['type']);
         $this->assertTrue($tasks['task.assign_owner']['subject_bound']);
+
+        foreach ($tasks as $action) {
+            $this->assertTrue($action['implemented'], $action['key']);
+        }
+
+        $types = collect($this->as()->getJson('/api/v1/automations/catalogue')
+            ->assertOk()->json('data.action_types'))->keyBy('key');
+        foreach ($tasks->pluck('type') as $type) {
+            $this->assertTrue($types[$type]['module_only']);
+            $this->assertNotEmpty($types[$type]['parameters']);
+        }
 
         $jobs = collect($modules['jobs']['declared_actions'])->keyBy('key');
         $customers = collect($modules['customers']['declared_actions'])->keyBy('key');
         $this->assertSame('create', $jobs['job.create']['type']);
         $this->assertFalse($jobs['job.create']['implemented']);
         $this->assertSame('update_field', $customers['customer.update_field']['type']);
+    }
+
+    public function test_task_action_schema_and_subject_are_refused_at_save_time(): void
+    {
+        $this->as()->postJson('/api/v1/automations', [
+            'name' => 'Incomplete follow-up',
+            'trigger_key' => 'task.created',
+            'actions' => [['type' => 'task.create', 'title' => 'Follow up']],
+        ])->assertUnprocessable()->assertJsonValidationErrors('actions.0.board_id');
+
+        $this->as()->postJson('/api/v1/automations', [
+            'name' => 'Wrong subject',
+            'trigger_key' => 'job.created',
+            'actions' => [['type' => 'task.assign_owner', 'owner_user_id' => null]],
+        ])->assertUnprocessable()->assertJsonValidationErrors('actions.0.type');
     }
 
     /**
@@ -226,9 +268,9 @@ class AutomationsApiTest extends TestCase
          * up as well this test says what needs doing instead of failing on a
          * detail of which trigger happened to be chosen.
          */
-        $unraised = collect(app(\App\Support\Modules\ModuleRegistry::class)->all())
+        $unraised = collect(app(ModuleRegistry::class)->all())
             ->flatMap(fn ($module) => $module->triggers)
-            ->first(fn (\App\Support\Modules\TriggerDefinition $t) => ! $t->isRaised);
+            ->first(fn (TriggerDefinition $t) => ! $t->isRaised);
 
         $this->assertNotNull(
             $unraised,
@@ -242,7 +284,7 @@ class AutomationsApiTest extends TestCase
 
         $this->assertSame($unraised->label, $listed['label']);
         $this->assertStringContainsString(
-            \App\Support\Modules\TriggerDefinition::NOT_RAISED_YET,
+            TriggerDefinition::NOT_RAISED_YET,
             $listed['description'],
         );
     }
@@ -268,10 +310,10 @@ class AutomationsApiTest extends TestCase
             'trigger_key' => 'job.levitated',
             'actions' => [['type' => 'notify', 'message' => 'hi']],
         ])->assertStatus(422)
-          ->assertJsonPath('errors.trigger_key.0',
-              "Nothing in this system emits 'job.levitated'. Pick one from the catalogue "
-              .'— a rule listening for something that never happens looks configured and '
-              .'simply never runs.');
+            ->assertJsonPath('errors.trigger_key.0',
+                "Nothing in this system emits 'job.levitated'. Pick one from the catalogue "
+                .'— a rule listening for something that never happens looks configured and '
+                .'simply never runs.');
     }
 
     public function test_an_internal_webhook_is_refused_while_someone_is_looking_at_the_form(): void
@@ -308,9 +350,9 @@ class AutomationsApiTest extends TestCase
         $this->assertSame('job', $modules['jobs']['subject']['key']);
         $this->assertSame('Job', $modules['jobs']['subject']['label']);
 
-        foreach ([\App\Models\Job::class => 'jobs', \App\Models\Customer::class => 'customers'] as $model => $key) {
+        foreach ([Job::class => 'jobs', Customer::class => 'customers'] as $model => $key) {
             $this->assertSame(
-                \App\Support\Automations\ActionRunner::writableOn($model),
+                ActionRunner::writableOn($model),
                 collect($modules[$key]['subject']['writable_fields'])->pluck('label', 'key')->all(),
                 "The catalogue and the engine disagree about what is writable on {$model}."
             );
@@ -346,9 +388,9 @@ class AutomationsApiTest extends TestCase
     public function test_a_field_no_rule_may_set_is_refused_while_someone_is_looking_at_the_form(): void
     {
         $response = $this->as()->postJson('/api/v1/automations', [
-            'name'        => 'Move the job',
+            'name' => 'Move the job',
             'trigger_key' => 'job.status_changed',
-            'actions'     => [['type' => 'update_field', 'field' => 'organization_id', 'value' => 'x']],
+            'actions' => [['type' => 'update_field', 'field' => 'organization_id', 'value' => 'x']],
         ])->assertStatus(422);
 
         // The key is the literal string 'actions.0.field', so dot traversal walks past it.
@@ -364,10 +406,10 @@ class AutomationsApiTest extends TestCase
     public function test_an_empty_condition_row_is_refused_while_someone_is_looking_at_the_form(): void
     {
         $this->as()->postJson('/api/v1/automations', [
-            'name'        => 'Broken if',
+            'name' => 'Broken if',
             'trigger_key' => 'job.status_changed',
-            'conditions'  => ['all' => [['field' => '', 'op' => 'eq']]],
-            'actions'     => [['type' => 'notify', 'message' => 'hi']],
+            'conditions' => ['all' => [['field' => '', 'op' => 'eq']]],
+            'actions' => [['type' => 'notify', 'message' => 'hi']],
         ])->assertStatus(422)
             ->assertJsonValidationErrors('conditions.all.0');
     }
@@ -380,9 +422,9 @@ class AutomationsApiTest extends TestCase
     public function test_a_field_belonging_to_the_other_subject_is_refused(): void
     {
         $response = $this->as()->postJson('/api/v1/automations', [
-            'name'        => 'Email the job',
+            'name' => 'Email the job',
             'trigger_key' => 'job.status_changed',
-            'actions'     => [['type' => 'update_field', 'field' => 'email', 'value' => 'a@b.test']],
+            'actions' => [['type' => 'update_field', 'field' => 'email', 'value' => 'a@b.test']],
         ])->assertStatus(422);
 
         $this->assertStringContainsString(
@@ -394,23 +436,23 @@ class AutomationsApiTest extends TestCase
     public function test_a_field_writable_on_the_triggers_subject_still_saves(): void
     {
         $this->as()->postJson('/api/v1/automations', [
-            'name'        => 'Close it',
+            'name' => 'Close it',
             'trigger_key' => 'job.status_changed',
-            'actions'     => [['type' => 'update_field', 'field' => 'status', 'value' => 'completed']],
+            'actions' => [['type' => 'update_field', 'field' => 'status', 'value' => 'completed']],
         ])->assertCreated();
 
         // The same field name would be wrong on the other subject, so this is
         // not "any known field" — it is this trigger's record.
         $this->as()->postJson('/api/v1/automations', [
-            'name'        => 'Note it',
+            'name' => 'Note it',
             'trigger_key' => 'customer.created',
-            'actions'     => [['type' => 'update_field', 'field' => 'notes', 'value' => 'New']],
+            'actions' => [['type' => 'update_field', 'field' => 'notes', 'value' => 'New']],
         ])->assertCreated();
 
         $this->as()->postJson('/api/v1/automations', [
-            'name'        => 'Wrong way round',
+            'name' => 'Wrong way round',
             'trigger_key' => 'customer.created',
-            'actions'     => [['type' => 'update_field', 'field' => 'status', 'value' => 'completed']],
+            'actions' => [['type' => 'update_field', 'field' => 'status', 'value' => 'completed']],
         ])->assertStatus(422);
     }
 
@@ -421,9 +463,9 @@ class AutomationsApiTest extends TestCase
     public function test_a_trigger_about_a_record_no_rule_may_change_says_so(): void
     {
         $response = $this->as()->postJson('/api/v1/automations', [
-            'name'        => 'Rename the company',
+            'name' => 'Rename the company',
             'trigger_key' => 'company.created',
-            'actions'     => [['type' => 'update_field', 'field' => 'name', 'value' => 'Other']],
+            'actions' => [['type' => 'update_field', 'field' => 'name', 'value' => 'Other']],
         ])->assertStatus(422);
 
         $message = $response->json('errors')['actions.0.field'][0];
@@ -442,9 +484,9 @@ class AutomationsApiTest extends TestCase
     public function test_change_status_on_a_record_that_cannot_change_status_is_refused_at_save(): void
     {
         $response = $this->as()->postJson('/api/v1/automations', [
-            'name'        => 'Status the customer',
+            'name' => 'Status the customer',
             'trigger_key' => 'customer.created',
-            'actions'     => [['type' => 'change_status', 'value' => 'active']],
+            'actions' => [['type' => 'change_status', 'value' => 'active']],
         ])->assertStatus(422);
 
         $message = (string) ($response->json('errors')['actions.0.type'][0] ?? '');
@@ -459,15 +501,15 @@ class AutomationsApiTest extends TestCase
     public function test_change_status_on_a_job_or_vehicle_still_saves(): void
     {
         $this->as()->postJson('/api/v1/automations', [
-            'name'        => 'Close the job',
+            'name' => 'Close the job',
             'trigger_key' => 'job.status_changed',
-            'actions'     => [['type' => 'change_status', 'value' => 'completed']],
+            'actions' => [['type' => 'change_status', 'value' => 'completed']],
         ])->assertCreated();
 
         $this->as()->postJson('/api/v1/automations', [
-            'name'        => 'Park the van',
+            'name' => 'Park the van',
             'trigger_key' => 'vehicle.created',
-            'actions'     => [['type' => 'change_status', 'value' => 'in_shop']],
+            'actions' => [['type' => 'change_status', 'value' => 'in_shop']],
         ])->assertCreated();
     }
 
@@ -482,9 +524,9 @@ class AutomationsApiTest extends TestCase
     public function test_replacing_the_actions_is_checked_against_the_rules_own_trigger(): void
     {
         $id = $this->as()->postJson('/api/v1/automations', [
-            'name'        => 'Close it',
+            'name' => 'Close it',
             'trigger_key' => 'job.status_changed',
-            'actions'     => [['type' => 'update_field', 'field' => 'status', 'value' => 'completed']],
+            'actions' => [['type' => 'update_field', 'field' => 'status', 'value' => 'completed']],
         ])->assertCreated()->json('data.id');
 
         $this->as()->patchJson("/api/v1/automations/{$id}", [

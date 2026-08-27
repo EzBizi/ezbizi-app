@@ -3,6 +3,7 @@
 namespace App\Support\Tasks;
 
 use App\Models\AuditEvent;
+use App\Models\AutomationEvent;
 use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskBoard;
@@ -40,9 +41,9 @@ final class TaskWriter
         private readonly EventEmitter $events,
     ) {}
 
-    public function create(User $actor, TaskBoard $board, ViewScope $scope, array $attributes): Task
+    public function create(User $actor, TaskBoard $board, ViewScope $scope, array $attributes, ?AutomationEvent $causedBy = null): Task
     {
-        return DB::transaction(function () use ($actor, $board, $scope, $attributes): Task {
+        return DB::transaction(function () use ($actor, $board, $scope, $attributes, $causedBy): Task {
             $lockedBoard = $this->lockBoardFor($actor, $board, $scope, 'tasks.create', 'create tasks');
             $parent = $this->parent($lockedBoard, $attributes['parent_task_id'] ?? null);
             $group = $parent === null
@@ -103,6 +104,7 @@ final class TaskWriter
                 [],
                 $this->auditFields($task),
                 $eventKeys,
+                causedBy: $causedBy,
             );
             $this->notify($task, $audit, $actor, $owner === null ? [] : [$owner->id => 'task.assigned']);
             $this->notifyCollaborators($task, $audit, $actor, $collaborators->modelKeys());
@@ -118,14 +120,15 @@ final class TaskWriter
         int $expectedVersion,
         array $attributes,
         ?string $causationId = null,
+        ?AutomationEvent $causedBy = null,
     ): Task {
-        return DB::transaction(function () use ($actor, $task, $scope, $expectedVersion, $attributes, $causationId): Task {
+        return DB::transaction(function () use ($actor, $task, $scope, $expectedVersion, $attributes, $causationId, $causedBy): Task {
             $lockedBoard = $this->lockBoardFor($actor, $task->board, $scope, 'tasks.edit', 'change this task');
             $locked = Task::query()->where('board_id', $lockedBoard->id)->lockForUpdate()->findOrFail($task->id);
             abort_if($locked->archived_at !== null, 404);
             $this->assertVersion($locked, $expectedVersion, array_keys($attributes));
 
-            return $this->applyUpdate($actor, $lockedBoard, $locked, $attributes, $causationId);
+            return $this->applyUpdate($actor, $lockedBoard, $locked, $attributes, $causationId, $causedBy);
         });
     }
 
@@ -281,8 +284,9 @@ final class TaskWriter
         TaskBoard $board,
         ViewScope $scope,
         array $input,
+        ?AutomationEvent $causedBy = null,
     ): Task {
-        return DB::transaction(function () use ($actor, $board, $scope, $input): Task {
+        return DB::transaction(function () use ($actor, $board, $scope, $input, $causedBy): Task {
             $lockedBoard = $this->lockBoardFor($actor, $board, $scope, 'tasks.edit', 'reorder tasks');
             $moved = Task::query()->where('board_id', $lockedBoard->id)->active()
                 ->lockForUpdate()->findOrFail($input['task_id']);
@@ -366,14 +370,21 @@ final class TaskWriter
                 changedFields: $sourceGroupId === $destinationGroup->id
                     ? ['position']
                     : ['group_id', 'position'],
+                causedBy: $causedBy,
             );
 
             return $moved->fresh($this->relations());
         });
     }
 
-    private function applyUpdate(User $actor, TaskBoard $board, Task $task, array $attributes, ?string $causationId): Task
-    {
+    private function applyUpdate(
+        User $actor,
+        TaskBoard $board,
+        Task $task,
+        array $attributes,
+        ?string $causationId,
+        ?AutomationEvent $causedBy = null,
+    ): Task {
         $before = $this->auditFields($task);
         $changedFields = [];
         $eventKeys = [];
@@ -481,6 +492,7 @@ final class TaskWriter
             array_values(array_unique($eventKeys)),
             $causationId,
             $changedFields,
+            $causedBy,
         );
         $this->notify($task, $audit, $actor, $notifications);
         if (array_intersect($changedFields, ['status_option_id', 'due_on']) !== []) {
@@ -665,8 +677,10 @@ final class TaskWriter
         array $eventKeys,
         ?string $causationId = null,
         array $changedFields = [],
+        ?AutomationEvent $causedBy = null,
     ): ?AuditEvent {
-        $scope = TaskPlace::auditScope($task->board()->firstOrFail());
+        $board = $task->board()->firstOrFail();
+        $scope = TaskPlace::auditScope($board);
         $audit = $this->audit->log(
             $action,
             target: $task,
@@ -698,17 +712,30 @@ final class TaskWriter
         ]);
         foreach ($eventKeys as $eventKey) {
             $this->events->emit($eventKey, $task, [
+                'organization_id' => $task->organization_id,
                 'board_id' => $task->board_id,
                 'task_id' => $task->id,
+                'company_id' => $board->company_id,
+                'franchise_id' => $board->franchise_id,
                 'owner_user_id' => $task->owner_user_id,
                 'status_option_id' => $task->status_option_id,
                 'due_on' => $task->due_on?->format('Y-m-d'),
                 'due_revision' => (int) $task->due_revision,
+                'before' => $this->eventFields($before),
+                'after' => $this->eventFields($after),
                 'operation_causation_id' => $causationId,
-            ], $actor);
+            ], $actor, $causedBy);
         }
 
         return $audit;
+    }
+
+    private function eventFields(array $values): array
+    {
+        return array_intersect_key($values, array_flip([
+            'group_id', 'owner_user_id', 'status_option_id', 'priority_option_id',
+            'start_on', 'due_on', 'due_revision', 'completed_at', 'cancelled_at', 'archived_at',
+        ]));
     }
 
     private function notify(Task $task, ?AuditEvent $audit, User $actor, array $recipients): void

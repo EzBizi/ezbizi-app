@@ -3,10 +3,12 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Automations\CarriesAutomationScope;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use App\Support\Privacy\RetentionPolicy;
+use App\Support\Scoping\ViewScope;
 use Database\Factories\TaskFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -16,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use RuntimeException;
 
-class Task extends Model implements HoldsPersonalData
+class Task extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     /** @use HasFactory<TaskFactory> */
     use BelongsToTenant, HasFactory, HasUuids;
@@ -96,6 +98,19 @@ class Task extends Model implements HoldsPersonalData
     public function scopeArchived(Builder $query): Builder
     {
         return $query->whereNotNull('archived_at');
+    }
+
+    public function automationScope(): array
+    {
+        $board = $this->board()->first();
+        if ($board?->franchise_id !== null) {
+            return [ViewScope::FRANCHISE, $board->franchise_id];
+        }
+        if ($board?->company_id !== null) {
+            return [ViewScope::COMPANY, $board->company_id];
+        }
+
+        return [null, null];
     }
 
     public function board(): BelongsTo

@@ -121,6 +121,8 @@ class _ActionRow {
   final value = TextEditingController();
   final url = TextEditingController();
   final message = TextEditingController();
+  final Map<String, TextEditingController> parameters = {};
+  final Set<String> attachedParameters = {};
 
   /// What was picked out of the catalogue — either a generic action type or a
   /// module's declared action. Kept beside [type] so the card can say
@@ -133,30 +135,40 @@ class _ActionRow {
   /// The picker is open on this card.
   bool picking;
 
-  Map<String, dynamic> toJson() => switch (type) {
-    'update_field' => {
-      'type': 'update_field',
-      'field': field.text.trim(),
-      'value': value.text,
-    },
-    'webhook' => {'type': 'webhook', 'url': url.text.trim()},
-    'notify' => {'type': 'notify', 'message': message.text},
-    // Phone actions take no form fields — the subject of the event is enough.
-    'voicemail.mark_dealt' || 'missed.create_job' => {'type': type},
+  TextEditingController parameter(String key) =>
+      parameters.putIfAbsent(key, TextEditingController.new);
 
-    // No silent fallthrough. This used to end `_ => notify`, so a type the
-    // catalogue offered but this build had no form for was drawn as a Message
-    // box and SAVED AS A NOTIFICATION — the card said "Create a task", the
-    // server was sent `{"type":"notify"}`, and it accepted it. A refused save
-    // is recoverable; a rule that quietly does something else is not.
-    //
-    // The catalogue is server-driven precisely so the vocabulary can grow, and
-    // this was the one place that assumed it never would. _knownTypes below is
-    // what keeps the picker and this switch honest with each other.
-    _ => throw StateError(
-      'No form for action type "$type" — it should not have been selectable.',
-    ),
-  };
+  Map<String, dynamic> toJson(CatalogueActionType? definition) {
+    if (type?.startsWith('task.') == true && definition != null) {
+      final payload = <String, dynamic>{'type': type};
+      for (final field in definition.parameters) {
+        final value = parameter(field.key).text.trim();
+        if (value.isNotEmpty) {
+          payload[field.key] = value;
+        } else if (field.required && field.nullable) {
+          payload[field.key] = null;
+        } else if (field.required) {
+          payload[field.key] = '';
+        }
+      }
+      return payload;
+    }
+
+    return switch (type) {
+      'update_field' => {
+        'type': 'update_field',
+        'field': field.text.trim(),
+        'value': value.text,
+      },
+      'webhook' => {'type': 'webhook', 'url': url.text.trim()},
+      'notify' => {'type': 'notify', 'message': message.text},
+      // Phone actions take no form fields — the subject of the event is enough.
+      'voicemail.mark_dealt' || 'missed.create_job' => {'type': type},
+      _ => throw StateError(
+        'No form for action type "$type" — it should not have been selectable.',
+      ),
+    };
+  }
 
   /// The action types this build can actually draw a form for.
   ///
@@ -168,6 +180,12 @@ class _ActionRow {
     'notify',
     'voicemail.mark_dealt',
     'missed.create_job',
+    'task.create',
+    'task.assign_owner',
+    'task.set_status',
+    'task.set_due_date',
+    'task.move_group',
+    'task.add_update',
   };
 
   void dispose() {
@@ -175,6 +193,9 @@ class _ActionRow {
     value.dispose();
     url.dispose();
     message.dispose();
+    for (final controller in parameters.values) {
+      controller.dispose();
+    }
   }
 }
 
@@ -318,6 +339,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       row.value.text = '${action['value'] ?? ''}';
       row.url.text = action['url'] as String? ?? '';
       row.message.text = action['message'] as String? ?? '';
+      for (final entry in action.entries) {
+        if (entry.key != 'type' &&
+            !const {'field', 'value', 'url', 'message'}.contains(entry.key)) {
+          row.parameter(entry.key).text = '${entry.value ?? ''}';
+        }
+      }
 
       _attach(row);
       _actions.add(row);
@@ -401,6 +428,17 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       row.value.addListener(_changed);
       row.url.addListener(_changed);
       row.message.addListener(_changed);
+      _attachTaskParameters(row);
+    }
+  }
+
+  void _attachTaskParameters(_ActionRow row) {
+    final definition = widget.catalogue.actionType(row.type);
+    if (definition == null) return;
+    for (final parameter in definition.parameters) {
+      if (row.attachedParameters.add(parameter.key)) {
+        row.parameter(parameter.key).addListener(_changed);
+      }
     }
   }
 
@@ -458,7 +496,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         label: 'Works with anything',
         items: [
           for (final type in widget.catalogue.actionTypes)
-            _genericItem(type, subject, nothingWritable),
+            if (!type.moduleOnly) _genericItem(type, subject, nothingWritable),
         ],
       ),
       for (final module in widget.catalogue.modules)
@@ -475,7 +513,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   }
 
   PickerItem _genericItem(
-    CatalogueChoice type,
+    CatalogueActionType type,
     CatalogueSubject? subject,
     bool nothingWritable,
   ) {
@@ -525,7 +563,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       );
     }
 
-    if (widget.catalogue.moduleActionApplies(module, _trigger)) {
+    if (widget.catalogue.moduleActionApplies(module, action.key, _trigger)) {
       return PickerItem(
         key: action.key,
         label: action.label,
@@ -612,7 +650,11 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           // trigger-change sweep read it, which was simply untrue —
           // _dropWhatNoLongerApplies does its own check and clears the row.
           return widget.catalogue.canUse(action) &&
-                  widget.catalogue.moduleActionApplies(module, _trigger)
+                  widget.catalogue.moduleActionApplies(
+                    module,
+                    action.key,
+                    _trigger,
+                  )
               ? widget.catalogue.payloadTypeFor(action)
               : null;
         }
@@ -695,13 +737,15 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     for (var i = 0; i < _actions.length; i++) {
       final row = _actions[i];
       final picked = row.catalogueKey;
+      final actionKey = picked;
       final module = picked == null
           ? null
           : widget.catalogue.moduleOwning(picked);
 
       if (module != null &&
-          !widget.catalogue.moduleActionApplies(module, _trigger)) {
-        lost.add('step ${i + 1}, “${_actionLabel(picked!)}”');
+          actionKey != null &&
+          !widget.catalogue.moduleActionApplies(module, actionKey, _trigger)) {
+        lost.add('step ${i + 1}, “${_actionLabel(actionKey)}”');
         row.catalogueKey = null;
         row.type = null;
         row.picking = true;
@@ -804,6 +848,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           'The webhook step needs an address to call.',
         'notify' when action.message.text.trim().isEmpty =>
           'The notification step needs a message.',
+        String type when type.startsWith('task.') => _missingTaskParameter(
+          action,
+          type,
+        ),
         _ => null,
       };
 
@@ -842,7 +890,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         // writes a version whose conditions are NULL — the new version would
         // quietly start matching everything.
         'conditions': _conditionsPayload(),
-        'actions': [for (final action in _actions) action.toJson()],
+        'actions': [
+          for (final action in _actions)
+            action.toJson(widget.catalogue.actionType(action.type)),
+        ],
       },
     };
 
@@ -1384,6 +1435,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                 onSelected: (key) => setState(() {
                   row.catalogueKey = key;
                   row.type = _payloadTypeFor(key);
+                  _attachTaskParameters(row);
                   row.picking = false;
                 }),
               ),
@@ -1415,6 +1467,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       'voicemail.mark_dealt' || 'missed.create_job' => _note(
         'Uses the call that triggered the rule. Nothing else to fill in.',
       ),
+      String type when type.startsWith('task.') => _taskActionForm(
+        row,
+        widget.catalogue.actionType(type),
+      ),
       _ => TextField(
         controller: row.message,
         enabled: !_busy,
@@ -1425,6 +1481,54 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         ),
       ),
     };
+  }
+
+  String? _missingTaskParameter(_ActionRow row, String type) {
+    final definition = widget.catalogue.actionType(type);
+    if (definition == null) {
+      return 'This task action needs a newer version of the app.';
+    }
+
+    for (final field in definition.parameters) {
+      if (field.required &&
+          !field.nullable &&
+          row.parameter(field.key).text.trim().isEmpty) {
+        return '${field.label} is required.';
+      }
+    }
+    return null;
+  }
+
+  Widget _taskActionForm(_ActionRow row, CatalogueActionType? definition) {
+    if (definition == null) {
+      return _note('This task action needs a newer version of the app.');
+    }
+
+    return Column(
+      children: [
+        for (var i = 0; i < definition.parameters.length; i++) ...[
+          TextField(
+            controller: row.parameter(definition.parameters[i].key),
+            enabled: !_busy,
+            keyboardType: definition.parameters[i].kind == 'date'
+                ? TextInputType.datetime
+                : TextInputType.text,
+            maxLines: definition.parameters[i].kind == 'rich_text' ? 3 : 1,
+            decoration: InputDecoration(
+              labelText: definition.parameters[i].label,
+              isDense: true,
+              hintText: definition.parameters[i].kind == 'date'
+                  ? 'YYYY-MM-DD'
+                  : null,
+              helperText: definition.parameters[i].nullable
+                  ? 'Leave blank to clear it.'
+                  : null,
+            ),
+          ),
+          if (i < definition.parameters.length - 1) const SizedBox(height: 10),
+        ],
+      ],
+    );
   }
 
   /// Which field, and what to set it to.

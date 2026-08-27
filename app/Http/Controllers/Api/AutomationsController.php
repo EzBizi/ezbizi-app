@@ -6,6 +6,8 @@ use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
+use App\Models\Task;
+use App\Models\TaskBoard;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
@@ -19,7 +21,10 @@ use App\Support\Modules\ModuleRegistry;
 use App\Support\Modules\PermissionCatalogue;
 use App\Support\Modules\TriggerDefinition;
 use App\Support\Privacy\SensitiveValues;
+use App\Support\Scoping\ViewScope;
+use App\Support\Tasks\TaskBoardAccess;
 use App\Support\Tenancy\TenantContext;
+use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -51,6 +56,21 @@ class AutomationsController extends Controller
         // first dot (voicemail.mark_dealt, missed.create_job).
         'voicemail.mark_dealt',
         'missed.create_job',
+        'task.create',
+        'task.assign_owner',
+        'task.set_status',
+        'task.set_due_date',
+        'task.move_group',
+        'task.add_update',
+    ];
+
+    private const TASK_ACTIONS = [
+        'task.create',
+        'task.assign_owner',
+        'task.set_status',
+        'task.set_due_date',
+        'task.move_group',
+        'task.add_update',
     ];
 
     public function __construct(
@@ -61,6 +81,7 @@ class AutomationsController extends Controller
         private readonly TenantContext $tenant,
         private readonly PermissionCatalogue $permissions,
         private readonly ScopeReach $reach,
+        private readonly TaskBoardAccess $taskBoards,
     ) {}
 
     /**
@@ -109,7 +130,7 @@ class AutomationsController extends Controller
             }
 
             $modules[] = [
-                'key'   => $key,
+                'key' => $key,
                 'label' => $module->label,
                 /*
                  * The RECORD these events are about, and what a rule may set on
@@ -142,8 +163,8 @@ class AutomationsController extends Controller
                  * second place to forget.
                  */
                 'triggers' => array_map(fn (TriggerDefinition $t) => [
-                    'key'         => $t->key,
-                    'label'       => $t->label,
+                    'key' => $t->key,
+                    'label' => $t->label,
                     'description' => $t->description,
                 ], $module->triggers),
                 /*
@@ -171,8 +192,8 @@ class AutomationsController extends Controller
                  * two, and the save-time check refuses the mismatch for real.
                  */
                 'declared_actions' => array_map(fn (ActionDefinition $a) => [
-                    'key'         => $a->key,
-                    'label'       => $a->label,
+                    'key' => $a->key,
+                    'label' => $a->label,
                     'description' => $a->description,
                     'type' => $a->type(),
                     'subject_bound' => $a->subjectBound,
@@ -205,16 +226,9 @@ class AutomationsController extends Controller
                 ],
                 // The vocabulary POST /automations accepts. Anything not here is
                 // declared intent, not a usable action.
-                'action_types' => [
-                    ['key' => 'update_field', 'label' => 'Update a field'],
-                    ['key' => 'change_status', 'label' => 'Change the status'],
-                    ['key' => 'webhook', 'label' => 'Call a webhook'],
-                    ['key' => 'notify', 'label' => 'Send a notification'],
-                    ['key' => 'voicemail.mark_dealt', 'label' => 'Mark a voicemail dealt with'],
-                    ['key' => 'missed.create_job', 'label' => 'Create a job from a missed call'],
-                ],
+                'action_types' => $this->actionTypes(),
                 'limits' => [
-                    'max_depth'     => AutomationEvent::MAX_DEPTH,
+                    'max_depth' => AutomationEvent::MAX_DEPTH,
                     'action_budget' => AutomationEvent::ACTION_BUDGET,
                 ],
             ],
@@ -238,7 +252,7 @@ class AutomationsController extends Controller
         $writable = ActionRunner::writableOn($module->subject->model);
 
         return [
-            'key'   => $module->subject->key(),
+            'key' => $module->subject->key(),
             'label' => $module->subject->label,
             // Keys AND names. "scheduled_for" is a wire name, and the person
             // reading this picker runs a chimney business.
@@ -300,15 +314,15 @@ class AutomationsController extends Controller
 
         $automation = DB::transaction(function () use ($input, $request) {
             $automation = Automation::create([
-                'name'        => $input['name'],
+                'name' => $input['name'],
                 'description' => $input['description'] ?? null,
                 'trigger_key' => $input['trigger_key'],
-                'scope_type'  => $input['scope_type'] ?? null,
-                'scope_id'    => $input['scope_id'] ?? null,
+                'scope_type' => $input['scope_type'] ?? null,
+                'scope_id' => $input['scope_id'] ?? null,
                 // Off until somebody switches it on. A rule that starts firing
                 // the instant it is saved will fire before it has been read back.
-                'is_active'   => false,
-                'created_by'  => $request->user()->getKey(),
+                'is_active' => false,
+                'created_by' => $request->user()->getKey(),
             ]);
 
             $this->addVersion($automation, $input, $request);
@@ -390,7 +404,7 @@ class AutomationsController extends Controller
 
         $this->audit->log('automation.version_activated', $automation, metadata: [
             'from' => $previous,
-            'to'   => $version->getKey(),
+            'to' => $version->getKey(),
             'version' => $version->version,
         ]);
 
@@ -423,7 +437,7 @@ class AutomationsController extends Controller
             return response()->json([
                 'message' => "Nothing has triggered '{$automation->trigger_key}' yet, so there "
                     .'is no real event to try this against. Create or change a record first.',
-                'code'    => 'no_event_to_test',
+                'code' => 'no_event_to_test',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -453,19 +467,19 @@ class AutomationsController extends Controller
             ))
             ->values()
             ->map(fn (AutomationRun $r) => [
-                'id'      => $r->id,
-                'status'  => $r->status,
+                'id' => $r->id,
+                'status' => $r->status,
                 'is_test' => $r->is_test,
-                'event'   => [
+                'event' => [
                     'key' => $r->event?->event_key,
                     'occurred_at' => $r->event?->occurred_at?->toIso8601String(),
                 ],
                 // The trace is the point. "It did not match" without saying which
                 // clause failed is not an answer to anyone debugging a rule.
                 'condition_trace' => $r->condition_trace,
-                'action_results'  => $r->action_results,
-                'error'           => $r->error,
-                'started_at'      => $r->started_at->toIso8601String(),
+                'action_results' => $r->action_results,
+                'error' => $r->error,
+                'started_at' => $r->started_at->toIso8601String(),
             ]);
 
         return response()->json(['data' => $runs]);
@@ -511,8 +525,7 @@ class AutomationsController extends Controller
         User $actor,
         array $reachable,
         array $modules,
-    ): bool
-    {
+    ): bool {
         $type = $run->event?->subject_type;
 
         // No subject at all — an organization-level event like a setting
@@ -574,11 +587,11 @@ class AutomationsController extends Controller
 
         $version = AutomationVersion::create([
             'automation_id' => $automation->getKey(),
-            'version'     => $next,
-            'conditions'  => $input['conditions'] ?? null,
-            'actions'     => $input['actions'],
-            'created_by'  => $request->user()->getKey(),
-            'created_at'  => now(),
+            'version' => $next,
+            'conditions' => $input['conditions'] ?? null,
+            'actions' => $input['actions'],
+            'created_by' => $request->user()->getKey(),
+            'created_at' => now(),
         ]);
 
         $automation->forceFill(['active_version_id' => $version->getKey()])->save();
@@ -593,7 +606,7 @@ class AutomationsController extends Controller
         $required = $forUpdate ? 'sometimes' : 'required';
 
         $input = $request->validate([
-            'name'        => [$required, 'string', 'max:150'],
+            'name' => [$required, 'string', 'max:150'],
             'description' => ['nullable', 'string', 'max:2000'],
             'trigger_key' => $forUpdate
                 // Changing the trigger makes it a different rule, and every run
@@ -604,14 +617,14 @@ class AutomationsController extends Controller
             // AutomationEngine::scopeOf). It previously validated as legal
             // and then could never match anything, which is worse than
             // refusing it.
-            'scope_type'  => ['nullable', Rule::in(['company', 'franchise'])],
-            'scope_id'    => ['nullable', 'uuid', 'required_with:scope_type'],
-            'is_active'   => ['boolean'],
-            'conditions'  => ['nullable', 'array'],
+            'scope_type' => ['nullable', Rule::in(['company', 'franchise'])],
+            'scope_id' => ['nullable', 'uuid', 'required_with:scope_type'],
+            'is_active' => ['boolean'],
+            'conditions' => ['nullable', 'array'],
             // Capped. One version with two hundred actions would spend the whole
             // cascade budget in a single run — the budget is enforced per action
             // now, but a rule nobody could read is its own problem.
-            'actions'     => [$forUpdate ? 'sometimes' : 'required', 'array', 'min:1', 'max:25'],
+            'actions' => [$forUpdate ? 'sometimes' : 'required', 'array', 'min:1', 'max:25'],
             'actions.*.type' => ['required', 'string'],
         ]);
 
@@ -639,11 +652,27 @@ class AutomationsController extends Controller
         // foreign key — so a rule could name another organization's franchise
         // id. It would never fire, but it is a tenant boundary stated and not
         // enforced, and those are the ones that stop being true later.
-        if (($input['scope_type'] ?? null) !== null) {
-            $table = $input['scope_type'] === 'company' ? 'companies' : 'franchises';
+        $scopeType = array_key_exists('scope_type', $input)
+            ? $input['scope_type']
+            : $existing?->scope_type;
+        $scopeId = array_key_exists('scope_id', $input)
+            ? $input['scope_id']
+            : $existing?->scope_id;
+        if (array_key_exists('scope_type', $input) && $input['scope_type'] === null) {
+            $scopeId = null;
+            $input['scope_id'] = null;
+        }
+        if ($scopeType === null && $scopeId !== null) {
+            throw ValidationException::withMessages([
+                'scope_id' => 'Choose company or franchise scope before choosing its location.',
+            ]);
+        }
+
+        if ($scopeType !== null) {
+            $table = $scopeType === 'company' ? 'companies' : 'franchises';
 
             $exists = DB::table($table)
-                ->where('id', $input['scope_id'])
+                ->where('id', $scopeId)
                 ->where('organization_id', $this->tenant->idOrFail())
                 ->exists();
 
@@ -652,6 +681,20 @@ class AutomationsController extends Controller
                     'scope_id' => "That is not one of this organization's {$table}.",
                 ]);
             }
+
+            if (! $this->reach->covers($request->user(), $scopeType, $scopeId)) {
+                throw ValidationException::withMessages([
+                    'scope_id' => 'That scope is outside where you are assigned.',
+                ]);
+            }
+        } elseif (! $this->reach->covers(
+            $request->user(),
+            'organization',
+            $request->user()->organization_id,
+        )) {
+            throw ValidationException::withMessages([
+                'scope_id' => 'Only someone assigned at organization level can create an organization-wide rule.',
+            ]);
         }
 
         /*
@@ -665,7 +708,14 @@ class AutomationsController extends Controller
         $trigger = $input['trigger_key'] ?? $existing?->trigger_key;
 
         foreach ($input['actions'] ?? [] as $i => $action) {
-            $this->assertActionUsable($action, $i, $trigger);
+            $this->assertActionUsable(
+                $action,
+                $i,
+                $trigger,
+                $request->user(),
+                $scopeType,
+                $scopeId,
+            );
         }
 
         if (array_key_exists('conditions', $input) && $input['conditions'] !== null) {
@@ -725,7 +775,7 @@ class AutomationsController extends Controller
         }
 
         $field = $node['field'] ?? null;
-        $op    = $node['op'] ?? null;
+        $op = $node['op'] ?? null;
 
         if (! is_string($field) || trim($field) === '' || ! is_string($op) || trim($op) === '') {
             throw ValidationException::withMessages([
@@ -838,8 +888,14 @@ class AutomationsController extends Controller
      * is looking at the form, not silently fail hours later in a queue worker
      * where only the run log mentions it.
      */
-    private function assertActionUsable(array $action, int $index, ?string $triggerKey): void
-    {
+    private function assertActionUsable(
+        array $action,
+        int $index,
+        ?string $triggerKey,
+        User $actor,
+        ?string $scopeType,
+        ?string $scopeId,
+    ): void {
         $type = $action['type'] ?? null;
 
         if (! in_array($type, self::IMPLEMENTED_ACTIONS, strict: true)) {
@@ -877,6 +933,190 @@ class AutomationsController extends Controller
 
             $this->assertStatusChangeable($index, $triggerKey);
         }
+
+        if (in_array($type, self::TASK_ACTIONS, strict: true)) {
+            $this->assertTaskActionUsable($action, $index, $triggerKey, $actor, $scopeType, $scopeId);
+        }
+    }
+
+    private function assertTaskActionUsable(
+        array $action,
+        int $index,
+        ?string $triggerKey,
+        User $actor,
+        ?string $scopeType,
+        ?string $scopeId,
+    ): void {
+        $type = $action['type'];
+        $key = "actions.{$index}";
+
+        if ($type !== 'task.create'
+            && $this->registry->subjectOfTrigger((string) $triggerKey)?->model !== Task::class) {
+            throw ValidationException::withMessages([
+                "{$key}.type" => 'This action needs a Task trigger because it changes the triggering task.',
+            ]);
+        }
+
+        $permission = match ($type) {
+            'task.create' => 'tasks.create',
+            'task.add_update' => 'tasks.comment',
+            default => 'tasks.edit',
+        };
+        if (! $actor->hasPermission($permission)) {
+            throw ValidationException::withMessages([
+                "{$key}.type" => "The automation creator needs {$permission} to use this action.",
+            ]);
+        }
+
+        match ($type) {
+            'task.create' => $this->assertCreateTaskAction($action, $key, $actor, $scopeType, $scopeId),
+            'task.assign_owner' => $this->assertUuidValue($action, 'owner_user_id', $key, nullable: true),
+            'task.set_status' => $this->assertUuidValue($action, 'status_option_id', $key),
+            'task.set_due_date' => $this->assertDateValue($action, 'due_on', $key, nullable: true),
+            'task.move_group' => $this->assertUuidValue($action, 'group_id', $key),
+            'task.add_update' => $this->assertNonBlankString($action, 'body', $key),
+        };
+    }
+
+    private function assertCreateTaskAction(
+        array $action,
+        string $key,
+        User $actor,
+        ?string $scopeType,
+        ?string $scopeId,
+    ): void {
+        foreach (['board_id', 'group_id', 'status_option_id'] as $field) {
+            $this->assertUuidValue($action, $field, $key);
+        }
+        $this->assertNonBlankString($action, 'title', $key, 255);
+        $this->assertDateValue($action, 'due_on', $key, nullable: true, required: false);
+        $this->assertUuidValue($action, 'owner_user_id', $key, nullable: true, required: false);
+
+        if (isset($action['description']) && ! is_string($action['description'])) {
+            throw ValidationException::withMessages(["{$key}.description" => 'The description must be text.']);
+        }
+
+        $board = TaskBoard::query()->active()->find($action['board_id']);
+        if ($board === null) {
+            throw ValidationException::withMessages(["{$key}.board_id" => 'That task board is unavailable.']);
+        }
+
+        $scope = ViewScope::forStoredAutomationScope($actor, $scopeType, $scopeId);
+        if ($this->taskBoards->viewDecision($actor, $board, $scope)->denied()) {
+            throw ValidationException::withMessages([
+                "{$key}.board_id" => 'That task board is outside the automation scope or is not shared with its creator.',
+            ]);
+        }
+        if (! $board->groups()->active()->whereKey($action['group_id'])->exists()) {
+            throw ValidationException::withMessages(["{$key}.group_id" => 'That group is not active on the selected board.']);
+        }
+        if (! $board->statusOptions()->active()->whereKey($action['status_option_id'])->exists()) {
+            throw ValidationException::withMessages(["{$key}.status_option_id" => 'That status is not active on the selected board.']);
+        }
+    }
+
+    private function assertUuidValue(
+        array $action,
+        string $field,
+        string $key,
+        bool $nullable = false,
+        bool $required = true,
+    ): void {
+        if (! array_key_exists($field, $action)) {
+            if (! $required) {
+                return;
+            }
+            throw ValidationException::withMessages(["{$key}.{$field}" => 'This field is required.']);
+        }
+        $value = $action[$field];
+        if ($value === null && $nullable) {
+            return;
+        }
+        if (! is_string($value) || ! preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $value)) {
+            throw ValidationException::withMessages(["{$key}.{$field}" => 'Choose a valid value.']);
+        }
+    }
+
+    private function assertDateValue(
+        array $action,
+        string $field,
+        string $key,
+        bool $nullable = false,
+        bool $required = true,
+    ): void {
+        if (! array_key_exists($field, $action)) {
+            if (! $required) {
+                return;
+            }
+            throw ValidationException::withMessages(["{$key}.{$field}" => 'This field is required.']);
+        }
+        $value = $action[$field];
+        if ($value === null && $nullable) {
+            return;
+        }
+        $date = is_string($value) ? DateTimeImmutable::createFromFormat('!Y-m-d', $value) : false;
+        if ($date === false || $date->format('Y-m-d') !== $value) {
+            throw ValidationException::withMessages(["{$key}.{$field}" => 'Use a real date in YYYY-MM-DD format.']);
+        }
+    }
+
+    private function assertNonBlankString(array $action, string $field, string $key, int $max = 100000): void
+    {
+        $value = $action[$field] ?? null;
+        if (! is_string($value) || trim($value) === '' || mb_strlen($value) > $max) {
+            throw ValidationException::withMessages(["{$key}.{$field}" => 'Enter a value for this field.']);
+        }
+    }
+
+    /** @return list<array{key:string,label:string,module_only:bool,parameters:array}> */
+    private function actionTypes(): array
+    {
+        $parameter = static fn (string $key, string $label, string $kind, bool $required = true, bool $nullable = false): array => [
+            'key' => $key,
+            'label' => $label,
+            'kind' => $kind,
+            'required' => $required,
+            'nullable' => $nullable,
+        ];
+        $type = static fn (string $key, string $label, bool $moduleOnly = false, array $parameters = []): array => [
+            'key' => $key,
+            'label' => $label,
+            'module_only' => $moduleOnly,
+            'parameters' => $parameters,
+        ];
+
+        return [
+            $type('update_field', 'Update a field'),
+            $type('change_status', 'Change the status'),
+            $type('webhook', 'Call a webhook'),
+            $type('notify', 'Send a notification'),
+            $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
+            $type('missed.create_job', 'Create a job from a missed call'),
+            $type('task.create', 'Create a task', true, [
+                $parameter('board_id', 'Board', 'uuid'),
+                $parameter('group_id', 'Group', 'uuid'),
+                $parameter('status_option_id', 'Status', 'uuid'),
+                $parameter('title', 'Task title', 'text'),
+                $parameter('description', 'Description', 'rich_text', false, true),
+                $parameter('owner_user_id', 'Owner', 'uuid', false, true),
+                $parameter('due_on', 'Due date', 'date', false, true),
+            ]),
+            $type('task.assign_owner', 'Assign the owner', true, [
+                $parameter('owner_user_id', 'Owner', 'uuid', true, true),
+            ]),
+            $type('task.set_status', 'Set the status', true, [
+                $parameter('status_option_id', 'Status', 'uuid'),
+            ]),
+            $type('task.set_due_date', 'Set the due date', true, [
+                $parameter('due_on', 'Due date', 'date', true, true),
+            ]),
+            $type('task.move_group', 'Move to a group', true, [
+                $parameter('group_id', 'Group', 'uuid'),
+            ]),
+            $type('task.add_update', 'Add an update', true, [
+                $parameter('body', 'Update', 'rich_text'),
+            ]),
+        ];
     }
 
     /**
@@ -953,7 +1193,7 @@ class AutomationsController extends Controller
             throw ValidationException::withMessages([$key => 'Which field should it set?']);
         }
 
-        $subject  = $this->registry->subjectOfTrigger((string) $triggerKey);
+        $subject = $this->registry->subjectOfTrigger((string) $triggerKey);
         $writable = ActionRunner::writableOn($subject?->model);
 
         if (array_key_exists($field, $writable)) {
@@ -1042,22 +1282,22 @@ class AutomationsController extends Controller
     private function present(Automation $automation, bool $detailed = false): array
     {
         $base = [
-            'id'          => $automation->id,
-            'name'        => $automation->name,
+            'id' => $automation->id,
+            'name' => $automation->name,
             'description' => $automation->description,
             'trigger_key' => $automation->trigger_key,
-            'is_active'   => $automation->is_active,
-            'is_live'     => $automation->isLive(),
-            'scope'       => [
+            'is_active' => $automation->is_active,
+            'is_live' => $automation->isLive(),
+            'scope' => [
                 'type' => $automation->scope_type,
-                'id'   => $automation->scope_id,
+                'id' => $automation->scope_id,
             ],
             // Surfaced rather than buried: a rule that switched itself off after
             // repeated failure must say so where somebody will see it.
-            'disabled_at'     => $automation->disabled_at?->toIso8601String(),
+            'disabled_at' => $automation->disabled_at?->toIso8601String(),
             'disabled_reason' => $automation->disabled_reason,
-            'runs_count'      => $automation->runs_count ?? $automation->runs()->count(),
-            'version'         => $automation->activeVersion?->version,
+            'runs_count' => $automation->runs_count ?? $automation->runs()->count(),
+            'version' => $automation->activeVersion?->version,
         ];
 
         if (! $detailed) {
@@ -1071,11 +1311,11 @@ class AutomationsController extends Controller
             // in clear from the API is the same exposure by another route —
             // anyone who can read an automation could forge signed calls to the
             // tenant's own endpoint.
-            'actions'    => $this->maskSecrets($automation->activeVersion?->actions ?? []),
-            'versions'   => $automation->versions->map(fn (AutomationVersion $v) => [
-                'id'         => $v->id,
-                'version'    => $v->version,
-                'is_active'  => $v->id === $automation->active_version_id,
+            'actions' => $this->maskSecrets($automation->activeVersion?->actions ?? []),
+            'versions' => $automation->versions->map(fn (AutomationVersion $v) => [
+                'id' => $v->id,
+                'version' => $v->version,
+                'is_active' => $v->id === $automation->active_version_id,
                 'created_at' => $v->created_at?->toIso8601String(),
             ]),
         ];

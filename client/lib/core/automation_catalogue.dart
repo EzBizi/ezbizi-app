@@ -39,6 +39,59 @@ class CatalogueChoice {
   }
 }
 
+class CatalogueActionParameter {
+  const CatalogueActionParameter({
+    required this.key,
+    required this.label,
+    required this.kind,
+    required this.required,
+    required this.nullable,
+  });
+
+  final String key;
+  final String label;
+  final String kind;
+  final bool required;
+  final bool nullable;
+
+  static CatalogueActionParameter? tryFrom(Object? json) {
+    if (json is! Map || json['key'] is! String) return null;
+
+    return CatalogueActionParameter(
+      key: json['key'] as String,
+      label: json['label'] as String? ?? json['key'] as String,
+      kind: json['kind'] as String? ?? 'text',
+      required: json['required'] == true,
+      nullable: json['nullable'] == true,
+    );
+  }
+}
+
+class CatalogueActionType extends CatalogueChoice {
+  const CatalogueActionType({
+    required super.key,
+    required super.label,
+    required this.moduleOnly,
+    required this.parameters,
+  });
+
+  final bool moduleOnly;
+  final List<CatalogueActionParameter> parameters;
+
+  static CatalogueActionType? tryFrom(Object? json) {
+    if (json is! Map || json['key'] is! String) return null;
+    final key = json['key'] as String;
+    if (key.isEmpty) return null;
+
+    return CatalogueActionType(
+      key: key,
+      label: json['label'] as String? ?? key,
+      moduleOnly: json['module_only'] == true,
+      parameters: _list(json['parameters'], CatalogueActionParameter.tryFrom),
+    );
+  }
+}
+
 /// Something that happens, which a rule can listen for.
 class CatalogueTrigger {
   const CatalogueTrigger({
@@ -158,6 +211,8 @@ class CatalogueAction {
     required this.key,
     required this.label,
     required this.implemented,
+    required this.type,
+    required this.subjectBound,
     this.description,
   });
 
@@ -165,6 +220,8 @@ class CatalogueAction {
   final String label;
   final String? description;
   final bool implemented;
+  final String type;
+  final bool subjectBound;
 
   static CatalogueAction? tryFrom(Object? json) {
     if (json is! Map) return null;
@@ -173,11 +230,18 @@ class CatalogueAction {
 
     if (key is! String || key.isEmpty) return null;
 
+    final declaredType = json['type'];
+    final dot = key.indexOf('.');
+
     return CatalogueAction(
       key: key,
       label: json['label'] as String? ?? key,
       description: json['description'] as String?,
       implemented: json['implemented'] == true,
+      type: declaredType is String && declaredType.isNotEmpty
+          ? declaredType
+          : (dot < 0 ? key : key.substring(dot + 1)),
+      subjectBound: json['subject_bound'] != false,
     );
   }
 }
@@ -235,7 +299,7 @@ class AutomationCatalogue {
     return AutomationCatalogue(
       modules: _list(json['modules'], CatalogueModule.tryFrom),
       operators: _list(json['operators'], CatalogueChoice.tryFrom),
-      actionTypes: _list(json['action_types'], CatalogueChoice.tryFrom),
+      actionTypes: _list(json['action_types'], CatalogueActionType.tryFrom),
       actionBudget: (json['limits'] as Map?)?['action_budget'] as int?,
     );
   }
@@ -252,7 +316,15 @@ class AutomationCatalogue {
   /// The action vocabulary `POST /automations` accepts. Anything a module
   /// declares that does not reduce to one of these is intent, not a usable
   /// action.
-  final List<CatalogueChoice> actionTypes;
+  final List<CatalogueActionType> actionTypes;
+
+  CatalogueActionType? actionType(String? key) {
+    if (key == null) return null;
+    for (final type in actionTypes) {
+      if (type.key == key) return type;
+    }
+    return null;
+  }
 
   /// How many actions one originating event may fan out to across every rule
   /// it sets off, before the engine stops the cascade. Worth saying on the form
@@ -317,7 +389,14 @@ class AutomationCatalogue {
   /// Answers TRUE whenever it cannot tell — no trigger chosen yet, a module
   /// with no subject, a server too old to send one. Guessing "no" would hide
   /// working actions, and the server refuses the real mismatch anyway.
-  bool moduleActionApplies(CatalogueModule module, String? triggerKey) {
+  bool moduleActionApplies(
+    CatalogueModule module,
+    String actionKey,
+    String? triggerKey,
+  ) {
+    for (final action in module.actions) {
+      if (action.key == actionKey && !action.subjectBound) return true;
+    }
     final mine = module.subject?.key;
     final theirs = subjectOf(triggerKey)?.key;
 
@@ -343,11 +422,8 @@ class AutomationCatalogue {
   /// same question — the two answers have to agree, because one of them marks
   /// the row and the other refuses the save.
   String? payloadTypeFor(CatalogueAction action) {
-    final dot = action.key.indexOf('.');
-    final suffix = dot < 0 ? action.key : action.key.substring(dot + 1);
-
     for (final type in actionTypes) {
-      if (type.key == suffix) return suffix;
+      if (type.key == action.type) return action.type;
     }
 
     return null;

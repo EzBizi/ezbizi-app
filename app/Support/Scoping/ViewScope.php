@@ -2,9 +2,13 @@
 
 namespace App\Support\Scoping;
 
+use App\Models\Assignment;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\User;
+use App\Support\Access\ScopeReach;
+use App\Support\Branding\Branding;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -38,8 +42,10 @@ use Illuminate\Database\Eloquent\Model;
 class ViewScope
 {
     public const ORGANIZATION = 'organization';
-    public const COMPANY      = 'company';
-    public const FRANCHISE    = 'franchise';
+
+    public const COMPANY = 'company';
+
+    public const FRANCHISE = 'franchise';
 
     private function __construct(
         public readonly string $type,
@@ -75,6 +81,30 @@ class ViewScope
         return $valid
             ? new self($type, $id, $user)
             : new self(self::ORGANIZATION, null, $user);
+    }
+
+    public static function forStoredAutomationScope(User $user, ?string $type, ?string $id): self
+    {
+        if (($type === null) !== ($id === null)) {
+            throw new AuthorizationException('The automation scope is incomplete.');
+        }
+        if ($type === null) {
+            if (! app(ScopeReach::class)->covers($user, Assignment::SCOPE_ORGANIZATION, $user->organization_id)) {
+                throw new AuthorizationException('The automation creator no longer reaches its organization scope.');
+            }
+
+            return new self(self::ORGANIZATION, null, $user);
+        }
+        $reachable = match ($type) {
+            self::COMPANY => $user->reachableCompanies()->contains(fn (Company $company) => $company->id === $id),
+            self::FRANCHISE => $user->reachableFranchises()->contains(fn (Franchise $franchise) => $franchise->id === $id),
+            default => false,
+        };
+        if (! $reachable) {
+            throw new AuthorizationException('The automation creator no longer reaches its saved scope.');
+        }
+
+        return new self($type, $id, $user);
     }
 
     public function isOrganization(): bool
@@ -202,9 +232,9 @@ class ViewScope
     public function settingsScope(): Model
     {
         return match ($this->type) {
-            self::COMPANY   => Company::find($this->id) ?? $this->user->organization,
+            self::COMPANY => Company::find($this->id) ?? $this->user->organization,
             self::FRANCHISE => Franchise::find($this->id) ?? $this->user->organization,
-            default         => $this->user->organization,
+            default => $this->user->organization,
         };
     }
 
@@ -253,7 +283,7 @@ class ViewScope
         }
 
         $franchise = Franchise::find($this->id);
-        $company   = $franchise?->company;
+        $company = $franchise?->company;
 
         return array_values(array_filter([
             $company?->parent?->name,
@@ -272,9 +302,9 @@ class ViewScope
     public function logoPath(): string
     {
         $companyId = match ($this->type) {
-            self::COMPANY   => $this->id,
+            self::COMPANY => $this->id,
             self::FRANCHISE => Franchise::find($this->id)?->company_id,
-            default         => null,
+            default => null,
         };
 
         return $companyId === null
@@ -286,9 +316,9 @@ class ViewScope
     public function logoAspect(): ?string
     {
         $companyId = match ($this->type) {
-            self::COMPANY   => $this->id,
+            self::COMPANY => $this->id,
             self::FRANCHISE => Franchise::find($this->id)?->company_id,
-            default         => null,
+            default => null,
         };
 
         $company = $companyId === null ? null : Company::find($companyId);
@@ -303,15 +333,15 @@ class ViewScope
     public function toArray(): array
     {
         return [
-            'type'      => $this->type,
-            'id'        => $this->id,
-            'label'     => $this->label(),
-            'path'      => $this->path(),
+            'type' => $this->type,
+            'id' => $this->id,
+            'label' => $this->label(),
+            'path' => $this->path(),
             'logo_path' => $this->logoPath(),
 
             // The top bar's mark goes stale the same way a company card's does,
             // and for the same reason: it may be the organization's.
-            'logo_version' => \App\Support\Branding\Branding::version(
+            'logo_version' => Branding::version(
                 $this->type === self::COMPANY
                     ? Company::find($this->id)
                     : ($this->type === self::FRANCHISE

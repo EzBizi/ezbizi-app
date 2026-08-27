@@ -2,15 +2,25 @@
 
 namespace App\Support\Automations;
 
+use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\PhoneCall;
 use App\Models\PhoneNumber;
+use App\Models\Task;
+use App\Models\TaskBoard;
+use App\Models\TaskGroup;
+use App\Models\User;
 use App\Models\Vehicle;
+use App\Support\Audit\AuditLogger;
 use App\Support\Fleet\VehicleStatus;
+use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Numbering\RecordNumberGenerator;
+use App\Support\Scoping\ViewScope;
+use App\Support\Tasks\TaskUpdateWriter;
+use App\Support\Tasks\TaskWriter;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -69,36 +79,36 @@ class ActionRunner
      * @var array<class-string<Model>, array<string, string>> model => field => label
      */
     private const WRITABLE = [
-        \App\Models\Job::class => [
-            'title'            => 'Title',
-            'description'      => 'Description',
-            'status'           => 'Status',
-            'scheduled_for'    => 'Date and time',
+        Job::class => [
+            'title' => 'Title',
+            'description' => 'Description',
+            'status' => 'Status',
+            'scheduled_for' => 'Date and time',
             'duration_minutes' => 'Duration in minutes',
             // Minor units, deliberately named as such. The job form takes
             // DOLLARS and converts (see the client's parseAmountMinor, and the
             // hundredfold error it was written to stop); a rule writes the
             // column directly, so calling it "Price" here would invite exactly
             // that mistake through the other door.
-            'amount_minor'     => 'Amount in cents',
+            'amount_minor' => 'Amount in cents',
         ],
-        \App\Models\Customer::class => [
-            'name'          => 'Name',
-            'email'         => 'Email',
-            'phone'         => 'Phone',
-            'notes'         => 'Notes',
-            'is_active'     => 'Active',
+        Customer::class => [
+            'name' => 'Name',
+            'email' => 'Email',
+            'phone' => 'Phone',
+            'notes' => 'Notes',
+            'is_active' => 'Active',
             'address_line1' => 'Address line 1',
             'address_line2' => 'Address line 2',
-            'city'          => 'City',
-            'state'         => 'State',
-            'postal_code'   => 'Postal code',
+            'city' => 'City',
+            'state' => 'State',
+            'postal_code' => 'Postal code',
         ],
-        \App\Models\Vehicle::class => [
-            'plate'              => 'Plate',
-            'colour'             => 'Colour',
-            'odometer_miles'     => 'Odometer (miles)',
-            'next_service_on'    => 'Next service date',
+        Vehicle::class => [
+            'plate' => 'Plate',
+            'colour' => 'Colour',
+            'odometer_miles' => 'Odometer (miles)',
+            'next_service_on' => 'Next service date',
             'next_service_miles' => 'Next service miles',
         ],
     ];
@@ -142,26 +152,34 @@ class ActionRunner
      * does not fire when another rule is what completed it.
      */
     private const SECONDARY_TRIGGERS = [
-        \App\Models\Job::class => [
-            'status'        => 'job.status_changed',
+        Job::class => [
+            'status' => 'job.status_changed',
             'scheduled_for' => 'job.scheduled',
         ],
-        \App\Models\Customer::class => [],
+        Customer::class => [],
     ];
 
     public function __construct(
         private readonly EventEmitter $emitter,
         private readonly OutboundWebhook $webhook,
-        private readonly \App\Support\Audit\AuditLogger $audit,
-        private readonly \App\Support\Notifications\NotificationDispatcher $notifications,
+        private readonly AuditLogger $audit,
+        private readonly NotificationDispatcher $notifications,
         private readonly RecordNumberGenerator $numbers,
+        private readonly TaskWriter $tasks,
+        private readonly TaskUpdateWriter $updates,
     ) {}
 
     /**
      * @return array{type: string, ok: bool, detail: string, skipped?: bool}
      */
-    public function run(array $action, AutomationEvent $event, ?Model $subject, bool $isTest = false): array
-    {
+    public function run(
+        array $action,
+        AutomationEvent $event,
+        ?Model $subject,
+        bool $isTest = false,
+        ?Automation $automation = null,
+        int $actionIndex = 0,
+    ): array {
         $type = $action['type'] ?? null;
 
         if ($type === null) {
@@ -181,21 +199,136 @@ class ActionRunner
         }
 
         return match ($type) {
-            'update_field'  => $this->updateField($action, $event, $subject),
+            'update_field' => $this->updateField($action, $event, $subject),
             'change_status' => $this->changeStatus($action, $event, $subject),
-            'webhook'       => $this->callWebhook($action, $event, $subject),
-            'notify'        => $this->notify($action, $event, $subject),
+            'webhook' => $this->callWebhook($action, $event, $subject),
+            'notify' => $this->notify($action, $event, $subject),
 
             // ActionDefinition::type() keeps everything after the first dot, so
             // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
             'voicemail.mark_dealt' => $this->markVoicemailDealt($event, $subject),
-            'missed.create_job'    => $this->createJobFromMissed($event, $subject),
+            'missed.create_job' => $this->createJobFromMissed($event, $subject),
+
+            'task.create' => $this->createTask($action, $event, $automation),
+            'task.assign_owner' => $this->updateTask($action, $event, $subject, $automation, 'owner_user_id'),
+            'task.set_status' => $this->updateTask($action, $event, $subject, $automation, 'status_option_id'),
+            'task.set_due_date' => $this->updateTask($action, $event, $subject, $automation, 'due_on'),
+            'task.move_group' => $this->moveTask($action, $event, $subject, $automation),
+            'task.add_update' => $this->addTaskUpdate($action, $event, $subject, $automation, $actionIndex),
 
             default => throw new InvalidArgumentException(
                 "Unknown automation action '{$type}'. Actions are declared by modules "
                 .'in code (§5.5) — a rule cannot invent one.'
             ),
         };
+    }
+
+    private function createTask(array $action, AutomationEvent $event, ?Automation $automation): array
+    {
+        [$actor, $scope] = $this->taskContext($automation);
+        $board = TaskBoard::query()->active()->find($action['board_id'] ?? null);
+        if ($board === null) {
+            return ['type' => 'task.create', 'ok' => false, 'detail' => 'The selected task board is unavailable.'];
+        }
+        $task = $this->tasks->create($actor, $board, $scope, [
+            'title' => $action['title'] ?? null,
+            'description' => $action['description'] ?? null,
+            'group_id' => $action['group_id'] ?? null,
+            'status_option_id' => $action['status_option_id'] ?? null,
+            'owner_user_id' => $action['owner_user_id'] ?? null,
+            'due_on' => $action['due_on'] ?? null,
+        ], $event);
+
+        return ['type' => 'task.create', 'ok' => true, 'detail' => "Created {$task->number}."];
+    }
+
+    private function updateTask(
+        array $action,
+        AutomationEvent $event,
+        ?Model $subject,
+        ?Automation $automation,
+        string $field,
+    ): array {
+        if (! $subject instanceof Task) {
+            return ['type' => $action['type'], 'ok' => false, 'detail' => 'This action requires a Task trigger.'];
+        }
+        [$actor, $scope] = $this->taskContext($automation);
+        $value = match ($field) {
+            'owner_user_id' => $action['owner_user_id'] ?? null,
+            'status_option_id' => $action['status_option_id'] ?? null,
+            'due_on' => $action['due_on'] ?? null,
+        };
+        $updated = $this->tasks->update(
+            $actor,
+            $subject,
+            $scope,
+            (int) $subject->fresh()->version,
+            [$field => $value],
+            causationId: $event->id,
+            causedBy: $event,
+        );
+
+        return ['type' => $action['type'], 'ok' => true, 'detail' => "Updated {$updated->number}."];
+    }
+
+    private function moveTask(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
+    {
+        if (! $subject instanceof Task || $subject->parent_task_id !== null) {
+            return ['type' => 'task.move_group', 'ok' => false, 'detail' => 'Only a top-level Task can move between groups.'];
+        }
+        [$actor, $scope] = $this->taskContext($automation);
+        $fresh = $subject->fresh();
+        $source = TaskGroup::query()->active()->where('board_id', $fresh->board_id)->findOrFail($fresh->group_id);
+        $destination = TaskGroup::query()->active()->where('board_id', $fresh->board_id)
+            ->findOrFail($action['group_id'] ?? null);
+        $moved = $this->tasks->reorder($actor, $fresh->board, $scope, [
+            'task_id' => $fresh->id,
+            'destination_group_id' => $destination->id,
+            'expected_task_version' => (int) $fresh->version,
+            'expected_source_order_version' => (int) $source->order_version,
+            'expected_destination_order_version' => (int) $destination->order_version,
+            'before_task_id' => null,
+            'after_task_id' => null,
+        ], $event);
+
+        return ['type' => 'task.move_group', 'ok' => true, 'detail' => "Moved {$moved->number}."];
+    }
+
+    private function addTaskUpdate(
+        array $action,
+        AutomationEvent $event,
+        ?Model $subject,
+        ?Automation $automation,
+        int $actionIndex,
+    ): array {
+        if (! $subject instanceof Task) {
+            return ['type' => 'task.add_update', 'ok' => false, 'detail' => 'This action requires a Task trigger.'];
+        }
+        [$actor, $scope] = $this->taskContext($automation);
+        $update = $this->updates->create(
+            $actor,
+            $subject,
+            $scope,
+            (string) ($action['body'] ?? ''),
+            "auto:{$automation->id}:{$event->id}:{$actionIndex}",
+            $event,
+        );
+
+        return ['type' => 'task.add_update', 'ok' => true, 'detail' => "Added update {$update->id}."];
+    }
+
+    /** @return array{0:User,1:ViewScope} */
+    private function taskContext(?Automation $automation): array
+    {
+        if ($automation === null) {
+            throw new InvalidArgumentException('A task automation action requires its rule identity.');
+        }
+        $actor = User::query()->where('is_active', true)->find($automation->created_by);
+        if ($actor === null) {
+            throw new InvalidArgumentException('The person who created this automation is no longer active.');
+        }
+
+        return [$actor, ViewScope::forStoredAutomationScope($actor, $automation->scope_type, $automation->scope_id)];
     }
 
     /**
@@ -387,8 +520,8 @@ class ActionRunner
 
         if (! array_key_exists($field, $writable)) {
             return [
-                'type'   => 'update_field',
-                'ok'     => false,
+                'type' => 'update_field',
+                'ok' => false,
                 'detail' => "'{$field}' is not a field an automation may set on "
                     .class_basename($subject).'. Allowed: '.implode(', ', array_keys($writable)).'.',
             ];
@@ -401,8 +534,8 @@ class ActionRunner
             // field to what it already is would otherwise emit an event every
             // time and look like a loop.
             return [
-                'type'   => 'update_field',
-                'ok'     => true,
+                'type' => 'update_field',
+                'ok' => true,
                 'detail' => "'{$field}' was already ".json_encode($value).'.',
             ];
         }
@@ -439,8 +572,8 @@ class ActionRunner
         }
 
         return [
-            'type'   => 'update_field',
-            'ok'     => true,
+            'type' => 'update_field',
+            'ok' => true,
             'detail' => "{$field}: ".json_encode($before).' → '.json_encode($value),
         ];
     }
@@ -477,8 +610,8 @@ class ActionRunner
 
         if (! $subject instanceof Vehicle) {
             return [
-                'type'   => 'change_status',
-                'ok'     => false,
+                'type' => 'change_status',
+                'ok' => false,
                 'detail' => 'A rule cannot change the status of that record.',
             ];
         }
@@ -487,8 +620,8 @@ class ActionRunner
 
         if ($next === null) {
             return [
-                'type'   => 'change_status',
-                'ok'     => false,
+                'type' => 'change_status',
+                'ok' => false,
                 'detail' => "'{$value}' is not a vehicle status.",
             ];
         }
@@ -497,8 +630,8 @@ class ActionRunner
 
         if ($before === $next) {
             return [
-                'type'   => 'change_status',
-                'ok'     => true,
+                'type' => 'change_status',
+                'ok' => true,
                 'detail' => "status was already {$next->value}.",
             ];
         }
@@ -514,7 +647,7 @@ class ActionRunner
                     target: $subject,
                     changes: [
                         'before' => ['status' => $before->value],
-                        'after'  => ['status' => $next->value],
+                        'after' => ['status' => $next->value],
                     ],
                     metadata: ['caused_by_event' => $event->getKey(), 'trigger' => $event->event_key],
                 );
@@ -522,10 +655,10 @@ class ActionRunner
                 $subject->save();
 
                 $payload = [
-                    'old'    => $before->value,
-                    'new'    => $next->value,
+                    'old' => $before->value,
+                    'new' => $next->value,
                     'before' => ['status' => $before->value],
-                    'after'  => ['status' => $next->value],
+                    'after' => ['status' => $next->value],
                 ];
 
                 $this->emitter->emit('vehicle.status_changed', $subject, $payload, causedBy: $event);
@@ -550,8 +683,8 @@ class ActionRunner
         }
 
         return [
-            'type'   => 'change_status',
-            'ok'     => true,
+            'type' => 'change_status',
+            'ok' => true,
             'detail' => 'status: '.json_encode($before->value).' → '.json_encode($next->value),
         ];
     }
@@ -565,20 +698,20 @@ class ActionRunner
         }
 
         $result = $this->webhook->send($url, [
-            'event'      => $event->event_key,
+            'event' => $event->event_key,
             'occurred_at' => $event->occurred_at->toIso8601String(),
-            'subject'    => [
+            'subject' => [
                 'type' => $subject ? class_basename($subject) : null,
-                'id'   => $event->subject_id,
+                'id' => $event->subject_id,
             ],
-            'payload'    => $event->payload,
+            'payload' => $event->payload,
             // So a receiver can discard a redelivery rather than acting twice.
             'idempotency_key' => $event->getKey(),
         ], $action['secret'] ?? null);
 
         return [
-            'type'   => 'webhook',
-            'ok'     => $result['ok'],
+            'type' => 'webhook',
+            'ok' => $result['ok'],
             'detail' => $result['ok']
                 ? "Delivered, HTTP {$result['status']}."
                 : ($result['error'] ?? 'Failed.'),
@@ -612,8 +745,8 @@ class ActionRunner
         );
 
         return [
-            'type'   => 'notify',
-            'ok'     => true,
+            'type' => 'notify',
+            'ok' => true,
             'detail' => $sent === 0
                 // Not a failure. A rule scoped to a franchise nobody is assigned
                 // to has nobody to tell, and saying so is more useful than a
