@@ -333,10 +333,10 @@ class _PinnedTaskRowState extends State<_PinnedTaskRow> {
       onTap: widget.onSelected,
       child: Container(
         height: 52,
-        color: widget.selected
-            ? Theme.of(context).colorScheme.primaryContainer
-            : null,
         decoration: BoxDecoration(
+          color: widget.selected
+              ? Theme.of(context).colorScheme.primaryContainer
+              : null,
           border: Border(
             bottom: BorderSide(
               color: Theme.of(context).colorScheme.outlineVariant,

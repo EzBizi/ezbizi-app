@@ -452,6 +452,13 @@ class _TasksScreenState extends State<TasksScreen> {
     builder: (context, constraints) {
       final showDirectory = wide && constraints.maxWidth >= 1100;
       final showDetail = _detailOpen && constraints.maxWidth >= 800;
+      if (_detailOpen && !showDetail && _detail != null) {
+        return TaskDetailPanel(
+          task: _detail,
+          fullScreen: true,
+          onClose: () => setState(() => _detailOpen = false),
+        );
+      }
       return Row(
         children: [
           if (showDirectory) ...[
