@@ -53,7 +53,12 @@ final Map<String, ModuleScreen> moduleScreens = {
   ),
   'tasks': ModuleScreen(
     Icons.checklist_outlined,
-    (api, session) => TasksScreen(api: api, session: session),
+    (api, session) => TasksScreen(
+      api: api,
+      session: session,
+      // HomeShell supplies real address navigation for the live destination.
+      onOpenRecordRoute: (_) {},
+    ),
   ),
   'customers': ModuleScreen(
     Icons.people_outline,

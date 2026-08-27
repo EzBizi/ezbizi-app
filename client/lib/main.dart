@@ -430,6 +430,14 @@ class _HomeShellState extends State<HomeShell> {
     widget.address?.replace('/tasks');
   });
 
+  /// Record-link routes come from a target's authorized server presentation.
+  /// The shell forwards that exact metadata; it never derives a destination
+  /// from a record type or identifier.
+  void _openAuthorizedRecordRoute(String route) => setState(() {
+    _apply(route);
+    widget.address?.push(route);
+  });
+
   /// "Your account" is reached from the avatar, not from a rail, so it has no
   /// id of its own.
   void _showProfile() => setState(() {
@@ -558,6 +566,7 @@ class _HomeShellState extends State<HomeShell> {
                     session: widget.session,
                     pendingIntent: _pendingTaskIntent,
                     onIntentConsumed: _consumeTaskIntent,
+                    onOpenRecordRoute: _openAuthorizedRecordRoute,
                   )
                 : screen.build(widget.api, widget.session),
             id: module.key,

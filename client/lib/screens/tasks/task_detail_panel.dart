@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
 import 'task_models.dart';
+import 'task_api.dart';
+import 'task_record_links.dart';
 
 class TaskDetailPanel extends StatelessWidget {
   const TaskDetailPanel({
     super.key,
     required this.task,
+    required this.taskApi,
+    required this.onTaskChanged,
+    required this.onOpenRecordRoute,
     required this.onClose,
     this.fullScreen = false,
   });
   final TaskDetailSnapshot? task;
+  final TaskApi taskApi;
+  final ValueChanged<TaskDetailSnapshot> onTaskChanged;
+  final ValueChanged<String> onOpenRecordRoute;
   final VoidCallback onClose;
   final bool fullScreen;
   @override
@@ -69,6 +77,13 @@ class TaskDetailPanel extends StatelessWidget {
                             .map((value) => value.value)
                             .whereType<String>()
                             .join('\n'),
+                ),
+                const SizedBox(height: 24),
+                TaskRecordLinks(
+                  api: taskApi,
+                  snapshot: task!,
+                  onChanged: onTaskChanged,
+                  onOpenRoute: onOpenRecordRoute,
                 ),
                 const SizedBox(height: 24),
                 const Text(

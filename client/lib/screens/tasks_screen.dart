@@ -22,11 +22,13 @@ class TasksScreen extends StatefulWidget {
     required this.session,
     this.pendingIntent,
     this.onIntentConsumed,
+    this.onOpenRecordRoute,
   });
   final ApiClient api;
   final Session session;
   final TaskAddressIntent? pendingIntent;
   final VoidCallback? onIntentConsumed;
+  final ValueChanged<String>? onOpenRecordRoute;
   @override
   State<TasksScreen> createState() => _TasksScreenState();
 }
@@ -239,6 +241,9 @@ class _TasksScreenState extends State<TasksScreen> {
           builder: (_) => Scaffold(
             body: TaskDetailPanel(
               task: result.data,
+              taskApi: _tasks,
+              onTaskChanged: _replaceDetail,
+              onOpenRecordRoute: _openRecordRoute,
               fullScreen: true,
               onClose: () => Navigator.of(context).pop(),
             ),
@@ -252,6 +257,13 @@ class _TasksScreenState extends State<TasksScreen> {
       mounted &&
       widget.pendingIntent == intent &&
       _intentGeneration == generation;
+
+  void _replaceDetail(TaskDetailSnapshot detail) {
+    if (!mounted) return;
+    setState(() => _detail = detail);
+  }
+
+  void _openRecordRoute(String route) => widget.onOpenRecordRoute?.call(route);
 
   Future<void> _goToPage(int page) async {
     if (_bulkBusy) return;
@@ -731,6 +743,9 @@ class _TasksScreenState extends State<TasksScreen> {
       if (_detailOpen && !showDetail && _detail != null) {
         return TaskDetailPanel(
           task: _detail,
+          taskApi: _tasks,
+          onTaskChanged: _replaceDetail,
+          onOpenRecordRoute: _openRecordRoute,
           fullScreen: true,
           onClose: () => setState(() => _detailOpen = false),
         );
@@ -796,6 +811,9 @@ class _TasksScreenState extends State<TasksScreen> {
               width: _detailWidth,
               child: TaskDetailPanel(
                 task: _detail,
+                taskApi: _tasks,
+                onTaskChanged: _replaceDetail,
+                onOpenRecordRoute: _openRecordRoute,
                 onClose: () => setState(() => _detailOpen = false),
               ),
             ),

@@ -145,6 +145,74 @@ final class TaskApi {
     );
   }
 
+  Future<TaskApiResult<List<TaskRecordLinkType>>> recordLinkTypes(
+    String taskId,
+  ) async {
+    final response = await _api.get('/tasks/$taskId/record-links/types');
+    return _decode(response, (data) {
+      if (data is! List) throw const FormatException('data must be a list.');
+      return data
+          .map((entry) => TaskRecordLinkType.fromJson(_map(entry, 'data[]')))
+          .toList(growable: false);
+    });
+  }
+
+  /// Search is intentionally type-specific. The server applies target policy,
+  /// current-view scope, and board-place intersection before returning names.
+  Future<TaskApiResult<List<TaskRecordLinkCandidate>>> searchRecordLinks(
+    String taskId, {
+    required String type,
+    required String query,
+  }) async {
+    final response = await _api.get('/tasks/$taskId/record-links/search', {
+      'type': type,
+      'q': query,
+    });
+    return _decode(response, (data) {
+      if (data is! List) throw const FormatException('data must be a list.');
+      return data
+          .map(
+            (entry) => TaskRecordLinkCandidate.fromJson(_map(entry, 'data[]')),
+          )
+          .toList(growable: false);
+    });
+  }
+
+  Future<TaskApiResult<TaskRecordLink>> linkRecord(
+    String taskId, {
+    required int expectedTaskVersion,
+    required String recordType,
+    required String recordId,
+  }) async {
+    final response = await _api.post('/tasks/$taskId/record-links', {
+      'expected_task_version': expectedTaskVersion,
+      'record_type': recordType,
+      'record_id': recordId,
+    });
+    return _decode(
+      response,
+      (data) => TaskRecordLink.fromJson(_map(data, 'data')),
+    );
+  }
+
+  Future<TaskApiResult<bool>> unlinkRecord(
+    String taskId,
+    String linkId, {
+    required int expectedTaskVersion,
+  }) async {
+    final response = await _api.deleteWithBody(
+      '/tasks/$taskId/record-links/$linkId',
+      {'expected_task_version': expectedTaskVersion},
+    );
+    return _decode(response, (data) {
+      final value = _map(data, 'data')['removed'];
+      if (value is! bool) {
+        throw const FormatException('data.removed must be a bool.');
+      }
+      return value;
+    });
+  }
+
   Future<TaskApiResult<TaskRow>> updateTask(
     String taskId, {
     required int expectedTaskVersion,

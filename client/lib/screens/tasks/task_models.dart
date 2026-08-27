@@ -927,6 +927,48 @@ final class TaskRecordLink {
   final String? route;
 }
 
+/// A type the server has explicitly made available for governed link search.
+/// The key is opaque client input; its label is server-owned presentation.
+final class TaskRecordLinkType {
+  const TaskRecordLinkType({required this.key, required this.label});
+
+  factory TaskRecordLinkType.fromJson(Map<String, Object?> json) =>
+      TaskRecordLinkType(
+        key: _string(json, 'key'),
+        label: _string(json, 'label'),
+      );
+
+  final String key;
+  final String label;
+}
+
+/// A record the server has both authorized and scoped to this board/view.
+/// Route is deliberately parsed as server metadata, never derived from type/ID.
+final class TaskRecordLinkCandidate {
+  const TaskRecordLinkCandidate({
+    required this.id,
+    required this.type,
+    required this.label,
+    required this.subtitle,
+    required this.route,
+  });
+
+  factory TaskRecordLinkCandidate.fromJson(Map<String, Object?> json) =>
+      TaskRecordLinkCandidate(
+        id: _string(json, 'id'),
+        type: _string(json, 'type'),
+        label: _string(json, 'label'),
+        subtitle: _nullableString(json, 'subtitle'),
+        route: _nullableString(json, 'route'),
+      );
+
+  final String id;
+  final String type;
+  final String label;
+  final String? subtitle;
+  final String? route;
+}
+
 final class TaskUpdate {
   const TaskUpdate({
     required this.id,
