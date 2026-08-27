@@ -359,6 +359,19 @@ PY
   complete=true
 )
 
+# Write the run's public commit marker. Kept as one function so the disposable
+# fixture exercises the identical filename/checksum grammar used in production.
+write_run_manifest() {
+  local work=$1
+  local run=$2
+  local output=$3
+
+  {
+    printf '# EZBIZI-BACKUP-MANIFEST\t1\t%s\n' "$run"
+    (cd "$work" && sha256sum --text -- *.gpg | sort)
+  } > "$output"
+}
+
 # The test entry point exercises the same creator and encryption path as the
 # nightly job while avoiding databases, /var, ssh and production configuration.
 if [[ "${1:-}" == "--private-files-fixture" ]]; then
@@ -369,6 +382,15 @@ if [[ "${1:-}" == "--private-files-fixture" ]]; then
   umask 077
   export EZBIZI_PRIVATE_FIXTURE_MODE=1
   encrypt_private_files "$2" "$3" "$4"
+  exit $?
+fi
+
+if [[ "${1:-}" == "--outer-manifest-fixture" ]]; then
+  [[ $# -eq 4 && -d "$2" ]] || {
+    echo "outer-manifest fixture setup failed" >&2
+    exit 1
+  }
+  write_run_manifest "$2" "$3" "$4"
   exit $?
 fi
 
@@ -532,10 +554,7 @@ all_ok "${PIPESTATUS[@]}" || errors+=("config-archive")
 published=false
 manifest="$RUN_WORK/manifest-${RUN_ID}.txt"
 if [[ ${#errors[@]} -eq 0 ]]; then
-  {
-    printf '# EZBIZI-BACKUP-MANIFEST\t1\t%s\n' "$RUN_ID"
-    (cd "$RUN_WORK" && sha256sum ./*.gpg | sort)
-  } > "$RUN_WORK/.manifest.tmp" 2>/dev/null \
+  write_run_manifest "$RUN_WORK" "$RUN_ID" "$RUN_WORK/.manifest.tmp" 2>/dev/null \
     && chmod 0600 "$RUN_WORK/.manifest.tmp" \
     && mv "$RUN_WORK/.manifest.tmp" "$manifest" \
     || errors+=("manifest")
