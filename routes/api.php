@@ -91,6 +91,7 @@ use App\Http\Controllers\Api\Tasks\TaskOrderController;
 use App\Http\Controllers\Api\Tasks\TaskParticipantsController;
 use App\Http\Controllers\Api\Tasks\TaskPrioritiesController;
 use App\Http\Controllers\Api\Tasks\TaskQuickSearchController;
+use App\Http\Controllers\Api\Tasks\TaskRecordLinksController;
 use App\Http\Controllers\Api\Tasks\TasksController;
 use App\Http\Controllers\Api\Tasks\TaskStatusesController;
 use App\Http\Controllers\Api\Tasks\TaskUpdatesController;
@@ -376,6 +377,10 @@ Route::prefix('v1')
         Route::post('tasks/{task}/updates', [TaskUpdatesController::class, 'store']);
         Route::patch('tasks/{task}/updates/{update}', [TaskUpdatesController::class, 'update']);
         Route::post('tasks/{task}/updates/{update}/archive', [TaskUpdatesController::class, 'archive']);
+        Route::get('tasks/{task}/record-links/types', [TaskRecordLinksController::class, 'types']);
+        Route::get('tasks/{task}/record-links/search', [TaskRecordLinksController::class, 'search']);
+        Route::post('tasks/{task}/record-links', [TaskRecordLinksController::class, 'store']);
+        Route::delete('tasks/{task}/record-links/{link}', [TaskRecordLinksController::class, 'destroy']);
         Route::post('tasks/{task}/archive', [TasksController::class, 'archive']);
         Route::post('tasks/{task}/restore', [TasksController::class, 'restore']);
         Route::put('tasks/{task}/columns/{column}', [TaskColumnValuesController::class, 'update']);

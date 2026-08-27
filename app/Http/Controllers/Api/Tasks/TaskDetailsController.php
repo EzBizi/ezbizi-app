@@ -6,12 +6,16 @@ use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\TaskBoardAccess;
+use App\Support\Tasks\TaskRecordLinkRegistry;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 final class TaskDetailsController extends TaskApiController
 {
-    public function __construct(private readonly TaskBoardAccess $access) {}
+    public function __construct(
+        private readonly TaskBoardAccess $access,
+        private readonly TaskRecordLinkRegistry $recordLinks,
+    ) {}
 
     public function show(Request $request, TaskBoard $board, string $taskId): Response
     {
@@ -24,6 +28,7 @@ final class TaskDetailsController extends TaskApiController
             'collaborators.user', 'columnValues', 'columnPeople', 'columnLabels', 'columnFiles',
             'updates' => fn ($query) => $query->active()->oldest('created_at'),
             'updates.author', 'updates.mentions.user', 'updates.versions.editor',
+            'recordLinks',
             'watchPreferences' => fn ($query) => $query->where('user_id', $request->user()->id),
             'activities' => fn ($query) => $query->latest('created_at')->limit(200),
             'subtasks' => fn ($query) => $query->active()->orderBy('position'),
@@ -64,6 +69,14 @@ final class TaskDetailsController extends TaskApiController
             'watched' => $task->owner_user_id === $request->user()->id
                 || ($preference !== 'muted' && ($preference === 'watched' || $defaultWatched)),
         ];
+        $data['record_links'] = $task->recordLinks->map(function ($link) use ($request, $board, $scope): array {
+            $definition = $this->recordLinks->get($link->record_type);
+            $record = $definition->resolve($request->user(), $board, $scope, $link->record_id);
+
+            return $record === null
+                ? ['link_id' => $link->id, 'available' => false, 'type' => $definition->label()]
+                : ['link_id' => $link->id, 'available' => true, ...$definition->present($record)];
+        })->values();
         $data['activities'] = $task->activities->map(fn ($activity) => [
             'id' => $activity->id,
             'actor_user_id' => $activity->actor_user_id,
