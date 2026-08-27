@@ -581,6 +581,245 @@ void main() {
       expect(find.textContaining('Everdoors'), findsWidgets);
     });
   });
+
+  group('Settings › Hours', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_name': 'A-1 Chimney',
+      'kind': 'subaccount',
+      'status': 'connected',
+    };
+
+    testWidgets('a new schedule defaults to the working week and posts that shape', (tester) async {
+      Map<String, dynamic>? sent;
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        onHours: (body) => sent = body,
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Hours'));
+
+      await _tap(tester, find.text('Add hours'));
+
+      await tester.enterText(find.byType(TextFormField).first, 'Office hours');
+      await tester.pumpAndSettle();
+      await _scrollTo(
+        tester,
+        find.text('Save'),
+        within: find.byKey(const ValueKey('hours-form')),
+      );
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(sent, isNotNull);
+      expect(sent!['name'], 'Office hours');
+
+      // HoursClock reads day keys and half-open [from, to) pairs. A shape it
+      // does not understand is a line that silently never answers.
+      final weeks = sent!['weeks'] as Map<String, dynamic>;
+      expect(weeks['mon'], [
+        ['09:00', '17:00'],
+      ]);
+      expect(weeks['sun'], isEmpty);
+      expect(weeks['sat'], isEmpty);
+    });
+
+    testWidgets('a closed day reads as Closed rather than as a blank row', (tester) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        schedules: const [
+          {
+            'id': 'hs-1',
+            'connection_id': 'cx-1',
+            'name': 'Office hours',
+            'timezone': 'Etc/GMT+5',
+            'weeks': {
+              'mon': [
+                ['09:00', '17:00'],
+              ],
+            },
+            'exceptions': <Map<String, Object?>>[],
+          },
+        ],
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Hours'));
+
+      // The POSIX sign is inverted on the wire; the reader must never see that.
+      expect(find.textContaining('UTC-5'), findsOneWidget);
+      expect(find.textContaining('Open Mon'), findsOneWidget);
+
+      await _tap(tester, find.text('Edit'));
+      expect(find.text('Closed'), findsWidgets);
+    });
+  });
+
+  group('Settings › Trust', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_name': 'A-1 Chimney',
+      'kind': 'subaccount',
+      'status': 'connected',
+    };
+
+    testWidgets('a pending carrier review says nobody can hurry it', (tester) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        trust: const {
+          'customer_profile': 'pending',
+          'shaken_stir': 'twilio-approved',
+          'cnam': 'noop',
+          'voice_integrity': 'twilio-rejected',
+        },
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Trust'));
+
+      expect(find.text('With the carriers'), findsOneWidget);
+      expect(find.text('Approved'), findsOneWidget);
+      expect(find.text('Turned down'), findsOneWidget);
+      expect(find.textContaining('nobody at EzBizi can hurry it'), findsOneWidget);
+    });
+  });
+
+  group('Settings › Call flows', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_name': 'A-1 Chimney',
+      'kind': 'subaccount',
+      'status': 'connected',
+    };
+
+    testWidgets('a menu posts the digit, action and group the renderer reads', (tester) async {
+      Map<String, dynamic>? sent;
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        ringGroups: const [
+          {'id': 'rg-1', 'name': 'Front desk', 'connection_id': 'cx-1'},
+        ],
+        onFlow: (body) => sent = body,
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Call flows'));
+      await _tap(tester, find.text('Add a menu'));
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'Main menu');
+      await tester.enterText(
+        find.byType(TextFormField).at(1),
+        'Press 1 for the office.',
+      );
+      await tester.pumpAndSettle();
+
+      // Name which group the key rings. Without this the save is refused —
+      // a ringing key with no group posts null and the caller reaches the
+      // line's own group instead of the one the key promised.
+      await _scrollTo(
+        tester,
+        find.byKey(const ValueKey('group:0')),
+        within: find.byKey(const ValueKey('flow-form')),
+      );
+      await tester.tap(find.byKey(const ValueKey('group:0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Front desk').last);
+      await tester.pumpAndSettle();
+
+      await _scrollTo(
+        tester,
+        find.text('Save'),
+        within: find.byKey(const ValueKey('flow-form')),
+      );
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(sent, isNotNull);
+      expect(sent!['prompt'], 'Press 1 for the office.');
+
+      final options = sent!['options'] as List;
+      expect(options, hasLength(1));
+      expect((options.first as Map)['digit'], '1');
+      expect((options.first as Map)['action'], 'ring_group');
+      expect((options.first as Map)['ring_group_id'], 'rg-1');
+    });
+
+    testWidgets('two keys doing different things is refused before it is sent', (tester) async {
+      var posted = false;
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        ringGroups: const [
+          {'id': 'rg-1', 'name': 'Front desk', 'connection_id': 'cx-1'},
+        ],
+        onFlow: (_) => posted = true,
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Call flows'));
+      await _tap(tester, find.text('Add a menu'));
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'Main menu');
+      await tester.enterText(find.byType(TextFormField).at(1), 'Press 1.');
+      await tester.pumpAndSettle();
+
+      // A second key, left on the same digit as the first.
+      await _scrollTo(
+        tester,
+        find.text('Add a key'),
+        within: find.byKey(const ValueKey('flow-form')),
+      );
+      await tester.tap(find.text('Add a key'));
+      await tester.pumpAndSettle();
+
+      await _scrollTo(
+        tester,
+        find.text('Save'),
+        within: find.byKey(const ValueKey('flow-form')),
+      );
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Two keys cannot do different things.'), findsOneWidget);
+      expect(posted, isFalse);
+    });
+
+    testWidgets('a key that rings a group says so when there are no groups', (tester) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Call flows'));
+      await _tap(tester, find.text('Add a menu'));
+
+      expect(
+        find.textContaining('a key that rings nobody is worse than no key'),
+        findsOneWidget,
+      );
+    });
+  });
 }
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 
@@ -588,6 +827,30 @@ List<String> _chips(WidgetTester tester) => tester
     .widgetList<ChoiceChip>(find.byType(ChoiceChip))
     .map((chip) => (chip.label as Text).data!)
     .toList();
+
+/// Scroll a lazily-built ListView until [finder] exists, then settle.
+///
+/// `ensureVisible` cannot help here: a ListView does not build its offscreen
+/// children at all, so the widget is not merely out of view — it is not in the
+/// tree, and any finder for it matches nothing.
+Future<void> _scrollTo(
+  WidgetTester tester,
+  Finder finder, {
+  required Finder within,
+}) async {
+  if (finder.evaluate().isNotEmpty) {
+    await tester.ensureVisible(finder.first);
+    await tester.pumpAndSettle();
+    return;
+  }
+
+  await tester.scrollUntilVisible(
+    finder,
+    240,
+    scrollable: find.descendant(of: within, matching: find.byType(Scrollable)).first,
+  );
+  await tester.pumpAndSettle();
+}
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   final scrollable = find.ancestor(
@@ -607,6 +870,10 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 
 Future<void> _pump(
   WidgetTester tester, {
+  List<Map<String, Object?>> flows = const [],
+  void Function(Map<String, dynamic> body)? onFlow,
+  Map<String, Object?> trust = const {},
+  void Function(Map<String, dynamic> body)? onHours,
   List<Map<String, Object?>> importable = const [],
   List<Map<String, Object?>> schedules = const [],
   void Function(Map<String, dynamic> body)? onImport,
@@ -658,6 +925,10 @@ Future<void> _pump(
         importable: importable,
         schedules: schedules,
         onImport: onImport,
+        trust: trust,
+        onHours: onHours,
+        flows: flows,
+        onFlow: onFlow,
       ),
     ),
   );
@@ -708,6 +979,10 @@ Future<void> _pumpShell(WidgetTester tester) async {
 }
 
 MockClientHandler _handler({
+  List<Map<String, Object?>> flows = const [],
+  void Function(Map<String, dynamic> body)? onFlow,
+  Map<String, Object?> trust = const {},
+  void Function(Map<String, dynamic> body)? onHours,
   List<Map<String, Object?>> importable = const [],
   List<Map<String, Object?>> schedules = const [],
   void Function(Map<String, dynamic> body)? onImport,
@@ -784,8 +1059,26 @@ MockClientHandler _handler({
       return _json({'data': <Map<String, Object?>>[]}, 201);
     }
 
+    if (path.endsWith('/phone/flows') && request.method == 'GET') {
+      return _json({'data': flows});
+    }
+
+    if (path.endsWith('/phone/flows') && request.method == 'POST') {
+      onFlow?.call(jsonDecode(request.body) as Map<String, dynamic>);
+      return _json({'data': {'id': 'fl-new'}}, 201);
+    }
+
     if (path.endsWith('/phone/hours') && request.method == 'GET') {
       return _json({'data': schedules});
+    }
+
+    if (path.endsWith('/phone/hours') && request.method == 'POST') {
+      onHours?.call(jsonDecode(request.body) as Map<String, dynamic>);
+      return _json({'data': {'id': 'hs-new'}}, 201);
+    }
+
+    if (path.contains('/trust') && request.method == 'GET') {
+      return _json({'data': trust});
     }
 
     if (path.endsWith('/phone/numbers') && request.method == 'GET') {

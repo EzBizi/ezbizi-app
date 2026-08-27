@@ -88,7 +88,48 @@ final class ModuleDefinition
          * GlanceRegistry completeness and the client rail both honour this.
          */
         public readonly bool $sidebar = true,
+        /**
+         * The module this one is drawn INSIDE, or null for a module that stands
+         * on its own.
+         *
+         * ── What a parent changes, and what it deliberately does not ──
+         *
+         * It changes exactly one thing: WHERE the module is drawn. Leads,
+         * Reviews and Business Profile are each a module in full — their own
+         * permissions, their own place in this registry, their own triggers and
+         * their own dashboard glance — that the owner wanted reached through
+         * Marketing rather than from three more rows in a sidebar that already
+         * holds fifteen.
+         *
+         * So it is NOT a permission relationship. Holding `marketing.view`
+         * grants nothing about Leads, and holding `leads.view` grants nothing
+         * about Marketing; the roles editor draws them nested and still switches
+         * them one at a time. Anything else would be a silent grant, which is
+         * the one thing §4 does not allow a layout decision to do.
+         *
+         * It is also NOT availability: the platform can switch Leads off for an
+         * organization and leave Marketing on, or the reverse, and each says its
+         * own sentence.
+         *
+         * ── Why the server says it rather than the client ────────
+         *
+         * The client already takes the existence, the order and the label of
+         * every module from here; where it sits was the last piece of that shape
+         * still compiled into Dart. A second opinion in the client is how a
+         * module ends up in two places at once, or in neither.
+         *
+         * One level only. A parent that is itself a child would make the roles
+         * editor and the tab strip both recursive to answer a question nobody
+         * has asked, and `ModuleRegistry::register` refuses it.
+         */
+        public readonly ?string $parent = null,
     ) {
+        if ($parent !== null && $parent === $key) {
+            throw new InvalidArgumentException(
+                "Module '{$key}' names itself as its parent."
+            );
+        }
+
         if ($key === '' || ! preg_match('/^[a-z][a-z0-9_]*$/', $key)) {
             throw new InvalidArgumentException(
                 "Module key '{$key}' must be lower_snake_case — it becomes the permission prefix."

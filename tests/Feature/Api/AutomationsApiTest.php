@@ -82,7 +82,7 @@ class AutomationsApiTest extends TestCase
 
         foreach ($data['modules'] as $module) {
             $this->assertSame(
-                ['key', 'label', 'subject', 'triggers', 'declared_actions'],
+                ['key', 'label', 'parent', 'subject', 'triggers', 'declared_actions'],
                 array_keys($module)
             );
 

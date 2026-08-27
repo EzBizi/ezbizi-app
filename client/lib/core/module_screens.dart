@@ -105,6 +105,16 @@ final Map<String, ModuleScreen> moduleScreens = {
     Icons.handyman_outlined,
     (api, session) => ServicesScreen(api: api, session: session),
   ),
+  // ── The three modules Marketing draws inside itself ────────────
+  //
+  // Still here, and they have to be: an entry in this map answers "what do I
+  // render for this key", and that question is asked whether the answer is
+  // drawn in the sidebar or in another module's tab strip. What decides which
+  // is `parent` on the server's own declaration, read straight off /me — see
+  // `_hasDestination` in main.dart for the rail's half and MarketingScreen for
+  // the strip's. Nothing in this file lists them, which is the point: the day
+  // one moves back out, or a fourth moves in, no Dart changes.
+  //
   // A call coming in, not a person or a chart. A lead is somebody who rang or
   // messaged the business about work; `person_add` would say "a new contact"
   // and `trending_up` would say "a number went up", and neither is what a

@@ -320,6 +320,109 @@ void main() {
     expect(find.byType(DashboardScreen), findsOneWidget);
     expect(find.byType(MarketingScreen), findsNothing);
   });
+
+  // ── modules drawn inside another module ──────────────────────────
+
+  /// The owner moved Leads, Reviews and Business Profile inside Marketing. The
+  /// server says so per module (`parent` on /me), and nothing in Dart lists
+  /// them — so this is the whole of what the shell does about it.
+  testWidgets('a module with a parent is a chip inside it, not a sidebar row', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpShell(tester, modules: [
+      _module('dashboard', 'Dashboard'),
+      _module('marketing', 'Marketing'),
+      _module('leads', 'Leads', parent: 'marketing'),
+      _module('reviews', 'Reviews', parent: 'marketing'),
+    ]);
+
+    expect(_inSidebar('Marketing'), findsOneWidget);
+    expect(
+      _inSidebar('Leads'),
+      findsNothing,
+      reason: 'A row here as well as a chip is the same screen in two places.',
+    );
+    expect(_inSidebar('Reviews'), findsNothing);
+
+    await tester.tap(_inSidebar('Marketing'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(ChoiceChip, 'Leads'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Reviews'), findsOneWidget);
+    expect(
+      find.widgetWithText(ChoiceChip, 'Newsletter'),
+      findsOneWidget,
+      reason: 'marketing.view is held, so its own parts are there too.',
+    );
+  });
+
+  /// The case that decides whether moving a module can take it away from
+  /// somebody. `leads.view` and `marketing.view` are independent grants, and
+  /// this role holds only the first.
+  testWidgets('a reachable child draws its parent, even when the parent is not '
+      'reachable', (tester) async {
+    _wide(tester);
+
+    await _pumpShell(tester, modules: [
+      _module('dashboard', 'Dashboard'),
+      _module('marketing', 'Marketing', reachable: false),
+      _module('leads', 'Leads', parent: 'marketing'),
+    ]);
+
+    expect(
+      _inSidebar('Marketing'),
+      findsOneWidget,
+      reason: 'Otherwise a role holding leads.view loses Leads entirely.',
+    );
+
+    await tester.tap(_inSidebar('Marketing'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(ChoiceChip, 'Leads'), findsOneWidget);
+    expect(
+      find.widgetWithText(ChoiceChip, 'Newsletter'),
+      findsNothing,
+      reason: 'Marketing is not reachable, so its own parts stay shut.',
+    );
+    expect(find.widgetWithText(ChoiceChip, 'Social Media Management'), findsNothing);
+  });
+
+  /// Neither the module nor anything in it — the parent is not drawn at all.
+  testWidgets('an unreachable parent with no reachable child is not drawn', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpShell(tester, modules: [
+      _module('dashboard', 'Dashboard'),
+      _module('marketing', 'Marketing', reachable: false),
+      _module('leads', 'Leads', parent: 'marketing', reachable: false),
+    ]);
+
+    expect(_inSidebar('Marketing'), findsNothing);
+  });
+
+  /// /leads was a real URL for as long as Leads was a row. It still opens
+  /// something rather than dumping somebody on the first module in their list.
+  testWidgets('the old URL of a module now drawn inside another opens its '
+      'parent', (tester) async {
+    _wide(tester);
+
+    await _pumpShell(
+      tester,
+      modules: [
+        _module('dashboard', 'Dashboard'),
+        _module('marketing', 'Marketing'),
+        _module('leads', 'Leads', parent: 'marketing'),
+      ],
+      address: Address(path: '/leads'),
+    );
+
+    expect(find.byType(MarketingScreen), findsOneWidget);
+    expect(find.byType(DashboardScreen), findsNothing);
+  });
 }
 
 // ── harness ────────────────────────────────────────────────────────
@@ -403,11 +506,13 @@ Map<String, dynamic> _module(
   String label, {
   bool available = true,
   bool reachable = true,
+  String? parent,
 }) => {
   'key': key,
   'label': label,
   'available': available,
   'reachable': reachable,
+  'parent': parent,
 };
 
 Map<String, dynamic> _me(List<Map<String, dynamic>> modules) => {

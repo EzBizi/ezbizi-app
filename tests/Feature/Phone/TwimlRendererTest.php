@@ -211,7 +211,15 @@ class TwimlRendererTest extends TestCase
         );
     }
 
-    public function test_a_menu_flow_gathers_instead_of_dialing(): void
+    /**
+     * A menu asks, and then still reaches somebody.
+     *
+     * This used to assert there was no Dial at all, which described a real
+     * defect: a Gather with no `action` and nothing after it means Twilio
+     * plays the prompt, hears nothing, runs out of document and hangs up. A
+     * caller who says nothing must land on the ring group, not in silence.
+     */
+    public function test_a_menu_flow_gathers_and_still_reaches_somebody(): void
     {
         $t = $this->provisionTenant();
 
@@ -232,8 +240,112 @@ class TwimlRendererTest extends TestCase
 
         $this->assertStringContainsString('<Gather', $xml);
         $this->assertStringContainsString('Press 1 for the desk.', $xml);
-        $this->assertStringNotContainsString('<Dial', $xml);
+        $this->assertStringContainsString('numDigits="1"', $xml);
         $this->assertStringNotContainsString('PhoneFlow', $xml);
+
+        // The Dial comes AFTER the Gather: pressed keys route above, silence
+        // falls through to here.
+        $this->assertLessThan(
+            strpos($xml, '<Dial'),
+            strpos($xml, '<Gather'),
+            'The fallthrough Dial must follow the Gather, not replace it.',
+        );
+    }
+
+
+    public function test_pressing_a_menu_key_rings_the_group_that_key_names(): void
+    {
+        $t = $this->provisionTenant();
+
+        $xml = $this->inTenant($t['org'], function () use ($t) {
+            [$number, $group] = $this->lineWithAvailableDesk($t, record: false);
+
+            $flow = PhoneFlow::query()->create([
+                'connection_id' => $number->connection_id,
+                'name' => 'Main menu',
+                'nodes' => [
+                    'type' => 'menu',
+                    'prompt' => 'Press 1 for the desk, 2 to leave a message.',
+                    'options' => [
+                        ['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id],
+                        ['digit' => '2', 'action' => 'voicemail'],
+                    ],
+                ],
+            ]);
+            $number->forceFill(['flow_id' => $flow->id])->save();
+
+            return (new TwimlRenderer)->inbound($number->fresh(), ['digits' => '1']);
+        });
+
+        // Routed, not re-prompted.
+        $this->assertStringNotContainsString('<Gather', $xml);
+        $this->assertStringContainsString('<Dial', $xml);
+        $this->assertStringContainsString('<Client>', $xml);
+    }
+
+    public function test_pressing_the_voicemail_key_records_instead_of_ringing(): void
+    {
+        $t = $this->provisionTenant();
+
+        $xml = $this->inTenant($t['org'], function () use ($t) {
+            [$number, $group] = $this->lineWithAvailableDesk($t, record: false);
+
+            $flow = PhoneFlow::query()->create([
+                'connection_id' => $number->connection_id,
+                'name' => 'Main menu',
+                'nodes' => [
+                    'type' => 'menu',
+                    'prompt' => 'Press 1 for the desk, 2 to leave a message.',
+                    'options' => [
+                        ['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id],
+                        ['digit' => '2', 'action' => 'voicemail'],
+                    ],
+                ],
+            ]);
+            $number->forceFill(['flow_id' => $flow->id])->save();
+
+            return (new TwimlRenderer)->inbound($number->fresh(), ['digits' => '2']);
+        });
+
+        $this->assertStringContainsString('<Record', $xml);
+        $this->assertStringNotContainsString('<Client>', $xml);
+    }
+
+    /**
+     * A key that is not on the menu must not hang up on somebody.
+     *
+     * The commonest reason for a stray digit is a caller pressing anything to
+     * reach a person, so an unknown key behaves like no key: it reaches the
+     * line's ring group.
+     */
+    public function test_a_key_that_is_not_on_the_menu_still_reaches_the_line(): void
+    {
+        $t = $this->provisionTenant();
+
+        $xml = $this->inTenant($t['org'], function () use ($t) {
+            [$number, $group] = $this->lineWithAvailableDesk($t, record: false);
+
+            $flow = PhoneFlow::query()->create([
+                'connection_id' => $number->connection_id,
+                'name' => 'Main menu',
+                'nodes' => [
+                    'type' => 'menu',
+                    'prompt' => 'Press 1 for the desk.',
+                    'options' => [
+                        ['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id],
+                    ],
+                ],
+            ]);
+            $number->forceFill(['flow_id' => $flow->id])->save();
+
+            return (new TwimlRenderer)->inbound(
+                $number->fresh(),
+                ['digits' => '9', 'skip_menu' => true],
+            );
+        });
+
+        $this->assertStringContainsString('<Dial', $xml);
+        $this->assertStringNotContainsString('<Hangup', $xml);
     }
 
     public function test_hours_closed_forwards_when_configured(): void

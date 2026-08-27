@@ -278,6 +278,58 @@ void main() {
     );
   });
 
+  testWidgets('an open shift breathes; Clock in is still', (tester) async {
+    await _pumpShell(
+      tester,
+      motion: true,
+      timeClock: _clock(
+        open: {'id': 's-1', 'clocked_in_at': '2026-08-25T12:00:00Z'},
+      ),
+    );
+
+    final lit = _pulseFill(tester);
+    await tester.pump(const Duration(milliseconds: 800));
+
+    expect(
+      _pulseFill(tester),
+      isNot(lit),
+      reason: 'A running shift is the one thing the bar keeps saying.',
+    );
+
+    await _pumpShell(tester, motion: true, timeClock: _clock());
+
+    final still = _pulseFill(tester);
+    await tester.pump(const Duration(milliseconds: 800));
+
+    expect(
+      _pulseFill(tester),
+      still,
+      reason: 'Clock In has nothing happening to report, so it does not move.',
+    );
+    expect(still?.a, 0.0, reason: 'and it is not tinted either.');
+  });
+
+  testWidgets('less motion means no pulse at all', (tester) async {
+    // `_pumpShell` settles, which is itself the assertion: a controller left
+    // repeating never lets pumpAndSettle return.
+    await _pumpShell(
+      tester,
+      timeClock: _clock(
+        open: {'id': 's-1', 'clocked_in_at': '2026-08-25T12:00:00Z'},
+      ),
+    );
+
+    final resting = _pulseFill(tester);
+    await tester.pump(const Duration(milliseconds: 800));
+
+    expect(_pulseFill(tester), resting);
+    expect(
+      resting?.a,
+      greaterThan(0),
+      reason: 'Still, but the chip must still read as on the clock.',
+    );
+  });
+
   testWidgets('Clock in stays in the top bar on a 375-point window', (
     tester,
   ) async {
@@ -311,6 +363,13 @@ Finder _inAppBar(String label) => find.descendant(
   matching: find.text(label),
 );
 
+/// The breathing fill behind the punch chip.
+Color? _pulseFill(WidgetTester tester) {
+  final box = tester.widget<DecoratedBox>(find.byKey(const Key('clock-pulse')));
+
+  return (box.decoration as BoxDecoration).color;
+}
+
 Color? _appBarButtonColor(WidgetTester tester) {
   final button = tester.widget<OutlinedButton>(
     find.descendant(
@@ -327,6 +386,7 @@ Future<void> _pumpShell(
   List<Map<String, Object?>>? modules,
   Future<http.Response?> Function(http.Request request)? onRequest,
   Size size = const Size(1280, 900),
+  bool motion = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -364,13 +424,32 @@ Future<void> _pumpShell(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: ListenableBuilder(
-        listenable: session,
-        builder: (_, _) => HomeShell(api: api, session: session),
+      // Inside the MaterialApp, because WidgetsApp builds its own MediaQuery
+      // from the view and an outer one would simply be replaced.
+      //
+      // Off for every test but the one about the pulse itself: an open shift
+      // breathes for as long as it is open, so there is no frame after which
+      // nothing is scheduled and `pumpAndSettle` never returns. Somebody who
+      // has asked for less motion gets the still version, which is the state
+      // the rest of these tests are about.
+      home: Builder(
+        builder: (context) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: !motion),
+          child: ListenableBuilder(
+            listenable: session,
+            builder: (_, _) => HomeShell(api: api, session: session),
+          ),
+        ),
       ),
     ),
   );
-  await tester.pumpAndSettle();
+
+  if (motion) {
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+  } else {
+    await tester.pumpAndSettle();
+  }
 }
 
 http.Response _json(Object body, [int status = 200]) => http.Response(

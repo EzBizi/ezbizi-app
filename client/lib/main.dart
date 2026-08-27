@@ -8,6 +8,7 @@ import 'core/deployment.dart';
 import 'core/desktop_updater.dart';
 import 'core/files.dart';
 import 'core/module_screens.dart';
+import 'core/permissions.dart';
 import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
@@ -397,8 +398,16 @@ class _HomeShellState extends State<HomeShell> {
       return;
     }
 
+    // A module drawn inside another one has no destination of its own, so its
+    // old URL names nothing: /leads, /reviews and /business_profile were three
+    // sidebar rows until they became tabs inside Marketing. Opening one selects
+    // the tab it is drawn in rather than falling through to the first module.
+    //
+    // Which CHIP of Marketing it lands on is not restored, exactly as
+    // /organization above does not restore a chip inside Settings. The address
+    // holds a destination; the strip inside one is not one.
     _rail = _Rail.modules;
-    _selected = id;
+    _selected = widget.session.me?.module(id)?.parent ?? id;
   }
 
   String _pathFor(_Rail rail, String? id) {
@@ -566,14 +575,15 @@ class _HomeShellState extends State<HomeShell> {
           // for a destination the module registry knows nothing about.
           id: 'my-onboarding',
         ),
-      for (final module in me.reachableModules)
-        if (moduleScreens[module.key] case final screen?)
-          Destination(
-            module.label,
-            screen.icon,
-            screen.build(widget.api, widget.session),
-            id: module.key,
-          ),
+      for (final module in me.modules ?? const <ModuleAccess>[])
+        if (_hasDestination(me, module))
+          if (moduleScreens[module.key] case final screen?)
+            Destination(
+              module.label,
+              screen.icon,
+              screen.build(widget.api, widget.session),
+              id: module.key,
+            ),
     ];
 
     // Pinned to the bottom, under a rule and the empty space.
@@ -1166,12 +1176,99 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  Widget _clockButton(BuildContext context, Me me) {
-    final open = me.timeClock.open != null;
+}
+
+/// The punch control in the top bar.
+///
+/// ── Why only one of the two states breathes ──────────────────────
+///
+/// A pulse is a statement that something is happening NOW. While a shift is
+/// open that is true, and it is the one thing this bar can usefully keep
+/// saying: the clock is running, on every screen, until somebody stops it.
+///
+/// On "Clock In" there is nothing happening to report, and the same animation
+/// would be a control tugging at the corner of every page all day. That half
+/// is deliberately still — which is also what makes the moving half mean
+/// something. Two states that both pulse are one state.
+///
+/// The test worth applying to anything perpetual added to this bar: it has to
+/// END, and by being acted on rather than by timing out.
+class _ClockButton extends StatefulWidget {
+  const _ClockButton({
+    required this.open,
+    required this.busy,
+    required this.onPressed,
+  });
+
+  /// A shift is open — the button says Clock Out, and the chip breathes.
+  final bool open;
+
+  /// A punch is in flight. The control goes dead rather than disappearing: a
+  /// second tap posts the same punch twice.
+  final bool busy;
+
+  final VoidCallback onPressed;
+
+  @override
+  State<_ClockButton> createState() => _ClockButtonState();
+}
+
+class _ClockButtonState extends State<_ClockButton>
+    with SingleTickerProviderStateMixin {
+  /// Slow on purpose. At a heartbeat's pace this is a control demanding to be
+  /// dealt with; at a breath's it is the bar holding a fact.
+  late final _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_ClockButton old) {
+    super.didUpdateWidget(old);
+    _sync();
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  /// Running only while there is a shift to report, and never for somebody who
+  /// has asked their device for less motion — this animation repeats for as
+  /// long as the app is open, which is precisely what that setting is about.
+  /// Same call as the structure canvas makes before it animates a layout.
+  ///
+  /// In `didChangeDependencies` as well as `didUpdateWidget` because the
+  /// MediaQuery is a dependency: the answer can change without this widget's
+  /// own arguments changing.
+  void _sync() {
+    final wanted = widget.open && !MediaQuery.disableAnimationsOf(context);
+
+    if (wanted == _pulse.isAnimating) return;
+
+    if (wanted) {
+      _pulse.repeat(reverse: true);
+    } else {
+      // reset rather than stop: stopping leaves the chip at whatever alpha the
+      // last frame happened to land on, so clocking out could finish on a
+      // half-lit button.
+      _pulse.reset();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final label = UiStrings.t(
-      open ? 'time_clock.clock_out' : 'time_clock.clock_in',
+      widget.open ? 'time_clock.clock_out' : 'time_clock.clock_in',
     );
-    final color = open
+    final color = widget.open
         ? EzBiziTheme.clockOut(context)
         : EzBiziTheme.clockIn(context);
 
@@ -1179,25 +1276,84 @@ class _HomeShellState extends State<HomeShell> {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Tooltip(
         message: label,
-        child: OutlinedButton.icon(
-          onPressed: _punching ? null : _punch,
-          icon: Icon(open ? Icons.logout : Icons.login, size: 18),
-          label: Text(label),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: color,
-            disabledForegroundColor: color.withValues(alpha: 0.55),
-            side: BorderSide(color: color),
-            backgroundColor: Colors.transparent,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            minimumSize: const Size(0, 32),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            visualDensity: VisualDensity.compact,
-            shape: const StadiumBorder(),
+        child: AnimatedBuilder(
+          animation: _pulse,
+          // Handed through rather than rebuilt: only the fill and the halo
+          // change per frame, so a 60fps breath does not rebuild an Icon and a
+          // Text sixty times a second.
+          child: OutlinedButton.icon(
+            onPressed: widget.busy ? null : widget.onPressed,
+            icon: Icon(widget.open ? Icons.logout : Icons.login, size: 18),
+            label: Text(label),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: color,
+              disabledForegroundColor: color.withValues(alpha: 0.55),
+              side: BorderSide(color: color),
+              // Transparent so the animated fill behind it shows through
+              // instead of the two stacking into a flat block.
+              backgroundColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+              shape: const StadiumBorder(),
+            ),
           ),
+          builder: (context, child) {
+            // Eased, not linear: a breath swells and eases off, and a straight
+            // ramp turning round at each end reads as a blink.
+            final t = widget.open
+                ? Curves.easeInOut.transform(_pulse.value)
+                : 0.0;
+
+            return DecoratedBox(
+              key: const Key('clock-pulse'),
+              decoration: BoxDecoration(
+                // The button is a StadiumBorder; anything past half its height
+                // is the same shape.
+                borderRadius: BorderRadius.circular(999),
+                // Never falls to nothing while a shift is open, so the chip
+                // still reads as live in a still frame — a screenshot, or
+                // somebody running with animations switched off.
+                color: color.withValues(
+                  alpha: widget.open ? 0.08 + 0.14 * t : 0.0,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.28 * t),
+                    blurRadius: 12 * t,
+                    spreadRadius: 1.5 * t,
+                  ),
+                ],
+              ),
+              child: child,
+            );
+          },
         ),
       ),
     );
   }
+}
+
+/// Does this module get a row of its own in the sidebar?
+///
+/// Three answers, and the third is the one worth writing down.
+///
+///   - A module drawn INSIDE another does not. It is a chip in that module's
+///     strip, and a row here as well would be the same screen in two places
+///     disagreeing about which one you are on.
+///   - An ordinary module does, when this person can reach it. Unchanged.
+///   - A module this person CANNOT reach still does, when something drawn
+///     inside it is reachable. Marketing's permission and Leads' are
+///     independent — nesting is a layout fact, not a grant — so a role holding
+///     `leads.view` and not `marketing.view` would otherwise have lost Leads
+///     the moment it moved: the permission untouched, the screen simply gone.
+///     They land on Marketing holding one chip, which is the honest answer.
+bool _hasDestination(Me me, ModuleAccess module) {
+  if (module.parent != null) return false;
+  if (module.reachable) return true;
+
+  return me.reachableModules.any((m) => m.parent == module.key);
 }
 
 /// Wrap in a different theme, or do not wrap at all.

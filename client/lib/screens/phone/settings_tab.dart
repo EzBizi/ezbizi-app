@@ -7,8 +7,11 @@ import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/tag.dart';
+import 'flows_pane.dart';
+import 'hours_pane.dart';
 import 'numbers_pane.dart';
 import 'ring_groups_pane.dart';
+import 'trust_pane.dart';
 import 'service_request_pane.dart';
 
 /// Phone › Settings — layout 6: a rail of sections, and the form beside it.
@@ -278,10 +281,10 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     return switch (_section) {
       0 => _connectionBody(),
       1 => NumbersPane(api: widget.api, session: widget.session),
-      2 => _unbuilt('Call flows will be written here.'),
-      3 => _unbuilt('Opening hours will be set here.'),
+      2 => FlowsPane(api: widget.api, session: widget.session),
+      3 => HoursPane(api: widget.api, session: widget.session),
       4 => RingGroupsPane(api: widget.api, session: widget.session),
-      5 => _unbuilt('Caller ID trust will be set here.'),
+      5 => TrustPane(api: widget.api, session: widget.session),
       _ => _unbuilt('Messaging campaigns will be set here.'),
     };
   }

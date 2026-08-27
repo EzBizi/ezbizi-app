@@ -498,7 +498,10 @@ class _RoleSection {
   final String? hint;
   final List<PermissionModule> modules;
 
-  bool get isTab => modules.length == 1 && modules.first.isSidebarTab;
+  /// This section IS a tab: the first module is the destination itself, and
+  /// anything after it is drawn inside that tab. The tile carries the name, so
+  /// the section needs no heading of its own.
+  bool get isTab => modules.first.isOwnDestination;
 }
 
 class _RoleCard extends StatelessWidget {
@@ -970,7 +973,16 @@ class _RoleEditorState extends State<_RoleEditor> {
                 ],
                 const SizedBox(height: 8),
               ],
-              for (final module in section.modules) _moduleTile(module),
+              for (final module in section.modules)
+                // Indented under the tab it is drawn inside, which is the only
+                // thing on this screen that says so.
+                if (module.parent == null)
+                  _moduleTile(module)
+                else
+                  Padding(
+                    padding: const EdgeInsets.only(left: 24),
+                    child: _moduleTile(module),
+                  ),
             ],
 
           if (_error != null) ...[
@@ -1014,11 +1026,22 @@ class _RoleEditorState extends State<_RoleEditor> {
   );
 
   /// Tabs first, in sidebar order, then Organization, then Settings.
+  ///
+  /// A module drawn inside another (Leads, Reviews and Business Profile inside
+  /// Marketing) is listed under its parent's tab rather than as a tab of its
+  /// own, so the grants are laid out the way the app they grant is. It stays
+  /// one switch per module: nesting a row does not tie the two together, and
+  /// the server would refuse the implied grant if it did.
   List<_RoleSection> _sections(List<PermissionModule> modules) {
     final tabs = <PermissionModule>[];
     final nested = <String, List<PermissionModule>>{};
+    final children = <String, List<PermissionModule>>{};
 
     for (final module in modules) {
+      if (module.parent case final parent?) {
+        (children[parent] ??= []).add(module);
+        continue;
+      }
       if (module.isSidebarTab) {
         tabs.add(module);
         continue;
@@ -1026,9 +1049,30 @@ class _RoleEditorState extends State<_RoleEditor> {
       (nested[module.groupKey] ??= []).add(module);
     }
 
+    // A child whose parent is not in the tree, drawn as a tab of its own.
+    //
+    // The server cannot produce one today: a parent has to be registered before
+    // its children, and the grantable tree omits nothing grantable. It is here
+    // because the alternative failure is a permission that exists, is held, and
+    // appears NOWHERE in the editor — and an administrator cannot report a row
+    // they cannot see.
+    final drawn = {for (final tab in tabs) tab.key};
+
     return [
       for (final module in tabs)
-        _RoleSection(key: module.key, label: module.label, modules: [module]),
+        _RoleSection(
+          key: module.key,
+          label: module.label,
+          modules: [module, ...?children[module.key]],
+        ),
+      for (final entry in children.entries)
+        if (!drawn.contains(entry.key))
+          for (final orphan in entry.value)
+            _RoleSection(
+              key: orphan.key,
+              label: orphan.label,
+              modules: [orphan],
+            ),
       for (final groupKey in const ['organization', 'settings'])
         if (nested[groupKey] case final members?)
           _RoleSection(

@@ -60,6 +60,7 @@ use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\Phone\CallsController as PhoneCallsController;
 use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
+use App\Http\Controllers\Api\Phone\FlowsController as PhoneFlowsController;
 use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
 use App\Http\Controllers\Api\Phone\MessagesController as PhoneMessagesController;
 use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
@@ -733,6 +734,13 @@ Route::prefix('v1')
 
         // Named open-hours schedules on a connection. Create may take a number
         // so franchise lines default timezone from franchises.timezone.
+        // Call menus. One menu per flow — TwimlRenderer reads the first it
+        // finds, so an editor that drew a tree would draw one that never runs.
+        Route::get('phone/flows', [PhoneFlowsController::class, 'index']);
+        Route::post('phone/flows', [PhoneFlowsController::class, 'store']);
+        Route::patch('phone/flows/{flow}', [PhoneFlowsController::class, 'update']);
+        Route::delete('phone/flows/{flow}', [PhoneFlowsController::class, 'destroy']);
+
         Route::get('phone/hours', [PhoneHoursController::class, 'index']);
         Route::post('phone/hours', [PhoneHoursController::class, 'store']);
         Route::get('phone/hours/{schedule}', [PhoneHoursController::class, 'show']);

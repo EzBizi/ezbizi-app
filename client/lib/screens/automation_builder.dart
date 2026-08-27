@@ -411,7 +411,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       if (module.triggers.isNotEmpty)
         PickerGroup(
           key: module.key,
-          label: module.label,
+          // "Marketing › Leads" where the app draws Leads inside Marketing, so
+          // the picker is grouped the way the person writing the rule just
+          // navigated. See AutomationCatalogue.pathLabelOf.
+          label: widget.catalogue.pathLabelOf(module),
           items: [
             for (final trigger in module.triggers)
               PickerItem(
@@ -465,7 +468,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         if (module.actions.isNotEmpty)
           PickerGroup(
             key: module.key,
-            label: module.label,
+            label: widget.catalogue.pathLabelOf(module),
             items: [
               for (final action in module.actions)
                 _moduleItem(module, action, subject),
@@ -644,7 +647,9 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
 
     for (final module in widget.catalogue.modules) {
       for (final action in module.actions) {
-        if (action.key == picked) return '${module.label} › ${action.label}';
+        if (action.key == picked) {
+          return '${widget.catalogue.pathLabelOf(module)} › ${action.label}';
+        }
       }
     }
 

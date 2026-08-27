@@ -160,6 +160,114 @@ class MarketingModuleTest extends TestCase
         return $marketing;
     }
 
+    // ── the three modules drawn inside it ────────────────────────
+
+    /**
+     * Leads, Reviews and Business Profile are tabs INSIDE Marketing.
+     *
+     * The owner's call: the sidebar was fifteen rows deep and three of them were
+     * the same subject — what the public is told about the business, what they
+     * say back, and who rang. They are still three modules, and this is the one
+     * fact that changed about them.
+     */
+    public function test_the_three_public_facing_modules_are_drawn_inside_marketing(): void
+    {
+        $registry = app(ModuleRegistry::class);
+
+        $this->assertSame(
+            ['leads', 'reviews', 'business_profile'],
+            array_map(fn ($m) => $m->key, $registry->childrenOf(self::MODULE)),
+            'Registry order is the tab order, so this is the order of the strip.',
+        );
+
+        $this->assertNull(
+            $registry->get(self::MODULE)?->parent,
+            'Marketing is top level — nesting is one deep.',
+        );
+    }
+
+    /**
+     * Nested is not granted.
+     *
+     * The failure worth guarding: somebody reads "Leads is inside Marketing" as
+     * a permission relationship and lets `marketing.view` carry the three with
+     * it. That is a silent grant of three modules' data, and §4 does not let a
+     * layout decision make one.
+     */
+    public function test_being_inside_marketing_grants_nothing(): void
+    {
+        $alpha    = $this->provisionTenant('Theta');
+        $marketer = $this->userWithRole($alpha, 'Marketer', ['marketing.view']);
+
+        $modules = collect(
+            $this->signedInAs($marketer)->getJson('/api/v1/me')->assertOk()->json('data.modules')
+        )->keyBy('key');
+
+        $this->assertTrue($modules['marketing']['reachable']);
+
+        foreach (['leads', 'reviews', 'business_profile'] as $key) {
+            $this->assertFalse(
+                $modules[$key]['reachable'],
+                "{$key} came with marketing.view, which is a grant nobody made.",
+            );
+            $this->assertSame(self::MODULE, $modules[$key]['parent']);
+        }
+    }
+
+    /**
+     * And the reverse: holding a child's view without the parent's.
+     *
+     * This is the case that decides whether the move can take a module AWAY
+     * from a role that holds it. The client draws Marketing for the sake of the
+     * one tab this person may open, so `parent` has to travel even when the
+     * parent itself is out of reach.
+     */
+    public function test_a_child_is_reachable_without_the_parent(): void
+    {
+        $alpha  = $this->provisionTenant('Iota');
+        $caller = $this->userWithRole($alpha, 'Caller', ['leads.view']);
+
+        $modules = collect(
+            $this->signedInAs($caller)->getJson('/api/v1/me')->assertOk()->json('data.modules')
+        )->keyBy('key');
+
+        $this->assertTrue($modules['leads']['reachable']);
+        $this->assertFalse($modules['marketing']['reachable']);
+        $this->assertSame(self::MODULE, $modules['leads']['parent']);
+    }
+
+    /** The roles editor is built from this, and nests on the same field. */
+    public function test_the_grantable_tree_says_where_each_module_is_drawn(): void
+    {
+        $alpha = $this->provisionTenant('Kappa');
+        $admin = $alpha['admin'];
+
+        $modules = collect(
+            $this->signedInAs($admin)->getJson('/api/v1/roles/catalogue')->assertOk()
+                ->json('modules')
+        )->keyBy('key');
+
+        $this->assertSame(self::MODULE, $modules['leads']['parent']);
+        $this->assertNull($modules['marketing']['parent']);
+    }
+
+    /** The automation builder groups its pickers the same way. */
+    public function test_the_automation_catalogue_says_where_each_module_is_drawn(): void
+    {
+        $alpha  = $this->provisionTenant('Lambda');
+        $caller = $this->userWithRole($alpha, 'Caller', [
+            'leads.view', 'marketing.view', 'automations.view',
+        ]);
+
+        $modules = collect(
+            $this->signedInAs($caller)->getJson('/api/v1/automations/catalogue')->assertOk()
+                ->json('data.modules')
+        )->keyBy('key');
+
+        $this->assertSame(self::MODULE, $modules['leads']['parent']);
+        $this->assertNull($modules['marketing']['parent']);
+    }
+
     // ── the §5.5 standing rule, at the moment the module is declared ──
 
     public function test_the_module_declares_an_automation_surface_rather_than_an_exemption(): void

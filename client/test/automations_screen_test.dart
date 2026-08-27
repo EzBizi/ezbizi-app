@@ -53,6 +53,40 @@ void main() {
     expect(find.text('Chase completions'), findsOneWidget);
   });
 
+  /// Leads is a module of its own that the app draws inside Marketing, and the
+  /// builder groups its events where somebody just navigated to them — rather
+  /// than under a heading for a tab that no longer exists on its own.
+  testWidgets('a module drawn inside another is grouped under it', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(catalogue: _catalogueWithNesting));
+    await _tap(tester, find.text('Build'));
+
+    expect(find.text('Marketing › Leads'), findsOneWidget);
+    expect(
+      find.text('Leads'),
+      findsNothing,
+      reason: 'A bare heading says it is a tab of its own, and it is not.',
+    );
+
+    // A top-level module is untouched — the path is where it is drawn, not
+    // decoration applied to every row.
+    expect(find.text('Customers'), findsOneWidget);
+  });
+
+  /// The same person may hold `leads.view` and not `marketing.view`, and the
+  /// catalogue only carries what they can reach. Naming a tab they cannot open
+  /// would be worse than not naming one at all.
+  testWidgets('a child whose parent is out of reach is grouped by its own name', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(catalogue: _catalogueWithOrphanedChild));
+    await _tap(tester, find.text('Build'));
+
+    expect(find.text('Leads'), findsOneWidget);
+    expect(find.text('Marketing › Leads'), findsNothing);
+  });
+
   testWidgets('events are grouped by category and named, never shown as keys', (
     tester,
   ) async {
@@ -831,6 +865,54 @@ Map<String, Object?> _catalogueWithoutSubjects() => {
           if (entry.key != 'subject') entry.key: entry.value,
       },
   ],
+};
+
+/// Leads drawn inside Marketing, which is the shape the server sends.
+final _catalogueWithNesting = {
+  ..._catalogue,
+  'modules': [
+    ...(_catalogue['modules'] as List),
+    {
+      'key': 'marketing',
+      'label': 'Marketing',
+      'parent': null,
+      'subject': null,
+      'triggers': [
+        {
+          'key': 'newsletter.sent',
+          'label': 'Newsletter sent',
+          'description': 'A newsletter went out.',
+        },
+      ],
+      'declared_actions': [],
+    },
+    _leadsModule('marketing'),
+  ],
+};
+
+/// The same, for somebody whose role does not reach Marketing itself — so it is
+/// not in the catalogue at all and there is nothing to name the path after.
+final _catalogueWithOrphanedChild = {
+  ..._catalogue,
+  'modules': [
+    ...(_catalogue['modules'] as List),
+    _leadsModule('marketing'),
+  ],
+};
+
+Map<String, Object?> _leadsModule(String? parent) => {
+  'key': 'leads',
+  'label': 'Leads',
+  'parent': parent,
+  'subject': {'key': 'lead', 'label': 'Lead', 'writable_fields': []},
+  'triggers': [
+    {
+      'key': 'lead.received',
+      'label': 'Lead received',
+      'description': 'An enquiry arrived from a connected advertising account.',
+    },
+  ],
+  'declared_actions': [],
 };
 
 MockClientHandler _handler({

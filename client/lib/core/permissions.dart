@@ -28,6 +28,7 @@ class ModuleAccess {
     required this.label,
     required this.available,
     required this.reachable,
+    this.parent,
   });
 
   final String key;
@@ -45,6 +46,15 @@ class ModuleAccess {
   /// AND this person's role holds the module's view permission.
   final bool reachable;
 
+  /// The module this one is drawn INSIDE, or null for a module that stands on
+  /// its own. Leads, Reviews and Business Profile name `marketing`.
+  ///
+  /// Where it is drawn, and nothing else. A parent grants nothing about its
+  /// children and a child grants nothing about its parent — [reachable] is
+  /// still the only answer to "may this person open it", and the two are
+  /// independent in both directions. See ModuleDefinition::$parent.
+  final String? parent;
+
   /// Absent means available, absent means NOT reachable — and the asymmetry is
   /// deliberate, mirroring the server (`ModuleAvailability` fails open because
   /// no flag row means nobody ever restricted it; permissions fail closed
@@ -54,6 +64,10 @@ class ModuleAccess {
     label: json['label'] as String? ?? json['key'] as String,
     available: json['available'] != false,
     reachable: json['reachable'] == true,
+    // Absent on a server that predates the nesting, which is the same shape as
+    // a top-level module — so an older server draws every module in the
+    // sidebar, exactly as it did before.
+    parent: json['parent'] as String?,
   );
 
   /// Null when the server did not send the block at all, as distinct from
@@ -131,6 +145,7 @@ class PermissionModule {
     this.groupKey = 'tab',
     this.groupLabel = '',
     this.groupHint,
+    this.parent,
   });
 
   final String key;
@@ -143,6 +158,18 @@ class PermissionModule {
   final String? groupHint;
 
   bool get isSidebarTab => groupKey == 'tab';
+
+  /// The module this one is drawn inside — `marketing` for Leads, Reviews and
+  /// Business Profile. Null for a module that stands on its own.
+  ///
+  /// The editor nests the row so the grants read in the same shape as the app
+  /// they are granted for. It is a layout fact and only that: a parent's switch
+  /// grants nothing about a child, and each row is still ticked on its own.
+  final String? parent;
+
+  /// A tab of its own in the sidebar — as opposed to one drawn inside another
+  /// module's tab strip, which is still a [isSidebarTab] grant.
+  bool get isOwnDestination => isSidebarTab && parent == null;
 
   /// The platform permits it for this organization (§13). A module switched off
   /// is shown, greyed, with the reason — never hidden, because somebody looking
@@ -183,6 +210,7 @@ class PermissionModule {
       groupKey: group['key'] as String? ?? 'tab',
       groupLabel: group['label'] as String? ?? '',
       groupHint: group['hint'] as String?,
+      parent: json['parent'] as String?,
       actions: (json['actions'] as List<dynamic>? ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(PermissionAction.fromJson)

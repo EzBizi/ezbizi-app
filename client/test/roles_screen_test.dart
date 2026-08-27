@@ -402,6 +402,82 @@ void main() {
   /// Everything about these rows is tenant data — the addresses exist because
   /// somebody connected them — so they arrive on the same answer as the modules
   /// and this end knows nothing about them beyond where to nest them.
+  group('modules drawn inside another module', () {
+    /// Leads, Reviews and Business Profile are tabs inside Marketing, and the
+    /// editor lays the grants out the same way — so an administrator reads the
+    /// tree in the shape of the app they are granting it for.
+    testWidgets('a child is listed under its parent, not as a tab of its own', (
+      tester,
+    ) async {
+      _wide(tester);
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-2', 'Manager', permissions: const [])],
+        catalogue: [
+          _catalogueModule('customers', 'Customers'),
+          _catalogueModule('marketing', 'Marketing'),
+          _catalogueModule('leads', 'Leads', parent: 'marketing'),
+        ],
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      // Present and grantable — nesting hides nothing.
+      expect(find.byKey(const ValueKey('module:leads')), findsOneWidget);
+
+      // Indented, which is the only thing on this screen that says where it is
+      // drawn. Measured rather than asserted on a widget type, because the
+      // indent is the whole statement.
+      final parent = tester.getTopLeft(find.byKey(const ValueKey('module:marketing'))).dx;
+      final child = tester.getTopLeft(find.byKey(const ValueKey('module:leads'))).dx;
+
+      expect(child, greaterThan(parent));
+
+      // And it is under Marketing rather than somewhere else in the list.
+      final marketingY = tester.getTopLeft(find.byKey(const ValueKey('module:marketing'))).dy;
+      final leadsY = tester.getTopLeft(find.byKey(const ValueKey('module:leads'))).dy;
+
+      expect(leadsY, greaterThan(marketingY));
+    });
+
+    /// The rule the nesting must not quietly break (§4): a switch grants its
+    /// own module and nothing else.
+    testWidgets('ticking the parent does not grant the child', (tester) async {
+      _wide(tester);
+
+      Map<String, dynamic>? sent;
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-2', 'Manager', permissions: const [])],
+        catalogue: [
+          _catalogueModule('marketing', 'Marketing'),
+          _catalogueModule('leads', 'Leads', parent: 'marketing'),
+        ],
+        onPatch: (body) => sent = body,
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(_tabCheckbox('marketing'));
+      await tester.pumpAndSettle();
+
+      expect(_tabState('leads'), isFalse);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(
+        (sent!['permissions'] as List).where((k) => '$k'.startsWith('leads.')),
+        isEmpty,
+        reason: 'Drawing Leads inside Marketing is a layout fact, not a grant.',
+      );
+    });
+  });
+
   group('inboxes nested under their module', () {
     testWidgets('the tree carries this organization\'s own addresses', (
       tester,
@@ -1124,11 +1200,13 @@ Map<String, dynamic> _catalogueModule(
   String groupKey = 'tab',
   String groupLabel = '',
   String? groupHint,
+  String? parent,
 }) => {
   'key': key,
   'label': label,
   'available': available,
   'unavailable_reason': reason,
+  'parent': parent,
   'group': {
     'key': groupKey,
     'label': groupLabel.isEmpty ? label : groupLabel,

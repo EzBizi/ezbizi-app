@@ -1373,6 +1373,10 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key:     'leads',
                 label:   'Leads',
+                // Drawn as a tab inside Marketing rather than as a row of its own
+                // in a sidebar that already holds fifteen. Its permissions are
+                // untouched by that: this says where it appears, not who reaches it.
+                parent:  'marketing',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 triggers: [
@@ -1468,6 +1472,10 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key:     'reviews',
                 label:   'Reviews',
+                // Drawn as a tab inside Marketing rather than as a row of its own
+                // in a sidebar that already holds fifteen. Its permissions are
+                // untouched by that: this says where it appears, not who reaches it.
+                parent:  'marketing',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish'],
                 subject: new AutomationSubject(Review::class, 'Review'),
                 triggers: [
@@ -1546,6 +1554,10 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key:     'business_profile',
                 label:   'Business Profile',
+                // Drawn as a tab inside Marketing rather than as a row of its own
+                // in a sidebar that already holds fifteen. Its permissions are
+                // untouched by that: this says where it appears, not who reaches it.
+                parent:  'marketing',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
                 // `key:` declared for the same reason InventoryItem declares
                 // `item`: the default is strtolower(class_basename()), which

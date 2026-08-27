@@ -112,6 +112,19 @@ class AutomationsController extends Controller
                 'key'   => $key,
                 'label' => $module->label,
                 /*
+                 * Where the module is drawn in the app (ModuleDefinition::$parent),
+                 * so the builder's pickers group events the way the person
+                 * writing the rule just navigated to them. Somebody who found
+                 * Leads as a tab inside Marketing should not have to look for a
+                 * separate Leads heading here.
+                 *
+                 * The key, not a composed label: the builder already holds every
+                 * module and can read the parent's own wording off the same
+                 * list, and a second label composed here would be a second
+                 * chance to disagree with it.
+                 */
+                'parent' => $module->parent,
+                /*
                  * The RECORD these events are about, and what a rule may set on
                  * it.
                  *

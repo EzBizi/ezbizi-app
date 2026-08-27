@@ -196,6 +196,10 @@ class PermissionCatalogue
             return [
                 'key'       => $module->key,
                 'label'     => $module->label,
+                // Where it is drawn, not who may reach it — see
+                // ModuleDefinition::$parent. The client needs it to know that
+                // Leads is a tab inside Marketing rather than a destination.
+                'parent'    => $module->parent,
                 'available' => $available,
                 // The tab IS the view permission (§4). `heldBy` has already
                 // dropped unavailable modules, so this cannot be true while
@@ -237,6 +241,11 @@ class PermissionCatalogue
             $modules[] = [
                 'key'       => $module->key,
                 'label'     => $module->label,
+                // The editor nests a child under its parent's heading, so the
+                // grants read in the same shape as the app somebody is granting
+                // them for. It stays one switch per module either way: a parent
+                // grants nothing about its children.
+                'parent'    => $module->parent,
                 'available' => $available,
                 'group'     => $group ?? [
                     'key'   => ModuleDefinition::ROLES_TAB,

@@ -8,6 +8,19 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0109',
+      date: '27 Aug 2026',
+      items: [
+        'Call menus: write what a caller hears and say what each key does — '
+            'ring a group, take a message, forward, or say something and stop.',
+        'Pressing a key now does what the key says. It used to play the menu '
+            'and then ring the line whatever was pressed.',
+        'Opening hours, per line, on the clock where the phone actually is.',
+        'Trust says where each carrier registration has got to, and what can '
+            'be done about it — usually nothing, which it now says.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0108',
       date: '27 Aug 2026',
       items: [
