@@ -7,6 +7,7 @@ import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/tag.dart';
+import 'numbers_pane.dart';
 import 'ring_groups_pane.dart';
 import 'service_request_pane.dart';
 
@@ -276,9 +277,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   Widget _sectionBody() {
     return switch (_section) {
       0 => _connectionBody(),
-      1 => _unbuilt(
-        'Buy and grant numbers here. None are listed on this screen yet.',
-      ),
+      1 => NumbersPane(api: widget.api, session: widget.session),
       2 => _unbuilt('Call flows will be written here.'),
       3 => _unbuilt('Opening hours will be set here.'),
       4 => RingGroupsPane(api: widget.api, session: widget.session),

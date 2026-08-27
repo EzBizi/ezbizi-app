@@ -76,6 +76,13 @@ class _PhoneServiceRequestPaneState extends State<PhoneServiceRequestPane> {
 
   Me get _me => widget.session.me!;
 
+  /// The companies this view is looking at, in the order the server sent them.
+  List<_CompanyOption> get _companiesInView {
+    final inView = {for (final c in _me.companiesInView) c.id};
+
+    return _companies.where((c) => inView.contains(c.id)).toList();
+  }
+
   bool get _canAsk => _me.can('phone.edit');
 
   String? get _askRefusal => _me.refusal('phone.edit', 'ask for phone service');
@@ -208,7 +215,7 @@ class _PhoneServiceRequestPaneState extends State<PhoneServiceRequestPane> {
   }
 
   Widget _callToAction(ThemeData theme) {
-    final nothingYet = _companies.every((c) => !c.hasService);
+    final nothingYet = _companiesInView.every((c) => !c.hasService);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -261,8 +268,20 @@ class _PhoneServiceRequestPaneState extends State<PhoneServiceRequestPane> {
   Widget _statusCard(ThemeData theme) {
     final latest = _latest!;
     final status = latest['status'] as String? ?? '';
+
+    // Only what this view is looking at.
+    //
+    // Standing in A-1 Chimney, this card listed Everdoors and EzBizi too —
+    // every company the request happened to name. That is reach, not view, and
+    // it is the one thing AGENTS.md says a company screen must never do: the
+    // switcher is the only control that lists reach.
+    //
+    // An organization view still sees all of them, because that IS the view.
+    final inView = {for (final c in _me.companiesInView) c.id};
+
     final companies = (latest['companies'] as List? ?? const [])
         .whereType<Map<String, dynamic>>()
+        .where((row) => inView.contains(row['company_id']))
         .toList();
 
     return Card(
@@ -348,7 +367,12 @@ class _PhoneServiceRequestPaneState extends State<PhoneServiceRequestPane> {
 
             const SizedBox(height: 16),
             Text('Which companies need it', style: theme.textTheme.labelLarge),
-            for (final company in _companies)
+
+            // Same rule as the status card above: the view, not the reach.
+            // Offering a sibling here would let somebody standing in A-1
+            // Chimney ask for phone service on Everdoors, which is the exact
+            // thing the switcher exists to prevent.
+            for (final company in _companiesInView)
               CheckboxListTile(
                 value: company.hasService || _picked.contains(company.id),
                 // A company that already has it is ticked and locked rather

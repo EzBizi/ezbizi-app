@@ -756,7 +756,12 @@ class _HomeShellState extends State<HomeShell> {
               },
             ),
             actions: [
-              if (me.timeClock.showButton) _clockButton(context, me),
+              if (me.timeClock.showButton)
+                _ClockButton(
+                  open: me.timeClock.open != null,
+                  busy: _punching,
+                  onPressed: _punch,
+                ),
               // Light / dark, one tap, from anywhere.
               //
               // It is the same preference the account screen holds (§2.1 category

@@ -251,6 +251,23 @@ final class HttpTwilioGateway implements TwilioGateway
         return $out;
     }
 
+    public function listIncoming(PhoneConnection $connection): array
+    {
+        $out = [];
+
+        foreach ($this->connectionClient($connection)->incomingPhoneNumbers->read([], 200) as $number) {
+            $out[] = [
+                'sid' => (string) $number->sid,
+                'phone_number' => (string) $number->phoneNumber,
+                'friendly_name' => (string) $number->friendlyName,
+                'voice_url' => (string) $number->voiceUrl,
+                'sms_url' => (string) $number->smsUrl,
+            ];
+        }
+
+        return $out;
+    }
+
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array
     {
         $created = $this->connectionClient($connection)->incomingPhoneNumbers->create([

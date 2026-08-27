@@ -83,6 +83,17 @@ interface TwilioGateway
      * @param  array<string, mixed>  $params
      * @return array{sid: string, phone_number: string}
      */
+    /**
+     * Numbers this Twilio account already holds.
+     *
+     * Adopting an account means adopting what is on it. A company that has
+     * been answering five lines for a year does not want to buy them again,
+     * and a Numbers screen that showed none of them would read as broken.
+     *
+     * @return list<array{sid: string, phone_number: string, friendly_name: string, voice_url: string, sms_url: string}>
+     */
+    public function listIncoming(PhoneConnection $connection): array;
+
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array;
 
     /**

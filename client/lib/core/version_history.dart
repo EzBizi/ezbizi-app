@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0108',
+      date: '27 Aug 2026',
+      items: [
+        'Numbers: the lines a phone account already holds can be brought into '
+            'EzBizi, which points them here so their calls arrive.',
+        'A line says who it rings, its hours, whether it records, and what '
+            'happens when it is closed.',
+        'Looking at one company no longer lists the others on Phone settings.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0107',
       date: '27 Aug 2026',
       items: [

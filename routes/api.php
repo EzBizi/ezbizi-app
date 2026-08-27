@@ -698,6 +698,9 @@ Route::prefix('v1')
 
         // Numbers hang on org / company / franchise. List is grant ∩ reach ∩
         // view-scope; buy/release need phone.edit and a resolved Twilio connection.
+        // Literal paths before {number}, or "importable" is captured as an id.
+        Route::get('phone/numbers/importable', [PhoneNumbersController::class, 'importable']);
+        Route::post('phone/numbers/import', [PhoneNumbersController::class, 'import']);
         Route::get('phone/numbers', [PhoneNumbersController::class, 'index']);
         Route::post('phone/numbers', [PhoneNumbersController::class, 'store']);
 

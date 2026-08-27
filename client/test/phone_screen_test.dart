@@ -375,6 +375,212 @@ void main() {
     expect(find.text('Send the request'), findsNothing);
   });
 
+  group('Settings › Numbers', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_name': 'A-1 Chimney',
+      'kind': 'subaccount',
+      'status': 'connected',
+    };
+
+    Future<void> openNumbers(WidgetTester tester) async {
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Numbers'));
+    }
+
+    testWidgets('lines already on the account are offered, and say when they answer elsewhere', (tester) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        importable: const [
+          {'sid': 'PN1', 'e164': '+15612323929', 'label': 'EZBZ', 'answers_elsewhere': true},
+          {'sid': 'PN2', 'e164': '+19737820956', 'label': 'Bar', 'answers_elsewhere': false},
+        ],
+      );
+
+      await openNumbers(tester);
+
+      expect(find.text('EZBZ · +15612323929'), findsOneWidget);
+      expect(find.text('Bar · +19737820956'), findsOneWidget);
+
+      // The one that still answers somewhere else says so BEFORE importing.
+      expect(
+        find.textContaining('currently answers somewhere else'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('importing sends the picked sids and the place', (tester) async {
+      Map<String, dynamic>? sent;
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        importable: const [
+          {'sid': 'PN1', 'e164': '+15612323929', 'label': 'EZBZ', 'answers_elsewhere': false},
+          {'sid': 'PN2', 'e164': '+19737820956', 'label': 'Bar', 'answers_elsewhere': false},
+        ],
+        onImport: (body) => sent = body,
+      );
+
+      await openNumbers(tester);
+
+      await tester.tap(find.byKey(const ValueKey('import:PN2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import 1 line'));
+      await tester.pumpAndSettle();
+
+      expect(sent, isNotNull);
+      expect(sent!['sids'], ['PN2']);
+      expect(sent!['scope_type'], 'company');
+      expect(sent!['scope_id'], 'co-1');
+    });
+
+    testWidgets('a line with no ring group says calls go to voicemail', (tester) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: const [
+          {
+            'id': 'n-1',
+            'e164': '+15612323929',
+            'label': 'EZBZ',
+            'record': true,
+            'transcribe': false,
+            'after_hours': 'voicemail',
+            'ring_group_id': null,
+          },
+        ],
+      );
+
+      await openNumbers(tester);
+
+      expect(
+        find.text('No ring group — calls go straight to voicemail.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('editing a line saves what it rings and how it behaves', (tester) async {
+      Map<String, dynamic>? patched;
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        ringGroups: const [
+          {'id': 'rg-1', 'name': 'Front desk', 'connection_id': 'cx-1'},
+        ],
+        numbers: const [
+          {
+            'id': 'n-1',
+            'e164': '+15612323929',
+            'label': 'EZBZ',
+            'record': false,
+            'transcribe': false,
+            'after_hours': 'voicemail',
+            'ring_group_id': null,
+          },
+        ],
+        onNumberPatch: (body) => patched = body,
+      );
+
+      await openNumbers(tester);
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Nobody — go straight to voicemail'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Front desk').last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(patched, isNotNull);
+      expect(patched!['ring_group_id'], 'rg-1');
+      expect(patched!['after_hours'], 'voicemail');
+    });
+
+    testWidgets('it fits a 375px screen', (tester) async {
+      await _pump(
+        tester,
+        size: const Size(375, 800),
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        importable: const [
+          {'sid': 'PN1', 'e164': '+15612323929', 'label': 'EZBZ', 'answers_elsewhere': true},
+        ],
+      );
+
+      await openNumbers(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(Dialog), findsNothing);
+    });
+  });
+
+  /// AGENTS.md standing rule: a company view shows the view, never the reach.
+  ///
+  /// This shipped wrong. Standing in A-1 Chimney, the Connection screen listed
+  /// "Everdoors — switched on" and "EzBizi — switched on" because the request
+  /// named all three and the card rendered whatever it was sent.
+  group('Settings › Connection is scoped to the current view', () {
+    const threeCompanies = [
+      {'id': 'co-1', 'name': 'A-1 Chimney'},
+      {'id': 'co-2', 'name': 'Everdoors'},
+      {'id': 'co-3', 'name': 'EzBizi'},
+    ];
+
+    const grantedAll = {
+      'id': 'req-1',
+      'status': 'approved',
+      'requested_at': '2026-08-27T10:00:00Z',
+      'decided_at': '2026-08-27T11:00:00Z',
+      'decision_note': null,
+      'companies': [
+        {'company_id': 'co-1', 'name': 'A-1 Chimney', 'approved': true},
+        {'company_id': 'co-2', 'name': 'Everdoors', 'approved': true},
+        {'company_id': 'co-3', 'name': 'EzBizi', 'approved': true},
+      ],
+    };
+
+    testWidgets('standing in one company, the siblings are not named', (tester) async {
+      await _pump(
+        tester,
+        companies: threeCompanies,
+        scope: const {'type': 'company', 'id': 'co-1'},
+        serviceRequest: grantedAll,
+        approvedCompanyIds: const ['co-1', 'co-2', 'co-3'],
+      );
+
+      await _tap(tester, find.text('Settings'));
+
+      expect(find.textContaining('A-1 Chimney'), findsWidgets);
+      expect(find.textContaining('Everdoors'), findsNothing);
+      expect(find.textContaining('EzBizi —'), findsNothing);
+    });
+
+    testWidgets('standing at the organization, every company is named', (tester) async {
+      await _pump(
+        tester,
+        companies: threeCompanies,
+        scope: const {'type': 'organization', 'id': 'org-1'},
+        serviceRequest: grantedAll,
+        approvedCompanyIds: const ['co-1', 'co-2', 'co-3'],
+      );
+
+      await _tap(tester, find.text('Settings'));
+
+      expect(find.textContaining('A-1 Chimney'), findsWidgets);
+      expect(find.textContaining('Everdoors'), findsWidgets);
+    });
+  });
 }
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 
@@ -396,10 +602,14 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 
   await tester.tap(finder.first);
   await tester.pumpAndSettle();
+
 }
 
 Future<void> _pump(
   WidgetTester tester, {
+  List<Map<String, Object?>> importable = const [],
+  List<Map<String, Object?>> schedules = const [],
+  void Function(Map<String, dynamic> body)? onImport,
   Size size = const Size(1280, 900),
   List<String> permissions = const ['phone.view', 'phone.edit'],
   List<Map<String, Object?>> connections = const [],
@@ -445,6 +655,9 @@ Future<void> _pump(
         onRingGroup: onRingGroup,
         onNumberPatch: onNumberPatch,
         onDelete: onDelete,
+        importable: importable,
+        schedules: schedules,
+        onImport: onImport,
       ),
     ),
   );
@@ -495,6 +708,9 @@ Future<void> _pumpShell(WidgetTester tester) async {
 }
 
 MockClientHandler _handler({
+  List<Map<String, Object?>> importable = const [],
+  List<Map<String, Object?>> schedules = const [],
+  void Function(Map<String, dynamic> body)? onImport,
   List<String> permissions = const ['phone.view', 'phone.edit'],
   List<Map<String, Object?>> connections = const [],
   Map<String, Object?>? scope,
@@ -557,6 +773,19 @@ MockClientHandler _handler({
 
     if (path.endsWith('/phone/connections') && request.method == 'GET') {
       return _json({'data': connections});
+    }
+
+    if (path.endsWith('/phone/numbers/importable') && request.method == 'GET') {
+      return _json({'data': importable});
+    }
+
+    if (path.endsWith('/phone/numbers/import') && request.method == 'POST') {
+      onImport?.call(jsonDecode(request.body) as Map<String, dynamic>);
+      return _json({'data': <Map<String, Object?>>[]}, 201);
+    }
+
+    if (path.endsWith('/phone/hours') && request.method == 'GET') {
+      return _json({'data': schedules});
     }
 
     if (path.endsWith('/phone/numbers') && request.method == 'GET') {

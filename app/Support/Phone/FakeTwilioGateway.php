@@ -178,6 +178,20 @@ final class FakeTwilioGateway implements TwilioGateway
         ]];
     }
 
+    /**
+     * Numbers a test can pretend the adopted account already holds.
+     *
+     * @var list<array{sid: string, phone_number: string, friendly_name: string, voice_url: string, sms_url: string}>
+     */
+    public array $incoming = [];
+
+    public function listIncoming(PhoneConnection $connection): array
+    {
+        $this->record(__FUNCTION__, [$connection->id]);
+
+        return $this->incoming;
+    }
+
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array
     {
         $this->record(__FUNCTION__, [$connection->id, $phoneNumber, $params]);
