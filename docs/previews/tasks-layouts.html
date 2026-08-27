@@ -1,0 +1,1044 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EzBizi — Tasks layout review</title>
+  <style>
+    :root {
+      --cyan: #00AEEF;
+      --cyan-dark: #0093CA;
+      --cyan-deep: #00708F;
+      --cyan-wash: #E8F8FD;
+      --ink: #060808;
+      --muted: #5B6672;
+      --quiet: #7D8893;
+      --line: #E9EDF1;
+      --line-strong: #D7DEE5;
+      --surface: #FFFFFF;
+      --surface-alt: #F5F8FA;
+      --canvas: #DDE3E8;
+      --green: #188038;
+      --green-wash: #E7F5EC;
+      --amber: #B05F00;
+      --amber-wash: #FFF3DF;
+      --red: #B42318;
+      --red-wash: #FDECEA;
+      --blue: #1769AA;
+      --blue-wash: #EAF3FA;
+      --shadow: 0 18px 48px rgba(25, 42, 55, .12);
+      --detail-width: 390px;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--canvas); }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button, input, select, textarea { font: inherit; }
+    button { color: inherit; }
+    button, [role="button"] { touch-action: manipulation; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+    [tabindex]:focus-visible {
+      outline: 3px solid rgba(0, 174, 239, .28);
+      outline-offset: 2px;
+    }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+
+    .review {
+      width: min(1600px, 100%);
+      margin: 0 auto;
+      padding: 18px 18px 52px;
+    }
+    .review-panel {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) auto;
+      gap: 16px;
+      align-items: end;
+      margin-bottom: 16px;
+      padding: 18px 20px;
+      background: rgba(255, 255, 255, .97);
+      border: 1px solid var(--line-strong);
+      border-radius: 14px;
+      box-shadow: 0 8px 28px rgba(25, 42, 55, .09);
+      backdrop-filter: blur(10px);
+    }
+    .review-copy h1 { margin: 0 0 3px; font-size: 20px; letter-spacing: -.35px; }
+    .review-copy p { margin: 0; color: var(--muted); max-width: 780px; }
+    .review-copy strong { color: var(--cyan-deep); }
+    .control-stack { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+    .control-group {
+      display: flex;
+      min-height: 44px;
+      padding: 3px;
+      background: var(--surface-alt);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .control-group button {
+      min-width: 42px;
+      min-height: 36px;
+      padding: 7px 11px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .control-group button[aria-pressed="true"] {
+      color: var(--ink);
+      background: var(--surface);
+      box-shadow: 0 1px 4px rgba(17, 31, 42, .12);
+    }
+    .control-group.layout-choice button[aria-pressed="true"] {
+      color: #fff;
+      background: var(--cyan);
+    }
+    .direction-note {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 42px;
+      padding: 10px 12px;
+      border-left: 3px solid var(--cyan);
+      background: var(--cyan-wash);
+      border-radius: 0 9px 9px 0;
+      color: #174255;
+    }
+    .direction-note b { color: var(--cyan-deep); white-space: nowrap; }
+
+    .frame-wrap {
+      width: 100%;
+      margin: 0 auto;
+      transition: width .22s ease;
+    }
+    .frame-wrap[data-size="mobile"] { width: 375px; max-width: 100%; }
+    .app-frame {
+      min-height: 820px;
+      overflow: hidden;
+      background: var(--surface-alt);
+      border: 1px solid var(--line-strong);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    /* Real EzBizi chrome */
+    .topbar {
+      height: 65px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 14px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    .menu-button, .icon-button {
+      display: inline-grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      cursor: pointer;
+      color: var(--muted);
+    }
+    .menu-button:hover, .icon-button:hover { background: var(--surface-alt); color: var(--ink); }
+    .wordmark { display: inline-flex; align-items: baseline; font-size: 21px; font-weight: 800; letter-spacing: -1px; }
+    .wordmark .ez { color: var(--cyan); }
+    .top-separator { width: 1px; height: 20px; background: var(--line-strong); }
+    .place-mark {
+      width: 30px; height: 30px; display: grid; place-items: center;
+      border-radius: 8px; background: var(--ink); color: #fff; font-weight: 800; font-size: 12px;
+    }
+    .scope-button {
+      display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 38px;
+      padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 8px;
+      background: #fff; cursor: pointer; font-weight: 650;
+    }
+    .scope-button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .top-spacer { flex: 1; }
+    .avatar {
+      width: 31px; height: 31px; border-radius: 50%; display: grid; place-items: center;
+      background: var(--ink); color: #fff; font-size: 12px; font-weight: 750;
+    }
+    .app-body { display: grid; grid-template-columns: 218px minmax(0, 1fr); min-height: 755px; }
+    .sidebar {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      padding: 12px 10px 10px;
+      background: var(--surface);
+      border-right: 1px solid var(--line);
+    }
+    .sidebar-title { padding: 7px 11px 10px; color: var(--muted); font-size: 12px; font-weight: 650; }
+    .nav-item {
+      display: flex; align-items: center; gap: 11px; min-height: 42px;
+      padding: 8px 11px; border-radius: 9px; color: #39434D; text-decoration: none;
+    }
+    .nav-item .nav-icon { width: 21px; color: var(--quiet); text-align: center; }
+    .nav-item.on { background: var(--cyan-wash); color: var(--cyan-deep); font-weight: 700; }
+    .nav-item.on .nav-icon { color: var(--cyan-deep); }
+    .sidebar-spacer { flex: 1; }
+    .sidebar-rule { height: 1px; margin: 8px 6px; background: var(--line); }
+    .build-stamp { padding: 9px 11px 3px; color: var(--quiet); font-size: 11px; }
+    .workspace { min-width: 0; overflow: hidden; background: var(--surface-alt); }
+    .bottom-nav { display: none; }
+
+    .module-head {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-height: 64px;
+      padding: 13px 20px 8px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    .module-head h2 { margin: 0; font-size: 25px; line-height: 1.1; letter-spacing: -.65px; }
+    .module-head .subline { margin-top: 3px; color: var(--muted); font-size: 12px; }
+    .view-tabs { display: flex; gap: 7px; margin-left: auto; }
+    .view-tab {
+      min-height: 38px; padding: 7px 12px; border: 1px solid var(--line);
+      border-radius: 999px; background: #fff; color: var(--muted); cursor: pointer;
+      font-weight: 650;
+    }
+    .view-tab.on { color: #fff; border-color: var(--cyan); background: var(--cyan); }
+    .board-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 60px;
+      padding: 9px 16px;
+      overflow-x: auto;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      scrollbar-width: thin;
+    }
+    .board-name {
+      display: flex; align-items: center; gap: 7px; margin-right: 4px;
+      padding-right: 12px; border-right: 1px solid var(--line); font-weight: 750; white-space: nowrap;
+    }
+    .private-pill, .tiny-pill {
+      display: inline-flex; align-items: center; gap: 4px; border-radius: 999px;
+      padding: 3px 8px; font-size: 11px; font-weight: 700; white-space: nowrap;
+    }
+    .private-pill { color: #41515E; background: var(--surface-alt); border: 1px solid var(--line); }
+    .tool-button, .primary-button, .quiet-button, .danger-button {
+      min-height: 40px;
+      border-radius: 9px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .tool-button, .quiet-button { border: 1px solid var(--line); background: #fff; color: #46515C; }
+    .tool-button:hover, .quiet-button:hover { border-color: #BED1DC; background: #FAFCFD; color: var(--ink); }
+    .primary-button { border: 1px solid var(--cyan); background: var(--cyan); color: #fff; }
+    .primary-button:hover { background: var(--cyan-dark); }
+    .danger-button { border: 1px solid #E3B8B4; background: #fff; color: var(--red); }
+    .toolbar-spacer { flex: 1; }
+    .board-canvas { min-height: 630px; background: var(--surface-alt); }
+
+    .notice {
+      display: flex; align-items: flex-start; gap: 10px; margin: 12px 16px 0;
+      padding: 10px 12px; border-radius: 9px; border: 1px solid #E5C88A;
+      background: var(--amber-wash); color: #6F4100;
+    }
+    .notice.error { border-color: #E8B5AF; background: var(--red-wash); color: #74241D; }
+    .notice strong { display: block; color: inherit; }
+
+    /* Shared board details */
+    .group { --group: var(--cyan); }
+    .group.completed { --group: #33B47A; }
+    .group-head {
+      display: flex; align-items: center; gap: 9px; min-height: 45px;
+      color: color-mix(in srgb, var(--group) 72%, #002A3A);
+      font-weight: 780;
+    }
+    .caret { font-size: 12px; }
+    .count { color: var(--quiet); font-weight: 600; font-size: 12px; }
+    .status {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-height: 28px; min-width: 96px; padding: 4px 9px; border-radius: 7px;
+      font-size: 12px; font-weight: 750; text-align: center;
+    }
+    .status.working { color: #7A4300; background: #FFE1A8; }
+    .status.done { color: #126B35; background: #CFEEDB; }
+    .status.stuck { color: #8E261C; background: #F8D1CD; }
+    .status.not-started { color: #46515C; background: #E9EDF1; }
+    .priority { min-width: 62px; justify-content: center; }
+    .priority.high { color: #8E261C; background: var(--red-wash); }
+    .priority.normal { color: #315D78; background: var(--blue-wash); }
+    .priority.low { color: #46604F; background: var(--green-wash); }
+    .owner {
+      width: 29px; height: 29px; display: inline-grid; place-items: center;
+      border-radius: 50%; color: #fff; background: var(--ink); font-size: 10px; font-weight: 800;
+    }
+    .owner.maya { background: #00708F; }
+    .owner.luis { background: #7A4A14; }
+    .owner.sam { background: #345E48; }
+    .due { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .due.overdue { color: var(--red); font-weight: 700; }
+    .link-record { color: var(--cyan-deep); font-weight: 650; }
+    .task-title { font-weight: 650; color: #172029; }
+    .task-number { color: var(--quiet); font: 11px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .subtask-mark { color: var(--quiet); margin-right: 5px; }
+
+    .detail-panel {
+      min-width: 300px;
+      overflow: auto;
+      background: #fff;
+      border-left: 1px solid var(--line-strong);
+    }
+    .detail-head {
+      position: sticky; top: 0; z-index: 2;
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 16px 17px 13px; background: rgba(255,255,255,.97); border-bottom: 1px solid var(--line);
+    }
+    .detail-head h3 { margin: 2px 0 4px; font-size: 18px; line-height: 1.25; letter-spacing: -.25px; }
+    .detail-head .close-detail { margin-left: auto; }
+    .detail-section { padding: 15px 17px; border-bottom: 1px solid var(--line); }
+    .detail-section h4 { margin: 0 0 10px; font-size: 12px; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+    .detail-description { margin: 0; color: #39434D; line-height: 1.6; }
+    .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .fact { padding: 10px; border-radius: 9px; background: var(--surface-alt); }
+    .fact label { display: block; margin-bottom: 4px; color: var(--quiet); font-size: 11px; }
+    .update { display: grid; grid-template-columns: 30px 1fr; gap: 9px; margin-bottom: 12px; }
+    .update .bubble { padding: 10px 11px; border: 1px solid var(--line); border-radius: 3px 10px 10px 10px; }
+    .update .meta { margin-bottom: 4px; font-size: 11px; color: var(--quiet); }
+    .composer { display: grid; gap: 8px; }
+    .composer textarea { min-height: 78px; resize: vertical; padding: 10px; border: 1px solid var(--line-strong); border-radius: 9px; }
+    .composer-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .resize-handle {
+      width: 9px; min-width: 9px; cursor: col-resize; position: relative; background: transparent;
+    }
+    .resize-handle::after {
+      content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: var(--line-strong);
+    }
+    .resize-handle:hover::after, .resize-handle:focus-visible::after { background: var(--cyan); }
+
+    /* A — Dense Grid */
+    .dense-layout { display: flex; min-width: 0; min-height: 630px; }
+    .dense-main { min-width: 0; flex: 1; overflow: auto; padding: 14px 16px 28px; }
+    .dense-table {
+      min-width: 980px; overflow: hidden; background: #fff;
+      border: 1px solid var(--line-strong); border-radius: 10px;
+    }
+    .dense-row {
+      display: grid;
+      grid-template-columns: 36px minmax(230px, 1.8fr) 82px 120px 112px 100px 128px 122px;
+      min-height: 43px;
+      border-bottom: 1px solid var(--line);
+    }
+    .dense-row:last-child { border-bottom: 0; }
+    .dense-row > div {
+      display: flex; align-items: center; min-width: 0; padding: 7px 10px;
+      border-right: 1px solid var(--line); overflow: hidden; text-overflow: ellipsis;
+    }
+    .dense-row > div:last-child { border-right: 0; }
+    .dense-row.header { min-height: 39px; color: var(--muted); font-size: 11px; font-weight: 750; background: #FAFCFD; }
+    .dense-row.task { cursor: pointer; }
+    .dense-row.task:hover { background: #F8FCFE; }
+    .dense-row.task.selected { background: var(--cyan-wash); box-shadow: inset 3px 0 0 var(--cyan); }
+    .dense-row .check { justify-content: center; padding: 0; }
+    .dense-row .title-cell { gap: 6px; }
+    .dense-row .title-cell .task-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dense-row .title-cell .task-number { flex: none; }
+    .fake-check { width: 16px; height: 16px; border: 1px solid #B9C4CD; border-radius: 4px; background: #fff; }
+    .dense-group { margin-bottom: 18px; }
+    .dense-group .group-head { padding: 0 8px; border-left: 4px solid var(--group); }
+    .add-row { min-height: 39px; padding: 9px 46px; color: var(--muted); background: #fff; border: 1px solid var(--line); border-top: 0; cursor: pointer; }
+    .dense-layout:not(.detail-collapsed) .detail-panel { width: var(--detail-width); max-width: 48vw; }
+    .dense-layout.detail-collapsed .detail-panel, .dense-layout.detail-collapsed .resize-handle { display: none; }
+
+    /* B — Calm Operations */
+    .calm-layout { display: flex; min-height: 630px; }
+    .calm-main { min-width: 0; flex: 1; overflow: auto; padding: 20px clamp(16px, 3vw, 38px) 38px; }
+    .calm-summary {
+      display: grid; grid-template-columns: minmax(220px, 1.6fr) repeat(3, minmax(110px, .65fr));
+      gap: 10px; margin-bottom: 18px;
+    }
+    .summary-lead, .summary-card { min-height: 86px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+    .summary-lead { border-left: 4px solid var(--cyan); }
+    .summary-lead strong { display: block; margin-bottom: 5px; font-size: 16px; }
+    .summary-card .big { display: block; font-size: 23px; font-weight: 800; letter-spacing: -.5px; }
+    .summary-card span:last-child { color: var(--muted); font-size: 12px; }
+    .calm-group { margin-bottom: 22px; }
+    .calm-group .group-head { border-bottom: 1px solid var(--line); }
+    .calm-task {
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) 128px 126px 92px 34px;
+      align-items: center;
+      gap: 12px;
+      min-height: 68px;
+      margin-top: 8px;
+      padding: 10px 12px 10px 15px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      cursor: pointer;
+    }
+    .calm-task:hover { border-color: #BDD9E5; }
+    .calm-task.selected { border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(0,174,239,.1); }
+    .task-copy { min-width: 0; }
+    .task-copy .task-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .task-copy .under { display: flex; gap: 8px; margin-top: 5px; color: var(--quiet); font-size: 11px; }
+    .calm-due { padding-left: 12px; border-left: 2px solid var(--line); }
+    .calm-due.overdue { border-color: var(--red); }
+    .calm-layout:not(.detail-collapsed) .detail-panel { width: var(--detail-width); max-width: 46vw; }
+    .calm-layout.detail-collapsed .detail-panel, .calm-layout.detail-collapsed .resize-handle { display: none; }
+
+    /* C — Board + Detail */
+    .workbench-layout { display: grid; grid-template-columns: minmax(430px, 1fr) 9px minmax(340px, var(--detail-width)); min-height: 630px; }
+    .workbench-layout.detail-collapsed { grid-template-columns: 1fr; }
+    .workbench-layout.detail-collapsed .detail-panel, .workbench-layout.detail-collapsed .resize-handle { display: none; }
+    .workbench-main { min-width: 0; overflow: auto; padding: 16px 18px 32px; }
+    .workbench-strip {
+      display: flex; gap: 8px; align-items: center; margin-bottom: 14px; padding: 10px 12px;
+      border: 1px solid var(--line); border-radius: 10px; background: #fff;
+    }
+    .workbench-strip strong { font-size: 13px; }
+    .workbench-strip .toolbar-spacer { min-width: 10px; }
+    .compact-task {
+      display: grid; grid-template-columns: 28px minmax(210px, 1fr) 108px 94px;
+      gap: 9px; align-items: center; min-height: 52px; padding: 8px 10px;
+      border-bottom: 1px solid var(--line); background: #fff; cursor: pointer;
+    }
+    .compact-task:first-of-type { border-radius: 10px 10px 0 0; }
+    .compact-task:last-of-type { border-radius: 0 0 10px 10px; border-bottom: 0; }
+    .compact-task:hover { background: #FAFCFD; }
+    .compact-task.selected { background: var(--cyan-wash); box-shadow: inset 3px 0 0 var(--cyan); }
+    .compact-group { margin-bottom: 16px; border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
+    .compact-group .group-head { padding: 0 12px; background: #FAFCFD; border-bottom: 1px solid var(--line); }
+    .workbench-layout .detail-panel { border-left: 0; }
+
+    /* Settings and import */
+    .state-page { min-height: 630px; padding: 20px; overflow: auto; }
+    .state-shell { max-width: 1060px; margin: 0 auto; }
+    .state-title { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 16px; }
+    .state-title h3 { margin: 0 0 4px; font-size: 21px; }
+    .state-title p { margin: 0; color: var(--muted); }
+    .settings-grid { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 14px; }
+    .settings-nav, .settings-card, .import-card { border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+    .settings-nav { padding: 8px; height: max-content; }
+    .settings-nav button {
+      display: block; width: 100%; min-height: 42px; padding: 9px 10px;
+      border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer;
+    }
+    .settings-nav button.on { color: var(--cyan-deep); background: var(--cyan-wash); font-weight: 750; }
+    .settings-card { padding: 18px; }
+    .settings-card h4, .import-card h4 { margin: 0 0 4px; font-size: 16px; }
+    .settings-card > p, .import-card > p { margin: 0 0 16px; color: var(--muted); }
+    .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+    .field { display: grid; gap: 6px; }
+    .field.full { grid-column: 1 / -1; }
+    .field label { font-size: 12px; font-weight: 700; color: #44505A; }
+    .field input, .field select { width: 100%; min-height: 44px; padding: 9px 11px; border: 1px solid var(--line-strong); border-radius: 9px; background: #fff; }
+    .columns-list { margin-top: 16px; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+    .column-row { display: grid; grid-template-columns: 28px 1fr 130px 80px; gap: 8px; align-items: center; min-height: 48px; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+    .column-row:last-child { border-bottom: 0; }
+    .drag-dots { color: var(--quiet); letter-spacing: -1px; }
+    .danger-zone { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .import-steps { display: flex; gap: 6px; margin-bottom: 14px; }
+    .import-step { flex: 1; padding: 9px 10px; border-radius: 8px; background: #fff; border: 1px solid var(--line); color: var(--muted); font-size: 12px; font-weight: 700; }
+    .import-step.on { color: var(--cyan-deep); border-color: #9DDCEC; background: var(--cyan-wash); }
+    .import-grid { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 14px; }
+    .import-card { padding: 16px; }
+    .dropzone { display: grid; place-items: center; min-height: 126px; padding: 18px; text-align: center; border: 1px dashed #9EB0BD; border-radius: 10px; background: var(--surface-alt); }
+    .mapping-row { display: grid; grid-template-columns: 1fr 28px 1fr; gap: 8px; align-items: center; margin-top: 9px; }
+    .mapping-row select { min-height: 42px; padding: 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; }
+    .preview-table { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 9px; }
+    .preview-table table { width: 100%; min-width: 640px; border-collapse: collapse; }
+    .preview-table th, .preview-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; font-size: 12px; }
+    .preview-table th { color: var(--muted); background: #FAFCFD; }
+    .preview-table tr:last-child td { border-bottom: 0; }
+    .row-error td { background: #FFF8F7; }
+    .state-actions { display: flex; gap: 9px; justify-content: flex-end; margin-top: 16px; }
+
+    /* Empty, loading, refusal */
+    .center-state { min-height: 630px; display: grid; place-items: center; padding: 28px; }
+    .state-box { width: min(480px, 100%); text-align: center; padding: 30px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+    .state-icon { width: 54px; height: 54px; display: grid; place-items: center; margin: 0 auto 13px; border-radius: 14px; color: var(--cyan-deep); background: var(--cyan-wash); font-size: 24px; }
+    .state-box h3 { margin: 0 0 7px; font-size: 19px; }
+    .state-box p { margin: 0 auto 17px; color: var(--muted); max-width: 380px; }
+    .skeleton { display: grid; gap: 10px; width: min(720px, 100%); }
+    .skeleton-line { height: 52px; border-radius: 9px; background: linear-gradient(90deg, #EDF1F4 20%, #F8FAFB 40%, #EDF1F4 60%); background-size: 220% 100%; animation: shimmer 1.5s infinite linear; }
+    .skeleton-line.short { width: 45%; height: 34px; }
+    @keyframes shimmer { to { background-position: -220% 0; } }
+
+    .mobile-only { display: none; }
+
+    /* Simulated 375px mode and real narrow viewport */
+    .frame-wrap[data-size="mobile"] .app-frame { min-height: 760px; border-radius: 22px; }
+    .frame-wrap[data-size="mobile"] .topbar { height: 59px; padding: 0 8px; gap: 5px; }
+    .frame-wrap[data-size="mobile"] .menu-button { display: none; }
+    .frame-wrap[data-size="mobile"] .wordmark { font-size: 18px; }
+    .frame-wrap[data-size="mobile"] .top-separator { margin: 0 2px; }
+    .frame-wrap[data-size="mobile"] .place-mark { width: 26px; height: 26px; }
+    .frame-wrap[data-size="mobile"] .scope-button { max-width: 132px; padding: 6px 7px; }
+    .frame-wrap[data-size="mobile"] .topbar .theme-icon { display: none; }
+    .frame-wrap[data-size="mobile"] .app-body { display: block; min-height: 700px; padding-bottom: 70px; }
+    .frame-wrap[data-size="mobile"] .sidebar { display: none; }
+    .frame-wrap[data-size="mobile"] .bottom-nav {
+      position: absolute; z-index: 30; left: 0; right: 0; bottom: 0;
+      display: grid; grid-template-columns: repeat(4, 1fr); min-height: 66px;
+      background: rgba(255,255,255,.98); border-top: 1px solid var(--line);
+    }
+    .frame-wrap[data-size="mobile"] .app-frame { position: relative; }
+    .frame-wrap[data-size="mobile"] .bottom-nav a { display: grid; place-items: center; align-content: center; gap: 2px; color: var(--muted); text-decoration: none; font-size: 10px; }
+    .frame-wrap[data-size="mobile"] .bottom-nav a.on { color: var(--cyan-deep); font-weight: 750; }
+    .frame-wrap[data-size="mobile"] .module-head { min-height: 58px; padding: 10px 12px 7px; align-items: flex-end; }
+    .frame-wrap[data-size="mobile"] .module-head h2 { font-size: 21px; }
+    .frame-wrap[data-size="mobile"] .module-head .subline { display: none; }
+    .frame-wrap[data-size="mobile"] .view-tabs { gap: 5px; }
+    .frame-wrap[data-size="mobile"] .view-tab { min-height: 36px; padding: 6px 9px; font-size: 12px; }
+    .frame-wrap[data-size="mobile"] .board-bar { min-height: 55px; padding: 7px 10px; }
+    .frame-wrap[data-size="mobile"] .board-name { display: none; }
+    .frame-wrap[data-size="mobile"] .board-bar .wide-tool { display: none; }
+    .frame-wrap[data-size="mobile"] .toolbar-spacer { display: none; }
+    .frame-wrap[data-size="mobile"] .board-canvas { min-height: 590px; }
+    .frame-wrap[data-size="mobile"] .mobile-only { display: inline-flex; }
+    .frame-wrap[data-size="mobile"] .desktop-only { display: none; }
+    .frame-wrap[data-size="mobile"] .notice { margin: 9px 10px 0; }
+    .frame-wrap[data-size="mobile"] .dense-layout,
+    .frame-wrap[data-size="mobile"] .calm-layout,
+    .frame-wrap[data-size="mobile"] .workbench-layout { display: block; min-height: 590px; }
+    .frame-wrap[data-size="mobile"] .dense-main,
+    .frame-wrap[data-size="mobile"] .calm-main,
+    .frame-wrap[data-size="mobile"] .workbench-main { padding: 12px 10px 90px; overflow: visible; }
+    .frame-wrap[data-size="mobile"] .detail-panel {
+      position: absolute; inset: 59px 0 66px; z-index: 20; width: 100% !important; min-width: 0; max-width: none !important; border: 0;
+    }
+    .frame-wrap[data-size="mobile"] .resize-handle { display: none; }
+    .frame-wrap[data-size="mobile"] .detail-collapsed .detail-panel { display: none; }
+    .frame-wrap[data-size="mobile"] .dense-table { min-width: 0; border: 0; background: transparent; overflow: visible; }
+    .frame-wrap[data-size="mobile"] .dense-row.header { display: none; }
+    .frame-wrap[data-size="mobile"] .dense-row.task {
+      display: grid; grid-template-columns: 28px 1fr auto; gap: 4px 8px; min-height: 82px;
+      margin-bottom: 8px; border: 1px solid var(--line); border-radius: 11px; background: #fff; padding: 9px;
+    }
+    .frame-wrap[data-size="mobile"] .dense-row.task > div { display: none; border: 0; padding: 0; overflow: visible; }
+    .frame-wrap[data-size="mobile"] .dense-row.task .check,
+    .frame-wrap[data-size="mobile"] .dense-row.task .title-cell,
+    .frame-wrap[data-size="mobile"] .dense-row.task .status-cell { display: flex; }
+    .frame-wrap[data-size="mobile"] .dense-row.task .title-cell { align-items: flex-start; flex-direction: column; }
+    .frame-wrap[data-size="mobile"] .dense-row.task .status-cell { align-items: flex-start; }
+    .frame-wrap[data-size="mobile"] .dense-row.task::after {
+      content: attr(data-mobile-meta); grid-column: 2 / -1; color: var(--muted); font-size: 11px;
+    }
+    .frame-wrap[data-size="mobile"] .add-row { border: 1px dashed var(--line-strong); border-radius: 10px; padding: 10px 12px; }
+    .frame-wrap[data-size="mobile"] .calm-summary { grid-template-columns: 1fr 1fr; }
+    .frame-wrap[data-size="mobile"] .summary-lead { grid-column: 1 / -1; }
+    .frame-wrap[data-size="mobile"] .summary-card:last-child { display: none; }
+    .frame-wrap[data-size="mobile"] .calm-task {
+      grid-template-columns: 1fr auto; gap: 8px; min-height: 92px; padding: 11px;
+    }
+    .frame-wrap[data-size="mobile"] .calm-task .calm-due { grid-column: 1; border: 0; padding: 0; font-size: 12px; }
+    .frame-wrap[data-size="mobile"] .calm-task .priority { display: none; }
+    .frame-wrap[data-size="mobile"] .compact-task { grid-template-columns: 25px 1fr auto; min-height: 70px; }
+    .frame-wrap[data-size="mobile"] .compact-task .due { display: none; }
+    .frame-wrap[data-size="mobile"] .workbench-strip { overflow-x: auto; }
+    .frame-wrap[data-size="mobile"] .state-page { padding: 13px 10px 90px; }
+    .frame-wrap[data-size="mobile"] .settings-grid, .frame-wrap[data-size="mobile"] .import-grid { grid-template-columns: 1fr; }
+    .frame-wrap[data-size="mobile"] .settings-nav { display: flex; overflow-x: auto; }
+    .frame-wrap[data-size="mobile"] .settings-nav button { width: auto; min-width: max-content; }
+    .frame-wrap[data-size="mobile"] .field-grid { grid-template-columns: 1fr; }
+    .frame-wrap[data-size="mobile"] .field.full { grid-column: auto; }
+    .frame-wrap[data-size="mobile"] .column-row { grid-template-columns: 22px 1fr 90px; }
+    .frame-wrap[data-size="mobile"] .column-row .hide-mobile { display: none; }
+    .frame-wrap[data-size="mobile"] .import-steps { overflow-x: auto; }
+    .frame-wrap[data-size="mobile"] .import-step { min-width: 110px; }
+    .frame-wrap[data-size="mobile"] .state-actions { justify-content: stretch; }
+    .frame-wrap[data-size="mobile"] .state-actions button { flex: 1; }
+
+    @media (max-width: 760px) {
+      .review { padding: 8px 8px 28px; }
+      .review-panel { position: static; grid-template-columns: 1fr; padding: 14px; }
+      .control-stack { justify-content: flex-start; }
+      .direction-note { align-items: flex-start; flex-direction: column; gap: 2px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="review">
+    <header class="review-panel">
+      <div class="review-copy">
+        <h1>Tasks — layout review</h1>
+        <p>Three interaction directions inside the real EzBizi shell. <strong>A · Dense Grid is selected</strong>; switch view and state to retain the decision context before Flutter work.</p>
+      </div>
+      <div class="control-stack" aria-label="Preview controls">
+        <div class="control-group layout-choice" aria-label="Layout alternative">
+          <button type="button" data-layout="a" aria-pressed="true">A · Dense</button>
+          <button type="button" data-layout="b" aria-pressed="false">B · Calm</button>
+          <button type="button" data-layout="c" aria-pressed="false">C · Workbench</button>
+        </div>
+        <div class="control-group" aria-label="Preview size">
+          <button type="button" data-size="desktop" aria-pressed="true">Desktop</button>
+          <button type="button" data-size="mobile" aria-pressed="false">375px</button>
+        </div>
+        <div class="control-group" aria-label="Screen state">
+          <button type="button" data-screen="board" aria-pressed="true">Board</button>
+          <button type="button" data-screen="settings" aria-pressed="false">Settings</button>
+          <button type="button" data-screen="import" aria-pressed="false">Import</button>
+          <button type="button" data-screen="states" aria-pressed="false">States</button>
+        </div>
+      </div>
+      <div class="direction-note" id="direction-note" aria-live="polite"></div>
+    </header>
+
+    <div class="frame-wrap" id="frame-wrap" data-size="desktop">
+      <section class="app-frame" aria-label="Interactive EzBizi Tasks preview">
+        <header class="topbar">
+          <button type="button" class="menu-button" aria-label="Collapse sidebar">☰</button>
+          <div class="wordmark" aria-label="EzBizi"><span class="ez">Ez</span><span>Bizi</span></div>
+          <span class="top-separator" aria-hidden="true"></span>
+          <span class="place-mark" aria-hidden="true">A1</span>
+          <button type="button" class="scope-button" title="A-1 Chimney › Connecticut">
+            <span>A-1 Chimney › Connecticut</span><span aria-hidden="true">⌄</span>
+          </button>
+          <span class="top-spacer"></span>
+          <button type="button" class="icon-button theme-icon" aria-label="Change appearance">◐</button>
+          <button type="button" class="icon-button" aria-label="Notifications">♢</button>
+          <button type="button" class="icon-button" aria-label="Your account"><span class="avatar">JM</span></button>
+        </header>
+
+        <div class="app-body">
+          <nav class="sidebar" aria-label="EzBizi modules">
+            <div class="sidebar-title">A-1 Chimney</div>
+            <a class="nav-item" href="#"><span class="nav-icon">⌂</span>Dashboard</a>
+            <a class="nav-item" href="#"><span class="nav-icon">◎</span>Customers</a>
+            <a class="nav-item" href="#"><span class="nav-icon">▣</span>Jobs</a>
+            <a class="nav-item on" href="#"><span class="nav-icon">✓</span>Tasks</a>
+            <a class="nav-item" href="#"><span class="nav-icon">▤</span>Inventory</a>
+            <a class="nav-item" href="#"><span class="nav-icon">▰</span>Fleet Management</a>
+            <a class="nav-item" href="#"><span class="nav-icon">☎</span>Phone</a>
+            <span class="sidebar-spacer"></span>
+            <span class="sidebar-rule"></span>
+            <a class="nav-item" href="#"><span class="nav-icon">⚙</span>Settings</a>
+            <div class="build-stamp">v0.0.0098</div>
+          </nav>
+
+          <section class="workspace">
+            <header class="module-head">
+              <div>
+                <h2>Tasks</h2>
+                <div class="subline">Work filed on the Connecticut company view</div>
+              </div>
+              <div class="view-tabs" role="tablist" aria-label="Tasks views">
+                <button type="button" class="view-tab on" data-view="board" role="tab" aria-selected="true">Board</button>
+                <button type="button" class="view-tab" data-view="mine" role="tab" aria-selected="false">My Tasks</button>
+              </div>
+            </header>
+            <div class="board-bar" id="board-bar"></div>
+            <div class="board-canvas" id="board-canvas"></div>
+          </section>
+        </div>
+
+        <nav class="bottom-nav" aria-label="Mobile navigation">
+          <a href="#"><span>⌂</span><span>Dashboard</span></a>
+          <a href="#"><span>▣</span><span>Jobs</span></a>
+          <a href="#" class="on"><span>✓</span><span>Tasks</span></a>
+          <a href="#"><span>⚙</span><span>Settings</span></a>
+        </nav>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const directions = {
+      a: {
+        title: "A · Dense Grid — owner selected",
+        note: "Fastest for spreadsheet-trained teams and bulk scanning. This is the approved production direction; at 375px it converts to touch-first task cards.",
+      },
+      b: {
+        title: "B · Calm Operations",
+        note: "Breathable task rows and workload summary. Easiest to learn, but fewer columns remain visible at once.",
+      },
+      c: {
+        title: "C · Board + Detail — prior Codex recommendation",
+        note: "Compact board on the left, durable description and conversation on the right. Retained as decision context; it is not the selected production direction.",
+      },
+    };
+
+    const tasks = [
+      { id: "TSK-104", title: "Confirm liner measurements", owner: "MC", ownerClass: "maya", status: "Working on it", statusClass: "working", due: "Aug 26", overdue: true, priority: "High", priorityClass: "high", link: "J-1042", estimate: "2h", group: "todo" },
+      { id: "TSK-107", title: "Send permit packet", owner: "LO", ownerClass: "luis", status: "Not started", statusClass: "not-started", due: "Aug 28", overdue: false, priority: "Normal", priorityClass: "normal", link: "Oak LLC", estimate: "45m", group: "todo" },
+      { id: "TSK-109", title: "Schedule Level 2 inspection", owner: "SW", ownerClass: "sam", status: "Stuck", statusClass: "stuck", due: "Aug 27", overdue: false, priority: "High", priorityClass: "high", link: "J-1051", estimate: "1h", group: "todo" },
+      { id: "TSK-110", title: "Order stainless liner", owner: "MC", ownerClass: "maya", status: "Working on it", statusClass: "working", due: "Aug 30", overdue: false, priority: "Normal", priorityClass: "normal", link: "PO-228", estimate: "30m", group: "todo", subtask: true },
+      { id: "TSK-099", title: "Upload site photographs", owner: "LO", ownerClass: "luis", status: "Done", statusClass: "done", due: "Aug 25", overdue: false, priority: "Low", priorityClass: "low", link: "J-1038", estimate: "20m", group: "done" },
+    ];
+
+    const state = {
+      layout: "a",
+      size: "desktop",
+      screen: "board",
+      view: "board",
+      selected: "TSK-104",
+      detailOpen: true,
+      special: "empty",
+    };
+
+    const frame = document.getElementById("frame-wrap");
+    const canvas = document.getElementById("board-canvas");
+    const boardBar = document.getElementById("board-bar");
+    const directionNote = document.getElementById("direction-note");
+
+    function iconOwner(task) {
+      return `<span class="owner ${task.ownerClass}" title="Owner ${task.owner}">${task.owner}</span>`;
+    }
+
+    function status(task) {
+      return `<span class="status ${task.statusClass}">${task.status}</span>`;
+    }
+
+    function priority(task) {
+      return `<span class="tiny-pill priority ${task.priorityClass}">${task.priority}</span>`;
+    }
+
+    function due(task) {
+      return `<span class="due ${task.overdue ? "overdue" : ""}">${task.overdue ? "!" : "○"} ${task.due}</span>`;
+    }
+
+    function selectedTask() {
+      return tasks.find((task) => task.id === state.selected) || tasks[0];
+    }
+
+    function boardToolbar() {
+      if (state.screen !== "board") {
+        return `
+          <button type="button" class="quiet-button mobile-only" data-screen-link="board">← Board</button>
+          <div class="board-name">August Operations <span class="private-pill">▣ Private</span></div>
+          <span class="toolbar-spacer"></span>
+          <button type="button" class="quiet-button desktop-only" data-screen-link="board">Back to board</button>`;
+      }
+
+      return `
+        <div class="board-name">August Operations <span class="private-pill">▣ Private</span></div>
+        <button type="button" class="primary-button" data-action="new-task">＋ New task</button>
+        <button type="button" class="tool-button">⌕ Search</button>
+        <button type="button" class="tool-button wide-tool">Person</button>
+        <button type="button" class="tool-button wide-tool">Filter</button>
+        <button type="button" class="tool-button wide-tool">Sort</button>
+        <button type="button" class="tool-button wide-tool">Hide</button>
+        <span class="toolbar-spacer"></span>
+        <button type="button" class="tool-button" data-action="toggle-detail">${state.detailOpen ? "Hide details" : "Show details"}</button>
+        <button type="button" class="tool-button" data-screen-link="settings" aria-label="Board settings">⚙</button>
+        <button type="button" class="tool-button" data-screen-link="import">Import</button>`;
+    }
+
+    function detailPanel() {
+      const task = selectedTask();
+      return `
+        <aside class="detail-panel" aria-label="Task detail">
+          <header class="detail-head">
+            <div>
+              <div class="task-number">${task.id} · August Operations</div>
+              <h3>${task.title}</h3>
+              <span class="private-pill">▣ Private board</span>
+            </div>
+            <button type="button" class="icon-button close-detail" data-action="toggle-detail" aria-label="Close task detail">×</button>
+          </header>
+          <section class="detail-section">
+            <h4>Details</h4>
+            <div class="facts">
+              <div class="fact"><label>Owner</label>${iconOwner(task)} <strong>${task.owner === "MC" ? "Maya Chen" : task.owner === "LO" ? "Luis Ortega" : "Sam Wright"}</strong></div>
+              <div class="fact"><label>Status</label>${status(task)}</div>
+              <div class="fact"><label>Due</label>${due(task)}</div>
+              <div class="fact"><label>Priority</label>${priority(task)}</div>
+            </div>
+          </section>
+          <section class="detail-section">
+            <h4>Description</h4>
+            <p class="detail-description">Verify the flue measurements from Tuesday’s visit before the liner order is released. Use the signed inspection report, then add the confirmed diameter here so purchasing sees one answer.</p>
+            <p><span class="link-record">↗ Job ${task.link}</span></p>
+          </section>
+          <section class="detail-section">
+            <h4>Updates</h4>
+            <div class="update">
+              <span class="owner maya">MC</span>
+              <div class="bubble"><div class="meta">Maya · today 9:18</div>I have the roof measurement. Waiting on the cleanout measurement from the report.</div>
+            </div>
+            <div class="update">
+              <span class="owner luis">LO</span>
+              <div class="bubble"><div class="meta">Luis · today 10:02</div><strong>@Maya</strong> I attached the signed Level 1 report. The cleanout reads 7 inches.</div>
+            </div>
+            <div class="composer">
+              <label class="sr-only" for="update-box">Add an update</label>
+              <textarea id="update-box" placeholder="Add an update…"></textarea>
+              <div class="composer-actions"><button type="button" class="quiet-button">Attach file</button><button type="button" class="primary-button">Add update</button></div>
+            </div>
+          </section>
+        </aside>`;
+    }
+
+    function tasksFor(group) {
+      let rows = tasks.filter((task) => task.group === group);
+      if (state.view === "mine") rows = rows.filter((task) => task.owner === "MC");
+      return rows;
+    }
+
+    function denseRow(task) {
+      return `<div class="dense-row task ${task.id === state.selected ? "selected" : ""}" data-task="${task.id}" role="button" tabindex="0" aria-label="${task.title}, ${task.status}, due ${task.due}" data-mobile-meta="${task.due}${task.overdue ? " · overdue" : ""} · ${task.link}">
+        <div class="check"><span class="fake-check"></span></div>
+        <div class="title-cell"><span class="task-title">${task.subtask ? '<span class="subtask-mark">↳</span>' : ""}${task.title}</span><span class="task-number">${task.id}</span></div>
+        <div>${iconOwner(task)}</div>
+        <div class="status-cell">${status(task)}</div>
+        <div>${due(task)}</div>
+        <div>${priority(task)}</div>
+        <div><span class="link-record">${task.link}</span></div>
+        <div>${task.estimate}</div>
+      </div>`;
+    }
+
+    function denseGroup(group, label) {
+      const rows = tasksFor(group);
+      return `<section class="group dense-group ${group === "done" ? "completed" : ""}">
+        <div class="group-head"><span class="caret">⌄</span>${label}<span class="count">${rows.length}</span></div>
+        <div class="dense-table">
+          <div class="dense-row header"><div></div><div>Task</div><div>Owner</div><div>Status</div><div>Due</div><div>Priority</div><div>Linked record</div><div>Estimate</div></div>
+          ${rows.map(denseRow).join("")}
+        </div>
+        <button type="button" class="add-row">＋ Add task</button>
+      </section>`;
+    }
+
+    function denseBoard() {
+      return `<div class="dense-layout ${state.detailOpen ? "" : "detail-collapsed"}">
+        <div class="dense-main">
+          ${denseGroup("todo", state.view === "mine" ? "My open work" : "To-Do")}
+          ${denseGroup("done", "Completed")}
+        </div>
+        ${state.detailOpen ? '<div class="resize-handle" tabindex="0" role="separator" aria-label="Resize task detail" aria-orientation="vertical"></div>' + detailPanel() : ""}
+      </div>`;
+    }
+
+    function calmTask(task) {
+      return `<article class="calm-task ${task.id === state.selected ? "selected" : ""}" data-task="${task.id}" role="button" tabindex="0" aria-label="${task.title}, ${task.status}, due ${task.due}">
+        <div class="task-copy"><span class="task-title">${task.subtask ? "↳ " : ""}${task.title}</span><div class="under"><span class="task-number">${task.id}</span><span class="link-record">${task.link}</span><span>${task.estimate}</span></div></div>
+        <div class="calm-due ${task.overdue ? "overdue" : ""}">${due(task)}</div>
+        <div>${status(task)}</div>
+        <div>${priority(task)}</div>
+        <div>${iconOwner(task)}</div>
+      </article>`;
+    }
+
+    function calmGroup(group, label) {
+      const rows = tasksFor(group);
+      return `<section class="group calm-group ${group === "done" ? "completed" : ""}">
+        <div class="group-head"><span class="caret">⌄</span>${label}<span class="count">${rows.length}</span></div>
+        ${rows.map(calmTask).join("")}
+      </section>`;
+    }
+
+    function calmBoard() {
+      return `<div class="calm-layout ${state.detailOpen ? "" : "detail-collapsed"}">
+        <div class="calm-main">
+          <div class="calm-summary">
+            <div class="summary-lead"><strong>${state.view === "mine" ? "Maya’s work is focused" : "Connecticut needs one decision"}</strong><span class="muted">The Level 2 inspection is stuck; everything else has a clear next owner.</span></div>
+            <div class="summary-card"><span class="big">4</span><span>Open</span></div>
+            <div class="summary-card"><span class="big" style="color:var(--red)">1</span><span>Overdue</span></div>
+            <div class="summary-card"><span class="big">3</span><span>Owners</span></div>
+          </div>
+          ${calmGroup("todo", state.view === "mine" ? "My open work" : "To-Do")}
+          ${calmGroup("done", "Completed")}
+        </div>
+        ${state.detailOpen ? '<div class="resize-handle" tabindex="0" role="separator" aria-label="Resize task detail" aria-orientation="vertical"></div>' + detailPanel() : ""}
+      </div>`;
+    }
+
+    function compactTask(task) {
+      return `<div class="compact-task ${task.id === state.selected ? "selected" : ""}" data-task="${task.id}" role="button" tabindex="0" aria-label="${task.title}, ${task.status}, due ${task.due}">
+        <div>${iconOwner(task)}</div>
+        <div><span class="task-title">${task.subtask ? "↳ " : ""}${task.title}</span><div class="task-number">${task.id} · ${task.link}</div></div>
+        <div>${status(task)}</div>
+        <div>${due(task)}</div>
+      </div>`;
+    }
+
+    function compactGroup(group, label) {
+      const rows = tasksFor(group);
+      return `<section class="group compact-group ${group === "done" ? "completed" : ""}">
+        <div class="group-head"><span class="caret">⌄</span>${label}<span class="count">${rows.length}</span></div>
+        ${rows.map(compactTask).join("")}
+      </section>`;
+    }
+
+    function workbenchBoard() {
+      return `<div class="workbench-layout ${state.detailOpen ? "" : "detail-collapsed"}">
+        <div class="workbench-main">
+          <div class="workbench-strip"><strong>${state.view === "mine" ? "My open work" : "All visible work"}</strong><span class="tiny-pill" style="background:var(--red-wash);color:var(--red)">1 overdue</span><span class="toolbar-spacer"></span><span class="muted">Select a row to work without losing your place</span></div>
+          ${compactGroup("todo", state.view === "mine" ? "My open work" : "To-Do")}
+          ${compactGroup("done", "Completed")}
+        </div>
+        ${state.detailOpen ? '<div class="resize-handle" tabindex="0" role="separator" aria-label="Resize task detail" aria-orientation="vertical"></div>' + detailPanel() : ""}
+      </div>`;
+    }
+
+    function settingsPage() {
+      return `<div class="state-page"><div class="state-shell">
+        <div class="state-title"><div><h3>Board settings</h3><p>Structure and access for August Operations. Changes stay inside A-1 Chimney › Connecticut.</p></div></div>
+        <div class="settings-grid">
+          <nav class="settings-nav" aria-label="Board settings sections"><button class="on">General</button><button>Columns</button><button>Status labels</button><button>People</button><button>Archive</button></nav>
+          <section class="settings-card">
+            <h4>General</h4><p>Only active board owners with Tasks management permission can change these settings.</p>
+            <div class="field-grid">
+              <div class="field full"><label for="board-name">Board name</label><input id="board-name" value="August Operations"></div>
+              <div class="field"><label for="visibility">Visibility</label><select id="visibility"><option>Private — invited members</option><option>Visible in this company view</option></select></div>
+              <div class="field"><label for="folder">Folder</label><select id="folder"><option>Operations</option><option>No folder</option></select></div>
+            </div>
+            <div class="columns-list" aria-label="Board columns">
+              <div class="column-row"><span class="drag-dots">⠿</span><strong>Task</strong><span>Core</span><span class="hide-mobile">Shown</span></div>
+              <div class="column-row"><span class="drag-dots">⠿</span><strong>Owner</strong><span>Core</span><span class="hide-mobile">Shown</span></div>
+              <div class="column-row"><span class="drag-dots">⠿</span><strong>Estimate</strong><span>Number · hours</span><span class="hide-mobile">Shown</span></div>
+              <div class="column-row"><span class="drag-dots">⠿</span><strong>Linked record</strong><span>EzBizi link</span><span class="hide-mobile">Shown</span></div>
+            </div>
+            <div class="state-actions"><button class="quiet-button">Cancel</button><button class="primary-button">Save changes</button></div>
+            <div class="danger-zone"><strong>Archive this board</strong><p class="muted">The board leaves ordinary views but remains available to authorized history and export.</p><button class="danger-button">Archive board</button></div>
+          </section>
+        </div>
+      </div></div>`;
+    }
+
+    function importPage() {
+      return `<div class="state-page"><div class="state-shell">
+        <div class="state-title"><div><h3>Import tasks</h3><p>Review the mapping and every refusal before anything is written to August Operations.</p></div></div>
+        <div class="import-steps"><div class="import-step">1 · Upload</div><div class="import-step on">2 · Map columns</div><div class="import-step">3 · Review</div><div class="import-step">4 · Import</div></div>
+        <div class="import-grid">
+          <section class="import-card"><h4>august-work.xlsx</h4><p>40 rows · Sheet “Work” · formulas are read as displayed values only.</p><div class="dropzone"><div><strong>File ready</strong><br><span class="muted">312 KB · SHA-256 checked</span><br><button class="quiet-button" style="margin-top:10px">Choose another file</button></div></div></section>
+          <section class="import-card"><h4>Column mapping</h4><p>People must already be eligible in this Connecticut company view. Nobody is created silently.</p>
+            <div class="mapping-row"><strong>Task name</strong><span>→</span><select><option>Task</option></select></div>
+            <div class="mapping-row"><strong>Person</strong><span>→</span><select><option>Owner email</option></select></div>
+            <div class="mapping-row"><strong>Stage</strong><span>→</span><select><option>Status</option></select></div>
+            <div class="mapping-row"><strong>Work order</strong><span>→</span><select><option>Linked record</option></select></div>
+          </section>
+        </div>
+        <div class="notice"><span>!</span><div><strong>Two rows need a decision</strong>Row 18 names an unknown owner. Row 31 refers to a parent task that is not in this file. Nothing imports until both are resolved.</div></div>
+        <div class="preview-table"><table><thead><tr><th>Row</th><th>Task</th><th>Owner</th><th>Status</th><th>Group</th><th>Result</th></tr></thead><tbody>
+          <tr><td>2</td><td>Confirm liner measurements</td><td>maya@a1.test</td><td>Working on it</td><td>To-Do</td><td><span class="tiny-pill" style="color:var(--green);background:var(--green-wash)">Ready</span></td></tr>
+          <tr class="row-error"><td>18</td><td>Call municipal office</td><td>newhire@a1.test</td><td>Not started</td><td>To-Do</td><td><span class="tiny-pill" style="color:var(--red);background:var(--red-wash)">Unknown owner</span></td></tr>
+          <tr class="row-error"><td>31</td><td>Order fasteners</td><td>luis@a1.test</td><td>Not started</td><td>To-Do</td><td><span class="tiny-pill" style="color:var(--red);background:var(--red-wash)">Parent missing</span></td></tr>
+        </tbody></table></div>
+        <div class="state-actions"><button class="quiet-button">Back</button><button class="primary-button" disabled title="Resolve two rows first" style="opacity:.45;cursor:not-allowed">Review import</button></div>
+      </div></div>`;
+    }
+
+    function statesPage() {
+      const tabs = `<div class="control-group" style="width:max-content;margin:0 auto 18px"><button data-special="empty" aria-pressed="${state.special === "empty"}">Empty</button><button data-special="loading" aria-pressed="${state.special === "loading"}">Loading</button><button data-special="refusal" aria-pressed="${state.special === "refusal"}">Refusal</button><button data-special="conflict" aria-pressed="${state.special === "conflict"}">Conflict</button></div>`;
+      let body = "";
+      if (state.special === "loading") {
+        body = `<div class="center-state"><div class="skeleton" aria-label="Loading tasks"><div class="skeleton-line short"></div>${Array.from({length:5}, () => '<div class="skeleton-line"></div>').join("")}</div></div>`;
+      } else if (state.special === "refusal") {
+        body = `<div class="center-state"><div class="state-box"><div class="state-icon" style="color:var(--red);background:var(--red-wash)">▣</div><h3>This board is not available here</h3><p>It may belong to another part of the business, be private, or no longer be available. Switch views or ask a board owner to check your membership.</p><button class="primary-button" data-screen-link="board">Return to Tasks</button></div></div>`;
+      } else if (state.special === "conflict") {
+        body = `<div class="center-state"><div class="state-box"><div class="state-icon" style="color:var(--amber);background:var(--amber-wash)">↻</div><h3>This task changed while you were editing</h3><p>Maya changed the due date after you opened it. Review the latest values before saving yours; your unfinished update is still here.</p><div style="display:flex;gap:8px;justify-content:center"><button class="quiet-button">Keep my draft</button><button class="primary-button" data-screen-link="board">Review latest</button></div></div></div>`;
+      } else {
+        body = `<div class="center-state"><div class="state-box"><div class="state-icon">✓</div><h3>No tasks match this view</h3><p>Clear a filter to see more work, or create the first task in this Connecticut company view.</p><div style="display:flex;gap:8px;justify-content:center"><button class="quiet-button">Clear filters</button><button class="primary-button">Create task</button></div></div></div>`;
+      }
+      return `<div class="state-page">${tabs}${body}</div>`;
+    }
+
+    function renderBoard() {
+      if (state.special === "conflict" && state.screen === "board") {
+        const notice = `<div class="notice"><span>↻</span><div><strong>This task changed after you opened it</strong>Review the latest values before saving yours. Your unfinished update is still here.</div></div>`;
+        return notice + (state.layout === "a" ? denseBoard() : state.layout === "b" ? calmBoard() : workbenchBoard());
+      }
+      return state.layout === "a" ? denseBoard() : state.layout === "b" ? calmBoard() : workbenchBoard();
+    }
+
+    function render() {
+      frame.dataset.size = state.size;
+      document.querySelectorAll("[data-layout]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.layout === state.layout)));
+      document.querySelectorAll("button[data-size]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.size === state.size)));
+      document.querySelectorAll("[data-screen]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.screen === state.screen)));
+      document.querySelectorAll("[data-view]").forEach((button) => {
+        const on = button.dataset.view === state.view;
+        button.classList.toggle("on", on);
+        button.setAttribute("aria-selected", String(on));
+      });
+
+      const direction = directions[state.layout];
+      directionNote.innerHTML = `<b>${direction.title}</b><span>${direction.note}</span>`;
+      boardBar.innerHTML = boardToolbar();
+      canvas.innerHTML = state.screen === "settings" ? settingsPage() : state.screen === "import" ? importPage() : state.screen === "states" ? statesPage() : renderBoard();
+      bindDynamicControls();
+    }
+
+    function bindDynamicControls() {
+      document.querySelectorAll("[data-task]").forEach((row) => {
+        const selectTask = () => {
+          state.selected = row.dataset.task;
+          state.detailOpen = true;
+          render();
+        };
+        row.addEventListener("click", selectTask);
+        row.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          selectTask();
+        });
+      });
+      document.querySelectorAll("[data-action='toggle-detail']").forEach((button) => button.addEventListener("click", () => {
+        state.detailOpen = !state.detailOpen;
+        render();
+      }));
+      document.querySelectorAll("[data-screen-link]").forEach((button) => button.addEventListener("click", () => {
+        state.screen = button.dataset.screenLink;
+        render();
+      }));
+      document.querySelectorAll("[data-special]").forEach((button) => button.addEventListener("click", () => {
+        state.special = button.dataset.special;
+        render();
+      }));
+      document.querySelectorAll(".resize-handle").forEach(bindResizeHandle);
+    }
+
+    function bindResizeHandle(handle) {
+      handle.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--detail-width"), 10) || 390;
+        const delta = event.key === "ArrowLeft" ? 24 : -24;
+        document.documentElement.style.setProperty("--detail-width", `${Math.max(320, Math.min(560, current + delta))}px`);
+      });
+      handle.addEventListener("pointerdown", (event) => {
+        if (state.size === "mobile") return;
+        handle.setPointerCapture(event.pointerId);
+        const startX = event.clientX;
+        const startWidth = document.querySelector(".detail-panel")?.getBoundingClientRect().width || 390;
+        const move = (moveEvent) => {
+          const next = Math.max(320, Math.min(560, startWidth + startX - moveEvent.clientX));
+          document.documentElement.style.setProperty("--detail-width", `${next}px`);
+        };
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("pointerup", () => handle.removeEventListener("pointermove", move), { once: true });
+      });
+    }
+
+    document.querySelectorAll("[data-layout]").forEach((button) => button.addEventListener("click", () => { state.layout = button.dataset.layout; render(); }));
+    document.querySelectorAll("button[data-size]").forEach((button) => button.addEventListener("click", () => {
+      state.size = button.dataset.size;
+      if (state.screen === "board") state.detailOpen = state.size !== "mobile";
+      render();
+    }));
+    document.querySelectorAll("[data-screen]").forEach((button) => button.addEventListener("click", () => { state.screen = button.dataset.screen; render(); }));
+    document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => { state.view = button.dataset.view; render(); }));
+    render();
+  </script>
+</body>
+</html>
