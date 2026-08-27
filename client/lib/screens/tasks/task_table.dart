@@ -29,6 +29,36 @@ class TaskTable extends StatefulWidget {
 
 class _TaskTableState extends State<TaskTable> {
   final Set<String> _collapsedGroups = <String>{};
+  final ScrollController _pinnedScroll = ScrollController();
+  final ScrollController _operationalScroll = ScrollController();
+  bool _syncingScroll = false;
+  @override
+  void initState() {
+    super.initState();
+    _pinnedScroll.addListener(() => _sync(_pinnedScroll, _operationalScroll));
+    _operationalScroll.addListener(
+      () => _sync(_operationalScroll, _pinnedScroll),
+    );
+  }
+
+  void _sync(ScrollController source, ScrollController target) {
+    if (_syncingScroll || !target.hasClients) return;
+    _syncingScroll = true;
+    target.jumpTo(
+      source.offset.clamp(
+        target.position.minScrollExtent,
+        target.position.maxScrollExtent,
+      ),
+    );
+    _syncingScroll = false;
+  }
+
+  @override
+  void dispose() {
+    _pinnedScroll.dispose();
+    _operationalScroll.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +98,7 @@ class _TaskTableState extends State<TaskTable> {
               (row) => row.id == widget.selectedTaskId,
             );
             widget.onSelected(
-                rows[(at + intent.delta).clamp(0, rows.length - 1)],
+              rows[(at + intent.delta).clamp(0, rows.length - 1)],
             );
             return null;
           },
@@ -90,6 +120,7 @@ class _TaskTableState extends State<TaskTable> {
             key: const Key('pinned-task-column'),
             width: 300,
             child: ListView(
+              controller: _pinnedScroll,
               children: [
                 _PinnedHeader(color: theme.colorScheme),
                 for (final groupId in ordered)
@@ -127,6 +158,7 @@ class _TaskTableState extends State<TaskTable> {
               child: SizedBox(
                 width: 460,
                 child: ListView(
+                  controller: _operationalScroll,
                   children: [
                     _OperationalHeader(color: theme.colorScheme),
                     for (final groupId in ordered)

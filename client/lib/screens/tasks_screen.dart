@@ -47,6 +47,7 @@ class _TasksScreenState extends State<TasksScreen> {
   bool _unavailable = false;
   bool _conflict = false;
   int _intentGeneration = 0;
+  int _requestGeneration = 0;
   int _page = 1;
   int _lastPage = 1;
 
@@ -60,6 +61,7 @@ class _TasksScreenState extends State<TasksScreen> {
   void didUpdateWidget(covariant TasksScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     _intentGeneration++;
+    _requestGeneration++;
     if (widget.pendingIntent != oldWidget.pendingIntent &&
         widget.pendingIntent != null) {
       _consumeIntent(widget.pendingIntent!, _intentGeneration);
@@ -95,9 +97,16 @@ class _TasksScreenState extends State<TasksScreen> {
   Future<void> _consumeIntent(TaskAddressIntent intent, int generation) async {
     final result = await _tasks.board(intent.boardId);
     if (!_isCurrentIntent(intent, generation)) return;
-    if (result is! TaskApiSuccess<TaskBoard>) {
+    if (result is TaskApiUnavailable<TaskBoard>) {
       _evict(result.message);
       widget.onIntentConsumed?.call();
+      return;
+    }
+    if (result is! TaskApiSuccess<TaskBoard>) {
+      setState(() {
+        _loading = false;
+        _error = result.message;
+      });
       return;
     }
     await _loadBoard(
@@ -116,6 +125,7 @@ class _TasksScreenState extends State<TasksScreen> {
     TaskAddressIntent? intent,
     int? generation,
   }) async {
+    final request = ++_requestGeneration;
     setState(() {
       _loading = true;
       _error = null;
@@ -126,7 +136,7 @@ class _TasksScreenState extends State<TasksScreen> {
       _page = 1;
     });
     final result = await _tasks.boardRows(board.id, page: _page);
-    if (!mounted) return;
+    if (!mounted || request != _requestGeneration) return;
     if (result is TaskApiUnavailable<TaskRowsPage>) {
       _evict(result.message);
       if (consumeIntent && _isCurrentIntent(intent!, generation!))
@@ -163,6 +173,7 @@ class _TasksScreenState extends State<TasksScreen> {
     TaskAddressIntent? intent,
     int? generation,
   }) async {
+    final request = ++_requestGeneration;
     final board = _board;
     if (board == null) return;
     setState(() {
@@ -170,7 +181,10 @@ class _TasksScreenState extends State<TasksScreen> {
       _detail = null;
     });
     final result = await _tasks.taskDetail(board.id, taskId);
-    if (consumeIntent ? !_isCurrentIntent(intent!, generation!) : !mounted)
+    if (consumeIntent
+        ? (!_isCurrentIntent(intent!, generation!) ||
+              request != _requestGeneration)
+        : (!mounted || request != _requestGeneration))
       return;
     if (result is TaskApiUnavailable<TaskDetailSnapshot>) {
       _evict(result.message);
@@ -338,8 +352,43 @@ class _TasksScreenState extends State<TasksScreen> {
       : _showDirectory || _board == null
       ? _directoryOnly()
       : mobile
-      ? TaskMobileList(board: _board!, rows: _rows, onSelected: _selectTask)
+      ? Column(
+          children: [
+            Expanded(
+              child: TaskMobileList(
+                board: _board!,
+                rows: _rows,
+                onSelected: _selectTask,
+              ),
+            ),
+            _pagination(),
+          ],
+        )
       : _workspace(wide);
+
+  Widget _pagination() => _lastPage <= 1
+      ? const SizedBox.shrink()
+      : Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text('Page $_page of $_lastPage'),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: _page > 1 ? () => _goToPage(_page - 1) : null,
+                child: const Text('Previous'),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: _page < _lastPage
+                    ? () => _goToPage(_page + 1)
+                    : null,
+                child: const Text('Next'),
+              ),
+            ],
+          ),
+        );
 
   Widget _titleBar(BuildContext context) => Material(
     color: Theme.of(context).colorScheme.surface,
@@ -430,28 +479,7 @@ class _TasksScreenState extends State<TasksScreen> {
                 }),
               ),
             ),
-            if (_lastPage > 1)
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text('Page $_page of $_lastPage'),
-                    const SizedBox(width: 8),
-                    OutlinedButton(
-                      onPressed: _page > 1 ? () => _goToPage(_page - 1) : null,
-                      child: const Text('Previous'),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton(
-                      onPressed: _page < _lastPage
-                          ? () => _goToPage(_page + 1)
-                          : null,
-                      child: const Text('Next'),
-                    ),
-                  ],
-                ),
-              ),
+            _pagination(),
           ],
         ),
       ),
