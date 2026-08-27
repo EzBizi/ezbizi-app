@@ -51,6 +51,7 @@ class _TasksScreenState extends State<TasksScreen> {
   List<TaskParticipant> _people = const [];
   final Map<String, Future<void>> _mutationQueues = <String, Future<void>>{};
   bool _bulkBusy = false;
+  Set<String> _bulkLockedTaskIds = const <String>{};
   int _intentGeneration = 0;
   int _requestGeneration = 0;
   int _page = 1;
@@ -132,6 +133,7 @@ class _TasksScreenState extends State<TasksScreen> {
     TaskAddressIntent? intent,
     int? generation,
   }) async {
+    if (_bulkBusy) return;
     final request = ++_requestGeneration;
     setState(() {
       _loading = true;
@@ -252,6 +254,7 @@ class _TasksScreenState extends State<TasksScreen> {
       _intentGeneration == generation;
 
   Future<void> _goToPage(int page) async {
+    if (_bulkBusy) return;
     final board = _board;
     if (board == null || page < 1 || page > _lastPage) return;
     final result = await _tasks.boardRows(board.id, page: page);
@@ -375,8 +378,13 @@ class _TasksScreenState extends State<TasksScreen> {
     subtasks: prior.subtasks,
   );
 
+  Future<void> _blockedEdit() async =>
+      _announce('Finish the bulk change before editing this task.');
+
   Future<void> _saveCore(TaskRow task, String field, Object? value) =>
-      _enqueue(task.id, () => _saveCoreNow(task.id, field, value));
+      _bulkLockedTaskIds.contains(task.id)
+      ? _blockedEdit()
+      : _enqueue(task.id, () => _saveCoreNow(task.id, field, value));
 
   Future<void> _saveCoreNow(String taskId, String field, Object? value) async {
     final task = _rows.where((row) => row.id == taskId).firstOrNull;
@@ -430,7 +438,9 @@ class _TasksScreenState extends State<TasksScreen> {
     TaskRow task,
     TaskColumnDefinition column,
     Object? value,
-  ) => _enqueue(task.id, () => _saveCustomNow(task.id, column, value));
+  ) => _bulkLockedTaskIds.contains(task.id)
+      ? _blockedEdit()
+      : _enqueue(task.id, () => _saveCustomNow(task.id, column, value));
 
   Future<void> _saveCustomNow(
     String taskId,
@@ -475,47 +485,58 @@ class _TasksScreenState extends State<TasksScreen> {
   Future<void> _bulk(List<TaskRow> tasks, Map<String, Object?> changes) async {
     final board = _board;
     if (board == null || _bulkBusy) return;
-    setState(() => _bulkBusy = true);
-    await Future.wait(
-      tasks.map((task) => _mutationQueues[task.id] ?? Future<void>.value()),
-    );
-    if (!mounted) return;
-    if (_board?.id != board.id) {
-      setState(() => _bulkBusy = false);
-      return;
-    }
-    final latest = tasks
-        .map((task) => _rows.where((row) => row.id == task.id).firstOrNull)
-        .whereType<TaskRow>()
-        .toList(growable: false);
-    _announce('Saving changes to ${tasks.length} selected tasks.');
-    final result = await _tasks.bulkUpdate(
-      board.id,
-      targets: latest
-          .map(
-            (task) =>
-                TaskBulkTarget(id: task.id, expectedVersion: task.version),
-          )
-          .toList(growable: false),
-      changes: changes,
-    );
-    if (!mounted) return;
-    if (result is TaskApiSuccess<List<TaskRow>>) {
-      for (final row in result.data) {
-        final previous = _rows
-            .where((current) => current.id == row.id)
-            .firstOrNull;
-        _putRow(previous == null ? row : _mergeServerRow(previous, row));
+    final selectedIds = tasks.map((task) => task.id).toSet();
+    setState(() {
+      _bulkBusy = true;
+      _bulkLockedTaskIds = selectedIds;
+    });
+    try {
+      await Future.wait(
+        selectedIds.map((id) => _mutationQueues[id] ?? Future<void>.value()),
+      );
+      if (!mounted || _board?.id != board.id) return;
+      final latest = selectedIds
+          .map((id) => _rows.where((row) => row.id == id).firstOrNull)
+          .whereType<TaskRow>()
+          .toList(growable: false);
+      if (latest.length != selectedIds.length) {
+        _announce('One or more selected tasks are unavailable.');
+        return;
       }
-      _announce('Changes saved for ${result.data.length} tasks.');
-    } else if (result is TaskApiUnavailable<List<TaskRow>>) {
-      _evict(result.message);
-    } else {
-      if (result is TaskApiConflictResult<List<TaskRow>>) _conflict = true;
-      _announce(result.message ?? 'No selected tasks were changed.');
-      setState(() {});
+      _announce('Saving changes to ${latest.length} selected tasks.');
+      final result = await _tasks.bulkUpdate(
+        board.id,
+        targets: latest
+            .map(
+              (task) =>
+                  TaskBulkTarget(id: task.id, expectedVersion: task.version),
+            )
+            .toList(growable: false),
+        changes: changes,
+      );
+      if (!mounted) return;
+      if (result is TaskApiSuccess<List<TaskRow>>) {
+        for (final row in result.data) {
+          final previous = _rows
+              .where((current) => current.id == row.id)
+              .firstOrNull;
+          _putRow(previous == null ? row : _mergeServerRow(previous, row));
+        }
+        _announce('Changes saved for ${result.data.length} tasks.');
+      } else if (result is TaskApiUnavailable<List<TaskRow>>) {
+        _evict(result.message);
+      } else {
+        if (result is TaskApiConflictResult<List<TaskRow>>) _conflict = true;
+        _announce(result.message ?? 'No selected tasks were changed.');
+        setState(() {});
+      }
+    } finally {
+      if (mounted)
+        setState(() {
+          _bulkBusy = false;
+          _bulkLockedTaskIds = const <String>{};
+        });
     }
-    if (mounted) setState(() => _bulkBusy = false);
   }
 
   Future<void> _createBoard(String name) async {
@@ -745,6 +766,7 @@ class _TasksScreenState extends State<TasksScreen> {
                     onCustomChanged: _saveCustom,
                     onBulkChanged: _bulk,
                     bulkBusy: _bulkBusy,
+                    interactionLocked: _bulkBusy,
                     owners: _owners,
                     people: _people,
                     onSelectionChanged: (count) => _announce(

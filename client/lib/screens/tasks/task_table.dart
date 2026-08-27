@@ -20,6 +20,7 @@ class TaskTable extends StatefulWidget {
     this.onSelectionChanged,
     this.onSelectionCleared,
     this.bulkBusy = false,
+    this.interactionLocked = false,
   });
   final TaskBoard board;
   final List<TaskRow> rows;
@@ -36,6 +37,7 @@ class TaskTable extends StatefulWidget {
   final ValueChanged<int>? onSelectionChanged;
   final VoidCallback? onSelectionCleared;
   final bool bulkBusy;
+  final bool interactionLocked;
   @override
   State<TaskTable> createState() => _TaskTableState();
 }
@@ -73,6 +75,7 @@ class _TaskTableState extends State<TaskTable> {
   }
 
   void _toggle(TaskRow task) => setState(() {
+    if (widget.interactionLocked) return;
     _selection.toggle(task);
     widget.onSelectionChanged?.call(_selection.count);
   });
@@ -81,6 +84,7 @@ class _TaskTableState extends State<TaskTable> {
     widget.onSelectionChanged?.call(0);
   });
   Future<void> _core(TaskRow task, String field, Object? value) async {
+    if (widget.interactionLocked) return;
     if (field == 'title' && widget.onCoreChanged == null)
       widget.onTitleChanged(task, value as String);
     await widget.onCoreChanged?.call(task, field, value);
@@ -90,7 +94,11 @@ class _TaskTableState extends State<TaskTable> {
     TaskRow task,
     TaskColumnDefinition column,
     Object? value,
-  ) async => widget.onCustomChanged?.call(task, column, value);
+  ) async {
+    if (widget.interactionLocked) return;
+    await widget.onCustomChanged?.call(task, column, value);
+  }
+
   Future<void> _bulk(Map<String, Object?> changes) async {
     final rows = widget.rows
         .where((row) => _selection.contains(row.id))
@@ -153,91 +161,95 @@ class _TaskTableState extends State<TaskTable> {
         ),
       },
       autofocus: true,
-      child: Column(
-        children: [
-          if (_selection.count > 0)
-            _BulkBar(
-              count: _selection.count,
-              board: widget.board,
-              onClear: _clear,
-              onBulk: _bulk,
-              busy: widget.bulkBusy,
-            ),
-          Expanded(
-            child: Row(
-              children: [
-                SizedBox(
-                  key: const Key('pinned-task-column'),
-                  width: 300,
-                  child: ListView(
-                    controller: _pinned,
-                    children: [
-                      _header(context, 'Task'),
-                      for (final id in ids)
-                        if (groups[id] case final rows?) ...[
-                          _group(
-                            context,
-                            widget.board.groups
-                                    .where((g) => g.id == id)
-                                    .map((g) => g.name)
-                                    .firstOrNull ??
-                                'Ungrouped',
-                            _collapsed.contains(id),
-                            () => setState(
-                              () => _collapsed.contains(id)
-                                  ? _collapsed.remove(id)
-                                  : _collapsed.add(id ?? ''),
-                            ),
-                          ),
-                          if (!_collapsed.contains(id))
-                            for (final row in rows)
-                              _PinnedRow(
-                                task: row,
-                                selected: row.id == widget.selectedTaskId,
-                                checked: _selection.contains(row.id),
-                                onSelect: () => widget.onSelected(row),
-                                onCheck: () => _toggle(row),
-                                onTitle: (title) => _core(row, 'title', title),
+      child: IgnorePointer(
+        ignoring: widget.interactionLocked,
+        child: Column(
+          children: [
+            if (_selection.count > 0)
+              _BulkBar(
+                count: _selection.count,
+                board: widget.board,
+                onClear: _clear,
+                onBulk: _bulk,
+                busy: widget.bulkBusy,
+              ),
+            Expanded(
+              child: Row(
+                children: [
+                  SizedBox(
+                    key: const Key('pinned-task-column'),
+                    width: 300,
+                    child: ListView(
+                      controller: _pinned,
+                      children: [
+                        _header(context, 'Task'),
+                        for (final id in ids)
+                          if (groups[id] case final rows?) ...[
+                            _group(
+                              context,
+                              widget.board.groups
+                                      .where((g) => g.id == id)
+                                      .map((g) => g.name)
+                                      .firstOrNull ??
+                                  'Ungrouped',
+                              _collapsed.contains(id),
+                              () => setState(
+                                () => _collapsed.contains(id)
+                                    ? _collapsed.remove(id)
+                                    : _collapsed.add(id ?? ''),
                               ),
-                        ],
-                    ],
+                            ),
+                            if (!_collapsed.contains(id))
+                              for (final row in rows)
+                                _PinnedRow(
+                                  task: row,
+                                  selected: row.id == widget.selectedTaskId,
+                                  checked: _selection.contains(row.id),
+                                  onSelect: () => widget.onSelected(row),
+                                  onCheck: () => _toggle(row),
+                                  onTitle: (title) =>
+                                      _core(row, 'title', title),
+                                ),
+                          ],
+                      ],
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SizedBox(
-                      width: 610.0 + 180 * custom.length,
-                      child: ListView(
-                        controller: _columns,
-                        children: [
-                          _OperationalHeader(custom: custom),
-                          for (final id in ids)
-                            if (groups[id] case final rows?) ...[
-                              _groupSpacer(context),
-                              if (!_collapsed.contains(id))
-                                for (final row in rows)
-                                  _OperationalRow(
-                                    task: row,
-                                    board: widget.board,
-                                    custom: custom,
-                                    owners: widget.owners,
-                                    people: widget.people,
-                                    onCore: (field, value) =>
-                                        _core(row, field, value),
-                                    onCustom: (column, value) =>
-                                        _custom(row, column, value),
-                                  ),
-                            ],
-                        ],
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: 610.0 + 180 * custom.length,
+                        child: ListView(
+                          controller: _columns,
+                          children: [
+                            _OperationalHeader(custom: custom),
+                            for (final id in ids)
+                              if (groups[id] case final rows?) ...[
+                                _groupSpacer(context),
+                                if (!_collapsed.contains(id))
+                                  for (final row in rows)
+                                    _OperationalRow(
+                                      task: row,
+                                      board: widget.board,
+                                      custom: custom,
+                                      owners: widget.owners,
+                                      people: widget.people,
+                                      onCore: (field, value) =>
+                                          _core(row, field, value),
+                                      onCustom: (column, value) =>
+                                          _custom(row, column, value),
+                                    ),
+                              ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

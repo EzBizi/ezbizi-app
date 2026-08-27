@@ -69,3 +69,13 @@ remain).
   task's existing archived value remains visible as a read-only label.
 
 Focused cells/table/screen Flutter run: 12 passing.
+
+## Fix round 3/5
+
+- Bulk captures selected IDs and synchronously locks them before its first
+  await. It waits queued task mutations, re-reads stable latest rows/versions,
+  and submits exactly one request. The bulk controls, table selection and
+  editable cells are inert until completion; board/page loads are also refused.
+- Locks release in `finally` without clearing the existing selection.
+
+Focused cells/table/screen Flutter run: 12 passing.
