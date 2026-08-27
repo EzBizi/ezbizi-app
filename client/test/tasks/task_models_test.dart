@@ -85,7 +85,7 @@ void main() {
     });
 
     test(
-      'parses typed conflicts without treating a detail revision as the task edit version',
+      'parses typed partial task conflicts without requiring a full row',
       () {
         final conflict = TaskApiConflict.fromResponse(
           statusCode: 409,
@@ -93,23 +93,10 @@ void main() {
             'message': 'That task changed while you were editing it.',
             'data': <String, Object?>{
               'id': 'task-1',
-              'board_id': 'board-1',
-              'group_id': 'group-1',
-              'parent_task_id': null,
-              'number': 'TASK-1',
               'title': 'Server title',
-              'owner_user_id': null,
               'collaborator_user_ids': <Object?>[],
-              'status_option_id': 'status-1',
-              'priority_option_id': null,
-              'start_on': null,
-              'due_on': null,
-              'position': 1,
+              'due_on': '2026-09-11',
               'version': 8,
-              'detail_version': 21,
-              'custom_values': <String, Object?>{},
-              'group_by_value': 'group-1',
-              'subtasks': <Object?>[],
             },
             'meta': <String, Object?>{
               'current_version': 8,
@@ -121,8 +108,42 @@ void main() {
         expect(conflict.kind, TaskConflictKind.task);
         expect(conflict.currentVersion, 8);
         expect(conflict.currentTask?.version, 8);
-        expect(conflict.currentTask?.detailVersion, 21);
+        expect(conflict.currentTask?.field('title')?.value, 'Server title');
+        expect(
+          conflict.currentTask?.field('due_on')?.value,
+          DateTime.utc(2026, 9, 11),
+        );
+        expect(
+          conflict.currentTask?.field('collaborator_user_ids')?.value,
+          <String>[],
+        );
         expect(conflict.conflictingFields, ['title']);
+      },
+    );
+
+    test(
+      'parses compact task-detail subtasks without requiring row-only fields',
+      () {
+        final json = Map<String, Object?>.from(
+          (_rowsFixture()['data'] as List<Object?>).single
+              as Map<String, Object?>,
+        );
+        json['subtasks'] = <Object?>[
+          <String, Object?>{
+            'id': 'subtask-1',
+            'title': 'Measure opening',
+            'status_option_id': 'status-1',
+            'version': 2,
+            'archived': false,
+          },
+        ];
+
+        final task = TaskRow.fromJson(json);
+
+        expect(task.subtasks.single.id, 'subtask-1');
+        expect(task.subtasks.single.title, 'Measure opening');
+        expect(task.subtasks.single.version, 2);
+        expect(task.subtasks.single.archived, isFalse);
       },
     );
 

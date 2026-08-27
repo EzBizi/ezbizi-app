@@ -84,7 +84,11 @@ void main() {
         'board-1',
         'view-1',
         expectedViewVersion: 5,
-        changes: const <String, Object?>{'name': 'Mine'},
+        expectedStructureVersion: 12,
+        changes: const <String, Object?>{
+          'name': 'Mine',
+          'visibility': 'shared',
+        },
       );
       await api.updateBoard(
         'board-1',
@@ -114,7 +118,9 @@ void main() {
       });
       expect(jsonDecode(requests[2].body), <String, Object?>{
         'expected_view_version': 5,
+        'expected_structure_version': 12,
         'name': 'Mine',
+        'visibility': 'shared',
       });
       expect(jsonDecode(requests[3].body), <String, Object?>{
         'expected_structure_version': 11,
@@ -166,7 +172,10 @@ void main() {
 
       expect(conflict, isA<TaskApiConflictResult<TaskRow>>());
       expect(conflict.conflict?.currentVersion, 9);
-      expect(conflict.conflict?.currentTask?.title, 'Server title');
+      expect(
+        conflict.conflict?.currentTask?.field('title')?.value,
+        'Server title',
+      );
       expect(unavailable, isA<TaskApiUnavailable<TaskDetailSnapshot>>());
       expect(unavailable.value, isNull);
       expect(unavailable.conflict, isNull);
@@ -183,12 +192,60 @@ void main() {
     expect(snapshot.task.version, 4);
     expect(snapshot.etag, '"detail-17"');
   });
+
+  test(
+    'captures the detail ETag and parses compact subtasks and record links',
+    () async {
+      final detail = _minimalTask(version: 4)
+        ..['subtasks'] = <Object?>[
+          <String, Object?>{
+            'id': 'subtask-1',
+            'title': 'Measure opening',
+            'status_option_id': 'status-1',
+            'version': 2,
+            'archived': false,
+          },
+        ]
+        ..['record_links'] = <Object?>[
+          <String, Object?>{
+            'link_id': 'link-1',
+            'available': false,
+            'type': 'Customer',
+          },
+        ];
+      final api = TaskApi(
+        ApiClient(
+          client: MockClient(
+            (_) async => _json(
+              200,
+              <String, Object?>{'data': detail},
+              headers: const <String, String>{'etag': '"detail-17"'},
+            ),
+          ),
+        ),
+      );
+
+      final result = await api.taskDetail('board-1', 'task-1');
+
+      expect(result, isA<TaskApiSuccess<TaskDetailSnapshot>>());
+      expect(result.value?.etag, '"detail-17"');
+      expect(result.value?.task.version, 4);
+      expect(result.value?.task.subtasks.single.title, 'Measure opening');
+      expect(result.value?.recordLinks.single.available, isFalse);
+      expect(result.value?.recordLinks.single.recordId, isNull);
+      expect(result.value?.recordLinks.single.route, isNull);
+    },
+  );
 }
 
-http.Response _json(int status, Map<String, Object?> body) => http.Response(
+http.Response _json(
+  int status,
+  Map<String, Object?> body, {
+  Map<String, String> headers = const <String, String>{},
+}) => http.Response(
   jsonEncode(body),
   status,
-  headers: const {'content-type': 'application/json'},
+  headers: <String, String>{'content-type': 'application/json', ...headers},
 );
 
 Map<String, Object?> _minimalBoard() => <String, Object?>{

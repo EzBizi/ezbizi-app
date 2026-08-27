@@ -432,7 +432,7 @@ final class TaskRow {
       values: Map.unmodifiable(values),
       groupByValue: json['group_by_value'],
       subtasks: (_optionalObjects(json, 'subtasks') ?? const [])
-          .map((row) => TaskRow.fromJson(row, board: board))
+          .map(TaskSubtaskSummary.fromJson)
           .toList(growable: false),
     );
   }
@@ -454,7 +454,32 @@ final class TaskRow {
   final int detailVersion;
   final Map<String, TaskCellValue> values;
   final Object? groupByValue;
-  final List<TaskRow> subtasks;
+  final List<TaskSubtaskSummary> subtasks;
+}
+
+final class TaskSubtaskSummary {
+  const TaskSubtaskSummary({
+    required this.id,
+    required this.title,
+    required this.statusOptionId,
+    required this.version,
+    required this.archived,
+  });
+
+  factory TaskSubtaskSummary.fromJson(Map<String, Object?> json) =>
+      TaskSubtaskSummary(
+        id: _string(json, 'id'),
+        title: _string(json, 'title'),
+        statusOptionId: _nullableString(json, 'status_option_id'),
+        version: _integer(json, 'version'),
+        archived: _optionalBoolean(json, 'archived') ?? false,
+      );
+
+  final String id;
+  final String title;
+  final String? statusOptionId;
+  final int version;
+  final bool archived;
 }
 
 final class TaskCellValue {
@@ -865,10 +890,28 @@ final class TaskUpdate {
 }
 
 final class TaskDetailSnapshot {
-  const TaskDetailSnapshot({required this.task, required this.etag});
+  const TaskDetailSnapshot({
+    required this.task,
+    required this.etag,
+    this.recordLinks = const <TaskRecordLink>[],
+  });
+
+  factory TaskDetailSnapshot.fromJson(
+    Map<String, Object?> json, {
+    required String? etag,
+    TaskBoard? board,
+  }) => TaskDetailSnapshot(
+    task: TaskRow.fromJson(json, board: board),
+    etag: etag,
+    recordLinks: _objects(
+      json,
+      'record_links',
+    ).map(TaskRecordLink.fromJson).toList(growable: false),
+  );
 
   final TaskRow task;
   final String? etag;
+  final List<TaskRecordLink> recordLinks;
 }
 
 final class TaskMoveMutation {
@@ -955,11 +998,13 @@ final class TaskApiConflict {
         ),
       );
     }
-    TaskRow? currentTask;
+    TaskConflictTaskValues? currentTask;
     final data = body['data'];
     if (data is Map) {
       try {
-        currentTask = TaskRow.fromJson(Map<String, Object?>.from(data));
+        currentTask = TaskConflictTaskValues.fromJson(
+          Map<String, Object?>.from(data),
+        );
       } on FormatException {
         currentTask = null;
       }
@@ -979,7 +1024,68 @@ final class TaskApiConflict {
   final int? currentVersion;
   final Map<String, int> currentGroupVersions;
   final List<String> conflictingFields;
-  final TaskRow? currentTask;
+  final TaskConflictTaskValues? currentTask;
+}
+
+enum TaskConflictFieldKind {
+  title,
+  description,
+  groupId,
+  ownerUserId,
+  collaboratorUserIds,
+  statusOptionId,
+  priorityOptionId,
+  startOn,
+  dueOn,
+  archivedAt,
+  columnDefinitionId,
+  customValue,
+  unknown,
+}
+
+final class TaskConflictFieldValue {
+  const TaskConflictFieldValue({
+    required this.name,
+    required this.kind,
+    required this.value,
+  });
+
+  final String name;
+  final TaskConflictFieldKind kind;
+  final Object? value;
+}
+
+final class TaskConflictTaskValues {
+  const TaskConflictTaskValues({
+    required this.id,
+    required this.version,
+    required this.fields,
+  });
+
+  factory TaskConflictTaskValues.fromJson(Map<String, Object?> json) {
+    final id = _string(json, 'id');
+    final version = _integer(json, 'version');
+    final fields = <String, TaskConflictFieldValue>{};
+    for (final entry in json.entries) {
+      if (entry.key == 'id' || entry.key == 'version') continue;
+      fields[entry.key] = TaskConflictFieldValue(
+        name: entry.key,
+        kind: _conflictFieldKind(entry.key),
+        value: _parseConflictValue(entry.key, entry.value),
+      );
+    }
+    return TaskConflictTaskValues(
+      id: id,
+      version: version,
+      fields: Map<String, TaskConflictFieldValue>.unmodifiable(fields),
+    );
+  }
+
+  final String id;
+  final int version;
+  final Map<String, TaskConflictFieldValue> fields;
+
+  TaskConflictFieldValue? field(String name) => fields[name];
 }
 
 TaskBoardVisibility _boardVisibility(String raw) => switch (raw) {
@@ -1023,6 +1129,47 @@ TaskViewVisibility _viewVisibility(String raw) => switch (raw) {
   _ => TaskViewVisibility.unknown,
 };
 
+TaskConflictFieldKind _conflictFieldKind(String name) => switch (name) {
+  'title' => TaskConflictFieldKind.title,
+  'description' => TaskConflictFieldKind.description,
+  'group_id' => TaskConflictFieldKind.groupId,
+  'owner_user_id' => TaskConflictFieldKind.ownerUserId,
+  'collaborator_user_ids' => TaskConflictFieldKind.collaboratorUserIds,
+  'status_option_id' => TaskConflictFieldKind.statusOptionId,
+  'priority_option_id' => TaskConflictFieldKind.priorityOptionId,
+  'start_on' => TaskConflictFieldKind.startOn,
+  'due_on' => TaskConflictFieldKind.dueOn,
+  'archived_at' => TaskConflictFieldKind.archivedAt,
+  'column_definition_id' => TaskConflictFieldKind.columnDefinitionId,
+  'value' => TaskConflictFieldKind.customValue,
+  _ => TaskConflictFieldKind.unknown,
+};
+
+Object? _parseConflictValue(String name, Object? value) => switch (name) {
+  'title' => _expectType<String>(value, 'data.title'),
+  'description' ||
+  'group_id' ||
+  'owner_user_id' ||
+  'status_option_id' ||
+  'priority_option_id' ||
+  'column_definition_id' =>
+    value == null ? null : _expectType<String>(value, 'data.$name'),
+  'collaborator_user_ids' => _stringList(value, 'data.collaborator_user_ids'),
+  'start_on' || 'due_on' =>
+    value == null
+        ? null
+        : _parseDateOnly(
+            _expectType<String>(value, 'data.$name'),
+            'data.$name',
+          ),
+  'archived_at' =>
+    value == null ? null : _parseDateTimeValue(value, 'data.archived_at'),
+  // A custom value's concrete type lives in its board definition, which the
+  // compact 409 payload does not repeat. Preserve that JSON losslessly.
+  'value' => value,
+  _ => value,
+};
+
 String _string(Map<String, Object?> json, String key) =>
     _expectType<String>(_required(json, key), key);
 
@@ -1048,19 +1195,20 @@ bool? _optionalBoolean(Map<String, Object?> json, String key) {
 }
 
 DateTime _dateTime(Map<String, Object?> json, String key) {
-  final raw = _string(json, key);
-  final parsed = DateTime.tryParse(raw);
-  if (parsed == null)
-    throw FormatException('$key must be an ISO-8601 timestamp.');
-  return parsed;
+  return _parseDateTimeValue(_string(json, key), key);
 }
 
 DateTime? _nullableDateTime(Map<String, Object?> json, String key) {
   final raw = _nullableString(json, key);
   if (raw == null) return null;
+  return _parseDateTimeValue(raw, key);
+}
+
+DateTime _parseDateTimeValue(Object? value, String path) {
+  final raw = _expectType<String>(value, path);
   final parsed = DateTime.tryParse(raw);
   if (parsed == null)
-    throw FormatException('$key must be an ISO-8601 timestamp.');
+    throw FormatException('$path must be an ISO-8601 timestamp.');
   return parsed;
 }
 

@@ -113,13 +113,10 @@ final class TaskApi {
     final response = await _api.get('/tasks/boards/$boardId/tasks/$taskId');
     return _decode(
       response,
-      (data) => TaskDetailSnapshot(
-        task: TaskRow.fromJson(_map(data, 'data'), board: _boards[boardId]),
-        // ApiClient currently exposes the JSON response but not response
-        // headers. The snapshot deliberately carries its HTTP validator as a
-        // separate value so adding header propagation cannot accidentally turn
-        // an ETag into a task edit version.
-        etag: null,
+      (data) => TaskDetailSnapshot.fromJson(
+        _map(data, 'data'),
+        board: _boards[boardId],
+        etag: response.headers['etag'],
       ),
     );
   }
@@ -160,15 +157,20 @@ final class TaskApi {
     String boardId,
     String viewId, {
     required int expectedViewVersion,
+    int? expectedStructureVersion,
     required Map<String, Object?> changes,
   }) async {
+    final mutation = _ownedMutation(
+      changes,
+      ownedKey: 'expected_view_version',
+      version: expectedViewVersion,
+    );
+    if (expectedStructureVersion != null) {
+      mutation['expected_structure_version'] = expectedStructureVersion;
+    }
     final response = await _api.patch(
       '/tasks/boards/$boardId/views/$viewId',
-      _ownedMutation(
-        changes,
-        ownedKey: 'expected_view_version',
-        version: expectedViewVersion,
-      ),
+      mutation,
     );
     return _decode(
       response,

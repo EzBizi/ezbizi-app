@@ -251,6 +251,7 @@ class ApiClient {
             ? <String, dynamic>{}
             : jsonDecode(response.body) as Map<String, dynamic>,
         correlationId: response.headers['x-correlation-id'],
+        headers: Map<String, String>.unmodifiable(response.headers),
       );
     } catch (_) {
       return const ApiResponse(
@@ -341,6 +342,7 @@ class ApiClient {
         // Ties a client-side error to the server's audit trail (§10) — without
         // it, "it broke at 3pm" is unmatchable against the logs.
         correlationId: response.headers['x-correlation-id'],
+        headers: Map<String, String>.unmodifiable(response.headers),
       );
     } on FormatException {
       // The server answered with something that isn't JSON. Surfacing this
@@ -498,11 +500,13 @@ class ApiResponse {
     required this.statusCode,
     required this.body,
     this.correlationId,
+    this.headers = const <String, String>{},
   });
 
   final int statusCode;
   final Map<String, dynamic> body;
   final String? correlationId;
+  final Map<String, String> headers;
 
   bool get ok => statusCode >= 200 && statusCode < 300;
   bool get unauthorized => statusCode == 401;
