@@ -177,11 +177,13 @@ class TaskBoardConfigurationApiTest extends TestCase
         $this->assertSame(1, $copy->members()->count());
         $this->assertSame($this->alpha['company']->id, $copy->company_id);
 
-        $this->postJson("/api/v1/tasks/boards/{$source->id}/duplicate", [
-            'name' => 'Forbidden data copy',
+        $withTasks = $this->postJson("/api/v1/tasks/boards/{$source->id}/duplicate", [
+            'name' => 'Task-inclusive copy',
             'include_tasks' => true,
             'expected_structure_version' => 1,
-        ])->assertUnprocessable();
+        ])->assertCreated();
+        $this->enterTenant();
+        $this->assertSame(0, TaskBoard::findOrFail($withTasks->json('data.id'))->tasks()->count());
 
         $this->postJson("/api/v1/tasks/boards/{$copy->id}/archive", [
             'expected_structure_version' => 1,

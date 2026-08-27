@@ -87,6 +87,8 @@ use App\Http\Controllers\Api\Tasks\TaskBoardRecoveryController;
 use App\Http\Controllers\Api\Tasks\TaskBoardsController;
 use App\Http\Controllers\Api\Tasks\TaskBulkController;
 use App\Http\Controllers\Api\Tasks\TaskColumnsController;
+use App\Http\Controllers\Api\Tasks\TaskColumnValuesController;
+use App\Http\Controllers\Api\Tasks\TaskDuplicationController;
 use App\Http\Controllers\Api\Tasks\TaskFoldersController;
 use App\Http\Controllers\Api\Tasks\TaskGroupsController;
 use App\Http\Controllers\Api\Tasks\TaskOrderController;
@@ -342,6 +344,8 @@ Route::prefix('v1')
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
         Route::post('tasks/{task}/archive', [TasksController::class, 'archive']);
         Route::post('tasks/{task}/restore', [TasksController::class, 'restore']);
+        Route::put('tasks/{task}/columns/{column}', [TaskColumnValuesController::class, 'update']);
+        Route::post('tasks/{task}/duplicate', [TaskDuplicationController::class, 'store']);
         Route::post('tasks/boards/{board}/bulk', [TaskBulkController::class, 'store']);
         Route::post('tasks/boards/{board}/order', [TaskOrderController::class, 'store']);
 

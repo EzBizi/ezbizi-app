@@ -34,6 +34,7 @@ final class TaskBoardWriter
     public function __construct(
         private readonly TaskBoardAccess $access,
         private readonly AuditLogger $audit,
+        private readonly TaskDuplicator $duplicator,
     ) {}
 
     public function create(User $actor, ViewScope $scope, array $attributes): TaskBoard
@@ -114,13 +115,7 @@ final class TaskBoardWriter
         string $name,
         bool $includeTasks = false,
     ): TaskBoard {
-        if ($includeTasks) {
-            throw ValidationException::withMessages([
-                'include_tasks' => 'Task-inclusive duplication is unavailable until typed task values can be copied atomically.',
-            ]);
-        }
-
-        return DB::transaction(function () use ($actor, $source, $scope, $expected, $name): TaskBoard {
+        return DB::transaction(function () use ($actor, $source, $scope, $expected, $name, $includeTasks): TaskBoard {
             $locked = TaskBoard::query()->lockForUpdate()->findOrFail($source->id);
             $this->access->viewDecision($actor, $locked, $scope)->authorize();
             $this->access->manageDecision($actor, $locked, $scope)->authorize();
@@ -131,24 +126,40 @@ final class TaskBoardWriter
 
             $locked->load($this->configurationRelations());
             $place = TaskPlace::fromView($scope);
+            if ($includeTasks && ($locked->company_id !== $place['company_id']
+                || $locked->franchise_id !== $place['franchise_id'])) {
+                throw ValidationException::withMessages([
+                    'include_tasks' => 'Task-inclusive board duplication requires the active view to be the board\'s exact filing place.',
+                ]);
+            }
+            if ($includeTasks) {
+                $this->duplicator->assertBoardFileValuesAvailable($locked);
+            }
             $copy = $this->createRecord($actor, [
                 'name' => $name,
                 'description' => $locked->description,
                 'visibility' => $locked->visibility->value,
             ], $place, null, defaults: false);
             $idMap = [];
+            $taskMappings = [
+                'groups' => [], 'status_options' => [], 'priority_options' => [],
+                'column_definitions' => [], 'column_options' => [],
+            ];
 
             foreach ($locked->groups as $row) {
                 $new = $this->copyRow(TaskGroup::class, $copy, $row, ['name', 'color', 'position', 'archived_at']);
                 $idMap[$row->id] = $new->id;
+                $taskMappings['groups'][$row->id] = $new->id;
             }
             foreach ($locked->statusOptions as $row) {
                 $new = $this->copyRow(TaskStatusOption::class, $copy, $row, ['name', 'color', 'category', 'position', 'archived_at']);
                 $idMap[$row->id] = $new->id;
+                $taskMappings['status_options'][$row->id] = $new->id;
             }
             foreach ($locked->priorityOptions as $row) {
                 $new = $this->copyRow(TaskPriorityOption::class, $copy, $row, ['name', 'color', 'rank', 'position', 'archived_at']);
                 $idMap[$row->id] = $new->id;
+                $taskMappings['priority_options'][$row->id] = $new->id;
             }
             foreach ($locked->coreColumnSettings as $row) {
                 $this->copyRow(TaskCoreColumnSetting::class, $copy, $row, ['core_key', 'display_label']);
@@ -156,6 +167,7 @@ final class TaskBoardWriter
             foreach ($locked->columnDefinitions as $row) {
                 $definition = $this->copyRow(TaskColumnDefinition::class, $copy, $row, ['name', 'type', 'number_suffix', 'position', 'archived_at']);
                 $idMap[$row->id] = $definition->id;
+                $taskMappings['column_definitions'][$row->id] = $definition->id;
                 foreach ($row->options as $option) {
                     $newOption = new TaskColumnOption;
                     $newOption->forceFill([
@@ -164,6 +176,7 @@ final class TaskBoardWriter
                         ...$option->only(['name', 'color', 'position', 'archived_at']),
                     ])->save();
                     $idMap[$option->id] = $newOption->id;
+                    $taskMappings['column_options'][$option->id] = $newOption->id;
                 }
             }
             foreach ($locked->views->where('visibility', 'shared') as $view) {
@@ -179,12 +192,16 @@ final class TaskBoardWriter
                     'position' => $view->position,
                 ])->save();
             }
+            if ($includeTasks) {
+                $this->duplicator->duplicateBoardTasks($actor, $locked, $copy, $scope, $taskMappings);
+            }
 
             $auditScope = TaskPlace::auditScope($copy);
             $this->audit->log('task_board.duplicated', target: $copy,
                 changes: ['before' => [], 'after' => $this->auditFields($copy)], metadata: [
                 'board_id' => $copy->id,
                 'source_board_id' => $locked->id,
+                'included_tasks' => $includeTasks,
             ], actor: $actor, scopeType: $auditScope['type'], scopeId: $auditScope['id']);
 
             return $copy->fresh($this->configurationRelations());
