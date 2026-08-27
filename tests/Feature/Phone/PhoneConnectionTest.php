@@ -35,10 +35,7 @@ class PhoneConnectionTest extends TestCase
         $response = $this->signedInAs($branch)->postJson('/api/v1/phone/connections', [
             'scope_type' => 'company',
             'scope_id' => $t['company']->id,
-            'kind' => 'byo',
-            'account_sid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-            'api_key_sid' => 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-            'api_secret' => 'SK-secret-value',
+            'kind' => 'subaccount',
         ]);
 
         $response->assertForbidden();
@@ -47,44 +44,56 @@ class PhoneConnectionTest extends TestCase
         $this->assertStringNotContainsString('PhoneConnection', $message);
     }
 
-    public function test_byo_stores_the_account_and_never_returns_the_secret(): void
+    /**
+     * A connection's secrets must never come back out.
+     *
+     * Was written against BYO, which no longer exists — phone service is
+     * EzBizi's own Twilio and a customer never types a credential. The
+     * property survives the path it was written for: adoption still stores an
+     * auth token and a minted API secret, and neither may reach JSON.
+     */
+    public function test_adopting_stores_the_account_and_never_returns_the_secret(): void
     {
+        $this->withPlatformTwilio();
+
         $t = $this->provisionTenant();
         $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
-        $secret = 'SK-secret-never-leak';
 
         /** @var FakeTwilioGateway $gateway */
         $gateway = $this->app->make(TwilioGateway::class);
+        $gateway->subaccounts = [[
+            'account_sid' => 'ACexistingexistingexistingexisting',
+            'friendly_name' => $t['company']->name,
+            'status' => 'active',
+        ]];
+
+        $this->grantPhoneService($t);
 
         $response = $this->signedInAs($editor)->postJson('/api/v1/phone/connections', [
-            'scope_type' => 'organization',
-            'scope_id' => $t['org']->id,
-            'kind' => 'byo',
-            'account_sid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-            'api_key_sid' => 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-            'api_secret' => $secret,
-        ]);
+            'scope_type' => 'company',
+            'scope_id' => $t['company']->id,
+            'kind' => 'subaccount',
+            'account_sid' => 'ACexistingexistingexistingexisting',
+            'auth_token' => $gateway->adoptableAuthToken,
+        ])->assertCreated();
 
-        $response->assertCreated();
         $json = $response->getContent();
-        $this->assertStringNotContainsString($secret, $json);
-        $this->assertStringNotContainsString('auth-token-from-verify', $json);
+        $this->assertStringNotContainsString($gateway->adoptableAuthToken, $json);
         $this->assertArrayNotHasKey('credentials', $response->json('data') ?? []);
         $this->assertArrayNotHasKey('auth_token', $response->json('data') ?? []);
         $this->assertArrayNotHasKey('api_secret', $response->json('data') ?? []);
 
-        $methods = array_column($gateway->calls, 'method');
-        $this->assertContains('verifyAccount', $methods);
-        $this->assertContains('createTwimlApp', $methods);
-
         $row = $this->inTenant($t['org'], fn () => PhoneConnection::query()->first());
-        $this->assertNotNull($row);
-        $this->assertSame($secret, $row->credentials);
-        $this->assertSame('auth-token-from-verify', $row->auth_token);
-        $this->assertNotSame($secret, $row->getAttributes()['credentials'] ?? null);
-        $this->assertNotSame('auth-token-from-verify', $row->getAttributes()['auth_token'] ?? null);
-        $this->assertStringNotContainsString($secret, (string) json_encode($row));
-        $this->assertStringNotContainsString('auth-token-from-verify', (string) json_encode($row));
+        $this->assertSame($gateway->adoptableAuthToken, $row->auth_token);
+        $this->assertNotSame(
+            $gateway->adoptableAuthToken,
+            $row->getAttributes()['auth_token'] ?? null,
+            'The auth token was stored in the clear.',
+        );
+        $this->assertStringNotContainsString(
+            $gateway->adoptableAuthToken,
+            (string) json_encode($row),
+        );
     }
 
     public function test_missing_platform_env_names_the_gap(): void
@@ -117,6 +126,8 @@ class PhoneConnectionTest extends TestCase
      */
     public function test_a_failed_twiml_app_still_leaves_a_disconnectable_connection(): void
     {
+        $this->withPlatformTwilio();
+
         $t = $this->provisionTenant();
         $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
 
@@ -124,20 +135,18 @@ class PhoneConnectionTest extends TestCase
         $gateway = $this->app->make(TwilioGateway::class);
         $gateway->failCreateTwimlAppWith = 'Twilio refused the voice application.';
 
+        $this->grantPhoneService($t);
+
         $this->signedInAs($editor)->postJson('/api/v1/phone/connections', [
-            'scope_type' => 'organization',
-            'scope_id' => $t['org']->id,
-            'kind' => 'byo',
-            'account_sid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-            'api_key_sid' => 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-            'api_secret' => 'SK-secret-kept',
+            'scope_type' => 'company',
+            'scope_id' => $t['company']->id,
+            'kind' => 'subaccount',
         ])->assertStatus(422);
 
         $row = $this->inTenant($t['org'], fn () => PhoneConnection::query()->first());
         $this->assertNotNull($row);
-        $this->assertSame('ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', $row->account_sid);
         $this->assertNull($row->twiml_app_sid);
-        $this->assertContains('verifyAccount', array_column($gateway->calls, 'method'));
+        $this->assertContains('createSubaccount', array_column($gateway->calls, 'method'));
         $this->assertContains('createTwimlApp', array_column($gateway->calls, 'method'));
     }
 

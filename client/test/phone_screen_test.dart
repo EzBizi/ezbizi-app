@@ -47,14 +47,21 @@ void main() {
     expect(find.text('There are no calls or messages yet.'), findsOneWidget);
   });
 
-  testWidgets('Settings shows the two connect sentences', (tester) async {
+  /// One way in, and only for an approved company. Bringing your own Twilio
+  /// was removed: it is not a product EzBizi offers, and while it existed it
+  /// was also the way round gate 2, since BYO spent no EzBizi money and so was
+  /// allowed without approval.
+  testWidgets('Settings offers activation and no credential fields', (
+    tester,
+  ) async {
     await _pump(tester, approvedCompanyIds: const ['co-1']);
 
     await _tap(tester, _tab('Settings'));
 
     expect(find.text('Coming soon'), findsNothing);
-    expect(find.text('Connect your Twilio'), findsWidgets);
     expect(find.text('Activate phone service'), findsWidgets);
+    expect(find.text('Connect your Twilio'), findsNothing);
+    expect(find.widgetWithText(TextField, 'Account SID'), findsNothing);
     expect(find.byType(Dialog), findsNothing);
   });
 
@@ -100,8 +107,8 @@ void main() {
       // to connect Everdoors.
       expect(find.text('A-1 Chimney'), findsOneWidget);
       expect(find.text('Everdoors Co'), findsNothing);
-      expect(find.text('Connect your Twilio'), findsOneWidget);
       expect(find.text('Activate phone service'), findsOneWidget);
+      expect(find.text('Connect your Twilio'), findsNothing);
 
       // Phone service is per company now, so there is no organization card at
       // all — and nothing to say about switching to the group to edit it.
@@ -113,19 +120,6 @@ void main() {
     },
   );
 
-  testWidgets('Connect your Twilio is in-page fields, not a dialog', (
-    tester,
-  ) async {
-    await _pump(tester);
-
-    await _tap(tester, _tab('Settings'));
-    await _tap(tester, find.text('Connect your Twilio').first);
-
-    expect(find.widgetWithText(TextField, 'Account SID'), findsOneWidget);
-    expect(find.widgetWithText(TextField, 'API key SID'), findsOneWidget);
-    expect(find.widgetWithText(TextField, 'API secret'), findsOneWidget);
-    expect(find.byType(Dialog), findsNothing);
-  });
 
   testWidgets('a connected account masks the SID and never shows the secret', (
     tester,
@@ -176,46 +170,15 @@ void main() {
     },
   );
 
-  testWidgets('Connect your Twilio posts the keys for that place', (
-    tester,
-  ) async {
-    Map<String, dynamic>? posted;
-
-    await _pump(tester, onCreate: (body) => posted = body);
-
-    await _tap(tester, _tab('Settings'));
-    await _tap(tester, find.text('Connect your Twilio').first);
-
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Account SID'),
-      'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-    );
-    await tester.enterText(
-      find.widgetWithText(TextField, 'API key SID'),
-      'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-    );
-    await tester.enterText(
-      find.widgetWithText(TextField, 'API secret'),
-      'never-echo-this-secret',
-    );
-    await tester.pumpAndSettle();
-
-    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
-
-    expect(posted, {
-      'scope_type': 'company',
-      'scope_id': 'co-1',
-      'kind': 'byo',
-      'account_sid': 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-      'api_key_sid': 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-      'api_secret': 'never-echo-this-secret',
-    });
-  });
 
   testWidgets('Settings at 375 is the list, then the form with Back', (
     tester,
   ) async {
-    await _pump(tester, size: const Size(375, 800));
+    await _pump(
+      tester,
+      size: const Size(375, 800),
+      approvedCompanyIds: const ['co-1'],
+    );
 
     await _tap(tester, _tab('Settings'));
 
@@ -226,128 +189,23 @@ void main() {
     expect(find.text('Ring groups'), findsOneWidget);
     expect(find.text('Trust'), findsOneWidget);
     expect(find.text('Messaging'), findsOneWidget);
-    expect(find.text('Connect your Twilio'), findsNothing);
+    expect(find.text('Activate phone service'), findsNothing);
 
     await _tap(tester, find.text('Connection'));
 
-    expect(find.text('Connect your Twilio'), findsWidgets);
+    expect(find.text('Activate phone service'), findsWidgets);
     expect(find.byTooltip('Back to the list'), findsOneWidget);
 
     await _tap(tester, find.byTooltip('Back to the list'));
 
-    expect(find.text('Connect your Twilio'), findsNothing);
+    expect(find.text('Activate phone service'), findsNothing);
     expect(find.text('Numbers'), findsOneWidget);
   });
 
-  testWidgets('Replace the key posts new keys and never deletes first', (
-    tester,
-  ) async {
-    Map<String, dynamic>? posted;
-    var deleted = false;
 
-    await _pump(
-      tester,
-      connections: [
-        {
-          'id': 'pc-1',
-          'organization_id': 'org-1',
-          'scope_type': 'company',
-          'scope_id': 'co-1',
-          'kind': 'byo',
-          'account_sid': 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxa7c2',
-          'api_key_sid': 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-          'twiml_app_sid': 'APcccccccccccccccccccccccccccccccc',
-          'status': 'connected',
-          'status_reason': null,
-        },
-      ],
-      onCreate: (body) => posted = body,
-      onDelete: () => deleted = true,
-    );
-
-    await _tap(tester, _tab('Settings'));
-    await _tap(tester, find.text('Replace the key'));
-
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Account SID'),
-      'ACdddddddddddddddddddddddddddddddd',
-    );
-    await tester.enterText(
-      find.widgetWithText(TextField, 'API key SID'),
-      'SKeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-    );
-    await tester.enterText(
-      find.widgetWithText(TextField, 'API secret'),
-      'replacement-secret',
-    );
-    await tester.pumpAndSettle();
-
-    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
-
-    expect(deleted, isFalse);
-    expect(posted, {
-      'scope_type': 'company',
-      'scope_id': 'co-1',
-      'kind': 'byo',
-      'account_sid': 'ACdddddddddddddddddddddddddddddddd',
-      'api_key_sid': 'SKeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-      'api_secret': 'replacement-secret',
-    });
-  });
-
-  testWidgets('Replace the key shows the server sentence on 409', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      connections: [
-        {
-          'id': 'pc-1',
-          'organization_id': 'org-1',
-          'scope_type': 'company',
-          'scope_id': 'co-1',
-          'kind': 'byo',
-          'account_sid': 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxa7c2',
-          'api_key_sid': 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-          'twiml_app_sid': 'APcccccccccccccccccccccccccccccccc',
-          'status': 'connected',
-          'status_reason': null,
-        },
-      ],
-      createStatus: 409,
-      createMessage:
-          'A phone connection is already set up for that place. Disconnect it before connecting another.',
-    );
-
-    await _tap(tester, _tab('Settings'));
-    await _tap(tester, find.text('Replace the key'));
-
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Account SID'),
-      'ACdddddddddddddddddddddddddddddddd',
-    );
-    await tester.enterText(
-      find.widgetWithText(TextField, 'API key SID'),
-      'SKeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-    );
-    await tester.enterText(
-      find.widgetWithText(TextField, 'API secret'),
-      'replacement-secret',
-    );
-    await tester.pumpAndSettle();
-
-    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
-
-    expect(
-      find.text(
-        'A phone connection is already set up for that place. Disconnect it before connecting another.',
-      ),
-      findsOneWidget,
-    );
-  });
 
   testWidgets(
-    'phone.view without phone.edit still opens Settings and Connect is refused',
+    'phone.view without phone.edit still opens Settings and activation is refused',
     (tester) async {
       await _pump(
       tester,
@@ -357,19 +215,14 @@ void main() {
 
       await _tap(tester, _tab('Settings'));
 
-      expect(find.text('Connect your Twilio'), findsWidgets);
       expect(find.text('Activate phone service'), findsWidgets);
 
-      final connect = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Connect your Twilio').first,
+      // Drawn and dead, with the reason attached — not hidden. Somebody who
+      // cannot do it should see that it exists and why they cannot.
+      final activate = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Activate phone service').first,
       );
-      final create = tester.widget<OutlinedButton>(
-        find
-            .widgetWithText(OutlinedButton, 'Activate phone service')
-            .first,
-      );
-      expect(connect.onPressed, isNull);
-      expect(create.onPressed, isNull);
+      expect(activate.onPressed, isNull);
     },
   );
 

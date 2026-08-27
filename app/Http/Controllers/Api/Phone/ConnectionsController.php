@@ -150,10 +150,14 @@ class ConnectionsController extends Controller
         $input = $request->validate([
             'scope_type' => ['required', 'in:organization,company'],
             'scope_id' => ['required', 'uuid'],
-            'kind' => ['required', Rule::in([PhoneConnection::KIND_BYO, PhoneConnection::KIND_SUBACCOUNT])],
-            'account_sid' => ['required_if:kind,byo', 'nullable', 'string', 'size:34'],
-            'api_key_sid' => ['required_if:kind,byo', 'nullable', 'string', 'size:34'],
-            'api_secret' => ['required_if:kind,byo', 'nullable', 'string', 'min:1'],
+            // Subaccount only. Phone service is something EzBizi provides on
+            // its own Twilio — a customer bringing their own account is not a
+            // product on offer, and while it WAS accepted here it was also a
+            // way round gate 2: BYO spent no EzBizi money, so it was allowed
+            // without approval, which made "kind=byo" a bypass for anyone who
+            // could post to this endpoint.
+            'kind' => ['required', Rule::in([PhoneConnection::KIND_SUBACCOUNT])],
+            'account_sid' => ['nullable', 'string', 'size:34'],
 
             // Adoption: `kind=subaccount` WITH an account_sid means "take over
             // this existing phone account" rather than "create a new one".
@@ -175,31 +179,29 @@ class ConnectionsController extends Controller
 
         $this->authorize('create', [PhoneConnection::class, $input['scope_type'], $company]);
 
-        if ($input['kind'] === PhoneConnection::KIND_SUBACCOUNT && ! $this->platformTwilioReady()) {
+        if (! $this->platformTwilioReady()) {
             return response()->json(['message' => self::PLATFORM_GAP], Response::HTTP_NOT_IMPLEMENTED);
         }
 
-        // §4 gate 2. On the provisioned path the Twilio usage bills EzBizi, not
-        // the tenant (spec §5), so activation is not something an organization
-        // may do to itself — a company has phone service because somebody at
-        // EzBizi said yes to this company by name.
+        // §4 gate 2. The Twilio usage bills EzBizi (spec §5), so activation is
+        // not something an organization may do to itself — a company has phone
+        // service because somebody at EzBizi said yes to that company by name.
         //
-        // BYO is deliberately NOT gated: a customer paying their own Twilio is
-        // spending their own money, and gating that would be charging for
-        // something EzBizi is not providing.
-        if ($input['kind'] === PhoneConnection::KIND_SUBACCOUNT) {
-            if ($company === null) {
-                throw ValidationException::withMessages([
-                    'scope_id' => 'Phone service is set up per company.',
-                ]);
-            }
+        // There is no unguarded path past this. Bringing your own Twilio used
+        // to be one, on the reasoning that a customer spending their own money
+        // needs no permission from us; since it is not a product EzBizi offers,
+        // all it did was answer "how do I skip the approval".
+        if ($company === null) {
+            throw ValidationException::withMessages([
+                'scope_id' => 'Phone service is set up per company.',
+            ]);
+        }
 
-            if (! PhoneServiceRequest::approvedFor($company->getKey())) {
-                return response()->json([
-                    'message' => 'EzBizi has not switched phone service on for '
-                        .$company->name.' yet. Ask for it on the Phone tab.',
-                ], Response::HTTP_FORBIDDEN);
-            }
+        if (! PhoneServiceRequest::approvedFor($company->getKey())) {
+            return response()->json([
+                'message' => 'EzBizi has not switched phone service on for '
+                    .$company->name.' yet. Ask for it on the Phone tab.',
+            ], Response::HTTP_FORBIDDEN);
         }
 
         $existing = PhoneConnection::query()
@@ -217,18 +219,7 @@ class ConnectionsController extends Controller
         // row would orphan a real subaccount / TwiML App with nothing to disconnect.
         // Provision first, persist a disconnectable row, then attach the App.
         try {
-            if ($input['kind'] === PhoneConnection::KIND_BYO) {
-                $verified = $this->twilio->verifyAccount(
-                    $input['account_sid'],
-                    $input['api_key_sid'],
-                    $input['api_secret'],
-                );
-
-                $accountSid = $input['account_sid'];
-                $apiKeySid = $input['api_key_sid'];
-                $apiSecret = $input['api_secret'];
-                $authToken = $verified['auth_token'] ?? null;
-            } elseif (filled($input['account_sid'] ?? null)) {
+            if (filled($input['account_sid'] ?? null)) {
                 // Adopting a phone account that already exists.
                 //
                 // Without this branch, connecting a company whose Twilio

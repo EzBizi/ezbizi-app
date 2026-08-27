@@ -84,10 +84,14 @@ class PhoneServiceRequestTest extends TestCase
     }
 
     /**
-     * BYO is a customer spending their own money. Charging a gate for something
-     * EzBizi is not providing would be wrong, so it stays open.
+     * There is no unguarded way in.
+     *
+     * Bringing your own Twilio used to be accepted and deliberately ungated —
+     * a customer spending their own money needs no permission from us. Since
+     * it is not a product EzBizi offers, all that exemption did was answer
+     * "how do I skip the approval", so the kind is refused outright.
      */
-    public function test_bring_your_own_twilio_is_not_gated_by_approval(): void
+    public function test_bringing_your_own_twilio_is_no_longer_a_way_in(): void
     {
         $t = $this->provisionTenant();
         $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
@@ -99,7 +103,11 @@ class PhoneServiceRequestTest extends TestCase
             'account_sid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
             'api_key_sid' => 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
             'api_secret' => 'their-own-secret',
-        ])->assertCreated();
+        ])->assertStatus(422);
+
+        $this->assertNull(
+            $this->inTenant($t['org'], fn () => \App\Models\PhoneConnection::query()->first()),
+        );
     }
 
     public function test_asking_records_the_companies_the_volume_and_whether_they_want_texting(): void

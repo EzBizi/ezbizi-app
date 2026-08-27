@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0105',
+      date: '27 Aug 2026',
+      items: [
+        'Phone service is EzBizi’s to switch on. Connecting your own '
+            'Twilio has been removed — it was never a service EzBizi '
+            'offered, and it was also a way past the approval.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0104',
       date: '27 Aug 2026',
       items: [
