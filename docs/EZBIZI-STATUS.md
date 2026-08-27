@@ -17,10 +17,10 @@ rather than for trying harder.
 | Server panel | https://srv.ezbizi.com (Webmin) |
 | Stack | Laravel 13 · PHP 8.4 · MySQL 8 · Flutter web client |
 <!-- numbers:start -->
-| Tests | 1966 backend · 882 client. Both gated on deploy: nothing ships if either is red. |
+| Tests | 1977 backend · 885 client. Both gated on deploy: nothing ships if either is red. |
 | Client version | `v0.0.0103` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
 | Production data | **2 organization(s) · 7 companies · 18 franchises · 13 users · 14 customers · 24 jobs.** Counted 2026-08-27 against the live database by `scripts/status-numbers.sh`, not typed. |
-| Permissions in production | **77 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
+| Permissions in production | **81 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
 <!-- numbers:end -->
 
 ## Build phases (§18 of the build plan)
@@ -37,13 +37,13 @@ rather than for trying harder.
 
 The owner accepted the Codex–Grok consensus and selected **A — Dense Grid** on 2026-08-26. The desktop/375px alternatives and decision record are in `docs/previews/tasks-layouts.html` and `docs/previews/tasks-layouts-review.md`. Tasks is not built; it is ready for explicit implementation authorization. Production-capable file paths remain gated on the Phase 1 plan's Task 10A off-instance restore proof.
 
-## EZ Leads — `leads` and `reviews` are live
+## EZ Leads — all three modules live, 2026-08-27
 
 The first expansion work that depends on an outside party's approval rather than on us. Rodrigo's
 A1 Leads — a local Node/SQLite system on his own PC — becomes native EzBizi modules. Read as
 specification, re-expressed here; nothing is ported.
 
-**Shipped in this release:** the `leads` module. One table, five permissions, a sidebar tab, a
+**`leads` shipped 2026-08-25.** One table, five permissions, a sidebar tab, a
 dashboard glance, and the Google Ads connection behind it. The list searches a name or a phone
 number in one box — digits are stored normalised so `5551234567` finds `+1 (555) 123-4567` — and
 `Fetch new` pulls from the connected account on demand. Status is EzBizi's column and the sync
@@ -55,6 +55,26 @@ one endpoint that touches a lead accepts `status` and nothing else.
 same empty list and mean opposite things, so `meta.connections` travels with every page and the
 screen says different sentences for each — the same rule as Email's stale-source behaviour, and
 the failure the whole module exists to avoid.
+
+**`business_profile` shipped 2026-08-27**, and with it EZ Leads is built. The listings the
+public sees on Maps — name, address, category, hours — and the number the screen leads with:
+how many Google is **not** showing. A suspended listing looks perfectly healthy in a database
+and is invisible on Maps, and today the way anybody finds out is a customer saying they could
+not find the business.
+
+Read-only except one field: which franchise answers for a listing. A listing is **not** a
+franchise — a company may hold thirty listings and no franchise records, and a franchise may
+cover several — so the link is optional, set by a person, and nothing derives one from the
+other. No automation actions at all: the API can write hours, descriptions and categories, and
+none of it is offered to a rule, because changing what the public is told about a real business
+should not happen because a condition matched at three in the morning.
+
+**Nothing further can be built for EZ Leads without Google.** Both remaining gates are theirs,
+and neither is on the critical path we control: the Ads developer token is at Test level pending
+Basic Access review, `adwords` scope verification needs a demo video of the working module, and
+Business Profile quota cannot even be applied for before 2026-10-24. The nearer blocker is
+smaller and ours — the two OAuth clients do not exist yet and no keys are on the box, confirmed
+2026-08-26, so Connect cannot start a sign-in at all (TODO #33).
 
 **`reviews` shipped 2026-08-26.** Reviews on a connected Business Profile, and the replies to
 them. Two tables — a review is what a member of the public wrote, a reply is a public statement
