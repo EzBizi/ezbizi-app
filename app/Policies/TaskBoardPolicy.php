@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\TaskBoard;
 use App\Models\User;
+use App\Support\Access\Refusal;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\TaskBoardAccess;
 use Illuminate\Auth\Access\Response;

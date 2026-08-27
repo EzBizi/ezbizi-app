@@ -283,6 +283,7 @@ class TaskAccessTest extends TestCase
         );
         $this->lookingAt($withoutView, ViewScope::COMPANY, $this->alpha['company']->id);
         $this->member($board, $withoutView, 'owner');
+        $this->assertFalse(app(TaskBoardPolicy::class)->viewAny($withoutView)->allowed());
         $this->assertFalse(app(TaskBoardPolicy::class)->view($withoutView, $board)->allowed());
 
         foreach (array_values(array_diff($all, ['tasks.view'])) as $missing) {
