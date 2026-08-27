@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\BusinessLocation;
 use App\Models\InventoryItem;
 use App\Models\Job;
 use App\Models\Lead;
@@ -1502,6 +1503,75 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Writes a suggested reply to the review that triggered the '
                             .'rule and leaves it waiting for a person. It does not publish, and '
                             .'nothing in this module can.',
+                    ),
+                ],
+            ),
+
+            /*
+             * ── Business Profile: the listing the public sees ────
+             *
+             * The third of the EZ Leads modules, and the one whose subject is
+             * neither an enquiry nor an opinion but the shop front itself:
+             * what Google shows a stranger who looks this business up.
+             *
+             * ── Why it is not Reviews, and not Franchises ────────
+             *
+             * Not Reviews, because assertKeysMatchSubject would refuse the
+             * keys: a review and a location are different records and a module
+             * holds one subject. Not Franchises either, and that one is worth
+             * saying out loud because it is the tempting shortcut — a company
+             * may hold thirty listings and no franchise records at all, and a
+             * franchise may cover several listings. The link between them is
+             * optional, set by a person, and nothing derives one from the
+             * other.
+             *
+             * ── One trigger earns this module its place ──────────
+             *
+             * `changed_on_google`. Hours or a phone number changing without
+             * anybody here doing it is a Google edit, an accepted public
+             * suggestion, or somebody with access nobody remembers granting.
+             * All three are worth a rule, and none of them is visible today
+             * until a customer rings to say nobody answered.
+             *
+             * ── No actions, and that is a decision ───────────────
+             *
+             * The API can write hours, descriptions, categories and phone
+             * numbers. None is offered to a rule. Changing what the public is
+             * told about a real business is not something that should happen
+             * because a condition matched at three in the morning, and
+             * satisfiesAutomationRule() passes on triggers alone — so the
+             * absence costs nothing but has to be recorded as intent, which
+             * is what this paragraph is.
+             */
+            new ModuleDefinition(
+                key:     'business_profile',
+                label:   'Business Profile',
+                actions: ModuleDefinition::DEFAULT_ACTIONS,
+                // `key:` declared for the same reason InventoryItem declares
+                // `item`: the default is strtolower(class_basename()), which
+                // would make this `businesslocation` and read as one word
+                // nobody says.
+                subject: new AutomationSubject(
+                    BusinessLocation::class,
+                    'Business location',
+                    key: 'business_location',
+                ),
+                triggers: [
+                    new TriggerDefinition(
+                        key:   'business_location.changed_on_google',
+                        label: 'Changed on Google',
+                        description: 'A connected listing changed on Google without the change '
+                            .'being made here — its name, phone, address, category, or whether '
+                            .'Google is showing it at all. It carries which fields moved, and '
+                            .'what they were before.',
+                    ),
+                    new TriggerDefinition(
+                        key:   'business_location.franchise_set',
+                        label: 'Location assigned to a branch',
+                        description: 'Somebody said which franchise answers for a listing. It is '
+                            .'a deliberate act rather than part of a sync, and the sync never '
+                            .'changes it — so this fires when a person decides, and never when '
+                            .'Google is read.',
                     ),
                 ],
             ),

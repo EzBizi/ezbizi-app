@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\InventoryVendorsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
+use App\Http\Controllers\Api\BusinessProfileController;
 use App\Http\Controllers\Api\LeadsController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Support\Social\SocialProvider;
@@ -372,6 +373,16 @@ Route::prefix('v1')
         Route::put('reviews/{review}/reply', [ReviewsController::class, 'draftReply']);
         Route::delete('reviews/{review}/reply', [ReviewsController::class, 'discardReply']);
         Route::post('reviews/{review}/reply/publish', [ReviewsController::class, 'publishReply']);
+        // Business Profile — the listings the public sees on Maps.
+        //
+        // `sync` before `{location}` so the literal is not captured as an id.
+        // No store, no destroy: a listing is created on Google, and deleting
+        // one here would say nothing to Google while hiding a shop front from
+        // whoever answers for it. Disconnecting the profile is what removes them.
+        Route::post('business-profile/sync', [BusinessProfileController::class, 'sync']);
+        Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
+        Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);
+        Route::patch('business-profile/locations/{location}', [BusinessProfileController::class, 'update']);
         Route::post('leads/sync', [LeadsController::class, 'sync']);
         Route::get('leads', [LeadsController::class, 'index']);
         Route::get('leads/{lead}', [LeadsController::class, 'show']);

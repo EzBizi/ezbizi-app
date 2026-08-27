@@ -5,6 +5,7 @@ namespace App\Services\Reviews;
 use App\Models\Review;
 use App\Models\ReviewReply;
 use App\Models\SocialConnection;
+use App\Support\Social\GoogleToken;
 use App\Support\Automations\EventEmitter;
 use App\Support\Social\BusinessProfileOAuth;
 use Illuminate\Http\Client\ConnectionException;
@@ -52,7 +53,7 @@ class BusinessProfileReviews
      */
     public function sync(SocialConnection $connection): array
     {
-        $token = $this->accessToken($connection);
+        $token = GoogleToken::forConnection($connection, 'business_profile');
         $account = trim((string) $connection->remote_id);
 
         $fetched = 0;
@@ -112,7 +113,7 @@ class BusinessProfileReviews
             );
         }
 
-        $token = $this->accessToken($connection);
+        $token = GoogleToken::forConnection($connection, 'business_profile');
 
         try {
             $response = Http::withToken($token)
@@ -296,50 +297,4 @@ class BusinessProfileReviews
         return new RuntimeException("Google refused while {$doing} (HTTP {$status}).");
     }
 
-    /**
-     * A fresh access token from the stored refresh token.
-     *
-     * Access tokens last an hour and a sync may run at any time, so there is no
-     * useful case where the stored one is still good.
-     */
-    private function accessToken(SocialConnection $connection): string
-    {
-        $refresh = (string) (($connection->credentials['refresh_token'] ?? '') ?: '');
-
-        if ($refresh === '') {
-            throw new RuntimeException(
-                'This Business Profile connection has no lasting permission stored, so it cannot '
-                .'be refreshed. It needs connecting again.'
-            );
-        }
-
-        try {
-            $response = Http::asForm()->timeout(self::TIMEOUT)->post(
-                'https://oauth2.googleapis.com/token',
-                [
-                    'client_id'     => (string) config('services.business_profile.client_id'),
-                    'client_secret' => (string) config('services.business_profile.client_secret'),
-                    'refresh_token' => $refresh,
-                    'grant_type'    => 'refresh_token',
-                ],
-            );
-        } catch (ConnectionException) {
-            throw new RuntimeException('Google did not answer while renewing the connection.');
-        }
-
-        $access = $response->json('access_token');
-
-        if ($response->failed() || ! is_string($access) || $access === '') {
-            $connection->forceFill([
-                'status'        => SocialConnection::STATUS_BROKEN,
-                'status_reason' => 'Google would not renew this connection. It needs connecting again.',
-            ])->save();
-
-            throw new RuntimeException(
-                'Google would not renew this connection. It needs connecting again.'
-            );
-        }
-
-        return $access;
-    }
 }

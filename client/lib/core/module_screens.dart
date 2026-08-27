@@ -9,6 +9,7 @@ import '../screens/inspection_screen.dart';
 import '../screens/fleet_screen.dart';
 import '../screens/inventory_screen.dart';
 import '../screens/jobs_screen.dart';
+import '../screens/business_profile_screen.dart';
 import '../screens/leads_screen.dart';
 import '../screens/reviews_screen.dart';
 import '../screens/marketing_screen.dart';
@@ -108,6 +109,14 @@ final Map<String, ModuleScreen> moduleScreens = {
   // messaged the business about work; `person_add` would say "a new contact"
   // and `trending_up` would say "a number went up", and neither is what a
   // branch manager is opening this tab to deal with.
+  // A shop front, not a map pin. `place`/`location_on` says "somewhere on a
+  // map", which is what a pin on a route is; this module is about the listing
+  // a business publishes about itself, and a storefront is the thing being
+  // published.
+  'business_profile': ModuleScreen(
+    Icons.storefront_outlined,
+    (api, session) => BusinessProfileScreen(api: api, session: session),
+  ),
   'leads': ModuleScreen(
     Icons.call_received_outlined,
     (api, session) => LeadsScreen(api: api, session: session),
