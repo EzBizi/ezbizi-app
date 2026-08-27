@@ -108,7 +108,9 @@ class SocialPostTest extends Command
                 : '  TikTok processes after the upload. Status:');
             $status = $tenant->run($organization, fn () => $publisher->status($connection, $id));
             $this->line('    '.json_encode($status));
-            $this->line('  Posted SELF_ONLY (private) because the app is not audited yet.');
+            if (! $this->option('draft')) {
+                $this->line('  Posted SELF_ONLY (private) because the app is not audited yet.');
+            }
         }
 
         return self::SUCCESS;
