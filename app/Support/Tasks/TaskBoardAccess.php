@@ -1,0 +1,262 @@
+<?php
+
+namespace App\Support\Tasks;
+
+use App\Models\TaskBoard;
+use App\Models\TaskBoardMember;
+use App\Models\User;
+use App\Support\Access\Refusal;
+use App\Support\Access\ScopeReach;
+use App\Support\Audit\AuditLogger;
+use App\Support\Modules\ModuleAvailability;
+use App\Support\Scoping\ViewScope;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
+
+final class TaskBoardAccess
+{
+    public function __construct(
+        private readonly ModuleAvailability $availability,
+        private readonly ScopeReach $reach,
+        private readonly TaskParticipantEligibility $participants,
+        private readonly AuditLogger $audit,
+    ) {}
+
+    public function constrainVisible(Builder $query, User $user, ViewScope $scope): Builder
+    {
+        if (! $this->moduleAndPermission($user)) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        $companyIds = $scope->type === ViewScope::FRANCHISE
+            ? []
+            : array_values(array_intersect(
+                $user->reachableCompanies()->modelKeys(),
+                $scope->isOrganization() ? $user->reachableCompanies()->modelKeys() : $scope->companyIds(),
+            ));
+        $franchiseIds = array_values(array_intersect(
+            $user->reachableFranchises()->modelKeys(),
+            $scope->franchiseIds(),
+        ));
+        $organization = $scope->isOrganization()
+            && $this->reach->covers($user, 'organization', $user->organization_id);
+
+        $query->where(function (Builder $places) use ($companyIds, $franchiseIds, $organization): void {
+            $hasBranch = false;
+
+            if ($organization) {
+                $places->where(fn (Builder $organization) => $organization
+                    ->whereNull('company_id')->whereNull('franchise_id'));
+                $hasBranch = true;
+            }
+
+            if ($companyIds !== []) {
+                $method = $hasBranch ? 'orWhere' : 'where';
+                $places->{$method}(fn (Builder $companies) => $companies
+                    ->whereIn('company_id', $companyIds)->whereNull('franchise_id'));
+                $hasBranch = true;
+            }
+
+            if ($franchiseIds !== []) {
+                $method = $hasBranch ? 'orWhereIn' : 'whereIn';
+                $places->{$method}('franchise_id', $franchiseIds);
+                $hasBranch = true;
+            }
+
+            if (! $hasBranch) {
+                $places->whereRaw('0 = 1');
+            }
+        });
+
+        return $query->where(function (Builder $visibility) use ($user): void {
+            $visibility->where('visibility', BoardVisibility::Scope->value)
+                ->orWhereHas('members', fn (Builder $members) => $members
+                    ->active()
+                    ->where('user_id', $user->getKey()));
+        });
+    }
+
+    public function viewDecision(User $user, TaskBoard $board, ViewScope $scope): Response
+    {
+        $base = $this->baseDecision($user, $board);
+
+        if ($base->denied()) {
+            return $base;
+        }
+
+        if (! TaskPlace::coveredBy($user, $board, $scope, $this->reach)) {
+            return Response::deny('This board is outside your active view or assignment.');
+        }
+
+        return $this->privateMembershipDecision($user, $board);
+    }
+
+    public function backgroundViewDecision(User $user, TaskBoard $board): Response
+    {
+        $base = $this->baseDecision($user, $board);
+
+        if ($base->denied()) {
+            return $base;
+        }
+
+        if (! TaskPlace::reachedBy($user, $board, $this->reach)) {
+            return Response::deny('This board is outside where you are assigned.');
+        }
+
+        return $this->privateMembershipDecision($user, $board);
+    }
+
+    public function createDecision(User $user, ViewScope $scope): Response
+    {
+        if (! $this->availability->isAvailable('tasks', $user->organization)) {
+            return Response::deny('Tasks are not available for this organization.');
+        }
+
+        if (! $user->hasPermission('tasks.manage')) {
+            return Refusal::permission('create task boards');
+        }
+
+        if ($user->organization?->isReadOnly()) {
+            return Response::deny('This organization is read-only because its subscription has ended.');
+        }
+
+        $place = TaskPlace::fromView($scope);
+        $covered = match ($scope->type) {
+            ViewScope::COMPANY => $this->reach->covers($user, 'company', $place['company_id']),
+            ViewScope::FRANCHISE => $this->reach->covers($user, 'franchise', $place['franchise_id']),
+            default => $this->reach->covers($user, 'organization', $place['organization_id']),
+        };
+
+        return $covered
+            ? Response::allow()
+            : Response::deny('You are not assigned at the exact active view, so you cannot file a board there.');
+    }
+
+    public function manageDecision(User $user, TaskBoard $board, ViewScope $scope): Response
+    {
+        $view = $this->viewDecision($user, $board, $scope);
+
+        if ($view->denied()) {
+            return $view;
+        }
+
+        if (! $user->hasPermission('tasks.manage')) {
+            return Refusal::permission('manage this task board');
+        }
+
+        if ($user->organization?->isReadOnly()) {
+            return Response::deny('This organization is read-only because its subscription has ended.');
+        }
+
+        return TaskBoardMember::query()
+            ->active()
+            ->where('board_id', $board->getKey())
+            ->where('user_id', $user->getKey())
+            ->where('role', BoardMemberRole::Owner->value)
+            ->exists()
+                ? Response::allow()
+                : Response::deny('Only an active board owner with Tasks management permission can administer this board.');
+    }
+
+    /** @return array{board_id:string,owner_user_id:string} */
+    public function recoverOrphanedOwner(User $administrator, TaskBoard $board, User $newOwner): array
+    {
+        if (! $administrator->is_active
+            || ! $administrator->isAdministrator()
+            || $administrator->organization_id !== $board->organization_id) {
+            throw new AuthorizationException('Only an active organization Administrator can recover an orphaned private board.');
+        }
+
+        if ($board->visibility !== BoardVisibility::Private) {
+            throw new AuthorizationException('Owner recovery is only for an orphaned private board.');
+        }
+
+        if (! $this->availability->isAvailable('tasks', $administrator->organization)
+            || $administrator->organization?->isReadOnly()) {
+            throw new AuthorizationException('Tasks owner recovery is unavailable while the module or subscription is inactive.');
+        }
+
+        return DB::transaction(function () use ($administrator, $board, $newOwner): array {
+            $lockedBoard = TaskBoard::query()->lockForUpdate()->findOrFail($board->getKey());
+            $memberships = TaskBoardMember::query()
+                ->where('board_id', $lockedBoard->getKey())
+                ->lockForUpdate()
+                ->get();
+
+            $eligibleOwnerExists = $memberships
+                ->where('is_active', true)
+                ->where('role', BoardMemberRole::Owner)
+                ->contains(function (TaskBoardMember $membership) use ($lockedBoard): bool {
+                    $owner = User::query()->find($membership->user_id);
+
+                    return $owner !== null
+                        && $this->participants->forMembership($owner, $lockedBoard)->allowed();
+                });
+
+            if ($eligibleOwnerExists) {
+                throw new AuthorizationException('This board still has an eligible owner and does not need recovery.');
+            }
+
+            $eligible = $this->participants->forMembership($newOwner, $lockedBoard);
+            if ($eligible->denied()) {
+                throw new AuthorizationException((string) $eligible->message());
+            }
+
+            $membership = $memberships->firstWhere('user_id', $newOwner->getKey())
+                ?? new TaskBoardMember;
+            $membership->forceFill([
+                'organization_id' => $lockedBoard->organization_id,
+                'board_id' => $lockedBoard->getKey(),
+                'user_id' => $newOwner->getKey(),
+                'role' => BoardMemberRole::Owner->value,
+                'is_active' => true,
+                'archived_at' => null,
+            ])->save();
+
+            $this->audit->log('task_board.owner_recovered', metadata: [
+                'board_id' => $lockedBoard->getKey(),
+                'owner_user_id' => $newOwner->getKey(),
+            ], actor: $administrator);
+
+            return ['board_id' => $lockedBoard->getKey(), 'owner_user_id' => $newOwner->getKey()];
+        });
+    }
+
+    private function baseDecision(User $user, TaskBoard $board): Response
+    {
+        if ($board->organization_id !== $user->organization_id) {
+            return Response::denyAsNotFound();
+        }
+
+        if (! $this->availability->isAvailable('tasks', $user->organization)) {
+            return Response::deny('Tasks are not available for this organization.');
+        }
+
+        return $user->hasPermission('tasks.view')
+            ? Response::allow()
+            : Refusal::permission('view Tasks');
+    }
+
+    private function moduleAndPermission(User $user): bool
+    {
+        return $this->availability->isAvailable('tasks', $user->organization)
+            && $user->hasPermission('tasks.view');
+    }
+
+    private function privateMembershipDecision(User $user, TaskBoard $board): Response
+    {
+        if ($board->visibility !== BoardVisibility::Private) {
+            return Response::allow();
+        }
+
+        return TaskBoardMember::query()
+            ->active()
+            ->where('board_id', $board->getKey())
+            ->where('user_id', $user->getKey())
+            ->exists()
+                ? Response::allow()
+                : Response::denyAsNotFound();
+    }
+}
