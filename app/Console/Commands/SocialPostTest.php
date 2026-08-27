@@ -35,6 +35,7 @@ class SocialPostTest extends Command
                             {--file= : Image or video to attach}
                             {--body= : The words}
                             {--title= : Title, where the network has one}
+                            {--draft : TikTok only — send to drafts instead of the profile}
                             {--force : Do not ask}';
 
     protected $description = 'Publish one post to one connected social account';
@@ -102,7 +103,9 @@ class SocialPostTest extends Command
         $this->info('✓ published — remote id '.$id);
 
         if ($publisher instanceof TikTokPublisher) {
-            $this->line('  TikTok processes after the upload. Status:');
+            $this->line($this->option('draft')
+                ? '  Sent to drafts. Open TikTok to finish and post it.'
+                : '  TikTok processes after the upload. Status:');
             $status = $tenant->run($organization, fn () => $publisher->status($connection, $id));
             $this->line('    '.json_encode($status));
             $this->line('  Posted SELF_ONLY (private) because the app is not audited yet.');
@@ -115,7 +118,7 @@ class SocialPostTest extends Command
     {
         return match ($provider) {
             SocialProvider::Pinterest => new PinterestPublisher,
-            SocialProvider::TikTok    => new TikTokPublisher,
+            SocialProvider::TikTok    => new TikTokPublisher(toDrafts: (bool) $this->option('draft')),
             default                   => null,
         };
     }

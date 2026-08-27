@@ -20,16 +20,22 @@ use Illuminate\Support\Facades\Http;
  * verified with TikTok. That means publishing tenant media to an unauthenticated
  * URL. Pushing the bytes keeps the file where it is.
  *
- * ── Why it is private until the app is audited ──────────────────
+ * ── Two ways in, and why both exist ─────────────────────────────
  *
- * An unaudited app may only post SELF_ONLY, and TikTok rejects anything else
- * with an error that reads like a bug in the caller. So this asks for SELF_ONLY
- * and says so, rather than letting somebody discover it from a 400.
+ * Direct Post puts the video on the profile. Inbox puts it in the creator's
+ * drafts for them to finish and post themselves. Direct Post needs the app to
+ * have passed TikTok's audit; the inbox needs only video.upload and works from
+ * the first day. Until the audit clears, the inbox is the difference between an
+ * integration that demonstrably works and one nobody can try.
  */
 final class TikTokPublisher implements SocialPublisher
 {
     private const API = 'https://open.tiktokapis.com/v2';
     private const TIMEOUT = 120;
+
+    public function __construct(
+        private readonly bool $toDrafts = false,
+    ) {}
 
     public function publish(SocialConnection $connection, SocialPost $post): string
     {
@@ -43,39 +49,9 @@ final class TikTokPublisher implements SocialPublisher
         $bytes = $post->bytes();
         $size  = strlen($bytes);
 
-        /*
-         * Ask the creator what they allow, before posting as them.
-         *
-         * Not optional politeness — TikTok's content-sharing guidelines require
-         * it, and skipping it is answered by init with "Please review our
-         * integration guidelines", which names no field and reads like the video
-         * was rejected. The call also returns the privacy levels this creator
-         * offers, and posting outside them is refused the same way.
-         *
-         * It doubles as the thing a composer will need: the account's name and
-         * avatar, and which privacy levels to draw.
-         */
-        $creator = $this->creatorInfo($token);
-        $privacy = $this->privacyFor($creator);
-
-        $init = $this->call($token, '/post/publish/video/init/', [
-            'post_info' => [
-                'title'          => mb_substr($post->body !== '' ? $post->body : ($post->title ?? 'EzBizi'), 0, 2200),
-                'privacy_level'  => $privacy,
-                'disable_comment' => false,
-                'disable_duet'    => false,
-                'disable_stitch'  => false,
-            ],
-            'source_info' => [
-                'source'            => 'FILE_UPLOAD',
-                'video_size'        => $size,
-                // One chunk. TikTok wants chunks between 5MB and 64MB, and a
-                // single chunk is allowed to exceed that only when it is the
-                // whole file — which it is here.
-                'chunk_size'        => $size,
-                'total_chunk_count' => 1,
-            ],
-        ]);
+        $init = $this->toDrafts
+            ? $this->initDraft($token, $size)
+            : $this->initDirect($token, $post, $size);
 
         $uploadUrl = $init['data']['upload_url'] ?? null;
         $publishId = $init['data']['publish_id'] ?? null;
@@ -89,13 +65,69 @@ final class TikTokPublisher implements SocialPublisher
         return $publishId;
     }
 
+    /**
+     * Straight to the profile.
+     *
+     * ── Why creator_info first ──────────────────────────────────
+     *
+     * Not optional politeness. TikTok's content-sharing guidelines require the
+     * app to ask what the creator allows and post within it, and skipping the
+     * call is answered by init with "Please review our integration guidelines" —
+     * which names no field and reads like the video was rejected.
+     *
+     * @return array<string, mixed>
+     */
+    private function initDirect(string $token, SocialPost $post, int $size): array
+    {
+        $creator = $this->creatorInfo($token);
+
+        return $this->call($token, '/post/publish/video/init/', [
+            'post_info' => [
+                'title'           => mb_substr($post->body !== '' ? $post->body : ($post->title ?? 'EzBizi'), 0, 2200),
+                'privacy_level'   => $this->privacyFor($creator),
+                'disable_comment' => false,
+                'disable_duet'    => false,
+                'disable_stitch'  => false,
+            ],
+            'source_info' => $this->source($size),
+        ]);
+    }
+
+    /**
+     * Into the creator's drafts.
+     *
+     * No post_info at all: the caption and the privacy are chosen by the person
+     * when they open the draft in TikTok. Sending post_info here is refused.
+     *
+     * @return array<string, mixed>
+     */
+    private function initDraft(string $token, int $size): array
+    {
+        return $this->call($token, '/post/publish/inbox/video/init/', [
+            'source_info' => $this->source($size),
+        ]);
+    }
+
+    /** @return array<string, mixed> */
+    private function source(int $size): array
+    {
+        return [
+            'source'     => 'FILE_UPLOAD',
+            'video_size' => $size,
+            // One chunk. TikTok wants chunks between 5MB and 64MB, and a single
+            // chunk may exceed that only when it is the whole file — which it is.
+            'chunk_size'        => $size,
+            'total_chunk_count' => 1,
+        ];
+    }
+
     private function upload(string $url, string $bytes, string $mime): void
     {
         $size = strlen($bytes);
 
         try {
             $response = Http::withHeaders([
-                'Content-Type'  => $mime,
+                'Content-Type' => $mime,
                 // Required even for a single chunk, and the range is inclusive:
                 // the last byte is size-1, not size. Off by one here is a 400
                 // with no explanation.
@@ -113,13 +145,16 @@ final class TikTokPublisher implements SocialPublisher
     /**
      * The account's own name, avatar and what it permits.
      *
+     * Public, because a composer needs exactly this: who the account is, and
+     * which privacy levels to draw.
+     *
      * @return array<string, mixed>
      */
     public function creatorInfo(string $token): array
     {
-        // An empty JSON OBJECT. `->post($url)` with no data sends `[]`, which
-        // TikTok answers with "The request parameter type is incorrect" — an
-        // array and an object are not the same thing to it.
+        // An empty JSON OBJECT. `->post($url)` with no data sends `[]`, and
+        // TikTok answers "The request parameter type is incorrect" — an array
+        // and an object are not the same thing to it.
         try {
             $response = Http::withToken($token)
                 ->timeout(self::TIMEOUT)
@@ -144,8 +179,10 @@ final class TikTokPublisher implements SocialPublisher
      * The most private level this creator offers.
      *
      * Private on purpose. An unaudited app may only post SELF_ONLY, and until a
-     * composer exists to ask a person what they want, choosing anything more
-     * public would be EzBizi deciding to publish on their behalf.
+     * composer exists to ask a person what they want, anything more public would
+     * be EzBizi choosing to publish on their behalf.
+     *
+     * @param  array<string, mixed>  $creator
      */
     private function privacyFor(array $creator): string
     {
@@ -163,7 +200,11 @@ final class TikTokPublisher implements SocialPublisher
         );
     }
 
-    /** Where a publish got to. TikTok processes after the bytes land. */
+    /**
+     * Where a publish got to. TikTok processes after the bytes land.
+     *
+     * @return array<string, mixed>
+     */
     public function status(SocialConnection $connection, string $publishId): array
     {
         return (array) ($this->call($this->token($connection), '/post/publish/status/fetch/', [
@@ -171,7 +212,10 @@ final class TikTokPublisher implements SocialPublisher
         ])['data'] ?? []);
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
     private function call(string $token, string $path, array $payload): array
     {
         try {
