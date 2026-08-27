@@ -81,6 +81,11 @@ use App\Http\Controllers\Api\StaffAuthController;
 use App\Http\Controllers\Api\StaffClientVersionsController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\Api\TimeClockController;
+use App\Http\Controllers\Api\Tasks\TaskBoardsController;
+use App\Http\Controllers\Api\Tasks\TaskColumnsController;
+use App\Http\Controllers\Api\Tasks\TaskGroupsController;
+use App\Http\Controllers\Api\Tasks\TaskPrioritiesController;
+use App\Http\Controllers\Api\Tasks\TaskStatusesController;
 use App\Http\Controllers\Api\TwoFactorController;
 use Illuminate\Support\Facades\Route;
 
@@ -310,6 +315,44 @@ Route::prefix('v1')
     ->group(function () {
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
+
+        Route::get('tasks/boards', [TaskBoardsController::class, 'index']);
+        Route::post('tasks/boards', [TaskBoardsController::class, 'store']);
+        Route::get('tasks/boards/{board}', [TaskBoardsController::class, 'show']);
+        Route::patch('tasks/boards/{board}', [TaskBoardsController::class, 'update']);
+        Route::post('tasks/boards/{board}/archive', [TaskBoardsController::class, 'archive']);
+        Route::post('tasks/boards/{board}/restore', [TaskBoardsController::class, 'restore']);
+        Route::post('tasks/boards/{board}/duplicate', [TaskBoardsController::class, 'duplicate']);
+
+        Route::post('tasks/boards/{board}/groups', [TaskGroupsController::class, 'store']);
+        Route::post('tasks/boards/{board}/groups/reorder', [TaskGroupsController::class, 'reorder']);
+        Route::patch('tasks/boards/{board}/groups/{group}', [TaskGroupsController::class, 'update']);
+        Route::post('tasks/boards/{board}/groups/{group}/archive', [TaskGroupsController::class, 'archive']);
+        Route::post('tasks/boards/{board}/groups/{group}/restore', [TaskGroupsController::class, 'restore']);
+
+        Route::post('tasks/boards/{board}/statuses', [TaskStatusesController::class, 'store']);
+        Route::post('tasks/boards/{board}/statuses/reorder', [TaskStatusesController::class, 'reorder']);
+        Route::patch('tasks/boards/{board}/statuses/{status}', [TaskStatusesController::class, 'update']);
+        Route::post('tasks/boards/{board}/statuses/{status}/archive', [TaskStatusesController::class, 'archive']);
+        Route::post('tasks/boards/{board}/statuses/{status}/restore', [TaskStatusesController::class, 'restore']);
+
+        Route::post('tasks/boards/{board}/priorities', [TaskPrioritiesController::class, 'store']);
+        Route::post('tasks/boards/{board}/priorities/reorder', [TaskPrioritiesController::class, 'reorder']);
+        Route::patch('tasks/boards/{board}/priorities/{priority}', [TaskPrioritiesController::class, 'update']);
+        Route::post('tasks/boards/{board}/priorities/{priority}/archive', [TaskPrioritiesController::class, 'archive']);
+        Route::post('tasks/boards/{board}/priorities/{priority}/restore', [TaskPrioritiesController::class, 'restore']);
+
+        Route::post('tasks/boards/{board}/columns', [TaskColumnsController::class, 'store']);
+        Route::post('tasks/boards/{board}/columns/reorder', [TaskColumnsController::class, 'reorder']);
+        Route::patch('tasks/boards/{board}/columns/core/{coreKey}', [TaskColumnsController::class, 'updateCore']);
+        Route::post('tasks/boards/{board}/columns/{column}/options', [TaskColumnsController::class, 'storeOption']);
+        Route::post('tasks/boards/{board}/columns/{column}/options/reorder', [TaskColumnsController::class, 'reorderOptions']);
+        Route::patch('tasks/boards/{board}/columns/{column}/options/{option}', [TaskColumnsController::class, 'updateOption']);
+        Route::post('tasks/boards/{board}/columns/{column}/options/{option}/archive', [TaskColumnsController::class, 'archiveOption']);
+        Route::post('tasks/boards/{board}/columns/{column}/options/{option}/restore', [TaskColumnsController::class, 'restoreOption']);
+        Route::patch('tasks/boards/{board}/columns/{column}', [TaskColumnsController::class, 'update']);
+        Route::post('tasks/boards/{board}/columns/{column}/archive', [TaskColumnsController::class, 'archive']);
+        Route::post('tasks/boards/{board}/columns/{column}/restore', [TaskColumnsController::class, 'restore']);
 
         // ── The vertical slice: Customer → Job (§18 Phase 2) ─────
         //
