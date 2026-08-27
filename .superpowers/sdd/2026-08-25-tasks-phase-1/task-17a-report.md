@@ -59,3 +59,13 @@
 Verification: focused Task17A/API/model/table/screen Flutter run passed 26
 tests; targeted analyze completed with no errors (informational diagnostics
 remain).
+
+## Fix round 2/5
+
+- Bulk now marks itself busy before awaiting all selected tasks' mutation queues,
+  then rebuilds targets from their latest returned versions; rapid bulk controls
+  are disabled while this is in flight.
+- Archived status/priority choices are omitted from replacement menus while the
+  task's existing archived value remains visible as a read-only label.
+
+Focused cells/table/screen Flutter run: 12 passing.

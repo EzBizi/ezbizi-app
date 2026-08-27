@@ -50,6 +50,7 @@ class _TasksScreenState extends State<TasksScreen> {
   List<TaskParticipant> _owners = const [];
   List<TaskParticipant> _people = const [];
   final Map<String, Future<void>> _mutationQueues = <String, Future<void>>{};
+  bool _bulkBusy = false;
   int _intentGeneration = 0;
   int _requestGeneration = 0;
   int _page = 1;
@@ -473,11 +474,24 @@ class _TasksScreenState extends State<TasksScreen> {
 
   Future<void> _bulk(List<TaskRow> tasks, Map<String, Object?> changes) async {
     final board = _board;
-    if (board == null) return;
+    if (board == null || _bulkBusy) return;
+    setState(() => _bulkBusy = true);
+    await Future.wait(
+      tasks.map((task) => _mutationQueues[task.id] ?? Future<void>.value()),
+    );
+    if (!mounted) return;
+    if (_board?.id != board.id) {
+      setState(() => _bulkBusy = false);
+      return;
+    }
+    final latest = tasks
+        .map((task) => _rows.where((row) => row.id == task.id).firstOrNull)
+        .whereType<TaskRow>()
+        .toList(growable: false);
     _announce('Saving changes to ${tasks.length} selected tasks.');
     final result = await _tasks.bulkUpdate(
       board.id,
-      targets: tasks
+      targets: latest
           .map(
             (task) =>
                 TaskBulkTarget(id: task.id, expectedVersion: task.version),
@@ -501,6 +515,7 @@ class _TasksScreenState extends State<TasksScreen> {
       _announce(result.message ?? 'No selected tasks were changed.');
       setState(() {});
     }
+    if (mounted) setState(() => _bulkBusy = false);
   }
 
   Future<void> _createBoard(String name) async {
@@ -729,6 +744,7 @@ class _TasksScreenState extends State<TasksScreen> {
                     onCoreChanged: _saveCore,
                     onCustomChanged: _saveCustom,
                     onBulkChanged: _bulk,
+                    bulkBusy: _bulkBusy,
                     owners: _owners,
                     people: _people,
                     onSelectionChanged: (count) => _announce(

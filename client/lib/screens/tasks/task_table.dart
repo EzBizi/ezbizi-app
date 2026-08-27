@@ -19,6 +19,7 @@ class TaskTable extends StatefulWidget {
     this.people = const [],
     this.onSelectionChanged,
     this.onSelectionCleared,
+    this.bulkBusy = false,
   });
   final TaskBoard board;
   final List<TaskRow> rows;
@@ -34,6 +35,7 @@ class TaskTable extends StatefulWidget {
   final List<TaskParticipant> people;
   final ValueChanged<int>? onSelectionChanged;
   final VoidCallback? onSelectionCleared;
+  final bool bulkBusy;
   @override
   State<TaskTable> createState() => _TaskTableState();
 }
@@ -159,6 +161,7 @@ class _TaskTableState extends State<TaskTable> {
               board: widget.board,
               onClear: _clear,
               onBulk: _bulk,
+              busy: widget.bulkBusy,
             ),
           Expanded(
             child: Row(
@@ -294,11 +297,13 @@ class _BulkBar extends StatelessWidget {
     required this.board,
     required this.onClear,
     required this.onBulk,
+    required this.busy,
   });
   final int count;
   final TaskBoard board;
   final VoidCallback onClear;
   final Future<void> Function(Map<String, Object?>) onBulk;
+  final bool busy;
   @override
   Widget build(BuildContext context) => Material(
     color: Theme.of(context).colorScheme.secondaryContainer,
@@ -316,9 +321,11 @@ class _BulkBar extends StatelessWidget {
                 .where((s) => !s.archived)
                 .map((s) => DropdownMenuItem(value: s.id, child: Text(s.name)))
                 .toList(),
-            onChanged: (value) {
-              if (value != null) onBulk({'status_option_id': value});
-            },
+            onChanged: busy
+                ? null
+                : (value) {
+                    if (value != null) onBulk({'status_option_id': value});
+                  },
           ),
           const SizedBox(width: 8),
           DropdownButton<String>(
@@ -327,16 +334,21 @@ class _BulkBar extends StatelessWidget {
                 .where((p) => !p.archived)
                 .map((p) => DropdownMenuItem(value: p.id, child: Text(p.name)))
                 .toList(),
-            onChanged: (value) {
-              if (value != null) onBulk({'priority_option_id': value});
-            },
+            onChanged: busy
+                ? null
+                : (value) {
+                    if (value != null) onBulk({'priority_option_id': value});
+                  },
           ),
           TextButton(
-            onPressed: () => onBulk({'archived': true}),
+            onPressed: busy ? null : () => onBulk({'archived': true}),
             child: const Text('Archive'),
           ),
           const Spacer(),
-          TextButton(onPressed: onClear, child: const Text('Clear selection')),
+          TextButton(
+            onPressed: busy ? null : onClear,
+            child: Text(busy ? 'Saving…' : 'Clear selection'),
+          ),
         ],
       ),
     ),
@@ -491,12 +503,11 @@ class _OperationalRow extends StatelessWidget {
             width: 150,
             child: Semantics(
               label: 'Task ${task.number} status',
-              child: _Option(
+              child: _ArchivedOrOption(
                 value: task.statusOptionId,
                 hint: 'No status',
                 options: board.statuses
-                    .where((s) => !s.archived)
-                    .map((s) => (s.id, s.name))
+                    .map((s) => _OptionEntry(s.id, s.name, s.archived))
                     .toList(),
                 changed: (value) => onCore('status_option_id', value),
               ),
@@ -518,12 +529,11 @@ class _OperationalRow extends StatelessWidget {
             width: 150,
             child: Semantics(
               label: 'Task ${task.number} priority',
-              child: _Option(
+              child: _ArchivedOrOption(
                 value: task.priorityOptionId,
                 hint: 'No priority',
                 options: board.priorities
-                    .where((p) => !p.archived)
-                    .map((p) => (p.id, p.name))
+                    .map((p) => _OptionEntry(p.id, p.name, p.archived))
                     .toList(),
                 changed: (value) => onCore('priority_option_id', value),
               ),
@@ -584,6 +594,45 @@ class _Option extends StatelessWidget {
         .toList(),
     onChanged: changed,
   );
+}
+
+class _OptionEntry {
+  const _OptionEntry(this.id, this.name, this.archived);
+  final String id;
+  final String name;
+  final bool archived;
+}
+
+class _ArchivedOrOption extends StatelessWidget {
+  const _ArchivedOrOption({
+    required this.value,
+    required this.hint,
+    required this.options,
+    required this.changed,
+  });
+  final String? value;
+  final String hint;
+  final List<_OptionEntry> options;
+  final ValueChanged<String?> changed;
+  @override
+  Widget build(BuildContext context) {
+    final current = options.where((option) => option.id == value).firstOrNull;
+    if (current?.archived ?? false)
+      return Semantics(
+        readOnly: true,
+        label: '$hint ${current!.name}. Archived.',
+        child: Text(current.name),
+      );
+    return _Option(
+      value: value,
+      hint: hint,
+      options: options
+          .where((option) => !option.archived)
+          .map((option) => (option.id, option.name))
+          .toList(),
+      changed: changed,
+    );
+  }
 }
 
 class _Date extends StatefulWidget {
