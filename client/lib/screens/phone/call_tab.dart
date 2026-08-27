@@ -492,6 +492,32 @@ class _CallTabState extends State<CallTab> {
     final theme = Theme.of(context);
     final number = _selected;
 
+    // Scrolls only when it has to.
+    //
+    // The pad is fixed-height content — header, keypad, Call — with the
+    // transcript taking whatever is left. On a short viewport the fixed part is
+    // taller than the pane, the transcript gets nothing, and the Column
+    // overflows: the Call button is drawn past the bottom edge and cannot be
+    // reached or tapped. It overflowed by 45px at 835 high, so a laptop with a
+    // browser toolbar was already losing it, and a phone loses more.
+    //
+    // The transcript is given a minimum instead of the remaining space. The
+    // usual minHeight + IntrinsicHeight recipe cannot be used here: the keypad
+    // is a shrink-wrapped GridView, and a viewport refuses to report intrinsic
+    // dimensions — it throws rather than instantiating every child. Trading
+    // "transcript stretches to the bottom" for "the Call button is always
+    // reachable" is the right way round.
+    return SingleChildScrollView(
+      child: _padColumn(theme, number, showBack: showBack, showPerson: showPerson),
+    );
+  }
+
+  Widget _padColumn(
+    ThemeData theme,
+    _Number? number, {
+    required bool showBack,
+    required bool showPerson,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -624,7 +650,8 @@ class _CallTabState extends State<CallTab> {
             ],
           ),
         ),
-        Expanded(
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 140),
           child: Container(
             width: double.infinity,
             color: theme.colorScheme.surfaceContainerHighest.withValues(

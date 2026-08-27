@@ -53,6 +53,31 @@ class PhoneNumberPolicy
         return $this->reachResponse($user, $scopeType, $scopeId, 'buy a phone number for');
     }
 
+    /**
+     * Change how a line behaves — which group it rings, whether it records.
+     *
+     * Separate from [delete] on purpose: setting a line's ring group is
+     * everyday Settings work, and releasing the number is not something to
+     * reach by the same door.
+     */
+    public function update(User $user, PhoneNumber $number): Response
+    {
+        if ($number->organization_id !== $user->organization_id) {
+            return Response::denyAsNotFound();
+        }
+
+        if (! $user->hasPermission('phone.edit')) {
+            return Refusal::permission('change this phone line');
+        }
+
+        return $this->reachResponse(
+            $user,
+            (string) $number->scope_type,
+            (string) $number->scope_id,
+            'change a phone line for',
+        );
+    }
+
     public function delete(User $user, PhoneNumber $number): Response
     {
         if ($number->organization_id !== $user->organization_id) {

@@ -63,6 +63,9 @@ use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsCont
 use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
 use App\Http\Controllers\Api\Phone\MessagesController as PhoneMessagesController;
 use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
+use App\Http\Controllers\Api\Phone\RingGroupsController as PhoneRingGroupsController;
+use App\Http\Controllers\Api\Phone\ServiceRequestsController as PhoneServiceRequestsController;
+use App\Http\Controllers\Api\StaffPhoneRequestsController;
 use App\Http\Controllers\Api\Phone\PortsController as PhonePortsController;
 use App\Http\Controllers\Api\Phone\PortWebhookController as PhonePortWebhookController;
 use App\Http\Controllers\Api\Phone\PresenceController as PhonePresenceController;
@@ -681,6 +684,13 @@ Route::prefix('v1')
         // this Sanctum group. Connect is phone.edit + §4 reach; list is phone.view
         // narrowed to connections in reach.
         Route::get('phone/connections', [PhoneConnectionsController::class, 'index']);
+
+        // Literal before any {connection} pattern, same reason as vehicles/drivers.
+        // Phone accounts already under EzBizi's platform Twilio, so connecting a
+        // company adopts the one that exists instead of minting a second with
+        // the same name. Filtered to names this tenant owns.
+        Route::get('phone/connections/subaccounts', [PhoneConnectionsController::class, 'subaccounts']);
+
         Route::post('phone/connections', [PhoneConnectionsController::class, 'store']);
         Route::delete('phone/connections/{connection}', [PhoneConnectionsController::class, 'destroy']);
         Route::get('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustShow']);
@@ -690,7 +700,30 @@ Route::prefix('v1')
         // view-scope; buy/release need phone.edit and a resolved Twilio connection.
         Route::get('phone/numbers', [PhoneNumbersController::class, 'index']);
         Route::post('phone/numbers', [PhoneNumbersController::class, 'store']);
+
+        // How a line behaves — above all which group answers it. Without this
+        // `ring_group_id` could never be set and every inbound call fell
+        // through to voicemail.
+        Route::patch('phone/numbers/{number}', [PhoneNumbersController::class, 'update']);
         Route::delete('phone/numbers/{number}', [PhoneNumbersController::class, 'destroy']);
+
+        // §4 gate 2 — asking EzBizi for phone service, and what it answered.
+        // Read by anyone who can open Phone; asking needs authority over the
+        // organization, because it commits them to a paid extra.
+        Route::get('phone/service-request', [PhoneServiceRequestsController::class, 'show']);
+        Route::get('phone/service-request/companies', [PhoneServiceRequestsController::class, 'companies']);
+        Route::post('phone/service-request', [PhoneServiceRequestsController::class, 'store']);
+
+        // Who can be put in a ring group. Literal path, and NOT under
+        // ring-groups/ so it cannot be captured as {group}.
+        Route::get('phone/members', [PhoneRingGroupsController::class, 'members']);
+
+        // Ring groups: who a line rings, and where unanswered calls go.
+        Route::get('phone/ring-groups', [PhoneRingGroupsController::class, 'index']);
+        Route::post('phone/ring-groups', [PhoneRingGroupsController::class, 'store']);
+        Route::get('phone/ring-groups/{group}', [PhoneRingGroupsController::class, 'show']);
+        Route::patch('phone/ring-groups/{group}', [PhoneRingGroupsController::class, 'update']);
+        Route::delete('phone/ring-groups/{group}', [PhoneRingGroupsController::class, 'destroy']);
 
         // Port-in: start via gateway; status webhooks update phone_port_requests.
         Route::post('phone/ports', [PhonePortsController::class, 'store']);
@@ -1301,6 +1334,11 @@ Route::prefix('v1/staff')
          * would otherwise refuse the request that lowers it again, and the only
          * remaining fix would be a shell on the production box.
          */
+        // The phone service queue. Reads across every tenant on purpose —
+        // control plane, behind the `staff` middleware, not `tenant`.
+        Route::get('phone-requests', [StaffPhoneRequestsController::class, 'index']);
+        Route::post('phone-requests/{request}/decide', [StaffPhoneRequestsController::class, 'decide']);
+
         Route::get('client-versions', [StaffClientVersionsController::class, 'index']);
         Route::put('client-versions/{platform}', [StaffClientVersionsController::class, 'update']);
 

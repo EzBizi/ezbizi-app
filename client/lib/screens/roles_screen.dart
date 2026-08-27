@@ -57,6 +57,77 @@ import '../widgets/side_panel.dart';
 /// Which module this is, and which addresses hang off it, arrives from the same
 /// endpoint. This file no more knows that mail exists than it knows Customers
 /// does.
+
+/// What each nested grant is called on screen.
+///
+/// A table rather than a conditional per sentence. There were two kinds and
+/// five `kind == 'inspections' ? … : …` expressions; phone lines would have
+/// made every one of them a nested ternary, which is the point at which the
+/// copy stops being readable and starts being decoded.
+///
+/// The words differ per kind. The argument every one of them makes does not:
+/// opening the tab and using the thing under it are separate grants.
+typedef _GrantWords = ({
+  /// Heading above the list, e.g. "Phone lines".
+  String heading,
+
+  /// Lower-case plural for the running tally, e.g. "phone lines".
+  String plural,
+
+  /// Shown on the collapsed row when the organization has none.
+  String none,
+
+  /// Shown in the open editor when the organization has none.
+  String empty,
+
+  /// The sentence above the ticks.
+  String instruction,
+});
+
+const Map<String, _GrantWords> _grantWords = <String, _GrantWords>{
+  'inboxes': (
+    heading: 'Inboxes',
+    plural: 'inboxes',
+    none: 'No inboxes connected yet.',
+    empty:
+        'This organization has not connected any shared inboxes yet. They '
+        'appear here as soon as somebody does, and can be granted one at a '
+        'time.',
+    instruction:
+        'Opening the tab and reading an inbox are separate grants. Tick each '
+        'inbox this role may open.',
+  ),
+  'inspections': (
+    heading: 'Named inspections',
+    plural: 'inspections',
+    none: 'No named inspections yet.',
+    empty:
+        'This organization has not created any named inspections yet. They '
+        'appear here as soon as somebody does, and can be granted one at a '
+        'time.',
+    instruction:
+        'Opening the tab and starting a named inspection are separate grants. '
+        'Tick each inspection this role may start.',
+  ),
+  'phone_numbers': (
+    heading: 'Phone lines',
+    plural: 'phone lines',
+    none: 'No phone lines yet.',
+    empty:
+        'This organization has not set up any phone lines yet. They appear '
+        'here as soon as somebody adds one, and can be granted one at a time.',
+    instruction:
+        'Opening the tab and answering a line are separate grants. Tick each '
+        'line this role may answer and call from.',
+  ),
+};
+
+/// Falls back to the inbox wording rather than drawing a blank heading: an
+/// unknown kind means the server nested something this build has no words for,
+/// and a generic label is a better answer than an empty one.
+_GrantWords _wordsFor(String? kind) =>
+    _grantWords[kind] ?? _grantWords['inboxes']!;
+
 class RolesScreen extends StatefulWidget {
   const RolesScreen({super.key, required this.api, required this.session});
 
@@ -241,8 +312,8 @@ class _RolesScreenState extends State<RolesScreen> {
         catalogue: _catalogue,
         inboxes: _inboxes,
         heldInboxes: _held[role.id] ?? const {},
-        onSave: (name, permissions, inboxes, inspections) =>
-            _save(role, name, permissions, inboxes, inspections),
+        onSave: (name, permissions, nested) =>
+            _save(role, name, permissions, nested),
       ),
     );
 
@@ -256,14 +327,19 @@ class _RolesScreenState extends State<RolesScreen> {
     RoleSummary role,
     String name,
     Set<String> permissions,
-    Set<String>? inboxes,
-    Set<String>? inspections,
+    Map<String, Set<String>?> nested,
   ) async {
     final response = await widget.api.patch('/roles/${role.id}', {
       'name': name,
       'permissions': permissions.toList()..sort(),
-      if (inboxes != null) 'inboxes': inboxes.toList()..sort(),
-      if (inspections != null) 'inspections': inspections.toList()..sort(),
+
+      // A null entry is omitted rather than sent empty, and the distinction is
+      // load-bearing: an empty list asserts "this role holds none of these",
+      // which is a revocation. Null means this editor never drew that kind at
+      // all — no phone lines exist, say — and has no business asserting
+      // anything about it. See [_payloadFor].
+      for (final kind in nested.keys)
+        if (nested[kind] != null) kind: nested[kind]!.toList()..sort(),
     });
 
     // Nothing is spliced from the answer here, unlike the settings screen. The
@@ -494,14 +570,14 @@ class _RoleEditor extends StatefulWidget {
   /// The ones this role already holds.
   final Set<String> heldInboxes;
 
-  /// Answers null on success, or the sentence to show on a refusal. The third
-  /// argument is null when there are no inboxes anywhere in the catalogue — see
-  /// [_inboxPayload].
+  /// Answers null on success, or the sentence to show on a refusal.
+  ///
+  /// [nested] is keyed by `grantKinds`. A value is null when the catalogue held
+  /// no module of that kind, so the editor never drew it — see [_payloadFor].
   final Future<String?> Function(
     String name,
     Set<String> permissions,
-    Set<String>? inboxes,
-    Set<String>? inspections,
+    Map<String, Set<String>?> nested,
   )
   onSave;
 
@@ -794,12 +870,9 @@ class _RoleEditorState extends State<_RoleEditor> {
       _error = null;
     });
 
-    final failure = await widget.onSave(
-      name,
-      _payload,
-      _payloadFor('inboxes'),
-      _payloadFor('inspections'),
-    );
+    final failure = await widget.onSave(name, _payload, {
+      for (final kind in grantKinds) kind: _payloadFor(kind),
+    });
 
     if (!mounted) return;
 
@@ -1076,25 +1149,19 @@ class _RoleEditorState extends State<_RoleEditor> {
     if (!widget.inboxes.nests(module.key)) return null;
 
     final all = widget.inboxes.under(module.key);
+    final words = _wordsFor(widget.inboxes.kindFor(module.key));
 
     if (all.isEmpty) {
-      return Text(
-        widget.inboxes.kindFor(module.key) == 'inspections'
-            ? 'No named inspections yet.'
-            : 'No inboxes connected yet.',
-        style: theme.textTheme.bodySmall,
-      );
+      return Text(words.none, style: theme.textTheme.bodySmall);
     }
 
     final held = _inboxesUnder(module.key).length;
-    final noun = widget.inboxes.kindFor(module.key) == 'inspections'
-        ? 'inspections'
-        : 'inboxes';
 
     return Text(
       held == 0
-          ? 'No $noun granted, of ${all.length}. The tab on its own opens none.'
-          : '$held of ${all.length} $noun granted.',
+          ? 'No ${words.plural} granted, of ${all.length}. '
+                'The tab on its own opens none.'
+          : '$held of ${all.length} ${words.plural} granted.',
       style: theme.textTheme.bodySmall,
     );
   }
@@ -1109,14 +1176,14 @@ class _RoleEditorState extends State<_RoleEditor> {
     if (!widget.inboxes.nests(module.key)) return const [];
 
     final nested = widget.inboxes.under(module.key);
-    final inspections = widget.inboxes.kindFor(module.key) == 'inspections';
+    final words = _wordsFor(widget.inboxes.kindFor(module.key));
 
     return [
       const Divider(height: 20),
       Padding(
         padding: const EdgeInsets.only(bottom: 4),
         child: Text(
-          inspections ? 'Named inspections' : 'Inboxes',
+          words.heading,
           style: theme.textTheme.labelLarge?.copyWith(color: muted),
         ),
       ),
@@ -1124,28 +1191,12 @@ class _RoleEditorState extends State<_RoleEditor> {
       if (nested.isEmpty)
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            inspections
-                ? 'This organization has not created any named inspections yet. '
-                    'They appear here as soon as somebody does, and can be '
-                    'granted one at a time.'
-                : 'This organization has not connected any shared inboxes yet. They '
-                    'appear here as soon as somebody does, and can be granted one at a '
-                    'time.',
-            style: theme.textTheme.bodySmall,
-          ),
+          child: Text(words.empty, style: theme.textTheme.bodySmall),
         )
       else ...[
         Padding(
           padding: const EdgeInsets.only(bottom: 4),
-          child: Text(
-            inspections
-                ? 'Opening the tab and starting a named inspection are separate '
-                    'grants. Tick each inspection this role may start.'
-                : 'Opening the tab and reading an inbox are separate grants. Tick each '
-                    'inbox this role may open.',
-            style: theme.textTheme.bodySmall,
-          ),
+          child: Text(words.instruction, style: theme.textTheme.bodySmall),
         ),
         for (final inbox in nested)
           CheckboxListTile(

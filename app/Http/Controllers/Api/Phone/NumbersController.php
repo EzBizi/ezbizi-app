@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use App\Http\Controllers\Api\Phone\Concerns\ResolvesPhoneConnections;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\PhoneNumber;
+use App\Models\PhoneRingGroup;
 use App\Support\Phone\ConnectionResolver;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\TwilioGateway;
@@ -24,6 +26,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class NumbersController extends Controller
 {
+    use ResolvesPhoneConnections;
+
     private const NO_CONNECTION = 'Connect Twilio for this place first.';
 
     public function __construct(
@@ -105,6 +109,54 @@ class NumbersController extends Controller
         return response()->json(['data' => $this->row($number)], Response::HTTP_CREATED);
     }
 
+    /**
+     * PATCH /api/v1/phone/numbers/{number}
+     *
+     * How this line behaves. Chiefly which ring group answers it: without this
+     * `ring_group_id` stayed null forever and TwimlRenderer sent every inbound
+     * call to voicemail on an otherwise working account.
+     *
+     * The E.164 and the Twilio SID are NOT editable. Twilio owns those; a local
+     * edit would only make our row disagree with the carrier.
+     */
+    public function update(Request $request, PhoneNumber $number): JsonResponse
+    {
+        $this->authorize('update', $number);
+
+        $input = $request->validate([
+            'label' => ['sometimes', 'string', 'max:191'],
+            'ring_group_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_ring_groups')],
+            'hours_schedule_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_hours_schedules')],
+            'record' => ['sometimes', 'boolean'],
+            'transcribe' => ['sometimes', 'boolean'],
+            'after_hours' => ['sometimes', Rule::in(PhoneNumber::AFTER_HOURS)],
+            'after_hours_number' => ['sometimes', 'nullable', 'string', 'max:16'],
+        ]);
+
+        // A group on another Twilio account expands to Client identities this
+        // call can never reach, so the Dial would ring nobody and look fine.
+        if (filled($input['ring_group_id'] ?? null)) {
+            $group = PhoneRingGroup::query()->find($input['ring_group_id']);
+
+            if ($group === null || $group->connection_id !== $number->connection_id) {
+                throw ValidationException::withMessages([
+                    'ring_group_id' => 'That group belongs to a different phone account.',
+                ]);
+            }
+        }
+
+        if (($input['after_hours'] ?? $number->after_hours) === 'forward'
+            && ! filled($input['after_hours_number'] ?? $number->after_hours_number)) {
+            throw ValidationException::withMessages([
+                'after_hours_number' => 'Say which number after-hours calls should go to.',
+            ]);
+        }
+
+        $number->fill($input)->save();
+
+        return response()->json(['data' => $this->row($number->fresh())]);
+    }
+
     /** DELETE /api/v1/phone/numbers/{number} */
     public function destroy(Request $request, PhoneNumber $number): JsonResponse
     {
@@ -173,6 +225,9 @@ class NumbersController extends Controller
             'record' => $number->record,
             'transcribe' => $number->transcribe,
             'after_hours' => $number->after_hours,
+            'after_hours_number' => $number->after_hours_number,
+            'ring_group_id' => $number->ring_group_id,
+            'hours_schedule_id' => $number->hours_schedule_id,
             'language' => $number->language,
             'sms_outbound_allowed' => (bool) $number->sms_outbound_allowed,
         ];

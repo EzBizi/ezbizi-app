@@ -52,6 +52,56 @@ final class FakeTwilioGateway implements TwilioGateway
         ];
     }
 
+    /**
+     * Subaccounts a test can pretend already exist. Empty by default, so a test
+     * that never sets them sees the state a fresh platform account is in.
+     *
+     * @var list<array{account_sid: string, friendly_name: string, status: string}>
+     */
+    public array $subaccounts = [];
+
+    /** Auth token [adoptSubaccount] will accept. Anything else is refused. */
+    public string $adoptableAuthToken = 'the-real-auth-token';
+
+    public function listSubaccounts(): array
+    {
+        $this->record(__FUNCTION__, func_get_args());
+
+        return $this->subaccounts;
+    }
+
+    public function adoptSubaccount(string $accountSid, string $authToken): array
+    {
+        $this->record(__FUNCTION__, func_get_args());
+
+        $owned = false;
+        foreach ($this->subaccounts as $sub) {
+            if ($sub['account_sid'] === $accountSid) {
+                $owned = true;
+                break;
+            }
+        }
+
+        if (! $owned) {
+            throw new RuntimeException(
+                'That phone account is not one EzBizi manages. Connect it as your own Twilio instead.'
+            );
+        }
+
+        if ($authToken !== $this->adoptableAuthToken) {
+            throw new RuntimeException(
+                'That auth token does not match this phone account. Copy it from the account it belongs to.'
+            );
+        }
+
+        return [
+            'account_sid' => $accountSid,
+            'api_key_sid' => 'SK'.bin2hex(random_bytes(16)),
+            'api_secret' => bin2hex(random_bytes(16)),
+            'auth_token' => $authToken,
+        ];
+    }
+
     public function createApiKey(string $accountSid, string $friendlyName = 'EzBizi'): array
     {
         $this->record(__FUNCTION__, func_get_args());

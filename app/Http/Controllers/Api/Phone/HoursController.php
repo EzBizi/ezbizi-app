@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use App\Http\Controllers\Api\Phone\Concerns\ResolvesPhoneConnections;
 use App\Models\Franchise;
 use App\Models\PhoneConnection;
 use App\Models\PhoneHoursSchedule;
@@ -24,6 +25,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class HoursController extends Controller
 {
+    use ResolvesPhoneConnections;
+
     public function __construct(
         private readonly TenantContext $tenant,
     ) {}
@@ -157,33 +160,6 @@ class HoursController extends Controller
         $tz = $franchise->timezone;
 
         return is_string($tz) && $tz !== '' ? $tz : 'America/New_York';
-    }
-
-    /**
-     * Connections whose hours this caller may view — same rule as
-     * PhoneHoursSchedulePolicy::connectionReach (org connection needs an
-     * organization assignment; company callers only see their company rows).
-     *
-     * @return \Illuminate\Support\Collection<int, PhoneConnection>
-     */
-    private function connectionsInReach(User $user): \Illuminate\Support\Collection
-    {
-        if ($user->canActOnOrganization($user->organization)) {
-            return PhoneConnection::query()->get();
-        }
-
-        $companyIds = $user->reachableCompanies()->pluck('id')->all();
-
-        return PhoneConnection::query()
-            ->where('scope_type', PhoneConnection::SCOPE_COMPANY)
-            ->whereIn('scope_id', $companyIds)
-            ->get();
-    }
-
-    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
-    {
-        return Rule::exists($table, 'id')
-            ->where('organization_id', $this->tenant->idOrFail());
     }
 
     /** @return array<string, mixed> */

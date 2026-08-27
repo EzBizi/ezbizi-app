@@ -4,6 +4,7 @@ namespace App\Support\Phone;
 
 use App\Models\PhoneConnection;
 use RuntimeException;
+use Throwable;
 use Twilio\Jwt\AccessToken;
 use Twilio\Jwt\Grants\VoiceGrant;
 use Twilio\Rest\Client;
@@ -37,6 +38,79 @@ final class HttpTwilioGateway implements TwilioGateway
         return [
             'account_sid' => $account->sid,
             'auth_token' => $account->authToken,
+        ];
+    }
+
+    public function listSubaccounts(): array
+    {
+        [$platformSid] = $this->platformCredentials();
+
+        $out = [];
+
+        foreach ($this->platformClient()->api->v2010->accounts->read([], 200) as $account) {
+            // The platform account itself comes back in its own list. It is not
+            // adoptable: connecting a tenant to the account that provisions
+            // every other tenant would put one customer's Settings in charge of
+            // everybody's phone service.
+            if ($account->sid === $platformSid) {
+                continue;
+            }
+
+            $out[] = [
+                'account_sid' => (string) $account->sid,
+                'friendly_name' => (string) $account->friendlyName,
+                'status' => (string) $account->status,
+            ];
+        }
+
+        return $out;
+    }
+
+    public function adoptSubaccount(string $accountSid, string $authToken): array
+    {
+        [$platformSid] = $this->platformCredentials();
+
+        if ($accountSid === $platformSid) {
+            throw new RuntimeException(
+                'That is the EzBizi platform account itself, not one of its phone accounts.'
+            );
+        }
+
+        $owned = false;
+        foreach ($this->listSubaccounts() as $sub) {
+            if ($sub['account_sid'] === $accountSid) {
+                $owned = true;
+                break;
+            }
+        }
+
+        // Checked before the token is tried, so a SID belonging to a stranger's
+        // Twilio is refused as "not ours" rather than as "wrong token" — which
+        // would otherwise read as an invitation to keep guessing.
+        if (! $owned) {
+            throw new RuntimeException(
+                'That phone account is not one EzBizi manages. Connect it as your own Twilio instead.'
+            );
+        }
+
+        // Account SID + auth token is the one credential pair that proves the
+        // token is right; an API key cannot verify it, because Twilio signs
+        // webhooks with the token and nothing else.
+        try {
+            (new Client($accountSid, $authToken))->api->v2010->accounts($accountSid)->fetch();
+        } catch (Throwable) {
+            throw new RuntimeException(
+                'That auth token does not match this phone account. Copy it from the account it belongs to.'
+            );
+        }
+
+        $key = $this->createApiKey($accountSid, 'EzBizi');
+
+        return [
+            'account_sid' => $accountSid,
+            'api_key_sid' => $key['sid'],
+            'api_secret' => $key['secret'],
+            'auth_token' => $authToken,
         ];
     }
 

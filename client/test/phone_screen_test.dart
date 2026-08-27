@@ -48,14 +48,28 @@ void main() {
   });
 
   testWidgets('Settings shows the two connect sentences', (tester) async {
-    await _pump(tester);
+    await _pump(tester, approvedCompanyIds: const ['co-1']);
 
     await _tap(tester, _tab('Settings'));
 
     expect(find.text('Coming soon'), findsNothing);
     expect(find.text('Connect your Twilio'), findsWidgets);
-    expect(find.text('EzBizi will create a phone account'), findsWidgets);
+    expect(find.text('Activate phone service'), findsWidgets);
     expect(find.byType(Dialog), findsNothing);
+  });
+
+  /// §4: a control that is offered must be a control that works. Before EzBizi
+  /// approves the company there is nothing to activate, so nothing is drawn —
+  /// the server would refuse it, and a button that refuses is a dead end.
+  testWidgets('a company with no approval is not offered activation', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    await _tap(tester, _tab('Settings'));
+
+    expect(find.text('Activate phone service'), findsNothing);
+    expect(find.text('Ask for phone service'), findsOneWidget);
   });
 
   testWidgets(
@@ -63,6 +77,7 @@ void main() {
     (tester) async {
       await _pump(
         tester,
+        approvedCompanyIds: const ['co-a1'],
         scope: {
           'type': 'company',
           'id': 'co-a1',
@@ -81,14 +96,19 @@ void main() {
 
       await _tap(tester, _tab('Settings'));
 
+      // The rule this test exists for: standing in A-1 Chimney must not offer
+      // to connect Everdoors.
       expect(find.text('A-1 Chimney'), findsOneWidget);
       expect(find.text('Everdoors Co'), findsNothing);
-      expect(find.text('Everdoors'), findsOneWidget);
       expect(find.text('Connect your Twilio'), findsOneWidget);
-      expect(find.text('EzBizi will create a phone account'), findsOneWidget);
+      expect(find.text('Activate phone service'), findsOneWidget);
+
+      // Phone service is per company now, so there is no organization card at
+      // all — and nothing to say about switching to the group to edit it.
+      expect(find.text('Everdoors'), findsNothing);
       expect(
         find.textContaining('Switch to the group to connect or change it'),
-        findsOneWidget,
+        findsNothing,
       );
     },
   );
@@ -116,8 +136,8 @@ void main() {
         {
           'id': 'pc-1',
           'organization_id': 'org-1',
-          'scope_type': 'organization',
-          'scope_id': 'org-1',
+          'scope_type': 'company',
+          'scope_id': 'co-1',
           'kind': 'byo',
           'account_sid': 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxa7c2',
           'api_key_sid': 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
@@ -141,10 +161,10 @@ void main() {
   testWidgets(
     'creating a phone account shows the server sentence when EzBizi has none',
     (tester) async {
-      await _pump(tester, createStatus: 501);
+      await _pump(tester, approvedCompanyIds: const ['co-1'], createStatus: 501);
 
       await _tap(tester, _tab('Settings'));
-      await _tap(tester, find.text('EzBizi will create a phone account').first);
+      await _tap(tester, find.text('Activate phone service').first);
 
       expect(
         find.text(
@@ -183,8 +203,8 @@ void main() {
     await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
 
     expect(posted, {
-      'scope_type': 'organization',
-      'scope_id': 'org-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
       'kind': 'byo',
       'account_sid': 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       'api_key_sid': 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
@@ -231,8 +251,8 @@ void main() {
         {
           'id': 'pc-1',
           'organization_id': 'org-1',
-          'scope_type': 'organization',
-          'scope_id': 'org-1',
+          'scope_type': 'company',
+          'scope_id': 'co-1',
           'kind': 'byo',
           'account_sid': 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxa7c2',
           'api_key_sid': 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
@@ -266,8 +286,8 @@ void main() {
 
     expect(deleted, isFalse);
     expect(posted, {
-      'scope_type': 'organization',
-      'scope_id': 'org-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
       'kind': 'byo',
       'account_sid': 'ACdddddddddddddddddddddddddddddddd',
       'api_key_sid': 'SKeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
@@ -284,8 +304,8 @@ void main() {
         {
           'id': 'pc-1',
           'organization_id': 'org-1',
-          'scope_type': 'organization',
-          'scope_id': 'org-1',
+          'scope_type': 'company',
+          'scope_id': 'co-1',
           'kind': 'byo',
           'account_sid': 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxa7c2',
           'api_key_sid': 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
@@ -329,19 +349,23 @@ void main() {
   testWidgets(
     'phone.view without phone.edit still opens Settings and Connect is refused',
     (tester) async {
-      await _pump(tester, permissions: const ['phone.view']);
+      await _pump(
+      tester,
+      approvedCompanyIds: const ['co-1'],
+      permissions: const ['phone.view'],
+    );
 
       await _tap(tester, _tab('Settings'));
 
       expect(find.text('Connect your Twilio'), findsWidgets);
-      expect(find.text('EzBizi will create a phone account'), findsWidgets);
+      expect(find.text('Activate phone service'), findsWidgets);
 
       final connect = tester.widget<FilledButton>(
         find.widgetWithText(FilledButton, 'Connect your Twilio').first,
       );
       final create = tester.widget<OutlinedButton>(
         find
-            .widgetWithText(OutlinedButton, 'EzBizi will create a phone account')
+            .widgetWithText(OutlinedButton, 'Activate phone service')
             .first,
       );
       expect(connect.onPressed, isNull);
@@ -349,24 +373,156 @@ void main() {
     },
   );
 
-  testWidgets('EzBizi will create a phone account posts subaccount kind', (
+  testWidgets('Activate phone service posts subaccount kind', (
     tester,
   ) async {
     Map<String, dynamic>? posted;
 
-    await _pump(tester, onCreate: (body) => posted = body);
+    await _pump(
+      tester,
+      approvedCompanyIds: const ['co-1'],
+      onCreate: (body) => posted = body,
+    );
 
     await _tap(tester, _tab('Settings'));
-    await _tap(tester, find.text('EzBizi will create a phone account').first);
+    await _tap(tester, find.text('Activate phone service').first);
 
     expect(posted, {
-      'scope_type': 'organization',
-      'scope_id': 'org-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
       'kind': 'subaccount',
     });
   });
-}
 
+  /// The gap this closed: TwimlRenderer reads phone_numbers.ring_group_id and
+  /// falls through to voicemail when it is null, and nothing could set it. A
+  /// group has to be creatable AND attachable to a line, or the phone never
+  /// rings on a fully configured account.
+  testWidgets('a ring group is created and pointed at a line', (tester) async {
+    Map<String, dynamic>? group;
+    Map<String, dynamic>? patched;
+
+    await _pump(
+      tester,
+      connections: const [
+        {
+          'id': 'conn-1',
+          'scope_type': 'company',
+          'scope_id': 'co-1',
+          'kind': 'subaccount',
+          'status': 'connected',
+          'account_sid': 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+      ],
+      numbers: const [
+        {
+          'id': 'num-1',
+          'connection_id': 'conn-1',
+          'e164': '+12035550123',
+          'label': 'Front desk',
+          'ring_group_id': null,
+        },
+      ],
+      members: const [
+        {'id': 'u-1', 'name': 'Dana Reyes', 'role_id': 'r-1'},
+      ],
+      onRingGroup: (body) => group = body,
+      onNumberPatch: (body) => patched = body,
+    );
+
+    await _tap(tester, _tab('Settings'));
+    await _tap(tester, find.text('Ring groups'));
+
+    expect(
+      find.textContaining('a call goes straight to voicemail'),
+      findsOneWidget,
+    );
+
+    await _tap(tester, find.text('Add a ring group'));
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Name'),
+      'Front desk',
+    );
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.text('Dana Reyes'));
+    await _tap(tester, find.text('Front desk').last);
+    await _tap(tester, find.text('Save'));
+
+    expect(group?['name'], 'Front desk');
+    expect(group?['member_user_ids'], ['u-1']);
+    expect(group?['connection_id'], 'conn-1');
+
+    // The half that made the phone ring: the line now points at the group.
+    expect(patched, {'ring_group_id': 'rg-new'});
+  });
+
+  /// §4 gate 2 from the customer's side. Phone is a paid extra billed to
+  /// EzBizi, so the tab must explain itself and offer the one thing that moves
+  /// — asking — rather than hiding or refusing at the door.
+  testWidgets('asking for phone service sends the companies, volume and use', (
+    tester,
+  ) async {
+    Map<String, dynamic>? asked;
+
+    await _pump(
+      tester,
+      serviceCompanies: const [
+        {'id': 'co-1', 'name': 'Connecticut', 'has_service': false},
+      ],
+      onServiceRequest: (body) => asked = body,
+    );
+
+    await _tap(tester, _tab('Settings'));
+
+    expect(find.text('Activate phone service'), findsNothing);
+    expect(find.textContaining('It is a paid extra'), findsOneWidget);
+
+    await _tap(tester, find.text('Ask for phone service'));
+
+    // .first — the form's checkbox. The connection card below also says
+    // "Connecticut", and .last picks that instead, which ticks nothing.
+    await _tap(tester, find.text('Connecticut').first);
+    await _tap(tester, find.text('Fewer than 100 calls a month'));
+    await _tap(tester, find.textContaining('text messaging as well as calls'));
+
+    await tester.enterText(
+      find.byType(TextField).last,
+      'Booking sweeps and calling customers back when we miss them.',
+    );
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.text('Send the request'));
+
+    expect(asked?['company_ids'], ['co-1']);
+    expect(asked?['expected_volume'], 'under_100');
+    expect(asked?['wants_sms'], true);
+  });
+
+  testWidgets('a request already waiting says so and offers nothing to press', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      serviceRequest: const {
+        'id': 'req-1',
+        'status': 'pending',
+        'requested_at': '2026-08-27T10:00:00Z',
+        'companies': [
+          {'company_id': 'co-1', 'name': 'Connecticut', 'approved': null},
+        ],
+      },
+    );
+
+    await _tap(tester, _tab('Settings'));
+
+    expect(find.textContaining('We are looking at your request'), findsOneWidget);
+    expect(find.text('Ask for phone service'), findsNothing);
+    expect(find.text('Send the request'), findsNothing);
+  });
+
+}
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 
 List<String> _chips(WidgetTester tester) => tester
@@ -398,7 +554,17 @@ Future<void> _pump(
   List<Map<String, Object?>>? companies,
   int createStatus = 201,
   String? createMessage,
+  List<Map<String, Object?>> subaccounts = const [],
+  List<Map<String, Object?>> numbers = const [],
+  List<Map<String, Object?>> ringGroups = const [],
+  List<Map<String, Object?>> members = const [],
+  List<Map<String, Object?>> serviceCompanies = const [],
+  List<String> approvedCompanyIds = const [],
+  Map<String, Object?>? serviceRequest,
+  void Function(Map<String, dynamic> body)? onServiceRequest,
   void Function(Map<String, dynamic> body)? onCreate,
+  void Function(Map<String, dynamic> body)? onRingGroup,
+  void Function(Map<String, dynamic> body)? onNumberPatch,
   void Function()? onDelete,
 }) async {
   tester.view.physicalSize = size;
@@ -414,7 +580,17 @@ Future<void> _pump(
         companies: companies,
         createStatus: createStatus,
         createMessage: createMessage,
+        subaccounts: subaccounts,
+        numbers: numbers,
+        ringGroups: ringGroups,
+        members: members,
+        serviceCompanies: serviceCompanies,
+        approvedCompanyIds: approvedCompanyIds,
+        serviceRequest: serviceRequest,
+        onServiceRequest: onServiceRequest,
         onCreate: onCreate,
+        onRingGroup: onRingGroup,
+        onNumberPatch: onNumberPatch,
         onDelete: onDelete,
       ),
     ),
@@ -472,7 +648,17 @@ MockClientHandler _handler({
   List<Map<String, Object?>>? companies,
   int createStatus = 201,
   String? createMessage,
+  List<Map<String, Object?>> subaccounts = const [],
+  List<Map<String, Object?>> numbers = const [],
+  List<Map<String, Object?>> ringGroups = const [],
+  List<Map<String, Object?>> members = const [],
+  List<Map<String, Object?>> serviceCompanies = const [],
+  List<String> approvedCompanyIds = const [],
+  Map<String, Object?>? serviceRequest,
+  void Function(Map<String, dynamic> body)? onServiceRequest,
   void Function(Map<String, dynamic> body)? onCreate,
+  void Function(Map<String, dynamic> body)? onRingGroup,
+  void Function(Map<String, dynamic> body)? onNumberPatch,
   void Function()? onDelete,
 }) {
   return (request) async {
@@ -489,12 +675,59 @@ MockClientHandler _handler({
       });
     }
 
+    if (path.endsWith('/phone/service-request/companies') &&
+        request.method == 'GET') {
+      return _json({'data': serviceCompanies});
+    }
+
+    if (path.endsWith('/phone/service-request') && request.method == 'GET') {
+      return _json({
+        'data': {
+          'latest': serviceRequest,
+          'approved_company_ids': approvedCompanyIds,
+          'may_request': serviceRequest == null,
+          'cooldown_ends_at': null,
+          'volumes': {'under_100': 'Fewer than 100 calls a month'},
+        },
+      });
+    }
+
+    if (path.endsWith('/phone/service-request') && request.method == 'POST') {
+      onServiceRequest?.call(jsonDecode(request.body) as Map<String, dynamic>);
+      return _json({'data': {'status': 'pending'}}, 201);
+    }
+
+    if (path.endsWith('/phone/connections/subaccounts') &&
+        request.method == 'GET') {
+      return _json({'data': subaccounts});
+    }
+
     if (path.endsWith('/phone/connections') && request.method == 'GET') {
       return _json({'data': connections});
     }
 
     if (path.endsWith('/phone/numbers') && request.method == 'GET') {
-      return _json({'data': <Map<String, Object?>>[]});
+      return _json({'data': numbers});
+    }
+
+    if (path.endsWith('/phone/ring-groups') && request.method == 'GET') {
+      return _json({'data': ringGroups});
+    }
+
+    if (path.endsWith('/phone/members') && request.method == 'GET') {
+      return _json({
+        'data': {'people': members, 'roles': <Map<String, Object?>>[]},
+      });
+    }
+
+    if (path.contains('/phone/ring-groups') && request.method == 'POST') {
+      onRingGroup?.call(jsonDecode(request.body) as Map<String, dynamic>);
+      return _json({'data': {'id': 'rg-new'}}, 201);
+    }
+
+    if (path.contains('/phone/numbers/') && request.method == 'PATCH') {
+      onNumberPatch?.call(jsonDecode(request.body) as Map<String, dynamic>);
+      return _json({'data': <String, Object?>{}});
     }
 
     if (path.endsWith('/phone/calls') && request.method == 'GET') {
@@ -542,8 +775,8 @@ MockClientHandler _handler({
         'data': {
           'id': 'pc-new',
           'organization_id': 'org-1',
-          'scope_type': 'organization',
-          'scope_id': 'org-1',
+          'scope_type': 'company',
+          'scope_id': 'co-1',
           'kind': 'byo',
           'account_sid': 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
           'api_key_sid': 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',

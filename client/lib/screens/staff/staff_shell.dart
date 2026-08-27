@@ -9,6 +9,7 @@ import 'health_screen.dart';
 import 'impersonations_screen.dart';
 import 'modules_screen.dart';
 import 'organizations_screen.dart';
+import 'phone_requests_screen.dart';
 import 'staff_accounts_screen.dart';
 
 /// The Development tab (plan §2.1, §4.2).
@@ -155,6 +156,15 @@ class _StaffShellState extends State<StaffShell> {
       // at once. It is the only one that can stop a customer's app from
       // starting, which is why it must be reachable in the product rather than
       // by hand-issuing a request with a bearer token.
+      // Beside Modules: both are EzBizi deciding what a customer may have.
+      // Modules is platform-wide; this is one organization asking for a paid
+      // extra and somebody answering.
+      _Destination(
+        'Phone requests',
+        Icons.ring_volume_outlined,
+        PhoneRequestsScreen(staff: widget.staff),
+        id: 'phone-requests',
+      ),
       _Destination(
         'Client versions',
         Icons.devices_outlined,

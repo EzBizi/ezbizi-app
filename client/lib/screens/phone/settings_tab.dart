@@ -7,6 +7,8 @@ import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/tag.dart';
+import 'ring_groups_pane.dart';
+import 'service_request_pane.dart';
 
 /// Phone › Settings — layout 6: a rail of sections, and the form beside it.
 ///
@@ -52,6 +54,10 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   String? _formError;
   String? _noticeScope;
   String? _notice;
+
+  /// Companies EzBizi has switched phone service on for (§4 gate 2). Reported
+  /// by the request pane above; nothing here activates without it.
+  List<String> _approved = const [];
 
   @override
   void initState() {
@@ -343,7 +349,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       ),
       2 => _unbuilt('Call flows will be written here.'),
       3 => _unbuilt('Opening hours will be set here.'),
-      4 => _unbuilt('Ring groups will be named here.'),
+      4 => RingGroupsPane(api: widget.api, session: widget.session),
       5 => _unbuilt('Caller ID trust will be set here.'),
       _ => _unbuilt('Messaging campaigns will be set here.'),
     };
@@ -377,7 +383,21 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
-          for (final place in _places) ...[
+          // Gate 2 first: until EzBizi has said yes to a company by name there
+          // is nothing here to connect, and the only useful control is asking.
+          PhoneServiceRequestPane(
+            api: widget.api,
+            session: widget.session,
+            onApproved: (ids) {
+              if (!mounted) return;
+              setState(() => _approved = ids);
+            },
+          ),
+
+          // Companies only. Phone service is bought and switched on per
+          // company — each gets its own Twilio subaccount, because A2P brand
+          // registration and caller-ID trust are per business, not per group.
+          for (final place in _places.where((p) => p.type == 'company')) ...[
             _connectionCard(place),
             const SizedBox(height: 12),
           ],
@@ -507,15 +527,16 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
                         child: const Text('Connect your Twilio'),
                       ),
                     ),
-                    Refused(
-                      reason: _canEdit ? null : _editRefusal,
-                      child: OutlinedButton(
-                        onPressed: _canEdit && !_saving
-                            ? () => _createSubaccount(place)
-                            : null,
-                        child: const Text('EzBizi will create a phone account'),
+                    if (_approved.contains(place.id))
+                      Refused(
+                        reason: _canEdit ? null : _editRefusal,
+                        child: OutlinedButton(
+                          onPressed: _canEdit && !_saving
+                              ? () => _createSubaccount(place)
+                              : null,
+                          child: const Text('Activate phone service'),
+                        ),
                       ),
-                    ),
                   ] else if (row.kind == 'byo')
                     Refused(
                       reason: _canEdit ? null : _editRefusal,

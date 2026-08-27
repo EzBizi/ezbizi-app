@@ -19,6 +19,34 @@ class PhoneRingGroup extends Model implements StatesRetention
     use HasFactory;
     use HasUuids;
 
+    /**
+     * The strings TwimlRenderer and DialPlan already branch on.
+     *
+     * Named here rather than repeated as literals in the controller, because
+     * the renderer compares against these exact words when it builds the
+     * <Dial> — a validator that accepted a fifth spelling would save a group
+     * that renders as silence.
+     *
+     * @see \App\Support\Phone\TwimlRenderer
+     */
+    public const MODE_SIMULTANEOUS = 'simultaneous';
+
+    public const MODE_SEQUENTIAL = 'sequential';
+
+    public const MODES = [self::MODE_SIMULTANEOUS, self::MODE_SEQUENTIAL];
+
+    public const OVERFLOW_VOICEMAIL = 'voicemail';
+
+    public const OVERFLOW_FORWARD = 'forward';
+
+    public const OVERFLOW_GROUP = 'group';
+
+    public const OVERFLOWS = [
+        self::OVERFLOW_VOICEMAIL,
+        self::OVERFLOW_FORWARD,
+        self::OVERFLOW_GROUP,
+    ];
+
     public static function retention(): RetentionPolicy
     {
         return RetentionPolicy::forever(

@@ -8,6 +8,22 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0104',
+      date: '27 Aug 2026',
+      items: [
+        'Phone service is asked for and granted. The Phone tab explains the '
+            'service and takes a request naming the companies that need it, '
+            'how busy the lines will be, and whether texting is needed. EzBizi '
+            'answers each company, and only an approved company can be '
+            'switched on.',
+        'Ring groups: name who a line rings, all at once or one at a time, and '
+            'where unanswered calls go. Until now a call reached voicemail '
+            'however the account was set up.',
+        'Roles can grant phone lines, the way they already grant inboxes.',
+        'The dial pad no longer runs off the bottom of a short screen.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0103',
       date: '26 Aug 2026',
       items: [

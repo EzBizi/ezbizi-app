@@ -799,6 +799,66 @@ void main() {
       expect(sent!.containsKey('inboxes'), isFalse);
     });
 
+    /// Phone spec §6/§12: which line a role may answer is a grant, not a
+    /// permission. Without this the tab could be ticked and every number stayed
+    /// unreachable, which is a Phone module that draws and never rings.
+    ///
+    /// The line the server sends is `e164`, not `address` or `name` — a phone
+    /// number has no address. That one word is why this asserts on the number
+    /// itself rather than only on the label.
+    testWidgets('phone lines nest under Phone and save as phone_numbers', (
+      tester,
+    ) async {
+      _wide(tester);
+
+      Map<String, dynamic>? sent;
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-3', 'Dispatcher', permissions: const [])],
+        catalogue: [
+          _catalogueModule('customers', 'Customers'),
+          _catalogueModule(
+            'phone',
+            'Phone',
+            actions: const [('view', 'View'), ('edit', 'Edit')],
+            phoneNumbers: [
+              {
+                'id': 'num-1',
+                'e164': '+12035550123',
+                'label': 'Front desk',
+                'grantable': true,
+              },
+            ],
+          ),
+        ],
+        onPatch: (body) => sent = body,
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Phone'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Phone lines'), findsOneWidget);
+      expect(find.text('Front desk'), findsOneWidget);
+      expect(find.text('+12035550123'), findsOneWidget);
+
+      await tester.tap(_tabCheckbox('phone'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('inbox:num-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(sent!['phone_numbers'], ['num-1']);
+
+      // Nothing was drawn for mail, so nothing is asserted about it. Sending
+      // `inboxes: []` here would revoke every inbox on this role from a screen
+      // that never showed one.
+      expect(sent!.containsKey('inboxes'), isFalse);
+    });
+
     /// R7: the tree is already dense and this adds a level to it.
     testWidgets('it fits a 375px screen', (tester) async {
       tester.view.physicalSize = const Size(375, 800);
@@ -1060,6 +1120,7 @@ Map<String, dynamic> _catalogueModule(
   /// none.
   List<Map<String, dynamic>>? inboxes,
   List<Map<String, dynamic>>? inspections,
+  List<Map<String, dynamic>>? phoneNumbers,
   String groupKey = 'tab',
   String groupLabel = '',
   String? groupHint,
@@ -1084,6 +1145,7 @@ Map<String, dynamic> _catalogueModule(
   ],
   'inboxes': ?inboxes,
   'inspections': ?inspections,
+  'phone_numbers': ?phoneNumbers,
 };
 
 /// An administrator, holding the whole catalogue as a LIST rather than a

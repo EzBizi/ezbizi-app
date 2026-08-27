@@ -59,11 +59,33 @@ class InboxOption {
 
   factory InboxOption.fromJson(Map<String, dynamic> json) => InboxOption(
     id: json['id'].toString(),
-    address: json['address'] as String? ?? json['name'] as String? ?? '',
+    address:
+        json['address'] as String? ??
+        json['e164'] as String? ??
+        json['name'] as String? ??
+        '',
     label: json['label'] as String? ?? json['name'] as String?,
     grantable: json['grantable'] != false,
   );
 }
+
+/// The JSON keys a module may nest this organization's own records under.
+///
+/// One list, read by the catalogue and by the holdings reader below, so adding
+/// a fourth kind is a line here rather than a new branch in each of them. It
+/// was two `else if`s before phone lines, and three is where that shape starts
+/// costing more than it explains.
+///
+/// This is the client end of an agreement the server composes from the other
+/// side (`InboxAccess`, `InspectionAccess`, `PhoneNumberAccess` each hang their
+/// key onto the module tree). Adding a kind means adding it in both places —
+/// there is no discovery here, and there should not be: a client that grants
+/// whatever key it is handed would grant one added by mistake.
+const List<String> grantKinds = <String>[
+  'inboxes',
+  'inspections',
+  'phone_numbers',
+];
 
 /// Which modules take inboxes, and which inboxes this organization has.
 @immutable
@@ -140,18 +162,17 @@ class InboxCatalogue {
 
     for (final module in list.whereType<Map<String, dynamic>>()) {
       final key = module['key'].toString();
-      if (module['inboxes'] is List) {
-        kind[key] = 'inboxes';
-        byModule[key] = (module['inboxes'] as List)
+
+      // First match wins, as the else-if chain did: a module nests one kind.
+      for (final nested in grantKinds) {
+        if (module[nested] is! List) continue;
+
+        kind[key] = nested;
+        byModule[key] = (module[nested] as List)
             .whereType<Map<String, dynamic>>()
             .map(InboxOption.fromJson)
             .toList(growable: false);
-      } else if (module['inspections'] is List) {
-        kind[key] = 'inspections';
-        byModule[key] = (module['inspections'] as List)
-            .whereType<Map<String, dynamic>>()
-            .map(InboxOption.fromJson)
-            .toList(growable: false);
+        break;
       }
     }
 
@@ -171,12 +192,17 @@ Map<String, Set<String>> inboxHoldingsFrom(dynamic data) {
 
   for (final role in data.whereType<Map<String, dynamic>>()) {
     final nested = <String>{};
-    if (role['inboxes'] is List) {
-      nested.addAll((role['inboxes'] as List).map((id) => id.toString()));
+
+    // Every kind, not the first: one role holds inboxes AND inspections AND
+    // phone lines at once. This is the one place that differs from the
+    // catalogue's first-match-wins above, and getting it wrong would silently
+    // drop a role's grants for whichever kind sorted second.
+    for (final kind in grantKinds) {
+      if (role[kind] is List) {
+        nested.addAll((role[kind] as List).map((id) => id.toString()));
+      }
     }
-    if (role['inspections'] is List) {
-      nested.addAll((role['inspections'] as List).map((id) => id.toString()));
-    }
+
     holdings[role['id'].toString()] = nested;
   }
 
