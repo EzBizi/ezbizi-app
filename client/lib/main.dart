@@ -20,6 +20,7 @@ import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'screens/signup_screen.dart';
 import 'screens/settings_shell.dart';
+import 'screens/tasks_screen.dart';
 import 'screens/staff/staff_login_screen.dart';
 import 'screens/staff/staff_shell.dart';
 import 'screens/update_required_screen.dart';
@@ -320,6 +321,7 @@ enum _Rail { modules, pinned, staff, profile }
 
 class _HomeShellState extends State<HomeShell> {
   _Rail _rail = _Rail.modules;
+  TaskAddressIntent? _pendingTaskIntent;
   void Function()? _stopListening;
 
   @override
@@ -368,10 +370,14 @@ class _HomeShellState extends State<HomeShell> {
 
     _rail = _Rail.modules;
     _selected = id;
+    _pendingTaskIntent = id == 'tasks' ? Address.taskIntent(path ?? '') : null;
   }
 
   String _pathFor(_Rail rail, String? id) {
     if (rail == _Rail.profile || id == null || id.isEmpty) return '/account';
+    if (rail == _Rail.modules && id == 'tasks' && _pendingTaskIntent != null) {
+      return Address.taskPath(_pendingTaskIntent!);
+    }
     return Address.pathOf(id);
   }
 
@@ -415,7 +421,13 @@ class _HomeShellState extends State<HomeShell> {
   void _show(_Rail rail, String id) => setState(() {
     _rail = rail;
     _selected = id;
+    _pendingTaskIntent = null;
     widget.address?.push(_pathFor(rail, id));
+  });
+
+  void _consumeTaskIntent() => setState(() {
+    _pendingTaskIntent = null;
+    widget.address?.replace('/tasks');
   });
 
   /// "Your account" is reached from the avatar, not from a rail, so it has no
@@ -540,7 +552,14 @@ class _HomeShellState extends State<HomeShell> {
           Destination(
             module.label,
             screen.icon,
-            screen.build(widget.api, widget.session),
+            module.key == 'tasks'
+                ? TasksScreen(
+                    api: widget.api,
+                    session: widget.session,
+                    pendingIntent: _pendingTaskIntent,
+                    onIntentConsumed: _consumeTaskIntent,
+                  )
+                : screen.build(widget.api, widget.session),
             id: module.key,
           ),
     ];
@@ -617,12 +636,12 @@ class _HomeShellState extends State<HomeShell> {
     final shownId = showingProfile
         ? 'account'
         : pinnedIndex != null
-            ? pinned[pinnedIndex].id
-            : staffIndex != null
-                ? staffOnly[staffIndex].id
-                : railIndex != null
-                    ? destinations[railIndex].id
-                    : 'account';
+        ? pinned[pinnedIndex].id
+        : staffIndex != null
+        ? staffOnly[staffIndex].id
+        : railIndex != null
+        ? destinations[railIndex].id
+        : 'account';
     _syncShown(Address.pathOf(shownId));
 
     return Scaffold(
@@ -717,13 +736,15 @@ class _HomeShellState extends State<HomeShell> {
                   );
                 }
                 return Row(
-                  children: [...brand, Flexible(child: switcher)],
+                  children: [
+                    ...brand,
+                    Flexible(child: switcher),
+                  ],
                 );
               },
             ),
             actions: [
-              if (me.timeClock.showButton)
-                _clockButton(context, me),
+              if (me.timeClock.showButton) _clockButton(context, me),
               // Light / dark, one tap, from anywhere.
               //
               // It is the same preference the account screen holds (§2.1 category
@@ -774,7 +795,8 @@ class _HomeShellState extends State<HomeShell> {
                   child: ActionChip(
                     avatar: const Icon(Icons.shield_outlined, size: 16),
                     label: const Text('Set up two-factor'),
-                    tooltip: 'Your organization requires two-factor '
+                    tooltip:
+                        'Your organization requires two-factor '
                         'authentication. The rest of the app is on hold until '
                         'your authenticator is set up.',
                     backgroundColor: Theme.of(
@@ -796,7 +818,8 @@ class _HomeShellState extends State<HomeShell> {
                   ),
                 ),
               PopupMenuButton<String>(
-                tooltip: '${UiStrings.t('shell.your_account')} — ${me.name} (${me.email})',
+                tooltip:
+                    '${UiStrings.t('shell.your_account')} — ${me.name} (${me.email})',
                 // The photo, not just the initial. It was an initial always: the
                 // profile screen was the only place a picture appeared, and even
                 // there it did not, because it was fetched without the token the
@@ -828,8 +851,14 @@ class _HomeShellState extends State<HomeShell> {
                     ),
                   ),
                   const PopupMenuDivider(),
-                  PopupMenuItem(value: 'me', child: Text(UiStrings.t('shell.your_account'))),
-                  PopupMenuItem(value: 'out', child: Text(UiStrings.t('shell.sign_out'))),
+                  PopupMenuItem(
+                    value: 'me',
+                    child: Text(UiStrings.t('shell.your_account')),
+                  ),
+                  PopupMenuItem(
+                    value: 'out',
+                    child: Text(UiStrings.t('shell.sign_out')),
+                  ),
                 ],
                 onSelected: (v) {
                   if (v == 'out') {
@@ -849,10 +878,9 @@ class _HomeShellState extends State<HomeShell> {
         children: [
           if (_timeClockNotice != null)
             Material(
-              color: Theme.of(context)
-                  .colorScheme
-                  .errorContainer
-                  .withValues(alpha: 0.4),
+              color: Theme.of(
+                context,
+              ).colorScheme.errorContainer.withValues(alpha: 0.4),
               child: SizedBox(
                 width: double.infinity,
                 child: Padding(
@@ -907,8 +935,10 @@ class _HomeShellState extends State<HomeShell> {
                           _show(_Rail.staff, staffOnly[i].id),
                       // Written through the same path as every other preference, once
                       // the drag settles.
-                      onResized: (w) => widget.session
-                          .setPreference('navigation.width', w.round()),
+                      onResized: (w) => widget.session.setPreference(
+                        'navigation.width',
+                        w.round(),
+                      ),
                     ),
                   ),
                 Expanded(

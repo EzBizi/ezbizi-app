@@ -1,4 +1,25 @@
-import 'address_io.dart' if (dart.library.js_interop) 'address_web.dart' as impl;
+import 'address_io.dart'
+    if (dart.library.js_interop) 'address_web.dart'
+    as impl;
+
+/// A canonical Tasks route before it has been authorized. The shell may retain
+/// these opaque IDs for navigation, but only Tasks turns them into displayed
+/// board/task state after its own access-checked fetch succeeds.
+final class TaskAddressIntent {
+  const TaskAddressIntent({required this.boardId, required this.taskId});
+
+  final String boardId;
+  final String taskId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TaskAddressIntent &&
+      other.boardId == boardId &&
+      other.taskId == taskId;
+
+  @override
+  int get hashCode => Object.hash(boardId, taskId);
+}
 
 /// Where the signed-in shell is, as a URL path.
 ///
@@ -25,8 +46,7 @@ class Address {
   factory Address.platform() {
     final bar = Address(
       path: impl.currentPath(),
-      write: (path, {required replace}) =>
-          impl.setPath(path, replace: replace),
+      write: (path, {required replace}) => impl.setPath(path, replace: replace),
     );
     bar._unbind = impl.listen(bar.popped);
     return bar;
@@ -45,6 +65,27 @@ class Address {
   }
 
   static String pathOf(String id) => '/$id';
+
+  static String taskPath(TaskAddressIntent intent) =>
+      '/tasks/boards/${intent.boardId}/tasks/${intent.taskId}';
+
+  /// Parses only the complete canonical route. It intentionally does not
+  /// validate reach or expose its IDs as UI state; that check belongs to the
+  /// authorized Tasks fetch that consumes this pending intent.
+  static TaskAddressIntent? taskIntent(String path) {
+    final uri = Uri.tryParse(path);
+    if (uri == null) return null;
+    final segments = uri.pathSegments;
+    if (segments.length != 5 ||
+        segments[0] != 'tasks' ||
+        segments[1] != 'boards' ||
+        segments[3] != 'tasks' ||
+        segments[2].isEmpty ||
+        segments[4].isEmpty) {
+      return null;
+    }
+    return TaskAddressIntent(boardId: segments[2], taskId: segments[4]);
+  }
 
   void push(String next) => _set(next, replace: false);
 

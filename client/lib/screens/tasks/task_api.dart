@@ -52,6 +52,8 @@ final class TaskApi {
   final ApiClient _api;
   final Map<String, TaskBoard> _boards = <String, TaskBoard>{};
 
+  void clearCache() => _boards.clear();
+
   Future<TaskApiResult<List<TaskBoard>>> boardDirectory() async {
     final response = await _api.get('/tasks/boards');
     return _decode(response, (data) {
@@ -75,6 +77,28 @@ final class TaskApi {
     });
   }
 
+  /// The server derives the active filing view. No company or franchise ID is
+  /// accepted here, so a board can never be created into another reachable
+  /// sibling from this client.
+  Future<TaskApiResult<TaskBoard>> createBoard({
+    required String name,
+    required TaskBoardVisibility visibility,
+    String? description,
+  }) async {
+    final response = await _api.post('/tasks/boards', <String, dynamic>{
+      'name': name,
+      'visibility': visibility == TaskBoardVisibility.private
+          ? 'private'
+          : 'scope',
+      if (description case final description?) 'description': description,
+    });
+    return _decode(response, (data) {
+      final board = TaskBoard.fromJson(_map(data, 'data'));
+      _boards[board.id] = board;
+      return board;
+    });
+  }
+
   Future<TaskApiResult<TaskRowsPage>> boardRows(
     String boardId, {
     String? viewId,
@@ -91,8 +115,8 @@ final class TaskApi {
     }
     final response = await _api
         .get('/tasks/boards/$boardId/rows', <String, String>{
-          if (viewId != null) 'view_id': viewId,
-          if (configuration != null)
+          if (viewId case final viewId?) 'view_id': viewId,
+          if (configuration case final configuration?)
             'configuration': jsonEncode(configuration.toJson()),
           'page': '$page',
           'per_page': '$perPage',
