@@ -60,8 +60,10 @@ class _TasksScreenState extends State<TasksScreen> {
   @override
   void didUpdateWidget(covariant TasksScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _intentGeneration++;
-    _requestGeneration++;
+    if (widget.pendingIntent != oldWidget.pendingIntent) {
+      _intentGeneration++;
+      _requestGeneration++;
+    }
     if (widget.pendingIntent != oldWidget.pendingIntent &&
         widget.pendingIntent != null) {
       _consumeIntent(widget.pendingIntent!, _intentGeneration);
@@ -446,60 +448,66 @@ class _TasksScreenState extends State<TasksScreen> {
           },
           onCreate: () => setState(() => _creating = true),
         );
-  Widget _workspace(bool wide) => Row(
-    children: [
-      if (wide) ...[
-        SizedBox(
-          width: 210,
-          child: BoardDirectory(
-            boards: _boards,
-            selectedBoardId: _board!.id,
-            onSelected: (board) {
-              setState(() => _showDirectory = false);
-              _loadBoard(board);
-            },
-            onCreate: () => setState(() => _creating = true),
-          ),
-        ),
-        const VerticalDivider(width: 1),
-      ],
-      Expanded(
-        child: Column(
-          children: [
-            Expanded(
-              child: TaskTable(
-                board: _board!,
-                rows: _rows,
-                selectedTaskId: _selectedTaskId,
-                onSelected: _selectTask,
-                onTitleChanged: _rename,
-                onSelectionCleared: () => setState(() {
-                  _selectedTaskId = null;
-                  _detailOpen = false;
-                }),
+  Widget _workspace(bool wide) => LayoutBuilder(
+    builder: (context, constraints) {
+      final showDirectory = wide && constraints.maxWidth >= 1100;
+      final showDetail = _detailOpen && constraints.maxWidth >= 800;
+      return Row(
+        children: [
+          if (showDirectory) ...[
+            SizedBox(
+              width: 210,
+              child: BoardDirectory(
+                boards: _boards,
+                selectedBoardId: _board!.id,
+                onSelected: (board) {
+                  setState(() => _showDirectory = false);
+                  _loadBoard(board);
+                },
+                onCreate: () => setState(() => _creating = true),
               ),
             ),
-            _pagination(),
+            const VerticalDivider(width: 1),
           ],
-        ),
-      ),
-      if (_detailOpen)
-        TaskDetailDivider(
-          onResize: (delta) => setState(
-            () => _detailWidth = (_detailWidth + delta).clamp(300, 640),
+          Expanded(
+            child: Column(
+              children: [
+                Expanded(
+                  child: TaskTable(
+                    board: _board!,
+                    rows: _rows,
+                    selectedTaskId: _selectedTaskId,
+                    onSelected: _selectTask,
+                    onTitleChanged: _rename,
+                    onSelectionCleared: () => setState(() {
+                      _selectedTaskId = null;
+                      _detailOpen = false;
+                    }),
+                  ),
+                ),
+                _pagination(),
+              ],
+            ),
           ),
-        ),
-      Offstage(
-        offstage: !_detailOpen,
-        child: SizedBox(
-          width: _detailWidth,
-          child: TaskDetailPanel(
-            task: _detail,
-            onClose: () => setState(() => _detailOpen = false),
+          if (showDetail)
+            TaskDetailDivider(
+              onResize: (delta) => setState(
+                () => _detailWidth = (_detailWidth + delta).clamp(300, 640),
+              ),
+            ),
+          Offstage(
+            offstage: !showDetail,
+            child: SizedBox(
+              width: _detailWidth,
+              child: TaskDetailPanel(
+                task: _detail,
+                onClose: () => setState(() => _detailOpen = false),
+              ),
+            ),
           ),
-        ),
-      ),
-    ],
+        ],
+      );
+    },
   );
 }
 

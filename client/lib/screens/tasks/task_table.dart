@@ -144,6 +144,7 @@ class _TaskTableState extends State<TaskTable> {
                         _PinnedTaskRow(
                           task: task,
                           selected: task.id == widget.selectedTaskId,
+                          status: _status(task.statusOptionId),
                           onSelected: () => widget.onSelected(task),
                           onTitleChanged: (title) =>
                               widget.onTitleChanged(task, title),
@@ -289,11 +290,13 @@ class _PinnedTaskRow extends StatefulWidget {
   const _PinnedTaskRow({
     required this.task,
     required this.selected,
+    required this.status,
     required this.onSelected,
     required this.onTitleChanged,
   });
   final TaskRow task;
   final bool selected;
+  final TaskStatusOption? status;
   final VoidCallback onSelected;
   final ValueChanged<String> onTitleChanged;
   @override
@@ -323,7 +326,8 @@ class _PinnedTaskRowState extends State<_PinnedTaskRow> {
   Widget build(BuildContext context) => Semantics(
     button: true,
     selected: widget.selected,
-    label: 'Task ${widget.task.number}: ${widget.task.title}',
+    label:
+        'Task ${widget.task.number}: ${widget.task.title}. Status ${widget.status?.name ?? 'No status'}. ${widget.task.ownerUserId == null ? 'Unassigned' : 'Assigned'}. ${widget.task.dueOn == null ? 'No due date' : 'Due ${widget.task.dueOn!.month}/${widget.task.dueOn!.day}/${widget.task.dueOn!.year}'}.',
     child: InkWell(
       key: Key('task-row-${widget.task.id}'),
       onTap: widget.onSelected,
@@ -369,29 +373,33 @@ class _OperationalTaskRow extends StatelessWidget {
   final TaskRow task;
   final TaskStatusOption? status;
   @override
-  Widget build(BuildContext context) => Container(
-    height: 52,
-    decoration: BoxDecoration(
-      border: Border(
-        bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-    ),
-    child: Row(
-      children: [
-        SizedBox(width: 150, child: Text(status?.name ?? 'No status')),
-        SizedBox(
-          width: 150,
-          child: Text(task.ownerUserId == null ? 'Unassigned' : 'Assigned'),
-        ),
-        SizedBox(
-          width: 140,
-          child: Text(
-            task.dueOn == null
-                ? 'No due date'
-                : '${task.dueOn!.month}/${task.dueOn!.day}/${task.dueOn!.year}',
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: Container(
+      height: 52,
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
           ),
         ),
-      ],
+      ),
+      child: Row(
+        children: [
+          SizedBox(width: 150, child: Text(status?.name ?? 'No status')),
+          SizedBox(
+            width: 150,
+            child: Text(task.ownerUserId == null ? 'Unassigned' : 'Assigned'),
+          ),
+          SizedBox(
+            width: 140,
+            child: Text(
+              task.dueOn == null
+                  ? 'No due date'
+                  : '${task.dueOn!.month}/${task.dueOn!.day}/${task.dueOn!.year}',
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }
