@@ -230,7 +230,7 @@ void main() {
       expect(result, isA<TaskApiSuccess<TaskDetailSnapshot>>());
       expect(result.value?.etag, '"detail-17"');
       expect(result.value?.task.version, 4);
-      expect(result.value?.task.subtasks.single.title, 'Measure opening');
+      expect(result.value?.subtasks.single.title, 'Measure opening');
       expect(result.value?.recordLinks.single.available, isFalse);
       expect(result.value?.recordLinks.single.recordId, isNull);
       expect(result.value?.recordLinks.single.route, isNull);

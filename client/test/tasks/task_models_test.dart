@@ -122,28 +122,62 @@ void main() {
     );
 
     test(
-      'parses compact task-detail subtasks without requiring row-only fields',
+      'keeps full board-row subtasks separate from compact detail subtasks',
       () {
-        final json = Map<String, Object?>.from(
+        final boardRow = Map<String, Object?>.from(
           (_rowsFixture()['data'] as List<Object?>).single
               as Map<String, Object?>,
         );
-        json['subtasks'] = <Object?>[
-          <String, Object?>{
-            'id': 'subtask-1',
-            'title': 'Measure opening',
-            'status_option_id': 'status-1',
-            'version': 2,
-            'archived': false,
-          },
-        ];
+        final fullSubtask = Map<String, Object?>.from(boardRow)
+          ..['id'] = 'subtask-1'
+          ..['parent_task_id'] = 'task-1'
+          ..['title'] = 'Measure opening'
+          ..['owner_user_id'] = 'user-2'
+          ..['priority_option_id'] = 'priority-1'
+          ..['due_on'] = '2026-09-12'
+          ..['detail_version'] = 9
+          ..['custom_values'] = <String, Object?>{'column-text': 'Keep me'}
+          ..['subtasks'] = <Object?>[
+            <String, Object?>{
+              ...boardRow,
+              'id': 'nested-1',
+              'parent_task_id': 'subtask-1',
+              'title': 'Nested server row',
+              'subtasks': <Object?>[],
+            },
+          ];
+        boardRow['subtasks'] = <Object?>[fullSubtask];
 
-        final task = TaskRow.fromJson(json);
+        final row = TaskRow.fromJson(
+          boardRow,
+          board: TaskBoard.fromJson(_boardFixture(includeColumns: true)),
+        );
+        final detailJson = Map<String, Object?>.from(boardRow)
+          ..['subtasks'] = <Object?>[
+            <String, Object?>{
+              'id': 'subtask-1',
+              'title': 'Measure opening',
+              'status_option_id': 'status-1',
+              'version': 2,
+              'archived': false,
+            },
+          ]
+          ..['record_links'] = <Object?>[];
+        final detail = TaskDetailSnapshot.fromJson(
+          detailJson,
+          etag: '"detail"',
+        );
 
-        expect(task.subtasks.single.id, 'subtask-1');
-        expect(task.subtasks.single.title, 'Measure opening');
-        expect(task.subtasks.single.version, 2);
-        expect(task.subtasks.single.archived, isFalse);
+        expect(row.subtasks.single.ownerUserId, 'user-2');
+        expect(row.subtasks.single.priorityOptionId, 'priority-1');
+        expect(row.subtasks.single.dueOn, DateTime.utc(2026, 9, 12));
+        expect(row.subtasks.single.detailVersion, 9);
+        expect(row.subtasks.single.values['column-text']?.value, 'Keep me');
+        expect(row.subtasks.single.subtasks.single.title, 'Nested server row');
+        expect(detail.subtasks.single.id, 'subtask-1');
+        expect(detail.subtasks.single.title, 'Measure opening');
+        expect(detail.subtasks.single.version, 2);
+        expect(detail.subtasks.single.archived, isFalse);
       },
     );
 

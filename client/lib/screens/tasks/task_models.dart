@@ -432,7 +432,7 @@ final class TaskRow {
       values: Map.unmodifiable(values),
       groupByValue: json['group_by_value'],
       subtasks: (_optionalObjects(json, 'subtasks') ?? const [])
-          .map(TaskSubtaskSummary.fromJson)
+          .map((row) => TaskRow.fromJson(row, board: board))
           .toList(growable: false),
     );
   }
@@ -454,7 +454,7 @@ final class TaskRow {
   final int detailVersion;
   final Map<String, TaskCellValue> values;
   final Object? groupByValue;
-  final List<TaskSubtaskSummary> subtasks;
+  final List<TaskRow> subtasks;
 }
 
 final class TaskSubtaskSummary {
@@ -894,24 +894,33 @@ final class TaskDetailSnapshot {
     required this.task,
     required this.etag,
     this.recordLinks = const <TaskRecordLink>[],
+    this.subtasks = const <TaskSubtaskSummary>[],
   });
 
   factory TaskDetailSnapshot.fromJson(
     Map<String, Object?> json, {
     required String? etag,
     TaskBoard? board,
-  }) => TaskDetailSnapshot(
-    task: TaskRow.fromJson(json, board: board),
-    etag: etag,
-    recordLinks: _objects(
-      json,
-      'record_links',
-    ).map(TaskRecordLink.fromJson).toList(growable: false),
-  );
+  }) {
+    final rowJson = Map<String, Object?>.from(json)..['subtasks'] = <Object?>[];
+    return TaskDetailSnapshot(
+      task: TaskRow.fromJson(rowJson, board: board),
+      etag: etag,
+      recordLinks: _objects(
+        json,
+        'record_links',
+      ).map(TaskRecordLink.fromJson).toList(growable: false),
+      subtasks: _objects(
+        json,
+        'subtasks',
+      ).map(TaskSubtaskSummary.fromJson).toList(growable: false),
+    );
+  }
 
   final TaskRow task;
   final String? etag;
   final List<TaskRecordLink> recordLinks;
+  final List<TaskSubtaskSummary> subtasks;
 }
 
 final class TaskMoveMutation {
