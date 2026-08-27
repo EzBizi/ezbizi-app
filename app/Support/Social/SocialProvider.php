@@ -186,4 +186,77 @@ enum SocialProvider: string
             fn (self $p) => $p->isPublishingNetwork(),
         ));
     }
+
+    /**
+     * The kinds of post this network will take at all.
+     *
+     * The network's own rule, not what EzBizi has built yet — those are two
+     * different facts and conflating them would have the composer say "Pinterest
+     * cannot take a video", which is false. A publisher that has not implemented
+     * a kind refuses it in its own words; this says what would be possible.
+     *
+     * @return SocialMediaKind[]
+     */
+    public function accepts(): array
+    {
+        return match ($this) {
+            // Words, a picture or a video — the permissive ones.
+            self::FacebookPage, self::Threads, self::LinkedIn, self::X => [
+                SocialMediaKind::Text, SocialMediaKind::Image, SocialMediaKind::Video,
+            ],
+
+            // No video. Bluesky posts pictures and words.
+            self::Bluesky => [SocialMediaKind::Text, SocialMediaKind::Image],
+
+            // Media is the post. A caption with nothing attached is not a thing
+            // these will accept, so Text is absent rather than optional.
+            self::InstagramProfessional, self::Pinterest, self::TikTok => [
+                SocialMediaKind::Image, SocialMediaKind::Video,
+            ],
+
+            // Video, and only video.
+            self::YouTube => [SocialMediaKind::Video],
+        };
+    }
+
+    public function takes(SocialMediaKind $kind): bool
+    {
+        return in_array($kind, $this->accepts(), strict: true);
+    }
+
+    /** True when words alone are not a post here. */
+    public function requiresMedia(): bool
+    {
+        return ! $this->takes(SocialMediaKind::Text);
+    }
+
+    /**
+     * Why this network will not take that kind, in a sentence.
+     *
+     * Written for the person composing, not for a log: it names the network and
+     * what would fix it, because the fix is usually "attach a video" rather than
+     * anything technical.
+     */
+    public function refuses(SocialMediaKind $kind): ?string
+    {
+        if ($this->takes($kind)) {
+            return null;
+        }
+
+        return match (true) {
+            $kind === SocialMediaKind::Text => sprintf(
+                '%s does not post words on their own. Attach %s.',
+                $this->label(),
+                $this->takes(SocialMediaKind::Image) ? 'a picture or a video' : 'a video',
+            ),
+            $kind === SocialMediaKind::Video => sprintf(
+                '%s does not take video.',
+                $this->label(),
+            ),
+            default => sprintf(
+                '%s takes video, not pictures.',
+                $this->label(),
+            ),
+        };
+    }
 }
