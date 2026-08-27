@@ -13,6 +13,7 @@ import '../screens/leads_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../screens/phone_screen.dart';
 import '../screens/services_screen.dart';
+import '../screens/tasks_screen.dart';
 import '../widgets/coming_soon.dart';
 import 'api_client.dart';
 import 'session.dart';
@@ -49,6 +50,10 @@ final Map<String, ModuleScreen> moduleScreens = {
   'dashboard': ModuleScreen(
     Icons.dashboard_outlined,
     (api, session) => DashboardScreen(api: api, session: session),
+  ),
+  'tasks': ModuleScreen(
+    Icons.checklist_outlined,
+    (api, session) => TasksScreen(api: api, session: session),
   ),
   'customers': ModuleScreen(
     Icons.people_outline,

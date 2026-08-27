@@ -209,7 +209,7 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                 ],
                 subject: new AutomationSubject(Task::class, 'Task'),
-                sidebar: false,
+                sidebar: true,
             ),
 
             new ModuleDefinition(

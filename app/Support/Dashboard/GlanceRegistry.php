@@ -13,6 +13,7 @@ use App\Support\Dashboard\Glances\InventoryGlance;
 use App\Support\Dashboard\Glances\JobsGlance;
 use App\Support\Dashboard\Glances\LeadsGlance;
 use App\Support\Dashboard\Glances\ServicesGlance;
+use App\Support\Dashboard\Glances\TasksGlance;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Tenancy\TenantContext;
 
@@ -31,7 +32,7 @@ class GlanceRegistry
      * @var string[]
      */
     public const ORDER = [
-        'hr', 'customers', 'jobs', 'inspection', 'marketing',
+        'tasks', 'hr', 'customers', 'jobs', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         'services', 'leads', 'email', 'automations',
     ];
@@ -65,6 +66,7 @@ class GlanceRegistry
      * @var class-string<Glance>[]
      */
     private const GLANCES = [
+        TasksGlance::class,
         HrGlance::class,
         CustomersGlance::class,
         JobsGlance::class,

@@ -11,7 +11,7 @@ use Tests\TestCase;
 
 class TaskModuleTest extends TestCase
 {
-    public function test_tasks_declares_the_hidden_module_contract_immediately_after_dashboard(): void
+    public function test_tasks_declares_the_visible_module_contract_immediately_after_dashboard(): void
     {
         $registry = app(ModuleRegistry::class);
         $keys = array_keys($registry->all());
@@ -19,7 +19,7 @@ class TaskModuleTest extends TestCase
 
         $this->assertSame(['dashboard', 'tasks'], array_slice($keys, 0, 2));
         $this->assertNotNull($tasks);
-        $this->assertFalse($tasks->sidebar);
+        $this->assertTrue($tasks->sidebar);
         $this->assertSame(
             ['view', 'create', 'edit', 'comment', 'delete', 'export', 'manage'],
             $tasks->actions,
