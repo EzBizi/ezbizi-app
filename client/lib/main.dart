@@ -642,7 +642,11 @@ class _HomeShellState extends State<HomeShell> {
         : railIndex != null
         ? destinations[railIndex].id
         : 'account';
-    _syncShown(Address.pathOf(shownId));
+    _syncShown(
+      shownId == 'tasks' && _pendingTaskIntent != null
+          ? Address.taskPath(_pendingTaskIntent!)
+          : Address.pathOf(shownId),
+    );
 
     return Scaffold(
       // The top bar belongs to the CHROME, not to the page.

@@ -37,7 +37,8 @@ void main() {
           _json({'message': 'Tasks are not available for this view.'}, 403),
     );
 
-    expect(find.text('Tasks are not available for this view.'), findsOneWidget);
+    expect(find.text('This task board is unavailable.'), findsOneWidget);
+    expect(find.text('Tasks are not available for this view.'), findsNothing);
     expect(find.text('No task boards yet'), findsNothing);
   });
 }

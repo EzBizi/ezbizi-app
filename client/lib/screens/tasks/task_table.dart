@@ -13,6 +13,7 @@ class TaskTable extends StatefulWidget {
     required this.selectedTaskId,
     required this.onSelected,
     required this.onTitleChanged,
+    this.onSelectionCleared,
   });
 
   final TaskBoard board;
@@ -20,6 +21,7 @@ class TaskTable extends StatefulWidget {
   final String? selectedTaskId;
   final ValueChanged<TaskRow> onSelected;
   final void Function(TaskRow task, String title) onTitleChanged;
+  final VoidCallback? onSelectionCleared;
 
   @override
   State<TaskTable> createState() => _TaskTableState();
@@ -46,53 +48,99 @@ class _TaskTableState extends State<TaskTable> {
     return FocusableActionDetector(
       shortcuts: <ShortcutActivator, Intent>{
         SingleActivator(LogicalKeyboardKey.escape): _ClearTaskSelectionIntent(),
+        SingleActivator(LogicalKeyboardKey.arrowDown): _MoveTaskIntent(1),
+        SingleActivator(LogicalKeyboardKey.arrowUp): _MoveTaskIntent(-1),
+        SingleActivator(LogicalKeyboardKey.enter): _ActivateTaskIntent(),
       },
       actions: <Type, Action<Intent>>{
         _ClearTaskSelectionIntent: CallbackAction<_ClearTaskSelectionIntent>(
           onInvoke: (_) {
             FocusManager.instance.primaryFocus?.unfocus();
+            widget.onSelectionCleared?.call();
+            return null;
+          },
+        ),
+        _MoveTaskIntent: CallbackAction<_MoveTaskIntent>(
+          onInvoke: (intent) {
+            final rows = widget.rows;
+            if (rows.isEmpty) return null;
+            final at = rows.indexWhere(
+              (row) => row.id == widget.selectedTaskId,
+            );
+            widget.onSelected(
+                rows[(at + intent.delta).clamp(0, rows.length - 1)],
+            );
+            return null;
+          },
+        ),
+        _ActivateTaskIntent: CallbackAction<_ActivateTaskIntent>(
+          onInvoke: (_) {
+            final selected = widget.rows
+                .where((row) => row.id == widget.selectedTaskId)
+                .firstOrNull;
+            if (selected != null) widget.onSelected(selected);
             return null;
           },
         ),
       },
-      child: ListView(
+      autofocus: true,
+      child: Row(
         children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: 760,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _Header(color: theme.colorScheme),
-                  for (final groupId in ordered)
-                    if (groups[groupId] case final rows?) ...[
-                      _GroupHeader(
-                        name:
-                            widget.board.groups
-                                .where((group) => group.id == groupId)
-                                .map((group) => group.name)
-                                .firstOrNull ??
-                            'Ungrouped',
-                        collapsed: _collapsedGroups.contains(groupId),
-                        onToggle: () => setState(() {
-                          if (!_collapsedGroups.add(groupId ?? '')) {
-                            _collapsedGroups.remove(groupId);
-                          }
-                        }),
+          SizedBox(
+            key: const Key('pinned-task-column'),
+            width: 300,
+            child: ListView(
+              children: [
+                _PinnedHeader(color: theme.colorScheme),
+                for (final groupId in ordered)
+                  if (groups[groupId] case final rows?) ...[
+                    _GroupHeader(
+                      name:
+                          widget.board.groups
+                              .where((group) => group.id == groupId)
+                              .map((group) => group.name)
+                              .firstOrNull ??
+                          'Ungrouped',
+                      collapsed: _collapsedGroups.contains(groupId),
+                      onToggle: () => setState(
+                        () => _collapsedGroups.contains(groupId)
+                            ? _collapsedGroups.remove(groupId)
+                            : _collapsedGroups.add(groupId ?? ''),
                       ),
-                      if (!_collapsedGroups.contains(groupId))
-                        for (final task in rows)
-                          _TaskGridRow(
-                            task: task,
-                            selected: task.id == widget.selectedTaskId,
-                            status: _status(task.statusOptionId),
-                            onSelected: () => widget.onSelected(task),
-                            onTitleChanged: (title) =>
-                                widget.onTitleChanged(task, title),
-                          ),
-                    ],
-                ],
+                    ),
+                    if (!_collapsedGroups.contains(groupId))
+                      for (final task in rows)
+                        _PinnedTaskRow(
+                          task: task,
+                          selected: task.id == widget.selectedTaskId,
+                          onSelected: () => widget.onSelected(task),
+                          onTitleChanged: (title) =>
+                              widget.onTitleChanged(task, title),
+                        ),
+                  ],
+              ],
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: 460,
+                child: ListView(
+                  children: [
+                    _OperationalHeader(color: theme.colorScheme),
+                    for (final groupId in ordered)
+                      if (groups[groupId] case final rows?) ...[
+                        const _OperationalGroupHeader(),
+                        if (!_collapsedGroups.contains(groupId))
+                          for (final task in rows)
+                            _OperationalTaskRow(
+                              task: task,
+                              status: _status(task.statusOptionId),
+                            ),
+                      ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -111,8 +159,25 @@ extension _FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }
 
-class _Header extends StatelessWidget {
-  const _Header({required this.color});
+class _PinnedHeader extends StatelessWidget {
+  const _PinnedHeader({required this.color});
+  final ColorScheme color;
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 44,
+    color: color.surfaceContainerHighest,
+    child: const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text('Task', style: TextStyle(fontWeight: FontWeight.w700)),
+      ),
+    ),
+  );
+}
+
+class _OperationalHeader extends StatelessWidget {
+  const _OperationalHeader({required this.color});
   final ColorScheme color;
   @override
   Widget build(BuildContext context) => Container(
@@ -120,19 +185,6 @@ class _Header extends StatelessWidget {
     color: color.surfaceContainerHighest,
     child: const Row(
       children: [
-        SizedBox(
-          width: 300,
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Task',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ),
-          ),
-        ),
         SizedBox(
           width: 150,
           child: Text('Status', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -149,6 +201,19 @@ class _Header extends StatelessWidget {
           ),
         ),
       ],
+    ),
+  );
+}
+
+class _OperationalGroupHeader extends StatelessWidget {
+  const _OperationalGroupHeader();
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 44,
+    decoration: BoxDecoration(
+      border: Border(
+        bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
     ),
   );
 }
@@ -183,6 +248,117 @@ class _GroupHeader extends StatelessWidget {
           onPressed: onToggle,
         ),
         Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
+      ],
+    ),
+  );
+}
+
+class _PinnedTaskRow extends StatefulWidget {
+  const _PinnedTaskRow({
+    required this.task,
+    required this.selected,
+    required this.onSelected,
+    required this.onTitleChanged,
+  });
+  final TaskRow task;
+  final bool selected;
+  final VoidCallback onSelected;
+  final ValueChanged<String> onTitleChanged;
+  @override
+  State<_PinnedTaskRow> createState() => _PinnedTaskRowState();
+}
+
+class _PinnedTaskRowState extends State<_PinnedTaskRow> {
+  late final TextEditingController _title = TextEditingController(
+    text: widget.task.title,
+  );
+  late final FocusNode _focus = FocusNode();
+  @override
+  void didUpdateWidget(covariant _PinnedTaskRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focus.hasFocus && oldWidget.task.title != widget.task.title)
+      _title.text = widget.task.title;
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    selected: widget.selected,
+    label: 'Task ${widget.task.number}: ${widget.task.title}',
+    child: InkWell(
+      key: Key('task-row-${widget.task.id}'),
+      onTap: widget.onSelected,
+      child: Container(
+        height: 52,
+        color: widget.selected
+            ? Theme.of(context).colorScheme.primaryContainer
+            : null,
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 16),
+            const Icon(Icons.radio_button_unchecked, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _title,
+                focusNode: _focus,
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  isDense: true,
+                ),
+                style: const TextStyle(fontWeight: FontWeight.w600),
+                onTap: widget.onSelected,
+                onSubmitted: widget.onTitleChanged,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _OperationalTaskRow extends StatelessWidget {
+  const _OperationalTaskRow({required this.task, required this.status});
+  final TaskRow task;
+  final TaskStatusOption? status;
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 52,
+    decoration: BoxDecoration(
+      border: Border(
+        bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+    ),
+    child: Row(
+      children: [
+        SizedBox(width: 150, child: Text(status?.name ?? 'No status')),
+        SizedBox(
+          width: 150,
+          child: Text(task.ownerUserId == null ? 'Unassigned' : 'Assigned'),
+        ),
+        SizedBox(
+          width: 140,
+          child: Text(
+            task.dueOn == null
+                ? 'No due date'
+                : '${task.dueOn!.month}/${task.dueOn!.day}/${task.dueOn!.year}',
+          ),
+        ),
       ],
     ),
   );
@@ -299,4 +475,13 @@ class _TaskGridRowState extends State<_TaskGridRow> {
 
 class _ClearTaskSelectionIntent extends Intent {
   const _ClearTaskSelectionIntent();
+}
+
+class _MoveTaskIntent extends Intent {
+  const _MoveTaskIntent(this.delta);
+  final int delta;
+}
+
+class _ActivateTaskIntent extends Intent {
+  const _ActivateTaskIntent();
 }

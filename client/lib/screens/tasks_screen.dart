@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/address.dart';
 import '../core/api_client.dart';
@@ -42,6 +43,12 @@ class _TasksScreenState extends State<TasksScreen> {
   double _detailWidth = 390;
   bool _detailOpen = true;
   bool _creating = false;
+  bool _showDirectory = false;
+  bool _unavailable = false;
+  bool _conflict = false;
+  int _intentGeneration = 0;
+  int _page = 1;
+  int _lastPage = 1;
 
   @override
   void initState() {
@@ -52,9 +59,10 @@ class _TasksScreenState extends State<TasksScreen> {
   @override
   void didUpdateWidget(covariant TasksScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _intentGeneration++;
     if (widget.pendingIntent != oldWidget.pendingIntent &&
         widget.pendingIntent != null) {
-      _consumeIntent(widget.pendingIntent!);
+      _consumeIntent(widget.pendingIntent!, _intentGeneration);
     }
   }
 
@@ -62,6 +70,8 @@ class _TasksScreenState extends State<TasksScreen> {
     setState(() {
       _loading = _boards.isEmpty;
       _error = null;
+      _unavailable = false;
+      _conflict = false;
     });
     final result = await _tasks.boardDirectory();
     if (!mounted) return;
@@ -70,7 +80,8 @@ class _TasksScreenState extends State<TasksScreen> {
         _loading = false;
         _boards = result.data;
       });
-      if (widget.pendingIntent case final intent?) await _consumeIntent(intent);
+      if (widget.pendingIntent case final intent?)
+        await _consumeIntent(intent, _intentGeneration);
     } else if (result is TaskApiUnavailable<List<TaskBoard>>) {
       _evict(result.message);
     } else {
@@ -81,9 +92,9 @@ class _TasksScreenState extends State<TasksScreen> {
     }
   }
 
-  Future<void> _consumeIntent(TaskAddressIntent intent) async {
+  Future<void> _consumeIntent(TaskAddressIntent intent, int generation) async {
     final result = await _tasks.board(intent.boardId);
-    if (!mounted) return;
+    if (!_isCurrentIntent(intent, generation)) return;
     if (result is! TaskApiSuccess<TaskBoard>) {
       _evict(result.message);
       widget.onIntentConsumed?.call();
@@ -93,6 +104,8 @@ class _TasksScreenState extends State<TasksScreen> {
       result.data,
       selectedTaskId: intent.taskId,
       consumeIntent: true,
+      intent: intent,
+      generation: generation,
     );
   }
 
@@ -100,6 +113,8 @@ class _TasksScreenState extends State<TasksScreen> {
     TaskBoard board, {
     String? selectedTaskId,
     bool consumeIntent = false,
+    TaskAddressIntent? intent,
+    int? generation,
   }) async {
     setState(() {
       _loading = true;
@@ -108,12 +123,14 @@ class _TasksScreenState extends State<TasksScreen> {
       _rows = const [];
       _detail = null;
       _selectedTaskId = null;
+      _page = 1;
     });
-    final result = await _tasks.boardRows(board.id);
+    final result = await _tasks.boardRows(board.id, page: _page);
     if (!mounted) return;
     if (result is TaskApiUnavailable<TaskRowsPage>) {
       _evict(result.message);
-      if (consumeIntent) widget.onIntentConsumed?.call();
+      if (consumeIntent && _isCurrentIntent(intent!, generation!))
+        widget.onIntentConsumed?.call();
       return;
     }
     if (result is! TaskApiSuccess<TaskRowsPage>) {
@@ -126,9 +143,16 @@ class _TasksScreenState extends State<TasksScreen> {
     setState(() {
       _loading = false;
       _rows = result.data.rows;
+      _page = result.data.page;
+      _lastPage = result.data.lastPage;
     });
     if (selectedTaskId != null) {
-      await _selectTaskId(selectedTaskId, consumeIntent: consumeIntent);
+      await _selectTaskId(
+        selectedTaskId,
+        consumeIntent: consumeIntent,
+        intent: intent,
+        generation: generation,
+      );
     }
   }
 
@@ -136,6 +160,8 @@ class _TasksScreenState extends State<TasksScreen> {
   Future<void> _selectTaskId(
     String taskId, {
     bool consumeIntent = false,
+    TaskAddressIntent? intent,
+    int? generation,
   }) async {
     final board = _board;
     if (board == null) return;
@@ -144,7 +170,8 @@ class _TasksScreenState extends State<TasksScreen> {
       _detail = null;
     });
     final result = await _tasks.taskDetail(board.id, taskId);
-    if (!mounted) return;
+    if (consumeIntent ? !_isCurrentIntent(intent!, generation!) : !mounted)
+      return;
     if (result is TaskApiUnavailable<TaskDetailSnapshot>) {
       _evict(result.message);
       if (consumeIntent) widget.onIntentConsumed?.call();
@@ -177,6 +204,28 @@ class _TasksScreenState extends State<TasksScreen> {
     }
   }
 
+  bool _isCurrentIntent(TaskAddressIntent intent, int generation) =>
+      mounted &&
+      widget.pendingIntent == intent &&
+      _intentGeneration == generation;
+
+  Future<void> _goToPage(int page) async {
+    final board = _board;
+    if (board == null || page < 1 || page > _lastPage) return;
+    final result = await _tasks.boardRows(board.id, page: page);
+    if (!mounted) return;
+    if (result is TaskApiUnavailable<TaskRowsPage>) {
+      _evict(result.message);
+      return;
+    }
+    if (result is TaskApiSuccess<TaskRowsPage>)
+      setState(() {
+        _rows = result.data.rows;
+        _page = result.data.page;
+        _lastPage = result.data.lastPage;
+      });
+  }
+
   Future<void> _rename(TaskRow task, String title) async {
     final trimmed = title.trim();
     if (trimmed.isEmpty || trimmed == task.title) return;
@@ -191,10 +240,7 @@ class _TasksScreenState extends State<TasksScreen> {
       return;
     }
     if (result is TaskApiConflictResult<TaskRow>) {
-      setState(
-        () => _error =
-            'This task changed while you were editing it. Refresh the board and try again.',
-      );
+      setState(() => _conflict = true);
       return;
     }
     if (result is TaskApiSuccess<TaskRow>) {
@@ -235,7 +281,8 @@ class _TasksScreenState extends State<TasksScreen> {
       _rows = const [];
       _detail = null;
       _selectedTaskId = null;
-      _error = message ?? 'This task board is unavailable.';
+      _error = null;
+      _unavailable = true;
     });
   }
 
@@ -254,26 +301,45 @@ class _TasksScreenState extends State<TasksScreen> {
               loading: _loading,
               error: _error,
               onRetry: _loadDirectory,
-              child: _creating
-                  ? _NewBoardPane(
-                      onCancel: () => setState(() => _creating = false),
-                      onCreate: _createBoard,
-                    )
-                  : _board == null
-                  ? _directoryOnly()
-                  : mobile
-                  ? TaskMobileList(
-                      board: _board!,
-                      rows: _rows,
-                      onSelected: _selectTask,
-                    )
-                  : _workspace(wide),
+              child: _unavailable
+                  ? const Center(child: Text('This task board is unavailable.'))
+                  : Column(
+                      children: [
+                        if (_conflict)
+                          MaterialBanner(
+                            content: const Text(
+                              'This task changed while you were editing it.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () {
+                                  setState(() => _conflict = false);
+                                  if (_board != null) _loadBoard(_board!);
+                                },
+                                child: const Text('Refresh board'),
+                              ),
+                            ],
+                          ),
+                        Expanded(child: _content(mobile, wide)),
+                      ],
+                    ),
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _content(bool mobile, bool wide) => _creating
+      ? _NewBoardPane(
+          onCancel: () => setState(() => _creating = false),
+          onCreate: _createBoard,
+        )
+      : _showDirectory || _board == null
+      ? _directoryOnly()
+      : mobile
+      ? TaskMobileList(board: _board!, rows: _rows, onSelected: _selectTask)
+      : _workspace(wide);
 
   Widget _titleBar(BuildContext context) => Material(
     color: Theme.of(context).colorScheme.surface,
@@ -312,12 +378,9 @@ class _TasksScreenState extends State<TasksScreen> {
           ),
         ),
         TabBarLike(
-          labels: const [
-            ('Boards', Icons.view_list_outlined),
-            ('My tasks', Icons.person_outline),
-          ],
+          labels: const [('Boards', Icons.view_list_outlined)],
           selected: 0,
-          onSelected: (_) {},
+          onSelected: (_) => setState(() => _showDirectory = true),
         ),
       ],
     ),
@@ -328,7 +391,10 @@ class _TasksScreenState extends State<TasksScreen> {
       : BoardDirectory(
           boards: _boards,
           selectedBoardId: null,
-          onSelected: (board) => _loadBoard(board),
+          onSelected: (board) {
+            setState(() => _showDirectory = false);
+            _loadBoard(board);
+          },
           onCreate: () => setState(() => _creating = true),
         );
   Widget _workspace(bool wide) => Row(
@@ -339,43 +405,111 @@ class _TasksScreenState extends State<TasksScreen> {
           child: BoardDirectory(
             boards: _boards,
             selectedBoardId: _board!.id,
-            onSelected: (board) => _loadBoard(board),
+            onSelected: (board) {
+              setState(() => _showDirectory = false);
+              _loadBoard(board);
+            },
             onCreate: () => setState(() => _creating = true),
           ),
         ),
         const VerticalDivider(width: 1),
       ],
       Expanded(
-        child: TaskTable(
-          board: _board!,
-          rows: _rows,
-          selectedTaskId: _selectedTaskId,
-          onSelected: _selectTask,
-          onTitleChanged: _rename,
+        child: Column(
+          children: [
+            Expanded(
+              child: TaskTable(
+                board: _board!,
+                rows: _rows,
+                selectedTaskId: _selectedTaskId,
+                onSelected: _selectTask,
+                onTitleChanged: _rename,
+                onSelectionCleared: () => setState(() {
+                  _selectedTaskId = null;
+                  _detailOpen = false;
+                }),
+              ),
+            ),
+            if (_lastPage > 1)
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text('Page $_page of $_lastPage'),
+                    const SizedBox(width: 8),
+                    OutlinedButton(
+                      onPressed: _page > 1 ? () => _goToPage(_page - 1) : null,
+                      child: const Text('Previous'),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton(
+                      onPressed: _page < _lastPage
+                          ? () => _goToPage(_page + 1)
+                          : null,
+                      child: const Text('Next'),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ),
       ),
-      if (_detailOpen) ...[
-        GestureDetector(
-          onHorizontalDragUpdate: (event) => setState(
-            () =>
-                _detailWidth = (_detailWidth - event.delta.dx).clamp(300, 640),
+      if (_detailOpen)
+        TaskDetailDivider(
+          onResize: (delta) => setState(
+            () => _detailWidth = (_detailWidth + delta).clamp(300, 640),
           ),
-          child: const VerticalDivider(width: 8, thickness: 2),
         ),
-        SizedBox(
+      Offstage(
+        offstage: !_detailOpen,
+        child: SizedBox(
           width: _detailWidth,
           child: TaskDetailPanel(
             task: _detail,
-            onClose: () => setState(() {
-              _detailOpen = false;
-              _selectedTaskId = null;
-              _detail = null;
-            }),
+            onClose: () => setState(() => _detailOpen = false),
           ),
         ),
-      ],
+      ),
     ],
   );
+}
+
+class TaskDetailDivider extends StatelessWidget {
+  const TaskDetailDivider({super.key, required this.onResize});
+  final ValueChanged<double> onResize;
+  @override
+  Widget build(BuildContext context) => FocusableActionDetector(
+    autofocus: true,
+    shortcuts: <ShortcutActivator, Intent>{
+      SingleActivator(LogicalKeyboardKey.arrowLeft): _ResizeDetailIntent(-24),
+      SingleActivator(LogicalKeyboardKey.arrowRight): _ResizeDetailIntent(24),
+    },
+    actions: <Type, Action<Intent>>{
+      _ResizeDetailIntent: CallbackAction<_ResizeDetailIntent>(
+        onInvoke: (intent) {
+          onResize(intent.delta);
+          return null;
+        },
+      ),
+    },
+    child: Semantics(
+      label: 'Resize task details',
+      slider: true,
+      child: GestureDetector(
+        onHorizontalDragUpdate: (event) => onResize(-event.delta.dx),
+        child: const SizedBox(
+          width: 16,
+          child: Center(child: VerticalDivider(width: 8, thickness: 2)),
+        ),
+      ),
+    ),
+  );
+}
+
+class _ResizeDetailIntent extends Intent {
+  const _ResizeDetailIntent(this.delta);
+  final double delta;
 }
 
 class _EmptyDirectory extends StatelessWidget {

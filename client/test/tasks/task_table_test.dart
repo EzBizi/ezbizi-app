@@ -2,6 +2,7 @@ import 'package:ezbizi_client/screens/tasks/task_models.dart';
 import 'package:ezbizi_client/screens/tasks/task_table.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -29,6 +30,33 @@ void main() {
       await tester.tap(find.byTooltip('Collapse To do'));
       await tester.pump();
       expect(find.text('Measure opening'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'keeps task identity outside the scrolling columns and supports keyboard selection',
+    (tester) async {
+      TaskRow? selected;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            body: TaskTable(
+              board: _board,
+              rows: const [_row],
+              selectedTaskId: null,
+              onSelected: (row) => selected = row,
+              onTitleChanged: (_, _) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byKey(const Key('pinned-task-column')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('task-row-task-1')));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      expect(selected?.id, 'task-1');
     },
   );
 }

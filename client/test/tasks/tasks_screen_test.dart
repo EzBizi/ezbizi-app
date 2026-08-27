@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/tasks_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -41,5 +42,19 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(Dialog), findsNothing);
+  });
+
+  testWidgets('detail separator is keyboard operable', (tester) async {
+    var delta = 0.0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TaskDetailDivider(onResize: (value) => delta += value),
+        ),
+      ),
+    );
+    await tester.tap(find.bySemanticsLabel('Resize task details'));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    expect(delta, 24);
   });
 }
