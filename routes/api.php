@@ -85,12 +85,15 @@ use App\Http\Controllers\Api\Tasks\TaskBoardMembersController;
 use App\Http\Controllers\Api\Tasks\TaskBoardPreferencesController;
 use App\Http\Controllers\Api\Tasks\TaskBoardRecoveryController;
 use App\Http\Controllers\Api\Tasks\TaskBoardsController;
+use App\Http\Controllers\Api\Tasks\TaskBulkController;
 use App\Http\Controllers\Api\Tasks\TaskColumnsController;
 use App\Http\Controllers\Api\Tasks\TaskFoldersController;
 use App\Http\Controllers\Api\Tasks\TaskGroupsController;
+use App\Http\Controllers\Api\Tasks\TaskOrderController;
 use App\Http\Controllers\Api\Tasks\TaskParticipantsController;
 use App\Http\Controllers\Api\Tasks\TaskPrioritiesController;
 use App\Http\Controllers\Api\Tasks\TaskStatusesController;
+use App\Http\Controllers\Api\Tasks\TasksController;
 use App\Http\Controllers\Api\TwoFactorController;
 use Illuminate\Support\Facades\Route;
 
@@ -334,6 +337,13 @@ Route::prefix('v1')
         Route::post('tasks/boards/{board}/archive', [TaskBoardsController::class, 'archive']);
         Route::post('tasks/boards/{board}/restore', [TaskBoardsController::class, 'restore']);
         Route::post('tasks/boards/{board}/duplicate', [TaskBoardsController::class, 'duplicate']);
+
+        Route::post('tasks/boards/{board}/tasks', [TasksController::class, 'store']);
+        Route::patch('tasks/{task}', [TasksController::class, 'update']);
+        Route::post('tasks/{task}/archive', [TasksController::class, 'archive']);
+        Route::post('tasks/{task}/restore', [TasksController::class, 'restore']);
+        Route::post('tasks/boards/{board}/bulk', [TaskBulkController::class, 'store']);
+        Route::post('tasks/boards/{board}/order', [TaskOrderController::class, 'store']);
 
         Route::get('tasks/boards/{board}/members', [TaskBoardMembersController::class, 'index']);
         Route::post('tasks/boards/{board}/members', [TaskBoardMembersController::class, 'store']);

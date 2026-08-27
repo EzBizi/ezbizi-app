@@ -39,6 +39,16 @@ class TaskModuleTest extends TestCase
             'task.overdue',
         ], $tasks->triggerKeys());
 
+        $triggers = collect($tasks->triggers)->keyBy('key');
+        foreach ([
+            'task.created', 'task.owner_changed', 'task.status_changed',
+            'task.due_date_changed', 'task.completed', 'task.reopened', 'task.archived',
+        ] as $raised) {
+            $this->assertTrue($triggers[$raised]->isRaised, "{$raised} is emitted by TaskWriter.");
+        }
+        $this->assertFalse($triggers['task.update_added']->isRaised);
+        $this->assertFalse($triggers['task.overdue']->isRaised);
+
         $actions = collect($tasks->automationActions)->keyBy('key');
         $this->assertSame([
             'task.create',
