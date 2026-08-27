@@ -40,6 +40,7 @@ cd "$(dirname "$0")/.."
 MAC_REMOTE=mac
 MAC_PROJECT='~/ezbizi-build'
 MAC_FLUTTER=/opt/homebrew/bin/flutter
+DIST=dist
 
 API_BASE="https://app.ezbizi.com"
 APP_FACE="customer"
@@ -76,6 +77,14 @@ VERSION=$(tr -d '[:space:]' < client/VERSION)
 COMMIT=$(git rev-parse --short HEAD)
 git diff --quiet && git diff --cached --quiet || COMMIT="${COMMIT}+"
 BUILT_AT=$(date -u +'%Y-%m-%d %H:%M')
+
+# Apple wants a monotonic CFBundleVersion, exactly as Play wants a rising
+# versionCode, and Flutter defaults both to pubspec's `1.0.0+1` unless told
+# otherwise. Android already derives its number from client/VERSION inside
+# build.gradle.kts; this is the same arithmetic for the platforms that cannot
+# read that file themselves. 0.0.0103 -> 103.
+BUILD_NUMBER=$(printf '%s' "$VERSION" | tr -d '.' | sed 's/^0*//')
+BUILD_NUMBER=${BUILD_NUMBER:-1}
 
 DEFINES=(
   --dart-define=API_BASE="${API_BASE}"
@@ -195,7 +204,13 @@ if wants macos || wants ios; then
   MAC_DEFINES="--dart-define=API_BASE=${API_BASE} --dart-define=APP_FACE=${APP_FACE}"
   MAC_DEFINES="${MAC_DEFINES} --dart-define=APP_VERSION=${VERSION}"
   MAC_DEFINES="${MAC_DEFINES} --dart-define=BUILD_ID=${COMMIT}"
-  MAC_DEFINES="${MAC_DEFINES} --dart-define=BUILT_AT=${BUILT_AT}"
+  # Quoted, because BUILT_AT holds a space ("2026-08-27 20:04"). The local builds
+# pass their defines as an ARRAY, which keeps the value whole; this path is a
+# flat string interpolated into an ssh command, so an unquoted space split the
+# value and Flutter read the time as a second argument — "Target file 20:04 not
+# found". Every Apple build hit this; none had been run since BUILT_AT was added.
+MAC_DEFINES="${MAC_DEFINES} --dart-define=BUILT_AT='${BUILT_AT}'"
+MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBER}"
 
   # Built unsigned, and said out loud rather than left to be discovered.
   #
@@ -213,13 +228,55 @@ if wants macos || wants ios; then
     ${MAC_FLUTTER} build macos --release ${MAC_DEFINES}
   "
 
-  wants ios && ssh "$MAC_REMOTE" "
-    export PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH
-    set -e
-    cd ${MAC_PROJECT}
-    ${MAC_FLUTTER} pub get
-    ${MAC_FLUTTER} build ios --release --no-codesign ${MAC_DEFINES}
-  "
+  # ── iOS ────────────────────────────────────────────────────────
+  #
+  # Signed if this Mac can sign for EZBIZI LLC, a compile check if it cannot.
+  # The difference matters and is never guessed at: an unsigned iOS build leaves
+  # a .app that will not install on any phone, so shipping one by accident means
+  # discovering at upload time that there was never an artefact.
+  #
+  # The identity is matched on TEAM, not on name. This Mac also holds a personal
+  # Developer ID and an Apple Development certificate under two other teams, and
+  # "is there an Apple Distribution identity" is true for all three — only the
+  # 2CMZQR34RL one can sign com.ezbizi.app.
+  if wants ios; then
+    IOS_TEAM=2CMZQR34RL
+
+    if ssh "$MAC_REMOTE" "security find-identity -v -p codesigning 2>/dev/null | grep -q 'Apple Distribution.*${IOS_TEAM}'"; then
+      echo "→ building ios — signed for team ${IOS_TEAM}"
+      ssh "$MAC_REMOTE" "
+        export PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH
+        set -e
+        cd ${MAC_PROJECT}
+        ${MAC_FLUTTER} pub get
+        ${MAC_FLUTTER} build ipa --release ${MAC_DEFINES} --export-options-plist=ios/ExportOptions.plist
+      "
+
+      # Bring it home. An artefact that exists only on somebody else's Mac is one
+      # power cut from not existing, and dist/ is where every other platform
+      # leaves its release.
+      mkdir -p "$DIST"
+      IPA_REMOTE=$(ssh "$MAC_REMOTE" "ls ${MAC_PROJECT}/build/ios/ipa/*.ipa 2>/dev/null | head -1")
+      if [ -z "$IPA_REMOTE" ]; then
+        echo "✗ flutter build ipa reported success but left no .ipa on the Mac" >&2
+        exit 1
+      fi
+      scp -q "${MAC_REMOTE}:${IPA_REMOTE}" "${DIST}/EzBizi-${VERSION}-${COMMIT}.ipa"
+      echo "  → ${DIST}/EzBizi-${VERSION}-${COMMIT}.ipa"
+    else
+      echo "→ building ios — UNSIGNED (no Apple Distribution identity for team ${IOS_TEAM} on the Mac)"
+      ssh "$MAC_REMOTE" "
+        export PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH
+        set -e
+        cd ${MAC_PROJECT}
+        ${MAC_FLUTTER} pub get
+        ${MAC_FLUTTER} build ios --release --no-codesign ${MAC_DEFINES}
+      "
+      echo "  This is a compile check. It cannot be installed on a phone or"
+      echo "  uploaded to App Store Connect. Run scripts/release.sh --only ios"
+      echo "  to be told exactly what the Mac still needs."
+    fi
+  fi
 
   echo "→ Apple artefacts are on the Mac under ${MAC_PROJECT}/build — UNSIGNED"
 fi
