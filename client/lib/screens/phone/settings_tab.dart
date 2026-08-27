@@ -11,6 +11,7 @@ import 'flows_pane.dart';
 import 'hours_pane.dart';
 import 'numbers_pane.dart';
 import 'ring_groups_pane.dart';
+import 'tags_pane.dart';
 import 'trust_pane.dart';
 import 'service_request_pane.dart';
 
@@ -38,6 +39,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     ('Call flows', Icons.account_tree_outlined),
     ('Hours', Icons.schedule_outlined),
     ('Ring groups', Icons.groups_outlined),
+    ('Tags', Icons.sell_outlined),
     ('Trust', Icons.verified_outlined),
     ('Messaging', Icons.sms_outlined),
   ];
@@ -284,7 +286,8 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       2 => FlowsPane(api: widget.api, session: widget.session),
       3 => HoursPane(api: widget.api, session: widget.session),
       4 => RingGroupsPane(api: widget.api, session: widget.session),
-      5 => TrustPane(api: widget.api, session: widget.session),
+      5 => TagsPane(api: widget.api, session: widget.session),
+      6 => TrustPane(api: widget.api, session: widget.session),
       _ => _unbuilt('Messaging campaigns will be set here.'),
     };
   }

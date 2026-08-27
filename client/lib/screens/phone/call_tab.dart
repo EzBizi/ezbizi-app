@@ -48,6 +48,17 @@ class _CallTabState extends State<CallTab> {
   _CallPane _pane = _CallPane.pad;
   bool _dnd = false;
   bool _onCall = false;
+
+  /// The call just finished, waiting to be said what it was about.
+  ///
+  /// Held in the desk rather than left to Records, because the person who knows
+  /// is the one who has just put the phone down. A tag chosen a day later by
+  /// somebody reading a list is a guess, and a report built on guesses is worse
+  /// than one built on nothing.
+  String? _untaggedCallId;
+  List<_Tag> _tags = const [];
+  bool _tagging = false;
+  String? _tagError;
   String? _incomingFrom;
   String? _sendError;
 
@@ -242,6 +253,70 @@ class _CallTabState extends State<CallTab> {
     await widget.api.put('/phone/presence', {
       'connection_id': number.connectionId,
       'state': _dnd ? 'dnd' : 'registered',
+    });
+
+    await _askWhatItWasAbout();
+  }
+
+  /// Find the call that just ended and ask what it was about.
+  ///
+  /// The webhook writes the row, not this screen, so the id is looked up rather
+  /// than remembered — the desk never had it. If nothing comes back the desk
+  /// stays quiet: an unanswerable question is worse than no question.
+  Future<void> _askWhatItWasAbout() async {
+    final results = await Future.wait([
+      widget.api.get('/phone/tags'),
+      widget.api.get('/phone/calls?untagged=1&per_page=1'),
+    ]);
+
+    if (!mounted) return;
+
+    if (!results[0].ok || !results[1].ok) return;
+
+    final tags = _Tag.listFrom(results[0].body).where((t) => t.isActive).toList();
+    if (tags.isEmpty) return;
+
+    final data = results[1].body['data'];
+    if (data is! List || data.isEmpty) return;
+
+    final row = data.first;
+    if (row is! Map) return;
+
+    setState(() {
+      _tags = tags;
+      _untaggedCallId = row['id']?.toString();
+      _tagError = null;
+    });
+  }
+
+  Future<void> _tagCall(String tagId) async {
+    final callId = _untaggedCallId;
+    if (callId == null) return;
+
+    setState(() {
+      _tagging = true;
+      _tagError = null;
+    });
+
+    final response = await widget.api.patch(
+      '/phone/calls/$callId/tag',
+      {'tag_id': tagId},
+    );
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _tagging = false;
+        _tagError = response.reason;
+      });
+      return;
+    }
+
+    setState(() {
+      _tagging = false;
+      _untaggedCallId = null;
+      _tags = const [];
     });
   }
 
@@ -625,6 +700,7 @@ class _CallTabState extends State<CallTab> {
             ],
           ),
         ),
+        if (_untaggedCallId != null) _whatWasItAbout(theme),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Wrap(
@@ -856,4 +932,78 @@ class _Message {
     outbound: json['direction'] == 'outbound',
     createdAt: json['created_at'] as String? ?? '',
   );
+}
+
+extension _CallTagging on _CallTabState {
+  /// An in-page banner, not a pop-up. §6 has no modals, and a modal here would
+  /// also block the next incoming call behind a question about the last one.
+  ///
+  /// It has no dismiss. That is the requirement — whoever answered says what it
+  /// was about — but the desk stays usable behind it: another call can be taken
+  /// and this stays until it is answered.
+  Widget _whatWasItAbout(ThemeData theme) {
+    return Container(
+      key: const ValueKey('tag-the-call'),
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('What was that call about?', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 4),
+          Text(
+            'Pick one so it can be counted later.',
+            style: theme.textTheme.bodySmall,
+          ),
+          if (_tagError != null) ...[
+            const SizedBox(height: 8),
+            Text(_tagError!, style: theme.textTheme.bodySmall),
+          ],
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final tag in _tags)
+                OutlinedButton(
+                  key: ValueKey('tag-choice:${tag.id}'),
+                  onPressed: _tagging ? null : () => _tagCall(tag.id),
+                  child: Text(tag.name),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+@immutable
+class _Tag {
+  const _Tag({required this.id, required this.name, required this.isActive});
+
+  final String id;
+  final String name;
+  final bool isActive;
+
+  static List<_Tag> listFrom(dynamic payload) {
+    final data = payload is Map ? payload['data'] : payload;
+    if (data is! List) return const [];
+
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (r) => _Tag(
+            id: r['id'].toString(),
+            name: r['name']?.toString() ?? '',
+            isActive: r['is_active'] != false,
+          ),
+        )
+        .toList(growable: false);
+  }
 }

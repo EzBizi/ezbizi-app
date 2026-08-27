@@ -60,6 +60,7 @@ use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\Phone\CallsController as PhoneCallsController;
 use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
+use App\Http\Controllers\Api\Phone\CallTagsController as PhoneCallTagsController;
 use App\Http\Controllers\Api\Phone\FlowsController as PhoneFlowsController;
 use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
 use App\Http\Controllers\Api\Phone\MessagesController as PhoneMessagesController;
@@ -736,6 +737,15 @@ Route::prefix('v1')
         // so franchise lines default timezone from franchises.timezone.
         // Call menus. One menu per flow — TwimlRenderer reads the first it
         // finds, so an editor that drew a tree would draw one that never runs.
+        // What a call was about. Editing the list is phone.edit; putting one
+        // ON a call is not — the people who answer the phone are usually
+        // view-plus-a-line-grant, and they are who does the tagging.
+        Route::get('phone/tags', [PhoneCallTagsController::class, 'index']);
+        Route::post('phone/tags', [PhoneCallTagsController::class, 'store']);
+        Route::patch('phone/tags/{tag}', [PhoneCallTagsController::class, 'update']);
+        Route::delete('phone/tags/{tag}', [PhoneCallTagsController::class, 'destroy']);
+        Route::patch('phone/calls/{call}/tag', [PhoneCallTagsController::class, 'tagCall']);
+
         Route::get('phone/flows', [PhoneFlowsController::class, 'index']);
         Route::post('phone/flows', [PhoneFlowsController::class, 'store']);
         Route::patch('phone/flows/{flow}', [PhoneFlowsController::class, 'update']);

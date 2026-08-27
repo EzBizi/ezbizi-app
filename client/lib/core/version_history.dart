@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0110',
+      date: '27 Aug 2026',
+      items: [
+        'Tags: say what a call was about when you put the phone down, so calls '
+            'can be counted by what they were.',
+        'Settings keeps the list. A tag that has been used is retired rather '
+            'than deleted, so last month still adds up.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0109',
       date: '27 Aug 2026',
       items: [

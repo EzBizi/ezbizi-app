@@ -102,6 +102,7 @@ class PhoneCall extends Model implements HoldsPersonalData
         'from_e164', 'to_e164', 'user_id', 'status',
         'duration_seconds', 'recording_sid', 'transcription_sid', 'transcript',
         'voicemail', 'dealt_at',
+        'tag_id', 'tagged_by', 'tagged_at',
     ];
 
     protected function casts(): array
@@ -110,12 +111,18 @@ class PhoneCall extends Model implements HoldsPersonalData
             'duration_seconds' => 'integer',
             'voicemail' => 'boolean',
             'dealt_at' => 'datetime',
+            'tagged_at' => 'datetime',
         ];
     }
 
     public function number(): BelongsTo
     {
         return $this->belongsTo(PhoneNumber::class, 'number_id');
+    }
+
+    public function tag(): BelongsTo
+    {
+        return $this->belongsTo(PhoneCallTag::class, 'tag_id');
     }
 
     public function connection(): BelongsTo
