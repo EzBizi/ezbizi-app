@@ -1,18 +1,18 @@
 <?php
 
+use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\AttachmentsController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AutomationsController;
+use App\Http\Controllers\Api\BlueskyConnectController;
 use App\Http\Controllers\Api\BrandingController;
 use App\Http\Controllers\Api\CompaniesController;
 use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\DashboardController;
-use App\Http\Controllers\Api\DevelopmentUnlockController;
 use App\Http\Controllers\Api\DataController;
+use App\Http\Controllers\Api\DevelopmentUnlockController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\FranchisesController;
-use App\Http\Controllers\Api\MicrosoftMailAuthController;
-use App\Http\Controllers\Api\UiStringsController;
 use App\Http\Controllers\Api\GoogleMailAuthController;
 use App\Http\Controllers\Api\GoogleWorkspaceAuthController;
 use App\Http\Controllers\Api\HealthController;
@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\HrOnboardingsController;
 use App\Http\Controllers\Api\HrPeopleController;
 use App\Http\Controllers\Api\InspectionDefinitionsController;
 use App\Http\Controllers\Api\InspectionReportsController;
+use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InventoryAdjustmentsController;
 use App\Http\Controllers\Api\InventoryIssuesController;
 use App\Http\Controllers\Api\InventoryItemsController;
@@ -32,25 +33,14 @@ use App\Http\Controllers\Api\InventorySalesController;
 use App\Http\Controllers\Api\InventoryStockController;
 use App\Http\Controllers\Api\InventoryTransfersController;
 use App\Http\Controllers\Api\InventoryVendorsController;
-use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\LeadsController;
-use App\Http\Controllers\Api\VehicleAssignmentsController;
-use App\Http\Controllers\Api\VehicleInsuranceController;
-use App\Http\Controllers\Api\VehicleOwnershipController;
-use App\Http\Controllers\Api\VehiclePaymentsController;
-use App\Http\Controllers\Api\VehicleServiceController;
-use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\MailboxesController;
 use App\Http\Controllers\Api\MailboxMessagesController;
 use App\Http\Controllers\Api\MarketingController;
-use App\Http\Controllers\Api\BlueskyConnectController;
-use App\Http\Controllers\Api\SocialAuthController;
-use App\Http\Controllers\Api\SocialConnectionsController;
-use App\Http\Controllers\Api\SocialProvidersController;
+use App\Http\Controllers\Api\MicrosoftMailAuthController;
 use App\Http\Controllers\Api\NotificationsController;
-use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
@@ -71,32 +61,57 @@ use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookCo
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\RolesController;
+use App\Http\Controllers\Api\SendingIdentitiesController;
 use App\Http\Controllers\Api\ServiceGroupsController;
 use App\Http\Controllers\Api\ServiceLabelsController;
 use App\Http\Controllers\Api\ServicesController;
-use App\Http\Controllers\Api\SendingIdentitiesController;
 use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\SocialAuthController;
+use App\Http\Controllers\Api\SocialConnectionsController;
+use App\Http\Controllers\Api\SocialProvidersController;
 use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
 use App\Http\Controllers\Api\StaffClientVersionsController;
 use App\Http\Controllers\Api\StaffController;
-use App\Http\Controllers\Api\TimeClockController;
+use App\Http\Controllers\Api\Tasks\MyTasksController;
 use App\Http\Controllers\Api\Tasks\TaskBoardMembersController;
 use App\Http\Controllers\Api\Tasks\TaskBoardPreferencesController;
 use App\Http\Controllers\Api\Tasks\TaskBoardRecoveryController;
+use App\Http\Controllers\Api\Tasks\TaskBoardRowsController;
 use App\Http\Controllers\Api\Tasks\TaskBoardsController;
 use App\Http\Controllers\Api\Tasks\TaskBulkController;
 use App\Http\Controllers\Api\Tasks\TaskColumnsController;
 use App\Http\Controllers\Api\Tasks\TaskColumnValuesController;
+use App\Http\Controllers\Api\Tasks\TaskDetailsController;
 use App\Http\Controllers\Api\Tasks\TaskDuplicationController;
 use App\Http\Controllers\Api\Tasks\TaskFoldersController;
 use App\Http\Controllers\Api\Tasks\TaskGroupsController;
 use App\Http\Controllers\Api\Tasks\TaskOrderController;
 use App\Http\Controllers\Api\Tasks\TaskParticipantsController;
 use App\Http\Controllers\Api\Tasks\TaskPrioritiesController;
-use App\Http\Controllers\Api\Tasks\TaskStatusesController;
+use App\Http\Controllers\Api\Tasks\TaskQuickSearchController;
 use App\Http\Controllers\Api\Tasks\TasksController;
+use App\Http\Controllers\Api\Tasks\TaskStatusesController;
+use App\Http\Controllers\Api\Tasks\TaskViewsController;
+use App\Http\Controllers\Api\TimeClockController;
 use App\Http\Controllers\Api\TwoFactorController;
+use App\Http\Controllers\Api\UiStringsController;
+use App\Http\Controllers\Api\VehicleAssignmentsController;
+use App\Http\Controllers\Api\VehicleInsuranceController;
+use App\Http\Controllers\Api\VehicleOwnershipController;
+use App\Http\Controllers\Api\VehiclePaymentsController;
+use App\Http\Controllers\Api\VehiclesController;
+use App\Http\Controllers\Api\VehicleServiceController;
+use App\Models\PlatformStaffLink;
+use App\Support\Auth\PasswordPolicy;
+use App\Support\Auth\TwoFactorPolicy;
+use App\Support\I18n\UiCatalogue;
+use App\Support\Modules\PermissionCatalogue;
+use App\Support\Preferences\PreferenceRegistry;
+use App\Support\Scoping\ViewScope;
+use App\Support\Settings\DisplaySettings;
+use App\Support\TimeClock\TimeClock;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -145,14 +160,14 @@ Route::prefix('v1/auth')->group(function () {
     Route::post('signup', [AuthController::class, 'signup'])
         ->middleware('throttle:signup');
 
-    Route::post('login',  [AuthController::class, 'login']);
+    Route::post('login', [AuthController::class, 'login']);
     Route::post('choose', [AuthController::class, 'choose']);
 
     // Public by necessity — somebody who has forgotten their password cannot
     // sign in to ask. Both answer identically whatever the outcome, so neither
     // can be used to discover which addresses are registered.
     Route::post('forgot', [PasswordController::class, 'forgot']);
-    Route::post('reset',  [PasswordController::class, 'reset']);
+    Route::post('reset', [PasswordController::class, 'reset']);
 });
 
 /*
@@ -334,11 +349,22 @@ Route::prefix('v1')
 
         Route::get('tasks/boards', [TaskBoardsController::class, 'index']);
         Route::post('tasks/boards', [TaskBoardsController::class, 'store']);
+        Route::get('tasks/my', [MyTasksController::class, 'index']);
+        Route::get('tasks/search', [TaskQuickSearchController::class, 'index']);
         Route::get('tasks/boards/{board}', [TaskBoardsController::class, 'show']);
         Route::patch('tasks/boards/{board}', [TaskBoardsController::class, 'update']);
         Route::post('tasks/boards/{board}/archive', [TaskBoardsController::class, 'archive']);
         Route::post('tasks/boards/{board}/restore', [TaskBoardsController::class, 'restore']);
         Route::post('tasks/boards/{board}/duplicate', [TaskBoardsController::class, 'duplicate']);
+        Route::get('tasks/boards/{board}/rows', [TaskBoardRowsController::class, 'index']);
+        Route::get('tasks/boards/{board}/tasks/{taskId}', [TaskDetailsController::class, 'show']);
+        Route::get('tasks/boards/{board}/views', [TaskViewsController::class, 'index']);
+        Route::post('tasks/boards/{board}/views', [TaskViewsController::class, 'store']);
+        Route::post('tasks/boards/{board}/views/reorder', [TaskViewsController::class, 'reorder']);
+        Route::patch('tasks/boards/{board}/views/{viewId}', [TaskViewsController::class, 'update']);
+        Route::delete('tasks/boards/{board}/views/{viewId}', [TaskViewsController::class, 'destroy']);
+        Route::post('tasks/boards/{board}/views/{viewId}/duplicate', [TaskViewsController::class, 'duplicate']);
+        Route::put('tasks/boards/{board}/views/{viewId}/preference', [TaskViewsController::class, 'preference']);
 
         Route::post('tasks/boards/{board}/tasks', [TasksController::class, 'store']);
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
@@ -1079,25 +1105,25 @@ Route::prefix('v1')
 
         // Who am I — what the client calls on launch to know what to render.
         // (staff routes are below, deliberately outside this group)
-        Route::get('me', function (Illuminate\Http\Request $request) {
+        Route::get('me', function (Request $request) {
             $user = $request->user();
 
             // Resolved once and used twice, below: the client is told where it
             // is standing AND what that place's settings say, and the two must
             // describe the same place or the dates on screen belong to a scope
             // the top bar is not naming.
-            $view = \App\Support\Scoping\ViewScope::forUser($user);
+            $view = ViewScope::forUser($user);
 
             // Asked twice below — for the keys and for the modules — and both
             // answers have to come from the same reading of the platform flags.
-            $catalogue = app(\App\Support\Modules\PermissionCatalogue::class);
+            $catalogue = app(PermissionCatalogue::class);
 
             return response()->json([
                 'data' => [
-                    'id'    => $user->id,
-                    'name'  => $user->name,
+                    'id' => $user->id,
+                    'name' => $user->name,
                     'email' => $user->email,
-                    'role'  => ['id' => $user->role?->id, 'name' => $user->role?->name],
+                    'role' => ['id' => $user->role?->id, 'name' => $user->role?->name],
 
                     /*
                      * WHAT this person may do, and WHICH modules exist for them
@@ -1124,7 +1150,7 @@ Route::prefix('v1')
                      * phone.
                      */
                     'permissions' => $catalogue->heldBy($user),
-                    'modules'     => $catalogue->modulesFor($user),
+                    'modules' => $catalogue->modulesFor($user),
 
                     // Whether there is a photo to fetch, so the top bar can ask
                     // for one only when there is one. `/me/profile` already
@@ -1147,17 +1173,17 @@ Route::prefix('v1')
                     // stripped from every user by the migration that retired
                     // it, so there is nothing here left to clean.
                     'preferences' => array_merge(
-                        app(\App\Support\Preferences\PreferenceRegistry::class)->defaults(),
+                        app(PreferenceRegistry::class)->defaults(),
                         $user->preferences ?? [],
                     ),
                     // Whether this person is also platform staff (§4.2, revised).
                     // The client renders the Development section from this, so it
                     // cannot appear for somebody with no staff account behind them.
                     'development' => (function () use ($user) {
-                        $staff = \App\Models\PlatformStaffLink::staffFor($user->getKey());
+                        $staff = PlatformStaffLink::staffFor($user->getKey());
 
                         return $staff === null ? null : [
-                            'tier'       => $staff->tier,
+                            'tier' => $staff->tier,
                             'staff_name' => $staff->name,
                             'focused_at' => 'https://dev.ezbizi.com',
                         ];
@@ -1168,12 +1194,11 @@ Route::prefix('v1')
                     // token and never sees a login body — without it the app
                     // would come back with every screen quietly answering 403
                     // and nothing on screen saying why.
-                    'two_factor_enrolment_required' =>
-                        app(\App\Support\Auth\TwoFactorPolicy::class)->mustEnrol($user),
+                    'two_factor_enrolment_required' => app(TwoFactorPolicy::class)->mustEnrol($user),
 
                     // Clock in chrome on the first frame (design §8). The top-bar
                     // button reads this rather than a second round trip.
-                    'time_clock' => app(\App\Support\TimeClock\TimeClock::class)->payload($user),
+                    'time_clock' => app(TimeClock::class)->payload($user),
 
                     // What the change-password form should ASK for: the platform
                     // floor, or this organization's own minimum where that is
@@ -1186,20 +1211,20 @@ Route::prefix('v1')
                     // examined server-side — so those two screens still state the
                     // platform floor and the server corrects them. See
                     // client/lib/core/password_policy.dart.
-                    'password_min_length' => \App\Support\Auth\PasswordPolicy::minLengthFor(
+                    'password_min_length' => PasswordPolicy::minLengthFor(
                         $user->organization,
                     ),
                     'organization' => [
-                        'id'              => $user->organization->id,
-                        'name'            => $user->organization->name,
-                        'address'         => $user->organization->address,
-                        'address_line1'   => $user->organization->address_line1,
-                        'address_line2'   => $user->organization->address_line2,
-                        'city'            => $user->organization->city,
-                        'state'           => $user->organization->state,
-                        'postal_code'     => $user->organization->postal_code,
+                        'id' => $user->organization->id,
+                        'name' => $user->organization->name,
+                        'address' => $user->organization->address,
+                        'address_line1' => $user->organization->address_line1,
+                        'address_line2' => $user->organization->address_line2,
+                        'city' => $user->organization->city,
+                        'state' => $user->organization->state,
+                        'postal_code' => $user->organization->postal_code,
                         'franchise_label' => $user->organization->franchise_label,
-                        'is_read_only'    => $user->organization->isReadOnly(),
+                        'is_read_only' => $user->organization->isReadOnly(),
                     ],
                     // Reach, so the client knows which franchises to offer —
                     // rather than showing all and failing on save (§4).
@@ -1219,10 +1244,10 @@ Route::prefix('v1')
                         // inherits from that company rather than from the
                         // organization.
                         ->map(fn ($c) => [
-                            'id'                => $c->id,
-                            'name'              => $c->name,
+                            'id' => $c->id,
+                            'name' => $c->name,
                             'parent_company_id' => $c->parent_company_id,
-                            'has_logo'          => $c->logo_path !== null,
+                            'has_logo' => $c->logo_path !== null,
                         ])
                         ->all(),
 
@@ -1247,16 +1272,16 @@ Route::prefix('v1')
                     // sets 24h must get 24h on a machine set to US English,
                     // and until this existed there was no resolved setting on
                     // the client at all for any screen to read.
-                    'display' => app(\App\Support\Settings\DisplaySettings::class)
+                    'display' => app(DisplaySettings::class)
                         ->forScope($view->settingsScope()),
 
-                    ...app(\App\Support\I18n\UiCatalogue::class)->forUser($user),
+                    ...app(UiCatalogue::class)->forUser($user),
 
                     'franchises' => $user->reachableFranchises()->map(fn ($f) => [
-                        'id'         => $f->id,
-                        'name'       => $f->name,
+                        'id' => $f->id,
+                        'name' => $f->name,
                         'company_id' => $f->company_id,
-                        'is_active'  => $f->is_active,
+                        'is_active' => $f->is_active,
                     ])->values(),
                 ],
             ]);
