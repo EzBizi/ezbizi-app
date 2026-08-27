@@ -17,8 +17,8 @@ rather than for trying harder.
 | Server panel | https://srv.ezbizi.com (Webmin) |
 | Stack | Laravel 13 · PHP 8.4 · MySQL 8 · Flutter web client |
 <!-- numbers:start -->
-| Tests | 1977 backend · 885 client. Both gated on deploy: nothing ships if either is red. |
-| Client version | `v0.0.0103` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
+| Tests | 2022 backend · 912 client. Both gated on deploy: nothing ships if either is red. |
+| Client version | `v0.0.0110` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
 | Production data | **2 organization(s) · 7 companies · 18 franchises · 13 users · 14 customers · 24 jobs.** Counted 2026-08-27 against the live database by `scripts/status-numbers.sh`, not typed. |
 | Permissions in production | **81 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
 <!-- numbers:end -->
@@ -37,16 +37,15 @@ rather than for trying harder.
 
 The owner accepted the Codex–Grok consensus and selected **A — Dense Grid** on 2026-08-26. The desktop/375px alternatives and decision record are in `docs/previews/tasks-layouts.html` and `docs/previews/tasks-layouts-review.md`. Tasks is not built; it is ready for explicit implementation authorization. Production-capable file paths remain gated on the Phase 1 plan's Task 10A off-instance restore proof.
 
-## Tasks — restore gate staged, 2026-08-26
+## Tasks — production restore gate passed, 2026-08-27
 
-Task 0's encrypted `storage/app/private` archive and exact restore verifier are implemented
-and green against a disposable local fixture. The encrypted archive contains a versioned
-manifest of each relative path, byte count, and SHA-256; restore rejects missing or extra
-rows, mismatches, unsafe paths, links, non-file entries, and corrupt encryption or archives
-before accepting the result. This is **not yet the production durability proof**: Task 10A
-must deploy through the normal release path and verify a production-sized off-instance copy.
-Until that passes, production-capable Tasks imports, update attachments, and File-column
-upload or selection remain closed, and FileStore's instance-loss warning remains accurate.
+Task 10A passed through the normal production release path at
+`2026-08-27T23:08:53+00:00`. The fresh encrypted off-instance copy restored exactly with
+`ok=true`, `stage=restore-check`, `offsite=true`, private-file manifest version 1,
+17 files / 735,248 bytes, and no errors. The restore checker still rejects missing or
+extra rows, mismatches, unsafe paths, links, non-file entries, corrupt encryption or
+archives, and a local-only copy. Production-capable Tasks import staging, update
+attachments, and File-column paths may now open under their normal authorization rules.
 
 ## EZ Leads — all three modules live, 2026-08-27
 

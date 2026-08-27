@@ -43,26 +43,21 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * across to the new disk first, or every logo and avatar 404s. Attachments need
  * no such step.
  *
- * ── What the backup covers today, and what it does not ───────────
+ * ── What the backup covers today ────────────────────────────────
  *
  * This matters more than it looks, so it is written here rather than assumed.
  *
- * The nightly backup covers the DATABASE, the git tree and `.env`. It does not
- * cover `storage/`. Every file this class writes on the `local` disk therefore
- * lives on the instance's own volume and nowhere else: a rebuild of the box, or
- * a lost volume, takes every logo, every avatar and — once contracts land —
- * every signed PDF with it, while the database keeps a row confidently pointing
- * at each one.
+ * The nightly encrypted backup covers the database, git tree, `.env`, and
+ * `storage`; customer files under `storage/app/private` also have an encrypted
+ * versioned path/size/SHA-256 manifest that the restore checker verifies byte for
+ * byte from the off-instance copy. The normal production path proved that
+ * contract on 2026-08-27 (manifest v1, 17 files / 735,248 bytes, offsite=true).
  *
- * §11 names this cost ("files do not survive a rebuild of the instance unless
- * separately backed up") and judges it acceptable at current scale, which it was
- * while the only files were logos anybody could re-upload. It stops being
- * acceptable the moment the files ARE the record — a signed contract is not
- * re-creatable, and a scan of somebody's licence is not something to ask them
- * for twice. Either the backup grows to include `storage/`, or the default disk
- * moves to object storage that is durable on its own. Whoever picks up
- * Contracts owns that decision; this docblock exists so it is a decision rather
- * than a discovery.
+ * The local disk remains the primary store, so the recovery point is the latest
+ * successful backup rather than synchronous object storage. Files created after
+ * that point can still be lost with the instance, and the second box remains in
+ * the same AWS account. Those are explicit RPO/account-boundary limits, not a
+ * reason to claim that existing file bytes are absent from restore coverage.
  */
 class FileStore
 {
