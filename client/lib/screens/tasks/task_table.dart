@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'task_column_cells.dart';
 import 'task_models.dart';
 
-/// Dense desktop representation. Its horizontal scroll belongs to the columns,
-/// never the page; task identity stays at the left edge of each row.
 class TaskTable extends StatefulWidget {
   const TaskTable({
     super.key,
@@ -13,305 +12,363 @@ class TaskTable extends StatefulWidget {
     required this.selectedTaskId,
     required this.onSelected,
     required this.onTitleChanged,
+    this.onCoreChanged,
+    this.onCustomChanged,
+    this.onBulkChanged,
+    this.owners = const [],
+    this.people = const [],
+    this.onSelectionChanged,
     this.onSelectionCleared,
   });
-
   final TaskBoard board;
   final List<TaskRow> rows;
   final String? selectedTaskId;
   final ValueChanged<TaskRow> onSelected;
-  final void Function(TaskRow task, String title) onTitleChanged;
+  final void Function(TaskRow, String) onTitleChanged;
+  final Future<void> Function(TaskRow, String, Object?)? onCoreChanged;
+  final Future<void> Function(TaskRow, TaskColumnDefinition, Object?)?
+  onCustomChanged;
+  final Future<void> Function(List<TaskRow>, Map<String, Object?>)?
+  onBulkChanged;
+  final List<TaskParticipant> owners;
+  final List<TaskParticipant> people;
+  final ValueChanged<int>? onSelectionChanged;
   final VoidCallback? onSelectionCleared;
-
   @override
   State<TaskTable> createState() => _TaskTableState();
 }
 
 class _TaskTableState extends State<TaskTable> {
-  final Set<String> _collapsedGroups = <String>{};
-  final ScrollController _pinnedScroll = ScrollController();
-  final ScrollController _operationalScroll = ScrollController();
-  bool _syncingScroll = false;
+  final _selection = TaskSelection();
+  final _pinned = ScrollController();
+  final _columns = ScrollController();
+  final _collapsed = <String>{};
+  bool _syncing = false;
   @override
   void initState() {
     super.initState();
-    _pinnedScroll.addListener(() => _sync(_pinnedScroll, _operationalScroll));
-    _operationalScroll.addListener(
-      () => _sync(_operationalScroll, _pinnedScroll),
-    );
+    _pinned.addListener(() => _sync(_pinned, _columns));
+    _columns.addListener(() => _sync(_columns, _pinned));
   }
 
-  void _sync(ScrollController source, ScrollController target) {
-    if (_syncingScroll || !target.hasClients) return;
-    _syncingScroll = true;
-    target.jumpTo(
-      source.offset.clamp(
-        target.position.minScrollExtent,
-        target.position.maxScrollExtent,
+  void _sync(ScrollController from, ScrollController to) {
+    if (_syncing || !to.hasClients) return;
+    _syncing = true;
+    to.jumpTo(
+      from.offset.clamp(
+        to.position.minScrollExtent,
+        to.position.maxScrollExtent,
       ),
     );
-    _syncingScroll = false;
+    _syncing = false;
   }
 
   @override
   void dispose() {
-    _pinnedScroll.dispose();
-    _operationalScroll.dispose();
+    _pinned.dispose();
+    _columns.dispose();
     super.dispose();
+  }
+
+  void _toggle(TaskRow task) => setState(() {
+    _selection.toggle(task);
+    widget.onSelectionChanged?.call(_selection.count);
+  });
+  void _clear() => setState(() {
+    _selection.clear();
+    widget.onSelectionChanged?.call(0);
+  });
+  Future<void> _core(TaskRow task, String field, Object? value) async {
+    if (field == 'title' && widget.onCoreChanged == null)
+      widget.onTitleChanged(task, value as String);
+    await widget.onCoreChanged?.call(task, field, value);
+  }
+
+  Future<void> _custom(
+    TaskRow task,
+    TaskColumnDefinition column,
+    Object? value,
+  ) async => widget.onCustomChanged?.call(task, column, value);
+  Future<void> _bulk(Map<String, Object?> changes) async {
+    final rows = widget.rows
+        .where((row) => _selection.contains(row.id))
+        .toList();
+    if (rows.isNotEmpty) await widget.onBulkChanged?.call(rows, changes);
   }
 
   @override
   Widget build(BuildContext context) {
     final groups = <String?, List<TaskRow>>{};
     for (final row in widget.rows) {
-      (groups[row.groupId] ??= <TaskRow>[]).add(row);
+      (groups[row.groupId] ??= []).add(row);
     }
-    final ordered = <String?>[
-      ...widget.board.groups
-          .where((group) => !group.archived)
-          .map((group) => group.id),
-      ...groups.keys.where(
-        (key) => !widget.board.groups.any((group) => group.id == key),
-      ),
+    final ids = <String?>[
+      ...widget.board.groups.where((g) => !g.archived).map((g) => g.id),
+      ...groups.keys.where((id) => !widget.board.groups.any((g) => g.id == id)),
     ];
-    final theme = Theme.of(context);
+    final custom = widget.board.customColumns
+        .where((c) => !c.archived)
+        .toList();
     return FocusableActionDetector(
-      shortcuts: <ShortcutActivator, Intent>{
-        SingleActivator(LogicalKeyboardKey.escape): _ClearTaskSelectionIntent(),
-        SingleActivator(LogicalKeyboardKey.arrowDown): _MoveTaskIntent(1),
-        SingleActivator(LogicalKeyboardKey.arrowUp): _MoveTaskIntent(-1),
-        SingleActivator(LogicalKeyboardKey.enter): _ActivateTaskIntent(),
+      shortcuts: const {
+        SingleActivator(LogicalKeyboardKey.escape): _ClearIntent(),
+        SingleActivator(LogicalKeyboardKey.arrowDown): _MoveIntent(1),
+        SingleActivator(LogicalKeyboardKey.arrowUp): _MoveIntent(-1),
+        SingleActivator(LogicalKeyboardKey.enter): _ActivateIntent(),
       },
-      actions: <Type, Action<Intent>>{
-        _ClearTaskSelectionIntent: CallbackAction<_ClearTaskSelectionIntent>(
+      actions: {
+        _ClearIntent: CallbackAction<_ClearIntent>(
           onInvoke: (_) {
-            FocusManager.instance.primaryFocus?.unfocus();
+            _clear();
             widget.onSelectionCleared?.call();
             return null;
           },
         ),
-        _MoveTaskIntent: CallbackAction<_MoveTaskIntent>(
+        _MoveIntent: CallbackAction<_MoveIntent>(
           onInvoke: (intent) {
-            final rows = widget.rows;
-            if (rows.isEmpty) return null;
-            final at = rows.indexWhere(
-              (row) => row.id == widget.selectedTaskId,
-            );
-            widget.onSelected(
-              rows[(at + intent.delta).clamp(0, rows.length - 1)],
-            );
+            if (widget.rows.isNotEmpty) {
+              final at = widget.rows.indexWhere(
+                (row) => row.id == widget.selectedTaskId,
+              );
+              widget.onSelected(
+                widget.rows[(at + intent.delta).clamp(
+                  0,
+                  widget.rows.length - 1,
+                )],
+              );
+            }
             return null;
           },
         ),
-        _ActivateTaskIntent: CallbackAction<_ActivateTaskIntent>(
+        _ActivateIntent: CallbackAction<_ActivateIntent>(
           onInvoke: (_) {
-            final selected = widget.rows
-                .where((row) => row.id == widget.selectedTaskId)
-                .firstOrNull;
-            if (selected != null) widget.onSelected(selected);
+            final found = widget.rows.where(
+              (row) => row.id == widget.selectedTaskId,
+            );
+            if (found.isNotEmpty) widget.onSelected(found.first);
             return null;
           },
         ),
       },
       autofocus: true,
-      child: Row(
+      child: Column(
         children: [
-          SizedBox(
-            key: const Key('pinned-task-column'),
-            width: 300,
-            child: ListView(
-              controller: _pinnedScroll,
+          if (_selection.count > 0)
+            _BulkBar(
+              count: _selection.count,
+              board: widget.board,
+              onClear: _clear,
+              onBulk: _bulk,
+            ),
+          Expanded(
+            child: Row(
               children: [
-                _PinnedHeader(color: theme.colorScheme),
-                for (final groupId in ordered)
-                  if (groups[groupId] case final rows?) ...[
-                    _GroupHeader(
-                      name:
-                          widget.board.groups
-                              .where((group) => group.id == groupId)
-                              .map((group) => group.name)
-                              .firstOrNull ??
-                          'Ungrouped',
-                      collapsed: _collapsedGroups.contains(groupId),
-                      onToggle: () => setState(
-                        () => _collapsedGroups.contains(groupId)
-                            ? _collapsedGroups.remove(groupId)
-                            : _collapsedGroups.add(groupId ?? ''),
+                SizedBox(
+                  key: const Key('pinned-task-column'),
+                  width: 300,
+                  child: ListView(
+                    controller: _pinned,
+                    children: [
+                      _header(context, 'Task'),
+                      for (final id in ids)
+                        if (groups[id] case final rows?) ...[
+                          _group(
+                            context,
+                            widget.board.groups
+                                    .where((g) => g.id == id)
+                                    .map((g) => g.name)
+                                    .firstOrNull ??
+                                'Ungrouped',
+                            _collapsed.contains(id),
+                            () => setState(
+                              () => _collapsed.contains(id)
+                                  ? _collapsed.remove(id)
+                                  : _collapsed.add(id ?? ''),
+                            ),
+                          ),
+                          if (!_collapsed.contains(id))
+                            for (final row in rows)
+                              _PinnedRow(
+                                task: row,
+                                selected: row.id == widget.selectedTaskId,
+                                checked: _selection.contains(row.id),
+                                onSelect: () => widget.onSelected(row),
+                                onCheck: () => _toggle(row),
+                                onTitle: (title) => _core(row, 'title', title),
+                              ),
+                        ],
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: 610.0 + 180 * custom.length,
+                      child: ListView(
+                        controller: _columns,
+                        children: [
+                          _OperationalHeader(custom: custom),
+                          for (final id in ids)
+                            if (groups[id] case final rows?) ...[
+                              _groupSpacer(context),
+                              if (!_collapsed.contains(id))
+                                for (final row in rows)
+                                  _OperationalRow(
+                                    task: row,
+                                    board: widget.board,
+                                    custom: custom,
+                                    owners: widget.owners,
+                                    people: widget.people,
+                                    onCore: (field, value) =>
+                                        _core(row, field, value),
+                                    onCustom: (column, value) =>
+                                        _custom(row, column, value),
+                                  ),
+                            ],
+                        ],
                       ),
                     ),
-                    if (!_collapsedGroups.contains(groupId))
-                      for (final task in rows)
-                        _PinnedTaskRow(
-                          task: task,
-                          selected: task.id == widget.selectedTaskId,
-                          status: _status(task.statusOptionId),
-                          onSelected: () => widget.onSelected(task),
-                          onTitleChanged: (title) =>
-                              widget.onTitleChanged(task, title),
-                        ),
-                  ],
-              ],
-            ),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: 460,
-                child: ListView(
-                  controller: _operationalScroll,
-                  children: [
-                    _OperationalHeader(color: theme.colorScheme),
-                    for (final groupId in ordered)
-                      if (groups[groupId] case final rows?) ...[
-                        const _OperationalGroupHeader(),
-                        if (!_collapsedGroups.contains(groupId))
-                          for (final task in rows)
-                            _OperationalTaskRow(
-                              task: task,
-                              status: _status(task.statusOptionId),
-                            ),
-                      ],
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
-
-  TaskStatusOption? _status(String? id) => widget.board.statuses
-      .where((status) => status.id == id)
-      .cast<TaskStatusOption?>()
-      .firstOrNull;
 }
 
 extension _FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }
 
-class _PinnedHeader extends StatelessWidget {
-  const _PinnedHeader({required this.color});
-  final ColorScheme color;
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 44,
-    color: color.surfaceContainerHighest,
-    child: const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text('Task', style: TextStyle(fontWeight: FontWeight.w700)),
+Widget _header(BuildContext context, String text) => Container(
+  height: 44,
+  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+  padding: const EdgeInsets.symmetric(horizontal: 16),
+  alignment: Alignment.centerLeft,
+  child: Text(text, style: const TextStyle(fontWeight: FontWeight.w700)),
+);
+Widget _group(
+  BuildContext context,
+  String name,
+  bool collapsed,
+  VoidCallback toggle,
+) => Container(
+  height: 44,
+  decoration: BoxDecoration(
+    border: Border(
+      bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+    ),
+  ),
+  child: Row(
+    children: [
+      Container(
+        width: 4,
+        height: double.infinity,
+        color: Theme.of(context).colorScheme.primary,
       ),
-    ),
-  );
-}
-
-class _OperationalHeader extends StatelessWidget {
-  const _OperationalHeader({required this.color});
-  final ColorScheme color;
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 44,
-    color: color.surfaceContainerHighest,
-    child: const Row(
-      children: [
-        SizedBox(
-          width: 150,
-          child: Text('Status', style: TextStyle(fontWeight: FontWeight.w700)),
-        ),
-        SizedBox(
-          width: 150,
-          child: Text('Owner', style: TextStyle(fontWeight: FontWeight.w700)),
-        ),
-        SizedBox(
-          width: 140,
-          child: Text(
-            'Due date',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _OperationalGroupHeader extends StatelessWidget {
-  const _OperationalGroupHeader();
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 44,
-    decoration: BoxDecoration(
-      border: Border(
-        bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+      IconButton(
+        tooltip: '${collapsed ? 'Expand' : 'Collapse'} $name',
+        icon: Icon(collapsed ? Icons.chevron_right : Icons.expand_more),
+        onPressed: toggle,
       ),
+      Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
+    ],
+  ),
+);
+Widget _groupSpacer(BuildContext context) => Container(
+  height: 44,
+  decoration: BoxDecoration(
+    border: Border(
+      bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
     ),
-  );
-}
+  ),
+);
 
-class _GroupHeader extends StatelessWidget {
-  const _GroupHeader({
-    required this.name,
-    required this.collapsed,
-    required this.onToggle,
+class _BulkBar extends StatelessWidget {
+  const _BulkBar({
+    required this.count,
+    required this.board,
+    required this.onClear,
+    required this.onBulk,
   });
-  final String name;
-  final bool collapsed;
-  final VoidCallback onToggle;
+  final int count;
+  final TaskBoard board;
+  final VoidCallback onClear;
+  final Future<void> Function(Map<String, Object?>) onBulk;
   @override
-  Widget build(BuildContext context) => Container(
-    height: 44,
-    decoration: BoxDecoration(
-      border: Border(
-        bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+  Widget build(BuildContext context) => Material(
+    color: Theme.of(context).colorScheme.secondaryContainer,
+    child: SizedBox(
+      height: 52,
+      child: Row(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text('$count selected'),
+          ),
+          DropdownButton<String>(
+            hint: const Text('Set status'),
+            items: board.statuses
+                .where((s) => !s.archived)
+                .map((s) => DropdownMenuItem(value: s.id, child: Text(s.name)))
+                .toList(),
+            onChanged: (value) {
+              if (value != null) onBulk({'status_option_id': value});
+            },
+          ),
+          const SizedBox(width: 8),
+          DropdownButton<String>(
+            hint: const Text('Set priority'),
+            items: board.priorities
+                .where((p) => !p.archived)
+                .map((p) => DropdownMenuItem(value: p.id, child: Text(p.name)))
+                .toList(),
+            onChanged: (value) {
+              if (value != null) onBulk({'priority_option_id': value});
+            },
+          ),
+          TextButton(
+            onPressed: () => onBulk({'archived': true}),
+            child: const Text('Archive'),
+          ),
+          const Spacer(),
+          TextButton(onPressed: onClear, child: const Text('Clear selection')),
+        ],
       ),
-    ),
-    child: Row(
-      children: [
-        Container(
-          width: 4,
-          height: double.infinity,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-        IconButton(
-          tooltip: '${collapsed ? 'Expand' : 'Collapse'} $name',
-          icon: Icon(collapsed ? Icons.chevron_right : Icons.expand_more),
-          onPressed: onToggle,
-        ),
-        Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
-      ],
     ),
   );
 }
 
-class _PinnedTaskRow extends StatefulWidget {
-  const _PinnedTaskRow({
+class _PinnedRow extends StatefulWidget {
+  const _PinnedRow({
     required this.task,
     required this.selected,
-    required this.status,
-    required this.onSelected,
-    required this.onTitleChanged,
+    required this.checked,
+    required this.onSelect,
+    required this.onCheck,
+    required this.onTitle,
   });
   final TaskRow task;
   final bool selected;
-  final TaskStatusOption? status;
-  final VoidCallback onSelected;
-  final ValueChanged<String> onTitleChanged;
+  final bool checked;
+  final VoidCallback onSelect;
+  final VoidCallback onCheck;
+  final ValueChanged<String> onTitle;
   @override
-  State<_PinnedTaskRow> createState() => _PinnedTaskRowState();
+  State<_PinnedRow> createState() => _PinnedRowState();
 }
 
-class _PinnedTaskRowState extends State<_PinnedTaskRow> {
-  late final TextEditingController _title = TextEditingController(
-    text: widget.task.title,
-  );
-  late final FocusNode _focus = FocusNode();
+class _PinnedRowState extends State<_PinnedRow> {
+  late final _title = TextEditingController(text: widget.task.title);
+  late final _focus = FocusNode();
   @override
-  void didUpdateWidget(covariant _PinnedTaskRow oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!_focus.hasFocus && oldWidget.task.title != widget.task.title)
+  void didUpdateWidget(covariant _PinnedRow old) {
+    super.didUpdateWidget(old);
+    if (!_focus.hasFocus && old.task.title != widget.task.title)
       _title.text = widget.task.title;
   }
 
@@ -326,11 +383,10 @@ class _PinnedTaskRowState extends State<_PinnedTaskRow> {
   Widget build(BuildContext context) => Semantics(
     button: true,
     selected: widget.selected,
-    label:
-        'Task ${widget.task.number}: ${widget.task.title}. Status ${widget.status?.name ?? 'No status'}. ${widget.task.ownerUserId == null ? 'Unassigned' : 'Assigned'}. ${widget.task.dueOn == null ? 'No due date' : 'Due ${widget.task.dueOn!.month}/${widget.task.dueOn!.day}/${widget.task.dueOn!.year}'}.',
+    label: 'Task ${widget.task.number}: ${widget.task.title}',
     child: InkWell(
       key: Key('task-row-${widget.task.id}'),
-      onTap: widget.onSelected,
+      onTap: widget.onSelect,
       child: Container(
         height: 52,
         decoration: BoxDecoration(
@@ -345,9 +401,7 @@ class _PinnedTaskRowState extends State<_PinnedTaskRow> {
         ),
         child: Row(
           children: [
-            const SizedBox(width: 16),
-            const Icon(Icons.radio_button_unchecked, size: 18),
-            const SizedBox(width: 8),
+            Checkbox(value: widget.checked, onChanged: (_) => widget.onCheck()),
             Expanded(
               child: TextField(
                 controller: _title,
@@ -356,9 +410,8 @@ class _PinnedTaskRowState extends State<_PinnedTaskRow> {
                   border: InputBorder.none,
                   isDense: true,
                 ),
-                style: const TextStyle(fontWeight: FontWeight.w600),
-                onTap: widget.onSelected,
-                onSubmitted: widget.onTitleChanged,
+                onTap: widget.onSelect,
+                onSubmitted: widget.onTitle,
               ),
             ),
           ],
@@ -368,10 +421,57 @@ class _PinnedTaskRowState extends State<_PinnedTaskRow> {
   );
 }
 
-class _OperationalTaskRow extends StatelessWidget {
-  const _OperationalTaskRow({required this.task, required this.status});
+class _OperationalHeader extends StatelessWidget {
+  const _OperationalHeader({required this.custom});
+  final List<TaskColumnDefinition> custom;
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 44,
+    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    child: Row(
+      children: [
+        for (final label in ['Status', 'Owner', 'Priority'])
+          SizedBox(
+            width: 150,
+            child: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        const SizedBox(
+          width: 160,
+          child: Text(
+            'Due date',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        for (final c in custom)
+          SizedBox(
+            width: 180,
+            child: Text(c.name, style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+      ],
+    ),
+  );
+}
+
+class _OperationalRow extends StatelessWidget {
+  const _OperationalRow({
+    required this.task,
+    required this.board,
+    required this.custom,
+    required this.owners,
+    required this.people,
+    required this.onCore,
+    required this.onCustom,
+  });
   final TaskRow task;
-  final TaskStatusOption? status;
+  final TaskBoard board;
+  final List<TaskColumnDefinition> custom;
+  final List<TaskParticipant> owners;
+  final List<TaskParticipant> people;
+  final Future<void> Function(String, Object?) onCore;
+  final Future<void> Function(TaskColumnDefinition, Object?) onCustom;
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
     child: Container(
@@ -385,143 +485,125 @@ class _OperationalTaskRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          SizedBox(width: 150, child: Text(status?.name ?? 'No status')),
           SizedBox(
             width: 150,
-            child: Text(task.ownerUserId == null ? 'Unassigned' : 'Assigned'),
-          ),
-          SizedBox(
-            width: 140,
-            child: Text(
-              task.dueOn == null
-                  ? 'No due date'
-                  : '${task.dueOn!.month}/${task.dueOn!.day}/${task.dueOn!.year}',
+            child: _Option(
+              value: task.statusOptionId,
+              hint: 'No status',
+              options: board.statuses.map((s) => (s.id, s.name)).toList(),
+              changed: (value) => onCore('status_option_id', value),
             ),
           ),
+          SizedBox(
+            width: 150,
+            child: _Option(
+              value: task.ownerUserId,
+              hint: 'Unassigned',
+              options: owners.map((p) => (p.id, p.name)).toList(),
+              changed: (value) => onCore('owner_user_id', value),
+            ),
+          ),
+          SizedBox(
+            width: 150,
+            child: _Option(
+              value: task.priorityOptionId,
+              hint: 'No priority',
+              options: board.priorities.map((p) => (p.id, p.name)).toList(),
+              changed: (value) => onCore('priority_option_id', value),
+            ),
+          ),
+          SizedBox(
+            width: 160,
+            child: _Date(
+              value: task.dueOn,
+              changed: (value) => onCore('due_on', value),
+            ),
+          ),
+          for (final c in custom)
+            SizedBox(
+              width: 180,
+              child: TaskColumnCell(
+                task: task,
+                definition: c,
+                value:
+                    task.values[c.id] ??
+                    TaskCellValue(
+                      kind: c.kind,
+                      value: null,
+                      rawValue: null,
+                      isReadOnly: c.isReadOnly,
+                    ),
+                participants: people,
+                onChanged: onCustom,
+              ),
+            ),
         ],
       ),
     ),
   );
 }
 
-class _TaskGridRow extends StatefulWidget {
-  const _TaskGridRow({
-    required this.task,
-    required this.selected,
-    required this.status,
-    required this.onSelected,
-    required this.onTitleChanged,
+class _Option extends StatelessWidget {
+  const _Option({
+    required this.value,
+    required this.hint,
+    required this.options,
+    required this.changed,
   });
-  final TaskRow task;
-  final bool selected;
-  final TaskStatusOption? status;
-  final VoidCallback onSelected;
-  final ValueChanged<String> onTitleChanged;
+  final String? value;
+  final String hint;
+  final List<(String, String)> options;
+  final ValueChanged<String?> changed;
   @override
-  State<_TaskGridRow> createState() => _TaskGridRowState();
+  Widget build(BuildContext context) => DropdownButton<String>(
+    isExpanded: true,
+    value: options.any((o) => o.$1 == value) ? value : null,
+    hint: Text(hint),
+    items: options
+        .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
+        .toList(),
+    onChanged: changed,
+  );
 }
 
-class _TaskGridRowState extends State<_TaskGridRow> {
-  late final TextEditingController _title = TextEditingController(
-    text: widget.task.title,
-  );
-  late final FocusNode _focus = FocusNode();
+class _Date extends StatefulWidget {
+  const _Date({required this.value, required this.changed});
+  final DateTime? value;
+  final ValueChanged<String?> changed;
   @override
-  void didUpdateWidget(covariant _TaskGridRow oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!_focus.hasFocus && oldWidget.task.title != widget.task.title) {
-      _title.text = widget.task.title;
-    }
-  }
+  State<_Date> createState() => _DateState();
+}
 
+class _DateState extends State<_Date> {
+  late final _controller = TextEditingController(
+    text: widget.value == null
+        ? ''
+        : '${widget.value!.year.toString().padLeft(4, '0')}-${widget.value!.month.toString().padLeft(2, '0')}-${widget.value!.day.toString().padLeft(2, '0')}',
+  );
   @override
   void dispose() {
-    _title.dispose();
-    _focus.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Semantics(
-      button: true,
-      selected: widget.selected,
-      label: 'Task ${widget.task.number}: ${widget.task.title}',
-      child: InkWell(
-        onTap: widget.onSelected,
-        child: Container(
-          height: 52,
-          color: widget.selected ? colors.primaryContainer : null,
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: colors.outlineVariant)),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 300,
-                child: Row(
-                  children: [
-                    const SizedBox(width: 16),
-                    Icon(
-                      widget.status?.category == TaskStatusCategory.completed
-                          ? Icons.check_circle_outline
-                          : Icons.radio_button_unchecked,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: _title,
-                        focusNode: _focus,
-                        key: ValueKey('task-title-${widget.task.id}'),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          isDense: true,
-                        ),
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                        onTap: widget.onSelected,
-                        onSubmitted: widget.onTitleChanged,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(
-                width: 150,
-                child: Text(widget.status?.name ?? 'No status'),
-              ),
-              SizedBox(
-                width: 150,
-                child: Text(
-                  widget.task.ownerUserId == null ? 'Unassigned' : 'Assigned',
-                ),
-              ),
-              SizedBox(
-                width: 140,
-                child: Text(
-                  widget.task.dueOn == null
-                      ? 'No due date'
-                      : '${widget.task.dueOn!.month}/${widget.task.dueOn!.day}/${widget.task.dueOn!.year}',
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => TextField(
+    controller: _controller,
+    decoration: const InputDecoration(isDense: true, hintText: 'YYYY-MM-DD'),
+    onSubmitted: (value) =>
+        widget.changed(value.trim().isEmpty ? null : value.trim()),
+  );
 }
 
-class _ClearTaskSelectionIntent extends Intent {
-  const _ClearTaskSelectionIntent();
+class _ClearIntent extends Intent {
+  const _ClearIntent();
 }
 
-class _MoveTaskIntent extends Intent {
-  const _MoveTaskIntent(this.delta);
+class _MoveIntent extends Intent {
+  const _MoveIntent(this.delta);
   final int delta;
 }
 
-class _ActivateTaskIntent extends Intent {
-  const _ActivateTaskIntent();
+class _ActivateIntent extends Intent {
+  const _ActivateIntent();
 }

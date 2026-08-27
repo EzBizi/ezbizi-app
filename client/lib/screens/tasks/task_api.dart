@@ -161,6 +161,72 @@ final class TaskApi {
     return _decode(response, (data) => TaskRow.fromJson(_map(data, 'data')));
   }
 
+  /// Candidate eligibility is intentionally server-scoped. The client never
+  /// rebuilds it from reach or permission data it happens to have cached.
+  Future<TaskApiResult<List<TaskParticipant>>> participants(
+    String boardId, {
+    required TaskParticipantPurpose purpose,
+    String? search,
+  }) async {
+    final response = await _api.get(
+      '/tasks/boards/$boardId/participants',
+      <String, String>{
+        'purpose': _participantPurpose(purpose),
+        if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+      },
+    );
+    return _decode(response, (data) {
+      if (data is! List) throw const FormatException('data must be a list.');
+      return data
+          .map((entry) => TaskParticipant.fromJson(_map(entry, 'data[]')))
+          .toList(growable: false);
+    });
+  }
+
+  Future<TaskApiResult<TaskColumnValueMutation>> updateColumnValue(
+    String taskId,
+    String columnId, {
+    required int expectedTaskVersion,
+    required Object? value,
+  }) async {
+    final response = await _api.put(
+      '/tasks/$taskId/columns/$columnId',
+      <String, Object?>{
+        'expected_version': expectedTaskVersion,
+        'value': value,
+      },
+    );
+    return _decode(
+      response,
+      (data) => TaskColumnValueMutation.fromJson(_map(data, 'data')),
+    );
+  }
+
+  Future<TaskApiResult<List<TaskRow>>> bulkUpdate(
+    String boardId, {
+    required List<TaskBulkTarget> targets,
+    required Map<String, Object?> changes,
+  }) async {
+    final response = await _api
+        .post('/tasks/boards/$boardId/bulk', <String, Object?>{
+          'tasks': targets
+              .map((target) => target.toJson())
+              .toList(growable: false),
+          'changes': changes,
+        });
+    return _decode(response, (data) {
+      if (data is! List) throw const FormatException('data must be a list.');
+      return data
+          .map(
+            (entry) => TaskRow.fromJson(
+              _map(entry, 'data[]'),
+              board: _boards[boardId],
+            ),
+          )
+          .toList(growable: false);
+    });
+  }
+
   Future<TaskApiResult<TaskUpdate>> updateTaskUpdate(
     String taskId,
     String updateId, {
@@ -282,6 +348,14 @@ final class TaskApi {
     }
   }
 }
+
+String _participantPurpose(TaskParticipantPurpose purpose) => switch (purpose) {
+  TaskParticipantPurpose.taskCreate => 'task_create',
+  TaskParticipantPurpose.owner => 'owner',
+  TaskParticipantPurpose.people => 'people',
+  TaskParticipantPurpose.collaborator => 'collaborator',
+  TaskParticipantPurpose.mention => 'mention',
+};
 
 Map<String, Object?> _ownedMutation(
   Map<String, Object?> changes, {

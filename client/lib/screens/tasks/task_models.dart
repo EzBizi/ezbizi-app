@@ -23,6 +23,67 @@ enum TaskColumnKind {
   unknown,
 }
 
+enum TaskParticipantPurpose { taskCreate, owner, people, collaborator, mention }
+
+final class TaskParticipant {
+  const TaskParticipant({
+    required this.id,
+    required this.name,
+    required this.email,
+  });
+
+  factory TaskParticipant.fromJson(Map<String, Object?> json) =>
+      TaskParticipant(
+        id: _string(json, 'id'),
+        name: _string(json, 'name'),
+        email: _string(json, 'email'),
+      );
+
+  final String id;
+  final String name;
+  final String email;
+}
+
+final class TaskBulkTarget {
+  const TaskBulkTarget({required this.id, required this.expectedVersion});
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'id': id,
+    'expected_version': expectedVersion,
+  };
+
+  final String id;
+  final int expectedVersion;
+}
+
+final class TaskColumnValueMutation {
+  const TaskColumnValueMutation({
+    required this.taskId,
+    required this.columnDefinitionId,
+    required this.rawType,
+    required this.value,
+    required this.version,
+    required this.detailVersion,
+  });
+
+  factory TaskColumnValueMutation.fromJson(Map<String, Object?> json) =>
+      TaskColumnValueMutation(
+        taskId: _string(json, 'task_id'),
+        columnDefinitionId: _string(json, 'column_definition_id'),
+        rawType: _string(json, 'type'),
+        value: json['value'],
+        version: _integer(json, 'version'),
+        detailVersion: _integer(json, 'detail_version'),
+      );
+
+  final String taskId;
+  final String columnDefinitionId;
+  final String rawType;
+  final Object? value;
+  final int version;
+  final int detailVersion;
+}
+
 enum TaskViewVisibility { personal, shared, unknown }
 
 enum TaskViewPresentation { table, unknown }
@@ -512,22 +573,32 @@ final class TaskCellValue {
       );
     }
 
-    final value = switch (kind) {
-      TaskColumnKind.text => _expectType<String>(raw, 'custom text value'),
-      TaskColumnKind.number => _expectType<num>(raw, 'custom number value'),
-      TaskColumnKind.checkbox => _expectType<bool>(
-        raw,
-        'custom checkbox value',
-      ),
-      TaskColumnKind.date => _parseDateOnlyValue(raw, 'custom date value'),
-      TaskColumnKind.people ||
-      TaskColumnKind.label ||
-      TaskColumnKind.file => _stringList(raw, 'custom list value'),
-      TaskColumnKind.link => TaskLinkValue.fromJson(
-        _expectMap(raw, 'custom link value'),
-      ),
-      TaskColumnKind.unknown => raw,
-    };
+    Object? value;
+    try {
+      value = switch (kind) {
+        TaskColumnKind.text => _expectType<String>(raw, 'custom text value'),
+        TaskColumnKind.number => _expectType<num>(raw, 'custom number value'),
+        TaskColumnKind.checkbox => _expectType<bool>(
+          raw,
+          'custom checkbox value',
+        ),
+        TaskColumnKind.date => _parseDateOnlyValue(raw, 'custom date value'),
+        TaskColumnKind.people ||
+        TaskColumnKind.label ||
+        TaskColumnKind.file => _stringList(raw, 'custom list value'),
+        TaskColumnKind.link => TaskLinkValue.fromJson(
+          _expectMap(raw, 'custom link value'),
+        ),
+        TaskColumnKind.unknown => raw,
+      };
+    } on FormatException {
+      return TaskCellValue(
+        kind: kind,
+        value: raw,
+        rawValue: raw,
+        isReadOnly: true,
+      );
+    }
     return TaskCellValue(
       kind: kind,
       value: value,

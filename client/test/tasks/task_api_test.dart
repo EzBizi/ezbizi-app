@@ -138,6 +138,80 @@ void main() {
   );
 
   test(
+    'uses server-scoped participants and versioned column and atomic bulk mutations',
+    () async {
+      final requests = <http.Request>[];
+      final api = TaskApi(
+        ApiClient(
+          client: MockClient((request) async {
+            requests.add(request);
+            if (request.url.path.endsWith('/participants')) {
+              return _json(200, <String, Object?>{
+                'data': <Object?>[
+                  <String, Object?>{
+                    'id': 'user-1',
+                    'name': 'Taylor',
+                    'email': 'taylor@example.com',
+                  },
+                ],
+              });
+            }
+            if (request.url.path.endsWith('/bulk')) {
+              return _json(200, <String, Object?>{
+                'data': <Object?>[_minimalTask()],
+                'meta': <String, Object?>{'total': 1},
+              });
+            }
+            return _json(200, <String, Object?>{
+              'data': <String, Object?>{
+                'task_id': 'task-1',
+                'column_definition_id': 'column-1',
+                'type': 'checkbox',
+                'value': true,
+                'version': 8,
+                'detail_version': 3,
+              },
+            });
+          }),
+        ),
+      );
+
+      final people = await api.participants(
+        'board-1',
+        purpose: TaskParticipantPurpose.people,
+        search: 'tay',
+      );
+      await api.updateColumnValue(
+        'task-1',
+        'column-1',
+        expectedTaskVersion: 7,
+        value: true,
+      );
+      await api.bulkUpdate(
+        'board-1',
+        targets: const [TaskBulkTarget(id: 'task-1', expectedVersion: 7)],
+        changes: const <String, Object?>{'status_option_id': 'status-1'},
+      );
+
+      expect(people.value?.single.name, 'Taylor');
+      expect(requests[0].url.queryParameters, <String, String>{
+        'purpose': 'people',
+        'search': 'tay',
+      });
+      expect(jsonDecode(requests[1].body), <String, Object?>{
+        'expected_version': 7,
+        'value': true,
+      });
+      expect(jsonDecode(requests[2].body), <String, Object?>{
+        'tasks': <Object?>[
+          <String, Object?>{'id': 'task-1', 'expected_version': 7},
+        ],
+        'changes': <String, Object?>{'status_option_id': 'status-1'},
+      });
+    },
+  );
+
+  test(
     'returns typed conflict and generic unavailable results and never retains unavailable data',
     () async {
       var call = 0;

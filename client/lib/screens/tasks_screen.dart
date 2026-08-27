@@ -46,6 +46,9 @@ class _TasksScreenState extends State<TasksScreen> {
   bool _showDirectory = false;
   bool _unavailable = false;
   bool _conflict = false;
+  String? _announcement;
+  List<TaskParticipant> _owners = const [];
+  List<TaskParticipant> _people = const [];
   int _intentGeneration = 0;
   int _requestGeneration = 0;
   int _page = 1;
@@ -158,6 +161,7 @@ class _TasksScreenState extends State<TasksScreen> {
       _page = result.data.page;
       _lastPage = result.data.lastPage;
     });
+    _loadParticipants(board.id);
     if (selectedTaskId != null) {
       await _selectTaskId(
         selectedTaskId,
@@ -165,6 +169,24 @@ class _TasksScreenState extends State<TasksScreen> {
         intent: intent,
         generation: generation,
       );
+    }
+  }
+
+  Future<void> _loadParticipants(String boardId) async {
+    final owners = await _tasks.participants(
+      boardId,
+      purpose: TaskParticipantPurpose.owner,
+    );
+    final people = await _tasks.participants(
+      boardId,
+      purpose: TaskParticipantPurpose.people,
+    );
+    if (!mounted || _board?.id != boardId) return;
+    if (owners is TaskApiSuccess<List<TaskParticipant>>) {
+      setState(() => _owners = owners.data);
+    }
+    if (people is TaskApiSuccess<List<TaskParticipant>>) {
+      setState(() => _people = people.data);
     }
   }
 
@@ -268,6 +290,167 @@ class _TasksScreenState extends State<TasksScreen> {
     }
   }
 
+  void _announce(String message) {
+    if (!mounted) return;
+    setState(() => _announcement = message);
+  }
+
+  TaskRow _replaceRow(
+    TaskRow source, {
+    String? title,
+    String? ownerUserId,
+    String? statusOptionId,
+    String? priorityOptionId,
+    DateTime? dueOn,
+    bool clearOwner = false,
+    bool clearStatus = false,
+    bool clearPriority = false,
+    bool clearDue = false,
+    Map<String, TaskCellValue>? values,
+    int? version,
+    int? detailVersion,
+  }) => TaskRow(
+    id: source.id,
+    boardId: source.boardId,
+    groupId: source.groupId,
+    parentTaskId: source.parentTaskId,
+    number: source.number,
+    title: title ?? source.title,
+    ownerUserId: clearOwner ? null : ownerUserId ?? source.ownerUserId,
+    collaboratorUserIds: source.collaboratorUserIds,
+    statusOptionId: clearStatus
+        ? null
+        : statusOptionId ?? source.statusOptionId,
+    priorityOptionId: clearPriority
+        ? null
+        : priorityOptionId ?? source.priorityOptionId,
+    startOn: source.startOn,
+    dueOn: clearDue ? null : dueOn ?? source.dueOn,
+    position: source.position,
+    version: version ?? source.version,
+    detailVersion: detailVersion ?? source.detailVersion,
+    values: values ?? source.values,
+    groupByValue: source.groupByValue,
+    subtasks: source.subtasks,
+  );
+
+  void _putRow(TaskRow row) => setState(
+    () => _rows = _rows
+        .map((current) => current.id == row.id ? row : current)
+        .toList(growable: false),
+  );
+
+  Future<void> _saveCore(TaskRow task, String field, Object? value) async {
+    final optimistic = switch (field) {
+      'title' => _replaceRow(task, title: value as String),
+      'owner_user_id' => _replaceRow(
+        task,
+        ownerUserId: value as String?,
+        clearOwner: value == null,
+      ),
+      'status_option_id' => _replaceRow(
+        task,
+        statusOptionId: value as String?,
+        clearStatus: value == null,
+      ),
+      'priority_option_id' => _replaceRow(
+        task,
+        priorityOptionId: value as String?,
+        clearPriority: value == null,
+      ),
+      'due_on' => _replaceRow(
+        task,
+        dueOn: value == null ? null : DateTime.tryParse(value as String),
+        clearDue: value == null,
+      ),
+      _ => task,
+    };
+    _putRow(optimistic);
+    _announce('Saving ${field.replaceAll('_', ' ')}.');
+    final result = await _tasks.updateTask(
+      task.id,
+      expectedTaskVersion: task.version,
+      changes: <String, Object?>{field: value},
+    );
+    if (!mounted) return;
+    if (result is TaskApiSuccess<TaskRow>) {
+      _putRow(result.data);
+      _announce('${field.replaceAll('_', ' ')} saved.');
+    } else if (result is TaskApiUnavailable<TaskRow>) {
+      _evict(result.message);
+    } else {
+      _putRow(task);
+      if (result is TaskApiConflictResult<TaskRow>) _conflict = true;
+      _announce(result.message ?? 'The change could not be saved.');
+      setState(() {});
+    }
+  }
+
+  Future<void> _saveCustom(
+    TaskRow task,
+    TaskColumnDefinition column,
+    Object? value,
+  ) async {
+    _announce('Saving ${column.name}.');
+    final result = await _tasks.updateColumnValue(
+      task.id,
+      column.id,
+      expectedTaskVersion: task.version,
+      value: value,
+    );
+    if (!mounted) return;
+    if (result is TaskApiSuccess<TaskColumnValueMutation>) {
+      final values = Map<String, TaskCellValue>.from(task.values);
+      values[column.id] = TaskCellValue.fromJson(
+        result.data.value,
+        definition: column,
+      );
+      _putRow(
+        _replaceRow(
+          task,
+          values: Map.unmodifiable(values),
+          version: result.data.version,
+          detailVersion: result.data.detailVersion,
+        ),
+      );
+      _announce('${column.name} saved.');
+    } else if (result is TaskApiUnavailable<TaskColumnValueMutation>) {
+      _evict(result.message);
+    } else {
+      if (result is TaskApiConflictResult<TaskColumnValueMutation>)
+        _conflict = true;
+      _announce(result.message ?? 'The change could not be saved.');
+      setState(() {});
+    }
+  }
+
+  Future<void> _bulk(List<TaskRow> tasks, Map<String, Object?> changes) async {
+    final board = _board;
+    if (board == null) return;
+    _announce('Saving changes to ${tasks.length} selected tasks.');
+    final result = await _tasks.bulkUpdate(
+      board.id,
+      targets: tasks
+          .map(
+            (task) =>
+                TaskBulkTarget(id: task.id, expectedVersion: task.version),
+          )
+          .toList(growable: false),
+      changes: changes,
+    );
+    if (!mounted) return;
+    if (result is TaskApiSuccess<List<TaskRow>>) {
+      for (final row in result.data) _putRow(row);
+      _announce('Changes saved for ${result.data.length} tasks.');
+    } else if (result is TaskApiUnavailable<List<TaskRow>>) {
+      _evict(result.message);
+    } else {
+      if (result is TaskApiConflictResult<List<TaskRow>>) _conflict = true;
+      _announce(result.message ?? 'No selected tasks were changed.');
+      setState(() {});
+    }
+  }
+
   Future<void> _createBoard(String name) async {
     final result = await _tasks.createBoard(
       name: name,
@@ -311,6 +494,11 @@ class _TasksScreenState extends State<TasksScreen> {
       color: Theme.of(context).colorScheme.surfaceContainerLowest,
       child: Column(
         children: [
+          Semantics(
+            liveRegion: true,
+            label: _announcement ?? '',
+            child: const SizedBox.shrink(),
+          ),
           _titleBar(context),
           Expanded(
             child: AsyncBody(
@@ -486,6 +674,16 @@ class _TasksScreenState extends State<TasksScreen> {
                     selectedTaskId: _selectedTaskId,
                     onSelected: _selectTask,
                     onTitleChanged: _rename,
+                    onCoreChanged: _saveCore,
+                    onCustomChanged: _saveCustom,
+                    onBulkChanged: _bulk,
+                    owners: _owners,
+                    people: _people,
+                    onSelectionChanged: (count) => _announce(
+                      count == 0
+                          ? 'Selection cleared.'
+                          : '$count tasks selected.',
+                    ),
                     onSelectionCleared: () => setState(() {
                       _selectedTaskId = null;
                       _detailOpen = false;
