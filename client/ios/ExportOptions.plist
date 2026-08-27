@@ -45,8 +45,30 @@
     <key>teamID</key>
     <string>2CMZQR34RL</string>
 
+    <!--
+      manual, not automatic.
+
+      Automatic means xcodebuild fetches or creates the profile itself, which
+      needs credentials this machine does not have: there is no Xcode signed in
+      to an Apple account on the relay, and no one to answer a 2FA prompt on a
+      headless Mac. An App Store Connect API key would supply them, but that
+      needs an organisation to accept Apple's API terms first.
+
+      Manual needs neither. The profile below was generated in the portal and
+      installed on the relay, so signing is a local lookup. Name it exactly as
+      the portal does, or the export fails with 'no profile matching'.
+    -->
     <key>signingStyle</key>
-    <string>automatic</string>
+    <string>manual</string>
+
+    <key>signingCertificate</key>
+    <string>Apple Distribution</string>
+
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.ezbizi.app</key>
+        <string>EzBizi App Store</string>
+    </dict>
 
     <key>uploadSymbols</key>
     <true/>

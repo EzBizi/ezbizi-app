@@ -247,6 +247,10 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
       ssh "$MAC_REMOTE" "
         export PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH
         set -e
+        # The build keychain has to be open before codesign asks it for the key.
+        # A script on the Mac rather than a line here: the command needs nested
+        # quoting through ssh, which is how a password gets mangled.
+        ~/ezbizi-signing/unlock-keychain.sh
         cd ${MAC_PROJECT}
         ${MAC_FLUTTER} pub get
         ${MAC_FLUTTER} build ipa --release ${MAC_DEFINES} --export-options-plist=ios/ExportOptions.plist
@@ -278,7 +282,10 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
     fi
   fi
 
-  echo "→ Apple artefacts are on the Mac under ${MAC_PROJECT}/build — UNSIGNED"
+  # Not "UNSIGNED" any more — iOS decides for itself above and says which it did.
+  # macOS is still genuinely unsigned: it needs a Developer ID certificate, which
+  # is a different certificate from the Apple Distribution one iOS uses.
+  wants macos && echo "→ the macOS .app is on the Mac under ${MAC_PROJECT}/build — UNSIGNED"
 fi
 
 echo "✓ built v${VERSION} · ${COMMIT}"
