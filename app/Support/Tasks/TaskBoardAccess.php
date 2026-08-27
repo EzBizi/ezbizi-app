@@ -116,6 +116,46 @@ final class TaskBoardAccess
         return $this->privateMembershipDecision($user, $board);
     }
 
+    public function constrainBackgroundVisible(Builder $query, User $user): Builder
+    {
+        if (! $this->moduleAndPermission($user)) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        $companyIds = $user->reachableCompanies()->modelKeys();
+        $franchiseIds = $user->reachableFranchises()->modelKeys();
+        $organization = $this->reach->covers($user, 'organization', $user->organization_id);
+
+        $query->where(function (Builder $places) use ($companyIds, $franchiseIds, $organization): void {
+            $hasBranch = false;
+            if ($organization) {
+                $places->where(fn (Builder $organization) => $organization
+                    ->whereNull('company_id')->whereNull('franchise_id'));
+                $hasBranch = true;
+            }
+            if ($companyIds !== []) {
+                $method = $hasBranch ? 'orWhere' : 'where';
+                $places->{$method}(fn (Builder $companies) => $companies
+                    ->whereIn('company_id', $companyIds)->whereNull('franchise_id'));
+                $hasBranch = true;
+            }
+            if ($franchiseIds !== []) {
+                $method = $hasBranch ? 'orWhereIn' : 'whereIn';
+                $places->{$method}('franchise_id', $franchiseIds);
+                $hasBranch = true;
+            }
+            if (! $hasBranch) {
+                $places->whereRaw('0 = 1');
+            }
+        });
+
+        return $query->where(function (Builder $visibility) use ($user): void {
+            $visibility->where('visibility', BoardVisibility::Scope->value)
+                ->orWhereHas('members', fn (Builder $members) => $members
+                    ->active()->where('user_id', $user->id));
+        });
+    }
+
     public function createDecision(User $user, ViewScope $scope): Response
     {
         if (! $this->availability->isAvailable('tasks', $user->organization)) {

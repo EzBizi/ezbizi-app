@@ -12,6 +12,7 @@ use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 /**
  * Deciding who to tell, and telling them (plan §12).
@@ -67,17 +68,17 @@ class NotificationDispatcher
         }
 
         $rows = $recipients->take(self::MAX_RECIPIENTS)->map(fn (User $user) => [
-            'id'              => (string) \Illuminate\Support\Str::uuid7(),
+            'id' => (string) Str::uuid7(),
             'organization_id' => $this->tenant->idOrFail(),
-            'user_id'         => $user->getKey(),
-            'source'          => $source,
-            'title'           => $title,
-            'body'            => $body,
-            'subject_type'    => $subject ? $subject::class : null,
-            'subject_id'      => $subject?->getKey(),
-            'automation_id'     => $automationId,
-            'event_id'        => $eventId,
-            'created_at'      => now(),
+            'user_id' => $user->getKey(),
+            'source' => $source,
+            'title' => $title,
+            'body' => $body,
+            'subject_type' => $subject ? $subject::class : null,
+            'subject_id' => $subject?->getKey(),
+            'automation_id' => $automationId,
+            'event_id' => $eventId,
+            'created_at' => now(),
         ])->all();
 
         // One insert. A loop of saves would be one query per recipient, and this
@@ -85,6 +86,28 @@ class NotificationDispatcher
         Notification::insert($rows);
 
         return count($rows);
+    }
+
+    public function dispatchUnique(
+        User $recipient,
+        string $title,
+        ?string $body,
+        Model $subject,
+        string $source,
+        string $deliveryKey,
+    ): Notification {
+        return Notification::query()->firstOrCreate([
+            'user_id' => $recipient->id,
+            'source' => $source,
+            'delivery_key' => $deliveryKey,
+        ], [
+            'organization_id' => $this->tenant->idOrFail(),
+            'title' => $title,
+            'body' => $body,
+            'subject_type' => $subject::class,
+            'subject_id' => $subject->getKey(),
+            'created_at' => now(),
+        ]);
     }
 
     /**

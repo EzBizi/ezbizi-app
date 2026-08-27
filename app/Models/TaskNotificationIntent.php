@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Jobs\DeliverTaskNotificationIntent;
 use App\Models\Concerns\BelongsToTenant;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
@@ -11,16 +12,27 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\DB;
 
 class TaskNotificationIntent extends Model implements HoldsPersonalData
 {
     use BelongsToTenant, HasUuids;
+
+    public const MAX_ATTEMPTS = 10;
 
     protected $fillable = ['board_id', 'task_id', 'recipient_user_id', 'kind', 'source_occurrence_key', 'available_at'];
 
     protected function casts(): array
     {
         return ['available_at' => 'datetime', 'claimed_until' => 'datetime', 'attempts' => 'integer'];
+    }
+
+    protected static function booted(): void
+    {
+        static::created(function (self $intent): void {
+            $id = $intent->id;
+            DB::afterCommit(fn () => DeliverTaskNotificationIntent::dispatch($id));
+        });
     }
 
     public static function retention(): RetentionPolicy

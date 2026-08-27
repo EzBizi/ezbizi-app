@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Notification;
+use App\Support\Tasks\TaskNotificationPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -24,38 +25,24 @@ use Illuminate\Http\Request;
  */
 class NotificationsController extends Controller
 {
+    public function __construct(private readonly TaskNotificationPresenter $presenter) {}
+
     /** GET /api/v1/notifications */
     public function index(Request $request): JsonResponse
     {
-        $notifications = Notification::query()
-            ->where('user_id', $request->user()->getKey())
+        $base = $this->presenter->constrain(Notification::query()
+            ->where('user_id', $request->user()->getKey()), $request->user());
+        $notifications = (clone $base)
             ->when($request->boolean('unread_only'), fn ($q) => $q->whereNull('read_at'))
             ->latest('created_at')
             ->limit(min((int) $request->query('limit', 50), 200))
             ->get()
-            ->map(fn (Notification $n) => [
-                'id'      => $n->id,
-                'source'  => $n->source,
-                'title'   => $n->title,
-                'body'    => $n->body,
-                'subject' => [
-                    // Class basename, not the FQCN. The client routes on a word
-                    // like "Job"; handing it App\Models\Job leaks the namespace
-                    // layout into a published API for no benefit (§11.4).
-                    'type' => $n->subject_type ? class_basename($n->subject_type) : null,
-                    'id'   => $n->subject_id,
-                ],
-                'read_at'    => $n->read_at?->toIso8601String(),
-                'created_at' => $n->created_at->toIso8601String(),
-            ]);
+            ->map(fn (Notification $notification) => $this->presenter->present($notification));
 
         return response()->json([
             'data' => $notifications,
             'meta' => [
-                'unread' => Notification::query()
-                    ->where('user_id', $request->user()->getKey())
-                    ->whereNull('read_at')
-                    ->count(),
+                'unread' => (clone $base)->whereNull('read_at')->count(),
             ],
         ]);
     }
@@ -65,7 +52,8 @@ class NotificationsController extends Controller
     {
         // Not found rather than forbidden — 403 would confirm the id belongs to
         // a real notification of somebody else's.
-        abort_unless($notification->user_id === $request->user()->getKey(), 404);
+        abort_unless($notification->user_id === $request->user()->getKey()
+            && $this->presenter->visible($notification, $request->user()), 404);
 
         $notification->markRead();
 
@@ -75,8 +63,8 @@ class NotificationsController extends Controller
     /** POST /api/v1/notifications/read-all */
     public function markAllRead(Request $request): JsonResponse
     {
-        $marked = Notification::query()
-            ->where('user_id', $request->user()->getKey())
+        $marked = $this->presenter->constrain(Notification::query()
+            ->where('user_id', $request->user()->getKey()), $request->user())
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 

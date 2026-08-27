@@ -22,6 +22,9 @@ final class TaskDetailsController extends TaskApiController
         $task = Task::query()->where('board_id', $board->id)->whereIn('board_id', $visibleBoards)->active()->with([
             'board', 'group', 'parent.group', 'owner', 'statusOption', 'priorityOption',
             'collaborators.user', 'columnValues', 'columnPeople', 'columnLabels', 'columnFiles',
+            'updates' => fn ($query) => $query->active()->oldest('created_at'),
+            'updates.author', 'updates.mentions.user', 'updates.versions.editor',
+            'watchPreferences' => fn ($query) => $query->where('user_id', $request->user()->id),
             'activities' => fn ($query) => $query->latest('created_at')->limit(200),
             'subtasks' => fn ($query) => $query->active()->orderBy('position'),
         ])->findOrFail($taskId);
@@ -33,6 +36,34 @@ final class TaskDetailsController extends TaskApiController
         ], JSON_THROW_ON_ERROR));
         $data = $this->presentTask($task);
         $data['custom_values'] = $this->customValues($task);
+        $data['updates'] = $task->updates->map(fn ($update) => [
+            'id' => $update->id,
+            'author_user_id' => $update->author_user_id,
+            'body' => $update->body,
+            'body_plain' => $update->body_plain,
+            'version' => (int) $update->version,
+            'mention_user_ids' => $update->mentions->pluck('user_id')->values()->all(),
+            'versions' => $update->versions->map(fn ($version) => [
+                'version' => (int) $version->version,
+                'body' => $version->body,
+                'body_plain' => $version->body_plain,
+                'edited_by' => $version->edited_by,
+                'created_at' => $version->created_at?->toIso8601String(),
+            ])->values(),
+            'created_at' => $update->created_at?->toIso8601String(),
+            'updated_at' => $update->updated_at?->toIso8601String(),
+        ])->values();
+        $preference = $task->watchPreferences->first()?->preference;
+        $defaultWatched = $task->owner_user_id === $request->user()->id
+            || $task->collaborators->contains('user_id', $request->user()->id)
+            || $task->updates->contains('author_user_id', $request->user()->id)
+            || $task->updates->contains(fn ($update) => $update->mentions->contains('user_id', $request->user()->id));
+        $data['watch'] = [
+            'preference' => $preference,
+            'mandatory' => $task->owner_user_id === $request->user()->id,
+            'watched' => $task->owner_user_id === $request->user()->id
+                || ($preference !== 'muted' && ($preference === 'watched' || $defaultWatched)),
+        ];
         $data['activities'] = $task->activities->map(fn ($activity) => [
             'id' => $activity->id,
             'actor_user_id' => $activity->actor_user_id,

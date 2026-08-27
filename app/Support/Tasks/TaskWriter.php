@@ -13,6 +13,7 @@ use App\Models\TaskGroup;
 use App\Models\TaskNotificationIntent;
 use App\Models\TaskPriorityOption;
 use App\Models\TaskStatusOption;
+use App\Models\TaskUpdateMention;
 use App\Models\TaskWatchPreference;
 use App\Models\User;
 use App\Support\Access\Refusal;
@@ -747,6 +748,11 @@ final class TaskWriter
             if ($userId === $actor->id) {
                 continue;
             }
+            $muted = TaskWatchPreference::query()->where('task_id', $task->id)
+                ->where('user_id', $userId)->where('preference', 'muted')->exists();
+            if ($muted && $task->owner_user_id !== $userId) {
+                continue;
+            }
             TaskNotificationIntent::query()->firstOrCreate([
                 'recipient_user_id' => $userId,
                 'kind' => $kind,
@@ -768,16 +774,22 @@ final class TaskWriter
     {
         $recipients = collect([$task->owner_user_id])
             ->concat($task->collaborators()->pluck('user_id'))
+            ->concat($task->updates()->active()->pluck('author_user_id'))
+            ->concat(TaskUpdateMention::query()
+                ->where('task_id', $task->id)
+                ->whereHas('taskUpdate', fn ($updates) => $updates->active())
+                ->pluck('user_id'))
             ->concat(TaskWatchPreference::query()->where('task_id', $task->id)
                 ->where('preference', 'watched')->pluck('user_id'))
             ->filter()->unique()->values();
         $muted = TaskWatchPreference::query()->where('task_id', $task->id)
             ->where('preference', 'muted')->pluck('user_id');
-        $recipients = $recipients->diff($muted)->filter(function (string $userId) use ($task): bool {
-            $user = User::query()->find($userId);
+        $recipients = $recipients->reject(fn (string $userId) => $userId !== $task->owner_user_id && $muted->contains($userId))
+            ->filter(function (string $userId) use ($task): bool {
+                $user = User::query()->find($userId);
 
-            return $user !== null && $this->participants->forTaskParticipation($user, $task->board)->allowed();
-        });
+                return $user !== null && $this->participants->forTaskParticipation($user, $task->board)->allowed();
+            });
         $this->notify($task, $audit, $actor, array_fill_keys($recipients->all(), 'task.changed'));
     }
 
