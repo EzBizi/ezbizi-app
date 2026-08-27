@@ -60,16 +60,16 @@ class SettingRegistry
     public function __construct()
     {
         foreach ([
-            'localisation'  => ['Language and formats', $this->localisation()],
-            'operations'    => ['Operations',           $this->operations()],
-            'money'         => ['Money and tax',        $this->money()],
-            'numbering'     => ['Document numbering',   $this->numbering()],
-            'security'      => ['Security',             $this->security()],
+            'localisation' => ['Language and formats', $this->localisation()],
+            'operations' => ['Operations',           $this->operations()],
+            'money' => ['Money and tax',        $this->money()],
+            'numbering' => ['Document numbering',   $this->numbering()],
+            'security' => ['Security',             $this->security()],
             'notifications' => ['Notifications',        $this->notifications()],
-            'email'         => ['Shared inboxes',       $this->email()],
-            'customers'     => ['Customers',            $this->customers()],
-            'jobs'          => ['Jobs',                 $this->jobs()],
-            'hr'            => ['Human Resources',      $this->hr()],
+            'email' => ['Shared inboxes',       $this->email()],
+            'customers' => ['Customers',            $this->customers()],
+            'jobs' => ['Jobs',                 $this->jobs()],
+            'hr' => ['Human Resources',      $this->hr()],
         ] as $group => [$label, $definitions]) {
             foreach ($definitions as $definition) {
                 $this->register($definition, $group, $label);
@@ -92,7 +92,7 @@ class SettingRegistry
         }
 
         $this->settings[$definition->key] = $definition;
-        $this->groups[$definition->key]   = ['key' => $group, 'label' => $groupLabel];
+        $this->groups[$definition->key] = ['key' => $group, 'label' => $groupLabel];
     }
 
     /**
@@ -193,8 +193,8 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_ENUM, default: 'M/D/YYYY',
                 options: ['M/D/YYYY', 'D/M/YYYY', 'YYYY-MM-DD'],
                 optionLabels: [
-                    'M/D/YYYY'   => 'M/D/YYYY — 8/24/2026',
-                    'D/M/YYYY'   => 'D/M/YYYY — 24/8/2026',
+                    'M/D/YYYY' => 'M/D/YYYY — 8/24/2026',
+                    'D/M/YYYY' => 'D/M/YYYY — 24/8/2026',
                     'YYYY-MM-DD' => 'YYYY-MM-DD — 2026-08-24',
                 ],
             ),
@@ -220,7 +220,7 @@ class SettingRegistry
                 options: ['imperial', 'metric'],
                 optionLabels: [
                     'imperial' => 'Imperial — lb, mi, °F',
-                    'metric'   => 'Metric — kg, km, °C',
+                    'metric' => 'Metric — kg, km, °C',
                 ],
                 notYetInEffect: 'Takes effect when jobs record distances and areas. Nothing in '
                     .'the app shows a measurement yet, in either system.',
@@ -252,7 +252,7 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_ENUM, default: 'a4',
                 options: ['a4', 'letter'],
                 optionLabels: [
-                    'a4'     => 'A4',
+                    'a4' => 'A4',
                     'letter' => 'US Letter',
                 ],
             ),
@@ -271,13 +271,13 @@ class SettingRegistry
                 // Per weekday. `null` means closed — distinct from 00:00–00:00,
                 // which would otherwise read as "open, for zero minutes".
                 default: [
-                    'monday'    => ['open' => '08:00', 'close' => '17:00'],
-                    'tuesday'   => ['open' => '08:00', 'close' => '17:00'],
+                    'monday' => ['open' => '08:00', 'close' => '17:00'],
+                    'tuesday' => ['open' => '08:00', 'close' => '17:00'],
                     'wednesday' => ['open' => '08:00', 'close' => '17:00'],
-                    'thursday'  => ['open' => '08:00', 'close' => '17:00'],
-                    'friday'    => ['open' => '08:00', 'close' => '17:00'],
-                    'saturday'  => null,
-                    'sunday'    => null,
+                    'thursday' => ['open' => '08:00', 'close' => '17:00'],
+                    'friday' => ['open' => '08:00', 'close' => '17:00'],
+                    'saturday' => null,
+                    'sunday' => null,
                 ],
                 help: 'Franchises usually differ — set it at the level that varies.',
                 notYetInEffect: 'Takes effect when scheduling ships. It is what will stop a job '
@@ -288,15 +288,15 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_ENUM, default: 1,
                 options: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
                 optionLabels: [
-                    '1'  => 'January',
-                    '2'  => 'February',
-                    '3'  => 'March',
-                    '4'  => 'April',
-                    '5'  => 'May',
-                    '6'  => 'June',
-                    '7'  => 'July',
-                    '8'  => 'August',
-                    '9'  => 'September',
+                    '1' => 'January',
+                    '2' => 'February',
+                    '3' => 'March',
+                    '4' => 'April',
+                    '5' => 'May',
+                    '6' => 'June',
+                    '7' => 'July',
+                    '8' => 'August',
+                    '9' => 'September',
                     '10' => 'October',
                     '11' => 'November',
                     '12' => 'December',
@@ -311,11 +311,11 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_ENUM, default: 60,
                 options: [15, 30, 45, 60, 90, 120, 180, 240],
                 optionLabels: [
-                    '15'  => '15 minutes',
-                    '30'  => '30 minutes',
-                    '45'  => '45 minutes',
-                    '60'  => '1 hour',
-                    '90'  => '1½ hours',
+                    '15' => '15 minutes',
+                    '30' => '30 minutes',
+                    '45' => '45 minutes',
+                    '60' => '1 hour',
+                    '90' => '1½ hours',
                     '120' => '2 hours',
                     '180' => '3 hours',
                     '240' => '4 hours',
@@ -356,9 +356,9 @@ class SettingRegistry
              * false reader.
              */
             new SettingDefinition(
-                key:   'organization.structure_canvas',
+                key: 'organization.structure_canvas',
                 label: 'Structure arrangement',
-                type:  SettingDefinition::TYPE_JSON,
+                type: SettingDefinition::TYPE_JSON,
                 // [] rather than null: castJson([]) returns [], which is what
                 // test_every_default_survives_its_own_cast needs, and "nobody
                 // has arranged it" and "the arrangement is empty" mean the same
@@ -412,8 +412,8 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_ENUM, default: 30,
                 options: [0, 7, 14, 15, 30, 45, 60, 90],
                 optionLabels: [
-                    '0'  => 'Due on receipt',
-                    '7'  => 'Net 7',
+                    '0' => 'Due on receipt',
+                    '7' => 'Net 7',
                     '14' => 'Net 14',
                     '15' => 'Net 15',
                     '30' => 'Net 30',
@@ -540,10 +540,10 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_ENUM, default: 0,
                 options: [0, 30, 60, 90, 180, 365],
                 optionLabels: [
-                    '0'   => 'Never',
-                    '30'  => '30 days',
-                    '60'  => '60 days',
-                    '90'  => '90 days',
+                    '0' => 'Never',
+                    '30' => '30 days',
+                    '60' => '60 days',
+                    '90' => '90 days',
                     '180' => '6 months',
                     '365' => '1 year',
                 ],
@@ -579,6 +579,12 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'notifications.in_app_enabled', label: 'Show in-app notifications',
                 type: SettingDefinition::TYPE_BOOL, default: true,
+            ),
+            new SettingDefinition(
+                key: 'tasks.due_reminders_enabled', label: 'Send task due reminders',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Send each task owner one reminder before their task is due.',
             ),
             new SettingDefinition(
                 key: 'notifications.quiet_hours', label: 'Quiet hours',
@@ -636,7 +642,7 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_ENUM, default: 'shared',
                 options: ['shared', 'private'],
                 optionLabels: [
-                    'shared'  => 'The whole team',
+                    'shared' => 'The whole team',
                     'private' => 'Only the person who opened it',
                 ],
                 help: 'Shared shows "Seen by" beside each message, so the team can tell what '
@@ -659,11 +665,11 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_ENUM, default: 'phone_or_email',
                 options: ['phone_or_email', 'phone', 'email', 'name_and_address', 'off'],
                 optionLabels: [
-                    'phone_or_email'   => 'Phone or email',
-                    'phone'            => 'Phone',
-                    'email'            => 'Email',
+                    'phone_or_email' => 'Phone or email',
+                    'phone' => 'Phone',
+                    'email' => 'Email',
                     'name_and_address' => 'Name and address',
-                    'off'              => 'Do not detect',
+                    'off' => 'Do not detect',
                 ],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 help: 'Organization-wide, since sharing means duplicates cross franchises.',

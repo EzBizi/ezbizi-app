@@ -8,9 +8,9 @@ use App\Models\Franchise;
 use App\Models\InventoryItem;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Models\Organization;
 use App\Models\Service;
 use App\Models\Task;
-use App\Models\Organization;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Support\Modules\ActionDefinition;
@@ -101,11 +101,10 @@ class ModuleServiceProvider extends ServiceProvider
              * screen somebody opens the app to look at.
              */
             new ModuleDefinition(
-                key:     'dashboard',
-                label:   'Dashboard',
+                key: 'dashboard',
+                label: 'Dashboard',
                 actions: ['view'],
-                automationExemptBecause:
-                    'The dashboard only reads what other modules already record; '
+                automationExemptBecause: 'The dashboard only reads what other modules already record; '
                     .'there is no event here that another module does not raise first.',
             ),
 
@@ -166,7 +165,7 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'task.overdue',
                         label: 'Overdue',
                         description: 'The scheduled check first observed unfinished late work.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                 ],
                 automationActions: [
@@ -213,7 +212,7 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             new ModuleDefinition(
-                key:   'organizations',
+                key: 'organizations',
                 label: 'Organization settings',
                 // What its events are about, and therefore what a rule built on
                 // one could change. Nothing on an organization is writable by
@@ -226,7 +225,7 @@ class ModuleServiceProvider extends ServiceProvider
                 actions: ['view', 'edit'],
                 triggers: [
                     new TriggerDefinition(
-                        key:   'organization.settings_changed',
+                        key: 'organization.settings_changed',
                         label: 'Setting changed',
                         description: 'Somebody saved a different value for a setting, at '
                             .'whichever level they set it.',
@@ -238,7 +237,7 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 automationActions: [
                     new ActionDefinition(
-                        key:   'organization.notify_administrators',
+                        key: 'organization.notify_administrators',
                         label: 'Notify the administrators',
                         description: 'Sends an in-app notification to the people who '
                             .'administer this organization.',
@@ -248,24 +247,24 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             new ModuleDefinition(
-                key:   'companies',
+                key: 'companies',
                 label: 'Companies',
                 subject: new AutomationSubject(Company::class, 'Company'),
                 triggers: [
                     new TriggerDefinition(
-                        key:   'company.created',
+                        key: 'company.created',
                         label: 'Created',
                         description: 'A new company was added to the organization.',
                     ),
                     new TriggerDefinition(
-                        key:   'company.updated',
+                        key: 'company.updated',
                         label: 'Updated',
                         description: 'Something on a company changed — its name, its address, '
                             .'or it was switched back on. Switching one OFF raises '
                             .'"Deactivated" instead of this.',
                     ),
                     new TriggerDefinition(
-                        key:   'company.deactivated',
+                        key: 'company.deactivated',
                         label: 'Deactivated',
                         description: 'Somebody switched a company off. Nothing is deleted; the '
                             .'record and everything filed under it stay as they are.',
@@ -273,7 +272,7 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 automationActions: [
                     new ActionDefinition(
-                        key:   'company.deactivate',
+                        key: 'company.deactivate',
                         label: 'Deactivate the company',
                         description: 'Switches a company off, leaving its records where '
                             .'they are.',
@@ -283,25 +282,25 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             new ModuleDefinition(
-                key:   'franchises',
+                key: 'franchises',
                 label: 'Franchises',
                 subject: new AutomationSubject(Franchise::class, 'Franchise'),
                 triggers: [
                     new TriggerDefinition(
-                        key:   'franchise.created',
+                        key: 'franchise.created',
                         label: 'Created',
                         description: 'A new franchise was added. Creating a company opens its '
                             .'first franchise at the same time, so this fires then too.',
                     ),
                     new TriggerDefinition(
-                        key:   'franchise.updated',
+                        key: 'franchise.updated',
                         label: 'Updated',
                         description: 'A franchise was renamed, moved to a different time zone, '
                             .'or switched back on. Switching one OFF raises "Deactivated" '
                             .'instead of this.',
                     ),
                     new TriggerDefinition(
-                        key:   'franchise.deactivated',
+                        key: 'franchise.deactivated',
                         label: 'Deactivated',
                         description: 'Somebody switched a franchise off. The jobs and history '
                             .'recorded against it are left untouched.',
@@ -309,7 +308,7 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 automationActions: [
                     new ActionDefinition(
-                        key:   'franchise.deactivate',
+                        key: 'franchise.deactivate',
                         label: 'Deactivate the franchise',
                         description: 'Switches a franchise off without touching the work '
                             .'already recorded against it.',
@@ -319,7 +318,7 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             new ModuleDefinition(
-                key:   'users',
+                key: 'users',
                 label: 'Users',
                 subject: new AutomationSubject(User::class, 'User'),
                 /*
@@ -346,14 +345,14 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 triggers: [
                     new TriggerDefinition(
-                        key:   'user.invited',
+                        key: 'user.invited',
                         label: 'Invited',
                         description: 'Somebody was invited to join, before they have accepted. '
                             .'There is no account yet, so this one arrives with the invitation’s '
                             .'details rather than a person.',
                     ),
                     new TriggerDefinition(
-                        key:   'user.activated',
+                        key: 'user.activated',
                         label: 'Activated',
                         // Widened from "an invited person accepted", because
                         // switching a deactivated account back on reaches the
@@ -365,7 +364,7 @@ class ModuleServiceProvider extends ServiceProvider
                             .'back on.',
                     ),
                     new TriggerDefinition(
-                        key:   'user.deactivated',
+                        key: 'user.deactivated',
                         label: 'Deactivated',
                         description: 'Someone’s access was switched off. The account stays, and '
                             .'so does everything it did.',
@@ -373,13 +372,13 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 automationActions: [
                     new ActionDefinition(
-                        key:   'user.deactivate',
+                        key: 'user.deactivate',
                         label: 'Deactivate the user',
                         description: 'Takes away a person’s access without removing them or '
                             .'anything they did.',
                     ),
                     new ActionDefinition(
-                        key:   'user.assign_to_scope',
+                        key: 'user.assign_to_scope',
                         label: 'Move a user to a company or franchise',
                         description: 'Changes which company or franchise somebody works under, '
                             .'and with it the records they can reach.',
@@ -392,27 +391,25 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             new ModuleDefinition(
-                key:     'roles',
-                label:   'Roles & permissions',
+                key: 'roles',
+                label: 'Roles & permissions',
                 // Deliberately outside automation: a rule that could rewrite
                 // permissions would be a privilege-escalation path — the
                 // automation engine is configured by the same admins it would
                 // grant rights to. Role changes stay a human act, and every one
                 // is audited (§2.2).
-                automationExemptBecause:
-                    'Automating permission changes would let a rule escalate privileges.',
+                automationExemptBecause: 'Automating permission changes would let a rule escalate privileges.',
                 rolesGroup: ModuleDefinition::ROLES_SETTINGS,
             ),
 
             new ModuleDefinition(
-                key:     'audit',
-                label:   'Audit log',
+                key: 'audit',
+                label: 'Audit log',
                 actions: ['view'],
                 // Read-only by construction: the log is append-only (§10). No edit
                 // or delete action exists to grant, so tampering isn't a permission
                 // question — there is simply no code path.
-                automationExemptBecause:
-                    'The audit log is append-only; nothing may act on it programmatically.',
+                automationExemptBecause: 'The audit log is append-only; nothing may act on it programmatically.',
                 rolesGroup: ModuleDefinition::ROLES_SETTINGS,
             ),
         ];
@@ -521,8 +518,8 @@ class ModuleServiceProvider extends ServiceProvider
              * quietly and badly.
              */
             new ModuleDefinition(
-                key:     'hr',
-                label:   'Human Resources',
+                key: 'hr',
+                label: 'Human Resources',
                 actions: ['view', 'create', 'edit'],
                 triggers: [
                     /*
@@ -548,21 +545,21 @@ class ModuleServiceProvider extends ServiceProvider
                      * days" — and an event cannot express an absence.
                      */
                     new TriggerDefinition(
-                        key:   'invitation.sent',
+                        key: 'invitation.sent',
                         label: 'Invitation sent',
                         description: 'Somebody was invited to join. It carries the address, the '
                             .'role they were offered, the place they were offered it in and when '
                             .'the link runs out.',
                     ),
                     new TriggerDefinition(
-                        key:   'invitation.accepted',
+                        key: 'invitation.accepted',
                         label: 'Invitation accepted',
                         description: 'The person followed the link and created their account. '
                             .'It carries the role and the place, and by this point there is a '
                             .'real user behind it.',
                     ),
                     new TriggerDefinition(
-                        key:   'invitation.revoked',
+                        key: 'invitation.revoked',
                         label: 'Invitation withdrawn',
                         description: 'The organization changed its mind and took an invitation '
                             .'back before it was accepted. The link stops working immediately, '
@@ -589,7 +586,7 @@ class ModuleServiceProvider extends ServiceProvider
                      * and wait forever.
                      */
                     new TriggerDefinition(
-                        key:   'invitation.expired',
+                        key: 'invitation.expired',
                         label: 'Invitation ran out',
                         description: 'A week passed and nobody accepted, so the link stopped '
                             .'working on its own.',
@@ -608,14 +605,14 @@ class ModuleServiceProvider extends ServiceProvider
                      * property of the signature and not a different kind of act.
                      */
                     new TriggerDefinition(
-                        key:   'onboarding.started',
+                        key: 'onboarding.started',
                         label: 'Onboarding started',
                         description: 'An employer picked a contract template for somebody who '
                             .'has been invited, and the form is now open. It carries the '
                             .'template’s name and the version it was pinned to.',
                     ),
                     new TriggerDefinition(
-                        key:   'onboarding.signed',
+                        key: 'onboarding.signed',
                         label: 'Somebody signed',
                         description: 'One party signed one line of the contract. It carries '
                             .'whether that was the employer or the employee, which line, and '
@@ -624,21 +621,21 @@ class ModuleServiceProvider extends ServiceProvider
                             .'signature is also what freezes the answers.',
                     ),
                     new TriggerDefinition(
-                        key:   'onboarding.completed',
+                        key: 'onboarding.completed',
                         label: 'Onboarding fully signed',
                         description: 'Every signature the contract asks for has been given and '
                             .'the paperwork is finished. This is the one a payroll or IT handover '
                             .'should hang off, rather than the account being created.',
                     ),
                     new TriggerDefinition(
-                        key:   'onboarding.amended',
+                        key: 'onboarding.amended',
                         label: 'Signed contract amended',
                         description: 'A correction was made after signing. The original document '
                             .'stays and a new revision sits beside it; this carries the revision '
                             .'number, which fields changed and the reason given.',
                     ),
                     new TriggerDefinition(
-                        key:   'onboarding.cancelled',
+                        key: 'onboarding.cancelled',
                         label: 'Onboarding cancelled',
                         description: 'An onboarding was stopped before it was fully signed. The '
                             .'row stays. It carries the contract name and the status it left, so '
@@ -662,7 +659,7 @@ class ModuleServiceProvider extends ServiceProvider
                      * employment changed, and somebody wants to be told.
                      */
                     new TriggerDefinition(
-                        key:   'contract.version_published',
+                        key: 'contract.version_published',
                         label: 'Contract version published',
                         description: 'A new version of a contract template went live, so every '
                             .'onboarding started from now on asks these questions. It carries the '
@@ -687,20 +684,20 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 automationActions: [
                     new ActionDefinition(
-                        key:   'invitation.resend',
+                        key: 'invitation.resend',
                         label: 'Send the invitation again',
                         description: 'Issues a fresh link with a fresh week on it, replacing the '
                             .'old one. Chasing somebody who has not accepted is the obvious rule '
                             .'to build, and the cascade guards are what stop it chasing forever.',
                     ),
                     new ActionDefinition(
-                        key:   'invitation.revoke',
+                        key: 'invitation.revoke',
                         label: 'Withdraw the invitation',
                         description: 'Takes an invitation back. The row stays and reports itself '
                             .'as withdrawn, so the record still shows that somebody was asked.',
                     ),
                     new ActionDefinition(
-                        key:   'onboarding.start',
+                        key: 'onboarding.start',
                         label: 'Start the onboarding',
                         description: 'Opens the form for somebody who has been invited, against '
                             .'a contract template the rule names. It is the step an employer '
@@ -710,19 +707,19 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             new ModuleDefinition(
-                key:     'time_clock',
-                label:   'Clock in',
+                key: 'time_clock',
+                label: 'Clock in',
                 actions: ['view'],
                 sidebar: false,
                 triggers: [
                     new TriggerDefinition(
-                        key:   'time_clock.clocked_in',
+                        key: 'time_clock.clocked_in',
                         label: 'Person clocked in',
                         description: 'Somebody started a shift. It carries who, and when they punched in.',
                         isRaised: true,
                     ),
                     new TriggerDefinition(
-                        key:   'time_clock.clocked_out',
+                        key: 'time_clock.clocked_out',
                         label: 'Person clocked out',
                         description: 'Somebody ended a shift. It carries who, when they punched in, and when they punched out.',
                         isRaised: true,
@@ -755,18 +752,18 @@ class ModuleServiceProvider extends ServiceProvider
              * DataController enforces it; nothing invents a second mechanism.
              */
             new ModuleDefinition(
-                key:   'customers',
+                key: 'customers',
                 label: 'Customers',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
                 subject: new AutomationSubject(Customer::class, 'Customer'),
                 triggers: [
                     new TriggerDefinition(
-                        key:   'customer.created',
+                        key: 'customer.created',
                         label: 'Created',
                         description: 'A new customer was added to the books.',
                     ),
                     new TriggerDefinition(
-                        key:   'customer.updated',
+                        key: 'customer.updated',
                         label: 'Updated',
                         // The distinction somebody will get wrong. Reassignment
                         // is its own endpoint and emits its own event only, so a
@@ -777,7 +774,7 @@ class ModuleServiceProvider extends ServiceProvider
                             .'that has its own event, "Owner reassigned".',
                     ),
                     new TriggerDefinition(
-                        key:   'customer.deleted',
+                        key: 'customer.deleted',
                         label: 'Deleted',
                         description: 'Destructive. A customer was deleted — only possible when '
                             .'they have no jobs — and they leave every list.',
@@ -787,7 +784,7 @@ class ModuleServiceProvider extends ServiceProvider
                     // thing a manager wants to be told about, and burying it in
                     // "a field changed" means nobody ever builds that rule.
                     new TriggerDefinition(
-                        key:   'customer.owner_reassigned',
+                        key: 'customer.owner_reassigned',
                         label: 'Owner reassigned',
                         description: 'Accountability for a customer moved to another franchise. '
                             .'It is a deliberate, separately authorised act rather than part of '
@@ -796,19 +793,19 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 automationActions: [
                     new ActionDefinition(
-                        key:   'customer.update_field',
+                        key: 'customer.update_field',
                         label: 'Update a field',
                         description: 'Sets one field on the customer that triggered the rule: '
                             .'name, contact details, notes, address, or whether they are active.',
                     ),
                     new ActionDefinition(
-                        key:   'customer.reassign_owner',
+                        key: 'customer.reassign_owner',
                         label: 'Reassign the owner',
                         description: 'Moves accountability for the customer to a different '
                             .'franchise.',
                     ),
                     new ActionDefinition(
-                        key:   'customer.deactivate',
+                        key: 'customer.deactivate',
                         label: 'Deactivate the customer',
                         description: 'Marks a customer inactive without deleting anything. '
                             .'"Update a field" can already do this by setting Active to false.',
@@ -817,7 +814,7 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             new ModuleDefinition(
-                key:   'jobs',
+                key: 'jobs',
                 label: 'Jobs',
                 // The same fifth action, for the same reason — see Customers
                 // above. Jobs cannot be imported by anybody (ResourceMap says
@@ -827,20 +824,20 @@ class ModuleServiceProvider extends ServiceProvider
                 subject: new AutomationSubject(Job::class, 'Job'),
                 triggers: [
                     new TriggerDefinition(
-                        key:   'job.created',
+                        key: 'job.created',
                         label: 'Created',
                         description: 'A job was booked. If it was given a date at the same time, '
                             .'"Date set or changed" fires as well.',
                     ),
                     new TriggerDefinition(
-                        key:   'job.updated',
+                        key: 'job.updated',
                         label: 'Updated',
                         description: 'Any saved change to a job. A change of status or of date '
                             .'raises this AND its own more specific event, so a rule listening '
                             .'for both runs twice.',
                     ),
                     new TriggerDefinition(
-                        key:   'job.deleted',
+                        key: 'job.deleted',
                         label: 'Deleted',
                         description: 'Destructive. A job was deleted, and it drops out of every '
                             .'list and every total.',
@@ -849,7 +846,7 @@ class ModuleServiceProvider extends ServiceProvider
                     // job is completed, email the customer" is the canonical
                     // rule, and it needs the transition, not the end state.
                     new TriggerDefinition(
-                        key:   'job.status_changed',
+                        key: 'job.status_changed',
                         label: 'Status changed',
                         description: 'A job moved from one status to another. It carries the old '
                             .'status as well as the new one, which is what a rule like "when a '
@@ -857,7 +854,7 @@ class ModuleServiceProvider extends ServiceProvider
                             .'just changed.',
                     ),
                     new TriggerDefinition(
-                        key:   'job.scheduled',
+                        key: 'job.scheduled',
                         label: 'Date set or changed',
                         description: 'A job’s date was set, moved, or cleared. Clearing it counts '
                             .'— the event fires with an empty new date.',
@@ -865,24 +862,24 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 automationActions: [
                     new ActionDefinition(
-                        key:   'job.update_field',
+                        key: 'job.update_field',
                         label: 'Update a field',
                         description: 'Sets one field on the job that triggered the rule: title, '
                             .'description, status, date, duration or amount.',
                     ),
                     new ActionDefinition(
-                        key:   'job.change_status',
+                        key: 'job.change_status',
                         label: 'Change the status',
                         description: 'Moves a job to a different status. "Update a field" can '
                             .'already do this by setting the status field.',
                     ),
                     new ActionDefinition(
-                        key:   'job.assign_to_user',
+                        key: 'job.assign_to_user',
                         label: 'Assign it to somebody',
                         description: 'Names the person responsible for the job.',
                     ),
                     new ActionDefinition(
-                        key:   'job.create',
+                        key: 'job.create',
                         label: 'Create a job',
                         description: 'Books a follow-up job from the record that triggered '
                             .'the rule.',
@@ -912,19 +909,19 @@ class ModuleServiceProvider extends ServiceProvider
              * ModuleRegistryTest holds that claim to the source.
              */
             new ModuleDefinition(
-                key:     'inspection',
-                label:   'Inspection',
+                key: 'inspection',
+                label: 'Inspection',
                 actions: ['view', 'create', 'edit', 'delete', 'archive'],
                 triggers: [
                     new TriggerDefinition(
-                        key:   'inspection.started',
+                        key: 'inspection.started',
                         label: 'Inspection started',
                         description: 'Somebody started filling in a named inspection for a '
                             .'client or a job. The draft is personal to them until they submit it.',
                         isRaised: true,
                     ),
                     new TriggerDefinition(
-                        key:   'inspection.submitted',
+                        key: 'inspection.submitted',
                         label: 'Inspection submitted',
                         description: 'A named inspection was finished and a report was written. '
                             .'The answers, photographs and signatures are frozen as they were '
@@ -932,14 +929,14 @@ class ModuleServiceProvider extends ServiceProvider
                         isRaised: true,
                     ),
                     new TriggerDefinition(
-                        key:   'inspection.archived',
+                        key: 'inspection.archived',
                         label: 'Report archived',
                         description: 'A submitted inspection was hidden from the default list. '
                             .'Archive does not delete the report.',
                         isRaised: true,
                     ),
                     new TriggerDefinition(
-                        key:   'inspection.discarded',
+                        key: 'inspection.discarded',
                         label: 'In-progress discarded',
                         description: 'Somebody threw away their own unfinished inspection and '
                             .'started again, or discarded it without submitting.',
@@ -996,8 +993,8 @@ class ModuleServiceProvider extends ServiceProvider
              * can pick it and be refused at save, in a sentence.
              */
             new ModuleDefinition(
-                key:     'marketing',
-                label:   'Marketing',
+                key: 'marketing',
+                label: 'Marketing',
                 actions: ['view', 'edit'],
                 triggers: [
                     /*
@@ -1023,7 +1020,7 @@ class ModuleServiceProvider extends ServiceProvider
                      * this module. It is declared where that path is built.
                      */
                     new TriggerDefinition(
-                        key:   'newsletter.sent',
+                        key: 'newsletter.sent',
                         label: 'Newsletter sent',
                         description: 'A newsletter went out to its audience. It carries which '
                             .'one, how many addresses it went to and the identity it was sent '
@@ -1044,7 +1041,7 @@ class ModuleServiceProvider extends ServiceProvider
                      * shape of this that would be wrong.
                      */
                     new TriggerDefinition(
-                        key:   'newsletter.unsubscribed',
+                        key: 'newsletter.unsubscribed',
                         label: 'Somebody unsubscribed',
                         description: 'A recipient asked to stop receiving marketing mail. It '
                             .'carries the address and which mailing it was asked from, and it '
@@ -1066,14 +1063,14 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 automationActions: [
                     new ActionDefinition(
-                        key:   'newsletter.send',
+                        key: 'newsletter.send',
                         label: 'Send a newsletter',
                         description: 'Sends a mailing that has already been written and '
                             .'approved, to the audience it was written for. The rule names '
                             .'which one; it cannot compose one.',
                     ),
                     new ActionDefinition(
-                        key:   'newsletter.add_to_audience',
+                        key: 'newsletter.add_to_audience',
                         label: 'Add somebody to a mailing list',
                         description: 'Puts the person a rule fired about onto a named mailing '
                             .'list, so "a new customer joins the list" is a rule somebody can '
@@ -1098,11 +1095,10 @@ class ModuleServiceProvider extends ServiceProvider
              * there is not even a name for the record yet.
              */
             new ModuleDefinition(
-                key:     'web_management',
-                label:   'Web Management',
+                key: 'web_management',
+                label: 'Web Management',
                 actions: ['view'],
-                automationExemptBecause:
-                    'The website editor does not exist yet, so there is no event '
+                automationExemptBecause: 'The website editor does not exist yet, so there is no event '
                     .'a rule could fire on and nothing a rule could change.',
             ),
 
@@ -1130,54 +1126,54 @@ class ModuleServiceProvider extends ServiceProvider
              * sends a text.
              */
             new ModuleDefinition(
-                key:     'phone',
-                label:   'Phone',
+                key: 'phone',
+                label: 'Phone',
                 actions: ['view', 'edit'],
                 triggers: [
                     new TriggerDefinition(
-                        key:   'phone.call.started',
+                        key: 'phone.call.started',
                         label: 'A call started',
                         description: 'A call began on one of the phone lines — inbound or '
                             .'outbound — and is ringing or connected.',
                         isRaised: true,
                     ),
                     new TriggerDefinition(
-                        key:   'phone.call.ended',
+                        key: 'phone.call.ended',
                         label: 'A call ended',
                         description: 'A call finished. It carries how long it lasted and which '
                             .'line it used.',
                         isRaised: true,
                     ),
                     new TriggerDefinition(
-                        key:   'phone.call.missed',
+                        key: 'phone.call.missed',
                         label: 'A call was missed',
                         description: 'Nobody answered, and the caller either hung up or reached '
                             .'voicemail.',
                         isRaised: true,
                     ),
                     new TriggerDefinition(
-                        key:   'phone.voicemail.left',
+                        key: 'phone.voicemail.left',
                         label: 'A voicemail was left',
                         description: 'A caller left a voicemail on one of the phone lines. The '
                             .'recording stays on Twilio until it is erased.',
                         isRaised: true,
                     ),
                     new TriggerDefinition(
-                        key:   'phone.sms.received',
+                        key: 'phone.sms.received',
                         label: 'A text arrived',
                         description: 'A text message reached one of the phone lines that can '
                             .'receive SMS.',
                         isRaised: true,
                     ),
                     new TriggerDefinition(
-                        key:   'phone.sms.sent',
+                        key: 'phone.sms.sent',
                         label: 'A text was sent',
                         description: 'Somebody sent a text from a line that is allowed to send '
                             .'SMS.',
                         isRaised: true,
                     ),
                     new TriggerDefinition(
-                        key:   'phone.number.broken',
+                        key: 'phone.number.broken',
                         label: 'A phone line stopped working',
                         description: 'EzBizi could no longer use one of the phone lines — the '
                             .'Twilio account refused it, the number was invalid, or the '
@@ -1188,14 +1184,14 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 automationActions: [
                     new ActionDefinition(
-                        key:   'phone.voicemail.mark_dealt',
+                        key: 'phone.voicemail.mark_dealt',
                         label: 'Mark a voicemail dealt with',
                         description: 'Records that a voicemail has been picked up so it stops '
                             .'showing as waiting. It changes what the team sees in EzBizi and '
                             .'does not call anyone.',
                     ),
                     new ActionDefinition(
-                        key:   'phone.missed.create_job',
+                        key: 'phone.missed.create_job',
                         label: 'Create a job from a missed call',
                         description: 'Opens a job in reach titled from the caller number so '
                             .'somebody can follow up. It does not place a call or send a text.',
@@ -1218,68 +1214,68 @@ class ModuleServiceProvider extends ServiceProvider
              * plan. ModuleRegistryTest holds that claim to the source.
              */
             new ModuleDefinition(
-                key:     'fleet_management',
-                label:   'Fleet Management',
+                key: 'fleet_management',
+                label: 'Fleet Management',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'assign', 'financials'],
                 subject: new AutomationSubject(Vehicle::class, 'Vehicle'),
                 triggers: [
                     new TriggerDefinition(
-                        key:   'vehicle.created',
+                        key: 'vehicle.created',
                         label: 'Vehicle added',
                         description: 'A vehicle was added to the fleet.',
                     ),
                     new TriggerDefinition(
-                        key:   'vehicle.updated',
+                        key: 'vehicle.updated',
                         label: 'Vehicle updated',
                         description: 'Identity, franchise, odometer or next-due was saved. A '
                             .'change of status, assignment, or a ledger does NOT raise this — '
                             .'those have their own events.',
                     ),
                     new TriggerDefinition(
-                        key:   'vehicle.status_changed',
+                        key: 'vehicle.status_changed',
                         label: 'Status changed',
                         description: 'A vehicle moved from one status to another. It carries '
                             .'the old status as well as the new one.',
                     ),
                     new TriggerDefinition(
-                        key:   'vehicle.assigned',
+                        key: 'vehicle.assigned',
                         label: 'Keys handed over',
                         description: 'Somebody was given the keys to a vehicle.',
                     ),
                     new TriggerDefinition(
-                        key:   'vehicle.unassigned',
+                        key: 'vehicle.unassigned',
                         label: 'Keys taken back',
                         description: 'The open assignment ended and nobody holds the keys.',
                     ),
                     new TriggerDefinition(
-                        key:   'vehicle.ownership_started',
+                        key: 'vehicle.ownership_started',
                         label: 'Ownership period started',
                         description: 'A new owned or rented period opened on the vehicle.',
                     ),
                     new TriggerDefinition(
-                        key:   'vehicle.insurance_started',
+                        key: 'vehicle.insurance_started',
                         label: 'Insurance policy started',
                         description: 'A new insurance policy period opened on the vehicle.',
                     ),
                     new TriggerDefinition(
-                        key:   'vehicle.service_logged',
+                        key: 'vehicle.service_logged',
                         label: 'Service logged',
                         description: 'A service visit was saved against the vehicle.',
                     ),
                     new TriggerDefinition(
-                        key:   'vehicle.payment_recorded',
+                        key: 'vehicle.payment_recorded',
                         label: 'Payment recorded',
                         description: 'A payment was recorded against the vehicle.',
                     ),
                     new TriggerDefinition(
-                        key:   'vehicle.insurance_expiring',
+                        key: 'vehicle.insurance_expiring',
                         label: 'Insurance expiring',
                         description: 'An open policy expires inside thirty days. No sweep '
                             .'raises this yet.',
                         isRaised: false,
                     ),
                     new TriggerDefinition(
-                        key:   'vehicle.service_due',
+                        key: 'vehicle.service_due',
                         label: 'Service due',
                         description: 'Next-due date or mileage was crossed. No sweep raises '
                             .'this yet.',
@@ -1288,24 +1284,24 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 automationActions: [
                     new ActionDefinition(
-                        key:   'vehicle.assign_to_user',
+                        key: 'vehicle.assign_to_user',
                         label: 'Assign it to somebody',
                         description: 'Hands the keys to a person who works in the vehicle’s '
                             .'company.',
                     ),
                     new ActionDefinition(
-                        key:   'vehicle.unassign',
+                        key: 'vehicle.unassign',
                         label: 'Take the keys back',
                         description: 'Ends the open assignment so nobody holds the keys.',
                     ),
                     new ActionDefinition(
-                        key:   'vehicle.change_status',
+                        key: 'vehicle.change_status',
                         label: 'Change the status',
                         description: 'Moves a vehicle to a different status. Sold and returned '
                             .'close the open ownership period, the same way a person saving would.',
                     ),
                     new ActionDefinition(
-                        key:   'vehicle.update_field',
+                        key: 'vehicle.update_field',
                         label: 'Update a field',
                         description: 'Sets one non-money field on the vehicle that triggered '
                             .'the rule: plate, colour, odometer, or next-due.',
@@ -1335,70 +1331,70 @@ class ModuleServiceProvider extends ServiceProvider
              * is inventoryitem, and boot would refuse every item.* trigger.
              */
             new ModuleDefinition(
-                key:     'inventory',
-                label:   'Inventory',
+                key: 'inventory',
+                label: 'Inventory',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'financials'],
                 subject: new AutomationSubject(InventoryItem::class, 'Item', key: 'item'),
                 triggers: [
                     new TriggerDefinition(
-                        key:   'item.created',
+                        key: 'item.created',
                         label: 'Item added',
                         description: 'A catalogue item was saved for the first time.',
                     ),
                     new TriggerDefinition(
-                        key:   'item.updated',
+                        key: 'item.updated',
                         label: 'Item updated',
                         description: 'Identity, status, or reorder point was saved. A movement '
                             .'does not raise this — those have their own events.',
                     ),
                     new TriggerDefinition(
-                        key:   'item.received',
+                        key: 'item.received',
                         label: 'Stock received',
                         description: 'Stock arrived against a purchase order and the balance '
                             .'went up.',
                     ),
                     new TriggerDefinition(
-                        key:   'item.issued',
+                        key: 'item.issued',
                         label: 'Stock issued',
                         description: 'Stock left a location, for a job or with a note.',
                     ),
                     new TriggerDefinition(
-                        key:   'item.transferred',
+                        key: 'item.transferred',
                         label: 'Stock transferred',
                         description: 'Stock moved from one location to another in a single save.',
                     ),
                     new TriggerDefinition(
-                        key:   'item.adjusted',
+                        key: 'item.adjusted',
                         label: 'Count adjusted',
                         description: 'On-hand at a location was counted as a new quantity.',
                     ),
                     new TriggerDefinition(
-                        key:   'item.ordered',
+                        key: 'item.ordered',
                         label: 'Purchase order opened',
                         description: 'A purchase order left draft and is now open to receive.',
                     ),
                     new TriggerDefinition(
-                        key:   'item.purchase_received',
+                        key: 'item.purchase_received',
                         label: 'Purchase order fully received',
                         description: 'Every line on a purchase order has been fully received.',
                     ),
                     new TriggerDefinition(
-                        key:   'item.sale_opened',
+                        key: 'item.sale_opened',
                         label: 'Sale opened',
                         description: 'A sales order left draft and can be fulfilled.',
                     ),
                     new TriggerDefinition(
-                        key:   'item.sold',
+                        key: 'item.sold',
                         label: 'Stock sold',
                         description: 'Stock left a location against a sales order.',
                     ),
                     new TriggerDefinition(
-                        key:   'item.sale_fulfilled',
+                        key: 'item.sale_fulfilled',
                         label: 'Sale fully fulfilled',
                         description: 'Every line on a sales order has been fully fulfilled.',
                     ),
                     new TriggerDefinition(
-                        key:   'item.low',
+                        key: 'item.low',
                         label: 'Stock is low',
                         description: 'On-hand at a visible location is at or below the reorder '
                             .'point. No sweep raises this yet.',
@@ -1408,23 +1404,23 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             new ModuleDefinition(
-                key:     'services',
-                label:   'Services',
+                key: 'services',
+                label: 'Services',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
                 subject: new AutomationSubject(Service::class, 'Service'),
                 triggers: [
                     new TriggerDefinition(
-                        key:   'service.created',
+                        key: 'service.created',
                         label: 'Service added',
                         description: 'A service was saved for the first time.',
                     ),
                     new TriggerDefinition(
-                        key:   'service.updated',
+                        key: 'service.updated',
                         label: 'Service updated',
                         description: 'Name, price, description, group, or label was saved.',
                     ),
                     new TriggerDefinition(
-                        key:   'service.deleted',
+                        key: 'service.deleted',
                         label: 'Service deleted',
                         description: 'A service was removed from the catalogue.',
                     ),
@@ -1473,13 +1469,13 @@ class ModuleServiceProvider extends ServiceProvider
              * nobody builds a rule on an event that cannot arrive.
              */
             new ModuleDefinition(
-                key:     'leads',
-                label:   'Leads',
+                key: 'leads',
+                label: 'Leads',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 triggers: [
                     new TriggerDefinition(
-                        key:   'lead.received',
+                        key: 'lead.received',
                         label: 'Lead received',
                         description: 'An enquiry arrived from a connected advertising account. It '
                             .'carries the contact details as the enquirer gave them, which source '
@@ -1494,7 +1490,7 @@ class ModuleServiceProvider extends ServiceProvider
                      * that just alerts somebody must not.
                      */
                     new TriggerDefinition(
-                        key:   'lead.classified',
+                        key: 'lead.classified',
                         label: 'Lead classified',
                         description: 'A lead was read and categorised — what kind of work it is '
                             .'about, and whether it looks like a real enquiry at all. It fires '
@@ -1502,7 +1498,7 @@ class ModuleServiceProvider extends ServiceProvider
                         isRaised: false,
                     ),
                     new TriggerDefinition(
-                        key:   'lead.status_changed',
+                        key: 'lead.status_changed',
                         label: 'Status changed',
                         description: 'Somebody moved the lead — booked, archived, or marked not a '
                             .'real enquiry. It carries who moved it and what it was before. The '
@@ -1510,7 +1506,7 @@ class ModuleServiceProvider extends ServiceProvider
                             .'raise this.',
                     ),
                     new TriggerDefinition(
-                        key:   'lead.converted',
+                        key: 'lead.converted',
                         label: 'Lead became a job',
                         description: 'A lead was turned into a customer and a booked job, carrying '
                             .'its source through so the work can be attributed back to the '
@@ -1520,7 +1516,7 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 automationActions: [
                     new ActionDefinition(
-                        key:   'lead.update_field',
+                        key: 'lead.update_field',
                         label: 'Update a field',
                         description: 'Sets one field on the lead that triggered the rule: its '
                             .'status, or the summary kept against it. It cannot change the contact '
@@ -1589,7 +1585,7 @@ class ModuleServiceProvider extends ServiceProvider
              * pick it and be refused at save, in a sentence.
              */
             new ModuleDefinition(
-                key:   'email',
+                key: 'email',
                 label: 'Email',
                 triggers: [
                     /*
@@ -1637,7 +1633,7 @@ class ModuleServiceProvider extends ServiceProvider
                      * decision, not a bug, and this is where they can read it.
                      */
                     new TriggerDefinition(
-                        key:   'email.received',
+                        key: 'email.received',
                         label: 'An email arrived',
                         description: 'A new message reached one of the shared inboxes. It '
                             .'carries which inbox it arrived at, who it is from, the subject, '
@@ -1663,7 +1659,7 @@ class ModuleServiceProvider extends ServiceProvider
                      * this module that this application itself causes.
                      */
                     new TriggerDefinition(
-                        key:   'email.replied',
+                        key: 'email.replied',
                         label: 'A reply was sent',
                         description: 'Somebody answered a message from a shared inbox. It '
                             .'carries which inbox it went out from and who typed it — the '
@@ -1713,7 +1709,7 @@ class ModuleServiceProvider extends ServiceProvider
                      * raises this only on the TRANSITION.
                      */
                     new TriggerDefinition(
-                        key:   'email.mailbox_broken',
+                        key: 'email.mailbox_broken',
                         label: 'A shared inbox stopped working',
                         description: 'EzBizi could no longer open one of the shared inboxes — '
                             .'the sign-in was refused, the permission was narrowed, or the mail '
@@ -1741,7 +1737,7 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 automationActions: [
                     new ActionDefinition(
-                        key:   'email.mark_seen',
+                        key: 'email.mark_seen',
                         label: 'Mark a message as dealt with',
                         description: 'Records that a message in a shared inbox has been picked '
                             .'up, so it stops showing as waiting for somebody. It changes what '
@@ -1754,14 +1750,13 @@ class ModuleServiceProvider extends ServiceProvider
                 // Renamed from 'workflows' on 2026-08-10, permission keys and
                 // all — see the rename migration of that date. The product says
                 // "automation", so the module key does too.
-                key:   'automations',
+                key: 'automations',
                 label: 'Automations',
                 // Deliberately outside automation itself. An automation that
                 // could create or edit automations is a self-modifying system:
                 // the loop guards count actions, not rules, so a rule that
                 // writes rules escapes them entirely. It stays a human act.
-                automationExemptBecause:
-                    'An automation that could write automations would escape the loop guards.',
+                automationExemptBecause: 'An automation that could write automations would escape the loop guards.',
             ),
 
             /*

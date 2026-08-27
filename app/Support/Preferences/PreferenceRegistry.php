@@ -36,8 +36,8 @@ class PreferenceRegistry
              * for everybody would be absurd.
              */
             'appearance.theme' => [
-                'label'   => 'Theme',
-                'type'    => 'enum',
+                'label' => 'Theme',
+                'type' => 'enum',
                 'default' => 'system',
 
                 /*
@@ -48,7 +48,7 @@ class PreferenceRegistry
                  * would eventually find the pair in a state that means nothing.
                  */
                 'options' => ['system', 'light', 'dark', 'mixed_dark_nav', 'mixed_light_nav'],
-                'help'    => '"Match my device" follows whatever your phone or computer is set to. '
+                'help' => '"Match my device" follows whatever your phone or computer is set to. '
                     .'Mixed keeps the sidebar and the page in opposite themes.',
             ],
 
@@ -61,11 +61,11 @@ class PreferenceRegistry
              * than being an opinion imposed.
              */
             'navigation.style' => [
-                'label'   => 'Sidebar',
-                'type'    => 'enum',
+                'label' => 'Sidebar',
+                'type' => 'enum',
                 'default' => 'list',
                 'options' => ['list', 'blocks'],
-                'help'    => 'A list shows the icon and label side by side; blocks stack them.',
+                'help' => 'A list shows the icon and label side by side; blocks stack them.',
             ],
 
             /*
@@ -77,10 +77,10 @@ class PreferenceRegistry
              * this is whether you want the room back right now.
              */
             'navigation.collapsed' => [
-                'label'   => 'Collapse the sidebar',
-                'type'    => 'bool',
+                'label' => 'Collapse the sidebar',
+                'type' => 'bool',
                 'default' => false,
-                'help'    => 'Shows icons only, giving the page its width back.',
+                'help' => 'Shows icons only, giving the page its width back.',
             ],
 
             /*
@@ -97,12 +97,12 @@ class PreferenceRegistry
              * storing a width that makes the app unusable on the next load.
              */
             'navigation.width' => [
-                'label'   => 'Sidebar width',
-                'type'    => 'int',
+                'label' => 'Sidebar width',
+                'type' => 'int',
                 'default' => 220,
-                'min'     => 180,
-                'max'     => 420,
-                'help'    => 'Drag the edge of the sidebar to change it.',
+                'min' => 180,
+                'max' => 420,
+                'help' => 'Drag the edge of the sidebar to change it.',
             ],
 
             /*
@@ -119,10 +119,10 @@ class PreferenceRegistry
              * organization on anything unusable.
              */
             'navigation.scope' => [
-                'label'   => 'Current view',
-                'type'    => 'string',
+                'label' => 'Current view',
+                'type' => 'string',
                 'default' => 'organization',
-                'help'    => 'Set by the switcher in the top bar.',
+                'help' => 'Set by the switcher in the top bar.',
             ],
 
             /*
@@ -130,10 +130,18 @@ class PreferenceRegistry
              * Codes live in `ui_locales`, so a new language is a row.
              */
             'locale' => [
-                'label'   => 'Language',
-                'type'    => 'string',
+                'label' => 'Language',
+                'type' => 'string',
                 'default' => '',
-                'help'    => 'Leave blank to follow the organization. Login, the sidebar and Settings read this now; the rest of the app still follows later.',
+                'help' => 'Leave blank to follow the organization. Login, the sidebar and Settings read this now; the rest of the app still follows later.',
+            ],
+
+            'tasks.due_reminder_hours' => [
+                'label' => 'Task due reminder',
+                'type' => 'enum',
+                'default' => 24,
+                'options' => [1, 4, 24, 48, 72],
+                'help' => 'How many hours before the end of the due day to remind you.',
             ],
         ];
     }
@@ -158,7 +166,7 @@ class PreferenceRegistry
 
         return match ($definition['type']) {
             'bool' => (bool) $value,
-            'int'  => $this->clampInt($key, (int) $value, $definition),
+            'int' => $this->clampInt($key, (int) $value, $definition),
             'enum' => in_array($value, $definition['options'], strict: true)
                 ? $value
                 : throw new InvalidArgumentException(sprintf(

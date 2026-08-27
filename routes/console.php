@@ -61,6 +61,9 @@ Schedule::command('ezbizi:dispatch-automation-events')->everyMinute()->withoutOv
 // above the sweep it feeds.
 Schedule::command('ezbizi:watch-mailboxes')->everyMinute()->withoutOverlapping(5);
 
+Schedule::command('ezbizi:dispatch-task-overdue')->hourly()->withoutOverlapping(10);
+Schedule::command('ezbizi:dispatch-task-due-reminders')->hourly()->withoutOverlapping(10);
+
 // Backup health (§18 Phase 0 item 5). At 05:00, well after the 03:17 timer, so a
 // slow night is not reported as a missing one.
 //
