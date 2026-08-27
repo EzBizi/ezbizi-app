@@ -81,9 +81,14 @@ use App\Http\Controllers\Api\StaffAuthController;
 use App\Http\Controllers\Api\StaffClientVersionsController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\Api\TimeClockController;
+use App\Http\Controllers\Api\Tasks\TaskBoardMembersController;
+use App\Http\Controllers\Api\Tasks\TaskBoardPreferencesController;
+use App\Http\Controllers\Api\Tasks\TaskBoardRecoveryController;
 use App\Http\Controllers\Api\Tasks\TaskBoardsController;
 use App\Http\Controllers\Api\Tasks\TaskColumnsController;
+use App\Http\Controllers\Api\Tasks\TaskFoldersController;
 use App\Http\Controllers\Api\Tasks\TaskGroupsController;
+use App\Http\Controllers\Api\Tasks\TaskParticipantsController;
 use App\Http\Controllers\Api\Tasks\TaskPrioritiesController;
 use App\Http\Controllers\Api\Tasks\TaskStatusesController;
 use App\Http\Controllers\Api\TwoFactorController;
@@ -316,6 +321,12 @@ Route::prefix('v1')
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
 
+        Route::get('tasks/folders', [TaskFoldersController::class, 'index']);
+        Route::post('tasks/folders', [TaskFoldersController::class, 'store']);
+        Route::patch('tasks/folders/{folder}', [TaskFoldersController::class, 'update']);
+        Route::post('tasks/folders/{folder}/archive', [TaskFoldersController::class, 'archive']);
+        Route::post('tasks/folders/{folder}/restore', [TaskFoldersController::class, 'restore']);
+
         Route::get('tasks/boards', [TaskBoardsController::class, 'index']);
         Route::post('tasks/boards', [TaskBoardsController::class, 'store']);
         Route::get('tasks/boards/{board}', [TaskBoardsController::class, 'show']);
@@ -323,6 +334,14 @@ Route::prefix('v1')
         Route::post('tasks/boards/{board}/archive', [TaskBoardsController::class, 'archive']);
         Route::post('tasks/boards/{board}/restore', [TaskBoardsController::class, 'restore']);
         Route::post('tasks/boards/{board}/duplicate', [TaskBoardsController::class, 'duplicate']);
+
+        Route::get('tasks/boards/{board}/members', [TaskBoardMembersController::class, 'index']);
+        Route::post('tasks/boards/{board}/members', [TaskBoardMembersController::class, 'store']);
+        Route::patch('tasks/boards/{board}/members/{membership}', [TaskBoardMembersController::class, 'update']);
+        Route::delete('tasks/boards/{board}/members/{membership}', [TaskBoardMembersController::class, 'destroy']);
+        Route::post('tasks/boards/{board}/recovery', [TaskBoardRecoveryController::class, 'store']);
+        Route::put('tasks/boards/{board}/preference', [TaskBoardPreferencesController::class, 'update']);
+        Route::get('tasks/boards/{board}/participants', [TaskParticipantsController::class, 'index']);
 
         Route::post('tasks/boards/{board}/groups', [TaskGroupsController::class, 'store']);
         Route::post('tasks/boards/{board}/groups/reorder', [TaskGroupsController::class, 'reorder']);

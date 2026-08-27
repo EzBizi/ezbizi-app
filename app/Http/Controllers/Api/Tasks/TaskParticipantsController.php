@@ -1,0 +1,65 @@
+<?php
+
+namespace App\Http\Controllers\Api\Tasks;
+
+use App\Models\TaskBoard;
+use App\Models\User;
+use App\Support\Access\Refusal;
+use App\Support\Scoping\ViewScope;
+use App\Support\Tasks\TaskBoardAccess;
+use App\Support\Tasks\TaskParticipantEligibility;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+
+final class TaskParticipantsController extends TaskApiController
+{
+    private const PURPOSE_PERMISSIONS = [
+        'task_create' => 'tasks.create',
+        'owner' => 'tasks.edit',
+        'people' => 'tasks.edit',
+        'collaborator' => 'tasks.edit',
+        'mention' => 'tasks.comment',
+    ];
+
+    public function __construct(
+        private readonly TaskBoardAccess $access,
+        private readonly TaskParticipantEligibility $participants,
+    ) {}
+
+    public function index(Request $request, TaskBoard $board): JsonResponse
+    {
+        $input = $request->validate([
+            'purpose' => ['required', Rule::in(['membership', ...array_keys(self::PURPOSE_PERMISSIONS)])],
+            'search' => ['sometimes', 'nullable', 'string', 'max:100'],
+        ]);
+        $scope = ViewScope::forUser($request->user());
+        if ($input['purpose'] === 'membership') {
+            $this->access->manageDecision($request->user(), $board, $scope)->authorize();
+        } else {
+            $this->access->viewDecision($request->user(), $board, $scope)->authorize();
+            $permission = self::PURPOSE_PERMISSIONS[$input['purpose']];
+            if (! $request->user()->hasPermission($permission)) {
+                Refusal::permission('choose task participants')->authorize();
+            }
+        }
+
+        $search = trim((string) ($input['search'] ?? ''));
+        $candidates = User::query()->where('is_active', true)
+            ->when($search !== '', fn ($query) => $query->where(fn ($names) => $names
+                ->where('name', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%")))
+            ->with(['role.permissions', 'assignments.assignedCompany', 'assignments.assignedFranchise'])
+            ->orderBy('name')->limit(100)->get()
+            ->filter(fn (User $candidate) => $input['purpose'] === 'membership'
+                ? $this->participants->forMembership($candidate, $board)->allowed()
+                : $this->participants->forTaskParticipation($candidate, $board)->allowed())
+            ->take(20)->values();
+
+        return response()->json(['data' => $candidates->map(fn (User $candidate) => [
+            'id' => $candidate->id,
+            'name' => $candidate->name,
+            'email' => $candidate->email,
+        ])]);
+    }
+}

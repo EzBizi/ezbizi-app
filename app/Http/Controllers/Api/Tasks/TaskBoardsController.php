@@ -26,7 +26,10 @@ final class TaskBoardsController extends TaskApiController
             TaskBoard::query()->active(),
             $request->user(),
             ViewScope::forUser($request->user()),
-        )->with(['groups' => fn ($q) => $q->active()->orderBy('position')]);
+        )->with([
+            'groups' => fn ($q) => $q->active()->orderBy('position'),
+            'preferences' => fn ($q) => $q->where('user_id', $request->user()->id),
+        ]);
         $boards = $query->orderBy('position')->get();
 
         return response()->json([
@@ -55,7 +58,7 @@ final class TaskBoardsController extends TaskApiController
     {
         $this->authorize('view', $board);
 
-        return response()->json(['data' => $this->present($board->load($this->relations()))]);
+        return response()->json(['data' => $this->present($board->load($this->relations($request->user()->id)))]);
     }
 
     public function update(Request $request, TaskBoard $board): JsonResponse
@@ -140,6 +143,12 @@ final class TaskBoardsController extends TaskApiController
             'folder_id' => $board->folder_id,
             'structure_version' => (int) $board->structure_version,
             'archived' => $board->archived_at !== null,
+            'is_favorite' => (bool) ($board->relationLoaded('preferences')
+                ? $board->preferences->first()?->is_favorite
+                : false),
+            'last_opened_at' => $board->relationLoaded('preferences')
+                ? $board->preferences->first()?->last_opened_at?->toIso8601String()
+                : null,
             'groups' => $board->relationLoaded('groups')
                 ? $board->groups->map(fn ($group) => ['id' => $group->id, 'name' => $group->name, 'color' => $group->color])->values()
                 : [],
@@ -180,11 +189,12 @@ final class TaskBoardsController extends TaskApiController
         ];
     }
 
-    private function relations(): array
+    private function relations(string $userId): array
     {
         return [
             'groups', 'statusOptions', 'priorityOptions', 'coreColumnSettings',
             'columnDefinitions.options', 'views', 'members',
+            'preferences' => fn ($query) => $query->where('user_id', $userId),
         ];
     }
 }
