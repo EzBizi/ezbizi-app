@@ -20,6 +20,7 @@ use App\Support\Tenancy\TenantContext;
 use App\Support\Tasks\TaskBoardAccess;
 use App\Support\Tasks\TaskParticipantEligibility;
 use App\Support\Tasks\TaskPlace;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\BuildsTenants;
@@ -210,6 +211,44 @@ class TaskAccessTest extends TestCase
         $audit = DB::table('audit_events')->where('action', 'task_board.owner_recovered')->first();
         $this->assertNotNull($audit);
         $this->assertStringNotContainsString('Secret recovery board', (string) $audit->metadata);
+    }
+
+    public function test_an_administrator_cannot_nominate_themselves_during_recovery(): void
+    {
+        $oldOwner = $this->userAt('Unavailable owner', Assignment::SCOPE_COMPANY, $this->alpha['company']->id);
+        $board = $this->board($this->alpha['company'], null, 'private');
+        $this->member($board, $oldOwner, 'owner');
+        $oldOwner->forceFill(['is_active' => false])->save();
+
+        try {
+            app(TaskBoardAccess::class)->recoverOrphanedOwner(
+                $this->alpha['admin']->fresh(),
+                $board,
+                $this->alpha['admin']->fresh(),
+            );
+            $this->fail('Recovery accepted the acting Administrator as the new owner.');
+        } catch (AuthorizationException $exception) {
+            $this->assertStringContainsString('another eligible owner', $exception->getMessage());
+        }
+
+        $this->assertFalse(TaskBoardMember::where('board_id', $board->id)
+            ->where('user_id', $this->alpha['admin']->id)->exists());
+    }
+
+    public function test_manage_only_is_sufficient_for_an_owner_to_administer_a_board(): void
+    {
+        $manager = $this->userAt(
+            'Board manager',
+            Assignment::SCOPE_COMPANY,
+            $this->alpha['company']->id,
+            ['tasks.manage'],
+        );
+        $this->lookingAt($manager, ViewScope::COMPANY, $this->alpha['company']->id);
+        $board = $this->board($this->alpha['company'], null, 'private');
+        $this->member($board, $manager, 'owner');
+
+        $this->assertTrue(app(TaskBoardPolicy::class)->update($manager, $board)->allowed());
+        $this->assertTrue(app(TaskBoardPolicy::class)->delete($manager, $board)->allowed());
     }
 
     public function test_task_policies_preserve_access_decisions_and_each_permission_boundary(): void

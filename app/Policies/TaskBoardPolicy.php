@@ -4,7 +4,6 @@ namespace App\Policies;
 
 use App\Models\TaskBoard;
 use App\Models\User;
-use App\Support\Access\Refusal;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\TaskBoardAccess;
 use Illuminate\Auth\Access\Response;
@@ -32,19 +31,11 @@ final class TaskBoardPolicy
 
     public function update(User $user, TaskBoard $board): Response
     {
-        if (! $user->hasPermission('tasks.edit')) {
-            return Refusal::permission('change this task board');
-        }
-
         return $this->access->manageDecision($user, $board, ViewScope::forUser($user));
     }
 
     public function delete(User $user, TaskBoard $board): Response
     {
-        if (! $user->hasPermission('tasks.delete')) {
-            return Refusal::permission('delete this task board');
-        }
-
         return $this->access->manageDecision($user, $board, ViewScope::forUser($user));
     }
 }

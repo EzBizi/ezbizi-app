@@ -169,6 +169,10 @@ final class TaskBoardAccess
             throw new AuthorizationException('Only an active organization Administrator can recover an orphaned private board.');
         }
 
+        if ($administrator->getKey() === $newOwner->getKey()) {
+            throw new AuthorizationException('The recovering Administrator must nominate another eligible owner.');
+        }
+
         if ($board->visibility !== BoardVisibility::Private) {
             throw new AuthorizationException('Owner recovery is only for an orphaned private board.');
         }
