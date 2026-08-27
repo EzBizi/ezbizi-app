@@ -51,6 +51,11 @@ final class FakeTwilioGateway implements TwilioGateway
         // production because a failure downstream left the created account
         // behind and the customer pressed the button again.
         foreach ($this->subaccounts as $existing) {
+            // Live only — a closed account keeps its name and refuses writes.
+            if (($existing['status'] ?? 'active') !== 'active') {
+                continue;
+            }
+
             if (strcasecmp(trim($existing['friendly_name']), trim($friendlyName)) === 0) {
                 return [
                     'account_sid' => $existing['account_sid'],

@@ -47,6 +47,14 @@ final class HttpTwilioGateway implements TwilioGateway
                 continue;
             }
 
+            // Live ones only. A closed account keeps its name, so closing a
+            // duplicate leaves two rows answering to it — and Twilio refuses
+            // every write to the dead one with "Account does not exist",
+            // which reads as a server error rather than as what it is.
+            if ($existing['status'] !== 'active') {
+                continue;
+            }
+
             $account = $client->api->v2010->accounts($existing['account_sid'])->fetch();
 
             return [
@@ -77,6 +85,13 @@ final class HttpTwilioGateway implements TwilioGateway
             // every other tenant would put one customer's Settings in charge of
             // everybody's phone service.
             if ($account->sid === $platformSid) {
+                continue;
+            }
+
+            // Closed and suspended accounts are not offerable either: they
+            // cannot be written to, so adopting one would fail at the first
+            // API call after the customer had already chosen it.
+            if ((string) $account->status !== 'active') {
                 continue;
             }
 

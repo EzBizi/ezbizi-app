@@ -173,6 +173,55 @@ class PhoneServiceRequestTest extends TestCase
         $this->assertSame($first, array_values($named)[0]['account_sid']);
     }
 
+    /**
+     * A closed account keeps its name, so it must never be reused.
+     *
+     * Closing two duplicate "A-1 Chimney" subaccounts left three answering to
+     * that name. The matcher took the first — a dead one — and Twilio refused
+     * the next write with "Account does not exist", which surfaced to the
+     * customer as a bare Server Error.
+     */
+    public function test_a_closed_account_of_the_same_name_is_never_reused(): void
+    {
+        $this->withPlatformTwilio();
+
+        $t = $this->provisionTenant();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $request = PhoneServiceRequest::create([
+                'status' => PhoneServiceRequest::STATUS_APPROVED,
+                'expected_volume' => 'under_100',
+                'wants_sms' => false,
+                'purpose' => 'Booking chimney sweeps and calling customers back.',
+            ]);
+
+            PhoneServiceRequestCompany::create([
+                'request_id' => $request->id,
+                'company_id' => $t['company']->id,
+                'approved' => true,
+            ]);
+        });
+
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+
+        // The dead one sorts first, exactly as it did in production.
+        $gateway->subaccounts = [
+            ['account_sid' => 'ACdeaddeaddeaddeaddeaddeaddeaddea', 'friendly_name' => $t['company']->name, 'status' => 'closed'],
+            ['account_sid' => 'ACliveliveliveliveliveliveliveli', 'friendly_name' => $t['company']->name, 'status' => 'active'],
+        ];
+
+        $this->signedInAs($editor)->postJson('/api/v1/phone/connections', [
+            'scope_type' => 'company',
+            'scope_id' => $t['company']->id,
+            'kind' => 'subaccount',
+        ])->assertCreated();
+
+        $row = $this->inTenant($t['org'], fn () => PhoneConnection::query()->first());
+        $this->assertSame('ACliveliveliveliveliveliveliveli', $row->account_sid);
+    }
+
     public function test_asking_records_the_companies_the_volume_and_whether_they_want_texting(): void
     {
         $t = $this->provisionTenant();
