@@ -157,6 +157,17 @@ class TaskAccessTest extends TestCase
         $this->assertSame(404, $decision->status());
     }
 
+    public function test_archived_board_is_unavailable_to_background_access(): void
+    {
+        $user = $this->userAt('Background viewer', Assignment::SCOPE_COMPANY, $this->alpha['company']->id);
+        $board = $this->board($this->alpha['company'], null, 'scope');
+        $board->forceFill(['archived_at' => now()])->save();
+
+        $decision = app(TaskBoardAccess::class)->backgroundViewDecision($user, $board->fresh());
+        $this->assertFalse($decision->allowed());
+        $this->assertSame(404, $decision->status());
+    }
+
     public function test_creation_does_not_trust_organization_fallback_or_raw_reach(): void
     {
         $companyUser = $this->userAt('Company creator', Assignment::SCOPE_COMPANY, $this->alpha['company']->id);

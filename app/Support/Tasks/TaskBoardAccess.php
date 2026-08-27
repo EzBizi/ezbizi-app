@@ -105,6 +105,10 @@ final class TaskBoardAccess
             return $base;
         }
 
+        if ($board->archived_at !== null) {
+            return Response::denyAsNotFound();
+        }
+
         if (! TaskPlace::reachedBy($user, $board, $this->reach)) {
             return Response::deny('This board is outside where you are assigned.');
         }
