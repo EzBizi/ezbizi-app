@@ -50,6 +50,7 @@ sessions either. The SHA is the only handle that survives a rename.
 | **Tasks** | `screens/tasks/` · `screens/tasks_screen.dart` · `Models/Task*.php` · `Policies/Task*.php` · `Support/Tasks/` · `Providers/TaskServiceProvider.php` · `Jobs/DeliverTaskNotificationIntent.php` · `Middleware/EnsureTaskRouteAccess.php` · `tests/Feature/Tasks/` | `ezbizi-13` |
 | **Android · Play** | `client/android/` · the android path of `scripts/build-app.sh` · `build-web.sh` · `release.sh` · `windows-installer.iss` · `assets/logo` · `assets/installer` · `client/integration_test/store_screenshots_test.dart` · `client/test_driver/screenshots.dart` · the **Play** Console | `ezbizi-16` |
 | **iOS · Apple** | `client/ios/` · the ios path of `scripts/build-app.sh` · the Mac relay · App Store Connect, TestFlight, the Apple Developer consoles | `ezbizi-71` |
+| **Website** | `www/` — `index.html` · `download/` · `terms/` · `privacy/` · `social-media/` · `delete-account/` · `robots.txt` · `sitemap.xml` · `check-site.py` · `scripts/deploy-www.sh` · the **`/var/www/www`** document root | `3b5b79f` `57b4502` |
 
 > **These two were split from one session and neither could see the other.** Each
 > reported the other's half as orphaned within minutes; both halves are in fact
