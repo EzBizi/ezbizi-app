@@ -290,6 +290,11 @@ class _FakeDevice implements VoiceDevice {
   @override
   void Function(VoiceIncoming incoming)? onIncoming;
 
+  /// Registration succeeds unless a test says otherwise — the desk being
+  /// usable is the precondition for almost every case in this file.
+  @override
+  var registered = true;
+
   @override
   Future<void> setup(String token) async {}
 

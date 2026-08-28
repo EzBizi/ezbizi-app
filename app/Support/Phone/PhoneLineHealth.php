@@ -6,6 +6,7 @@ use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
 use App\Support\Automations\EventEmitter;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 use Twilio\Exceptions\RestException;
 
@@ -70,23 +71,36 @@ final class PhoneLineHealth
         ?PhoneNumber $number = null,
     ): void {
         $wasAlreadyBroken = $connection->status === PhoneConnection::STATUS_BROKEN;
-
-        $connection->markBroken($reason);
-        $connection->save();
-
-        if ($wasAlreadyBroken || ! $this->tenant->has()) {
-            return;
-        }
-
+        $announce = ! $wasAlreadyBroken && $this->tenant->has();
         $subject = $number ?? $connection;
 
-        $this->events->emit('phone.number.broken', $subject, [
-            'e164' => $number?->e164,
-            'connection_id' => $connection->id,
-            'number_id' => $number?->id,
-            'reason' => $reason,
-            'cause' => 'gateway_failure',
-        ]);
+        // ── Why the mark and the alert are one transaction ───────────
+        //
+        // The row it writes is a FAILURE and the event it emits is how anybody
+        // finds out. Saved separately, an outbox insert that threw left the
+        // line durably broken with nobody told — and a vanishing "the phone is
+        // down" is indistinguishable from the phone being fine, which is the
+        // worst way for an alert to fail.
+        //
+        // This runs on gateway-failure paths, so it fires exactly when the
+        // write is least likely to succeed. Same shape as the Reviews and
+        // Services outbox fixes.
+        DB::transaction(function () use ($connection, $reason, $announce, $subject, $number) {
+            $connection->markBroken($reason);
+            $connection->save();
+
+            if (! $announce) {
+                return;
+            }
+
+            $this->events->emit('phone.number.broken', $subject, [
+                'e164' => $number?->e164,
+                'connection_id' => $connection->id,
+                'number_id' => $number?->id,
+                'reason' => $reason,
+                'cause' => 'gateway_failure',
+            ]);
+        });
     }
 
     private static function messageNamesAccountFault(string $message): bool

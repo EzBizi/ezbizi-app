@@ -9,6 +9,14 @@ abstract class VoiceDevice {
   /// Register with an access token from POST /phone/tokens.
   Future<void> setup(String token);
 
+  /// Whether [setup] actually reached Twilio.
+  ///
+  /// Distinct from "setup returned": it returns on refusal and on timeout too.
+  /// Without this the desk cannot tell a registered device from one whose
+  /// signalling socket never came up, and it would draw a ready dial pad that
+  /// silently never rings.
+  bool get registered;
+
   /// Place an outbound call. [to] is E.164 or `client:{identity}`.
   Future<void> connect({required String to, String? callerId});
 
