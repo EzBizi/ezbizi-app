@@ -10,12 +10,24 @@
  * have been the first person to run it, which is the wrong person to find a
  * fatal.
  *
- * A real WordPress was the obvious answer and is the wrong one here. WordPress
- * needs ext-mysqli, which this PHP does not have, and adding it means editing
- * the single php.ini shared by every session working this tree. A typo there
- * stops PHP for all of them. Beyond that a manual click-through proves the
- * plugin worked once, on one machine, and proves nothing on the next change —
- * whereas this runs in the gate.
+ * A LOCAL WordPress is the wrong answer here: it needs ext-mysqli, which this
+ * PHP does not have, and adding it means editing the single php.ini shared by
+ * every session working this tree — a typo there stops PHP for all of them.
+ *
+ * ── There IS a real WordPress, and it is not this file's job ──
+ *
+ * https://playground.wordpress.net runs WordPress in the browser on WASM, with
+ * no database server and nothing installed. wordpress.org hands you a Playground
+ * link that boots your submitted zip alongside the Plugin Check plugin. On
+ * 2026-08-28 that was used to confirm what this file cannot: the plugin
+ * ACTIVATES on WordPress 7.1 with no fatal, its settings screen renders, and
+ * ezbizi_host() correctly reported `playground.wordpress.net` from a live
+ * home_url(). Plugin Check itself passed with every category enabled.
+ *
+ * Use it whenever this plugin changes materially. But it is a manual check: it
+ * proves the plugin worked once, in one browser, and proves nothing about the
+ * next commit. That is the division of labour — Playground for "does WordPress
+ * accept it", this file for "does it still behave", on every run of the gate.
  *
  * ── What it does and does not cover ──
  *
