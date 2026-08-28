@@ -6,19 +6,30 @@ import 'address_io.dart'
 /// these opaque IDs for navigation, but only Tasks turns them into displayed
 /// board/task state after its own access-checked fetch succeeds.
 final class TaskAddressIntent {
-  const TaskAddressIntent({required this.boardId, required this.taskId});
+  const TaskAddressIntent({
+    required this.boardId,
+    required this.taskId,
+    this.navigationEpoch = 0,
+  });
 
   final String boardId;
   final String taskId;
+
+  /// Distinguishes repeated foreground navigation to the same canonical URL.
+  /// It is deliberately absent from [Address.taskPath]: browser history names
+  /// the record, while this process-local value asks an already-open Tasks
+  /// screen to perform its authorized reads again.
+  final int navigationEpoch;
 
   @override
   bool operator ==(Object other) =>
       other is TaskAddressIntent &&
       other.boardId == boardId &&
-      other.taskId == taskId;
+      other.taskId == taskId &&
+      other.navigationEpoch == navigationEpoch;
 
   @override
-  int get hashCode => Object.hash(boardId, taskId);
+  int get hashCode => Object.hash(boardId, taskId, navigationEpoch);
 }
 
 /// Where the signed-in shell is, as a URL path.

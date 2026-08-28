@@ -322,6 +322,7 @@ enum _Rail { modules, pinned, staff, profile }
 class _HomeShellState extends State<HomeShell> {
   _Rail _rail = _Rail.modules;
   TaskAddressIntent? _pendingTaskIntent;
+  int _taskNavigationEpoch = 0;
   void Function()? _stopListening;
 
   @override
@@ -436,6 +437,20 @@ class _HomeShellState extends State<HomeShell> {
   void _openAuthorizedRecordRoute(String route) => setState(() {
     _apply(route);
     widget.address?.push(route);
+  });
+
+  /// Task notifications cross the shell boundary as an opaque typed intent.
+  /// Only Tasks resolves these IDs, through its access-checked board/detail
+  /// reads; the shell merely selects the module and writes its canonical URL.
+  void _openTaskIntent(TaskAddressIntent intent) => setState(() {
+    _rail = _Rail.modules;
+    _selected = 'tasks';
+    _pendingTaskIntent = TaskAddressIntent(
+      boardId: intent.boardId,
+      taskId: intent.taskId,
+      navigationEpoch: ++_taskNavigationEpoch,
+    );
+    widget.address?.push(Address.taskPath(_pendingTaskIntent!));
   });
 
   /// "Your account" is reached from the avatar, not from a rail, so it has no
@@ -792,10 +807,7 @@ class _HomeShellState extends State<HomeShell> {
                   },
                 ),
               ),
-              NotificationBell(
-                api: widget.api,
-                onOpenRoute: _openAuthorizedRecordRoute,
-              ),
+              NotificationBell(api: widget.api, onOpenTask: _openTaskIntent),
               // The organization requires a second factor and this person has
               // not set one up (§6). Every screen except their own account is
               // answering 403 until they do, so the chrome has to say why and

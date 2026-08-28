@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:ezbizi_client/core/address.dart';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
@@ -664,10 +665,10 @@ void main() {
     expect(find.text('Delete view'), findsNothing);
   });
 
-  testWidgets('successful notification navigation forwards its server route', (
+  testWidgets('successful notification navigation emits a typed Task intent', (
     tester,
   ) async {
-    var opened = '';
+    TaskAddressIntent? opened;
     var reads = 0;
     final api = ApiClient(
       client: MockClient((request) async {
@@ -693,7 +694,7 @@ void main() {
       }),
     );
     await tester.pumpWidget(
-      _app(NotificationBell(api: api, onOpenRoute: (route) => opened = route)),
+      _app(NotificationBell(api: api, onOpenTask: (intent) => opened = intent)),
     );
     await tester.pump();
     await tester.tap(find.byTooltip('1 unread'));
@@ -702,7 +703,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(reads, 1);
-    expect(opened, '/tasks/boards/board-1/tasks/task-1');
+    expect(
+      opened,
+      const TaskAddressIntent(boardId: 'board-1', taskId: 'task-1'),
+    );
   });
 
   testWidgets(

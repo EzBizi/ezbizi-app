@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/address.dart';
 import '../core/api_client.dart';
 import 'side_panel.dart';
 import 'tag.dart';
@@ -9,10 +10,10 @@ import 'tag.dart';
 /// and neither is built; a poll on open plus a refresh is honest about that and
 /// costs one query. When push arrives this widget is what changes, not the API.
 class NotificationBell extends StatefulWidget {
-  const NotificationBell({super.key, required this.api, this.onOpenRoute});
+  const NotificationBell({super.key, required this.api, this.onOpenTask});
 
   final ApiClient api;
-  final ValueChanged<String>? onOpenRoute;
+  final ValueChanged<TaskAddressIntent>? onOpenTask;
 
   @override
   State<NotificationBell> createState() => _NotificationBellState();
@@ -79,6 +80,13 @@ class _NotificationBellState extends State<NotificationBell> {
     }
 
     await _refresh();
+  }
+
+  TaskAddressIntent? _taskIntent(Map<String, dynamic> notification) {
+    if (notification['source'] != 'task') return null;
+    final meta = notification['meta'];
+    final route = meta is Map ? meta['route'] : null;
+    return route is String ? Address.taskIntent(route) : null;
   }
 
   Future<void> _open() async {
@@ -157,23 +165,39 @@ class _NotificationBellState extends State<NotificationBell> {
                           if (!context.mounted) return;
 
                           if (!r.ok) {
+                            // Access can disappear after the list was fetched.
+                            // Re-read the governed feed before repainting so a
+                            // filtered notification leaves neither a stale
+                            // title nor a stale unread count behind.
+                            await _refresh();
+                            if (!context.mounted) return;
+                            repaint(() {});
                             ScaffoldMessenger.of(
                               context,
                             ).showSnackBar(SnackBar(content: Text(r.message)));
                             return;
                           }
-
-                          await _refresh();
                         }
 
-                        final meta = n['meta'];
-                        final route = meta is Map ? meta['route'] : null;
-                        if (route is String &&
-                            route.isNotEmpty &&
-                            widget.onOpenRoute != null) {
+                        // Do not navigate from the row snapshot. Refreshing
+                        // confirms that this person still receives the item;
+                        // its canonical route is then converted into an opaque
+                        // typed intent before it leaves this widget.
+                        await _refresh();
+                        if (!context.mounted) return;
+                        final current = _items
+                            .cast<Map<String, dynamic>?>()
+                            .firstWhere(
+                              (item) => item?['id'] == n['id'],
+                              orElse: () => null,
+                            );
+                        final intent = current == null
+                            ? null
+                            : _taskIntent(current);
+                        if (intent != null && widget.onOpenTask != null) {
                           if (context.mounted) {
                             Navigator.of(context).pop();
-                            widget.onOpenRoute!(route);
+                            widget.onOpenTask!(intent);
                           }
                           return;
                         }
