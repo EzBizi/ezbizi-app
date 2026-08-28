@@ -45,6 +45,7 @@ DIST=dist
 API_BASE="https://app.ezbizi.com"
 APP_FACE="customer"
 RUN_GATES=1
+UPLOAD=0
 TARGETS=()
 
 while [ $# -gt 0 ]; do
@@ -53,8 +54,9 @@ while [ $# -gt 0 ]; do
     --api-base) API_BASE="$2"; shift 2 ;;
     --face)     APP_FACE="$2"; shift 2 ;;
     --skip-gates) RUN_GATES=0; shift ;;
+    --upload)     UPLOAD=1; shift ;;
     *) echo "unknown argument: $1" >&2
-       echo "usage: $0 [windows|linux|android|macos|ios]... [--api-base URL] [--face customer|staff] [--skip-gates]" >&2
+       echo "usage: $0 [windows|linux|android|macos|ios]... [--api-base URL] [--face customer|staff] [--skip-gates] [--upload]" >&2
        exit 2 ;;
   esac
 done
@@ -267,6 +269,19 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
       fi
       scp -q "${MAC_REMOTE}:${IPA_REMOTE}" "${DIST}/EzBizi-${VERSION}-${COMMIT}.ipa"
       echo "  → ${DIST}/EzBizi-${VERSION}-${COMMIT}.ipa"
+
+      # TestFlight, only when asked.
+      #
+      # Opt-in because a build that lands in TestFlight notifies testers and
+      # cannot be unsent - it should not happen because somebody rebuilt to
+      # check a compile error. The script on the Mac validates before it
+      # uploads, so the cheap rejections are caught before ten minutes of wire.
+      if [ "$UPLOAD" -eq 1 ]; then
+        echo "-> ios - validate and upload to TestFlight"
+        ssh "$MAC_REMOTE" "~/ezbizi-signing/upload-testflight.sh ${IPA_REMOTE}"
+        echo "  -> uploaded. App Store Connect processes it for a few minutes"
+        echo "     before it appears in TestFlight."
+      fi
     else
       echo "→ building ios — UNSIGNED (no Apple Distribution identity for team ${IOS_TEAM} on the Mac)"
       ssh "$MAC_REMOTE" "
