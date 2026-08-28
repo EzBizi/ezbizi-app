@@ -100,7 +100,16 @@ void main() {
       ],
     );
 
-    expect(find.text('Chimney Technician'), findsOneWidget);
+    // Scoped to the row's own tag, not the tree at large: a role name that
+    // also appears as a filter choice is not a second row tag, and a plain
+    // find.text would count both.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('job-role-tag')),
+        matching: find.text('Chimney Technician'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('a job with no role does not draw an empty tag', (tester) async {

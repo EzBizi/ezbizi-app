@@ -287,11 +287,7 @@ class _JobsScreenState extends State<JobsScreen> {
               // this Wrap rather than opening over the form, and its choices
               // are discovered from the rows already on screen rather than
               // fetched, since every job already carries its role (Task 5).
-              //
-              // Fewer than two roles seen is not a filter — there is nothing
-              // to narrow to yet, only the one role every visible job already
-              // has (or none at all).
-              if (_roles.length > 1)
+              if (_roles.isNotEmpty)
                 DropdownMenu<String?>(
                   initialSelection: _roleId,
                   label: const Text('Role'),
