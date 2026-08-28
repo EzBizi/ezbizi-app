@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Training · tab layouts</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --cyan-d:#0093CA; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --green:#0B8F5B; --coral:#E07070; --amber:#B5730B;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 Inter, system-ui, "Segoe UI", sans-serif; }
+  .wrap { max-width:1180px; margin:0 auto; padding:16px 16px 64px; }
+  h1 { font-size:19px; margin:0 0 4px; letter-spacing:-.4px; }
+  .lead { color:var(--muted); margin:0 0 6px; max-width:74ch; }
+  .note { color:var(--muted); font-size:13px; margin:0 0 22px; max-width:76ch; }
+  .note b { color:var(--ink); }
+  .sec { font-size:11px; letter-spacing:1.4px; font-weight:800; color:#8a97a4;
+    text-transform:uppercase; margin:34px 0 12px; }
+
+  /* ---- app window frame ---- */
+  .frame { background:var(--page); border:1px solid #cfd6dd; border-radius:12px;
+    overflow:hidden; margin:0 0 30px; box-shadow:0 1px 3px rgba(6,8,8,.06); }
+  .tag { display:flex; align-items:center; gap:10px; padding:11px 16px;
+    border-bottom:1px solid var(--line); background:var(--alt); }
+  .tag .n { width:26px; height:26px; border-radius:8px; background:var(--cyan); color:#fff;
+    display:grid; place-items:center; font-weight:800; font-size:14px; flex:none; }
+  .tag h2 { font-size:14px; margin:0; }
+  .tag p { margin:0; color:var(--muted); font-size:13px; }
+
+  .app { display:grid; grid-template-columns:210px 1fr; min-height:560px; }
+
+  /* ---- sidebar ---- */
+  .rail { background:var(--alt); border-right:1px solid var(--line); padding:12px 0; }
+  .mark { padding:6px 16px 14px; font-weight:800; font-size:19px; letter-spacing:-.5px; }
+  .mark .ez { color:var(--cyan); } .mark .bz { color:var(--ink); }
+  .rail a { display:flex; align-items:center; gap:9px; padding:8px 16px; color:var(--muted);
+    font-size:13px; text-decoration:none; }
+  .rail a .i { width:16px; text-align:center; opacity:.8; }
+  .rail a.on { color:var(--ink); font-weight:600; background:rgba(0,174,239,.10);
+    box-shadow:inset 3px 0 0 var(--cyan); }
+  .rail .grp { padding:14px 16px 6px; font-size:10px; letter-spacing:1.3px; font-weight:700;
+    color:#93a0ad; text-transform:uppercase; }
+
+  /* ---- main ---- */
+  .main { display:flex; flex-direction:column; min-width:0; }
+  .top { display:flex; align-items:center; gap:12px; padding:12px 18px;
+    border-bottom:1px solid var(--line); }
+  .top h3 { font-size:17px; margin:0; letter-spacing:-.3px; }
+  .top .sp { flex:1; }
+  .scope { display:inline-flex; align-items:center; gap:7px; height:32px; padding:0 12px;
+    border-radius:8px; border:1px solid var(--line); background:var(--page);
+    color:var(--muted); font-size:13px; }
+  .who { display:inline-flex; align-items:center; gap:8px; color:var(--muted); font-size:13px; }
+  .who .av { width:28px; height:28px; border-radius:50%; background:var(--cyan-deep); color:#fff;
+    display:grid; place-items:center; font-weight:700; font-size:12px; }
+
+  .subtabs { display:flex; gap:4px; padding:10px 18px 0; border-bottom:1px solid var(--line);
+    overflow-x:auto; }
+  .subtabs button { border:0; background:none; padding:9px 12px 12px; color:var(--muted);
+    font-weight:600; font-size:13.5px; border-bottom:2px solid transparent; white-space:nowrap; }
+  .subtabs button.on { color:var(--ink); border-bottom-color:var(--cyan); }
+
+  .body { padding:16px 18px; }
+  .toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .search { flex:1; min-width:150px; height:36px; border:1px solid var(--line); border-radius:10px;
+    background:var(--page); padding:0 12px; display:flex; align-items:center; gap:8px; color:var(--muted); }
+  .btn { height:36px; padding:0 14px; border-radius:9px; border:1px solid var(--cyan);
+    background:var(--cyan); color:#fff; font-size:13px; font-weight:600;
+    display:inline-flex; align-items:center; gap:6px; }
+  .btn.ghost { background:var(--page); color:var(--muted); border-color:var(--line); }
+  .fchip { height:32px; padding:0 12px; border-radius:16px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); font-size:13px; display:inline-flex;
+    align-items:center; gap:6px; }
+  .fchip.on { background:var(--cyan); color:#fff; border-color:var(--cyan); }
+  .fchip .ct { font-weight:700; }
+
+  /* shelf headings */
+  .shelf { display:flex; align-items:baseline; gap:9px; margin:2px 0 10px; }
+  .shelf h4 { font-size:13px; margin:0; letter-spacing:.2px; }
+  .shelf .sub { color:var(--muted); font-size:12.5px; }
+  .shelf .rule { flex:1; height:1px; background:var(--line); }
+
+  /* cards */
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(232px,1fr)); gap:12px; }
+  .card { border:1px solid var(--line); border-radius:11px; padding:12px 13px; background:var(--page); }
+  .card.due { border-color:rgba(224,112,112,.45); }
+  .card h5 { margin:0 0 3px; font-size:13.5px; letter-spacing:-.1px; }
+  .card .meta { color:var(--muted); font-size:12px; margin:0 0 9px; }
+  .card .foot { display:flex; align-items:center; gap:8px; margin-top:10px; }
+
+  .bar { height:6px; border-radius:4px; background:var(--line); overflow:hidden; }
+  .bar > i { display:block; height:100%; background:var(--cyan); }
+  .bar > i.good { background:var(--green); }
+  .bar > i.warn { background:var(--amber); }
+
+  .pill { font-size:11px; font-weight:700; padding:2px 8px; border-radius:11px;
+    border:1px solid var(--line); color:var(--muted); background:var(--page); white-space:nowrap; }
+  .pill.done { color:var(--green); border-color:rgba(11,143,91,.32); background:rgba(11,143,91,.07); }
+  .pill.late { color:var(--coral); border-color:rgba(224,112,112,.4); background:rgba(224,112,112,.08); }
+  .pill.now  { color:var(--cyan-deep); border-color:rgba(0,112,143,.3); background:rgba(0,174,239,.07); }
+  .pill.retake { color:var(--amber); border-color:rgba(181,115,11,.34); background:rgba(181,115,11,.08); }
+  .pill.draft { color:#8a97a4; }
+
+  .scopetag { font-size:10.5px; font-weight:700; letter-spacing:.35px; color:var(--muted);
+    background:var(--alt); border:1px solid var(--line); border-radius:6px; padding:1px 6px;
+    text-transform:uppercase; }
+
+  /* tables */
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; font-size:11px; letter-spacing:.5px; text-transform:uppercase;
+    color:#8a97a4; font-weight:700; padding:0 10px 8px; border-bottom:1px solid var(--line); }
+  td { padding:10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  td.c, th.c { text-align:center; }
+  .nm { display:flex; align-items:center; gap:9px; }
+  .nm .av { width:26px; height:26px; border-radius:50%; background:var(--alt); color:var(--muted);
+    display:grid; place-items:center; font-weight:700; font-size:11px; border:1px solid var(--line); }
+  .cell { font-weight:700; font-size:12.5px; }
+  .cell.ok { color:var(--green); } .cell.no { color:#c4ccd4; }
+  .cell.part { color:var(--cyan-deep); } .cell.exp { color:var(--amber); }
+  .cell.bad { color:var(--coral); }
+
+  /* split list + pane */
+  .split { display:grid; grid-template-columns:26% 1fr; min-height:470px; }
+  .list { border-right:1px solid var(--line); overflow:hidden; }
+  .list .li { padding:10px 13px; border-bottom:1px solid var(--line); }
+  .list .li.on { background:rgba(0,174,239,.08); box-shadow:inset 3px 0 0 var(--cyan); }
+  .list .li h6 { margin:0 0 2px; font-size:13px; font-weight:600; }
+  .list .li p { margin:0; font-size:11.5px; color:var(--muted); }
+  .pane { padding:14px 16px; overflow:hidden; }
+  .pane h4 { margin:0 0 2px; font-size:16px; letter-spacing:-.2px; }
+  .pane .ph { color:var(--muted); font-size:12.5px; margin:0 0 14px; }
+
+  /* reader */
+  .reader { padding:26px 30px; }
+  .reader .kicker { font-size:11px; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); font-weight:700; margin:0 0 6px; }
+  .reader h2 { font-size:24px; margin:0 0 12px; letter-spacing:-.5px; }
+  .reader p { max-width:66ch; margin:0 0 12px; }
+  .media { border:1px solid var(--line); border-radius:10px; background:var(--alt);
+    aspect-ratio:16/9; display:grid; place-items:center; color:var(--muted);
+    font-size:12.5px; margin:0 0 16px; max-width:640px; }
+  .media .play { width:52px; height:52px; border-radius:50%; background:var(--cyan); color:#fff;
+    display:grid; place-items:center; font-size:19px; margin:0 auto 8px; }
+  .navbar { display:flex; align-items:center; gap:12px; padding:12px 18px;
+    border-top:1px solid var(--line); background:var(--alt); }
+  .dots { display:flex; gap:5px; flex:1; justify-content:center; }
+  .dots i { width:7px; height:7px; border-radius:50%; background:#c9d2da; }
+  .dots i.on { background:var(--cyan); } .dots i.seen { background:var(--cyan-deep); opacity:.45; }
+
+  /* screen rail */
+  .srail { border-right:1px solid var(--line); padding:8px 0; }
+  .srail .s { display:flex; gap:9px; padding:9px 13px; align-items:flex-start; }
+  .srail .s.on { background:rgba(0,174,239,.08); box-shadow:inset 3px 0 0 var(--cyan); }
+  .srail .s .k { width:20px; height:20px; border-radius:50%; border:1px solid var(--line);
+    display:grid; place-items:center; font-size:10.5px; font-weight:700; color:var(--muted);
+    flex:none; background:var(--page); }
+  .srail .s .k.ok { background:var(--green); border-color:var(--green); color:#fff; }
+  .srail .s span { font-size:12.5px; line-height:1.35; }
+
+  /* storyboard */
+  .strip { display:flex; gap:10px; overflow-x:auto; padding:2px 0 10px; }
+  .sc { width:150px; flex:none; border:1px solid var(--line); border-radius:10px;
+    background:var(--page); overflow:hidden; }
+  .sc.on { border-color:var(--cyan); box-shadow:0 0 0 2px rgba(0,174,239,.16); }
+  .sc .thumb { height:78px; background:var(--alt); border-bottom:1px solid var(--line);
+    display:grid; place-items:center; color:#aab4bd; font-size:11px; }
+  .sc .cap { padding:7px 9px; font-size:11.5px; }
+  .sc .cap b { display:block; font-size:11.5px; }
+  .sc .cap i { color:var(--muted); font-style:normal; font-size:10.5px; }
+  .sc.add { display:grid; place-items:center; color:var(--muted); font-size:12px;
+    border-style:dashed; min-height:116px; }
+
+  /* option rows */
+  .opt { display:flex; align-items:center; gap:10px; padding:9px 0;
+    border-bottom:1px solid var(--line); font-size:13px; }
+  .opt .lab { flex:1; }
+  .opt .lab i { display:block; font-style:normal; color:var(--muted); font-size:11.5px; }
+  .sw { width:38px; height:21px; border-radius:11px; background:#c9d2da; position:relative; flex:none; }
+  .sw.on { background:var(--cyan); }
+  .sw::after { content:""; position:absolute; top:2px; left:2px; width:17px; height:17px;
+    border-radius:50%; background:#fff; }
+  .sw.on::after { left:19px; }
+  .num { width:64px; height:32px; border:1px solid var(--line); border-radius:8px;
+    display:grid; place-items:center; font-size:13px; font-weight:600; }
+
+  /* question editor */
+  .q { border:1px solid var(--line); border-radius:10px; padding:11px 12px; margin-bottom:10px; }
+  .q .qh { font-weight:600; font-size:13px; margin-bottom:8px; }
+  .ans { display:flex; align-items:center; gap:9px; padding:6px 0; font-size:13px; }
+  .rad { width:16px; height:16px; border-radius:50%; border:1.5px solid #c9d2da; flex:none; }
+  .rad.on { border-color:var(--green); box-shadow:inset 0 0 0 3.5px var(--green); }
+
+  /* narrow */
+  .phones { display:flex; gap:16px; flex-wrap:wrap; }
+  .phone { width:375px; max-width:100%; border:1px solid #cfd6dd; border-radius:12px;
+    overflow:hidden; background:var(--page); box-shadow:0 1px 3px rgba(6,8,8,.06); }
+  .phone .ptop { display:flex; align-items:center; gap:9px; padding:11px 13px;
+    border-bottom:1px solid var(--line); font-weight:600; font-size:14px; }
+  .phone .pcap { font-size:12px; color:var(--muted); padding:8px 13px;
+    background:var(--alt); border-top:1px solid var(--line); }
+
+  .ask { border:1px solid var(--line); border-left:3px solid var(--cyan); border-radius:0 10px 10px 0;
+    background:var(--page); padding:13px 15px; margin:0 0 12px; }
+  .ask b { display:block; margin-bottom:3px; font-size:13.5px; }
+  .ask p { margin:0; color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Training — layouts for the three tabs</h1>
+  <p class="lead">Eight numbered alternatives, drawn in the app's real chrome and the pinned palette from
+     <b>client/lib/core/theme.dart</b>. Answer by number: one for Learn, one for the guide player,
+     one for Dashboard, one for Settings. Data is invented but the shape is what would ship.</p>
+  <p class="note">Every layout obeys the house rules: <b>no modals</b> — a selection is a pane or a
+     screen; <b>no purple, no gradients</b>; <b>no literal colours</b> outside the theme; and each
+     one collapses to a single column at 375px, shown at the bottom. Scope badges
+     (<span class="scopetag">Organization</span> <span class="scopetag">A-1 Chimney</span>
+     <span class="scopetag">Riverside</span>) are on every card because a guide belongs to a place,
+     and that is the fact a franchise user needs to see at a glance.</p>
+
+  <!-- ============================ LEARN ============================ -->
+  <div class="sec">The Learn tab — what someone opens Training to do</div>
+
+  <!-- 1 -->
+  <div class="frame">
+    <div class="tag"><div class="n">1</div>
+      <div><h2>Learn — two shelves</h2>
+      <p>What you owe, then what you may browse. The assigned shelf is always first and never hidden.</p></div>
+    </div>
+    <div class="app">
+      <div class="rail">
+        <div class="mark"><span class="ez">Ez</span><span class="bz">Bizi</span></div>
+        <a><span class="i">▤</span>Dashboard</a>
+        <a><span class="i">☑</span>Tasks</a>
+        <a><span class="i">👥</span>Customers</a>
+        <a><span class="i">🔧</span>Jobs</a>
+        <div class="grp">Operations</div>
+        <a><span class="i">📦</span>Inventory</a>
+        <a><span class="i">🚐</span>Fleet</a>
+        <a class="on"><span class="i">🎓</span>Training</a>
+        <a><span class="i">🪪</span>Human Resources</a>
+      </div>
+      <div class="main">
+        <div class="top">
+          <h3>Training</h3><div class="sp"></div>
+          <div class="scope">▦ A-1 Chimney · Riverside ▾</div>
+          <div class="who"><span class="av">DT</span>Dave Turner</div>
+        </div>
+        <div class="subtabs">
+          <button class="on">Learn</button><button>Dashboard</button><button>Settings</button>
+        </div>
+        <div class="body">
+          <div class="shelf"><h4>Assigned to you</h4><span class="sub">3 to do · 1 overdue</span><div class="rule"></div></div>
+          <div class="grid" style="margin-bottom:22px">
+            <div class="card due">
+              <span class="scopetag">Organization</span>
+              <h5 style="margin-top:7px">Ladder Safety</h5>
+              <p class="meta">8 screens · test at the end</p>
+              <div class="bar"><i style="width:38%"></i></div>
+              <div class="foot"><span class="pill late">Was due 24 Aug</span><span class="pill">3 of 8</span></div>
+            </div>
+            <div class="card">
+              <span class="scopetag">A-1 Chimney</span>
+              <h5 style="margin-top:7px">Carbon Monoxide Awareness</h5>
+              <p class="meta">5 screens · test at the end</p>
+              <div class="bar"><i style="width:0%"></i></div>
+              <div class="foot"><span class="pill">Due 2 Sep</span><span class="pill">Not started</span></div>
+            </div>
+            <div class="card">
+              <span class="scopetag">Organization</span>
+              <h5 style="margin-top:7px">Customer Greeting &amp; Uniform</h5>
+              <p class="meta">4 screens</p>
+              <div class="bar"><i class="warn" style="width:100%"></i></div>
+              <div class="foot"><span class="pill retake">Retake by 15 Sep</span><span class="pill">Passed last year</span></div>
+            </div>
+          </div>
+
+          <div class="shelf"><h4>Library</h4><span class="sub">Anything you can reach, take it when you like</span><div class="rule"></div></div>
+          <div class="grid">
+            <div class="card">
+              <span class="scopetag">Riverside</span>
+              <h5 style="margin-top:7px">Van Load-Out Checklist</h5>
+              <p class="meta">6 screens</p>
+              <div class="bar"><i class="good" style="width:100%"></i></div>
+              <div class="foot"><span class="pill done">Done 11 Aug</span></div>
+            </div>
+            <div class="card">
+              <span class="scopetag">Organization</span>
+              <h5 style="margin-top:7px">Chimney Sweep — Standard Procedure</h5>
+              <p class="meta">12 screens · 2 videos</p>
+              <div class="bar"><i style="width:0%"></i></div>
+              <div class="foot"><span class="pill">Not started</span></div>
+            </div>
+            <div class="card">
+              <span class="scopetag">A-1 Chimney</span>
+              <h5 style="margin-top:7px">Reading a Flue Liner Report</h5>
+              <p class="meta">Test only · 10 questions</p>
+              <div class="bar"><i style="width:0%"></i></div>
+              <div class="foot"><span class="pill">Not started</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2 -->
+  <div class="frame">
+    <div class="tag"><div class="n">2</div>
+      <div><h2>Learn — one list, filtered</h2>
+      <p>Everything in one table with counted chips. Denser, and the same control filters both kinds.</p></div>
+    </div>
+    <div class="app">
+      <div class="rail">
+        <div class="mark"><span class="ez">Ez</span><span class="bz">Bizi</span></div>
+        <a><span class="i">▤</span>Dashboard</a>
+        <a><span class="i">☑</span>Tasks</a>
+        <a><span class="i">👥</span>Customers</a>
+        <a><span class="i">🔧</span>Jobs</a>
+        <div class="grp">Operations</div>
+        <a><span class="i">📦</span>Inventory</a>
+        <a><span class="i">🚐</span>Fleet</a>
+        <a class="on"><span class="i">🎓</span>Training</a>
+        <a><span class="i">🪪</span>Human Resources</a>
+      </div>
+      <div class="main">
+        <div class="top">
+          <h3>Training</h3><div class="sp"></div>
+          <div class="scope">▦ A-1 Chimney · Riverside ▾</div>
+          <div class="who"><span class="av">DT</span>Dave Turner</div>
+        </div>
+        <div class="subtabs">
+          <button class="on">Learn</button><button>Dashboard</button><button>Settings</button>
+        </div>
+        <div class="body">
+          <div class="toolbar">
+            <div class="search">⌕ Search training</div>
+            <span class="fchip on">Assigned to me <span class="ct">3</span></span>
+            <span class="fchip">In progress <span class="ct">1</span></span>
+            <span class="fchip">Due for retaking <span class="ct">1</span></span>
+            <span class="fchip">Done <span class="ct">4</span></span>
+            <span class="fchip">Everything <span class="ct">11</span></span>
+          </div>
+          <table>
+            <thead><tr>
+              <th style="width:44%">Training</th><th>Where it belongs</th><th>Progress</th>
+              <th>Due</th><th style="width:120px">State</th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td><b>Ladder Safety</b><div style="color:var(--muted);font-size:12px">Guide · 8 screens · test at the end</div></td>
+                <td><span class="scopetag">Organization</span></td>
+                <td style="width:120px"><div class="bar"><i style="width:38%"></i></div>
+                    <div style="font-size:11.5px;color:var(--muted);margin-top:4px">3 of 8</div></td>
+                <td style="color:var(--coral);font-weight:600">24 Aug</td>
+                <td><span class="pill late">Overdue</span></td>
+              </tr>
+              <tr>
+                <td><b>Carbon Monoxide Awareness</b><div style="color:var(--muted);font-size:12px">Guide · 5 screens · test at the end</div></td>
+                <td><span class="scopetag">A-1 Chimney</span></td>
+                <td><div class="bar"><i style="width:0"></i></div>
+                    <div style="font-size:11.5px;color:var(--muted);margin-top:4px">Not started</div></td>
+                <td>2 Sep</td>
+                <td><span class="pill now">Assigned</span></td>
+              </tr>
+              <tr>
+                <td><b>Customer Greeting &amp; Uniform</b><div style="color:var(--muted);font-size:12px">Guide · 4 screens</div></td>
+                <td><span class="scopetag">Organization</span></td>
+                <td><div class="bar"><i class="warn" style="width:100%"></i></div>
+                    <div style="font-size:11.5px;color:var(--muted);margin-top:4px">Pass ran out</div></td>
+                <td>15 Sep</td>
+                <td><span class="pill retake">Retake</span></td>
+              </tr>
+              <tr>
+                <td><b>Van Load-Out Checklist</b><div style="color:var(--muted);font-size:12px">Guide · 6 screens</div></td>
+                <td><span class="scopetag">Riverside</span></td>
+                <td><div class="bar"><i class="good" style="width:100%"></i></div>
+                    <div style="font-size:11.5px;color:var(--muted);margin-top:4px">Done 11 Aug</div></td>
+                <td style="color:var(--muted)">—</td>
+                <td><span class="pill done">Passed</span></td>
+              </tr>
+              <tr>
+                <td><b>Chimney Sweep — Standard Procedure</b><div style="color:var(--muted);font-size:12px">Guide · 12 screens · 2 videos</div></td>
+                <td><span class="scopetag">Organization</span></td>
+                <td><div class="bar"><i style="width:0"></i></div>
+                    <div style="font-size:11.5px;color:var(--muted);margin-top:4px">Not started</div></td>
+                <td style="color:var(--muted)">—</td>
+                <td><span class="pill">Library</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ PLAYER ============================ -->
+  <div class="sec">The guide player — what a screen actually looks like</div>
+
+  <!-- 3 -->
+  <div class="frame">
+    <div class="tag"><div class="n">3</div>
+      <div><h2>Player — full-bleed reader</h2>
+      <p>The guide takes the whole body. Nothing to read around, and it is already the phone layout.</p></div>
+    </div>
+    <div class="app">
+      <div class="rail">
+        <div class="mark"><span class="ez">Ez</span><span class="bz">Bizi</span></div>
+        <a><span class="i">▤</span>Dashboard</a>
+        <a><span class="i">☑</span>Tasks</a>
+        <a><span class="i">👥</span>Customers</a>
+        <a><span class="i">🔧</span>Jobs</a>
+        <div class="grp">Operations</div>
+        <a><span class="i">📦</span>Inventory</a>
+        <a><span class="i">🚐</span>Fleet</a>
+        <a class="on"><span class="i">🎓</span>Training</a>
+        <a><span class="i">🪪</span>Human Resources</a>
+      </div>
+      <div class="main">
+        <div class="top">
+          <button class="btn ghost">← Leave</button>
+          <h3>Ladder Safety</h3><div class="sp"></div>
+          <span class="pill">Screen 3 of 8</span>
+          <div class="who"><span class="av">DT</span>Dave Turner</div>
+        </div>
+        <div class="reader" style="flex:1">
+          <p class="kicker">Setting up</p>
+          <h2>The four-to-one rule</h2>
+          <div class="media">
+            <div style="text-align:center">
+              <div class="play">▶</div>
+              Video · youtube.com/watch?v=…<br>
+              <span style="font-size:11.5px">plays here on web · opens in the browser elsewhere</span>
+            </div>
+          </div>
+          <p>For every four feet of height to the point where the ladder rests, the base moves
+             one foot out from the wall. A ladder touching the gutter at sixteen feet stands
+             four feet back — no further, no closer.</p>
+          <p>Set it too steep and it tips backwards as you lean. Set it too shallow and the feet
+             slide out from under you, which is the fall that hurts.</p>
+        </div>
+        <div class="navbar">
+          <button class="btn ghost">◀ Back</button>
+          <div class="dots"><i class="seen"></i><i class="seen"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+          <button class="btn">Next ▶</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4 -->
+  <div class="frame">
+    <div class="tag"><div class="n">4</div>
+      <div><h2>Player — screen rail beside the reader</h2>
+      <p>The 25/75 split Inventory and Fleet already use. You can see how much is left and jump about.</p></div>
+    </div>
+    <div class="app">
+      <div class="rail">
+        <div class="mark"><span class="ez">Ez</span><span class="bz">Bizi</span></div>
+        <a><span class="i">▤</span>Dashboard</a>
+        <a><span class="i">☑</span>Tasks</a>
+        <a><span class="i">👥</span>Customers</a>
+        <a><span class="i">🔧</span>Jobs</a>
+        <div class="grp">Operations</div>
+        <a><span class="i">📦</span>Inventory</a>
+        <a><span class="i">🚐</span>Fleet</a>
+        <a class="on"><span class="i">🎓</span>Training</a>
+        <a><span class="i">🪪</span>Human Resources</a>
+      </div>
+      <div class="main">
+        <div class="top">
+          <button class="btn ghost">← Leave</button>
+          <h3>Ladder Safety</h3><div class="sp"></div>
+          <span class="pill now">3 of 8 seen</span>
+          <div class="who"><span class="av">DT</span>Dave Turner</div>
+        </div>
+        <div class="split" style="flex:1">
+          <div class="srail">
+            <div class="s"><span class="k ok">✓</span><span>Why this guide exists</span></div>
+            <div class="s"><span class="k ok">✓</span><span>Checking a ladder before you climb</span></div>
+            <div class="s on"><span class="k">3</span><span><b>The four-to-one rule</b></span></div>
+            <div class="s"><span class="k">4</span><span>Tying off at the top</span></div>
+            <div class="s"><span class="k">5</span><span>Ground conditions and footing</span></div>
+            <div class="s"><span class="k">6</span><span>Carrying tools up</span></div>
+            <div class="s"><span class="k">7</span><span>Getting on and off the roof</span></div>
+            <div class="s"><span class="k">8</span><span>What to do after a near miss</span></div>
+            <div class="s" style="border-top:1px solid var(--line);margin-top:8px;padding-top:13px">
+              <span class="k" style="border-color:var(--cyan);color:var(--cyan-deep)">?</span>
+              <span><b>Test</b><br><i style="color:var(--muted);font-size:11.5px;font-style:normal">Unlocks when all 8 are seen</i></span>
+            </div>
+          </div>
+          <div class="reader">
+            <p class="kicker">Setting up</p>
+            <h2>The four-to-one rule</h2>
+            <div class="media" style="max-width:520px">
+              <div style="text-align:center">
+                <div class="play">▶</div>
+                Video · youtube.com/watch?v=…<br>
+                <span style="font-size:11.5px">plays here on web · opens in the browser elsewhere</span>
+              </div>
+            </div>
+            <p>For every four feet of height to the point where the ladder rests, the base moves
+               one foot out from the wall. A ladder touching the gutter at sixteen feet stands
+               four feet back — no further, no closer.</p>
+            <div style="display:flex;gap:9px;margin-top:18px">
+              <button class="btn ghost">◀ Back</button><button class="btn">Next ▶</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ DASHBOARD ============================ -->
+  <div class="sec">The Dashboard tab — how the organization watches it</div>
+
+  <!-- 5 -->
+  <div class="frame">
+    <div class="tag"><div class="n">5</div>
+      <div><h2>Dashboard — people down, training across</h2>
+      <p>The compliance grid. One glance answers "who has not done the ladder guide".</p></div>
+    </div>
+    <div class="app">
+      <div class="rail">
+        <div class="mark"><span class="ez">Ez</span><span class="bz">Bizi</span></div>
+        <a><span class="i">▤</span>Dashboard</a>
+        <a><span class="i">☑</span>Tasks</a>
+        <a><span class="i">👥</span>Customers</a>
+        <a><span class="i">🔧</span>Jobs</a>
+        <div class="grp">Operations</div>
+        <a><span class="i">📦</span>Inventory</a>
+        <a><span class="i">🚐</span>Fleet</a>
+        <a class="on"><span class="i">🎓</span>Training</a>
+        <a><span class="i">🪪</span>Human Resources</a>
+      </div>
+      <div class="main">
+        <div class="top">
+          <h3>Training</h3><div class="sp"></div>
+          <div class="scope">▦ A-1 Chimney ▾</div>
+          <div class="who"><span class="av">MR</span>Mia R.</div>
+        </div>
+        <div class="subtabs">
+          <button>Learn</button><button class="on">Dashboard</button><button>Settings</button>
+        </div>
+        <div class="body">
+          <div class="toolbar">
+            <div class="search">⌕ Search people</div>
+            <span class="fchip">Overdue <span class="ct">2</span></span>
+            <span class="fchip">Due for retaking <span class="ct">3</span></span>
+            <span class="fchip on">Everyone <span class="ct">9</span></span>
+            <button class="btn">＋ Assign training</button>
+          </div>
+          <div style="overflow-x:auto">
+          <table style="min-width:760px">
+            <thead><tr>
+              <th style="width:210px">Person</th>
+              <th class="c">Ladder<br>Safety</th>
+              <th class="c">CO<br>Awareness</th>
+              <th class="c">Sweep<br>Procedure</th>
+              <th class="c">Greeting<br>&amp; Uniform</th>
+              <th class="c">Van<br>Load-Out</th>
+              <th class="c" style="width:110px">Outstanding</th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td><div class="nm"><span class="av">DT</span><div><b>Dave Turner</b>
+                    <div style="color:var(--muted);font-size:11.5px">Technician · Riverside</div></div></div></td>
+                <td class="c"><span class="cell bad">3 of 8</span></td>
+                <td class="c"><span class="cell no">—</span></td>
+                <td class="c"><span class="cell no">—</span></td>
+                <td class="c"><span class="cell exp">Expired</span></td>
+                <td class="c"><span class="cell ok">✓ 92%</span></td>
+                <td class="c"><span class="pill late">2 overdue</span></td>
+              </tr>
+              <tr>
+                <td><div class="nm"><span class="av">PK</span><div><b>Priya Kaur</b>
+                    <div style="color:var(--muted);font-size:11.5px">Technician · Riverside</div></div></div></td>
+                <td class="c"><span class="cell ok">✓ 100%</span></td>
+                <td class="c"><span class="cell ok">✓ 88%</span></td>
+                <td class="c"><span class="cell part">7 of 12</span></td>
+                <td class="c"><span class="cell ok">✓</span></td>
+                <td class="c"><span class="cell ok">✓ 96%</span></td>
+                <td class="c"><span class="pill done">Nothing</span></td>
+              </tr>
+              <tr>
+                <td><div class="nm"><span class="av">SO</span><div><b>Sam Okafor</b>
+                    <div style="color:var(--muted);font-size:11.5px">Lead technician · Northgate</div></div></div></td>
+                <td class="c"><span class="cell ok">✓ 100%</span></td>
+                <td class="c"><span class="cell exp">Expired</span></td>
+                <td class="c"><span class="cell ok">✓ 91%</span></td>
+                <td class="c"><span class="cell ok">✓</span></td>
+                <td class="c"><span class="cell no">—</span></td>
+                <td class="c"><span class="pill retake">1 retake</span></td>
+              </tr>
+              <tr>
+                <td><div class="nm"><span class="av">LB</span><div><b>Leon Baptiste</b>
+                    <div style="color:var(--muted);font-size:11.5px">Apprentice · Northgate</div></div></div></td>
+                <td class="c"><span class="cell part">5 of 8</span></td>
+                <td class="c"><span class="cell bad">Failed 51%</span></td>
+                <td class="c"><span class="cell no">—</span></td>
+                <td class="c"><span class="cell no">—</span></td>
+                <td class="c"><span class="cell ok">✓ 84%</span></td>
+                <td class="c"><span class="pill late">1 overdue</span></td>
+              </tr>
+              <tr>
+                <td><div class="nm"><span class="av">HC</span><div><b>Hannah Cole</b>
+                    <div style="color:var(--muted);font-size:11.5px">Office · A-1 Chimney</div></div></div></td>
+                <td class="c"><span class="cell no">—</span></td>
+                <td class="c"><span class="cell no">—</span></td>
+                <td class="c"><span class="cell no">—</span></td>
+                <td class="c"><span class="cell ok">✓</span></td>
+                <td class="c"><span class="cell no">—</span></td>
+                <td class="c"><span class="pill done">Nothing</span></td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+          <p class="note" style="margin:14px 0 0">A dash means it was never assigned and is not in
+             their library — not that they failed it. Hannah is office staff and owes none of the
+             field guides, so her row is honestly empty rather than five red marks.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6 -->
+  <div class="frame">
+    <div class="tag"><div class="n">6</div>
+      <div><h2>Dashboard — training down, people inside</h2>
+      <p>One row per guide with a completion bar. Scales to fifty guides where a grid stops fitting.</p></div>
+    </div>
+    <div class="app">
+      <div class="rail">
+        <div class="mark"><span class="ez">Ez</span><span class="bz">Bizi</span></div>
+        <a><span class="i">▤</span>Dashboard</a>
+        <a><span class="i">☑</span>Tasks</a>
+        <a><span class="i">👥</span>Customers</a>
+        <a><span class="i">🔧</span>Jobs</a>
+        <div class="grp">Operations</div>
+        <a><span class="i">📦</span>Inventory</a>
+        <a><span class="i">🚐</span>Fleet</a>
+        <a class="on"><span class="i">🎓</span>Training</a>
+        <a><span class="i">🪪</span>Human Resources</a>
+      </div>
+      <div class="main">
+        <div class="top">
+          <h3>Training</h3><div class="sp"></div>
+          <div class="scope">▦ A-1 Chimney ▾</div>
+          <div class="who"><span class="av">MR</span>Mia R.</div>
+        </div>
+        <div class="subtabs">
+          <button>Learn</button><button class="on">Dashboard</button><button>Settings</button>
+        </div>
+        <div class="split" style="flex:1">
+          <div class="list">
+            <div class="li on"><h6>Ladder Safety</h6><p>9 assigned · 4 done · 2 overdue</p></div>
+            <div class="li"><h6>CO Awareness</h6><p>9 assigned · 6 done · 1 expired</p></div>
+            <div class="li"><h6>Sweep Procedure</h6><p>6 assigned · 3 done</p></div>
+            <div class="li"><h6>Greeting &amp; Uniform</h6><p>9 assigned · 8 done · 1 expired</p></div>
+            <div class="li"><h6>Van Load-Out</h6><p>6 assigned · 5 done</p></div>
+          </div>
+          <div class="pane">
+            <h4>Ladder Safety</h4>
+            <p class="ph"><span class="scopetag">Organization</span> &nbsp;8 screens · test, pass at 80% · retake every 12 months</p>
+
+            <div style="display:flex;gap:22px;margin-bottom:6px">
+              <div><div style="font-size:26px;font-weight:800;letter-spacing:-1px">4</div>
+                   <div style="font-size:11.5px;color:var(--muted)">passed</div></div>
+              <div><div style="font-size:26px;font-weight:800;letter-spacing:-1px;color:var(--cyan-deep)">3</div>
+                   <div style="font-size:11.5px;color:var(--muted)">in progress</div></div>
+              <div><div style="font-size:26px;font-weight:800;letter-spacing:-1px;color:var(--coral)">2</div>
+                   <div style="font-size:11.5px;color:var(--muted)">overdue</div></div>
+              <div style="flex:1"></div>
+              <button class="btn">＋ Assign to more people</button>
+            </div>
+            <div class="bar" style="height:9px;margin:12px 0 18px">
+              <i class="good" style="width:44%;float:left"></i><i style="width:34%;float:left"></i>
+            </div>
+
+            <table>
+              <thead><tr><th>Person</th><th>Progress</th><th>Score</th><th>Due</th><th>State</th></tr></thead>
+              <tbody>
+                <tr><td><div class="nm"><span class="av">DT</span>Dave Turner</div></td>
+                    <td style="width:130px"><div class="bar"><i style="width:38%"></i></div></td>
+                    <td style="color:var(--muted)">—</td>
+                    <td style="color:var(--coral);font-weight:600">24 Aug</td>
+                    <td><span class="pill late">Overdue</span></td></tr>
+                <tr><td><div class="nm"><span class="av">PK</span>Priya Kaur</div></td>
+                    <td><div class="bar"><i class="good" style="width:100%"></i></div></td>
+                    <td><b>100%</b></td><td style="color:var(--muted)">—</td>
+                    <td><span class="pill done">Passed 6 Aug</span></td></tr>
+                <tr><td><div class="nm"><span class="av">SO</span>Sam Okafor</div></td>
+                    <td><div class="bar"><i class="good" style="width:100%"></i></div></td>
+                    <td><b>100%</b></td><td style="color:var(--muted)">—</td>
+                    <td><span class="pill done">Passed 2 Aug</span></td></tr>
+                <tr><td><div class="nm"><span class="av">LB</span>Leon Baptiste</div></td>
+                    <td><div class="bar"><i style="width:62%"></i></div></td>
+                    <td style="color:var(--muted)">—</td><td>1 Sep</td>
+                    <td><span class="pill now">In progress</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ SETTINGS ============================ -->
+  <div class="sec">The Settings tab — where guides and tests get built</div>
+
+  <!-- 7 -->
+  <div class="frame">
+    <div class="tag"><div class="n">7</div>
+      <div><h2>Settings — list beside the editor</h2>
+      <p>The 25/75 pane every other module uses. Screens are a vertical list; the test is the last item.</p></div>
+    </div>
+    <div class="app">
+      <div class="rail">
+        <div class="mark"><span class="ez">Ez</span><span class="bz">Bizi</span></div>
+        <a><span class="i">▤</span>Dashboard</a>
+        <a><span class="i">☑</span>Tasks</a>
+        <a><span class="i">👥</span>Customers</a>
+        <a><span class="i">🔧</span>Jobs</a>
+        <div class="grp">Operations</div>
+        <a><span class="i">📦</span>Inventory</a>
+        <a><span class="i">🚐</span>Fleet</a>
+        <a class="on"><span class="i">🎓</span>Training</a>
+        <a><span class="i">🪪</span>Human Resources</a>
+      </div>
+      <div class="main">
+        <div class="top">
+          <h3>Training</h3><div class="sp"></div>
+          <div class="scope">▦ A-1 Chimney ▾</div>
+          <div class="who"><span class="av">MR</span>Mia R.</div>
+        </div>
+        <div class="subtabs">
+          <button>Learn</button><button>Dashboard</button><button class="on">Settings</button>
+        </div>
+        <div class="split" style="flex:1">
+          <div class="list">
+            <div style="padding:10px 13px;border-bottom:1px solid var(--line)">
+              <button class="btn" style="width:100%;justify-content:center">＋ New guide</button>
+            </div>
+            <div class="li on"><h6>Ladder Safety</h6><p><span class="scopetag">Organization</span> · Published</p></div>
+            <div class="li"><h6>CO Awareness</h6><p><span class="scopetag">A-1 Chimney</span> · Published</p></div>
+            <div class="li"><h6>Sweep Procedure</h6><p><span class="scopetag">Organization</span> · Published</p></div>
+            <div class="li"><h6>Gas Appliance Basics</h6><p><span class="scopetag">A-1 Chimney</span> · Draft</p></div>
+            <div class="li"><h6>Van Load-Out</h6><p><span class="scopetag">Riverside</span> · Published</p></div>
+          </div>
+          <div class="pane">
+            <div style="display:flex;align-items:flex-start;gap:12px">
+              <div style="flex:1">
+                <h4>Ladder Safety</h4>
+                <p class="ph">Published · <span class="scopetag">Organization</span> · everyone below can see it</p>
+              </div>
+              <button class="btn ghost">Preview</button><button class="btn">Save</button>
+            </div>
+
+            <div class="shelf"><h4>Screens</h4><span class="sub">8 · drag to reorder</span><div class="rule"></div></div>
+            <div class="srail" style="border:1px solid var(--line);border-radius:10px;margin-bottom:16px">
+              <div class="s"><span class="k">1</span><span>Why this guide exists<br><i style="color:var(--muted);font-size:11px;font-style:normal">Text only</i></span></div>
+              <div class="s"><span class="k">2</span><span>Checking a ladder before you climb<br><i style="color:var(--muted);font-size:11px;font-style:normal">Image · imgur.com/…</i></span></div>
+              <div class="s on"><span class="k">3</span><span><b>The four-to-one rule</b><br><i style="color:var(--muted);font-size:11px;font-style:normal">Video · youtube.com/watch?v=…</i></span></div>
+              <div class="s"><span class="k">4</span><span>Tying off at the top<br><i style="color:var(--muted);font-size:11px;font-style:normal">Text only</i></span></div>
+              <div class="s" style="color:var(--muted)"><span class="k">＋</span><span>Add a screen</span></div>
+            </div>
+
+            <div class="shelf"><h4>Its test</h4><span class="sub">10 questions</span><div class="rule"></div></div>
+            <div class="opt"><div class="lab">Must finish the guide before the test
+                <i>Screens 1–8 all seen, then the test unlocks</i></div><div class="sw on"></div></div>
+            <div class="opt"><div class="lab">Pass mark <i>Percent of questions right</i></div><div class="num">80</div></div>
+            <div class="opt"><div class="lab">Retakes allowed <i>Blank means as many as they need</i></div><div class="num">3</div></div>
+            <div class="opt" style="border-bottom:0"><div class="lab">A pass runs out after
+                <i>Then it reappears in their Learn tab as a retake</i></div><div class="num">12&nbsp;mo</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8 -->
+  <div class="frame">
+    <div class="tag"><div class="n">8</div>
+      <div><h2>Settings — storyboard across the top</h2>
+      <p>Screens as thumbnails you scroll through, editing below. You see the shape of the guide, not a list of titles.</p></div>
+    </div>
+    <div class="app">
+      <div class="rail">
+        <div class="mark"><span class="ez">Ez</span><span class="bz">Bizi</span></div>
+        <a><span class="i">▤</span>Dashboard</a>
+        <a><span class="i">☑</span>Tasks</a>
+        <a><span class="i">👥</span>Customers</a>
+        <a><span class="i">🔧</span>Jobs</a>
+        <div class="grp">Operations</div>
+        <a><span class="i">📦</span>Inventory</a>
+        <a><span class="i">🚐</span>Fleet</a>
+        <a class="on"><span class="i">🎓</span>Training</a>
+        <a><span class="i">🪪</span>Human Resources</a>
+      </div>
+      <div class="main">
+        <div class="top">
+          <button class="btn ghost">← All training</button>
+          <h3>Ladder Safety</h3><div class="sp"></div>
+          <span class="pill draft">Draft — nobody sees it yet</span>
+          <button class="btn">Publish</button>
+        </div>
+        <div class="subtabs">
+          <button>Learn</button><button>Dashboard</button><button class="on">Settings</button>
+        </div>
+        <div class="body">
+          <div class="shelf"><h4>Screens</h4><span class="sub">8 · drag to reorder</span><div class="rule"></div>
+            <span class="scopetag">Organization</span></div>
+          <div class="strip">
+            <div class="sc"><div class="thumb">Text</div><div class="cap"><b>1 · Why this guide exists</b><i>Text only</i></div></div>
+            <div class="sc"><div class="thumb">▣ Image</div><div class="cap"><b>2 · Checking a ladder</b><i>imgur.com/…</i></div></div>
+            <div class="sc on"><div class="thumb">▶ Video</div><div class="cap"><b>3 · Four-to-one rule</b><i>youtube.com/…</i></div></div>
+            <div class="sc"><div class="thumb">Text</div><div class="cap"><b>4 · Tying off</b><i>Text only</i></div></div>
+            <div class="sc"><div class="thumb">▣ Image</div><div class="cap"><b>5 · Ground conditions</b><i>imgur.com/…</i></div></div>
+            <div class="sc add">＋ Add screen</div>
+          </div>
+
+          <div class="split" style="border:1px solid var(--line);border-radius:11px;min-height:280px;margin-top:6px;grid-template-columns:1fr 1fr">
+            <div style="padding:14px 16px;border-right:1px solid var(--line)">
+              <div class="shelf"><h4>Screen 3</h4><div class="rule"></div></div>
+              <div style="font-size:11.5px;color:var(--muted);margin-bottom:4px">Title</div>
+              <div style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-weight:600">The four-to-one rule</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-bottom:4px">Words on the screen</div>
+              <div style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:12px;min-height:78px;color:var(--muted);font-size:13px">
+                For every four feet of height to the point where the ladder rests, the base moves one foot out from the wall…</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-bottom:4px">Picture or video — paste a link</div>
+              <div style="display:flex;gap:8px">
+                <span class="fchip">Nothing</span><span class="fchip">Image</span><span class="fchip on">Video</span>
+              </div>
+              <div style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:9px;color:var(--muted);font-size:12.5px">
+                https://www.youtube.com/watch?v=…</div>
+            </div>
+            <div style="padding:14px 16px">
+              <div class="shelf"><h4>Its test</h4><span class="sub">Question 1 of 10</span><div class="rule"></div></div>
+              <div class="q">
+                <div class="qh">A ladder rests on the gutter at 16 feet. How far out does the base go?</div>
+                <div class="ans"><span class="rad"></span>Two feet</div>
+                <div class="ans"><span class="rad on"></span>Four feet</div>
+                <div class="ans"><span class="rad"></span>Eight feet</div>
+                <div class="ans"><span class="rad"></span>As far as feels steady</div>
+              </div>
+              <div class="opt"><div class="lab">Finish the guide first</div><div class="sw on"></div></div>
+              <div class="opt"><div class="lab">Pass mark</div><div class="num">80</div></div>
+              <div class="opt" style="border-bottom:0"><div class="lab">Pass runs out after</div><div class="num">12&nbsp;mo</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ NARROW ============================ -->
+  <div class="sec">At 375px — the width everything must survive</div>
+  <p class="note">House rule: nothing may assume a wide viewport, a mouse, or hover. The two screens
+     that carry real risk are the player (a video and a body of text) and the dashboard grid
+     (which cannot be a grid this narrow). Both shown as they would actually behave.</p>
+
+  <div class="phones">
+    <div class="phone">
+      <div class="ptop"><span>←</span> Ladder Safety <div style="flex:1"></div>
+        <span class="pill" style="font-size:10px">3 / 8</span></div>
+      <div class="reader" style="padding:16px 15px">
+        <p class="kicker">Setting up</p>
+        <h2 style="font-size:19px">The four-to-one rule</h2>
+        <div class="media" style="margin-bottom:12px">
+          <div style="text-align:center"><div class="play" style="width:42px;height:42px;font-size:16px">▶</div>
+          <span style="font-size:11px">Tap to play</span></div>
+        </div>
+        <p style="font-size:13.5px">For every four feet of height to the point where the ladder
+           rests, the base moves one foot out from the wall.</p>
+      </div>
+      <div class="navbar" style="padding:10px 13px">
+        <button class="btn ghost" style="padding:0 11px">◀</button>
+        <div class="dots"><i class="seen"></i><i class="seen"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+        <button class="btn" style="padding:0 13px">Next ▶</button>
+      </div>
+      <div class="pcap">The player is already one column, so layout 3 needs no narrow variant at all —
+        layout 4 drops its rail and becomes this.</div>
+    </div>
+
+    <div class="phone">
+      <div class="ptop">Training <div style="flex:1"></div><span class="pill" style="font-size:10px">Dashboard</span></div>
+      <div class="body" style="padding:13px">
+        <div class="toolbar" style="margin-bottom:11px">
+          <span class="fchip on" style="height:29px">Overdue <span class="ct">2</span></span>
+          <span class="fchip" style="height:29px">Retake <span class="ct">3</span></span>
+        </div>
+        <div class="card" style="margin-bottom:9px">
+          <div class="nm" style="margin-bottom:8px"><span class="av">DT</span>
+            <div><b style="font-size:13px">Dave Turner</b>
+            <div style="color:var(--muted);font-size:11px">Technician · Riverside</div></div></div>
+          <div class="bar"><i style="width:38%"></i></div>
+          <div class="foot"><span class="pill late">2 overdue</span><span class="pill">1 in progress</span></div>
+        </div>
+        <div class="card" style="margin-bottom:9px">
+          <div class="nm" style="margin-bottom:8px"><span class="av">SO</span>
+            <div><b style="font-size:13px">Sam Okafor</b>
+            <div style="color:var(--muted);font-size:11px">Lead technician · Northgate</div></div></div>
+          <div class="bar"><i class="warn" style="width:80%"></i></div>
+          <div class="foot"><span class="pill retake">1 retake</span><span class="pill done">3 passed</span></div>
+        </div>
+        <div class="card">
+          <div class="nm" style="margin-bottom:8px"><span class="av">PK</span>
+            <div><b style="font-size:13px">Priya Kaur</b>
+            <div style="color:var(--muted);font-size:11px">Technician · Riverside</div></div></div>
+          <div class="bar"><i class="good" style="width:100%"></i></div>
+          <div class="foot"><span class="pill done">Nothing outstanding</span></div>
+        </div>
+      </div>
+      <div class="pcap">The matrix in layout 5 cannot be a matrix here. It becomes one card per person
+        carrying the same counts — so layout 5 costs a second narrow layout that layout 6 gets free,
+        because its list is already a list.</div>
+    </div>
+  </div>
+
+  <!-- ============================ ASKS ============================ -->
+  <div class="sec">Answer by number</div>
+  <div class="ask"><b>Learn — 1 or 2?</b>
+    <p>1 separates what you owe from what you may browse, and the assigned shelf can never be
+       filtered away. 2 is denser and one control drives everything, but "assigned" becomes a chip
+       somebody can turn off.</p></div>
+  <div class="ask"><b>Player — 3 or 4?</b>
+    <p>3 is the same on every screen size and gives the content the most room. 4 shows how much is
+       left and lets you jump back, and matches the 25/75 split Inventory and Fleet already use.</p></div>
+  <div class="ask"><b>Dashboard — 5 or 6?</b>
+    <p>5 answers "who has not done this" instantly but stops fitting past roughly eight guides, and
+       needs a separate narrow layout. 6 scales to any number and is already one column on a phone,
+       but takes two clicks to compare two people.</p></div>
+  <div class="ask"><b>Settings — 7 or 8?</b>
+    <p>7 matches every other module in the app, which is worth a lot on its own. 8 shows the guide's
+       shape rather than a list of titles, which is better for authoring and is a layout that exists
+       nowhere else here.</p></div>
+
+  <p class="note" style="margin-top:22px">A mixed answer is fine and probably right — 1, 3, 6, 7 is a
+     coherent set, and so is 2, 4, 5, 8. Nothing here is built yet; the pick decides what gets
+     written.</p>
+
+</div>
+</body>
+</html>
