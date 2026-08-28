@@ -186,7 +186,15 @@ Clearing a stale entry is safe when you can show it is stale: `git reset HEAD --
 `git show HEAD:<path>` and the file on disk should still agree. Do that only for
 paths you own, and only after proving the staged copy is older than `HEAD` —
 otherwise you are discarding somebody's in-flight work to prevent a commit nobody
-has made.
+has made. Line counts are usually enough to show staleness; a marker string the
+newer version contains and the older does not is better, because it names the
+regression instead of implying one.
+
+**Ignore what `git reset` prints.** "Unstaged changes after reset:" lists every
+path where the working tree differs from the index **repo-wide**, not what the
+command touched — so it will name other sessions' files and read exactly like you
+have just clobbered their staging. A path-limited reset cannot touch anything
+outside its pathspec. Do not try to "fix" what that output appears to show.
 
 `git add` has its own hazard: `.git/index` is *one file* for every session, and
 `git add <path>` adds to whatever another session left staged rather than staging
