@@ -717,6 +717,31 @@ class SettingRegistry
                 help: 'The name is what people see. Stored as is what jobs keep. Changing '
                     .'a stored value also updates jobs that already have it.',
             ),
+
+            /*
+             * Which of the statuses above mean the money is earned (spec §8.2).
+             *
+             * Used to be a per-user dashboard preference (`user.preferences`,
+             * `dashboard.glances[].options.earned_statuses`) — a personal opinion
+             * about a company fact, so two viewers could disagree about whether the
+             * same job was revenue. Promoting it here also gains an audit trail the
+             * preference never had: a write to this setting is logged as
+             * `settings.updated` (SettingsController::update()), while the
+             * dashboard-preference write it replaces was never audited at all.
+             *
+             * Organization and company: a company may sell differently from its
+             * parent. NOT franchise — one branch cannot decide what the whole
+             * business calls revenue.
+             */
+            new SettingDefinition(
+                key: 'jobs.earned_statuses', label: 'Statuses that mean the money is earned',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Which of your job statuses mean the work is done and the money counts. '
+                    .'Revenue is reported against the moment a job first reaches one of these, '
+                    .'so a job booked in June and finished in September counts in September.',
+            ),
         ];
     }
 
