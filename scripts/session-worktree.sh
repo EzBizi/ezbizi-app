@@ -76,6 +76,20 @@ else
   git worktree add -b "$BRANCH" "$DEST" "$BASE"
 fi
 
+# .env is gitignored, so a fresh worktree has none — and the first symptom is
+# "No application encryption key has been specified" on every DB-backed test,
+# which reads like a broken application rather than a missing file. Worse, the
+# tests that need no database still pass, so it looks like a real failure in
+# exactly the suites that touch the database.
+#
+# Copied rather than linked, for the same reason vendor is: nothing in a
+# worktree should point back into another tree.
+if [ -f "$REPO/.env" ]; then
+  cp "$REPO/.env" "$DEST/.env"
+  echo "→ copied .env"
+fi
+[ -f "$DEST/.env" ] || echo "  ⚠ no .env in this worktree — DB-backed tests will fail with an encryption-key error" >&2
+
 if [ "${2:-}" = "--with-vendor" ]; then
   echo "→ composer install (its own vendor, never a link to another tree)"
   # `composer` is not on PATH on this machine; the repo ships composer.phar and
