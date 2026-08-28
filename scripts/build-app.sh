@@ -46,6 +46,7 @@ API_BASE="https://app.ezbizi.com"
 APP_FACE="customer"
 RUN_GATES=1
 UPLOAD=0
+ALLOW_DIRTY=0
 TARGETS=()
 
 while [ $# -gt 0 ]; do
@@ -55,8 +56,9 @@ while [ $# -gt 0 ]; do
     --face)     APP_FACE="$2"; shift 2 ;;
     --skip-gates) RUN_GATES=0; shift ;;
     --upload)     UPLOAD=1; shift ;;
+    --allow-dirty) ALLOW_DIRTY=1; shift ;;
     *) echo "unknown argument: $1" >&2
-       echo "usage: $0 [windows|linux|android|macos|ios]... [--api-base URL] [--face customer|staff] [--skip-gates] [--upload]" >&2
+       echo "usage: $0 [windows|linux|android|macos|ios]... [--api-base URL] [--face customer|staff] [--skip-gates] [--upload] [--allow-dirty]" >&2
        exit 2 ;;
   esac
 done
@@ -77,7 +79,36 @@ esac
 # that was nearly v0.0.0030".
 VERSION=$(tr -d '[:space:]' < client/VERSION)
 COMMIT=$(git rev-parse --short HEAD)
-git diff --quiet && git diff --cached --quiet || COMMIT="${COMMIT}+"
+# ── refuse to stamp a build nobody can reproduce ─────────────────
+#
+# Same guard, same reason, as build-web.sh. The "+" below marks a dirty tree;
+# it was a marker rather than a check, and production once shipped as
+# `v0.0.0112 · 288a795+` — a bundle matching no commit.
+#
+# It matters MORE here than on the web. A web build is replaced by the next
+# deploy; an .ipa goes to Apple and an .aab goes to Play, where a build that
+# cannot be reproduced from a commit is one you cannot rebuild to diagnose a
+# review rejection weeks later. Neither store lets you quietly replace it.
+#
+# --allow-dirty still stamps the + so the artefact says so of itself.
+DIRTY=$(git status --porcelain --untracked-files=no)
+
+if [ -n "$DIRTY" ]; then
+  if [ "$ALLOW_DIRTY" -eq 1 ]; then
+    COMMIT="${COMMIT}+"
+    echo "⚠ building from a dirty tree (--allow-dirty). This artefact cannot be"
+    echo "  reproduced from ${COMMIT%+}; it is stamped + to say so."
+  else
+    echo "✗ refusing to build: the working tree has uncommitted changes." >&2
+    echo "  A store artefact that matches no commit cannot be rebuilt to" >&2
+    echo "  diagnose a review rejection weeks from now." >&2
+    echo >&2
+    echo "$DIRTY" | sed 's/^/    /' >&2
+    echo >&2
+    echo "  Commit or stash these, or pass --allow-dirty if you mean it." >&2
+    exit 1
+  fi
+fi
 BUILT_AT=$(date -u +'%Y-%m-%d %H:%M')
 
 # Apple wants a monotonic CFBundleVersion, exactly as Play wants a rising
