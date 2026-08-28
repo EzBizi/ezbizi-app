@@ -303,6 +303,32 @@ class WebManagementTest extends TestCase
             'The plugin file has no WordPress header, so WordPress will not list it.',
         );
 
+        /*
+         * readme.txt is not optional once this plugin is listed on
+         * wordpress.org — the directory parses it for the version, the
+         * description and, above all, the external-service disclosure that
+         * says what leaves a customer's server. A zip that reaches somebody
+         * without it is a different package from the one under review.
+         */
+        $readme = (string) $zip->getFromName('ezbizi/readme.txt');
+
+        $this->assertNotSame('', $readme, 'The zip has no readme.txt.');
+        $this->assertStringContainsString('Stable tag: 1.0.0', $readme);
+        $this->assertStringContainsString('== External services ==', $readme);
+
+        /*
+         * The disclosure has to name the token and the hostname specifically.
+         * "Connects to an API" is the wording that gets a plugin rejected, and
+         * it is also not true enough to be worth saying.
+         */
+        $this->assertStringContainsString('your site token', $readme);
+        $this->assertStringContainsString('hostname', $readme);
+
+        $this->assertNotFalse(
+            $zip->locateName('ezbizi/uninstall.php'),
+            'Deleting the plugin must take the stored token with it.',
+        );
+
         $zip->close();
         @unlink($path);
     }

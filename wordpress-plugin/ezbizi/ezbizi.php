@@ -48,6 +48,10 @@ const EZBIZI_VERSION = '1.0.0';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
+// How stale a payload may get before a visitor is made to wait for a fresh
+// one. Only reached on sites where WP-Cron never runs.
+const EZBIZI_STALE_MAX = 3600;
+const EZBIZI_REFRESHING = 'ezbizi_refreshing';
 
 /**
  * The host this WordPress install answers on, in the form EzBizi stores.
@@ -88,20 +92,67 @@ function ezbizi_settings() {
 }
 
 /**
- * The payload, from cache when it is fresh and from EzBizi when it is not.
+ * The payload a page renders from. NEVER makes a visitor wait when it can help
+ * it.
+ *
+ * ── Why this is not simply "fetch when the cache expires" ──
+ *
+ * It was, and that put a blocking HTTP request on the critical path of whichever
+ * unlucky visitor arrived first after each expiry. On a slow or unreachable API
+ * that is up to the timeout added to somebody's homepage, caused by us, on a
+ * site we do not run. Stale by five minutes is invisible; eight seconds is not.
+ *
+ * So: serve what we have and refresh behind the request. Blocking happens in
+ * exactly two cases, both correct — there is nothing at all to show yet, or the
+ * last good read is older than the ceiling below.
+ */
+function ezbizi_payload($force = false) {
+    if ($force) {
+        return ezbizi_fetch();
+    }
+
+    $cached = get_transient(EZBIZI_CACHE_KEY);
+
+    if (is_array($cached)) {
+        return $cached;
+    }
+
+    $last = get_option(EZBIZI_LAST_GOOD, null);
+
+    // First read after setup. There is nothing to serve, so the wait buys
+    // something — and it happens on the settings screen, not on a visitor's page.
+    if (! is_array($last)) {
+        return ezbizi_fetch();
+    }
+
+    /*
+     * A site with WP-Cron disabled would otherwise serve one stale payload
+     * forever, because the background refresh below never runs. Past the
+     * ceiling we block rather than publish an unbounded-stale phone number.
+     */
+    if (time() - (int) (isset($last['fetched_at']) ? $last['fetched_at'] : 0) > EZBIZI_STALE_MAX) {
+        return ezbizi_fetch();
+    }
+
+    if (! get_transient(EZBIZI_REFRESHING)) {
+        // Short-lived, so a failed refresh retries soon rather than being
+        // locked out until it expires.
+        set_transient(EZBIZI_REFRESHING, 1, 60);
+        wp_schedule_single_event(time(), 'ezbizi_refresh');
+    }
+
+    return $last;
+}
+
+add_action('ezbizi_refresh', 'ezbizi_fetch');
+
+/**
+ * Actually ask EzBizi. The only function in this file that makes a request.
  *
  * Returns the last known good payload on any failure, and an empty shape only
  * when this site has never had a successful read.
  */
-function ezbizi_payload($force = false) {
-    if (! $force) {
-        $cached = get_transient(EZBIZI_CACHE_KEY);
-
-        if (is_array($cached)) {
-            return $cached;
-        }
-    }
-
+function ezbizi_fetch() {
     $settings = ezbizi_settings();
     $empty = array('values' => array(), 'pages' => array(), 'fields' => array());
 
@@ -139,6 +190,10 @@ function ezbizi_payload($force = false) {
     if (! is_array($payload) || ! isset($payload['values'])) {
         return get_option(EZBIZI_LAST_GOOD, $empty);
     }
+
+    // Stamped so ezbizi_payload() can tell "five minutes stale" from "this site
+    // has had no successful read since March".
+    $payload['fetched_at'] = time();
 
     set_transient(EZBIZI_CACHE_KEY, $payload, EZBIZI_CACHE_TTL);
     update_option(EZBIZI_LAST_GOOD, $payload, false);
@@ -205,7 +260,7 @@ add_action('admin_menu', function () {
 });
 
 add_action('admin_init', function () {
-    register_setting('ezbizi', 'ezbizi_token', array('sanitize_callback' => 'sanitize_text_field'));
+    register_setting('ezbizi', 'ezbizi_token', array('sanitize_callback' => 'ezbizi_keep_saved_token'));
     register_setting('ezbizi', 'ezbizi_api_base', array('sanitize_callback' => 'esc_url_raw'));
 });
 
@@ -216,6 +271,20 @@ add_action('admin_init', function () {
  */
 add_action('update_option_ezbizi_token', 'ezbizi_forget_cache', 10, 0);
 add_action('update_option_ezbizi_api_base', 'ezbizi_forget_cache', 10, 0);
+
+/**
+ * An empty token field means "leave it alone", not "erase it".
+ *
+ * The field is rendered empty on every load — see the settings page — because a
+ * token echoed into `value` puts a live credential in the page source, the
+ * browser cache and any screenshot of the screen. The cost of not echoing it is
+ * that blank can no longer mean "clear", so it means "unchanged" instead.
+ */
+function ezbizi_keep_saved_token($value) {
+    $value = sanitize_text_field($value);
+
+    return $value === '' ? (string) get_option('ezbizi_token', '') : $value;
+}
 
 function ezbizi_forget_cache() {
     delete_transient(EZBIZI_CACHE_KEY);
@@ -244,8 +313,12 @@ function ezbizi_settings_page() {
     settings_fields('ezbizi');
     echo '<table class="form-table"><tbody>';
     echo '<tr><th scope="row"><label for="ezbizi_token">Site token</label></th><td>'
-        . '<input name="ezbizi_token" id="ezbizi_token" type="password" class="regular-text" value="'
-        . esc_attr($settings['token']) . '" autocomplete="off"></td></tr>';
+        . '<input name="ezbizi_token" id="ezbizi_token" type="password" class="regular-text" value="" '
+        . 'autocomplete="off" placeholder="'
+        . ($settings['token'] === '' ? 'Paste the token from EzBizi' : 'Saved. Paste a new one to replace it.')
+        . '"><p class="description">'
+        . 'The token is never shown again once saved. Leave this empty to keep the current one.'
+        . '</p></td></tr>';
     echo '<tr><th scope="row"><label for="ezbizi_api_base">EzBizi address</label></th><td>'
         . '<input name="ezbizi_api_base" id="ezbizi_api_base" type="url" class="regular-text" value="'
         . esc_attr($settings['api']) . '"><p class="description">Leave this alone unless EzBizi told you to change it.</p></td></tr>';
