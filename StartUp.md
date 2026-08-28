@@ -145,12 +145,25 @@ stale tree — 2,004 deletions across three unrelated modules, no conflict.
 BASE=$(git rev-parse HEAD)                 # resolve ONCE, here, immediately
 export GIT_INDEX_FILE=$(mktemp -u)
 git read-tree "$BASE"                      # replaces this index; ignores .git/index
-git update-index --cacheinfo 100644,<blob>,<path>   # blobs built from $BASE, just now
+git add <your paths>                       # or update-index --cacheinfo for a blob you built
 TREE=$(git write-tree)
-git diff-index --cached --stat "$BASE"     # ← ITS OWN STEP. Read it. Stop if wrong.
+git diff-tree -p "$BASE" "$TREE" -- <your paths>    # ← READ THE HUNKS. Not the stat.
 COMMIT=$(git commit-tree "$TREE" -p "$BASE" -F msg)
 git update-ref refs/heads/main "$COMMIT" "$BASE"     # fails if main moved
 ```
+
+**Read hunks, not a stat, and read them against the tree you are about to commit.**
+Every other check here counts files; only this one shows you *whose lines* they
+are. `git add <path>` stages the **working tree** version of that path — so the
+private index answers "which files am I committing", and answers nothing at all
+about "whose version of this file". Another session editing the same file on disk
+has its work taken by your `git add`, silently.
+
+That has already happened to somebody running the full recipe correctly: they
+verified 1 file, 15 insertions, 6 deletions, and the commit landed as 49 — a
+thirty-line guard from another session, carried in under a message about something
+else. They only noticed because they compared the numbers afterwards and were
+suspicious of their own commit.
 
 `$BASE` appears four times and must be the same SHA every time. Resolving `HEAD`
 twice is how the drift gets in, and it looks careful while doing it.
