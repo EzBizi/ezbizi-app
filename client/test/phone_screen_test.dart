@@ -460,10 +460,15 @@ void main() {
 
       await openNumbers(tester);
 
+      // Loud, not a caption. All five production lines sat in exactly this
+      // state for hours reading as grey secondary text, and every caller went
+      // to voicemail without anyone noticing.
       expect(
-        find.text('No ring group — calls go straight to voicemail.'),
+        find.textContaining('Nobody answers this line'),
         findsOneWidget,
       );
+      expect(find.textContaining('1 line is not reaching anybody'), findsNothing);
+      expect(find.textContaining('One line is not reaching anybody'), findsOneWidget);
     });
 
     testWidgets('editing a line saves what it rings and how it behaves', (tester) async {
@@ -499,12 +504,23 @@ void main() {
       await tester.tap(find.text('Front desk').last);
       await tester.pumpAndSettle();
 
+      // The form carries the carrier settings now, so Save is below the fold
+      // and a ListView has not built it yet.
+      await tester.dragUntilVisible(
+        find.text('Save'),
+        find.byType(ListView).last,
+        const Offset(0, -200),
+      );
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
       expect(patched, isNotNull);
       expect(patched!['ring_group_id'], 'rg-1');
       expect(patched!['after_hours'], 'voicemail');
+
+      // Untouched carrier settings are not sent: an emergency address nobody
+      // changed must not become a Twilio write on every save.
+      expect(patched!.containsKey('emergency_address_sid'), isFalse);
     });
 
     testWidgets('it fits a 375px screen', (tester) async {
@@ -1052,6 +1068,26 @@ MockClientHandler _handler({
 
     if (path.endsWith('/phone/numbers/importable') && request.method == 'GET') {
       return _json({'data': importable});
+    }
+
+    // What Twilio says about one line, read live when the edit form opens.
+    if (path.endsWith('/carrier') && request.method == 'GET') {
+      return _json({
+        'data': {
+          'sid': 'PN1',
+          'phone_number': '+15612323929',
+          'friendly_name': 'EZBZ',
+          'capabilities': {'voice': true, 'sms': true, 'mms': false, 'fax': false},
+          'emergency_status': 'Inactive',
+          'emergency_address_sid': null,
+          'voice_caller_id_lookup': false,
+          'address_requirements': 'none',
+        },
+      });
+    }
+
+    if (path.endsWith('/phone/addresses') && request.method == 'GET') {
+      return _json({'data': <Map<String, Object?>>[]});
     }
 
     if (path.endsWith('/phone/numbers/import') && request.method == 'POST') {

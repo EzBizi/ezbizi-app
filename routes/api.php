@@ -52,6 +52,7 @@ use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsCont
 use App\Http\Controllers\Api\Phone\FlowsController as PhoneFlowsController;
 use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
 use App\Http\Controllers\Api\Phone\MessagesController as PhoneMessagesController;
+use App\Http\Controllers\Api\Phone\AddressesController as PhoneAddressesController;
 use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
 use App\Http\Controllers\Api\Phone\PortsController as PhonePortsController;
 use App\Http\Controllers\Api\Phone\PortWebhookController as PhonePortWebhookController;
@@ -844,6 +845,21 @@ Route::prefix('v1')
         // Literal paths before {number}, or "importable" is captured as an id.
         Route::get('phone/numbers/importable', [PhoneNumbersController::class, 'importable']);
         Route::post('phone/numbers/import', [PhoneNumbersController::class, 'import']);
+
+        // Shopping for a new line: what Twilio has, and where it can sell.
+        // Both are phone.edit — the only reason to look is to buy.
+        Route::get('phone/numbers/available', [PhoneNumbersController::class, 'available']);
+        Route::get('phone/numbers/countries', [PhoneNumbersController::class, 'countries']);
+
+        // What Twilio itself says about one line right now — capabilities and
+        // above all whether 911 works. Read live; a stored copy goes stale
+        // without anybody being told.
+        Route::get('phone/numbers/{number}/carrier', [PhoneNumbersController::class, 'carrier']);
+
+        // Emergency addresses (spec §6). Account-level on Twilio, because one
+        // premises answers for every line in the building.
+        Route::get('phone/addresses', [PhoneAddressesController::class, 'index']);
+        Route::post('phone/addresses', [PhoneAddressesController::class, 'store']);
         Route::get('phone/numbers', [PhoneNumbersController::class, 'index']);
         Route::post('phone/numbers', [PhoneNumbersController::class, 'store']);
 
