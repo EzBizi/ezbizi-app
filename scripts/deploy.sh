@@ -213,8 +213,17 @@ fi
 if git remote get-url origin >/dev/null 2>&1; then
   echo "→ pushing $GATED_SHA to GitHub"
   git push origin "$GATED_SHA":main 2>&1 | tail -2 || {
-    echo "⚠ GitHub push FAILED — the release is live, but origin is behind."
-    echo "  Run: git push origin main"
+    # Most often this is not a failure at all: a session pushed to origin
+    # directly, so origin is AHEAD of the pinned SHA and the push is refused as
+    # a non-fast-forward. Say which it is rather than guessing, because "origin
+    # is behind" sent me looking for a broken backup that was already fine.
+    if git merge-base --is-ancestor "$GATED_SHA" origin/main 2>/dev/null; then
+      echo "  (origin already carries $GATED_SHA — it is ahead, not behind)"
+      git push origin main 2>&1 | tail -1 || true
+    else
+      echo "⚠ GitHub push FAILED and origin does NOT carry this release."
+      echo "  Run: git push origin main"
+    fi
   }
 fi
 
