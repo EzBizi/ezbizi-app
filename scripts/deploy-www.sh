@@ -41,18 +41,45 @@
 # www/ has no test suite and fails silently — a renamed page, a sitemap that
 # forgot an entry, malformed JSON-LD. None of it 500s. check-site.py checks all
 # of that offline, and it does not ship: it is a dev script, not a page.
+#
+# ── which www/ ───────────────────────────────────────────────────
+#
+#   ./scripts/deploy-www.sh              publishes the WORKING TREE
+#   ./scripts/deploy-www.sh <sha>        publishes that commit
+#
+# deploy.sh passes the gated SHA, for the same reason it builds the client in a
+# worktree at that SHA rather than in place: fifteen sessions share this tree,
+# and a site published from it is a claim about whatever anybody happened to
+# have saved. Publishing half of somebody edit to the live marketing site is a
+# worse outcome than any it would save.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 REMOTE=app
 ROOT=/var/www/www
 SITE=https://www.ezbizi.com
+SHA=${1:-}
+
+# The source of truth for this run. Working tree by default; a temp extraction
+# of the commit when one is named. git archive rather than a worktree because
+# only www/ is wanted and a worktree would cost a full checkout.
+SRC=www
+if [ -n "$SHA" ]; then
+  TMP=$(mktemp -d)
+  trap 'rm -rf "$TMP"' EXIT
+  SRC=$TMP/www
+  mkdir -p "$SRC"
+  git archive "$SHA" www | tar -x --strip-components=1 -C "$SRC"
+  echo "→ publishing www/ at $(git rev-parse --short "$SHA")"
+else
+  echo "→ publishing www/ from the WORKING TREE (uncommitted edits included)"
+fi
 
 echo "→ checking the site"
-python www/check-site.py
+python "$SRC/check-site.py"
 
 echo "→ publishing to $REMOTE:$ROOT"
-tar -cz -C www --exclude=./check-site.py . | ssh "$REMOTE" "
+tar -cz -C "$SRC" --exclude=./check-site.py . | ssh "$REMOTE" "
   set -e
   sudo tar -xz -C '$ROOT' --no-same-owner
   sudo chown -R www-data:www-data '$ROOT'
@@ -65,13 +92,13 @@ tar -cz -C www --exclude=./check-site.py . | ssh "$REMOTE" "
 # Byte-for-byte, because "it returned 200" is what the stale site did all day.
 echo "→ verifying what the server returns"
 bad=0
-for f in $(cd www && find . -name '*.html' | sed 's|^\./||' | sort); do
+for f in $(cd "$SRC" && find . -name '*.html' | sed 's|^\./||' | sort); do
   url="$SITE/$(dirname "$f")/"
   url="${url//\/.\//\/}"                    # ./ -> /   for the root index.html
-  if curl -sf "$url" | cmp -s - "www/$f"; then
+  if curl -sf "$url" | cmp -s - "$SRC/$f"; then
     echo "   ok   $url"
   else
-    echo "   ✗    $url does not match www/$f"
+    echo "   ✗    $url does not match $SRC/$f"
     bad=$((bad + 1))
   fi
 done

@@ -305,6 +305,6 @@ fi
 # point, and a red exit here would say the release failed when the release is
 # live. Re-run it alone with scripts/deploy-www.sh.
 echo "→ publishing the marketing site"
-scripts/deploy-www.sh || echo "⚠ the SITE did not publish — the app release above is fine. Re-run: scripts/deploy-www.sh" >&2
+scripts/deploy-www.sh "$GATED_SHA" || echo "⚠ the SITE did not publish — the app release above is fine. Re-run: scripts/deploy-www.sh" >&2
 
 echo "✓ done — https://app.ezbizi.com"
