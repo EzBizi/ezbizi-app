@@ -67,6 +67,12 @@ class CustomersController extends Controller
              * have a franchise called Florida, and a row tagged "Florida" then
              * says nothing about which — see `present()` for why that tag
              * carries the weight it does.
+             *
+             * `company_id` is in the select because the nested load needs the
+             * foreign key, not because anything reads it. Trimming it to "only
+             * what we need" does not error: the belongsTo resolves to null and
+             * `company` goes quietly empty. That is the bug this line already
+             * had once, on the duplicate-check path.
              */
             ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name')
             ->withCount('jobs')
