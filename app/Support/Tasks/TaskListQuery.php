@@ -21,22 +21,89 @@ final class TaskListQuery
         $query = Task::query()->where('board_id', $board->id)->whereIn('board_id', $visibleBoards)
             ->active()->whereNull('parent_task_id');
         $this->applyConfiguration($query, $board, $configuration);
-        $total = (clone $query)->reorder()->count();
-        $rows = (clone $query)->with($this->relations())->forPage($page, $perPage)->get();
+
+        // The summary describes the complete filtered accessible result — computed
+        // here, against the unwindowed query, before any window narrows what is
+        // returned in `data`. A Kanban column header must show the true count for
+        // its bucket across the whole board, not just what one slice returned.
+        $summaryTotal = (clone $query)->reorder()->count();
+        $groupCounts = $this->groupCounts($query, $board, $configuration['group_by']);
+        $statusSummaries = (clone $query)->reorder()->selectRaw('status_option_id, COUNT(*) as aggregate')
+            ->groupBy('status_option_id')->orderBy('status_option_id')->get()
+            ->map(fn (Task $row) => ['status_option_id' => $row->status_option_id, 'count' => (int) $row->aggregate])
+            ->values()->all();
+
+        $presentation = TaskPresentation::from($configuration['presentation']);
+        $window = TaskWindow::parse($presentation, $configuration['window']);
+        [$windowed, $omitted, $paginate] = $this->applyWindow($query, $board, $presentation, $window, $summaryTotal);
+
+        $total = $paginate ? $summaryTotal : (clone $windowed)->reorder()->count();
+        $rowsQuery = (clone $windowed)->with($this->relations());
+        $rows = $paginate ? $rowsQuery->forPage($page, $perPage)->get() : $rowsQuery->get();
 
         return [
             'data' => $rows->map(fn (Task $task) => $this->present($task, $configuration['group_by']))->values()->all(),
             'total' => $total,
-            'page' => $page,
+            'page' => $paginate ? $page : 1,
             'per_page' => $perPage,
-            'last_page' => max(1, (int) ceil($total / $perPage)),
-            'group_counts' => $this->groupCounts($query, $board, $configuration['group_by']),
-            'status_summaries' => (clone $query)->reorder()->selectRaw('status_option_id, COUNT(*) as aggregate')
-                ->groupBy('status_option_id')->orderBy('status_option_id')->get()
-                ->map(fn (Task $row) => ['status_option_id' => $row->status_option_id, 'count' => (int) $row->aggregate])
-                ->values()->all(),
+            'last_page' => $paginate ? max(1, (int) ceil($total / $perPage)) : 1,
+            'group_counts' => $groupCounts,
+            'status_summaries' => $statusSummaries,
+            'summary' => ['total' => $summaryTotal, 'group_counts' => $groupCounts, 'status_summaries' => $statusSummaries],
+            'omitted' => $omitted,
+            'window' => $window->toArray(),
             'fingerprint' => $this->boardFingerprint($query, $board),
         ];
+    }
+
+    /**
+     * Narrows the pre-window filtered query down to what a presentation's window
+     * actually shows, and counts what fell out along the way. Table keeps Phase 1's
+     * exact paginated behaviour untouched — a frozen client omitting `window` must
+     * see byte-identical results. Workload's per-owner reshaping is Task 7's job;
+     * here it is left as the plain filtered-accessible set.
+     *
+     * @return array{0:Builder,1:array{undated:int,outside_window:int,unowned:int},2:bool}
+     */
+    private function applyWindow(Builder $query, TaskBoard $board, TaskPresentation $presentation, TaskWindow $window, int $summaryTotal): array
+    {
+        $omitted = ['undated' => 0, 'outside_window' => 0, 'unowned' => 0];
+        $windowed = clone $query;
+
+        if ($presentation === TaskPresentation::Calendar) {
+            $omitted['undated'] = (clone $query)->reorder()->whereNull('due_on')->count();
+            $windowed->whereNotNull('due_on')->whereBetween('due_on', [$window->from(), $window->to()]);
+            $omitted['outside_window'] = $summaryTotal - $omitted['undated'] - (clone $windowed)->reorder()->count();
+
+            return [$windowed, $omitted, false];
+        }
+
+        if ($presentation === TaskPresentation::Timeline) {
+            $omitted['undated'] = (clone $query)->reorder()->whereNull('start_on')->whereNull('due_on')->count();
+            // (start_on IS NULL OR start_on <= :to) AND (due_on IS NULL OR due_on >= :from),
+            // with a task that carries neither date excluded rather than trivially matched.
+            $windowed->where(fn (Builder $has) => $has->whereNotNull('start_on')->orWhereNotNull('due_on'))
+                ->where(fn (Builder $started) => $started->whereNull('start_on')->orWhere('start_on', '<=', $window->to()))
+                ->where(fn (Builder $due) => $due->whereNull('due_on')->orWhere('due_on', '>=', $window->from()));
+            $omitted['outside_window'] = $summaryTotal - $omitted['undated'] - (clone $windowed)->reorder()->count();
+
+            return [$windowed, $omitted, false];
+        }
+
+        if ($presentation === TaskPresentation::Kanban) {
+            $this->applyFilter($windowed, $board, [
+                'field' => $window->bucketField(), 'operator' => 'in', 'value' => $window->buckets(),
+            ]);
+            $omitted['outside_window'] = $summaryTotal - (clone $windowed)->reorder()->count();
+
+            return [$windowed, $omitted, false];
+        }
+
+        if ($presentation === TaskPresentation::Workload) {
+            return [$windowed, $omitted, false];
+        }
+
+        return [$windowed, $omitted, true];
     }
 
     public function myTasks(User $user, ViewScope $scope, int $page, int $perPage): array
