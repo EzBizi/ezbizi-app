@@ -53,6 +53,18 @@ final class EnsureTaskRouteAccess
         } elseif ($board instanceof TaskBoard) {
             if (str_ends_with($action, '\\TaskBoardRecoveryController@store')) {
                 $this->access->recoveryAtCurrentViewDecision($actor, $board, $scope)->authorize();
+            } elseif (str_ends_with($action, '\\TaskParticipantsController@index')
+                && $request->query('purpose') === 'membership') {
+                $view = $this->access->viewDecision($actor, $board, $scope);
+                if ($view->denied()) {
+                    if (! $this->access->canBrowseRecoverable($actor, $scope)) {
+                        $view->authorize();
+                    }
+                    $this->access->recoveryAtCurrentViewDecision($actor, $board, $scope)->authorize();
+                }
+            } elseif (str_ends_with($action, '\\TaskBoardsController@duplicate')
+                || str_ends_with($action, '\\TaskBoardsController@duplicateSource')) {
+                $this->access->manageAtFiledPlaceDecision($actor, $board)->authorize();
             } elseif (str_ends_with($action, '\\TaskBoardsController@restore')) {
                 $this->access->manageArchivedDecision($actor, $board, $scope)->authorize();
             } else {
@@ -89,7 +101,7 @@ final class EnsureTaskRouteAccess
             $column = $route->parameter('column');
             $option = $route->parameter('option');
             if ($column instanceof TaskColumnDefinition && $option instanceof TaskColumnOption) {
-                abort_unless($option->definition_id === $column->id, Response::HTTP_NOT_FOUND);
+                abort_unless($option->column_definition_id === $column->id, Response::HTTP_NOT_FOUND);
             }
         }
 
