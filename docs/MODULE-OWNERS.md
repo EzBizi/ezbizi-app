@@ -31,7 +31,8 @@ sessions either. The SHA is the only handle that survives a rename.
 | **Inspection** | `Api/Inspection*Controller.php` · `Models/Inspection*.php` · `Policies/Inspection*.php` · `Support/Inspection/` · `Support/Files/HardenedPdf.php` · `screens/inspection/` | — |
 | **Marketing** | `Api/Social*Controller.php` · `Models/Social*.php` · `Jobs/PublishSocialTarget.php` · `Support/Social/` · `screens/marketing/` · `tests/Feature/Social/` | — |
 | **EZ Leads** — `leads`, `reviews`, `business_profile` | `Models/{Lead,Review,ReviewReply,BusinessLocation}.php` · their policies and controllers · `Services/{Leads,Reviews,BusinessProfile}/` · `widgets/connect_account.dart` | — |
-| **Email** | `Support/Email/` · `Api/Mailbox*Controller.php` · `Api/{GoogleMail,MicrosoftMail,GoogleWorkspace}AuthController.php` · `Models/Mailbox*.php` · `screens/email/` | — |
+| **Email — inbound** | Shared mailboxes, IMAP, tenant OAuth. `Support/Email/` · `Api/Mailbox*Controller.php` · `Api/{GoogleMail,MicrosoftMail,GoogleWorkspace}AuthController.php` · `Models/Mailbox*.php` · `screens/email/` | — |
+| **Platform outbound mail (SES)** | **Not the same module as Email — this is the platform's own outgoing transport.** `Support/Mail/` · `resources/views/vendor/mail/` · `Notifications/{PasswordResetLink,InvitationLink}.php` · `Console/Commands/SendTestEmail.php` · the mail block of `config/mail.php`. Off-repo and also theirs: the `MAIL_*` and `EZBIZI_BACKUP_ALERT_TO` keys in the server `.env` (a release rollback does **not** revert these), `/usr/local/bin/ezbizi-mail-warmup.sh` and its root cron, the `_dmarc` record in the BIND zone, and the AWS SES/SNS/IAM consoles | `ezbizi-77` |
 | **Automations** | `Support/Automations/` · `Api/AutomationsController.php` · `Models/Automation*.php` · `Console/Commands/DispatchAutomationEvents.php` · `Support/Modules/{Module,Trigger,Action}Definition.php` · `screens/automation_builder.dart` | — |
 
 ## Files nobody owns

@@ -54,6 +54,13 @@ minutes. It has already overturned three confident guesses — including one of 
   the write path, not just the decode.** The decode was tolerant in the case above;
   the crash is in serialisation on save.
 
+  This is the category that gets through review of the diff itself. A new route, a
+  new permission or a changed `Refusal` sentence can all be found by grepping a diff
+  for the words. **A one-line entry in a registry's const array cannot** — it looks
+  like adding a string to a list, and it changes what `GET /dashboard` returns. Ask
+  "which existing responses does my registration appear in", not "which routes did I
+  add".
+
 ## 2 · Do not set or raise a minimum client version
 
 This outranks everything above, because it needs no deploy and passes no gate.
@@ -72,7 +79,25 @@ exactly the reflex to suppress this week.
 Production currently has **no minimum set**. Nobody owns that controller; it is
 control plane and appears on no module map.
 
-## 3 · Never test against the shared `ezbizi_testing` schema
+## 3 · SES is in the sandbox — every recipient must be verified first
+
+**Delete this section when production access is granted.** Appeal case
+`178717006200996`, denied once already for zero sending history.
+
+SES delivers **only** to hand-verified identities and rejects everything else with
+**554**. Every rejection lands on the Rejects metric AWS reads while judging the
+pending appeal — so a careless send does not merely fail, it argues against us.
+
+**Any new mail recipient — an alert address, a notification target, a test send —
+must be a verified identity first.**
+
+This has already bitten once: the backup alert pointed at a personal Gmail, which
+was harmless while nothing could send and became a live Reject the hour outbound
+mail started working. It also blocks TODO #22 signup verification, which would
+return 200 on our side and put nothing in a real customer's inbox — the failure is
+invisible from here, which is the shape everything else in this file shares.
+
+## 4 · Never test against the shared `ezbizi_testing` schema
 
 `RefreshDatabase` drops it, so two sessions testing at once destroy each other with
 no useful error — the tell is an impossible pair, "migrations doesn't exist" beside

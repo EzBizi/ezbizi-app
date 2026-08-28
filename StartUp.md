@@ -179,8 +179,17 @@ swap passed because the *pointer* was current; the *tree* was twenty minutes old
 
 **The stat check catches a stale base. It cannot catch a stale blob** — the file
 list is right while the contents are old, which is exactly how one revert got
-through with its author watching. If you splice blobs in by hand, diff each
-spliced path against `$BASE`'s version of that path, not just the file list.
+through with its author watching: 24 intended paths, nothing foreign, and two of
+them carrying twenty-minute-old content that reverted another module's routes. If
+you splice blobs in by hand, diff each spliced path against `$BASE`'s version of
+that path, not just the file list.
+
+**And it is blind to a rename**, which shows as `0` changed lines and moves no
+count you would glance at. One commit whose message said "docs" carried half of
+another session's `git mv` out of the shared index — a class renamed in its path
+but not in its declaration, so PSR-4 could not autoload it. Read the *paths* in
+the stat, not only the numbers: a `{old => new}` arrow you did not intend is the
+whole signal, and there is no line count to catch it.
 
 Clearing a stale entry is safe when you can show it is stale: `git reset HEAD --
 <path>` writes the index only and never touches the working tree, so after it,
