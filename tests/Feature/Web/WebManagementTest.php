@@ -314,15 +314,32 @@ class WebManagementTest extends TestCase
 
         $this->assertNotSame('', $readme, 'The zip has no readme.txt.');
         $this->assertStringContainsString('Stable tag: 1.0.0', $readme);
-        $this->assertStringContainsString('== External services ==', $readme);
+        $this->assertStringContainsString('== External Services ==', $readme);
 
         /*
          * The disclosure has to name the token and the hostname specifically.
          * "Connects to an API" is the wording that gets a plugin rejected, and
          * it is also not true enough to be worth saying.
          */
-        $this->assertStringContainsString('your site token', $readme);
-        $this->assertStringContainsString('hostname', $readme);
+        $this->assertStringContainsStringIgnoringCase('site token', $readme);
+        $this->assertStringContainsStringIgnoringCase('hostname', $readme);
+
+        // The reviewer wants the endpoint named, not "an API". A1 Tools was
+        // approved with this line and it is the format being copied here.
+        $this->assertStringContainsString(
+            'https://app.ezbizi.com/api/v1/web/plugin/values',
+            $readme,
+        );
+
+        /*
+         * The version wordpress.org rejected was 6.8, and this line is the
+         * only thing standing between a stale value and a second rejection.
+         * `c0a0df8` put 6.8 back in a stale whole-file commit and the suite
+         * stayed green, because it reverted the readme and this assertion
+         * together — consistent with each other and wrong about the world.
+         * Pinning the number here means the next such revert goes red.
+         */
+        $this->assertStringContainsString('Tested up to: 7.1', $readme);
 
         $this->assertNotFalse(
             $zip->locateName('ezbizi/uninstall.php'),

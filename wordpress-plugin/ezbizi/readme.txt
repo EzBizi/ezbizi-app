@@ -1,8 +1,8 @@
 === EzBizi ===
-Contributors: YOUR-WORDPRESS-ORG-USERNAME
+Contributors: ezbizi
 Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
-Tested up to: 6.8
+Tested up to: 7.1
 Requires PHP: 7.4
 Stable tag: 1.0.0
 License: GPLv2 or later
@@ -57,35 +57,44 @@ This plugin is a client for the EzBizi platform and does nothing on its own. You
 will need an account, and a website registered under Web Management, to get the
 token it asks for.
 
-== External services ==
+== External Services ==
 
-This plugin connects to the EzBizi API to fetch the business details you entered
-in your EzBizi account. It does not work without that connection — retrieving
-those values is the plugin's entire purpose.
+This plugin relies on a third-party service to retrieve the business details
+(company name, phone, address, licence, hours) that you configure in your
+EzBizi account. It does not work without that connection — retrieving those
+values is the plugin's entire purpose.
 
-**What is sent, and when.** On each refresh the plugin sends:
+= EzBizi API =
 
-* your site token, which identifies which website is asking;
-* your site's hostname, taken from your WordPress address, so EzBizi returns the
-  values for this site rather than another one you own;
-* this plugin's version number.
+**What it is:** EzBizi is a business management platform. It holds a company's
+business details centrally so the same phone number or address can be published
+across every website that company owns, with each site — including each
+subdomain — able to publish its own answers.
 
-A refresh happens at most once every five minutes while your site is being
-visited, and additionally when an administrator saves the settings or presses
-"Refresh now".
+**What data is sent:** Your site token, which identifies which registered
+website is asking; your site's hostname, taken from your WordPress address, so
+EzBizi returns the values for this site rather than another one you own; and
+this plugin's version number.
 
-**What is not sent.** No information about your visitors is transmitted — no IP
+**When data is sent:**
+- At most once every five minutes while your site is being visited, refreshed in
+  the background rather than while a visitor waits
+- When an administrator saves the settings page or presses "Refresh now"
+
+**What data is NOT sent:** No information about your visitors — no IP
 addresses, no page views, no analytics, no personal data of any kind. The page a
 visitor is on is never sent either: per-page values are selected on your own
 server from data already received.
 
-**What is received.** The business details you entered in EzBizi for this site,
-such as your company name, phone number, address, licence number and opening
-hours. These are values you have chosen to publish on your own public website.
+**What data is received:** Only the business details you entered in EzBizi for
+this site — company name, phone number, email, address, opening hours, licence
+number, service area and booking link. These are values you have chosen to
+publish on your own public website.
 
-Service provider: EzBizi — https://www.ezbizi.com/
-Terms of service: https://www.ezbizi.com/terms/
-Privacy policy: https://www.ezbizi.com/privacy/
+**Service Provider:** EzBizi
+**API Endpoint:** https://app.ezbizi.com/api/v1/web/plugin/values
+**Terms of Service:** https://www.ezbizi.com/terms/
+**Privacy Policy:** https://www.ezbizi.com/privacy/
 
 == Installation ==
 
@@ -129,7 +138,7 @@ visitors are never made to wait on a request to us.
 
 = Does this send anything about my visitors? =
 
-No. See the "External services" section above for exactly what is transmitted.
+No. See the "External Services" section above for exactly what is transmitted.
 
 = What happens when I delete the plugin? =
 
