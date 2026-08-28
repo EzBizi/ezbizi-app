@@ -246,6 +246,46 @@ opened that file with a reason to understand it.
 
 ---
 
+## 8.2 `earned_statuses` is in the wrong place, and §8.1 cannot be built until it moves
+
+Found while planning §8.1, and it invalidates the first draft of it.
+
+**Where the setting actually lives today:** `user.preferences['dashboard.glances']`, per
+user, handled at `DashboardController:110` and explicitly documented there as "category 6"
+— a personal preference. `SettingRegistry.php:708` defines `jobs.statuses`, the
+organization's status *vocabulary*, but **there is no `jobs.earned_statuses` anywhere**.
+
+**Why that makes `earned_at` unbuildable as first written.** `earned_at` is one column on
+one row. If which statuses count as earned is a per-user preference, then two people
+looking at the same job disagree about whether — and when — it became revenue, and the
+column would need a different value per viewer. That is not a schema that exists.
+
+It is also wrong on its own terms, independent of this build: **what counts as company
+revenue is a property of the company, not a display option on somebody's dashboard.**
+One person reordering their dashboard can currently change what the business calls
+earned, for themselves, silently and with no audit. That is the shape §5 of the coherency
+rules warns about — a setting offered at a scope that should not control it.
+
+**The fix, and it is small.** Add `jobs.earned_statuses` to `SettingRegistry` beside the
+`jobs.statuses` it depends on, resolved through `SettingsResolver` (franchise → owning
+company → parent company → organization → default) like every other setting. Then:
+
+- `earned_at` stamps on the first transition into an organization-earned status. One
+  value, well defined, the same for every viewer.
+- `Revenue` reads the organization's answer, not the reader's.
+- The existing per-user dashboard preference is **migrated into the organization setting**
+  rather than deleted, and afterwards the dashboard control reads the organization's list.
+  Nobody loses a choice they had made; it stops being private to them.
+
+**This is a prerequisite, not an extension.** §8.1 does not ship without it. It is the
+one place in this spec where the work grew after the scope decision was taken, so it is
+recorded here as its own section rather than folded quietly into §8.1.
+
+`SettingRegistry.php` is a shared file — one definition added, announced before editing,
+staged as a partial commit.
+
+---
+
 ## 9. Materials
 
 Read-only on the job. `InventoryIssue` already carries `job_id` and already posts stock
