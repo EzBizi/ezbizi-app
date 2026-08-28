@@ -20,6 +20,7 @@ use App\Models\TaskNotificationIntent;
 use App\Models\TaskPriorityOption;
 use App\Models\TaskStatusOption;
 use App\Models\TaskUpdate;
+use App\Models\TaskUpdateVersion;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\BoardMemberRole;
 use App\Support\Tasks\StatusCategory;
@@ -223,8 +224,13 @@ final class TaskSecurityTest extends TestCase
             'mention_user_ids' => [],
         ])->assertConflict()->assertJsonPath('meta.current_update_version', 2);
         $this->assertSame($before, $this->footprint());
+        $this->postJson("/api/v1/tasks/{$this->task->id}/updates/{$unsafe->id}/archive", [
+            'expected_update_version' => 1,
+        ])->assertConflict()->assertJsonPath('meta.current_update_version', 2);
+        $this->assertSame($before, $this->footprint());
         $this->enterTenant();
         $this->assertSame('<p>Current body.</p>', $unsafe->fresh()->body);
+        $this->assertNull($unsafe->fresh()->archived_at);
     }
 
     public function test_hostile_xlsx_packages_are_rejected_before_any_import_session_is_staged(): void
@@ -233,6 +239,15 @@ final class TaskSecurityTest extends TestCase
         $uploads = [
             $this->mutatedXlsxUpload(fn (\ZipArchive $zip) => $zip->addFromString('xl/vbaProject.bin', 'macro')),
             $this->mutatedXlsxUpload(fn (\ZipArchive $zip) => $zip->addFromString('xl/externalLinks/externalLink1.xml', '<externalLink/>')),
+            $this->mutatedXlsxUpload(function (\ZipArchive $zip): void {
+                $relationships = (string) $zip->getFromName('xl/_rels/workbook.xml.rels');
+                $relationships = str_replace(
+                    '</Relationships>',
+                    '<Relationship Id="external-review" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="https://attacker.example/workbook.xml" TargetMode="External"/></Relationships>',
+                    $relationships,
+                );
+                $zip->addFromString('xl/_rels/workbook.xml.rels', $relationships);
+            }),
             $this->mutatedXlsxUpload(function (\ZipArchive $zip): void {
                 for ($index = $zip->numFiles; $index <= 256; $index++) {
                     $zip->addFromString("padding/{$index}.txt", 'x');
@@ -404,6 +419,58 @@ final class TaskSecurityTest extends TestCase
         $this->assertSame(1, Notification::where('delivery_key', $residue->id)->count());
     }
 
+    public function test_import_commit_and_expiry_workers_serialize_without_partial_rows_or_premature_byte_deletion(): void
+    {
+        $viewId = $this->mainViewId();
+        [$token, $session] = $this->previewCsv($viewId, 'commit-expiry-race.csv');
+        $storageRoot = Storage::disk($session->disk)->path('');
+        $path = $session->path;
+
+        // Child processes need committed fixtures. This is the final test in
+        // this class; the finally block restores the isolated test schema.
+        DB::commit();
+        $workers = [];
+        try {
+            $arguments = [
+                $this->tenant['org']->id, $this->tenant['admin']->id,
+                $this->board->id, $viewId, $token, $storageRoot,
+            ];
+            $commit = $this->startImportRaceWorker('commit_hold', [...$arguments, '2026-08-28 12:29:00 UTC']);
+            $workers[] = &$commit;
+            $this->assertSame('LOCKED', $this->readImportRaceLine($commit));
+
+            $expiry = $this->startImportRaceWorker('expire', [...$arguments, '2026-08-28 12:31:00 UTC']);
+            $workers[] = &$expiry;
+            $this->assertSame('READY', $this->readImportRaceLine($expiry));
+            $this->releaseImportRaceWorker($expiry);
+            $this->assertSame('EXPIRING', $this->readImportRaceLine($expiry));
+
+            $this->enterTenant();
+            $this->assertNull(TaskImportSession::findOrFail($session->id)->consumed_at);
+            $this->assertFalse(Task::where('title', 'Imported safely')->exists());
+            $this->assertTrue(Storage::disk($session->disk)->exists($path));
+
+            $this->releaseImportRaceWorker($commit);
+            $this->assertSame('RESULT|COMMITTED|1|CONSUMED', $this->finishImportRaceWorker($commit));
+            $this->assertSame('RESULT|EXPIRED', $this->finishImportRaceWorker($expiry));
+
+            $this->enterTenant();
+            $this->assertSame(1, Task::where('title', 'Imported safely')->count());
+            $this->assertSame(1, TaskActivity::where('kind', 'task.imported')->count());
+            $this->assertSame(1, DB::table('audit_events')->where('action', 'task.imported')->count());
+            $this->assertSame(1, AutomationEvent::where('event_key', 'task.created')
+                ->whereIn('subject_id', Task::where('title', 'Imported safely')->pluck('id'))->count());
+            $this->assertNotNull(TaskImportSession::whereKey($session->id)->value('consumed_at'));
+            $this->assertFalse(Storage::disk($session->disk)->exists($path));
+        } finally {
+            foreach ($workers as &$worker) {
+                $this->closeImportRaceWorker($worker);
+            }
+            app(TenantContext::class)->forget();
+            $this->artisan('migrate:fresh', ['--force' => true])->assertSuccessful();
+        }
+    }
+
     private function footprint(): array
     {
         $this->enterTenant();
@@ -411,6 +478,7 @@ final class TaskSecurityTest extends TestCase
         return [
             'tasks' => Task::count(),
             'updates' => TaskUpdate::count(),
+            'update_versions' => TaskUpdateVersion::count(),
             'links' => DB::table('task_record_links')->count(),
             'activities' => TaskActivity::count(),
             'audits' => DB::table('audit_events')->where('action', 'like', 'task.%')->count(),
@@ -422,6 +490,98 @@ final class TaskSecurityTest extends TestCase
             'task_version' => (int) $this->task->fresh()->version,
             'detail_version' => (int) $this->task->fresh()->detail_version,
         ];
+    }
+
+    private function startImportRaceWorker(string $operation, array $arguments): array
+    {
+        $worker = <<<'PHP'
+require 'vendor/autoload.php';
+$app = require 'bootstrap/app.php';
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$operation = $argv[1];
+$organizationId = $argv[2];
+$actorId = $argv[3];
+$boardId = $argv[4];
+$viewId = $argv[5];
+$token = $argv[6];
+config(['filesystems.disks.local.root' => $argv[7]]);
+Illuminate\Support\Carbon::setTestNow($argv[8]);
+$wait = static function (string $signal): void {
+    fwrite(STDOUT, $signal."\n"); fflush(STDOUT);
+    if (trim((string) fgets(STDIN)) !== 'GO') { throw new RuntimeException('missing GO'); }
+};
+if ($operation === 'expire') {
+    $wait('READY');
+    fwrite(STDOUT, "EXPIRING\n"); fflush(STDOUT);
+    Illuminate\Support\Facades\Artisan::call('ezbizi:expire-task-import-sessions');
+    $result = 'EXPIRED';
+} else {
+    $organization = App\Models\Organization::query()->findOrFail($organizationId);
+    $result = app(App\Support\Tenancy\TenantContext::class)->run($organization, function () use ($actorId, $boardId, $viewId, $token, $wait): string {
+        return Illuminate\Support\Facades\DB::transaction(function () use ($actorId, $boardId, $viewId, $token, $wait): string {
+            App\Models\TaskImportSession::query()->where('token_hash', hash('sha256', $token))
+                ->lockForUpdate()->firstOrFail();
+            $wait('LOCKED');
+            $actor = App\Models\User::query()->findOrFail($actorId);
+            $board = App\Models\TaskBoard::query()->findOrFail($boardId);
+            $created = app(App\Support\Tasks\TaskTransfer::class)->commit(
+                $actor, $board, App\Support\Scoping\ViewScope::forUser($actor), $viewId, $token,
+            );
+            $consumed = App\Models\TaskImportSession::query()
+                ->where('token_hash', hash('sha256', $token))->value('consumed_at') !== null;
+            return 'COMMITTED|'.$created['created'].'|'.($consumed ? 'CONSUMED' : 'UNCONSUMED');
+        });
+    });
+}
+fwrite(STDOUT, 'RESULT|'.$result."\n");
+PHP;
+        $command = [PHP_BINARY, '-r', $worker, $operation, ...$arguments];
+        $process = proc_open($command, [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']], $pipes, base_path());
+        $this->assertIsResource($process);
+
+        return ['process' => $process, 'pipes' => $pipes, 'finished' => false];
+    }
+
+    private function readImportRaceLine(array $worker): string
+    {
+        return trim((string) fgets($worker['pipes'][1]));
+    }
+
+    private function releaseImportRaceWorker(array $worker): void
+    {
+        fwrite($worker['pipes'][0], "GO\n");
+        fflush($worker['pipes'][0]);
+    }
+
+    private function finishImportRaceWorker(array &$worker): string
+    {
+        $line = $this->readImportRaceLine($worker);
+        fclose($worker['pipes'][0]);
+        $stderr = stream_get_contents($worker['pipes'][2]);
+        fclose($worker['pipes'][1]);
+        fclose($worker['pipes'][2]);
+        $exit = proc_close($worker['process']);
+        $worker['finished'] = true;
+        $this->assertSame(0, $exit, $stderr);
+
+        return $line;
+    }
+
+    private function closeImportRaceWorker(array &$worker): void
+    {
+        if ($worker['finished'] ?? true) {
+            return;
+        }
+        foreach ($worker['pipes'] as $pipe) {
+            if (is_resource($pipe)) {
+                fclose($pipe);
+            }
+        }
+        if (is_resource($worker['process'])) {
+            proc_terminate($worker['process']);
+            proc_close($worker['process']);
+        }
+        $worker['finished'] = true;
     }
 
     /** @return array{string, TaskImportSession} */

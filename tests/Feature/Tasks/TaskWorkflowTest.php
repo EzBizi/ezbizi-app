@@ -20,6 +20,7 @@ use App\Support\Tasks\TaskNotificationIntentDispatcher;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -208,6 +209,175 @@ final class TaskWorkflowTest extends TestCase
         $this->postJson("/api/v1/tasks/boards/{$board->id}/archive", [
             'expected_structure_version' => $board->structure_version,
         ])->assertOk()->assertJsonPath('data.archived', true);
+    }
+
+    public function test_successful_configuration_mutations_advance_one_authoritative_version_and_emit_exact_audits(): void
+    {
+        $this->enterTenant();
+        $auditBefore = DB::table('audit_events')->pluck('id')->all();
+        $folderId = $this->postJson('/api/v1/tasks/folders', ['name' => 'Configuration'])
+            ->assertCreated()->json('data.id');
+        $this->patchJson("/api/v1/tasks/folders/{$folderId}", ['name' => 'Configuration updated'])
+            ->assertOk()->assertJsonPath('data.name', 'Configuration updated');
+        $this->postJson("/api/v1/tasks/folders/{$folderId}/archive")
+            ->assertOk()->assertJsonPath('data.archived', true);
+        $this->postJson("/api/v1/tasks/folders/{$folderId}/restore")
+            ->assertOk()->assertJsonPath('data.archived', false);
+
+        $boardId = $this->postJson('/api/v1/tasks/boards', [
+            'name' => 'Configuration matrix', 'visibility' => 'scope', 'folder_id' => $folderId,
+        ])->assertCreated()->assertJsonPath('data.structure_version', 1)->json('data.id');
+        $this->enterTenant();
+        $board = TaskBoard::findOrFail($boardId);
+        $version = 1;
+        $advance = function ($response) use (&$version): void {
+            $response->assertSuccessful()->assertJsonPath('meta.structure_version', ++$version);
+        };
+
+        $group = $this->postJson("/api/v1/tasks/boards/{$board->id}/groups", [
+            'name' => 'Configuration group', 'expected_structure_version' => $version,
+        ]);
+        $advance($group);
+        $groupId = $group->json('data.id');
+        $advance($this->patchJson("/api/v1/tasks/boards/{$board->id}/groups/{$groupId}", [
+            'name' => 'Configuration group updated', 'expected_structure_version' => $version,
+        ]));
+        $advance($this->postJson("/api/v1/tasks/boards/{$board->id}/groups/{$groupId}/archive", [
+            'expected_structure_version' => $version,
+        ]));
+        $advance($this->postJson("/api/v1/tasks/boards/{$board->id}/groups/{$groupId}/restore", [
+            'expected_structure_version' => $version,
+        ]));
+        $this->enterTenant();
+        $groupIds = $board->groups()->active()->orderByDesc('position')->pluck('id')->all();
+        $advance($this->postJson("/api/v1/tasks/boards/{$board->id}/groups/reorder", [
+            'ordered_ids' => $groupIds, 'expected_structure_version' => $version,
+        ]));
+
+        $status = $this->postJson("/api/v1/tasks/boards/{$board->id}/statuses", [
+            'name' => 'Configuration status', 'category' => 'active',
+            'expected_structure_version' => $version,
+        ]);
+        $advance($status);
+        $statusId = $status->json('data.id');
+        $advance($this->patchJson("/api/v1/tasks/boards/{$board->id}/statuses/{$statusId}", [
+            'name' => 'Configuration status updated', 'color' => '#1769AA',
+            'expected_structure_version' => $version,
+        ]));
+        $advance($this->postJson("/api/v1/tasks/boards/{$board->id}/statuses/{$statusId}/archive", [
+            'expected_structure_version' => $version,
+        ]));
+        $advance($this->postJson("/api/v1/tasks/boards/{$board->id}/statuses/{$statusId}/restore", [
+            'expected_structure_version' => $version,
+        ]));
+        $this->enterTenant();
+        $statusIds = $board->statusOptions()->active()->orderByDesc('position')->pluck('id')->all();
+        $advance($this->postJson("/api/v1/tasks/boards/{$board->id}/statuses/reorder", [
+            'ordered_ids' => $statusIds, 'expected_structure_version' => $version,
+        ]));
+
+        $this->enterTenant();
+        $priority = $board->priorityOptions()->active()->where('rank', 'low')->firstOrFail();
+        $advance($this->patchJson("/api/v1/tasks/boards/{$board->id}/priorities/{$priority->id}", [
+            'name' => 'Someday', 'color' => '#777777', 'expected_structure_version' => $version,
+        ]));
+        $advance($this->postJson("/api/v1/tasks/boards/{$board->id}/priorities/{$priority->id}/archive", [
+            'expected_structure_version' => $version,
+        ]));
+        $advance($this->postJson("/api/v1/tasks/boards/{$board->id}/priorities/{$priority->id}/restore", [
+            'expected_structure_version' => $version,
+        ]));
+        $this->enterTenant();
+        $priorityIds = $board->priorityOptions()->active()->orderByDesc('position')->pluck('id')->all();
+        $advance($this->postJson("/api/v1/tasks/boards/{$board->id}/priorities/reorder", [
+            'ordered_ids' => $priorityIds, 'expected_structure_version' => $version,
+        ]));
+
+        $advance($this->patchJson("/api/v1/tasks/boards/{$board->id}/columns/core/due_on", [
+            'display_label' => 'Deadline', 'expected_structure_version' => $version,
+        ]));
+        $column = $this->postJson("/api/v1/tasks/boards/{$board->id}/columns", [
+            'name' => 'Workstream', 'type' => 'label', 'expected_structure_version' => $version,
+        ]);
+        $advance($column);
+        $columnId = $column->json('data.id');
+        $advance($this->patchJson("/api/v1/tasks/boards/{$board->id}/columns/{$columnId}", [
+            'name' => 'Workstream updated', 'expected_structure_version' => $version,
+        ]));
+        $firstOption = $this->postJson("/api/v1/tasks/boards/{$board->id}/columns/{$columnId}/options", [
+            'name' => 'Installation', 'expected_structure_version' => $version,
+        ]);
+        $advance($firstOption);
+        $firstOptionId = $firstOption->json('data.id');
+        $secondOption = $this->postJson("/api/v1/tasks/boards/{$board->id}/columns/{$columnId}/options", [
+            'name' => 'Repair', 'expected_structure_version' => $version,
+        ]);
+        $advance($secondOption);
+        $secondOptionId = $secondOption->json('data.id');
+        $advance($this->patchJson(
+            "/api/v1/tasks/boards/{$board->id}/columns/{$columnId}/options/{$firstOptionId}",
+            ['name' => 'New installation', 'expected_structure_version' => $version],
+        ));
+        $advance($this->postJson(
+            "/api/v1/tasks/boards/{$board->id}/columns/{$columnId}/options/{$firstOptionId}/archive",
+            ['expected_structure_version' => $version],
+        ));
+        $advance($this->postJson(
+            "/api/v1/tasks/boards/{$board->id}/columns/{$columnId}/options/{$firstOptionId}/restore",
+            ['expected_structure_version' => $version],
+        ));
+        $advance($this->postJson("/api/v1/tasks/boards/{$board->id}/columns/{$columnId}/options/reorder", [
+            'ordered_ids' => [$firstOptionId, $secondOptionId], 'expected_structure_version' => $version,
+        ]));
+        $advance($this->postJson("/api/v1/tasks/boards/{$board->id}/columns/{$columnId}/archive", [
+            'expected_structure_version' => $version,
+        ]));
+        $advance($this->postJson("/api/v1/tasks/boards/{$board->id}/columns/{$columnId}/restore", [
+            'expected_structure_version' => $version,
+        ]));
+        $this->enterTenant();
+        $columnIds = $board->columnDefinitions()->active()->orderByDesc('position')->pluck('id')->all();
+        $advance($this->postJson("/api/v1/tasks/boards/{$board->id}/columns/reorder", [
+            'ordered_ids' => $columnIds, 'expected_structure_version' => $version,
+        ]));
+
+        $view = $this->postJson("/api/v1/tasks/boards/{$board->id}/views", [
+            'name' => 'Configuration view', 'visibility' => 'shared',
+            'configuration' => $this->configuration(), 'expected_structure_version' => $version,
+        ]);
+        $advance($view);
+        $viewId = $view->json('data.id');
+        $advance($this->patchJson("/api/v1/tasks/boards/{$board->id}/views/{$viewId}", [
+            'name' => 'Configuration view updated', 'is_locked' => true,
+            'expected_view_version' => 1, 'expected_structure_version' => $version,
+        ]));
+        $this->enterTenant();
+        $viewIds = $board->views()->where('visibility', 'shared')->orderByDesc('position')->pluck('id')->all();
+        $advance($this->postJson("/api/v1/tasks/boards/{$board->id}/views/reorder", [
+            'visibility' => 'shared', 'view_ids' => $viewIds,
+            'expected_structure_version' => $version,
+        ]));
+        $this->deleteJson("/api/v1/tasks/boards/{$board->id}/views/{$viewId}", [
+            'expected_view_version' => 2, 'expected_structure_version' => $version,
+        ])->assertNoContent();
+        $version++;
+        $this->enterTenant();
+        $this->assertSame($version, (int) $board->fresh()->structure_version);
+
+        $expectedActions = [
+            'task_folder.created', 'task_folder.updated', 'task_folder.archived', 'task_folder.restored',
+            'task_board.created',
+            'task_group.created', 'task_group.updated', 'task_group.archived', 'task_group.restored', 'task_groups.reordered',
+            'task_status.created', 'task_status.updated', 'task_status.archived', 'task_status.restored', 'task_statuses.reordered',
+            'task_priority.updated', 'task_priority.archived', 'task_priority.restored', 'task_priorities.reordered',
+            'task_core_column.updated', 'task_column.created', 'task_column.updated',
+            'task_column_option.created', 'task_column_option.created', 'task_column_option.updated',
+            'task_column_option.archived', 'task_column_option.restored', 'task_column_options.reordered',
+            'task_column.archived', 'task_column.restored', 'task_columns.reordered',
+            'task_view.created', 'task_view.updated', 'task_view.reordered', 'task_view.deleted',
+        ];
+        $actualActions = DB::table('audit_events')->whereNotIn('id', $auditBefore)->pluck('action')->all();
+        $this->assertEqualsCanonicalizing($expectedActions, $actualActions);
     }
 
     private function configuration(array $replace = []): array
