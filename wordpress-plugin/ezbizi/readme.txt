@@ -1,5 +1,5 @@
 === EzBizi ===
-Contributors: YOUR-WORDPRESS-ORG-USERNAME
+Contributors: ezbizi
 Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 6.8
