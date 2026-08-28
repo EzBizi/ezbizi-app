@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Support\Social\SocialOAuthDrivers;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -116,6 +117,84 @@ class GoogleConnectPermissionTest extends TestCase
                 '/^(?:'.$pattern.')$/',
                 $provider->routeKey(),
                 "{$provider->value} has no route: /social/{$provider->routeKey()}/start would 404.",
+            );
+        }
+    }
+
+    /**
+     * Every provider resolves to a driver, and the two agree on the route key.
+     *
+     * The OTHER half of the half-registered provider, and the half nothing was
+     * checking. A case with no route 404s and the route test above catches it.
+     * A case with no DRIVER passes that test — the route exists — and then
+     * fails at resolve time, in a request, for a provider a test suite that
+     * does not know it should exist will never ask about.
+     *
+     * The route-key agreement matters for the same reason: `byRouteKey()` is
+     * populated from `$driver->routeKey()` while the ROUTE is generated from
+     * `SocialProvider::routeKey()`. Nothing forces those to be the same string,
+     * so a driver answering 'google_ads' while its enum case says 'google-ads'
+     * registers a route nothing can resolve. Both sides read from the enum
+     * today; this is what keeps it that way.
+     *
+     * Bluesky is exempt and it is the only one: handle plus app password, no
+     * consent window, its own route and no SocialOAuth driver at all.
+     */
+    public function test_no_provider_is_half_registered(): void
+    {
+        $drivers = app(SocialOAuthDrivers::class);
+
+        foreach (SocialProvider::cases() as $provider) {
+            if ($provider === SocialProvider::Bluesky) {
+                $this->assertNull(
+                    $drivers->for($provider),
+                    'Bluesky connects by password and must not gain an OAuth driver.',
+                );
+
+                continue;
+            }
+
+            $driver = $drivers->for($provider);
+
+            $this->assertNotNull(
+                $driver,
+                "{$provider->value} is in the enum with no driver registered. Its route "
+                .'exists, so nothing 404s — it fails when somebody presses Connect.',
+            );
+
+            $this->assertSame(
+                $provider->routeKey(),
+                $driver->routeKey(),
+                "{$provider->value} disagrees with its driver about its route key. The "
+                .'route is generated from the enum and the registry is keyed from the '
+                .'driver, so a mismatch registers a route nothing resolves.',
+            );
+        }
+    }
+
+    /**
+     * Every data source answers to the module that reads it, not to Marketing.
+     *
+     * Written over `dataSources()` rather than naming Google Ads and Business
+     * Profile, because Thumbtack arrived in these files without me and the next
+     * one will too. A provider added as a data source and left on the default
+     * `marketing.edit` arm is a permission bug that looks like a working
+     * connection.
+     */
+    public function test_no_data_source_is_left_on_marketing(): void
+    {
+        foreach (SocialProvider::dataSources() as $provider) {
+            $this->assertNotSame(
+                'marketing.edit',
+                $provider->connectPermission(),
+                "{$provider->value} is a data source — EzBizi reads it, nobody posts as "
+                .'it — so Marketing is the wrong authority for connecting it.',
+            );
+
+            $this->assertFalse(
+                $provider->isPublishingNetwork(),
+                "{$provider->value} is in dataSources() but still reports as a publishing "
+                .'network, so it would appear in the Marketing catalogue.',
             );
         }
     }
