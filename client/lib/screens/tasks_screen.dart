@@ -1113,7 +1113,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
 
   Future<void> _addTaskToGroup(String? groupId) async {
     final board = _board;
-    if (board == null || !board.can('import')) return;
+    if (board == null || !board.can('create_task')) return;
     final status =
         board.statuses
             .where((item) => !item.archived)
@@ -1417,7 +1417,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                 board: _board!,
                 rows: _rows,
                 onSelected: _selectTask,
-                onAddTask: _board!.can('import') ? _addTaskToGroup : null,
+                onAddTask: _board!.can('create_task') ? _addTaskToGroup : null,
               ),
             ),
             _pagination(),
@@ -1733,7 +1733,9 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                     configuration: _configuration,
                     groupCounts: _groupCounts,
                     onDraftChanged: _draftChanged,
-                    onAddTask: _board!.can('import') ? _addTaskToGroup : null,
+                    onAddTask: _board!.can('create_task')
+                        ? _addTaskToGroup
+                        : null,
                     onSelectionChanged: (count) => _announce(
                       count == 0
                           ? 'Selection cleared.'

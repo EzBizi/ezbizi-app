@@ -5,6 +5,7 @@ import 'package:ezbizi_client/screens/tasks/task_api.dart';
 import 'package:ezbizi_client/screens/tasks/task_board_settings.dart';
 import 'package:ezbizi_client/screens/tasks/task_board_members.dart';
 import 'package:ezbizi_client/screens/tasks/task_models.dart';
+import 'package:ezbizi_client/screens/tasks/task_mobile_list.dart';
 import 'package:ezbizi_client/screens/tasks/task_structure_editor.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -626,6 +627,45 @@ void main() {
       'new_owner_user_id': 'user-2',
     });
     expect(find.text('Private board needing an owner'), findsNothing);
+  });
+
+  testWidgets('create-task action shows group add for a non-manager member', (
+    tester,
+  ) async {
+    String? targetGroupId;
+    final boardJson = _board(actions: const <Object?>['create_task'])
+      ..['groups'] = <Object?>[
+        <String, Object?>{
+          'id': 'group-1',
+          'name': 'To do',
+          'color': null,
+          'position': 1,
+          'order_version': 1,
+          'archived': false,
+          'actions': <Object?>[],
+        },
+      ];
+    final board = TaskBoard.fromJson(boardJson);
+    expect(board.can('import'), isFalse);
+    expect(board.can('manage_structure'), isFalse);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TaskMobileList(
+            board: board,
+            rows: const <TaskRow>[],
+            onSelected: (_) {},
+            onAddTask: board.can('create_task')
+                ? (groupId) => targetGroupId = groupId
+                : null,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('Add task to To do'));
+    expect(targetGroupId, 'group-1');
   });
 
   testWidgets('structure editor uses row actions and advances server version', (
