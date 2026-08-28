@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Controller;
 use App\Http\Controllers\Api\Phone\Concerns\ResolvesPhoneConnections;
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\PhoneFlow;
 use App\Models\PhoneNumber;
 use App\Models\PhoneRingGroup;
 use App\Models\PhoneUsageDaily;
@@ -599,6 +600,16 @@ class NumbersController extends Controller
             'label' => ['sometimes', 'string', 'max:191'],
             'ring_group_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_ring_groups')],
             'hours_schedule_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_hours_schedules')],
+
+            // Which IVR menu answers this line.
+            //
+            // Nothing could set this. `flow_id` was fillable, the renderer
+            // read it, and no endpoint in the module ever wrote it — the only
+            // writes anywhere were FlowsController clearing it on delete. So a
+            // menu could be built, named, given digits and options, and then
+            // never attached to anything: the column was permanently null and
+            // every menu in the system was decoration.
+            'flow_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_flows')],
             'record' => ['sometimes', 'boolean'],
             'transcribe' => ['sometimes', 'boolean'],
             'after_hours' => ['sometimes', Rule::in(PhoneNumber::AFTER_HOURS)],
@@ -628,6 +639,19 @@ class NumbersController extends Controller
             if ($group === null || $group->connection_id !== $number->connection_id) {
                 throw ValidationException::withMessages([
                     'ring_group_id' => 'That group belongs to a different phone account.',
+                ]);
+            }
+        }
+
+        // Same rule for the menu, and for the same reason: a flow on another
+        // account names groups this line cannot reach, so the menu would read
+        // its prompt, take a key, and dial nobody.
+        if (filled($input['flow_id'] ?? null)) {
+            $flow = PhoneFlow::query()->find($input['flow_id']);
+
+            if ($flow === null || $flow->connection_id !== $number->connection_id) {
+                throw ValidationException::withMessages([
+                    'flow_id' => 'That menu belongs to a different phone account.',
                 ]);
             }
         }
@@ -792,6 +816,7 @@ class NumbersController extends Controller
             'after_hours' => $number->after_hours,
             'after_hours_number' => $number->after_hours_number,
             'ring_group_id' => $number->ring_group_id,
+            'flow_id' => $number->flow_id,
             'hours_schedule_id' => $number->hours_schedule_id,
             'language' => $number->language,
             'sms_outbound_allowed' => (bool) $number->sms_outbound_allowed,

@@ -9,6 +9,7 @@ import '../../widgets/refused.dart';
 import '../../widgets/tag.dart';
 import 'call_flow_pane.dart';
 import 'flows_pane.dart';
+import 'general_pane.dart';
 import 'hours_pane.dart';
 import 'numbers_pane.dart';
 import 'ring_groups_pane.dart';
@@ -37,6 +38,7 @@ class PhoneSettingsTab extends StatefulWidget {
 class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   static const _sections = <(String, IconData)>[
     ('Call flow', Icons.account_tree_outlined),
+    ('General', Icons.tune_outlined),
     ('Connection', Icons.link_outlined),
     ('Numbers', Icons.dialpad_outlined),
     ('IVR menus', Icons.touch_app_outlined),
@@ -55,7 +57,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   /// phone account exists, and landing a brand new organization on "no lines
   /// yet" would be answering a question they have not asked. Connection is
   /// where somebody with nothing set up actually needs to start.
-  int _section = 1;
+  int _section = 2;
 
   bool _paneOpen = false;
 
@@ -296,14 +298,18 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       // Call flow leads, because it is the only screen that says whether any
       // of the others are doing anything.
       0 => CallFlowPane(api: widget.api),
-      1 => _connectionBody(),
-      2 => NumbersPane(api: widget.api, session: widget.session),
-      3 => FlowsPane(api: widget.api, session: widget.session),
-      4 => HoursPane(api: widget.api, session: widget.session),
-      5 => RingGroupsPane(api: widget.api, session: widget.session),
-      6 => TagsPane(api: widget.api, session: widget.session),
-      7 => TrustPane(api: widget.api, session: widget.session),
-      8 => UsagePane(
+
+      // General writes what Call flow reads. Adjacent on purpose: the two
+      // answer the same question, one as a report and one as a form.
+      1 => GeneralPane(api: widget.api, session: widget.session),
+      2 => _connectionBody(),
+      3 => NumbersPane(api: widget.api, session: widget.session),
+      4 => FlowsPane(api: widget.api, session: widget.session),
+      5 => HoursPane(api: widget.api, session: widget.session),
+      6 => RingGroupsPane(api: widget.api, session: widget.session),
+      7 => TagsPane(api: widget.api, session: widget.session),
+      8 => TrustPane(api: widget.api, session: widget.session),
+      9 => UsagePane(
         api: widget.api,
         session: widget.session,
         scopeType: _places.first.type,
