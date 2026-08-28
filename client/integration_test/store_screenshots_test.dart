@@ -1,3 +1,6 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -48,6 +51,17 @@ void main() {
       while (DateTime.now().isBefore(end)) {
         await tester.pump(const Duration(milliseconds: 100));
       }
+    }
+
+    // Android renders into a SurfaceView, which the screenshot path cannot read
+    // directly — takeScreenshot fails with 'call convertFlutterSurfaceToImage()
+    // first'. This swaps the surface for one that can be captured.
+    //
+    // Android only. iOS neither needs it nor supports it, and calling it there
+    // fails the run, so the same file has to ask which platform it is on rather
+    // than doing it unconditionally.
+    if (!kIsWeb && Platform.isAndroid) {
+      await binding.convertFlutterSurfaceToImage();
     }
 
     await settle(6);
