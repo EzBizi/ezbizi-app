@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../widgets/async_body.dart';
+import 'name_entry_panel.dart';
 import 'task_api.dart';
 import 'task_models.dart';
 
@@ -29,6 +30,7 @@ class _TaskFolderAdministrationState extends State<TaskFolderAdministration> {
   List<TaskFolder> _active = const [];
   List<TaskFolder> _archived = const [];
   String? _message;
+  NameEntryRequest? _nameRequest;
 
   bool get _canCreate => widget.directoryActions.contains('create_folder');
   bool get _canViewArchived =>
@@ -83,39 +85,17 @@ class _TaskFolderAdministrationState extends State<TaskFolderAdministration> {
     widget.onUnavailable(message);
   }
 
-  Future<String?> _nameDialog(String title, {String initial = ''}) async {
-    final controller = TextEditingController(text: initial);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Folder name'),
-          onSubmitted: (value) {
-            if (value.trim().isNotEmpty) {
-              Navigator.of(dialogContext).pop(value.trim());
-            }
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = controller.text.trim();
-              if (value.isNotEmpty) Navigator.of(dialogContext).pop(value);
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+  Future<String?> _nameDialog(String title, {String initial = ''}) {
+    final request = NameEntryRequest(
+      title: title,
+      label: 'Folder name',
+      submitLabel: 'Save',
+      initial: initial,
     );
-    controller.dispose();
-    return result;
+    setState(() => _nameRequest = request);
+    return request.future.whenComplete(() {
+      if (mounted) setState(() => _nameRequest = null);
+    });
   }
 
   Future<void> _create() async {
@@ -186,7 +166,12 @@ class _TaskFolderAdministrationState extends State<TaskFolderAdministration> {
   }
 
   @override
-  Widget build(BuildContext context) => AsyncBody(
+  Widget build(BuildContext context) {
+    final request = _nameRequest;
+    if (request != null) {
+      return NameEntryPanel(request: request);
+    }
+    return AsyncBody(
     loading: _loading,
     error: null,
     onRetry: _load,
@@ -229,6 +214,7 @@ class _TaskFolderAdministrationState extends State<TaskFolderAdministration> {
       ],
     ),
   );
+  }
 
   Widget _folderTile(TaskFolder folder) => Card(
     child: ListTile(

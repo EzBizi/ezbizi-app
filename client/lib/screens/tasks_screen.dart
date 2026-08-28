@@ -11,6 +11,7 @@ import '../widgets/side_panel.dart';
 import '../widgets/tab_bar_like.dart';
 import 'tasks/board_directory.dart';
 import 'tasks/my_tasks_view.dart';
+import 'tasks/name_entry_panel.dart';
 import 'tasks/task_api.dart';
 import 'tasks/task_board_administration.dart';
 import 'tasks/task_board_members.dart';
@@ -94,6 +95,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   bool _showMyTasks = false;
   bool _showFilters = false;
   bool _showViewEditor = false;
+  NameEntryRequest? _nameRequest;
   bool _viewDirty = false;
   final Set<String> _dirtyDraftIds = <String>{};
   bool _foreground = true;
@@ -1140,38 +1142,14 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _announce('Add a status before creating a task.');
       return;
     }
-    final controller = TextEditingController();
-    final title = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Add task'),
-        content: TextField(
-          key: const ValueKey('task-create-title'),
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Task title'),
-          onSubmitted: (value) {
-            if (value.trim().isNotEmpty) {
-              Navigator.of(dialogContext).pop(value.trim());
-            }
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = controller.text.trim();
-              if (value.isNotEmpty) Navigator.of(dialogContext).pop(value);
-            },
-            child: const Text('Add task'),
-          ),
-        ],
-      ),
+    final request = NameEntryRequest(
+      title: 'Add task',
+      label: 'Task title',
+      submitLabel: 'Add task',
     );
-    controller.dispose();
+    setState(() => _nameRequest = request);
+    final title = await request.future;
+    if (mounted) setState(() => _nameRequest = null);
     if (title == null || !mounted || _board?.id != board.id) return;
     final privacy = _privacyGeneration;
     final result = await _tasks.createTask(
@@ -1430,7 +1408,12 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _content(bool mobile, bool wide) => _creating
+  Widget _content(bool mobile, bool wide) => _nameRequest != null
+      ? NameEntryPanel(
+          request: _nameRequest!,
+          fieldKey: const ValueKey('task-create-title'),
+        )
+      : _creating
       ? _NewBoardPane(
           onCancel: () => setState(() => _creating = false),
           onCreate: _createBoard,
