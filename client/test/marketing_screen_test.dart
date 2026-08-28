@@ -1,9 +1,11 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/files.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
+import 'package:ezbizi_client/screens/marketing/social_media_tab.dart';
 import 'package:ezbizi_client/screens/marketing_screen.dart';
 import 'package:ezbizi_client/widgets/dashboard_card.dart';
 import 'package:ezbizi_client/widgets/refused.dart';
@@ -711,6 +713,171 @@ void main() {
     expect(find.widgetWithText(TextButton, 'Keep it'), findsOneWidget);
   });
 
+  /// The defect that reached production on 2026-08-28, and Jose's request.
+  ///
+  /// Publishing is a job per account, so a 201 means QUEUED. The screen read
+  /// the Sent list once and never again, so a target that failed two seconds
+  /// later sat on screen saying "waiting to send" forever. Jose watched that
+  /// and asked why it was still waiting — TikTok had already refused it.
+  ///
+  /// A failure displayed as progress is the worst shape available: an error
+  /// sends somebody looking, a spinner tells them to wait.
+  group('a queued post is followed until the queue answers', () {
+    testWidgets('a target that fails is shown failing, not still waiting', (
+      tester,
+    ) async {
+      var call = 0;
+
+      // Queued on the first read, failed on every read after — which is
+      // exactly what production did.
+      final handler = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        postsFor: () => [
+          {
+            'id': 'post-1',
+            'body': 'Chimney sweeping season is here.',
+            'has_media': true,
+            'targets': [
+              {
+                'account': 'Everdoors Boards',
+                'provider_label': 'Pinterest',
+                'status': call++ == 0 ? 'queued' : 'failed',
+                'failure': call == 1
+                    ? null
+                    : 'That account has no boards, and a Pin has to live on one.',
+              },
+            ],
+          },
+        ],
+      );
+
+      await _pumpSocial(tester, handler);
+
+      // The poll is a Timer, and `pumpAndSettle` only advances while frames are
+      // scheduled — a pending timer schedules none. So the clock is moved by
+      // hand, which is also a fair model of what the user does: waits.
+      await _tick(tester);
+
+      // It polled, saw the truth, and said so.
+      expect(find.textContaining('has no boards'), findsOneWidget);
+      expect(find.textContaining('waiting to send'), findsNothing);
+      expect(call, greaterThan(1), reason: 'It never re-read the Sent list.');
+    });
+
+    testWidgets('a queue that never answers says so instead of spinning', (
+      tester,
+    ) async {
+      // Stuck queued forever — the shape of a dead worker.
+      final handler = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        postsFor: () => [
+          {
+            'id': 'post-1',
+            'body': 'Anyone there?',
+            'has_media': false,
+            'targets': [
+              {
+                'account': 'Everdoors Boards',
+                'provider_label': 'Pinterest',
+                'status': 'queued',
+                'failure': null,
+              },
+            ],
+          },
+        ],
+      );
+
+      await _pumpSocial(tester, handler);
+
+      // Past the give-up limit, which is 20 tries at three seconds.
+      await _tick(tester, times: 22);
+
+      // It gives up and says why, rather than drawing an indefinite wait or
+      // hammering the server forever.
+      expect(find.textContaining('queue has stopped answering'), findsOneWidget);
+    });
+  });
+
+  group('what posting somewhere actually does is said beforehand', () {
+    testWidgets('the TikTok drafts detour is on the account, before Publish', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(canEdit: true, connections: const [_tiktokDrafts]),
+      );
+
+      // The server's sentence, on the row, while the post can still be changed.
+      expect(
+        find.textContaining('TikTok drafts, not straight to the profile'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a network with no detour says nothing rather than reassuring', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(canEdit: true, connections: const [_pinterestBoard]),
+      );
+
+      expect(find.textContaining('drafts'), findsNothing);
+    });
+  });
+
+  /// Jose, verbatim: "The video should display, not just said it's attached,
+  /// we should have a playback window as well to review the videos or images
+  /// we upload."
+  ///
+  /// A filename is not confirmation. This goes to a public account under the
+  /// tenant's own name, so the check has to be one a person can perform.
+  group('an attached file can be looked at', () {
+    testWidgets('an attached image is displayed, not just named', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(canEdit: true, connections: const [_pinterestBoard]),
+        pickMedia: () async => PickedBytes('flue.png', _onePixelPng),
+      );
+
+      expect(find.byType(Image), findsNothing);
+
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, 'Attach a picture or video'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Image), findsOneWidget);
+      expect(find.text('flue.png'), findsOneWidget);
+    });
+
+    testWidgets('a video is named and sized rather than shown as an image', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(canEdit: true, connections: const [_pinterestBoard]),
+        pickMedia: () async =>
+            PickedBytes('sweep.mp4', List<int>.filled(2048, 7)),
+      );
+
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, 'Attach a picture or video'),
+      );
+      await tester.pumpAndSettle();
+
+      // No Image widget — decoding a frame needs a player package, which is a
+      // decision rather than a detail. It says what it has instead of pretending.
+      expect(find.byType(Image), findsNothing);
+      expect(find.textContaining('sweep.mp4'), findsWidgets);
+      expect(find.textContaining('2 KB'), findsOneWidget);
+    });
+  });
+
   group('the automation surface it has already declared', () {
     testWidgets('the declared events are listed in the module’s own words', (
       tester,
@@ -968,6 +1135,36 @@ Future<void> _pump(
 /// is what holds the real endpoint to the real registry. What must NOT happen
 /// is the client keeping its own copy, which is why nothing under `lib/` names
 /// a trigger.
+/// Advance the poll timer, and let the fetch it starts come back.
+///
+/// Two pumps per tick on purpose: the first fires the timer, the second flushes
+/// the await inside it. One pump leaves the response in flight and the screen
+/// showing the state before it.
+Future<void> _tick(WidgetTester tester, {int times = 1}) async {
+  for (var i = 0; i < times; i++) {
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+  }
+}
+
+/// The Social tab on its own, so a test can replace the file picker.
+///
+/// Injected rather than reached: `Files.pickBytes` touches the platform, and a
+/// preview that cannot be reached from a test is a preview whose whole purpose
+/// — letting somebody confirm the file before it goes out under their own name
+/// — is unverified.
+Future<void> _pumpSocial(
+  WidgetTester tester,
+  MockClientHandler handler, {
+  Future<PickedBytes?> Function()? pickMedia,
+  Size size = const Size(1400, 1600),
+}) =>
+    _pump(tester, handler, size, (api, session) => SocialMediaTab(
+          api: api,
+          session: session,
+          pickMedia: pickMedia ?? () async => null,
+        ));
+
 /// Marketing → Social Media Management → Posts, which is where compose lives.
 Future<void> _openPosts(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
@@ -1023,6 +1220,9 @@ MockClientHandler _handler({
   /// `marketing.view`, so a test about composing has to ask for it.
   bool canEdit = false,
   List<Map<String, Object?>>? posts,
+  /// Called per GET, so a test can make the queue change its mind between
+  /// polls — which is the whole behaviour under test.
+  List<Map<String, Object?>> Function()? postsFor,
   void Function(http.Request)? onPublish,
   /// Bluesky is off by default so the tests written before it stay about what
   /// they were about. It is the only network here that connects by password,
@@ -1161,12 +1361,22 @@ MockClientHandler _handler({
         }, 201);
       }
 
-      return _json({'data': posts ?? <Map<String, Object?>>[]});
+      return _json({
+        'data': postsFor != null ? postsFor() : (posts ?? <Map<String, Object?>>[]),
+      });
     }
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);
   };
 }
+
+/// A genuine 1x1 PNG. `Image.memory` decodes bytes for real, so a handful of
+/// arbitrary numbers would fail to decode and prove the fallback instead of
+/// the preview.
+final _onePixelPng = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmM'
+  'IQAAAABJRU5ErkJggg==',
+);
 
 http.Response _json(Object body, [int status = 200]) => http.Response(
       jsonEncode(body),
@@ -1219,6 +1429,7 @@ const _facebookPage = {
   'cannot_publish_because':
       'Publishing to Facebook Pages is not built yet. The account is '
       'connected, and posting to it will work without reconnecting.',
+  'posting_note': null,
 };
 
 const _pinterestBoard = {
@@ -1229,6 +1440,20 @@ const _pinterestBoard = {
   'handle': 'everdoors_pins',
   'can_publish': true,
   'cannot_publish_because': null,
+  'posting_note': null,
+};
+
+const _tiktokDrafts = {
+  'id': 'conn-5',
+  'display_name': 'ezbizi_us',
+  'provider': 'tiktok',
+  'provider_label': 'TikTok',
+  'handle': 'ezbizi_us',
+  'can_publish': true,
+  'cannot_publish_because': null,
+  'posting_note':
+      'Goes to this account’s TikTok drafts, not straight to the profile. '
+      'Open TikTok to finish and post it.',
 };
 
 const _blueskyAccount = {
@@ -1240,6 +1465,7 @@ const _blueskyAccount = {
   'can_publish': false,
   'cannot_publish_because':
       'Publishing to that network is not built yet.',
+  'posting_note': null,
 };
 
 const _xAccount = {
@@ -1251,6 +1477,7 @@ const _xAccount = {
   'can_publish': false,
   'cannot_publish_because':
       'Publishing to that network is not built yet.',
+  'posting_note': null,
 };
 
 const _monthNames = [

@@ -5,6 +5,7 @@ namespace Tests\Feature\Social;
 use App\Models\SocialConnection;
 use App\Support\Social\Publishing\PinterestPublisher;
 use App\Support\Social\Publishing\PostPayload;
+use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\Publishing\SocialPublishFailed;
 use App\Support\Social\Publishing\TikTokPublisher;
 use App\Support\Social\SocialMediaKind;
@@ -170,6 +171,92 @@ class SocialPublishingTest extends TestCase
             $this->connection(SocialProvider::Pinterest),
             new PostPayload(filePath: $file),
         );
+    }
+
+    /**
+     * The deadlock that put "Please review our integration guidelines" on a
+     * customer's screen, and the assertion that keeps it broken.
+     *
+     * Direct Post requires TikTok's audit. The audit submission requires a
+     * filmed demo of a working publish. So on an unaudited installation the
+     * composer MUST take the inbox, or there is no publish to film and the
+     * circle never opens. `Publishers::for()` defaulted to Direct Post, which
+     * is why every TikTok post from the UI was refused on 2026-08-28.
+     *
+     * The assertion is on WHICH ENDPOINT is called, because that is the whole
+     * difference — both paths upload the same bytes and both answer a
+     * publish_id, so nothing else distinguishes them.
+     */
+    public function test_an_unaudited_installation_posts_to_the_tiktok_inbox_and_not_the_profile(): void
+    {
+        config(['services.tiktok.direct_post' => false]);
+
+        $this->fakeTikTok();
+
+        Publishers::for(SocialProvider::TikTok)->publish(
+            $this->connection(SocialProvider::TikTok),
+            new PostPayload(body: 'hello', filePath: $this->temp('mp4', 'VIDEOBYTES')),
+        );
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/post/publish/inbox/video/init/'));
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/post/publish/video/init/'));
+    }
+
+    public function test_an_audited_installation_posts_straight_to_the_profile(): void
+    {
+        config(['services.tiktok.direct_post' => true]);
+
+        $this->fakeTikTok();
+
+        Publishers::for(SocialProvider::TikTok)->publish(
+            $this->connection(SocialProvider::TikTok),
+            new PostPayload(body: 'hello', filePath: $this->temp('mp4', 'VIDEOBYTES')),
+        );
+
+        // And it asks what the creator allows first, which is the thing TikTok
+        // refuses the post for skipping.
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/creator_info/query/'));
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/post/publish/video/init/'));
+    }
+
+    /**
+     * The screen is told before anybody presses Publish, not after.
+     *
+     * "Sent" and "sent, but you must open TikTok and finish it" are different
+     * enough that learning it afterwards is learning it too late.
+     */
+    public function test_the_drafts_detour_is_declared_and_disappears_once_audited(): void
+    {
+        config(['services.tiktok.direct_post' => false]);
+        $this->assertStringContainsString(
+            'drafts',
+            (string) Publishers::postingNoteFor(SocialProvider::TikTok),
+        );
+
+        config(['services.tiktok.direct_post' => true]);
+        $this->assertNull(Publishers::postingNoteFor(SocialProvider::TikTok));
+
+        // A network that holds no surprise says nothing, rather than reassuring.
+        $this->assertNull(Publishers::postingNoteFor(SocialProvider::Pinterest));
+    }
+
+    private function fakeTikTok(): void
+    {
+        Http::fake([
+            'open.tiktokapis.com/v2/post/publish/creator_info/query/' => Http::response([
+                'data'  => ['privacy_level_options' => ['SELF_ONLY']],
+                'error' => ['code' => 'ok'],
+            ]),
+            'open.tiktokapis.com/v2/post/publish/inbox/video/init/' => Http::response([
+                'data'  => ['upload_url' => 'https://upload.tiktok.test/put', 'publish_id' => 'pub-1'],
+                'error' => ['code' => 'ok'],
+            ]),
+            'open.tiktokapis.com/v2/post/publish/video/init/' => Http::response([
+                'data'  => ['upload_url' => 'https://upload.tiktok.test/put', 'publish_id' => 'pub-2'],
+                'error' => ['code' => 'ok'],
+            ]),
+            'upload.tiktok.test/put' => Http::response('', 200),
+        ]);
     }
 
     private function temp(string $extension, string $contents): string

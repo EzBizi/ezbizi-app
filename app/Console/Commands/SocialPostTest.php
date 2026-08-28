@@ -82,7 +82,14 @@ class SocialPostTest extends Command
             return self::FAILURE;
         }
 
-        $publisher = Publishers::for($provider, toDrafts: (bool) $this->option('draft'));
+        // `--draft` FORCES drafts; without it, the installation decides. Passing
+        // `false` here would have made the command quietly take Direct Post on
+        // an unaudited app — the exact path that answers "Please review our
+        // integration guidelines" and blames the video for it.
+        //
+        // To force the other way, set the installation flag for one run:
+        //   TIKTOK_DIRECT_POST=1 php artisan social:post-test tiktok --file=...
+        $publisher = Publishers::for($provider, toDrafts: $this->option('draft') ? true : null);
 
         if ($publisher === null) {
             $this->error('No publisher for '.$connection->providerLabel().' yet.');
