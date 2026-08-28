@@ -1,0 +1,67 @@
+# Laravel logs on this box, kept for a week.
+#
+#   sudo cp deploy/logrotate-ezbizi /etc/logrotate.d/ezbizi
+#   sudo logrotate --debug /etc/logrotate.d/ezbizi     # dry run
+#
+# ── Why this exists ──────────────────────────────────────────────
+#
+# Nothing rotated these. The deploy gate's sandbox log reached 132 MB in a
+# single suite run — 2,186 tests, each logging — and production's had been
+# growing since August with nothing to stop it. Neither is read by anybody: the
+# app answers health questions on Development > Health, and a log nobody reads
+# that only grows is a disk that fills on a day nobody chose.
+#
+# ── Why copytruncate ─────────────────────────────────────────────
+#
+# Laravel's single-file driver opens the log by path and writes to the handle.
+# The usual rename-and-create leaves php-fpm writing into a deleted inode until
+# it is restarted, so the new file stays empty and the old one is invisible but
+# still consuming the disk. copytruncate copies the contents out and truncates
+# in place, so the running process keeps the same inode and keeps writing.
+#
+# The cost is a race: anything written between the copy and the truncate is
+# lost. For an application log that is the right trade — losing a line beats
+# losing the ability to log at all.
+#
+# It is also why `delaycompress` is NOT set. That option exists to protect a
+# process still writing into the rotated file, which copytruncate has already
+# ruled out — and it left 132 MB sitting uncompressed for a day on the first
+# run, which is the disk this was meant to reclaim.
+#
+# ── Why maxsize as well as daily ─────────────────────────────────
+#
+# Daily alone would still let one bad test run put 132 MB on the disk and hold
+# it there until midnight. maxsize rotates as soon as logrotate runs and finds
+# the file over the limit, so a runaway is capped within the day rather than
+# after it.
+
+# Production. Owned by ubuntu, group www-data, because php-fpm serves as
+# www-data and has to be able to write.
+/var/www/ezbizi/storage/logs/*.log {
+    daily
+    rotate 7
+    maxsize 50M
+    missingok
+    notifempty
+    compress
+    copytruncate
+    su ubuntu www-data
+    create 0664 ubuntu www-data
+}
+
+# The deploy gate's sandbox. Owned by ubuntu throughout — there is no serving
+# user here, and deliberately no .env either.
+#
+# Kept for a week like production rather than deleted outright: when the gate
+# refuses a deploy, this file is the only record of why.
+/opt/ezbizi-test/storage/logs/*.log {
+    daily
+    rotate 7
+    maxsize 50M
+    missingok
+    notifempty
+    compress
+    copytruncate
+    su ubuntu ubuntu
+    create 0664 ubuntu ubuntu
+}

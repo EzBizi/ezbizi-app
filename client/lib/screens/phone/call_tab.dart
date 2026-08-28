@@ -643,20 +643,19 @@ class _CallTabState extends State<CallTab> {
           ),
         ),
         Divider(height: 1, color: EzBiziTheme.edge(context)),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Text(
-            _onCall
-                ? 'On a call'
-                : _dnd
-                ? 'Do not disturb'
-                : 'Ready',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.primary,
+        if (_onCall)
+          _liveCall(theme)
+        else
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text(
+              _dnd ? 'Do not disturb' : 'Ready',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
-        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: TextField(
@@ -670,35 +669,8 @@ class _CallTabState extends State<CallTab> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-          child: GridView.count(
-            crossAxisCount: 3,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: 1.6,
-            children: [
-              for (final glyph in const [
-                '1',
-                '2',
-                '3',
-                '4',
-                '5',
-                '6',
-                '7',
-                '8',
-                '9',
-                '*',
-                '0',
-                '#',
-              ])
-                OutlinedButton(
-                  onPressed: () => _dial(glyph),
-                  child: Text(glyph, style: theme.textTheme.titleLarge),
-                ),
-            ],
-          ),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: _keypad(theme),
         ),
         if (_untaggedCallId != null) _whatWasItAbout(theme),
         Padding(
@@ -932,6 +904,123 @@ class _Message {
     outbound: json['direction'] == 'outbound',
     createdAt: json['created_at'] as String? ?? '',
   );
+}
+
+extension _LiveCall on _CallTabState {
+  /// What is happening right now, where "Ready" used to sit.
+  ///
+  /// The desk said "On a call" in small type in the middle of the column and
+  /// nothing else — no who, and the way to end it was a button below the
+  /// keypad. During a call this is the only thing on screen anybody is looking
+  /// at, so it takes the space and carries Hang up with it.
+  Widget _liveCall(ThemeData theme) {
+    final peer = _peer ?? _destination.text.trim();
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  peer.isEmpty ? 'On a call' : peer,
+                  style: theme.textTheme.titleSmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  'Connected',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          FilledButton(onPressed: _hangUp, child: const Text('Hang up')),
+        ],
+      ),
+    );
+  }
+}
+
+extension _Keypad on _CallTabState {
+  /// A keypad sized like a keypad.
+  ///
+  /// This was `GridView.count(crossAxisCount: 3)`, which STRETCHES to whatever
+  /// width it is given — in a wide middle column that made each key roughly
+  /// 400px across, and `childAspectRatio: 1.6` made it 1.6 times wider than
+  /// tall, so twelve stadium-shaped slabs filled the entire desk. The dial pad
+  /// is the least-used control on the screen and it was the loudest.
+  ///
+  /// Fixed 56px columns, centred, so the pad is the same size on a monitor and
+  /// on a phone. 46px tall with 8px gaps clears the 44px touch target.
+  Widget _keypad(ThemeData theme) {
+    const glyphs = <(String, String)>[
+      ('1', ''), ('2', 'ABC'), ('3', 'DEF'),
+      ('4', 'GHI'), ('5', 'JKL'), ('6', 'MNO'),
+      ('7', 'PQRS'), ('8', 'TUV'), ('9', 'WXYZ'),
+      ('*', ''), ('0', '+'), ('#', ''),
+    ];
+
+    return Center(
+      child: SizedBox(
+        width: 184, // 3 x 56 + 2 x 8
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var row = 0; row < 4; row++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    for (var col = 0; col < 3; col++)
+                      _key(theme, glyphs[row * 3 + col]),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _key(ThemeData theme, (String, String) glyph) {
+    return SizedBox(
+      width: 56,
+      height: 46,
+      child: OutlinedButton(
+        key: ValueKey('key:${glyph.$1}'),
+        style: OutlinedButton.styleFrom(padding: EdgeInsets.zero),
+        onPressed: () => _dial(glyph.$1),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(glyph.$1, style: theme.textTheme.titleMedium),
+
+            // The letters are what makes a keypad readable as one, and they
+            // are how somebody dials a number they were told as a word.
+            if (glyph.$2.isNotEmpty)
+              Text(
+                glyph.$2,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontSize: 8,
+                  letterSpacing: 1,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 extension _CallTagging on _CallTabState {

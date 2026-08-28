@@ -249,6 +249,36 @@ void main() {
     );
     expect(send.onPressed, isNotNull);
   });
+
+  /// The keypad was a GridView that stretched to its column: each key was
+  /// roughly 400 x 130 on a monitor, and twelve of them filled the desk. A dial
+  /// pad is a small dense thing, and it is the least-used control here.
+  testWidgets('the keypad is keypad-sized, not the whole desk', (tester) async {
+    await _pump(tester, size: const Size(1280, 900));
+
+    final key = tester.getSize(find.byKey(const ValueKey('key:5')));
+
+    expect(key.width, 56);
+    expect(key.height, 46);
+
+    // 44px is the touch guidance; a key that shrank below it would be a
+    // regression even though it looks tidier.
+    expect(key.height, greaterThanOrEqualTo(44));
+  });
+
+  testWidgets('the pad is the same size on a phone as on a monitor', (tester) async {
+    await _pump(tester, size: const Size(375, 800));
+
+    expect(tester.getSize(find.byKey(const ValueKey('key:5'))).width, 56);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the letters are on the keys', (tester) async {
+    await _pump(tester, size: const Size(1280, 900));
+
+    expect(find.text('ABC'), findsOneWidget);
+    expect(find.text('PQRS'), findsOneWidget);
+  });
 }
 
 class _FakeDevice implements VoiceDevice {
