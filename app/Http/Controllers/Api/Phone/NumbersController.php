@@ -11,6 +11,7 @@ use App\Models\PhoneRingGroup;
 use App\Support\Phone\ConnectionResolver;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\TwilioGateway;
+use App\Support\Phone\TwimlRenderer;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -122,6 +123,44 @@ class NumbersController extends Controller
         ]);
 
         return response()->json(['data' => $this->row($number)], Response::HTTP_CREATED);
+    }
+
+    /**
+     * GET /api/v1/phone/call-flow
+     *
+     * What actually happens when somebody rings each line — the order the
+     * renderer evaluates, with each step saying whether it is usable.
+     *
+     * Everything built on the other screens is inert until a line points at
+     * it, and until today nothing said so anywhere. Five production lines had
+     * a ring group of null since import; the Numbers screen reported them in
+     * grey as a caption, and every caller heard voicemail for months without
+     * one person noticing. This is the screen that answers the question those
+     * five lines were silently getting wrong.
+     *
+     * The trace comes from TwimlRenderer::describe(), which branches on the
+     * same private predicates inbound() does — so what this draws and what
+     * answers the phone cannot disagree.
+     */
+    public function callFlow(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', PhoneNumber::class);
+
+        $renderer = new TwimlRenderer;
+
+        $rows = $this->access->visibleTo($request->user())
+            ->map(fn (PhoneNumber $number) => [
+                'id' => $number->id,
+                'e164' => $number->e164,
+                'label' => $number->label,
+                'record' => $number->record,
+                'transcribe' => $number->transcribe,
+                'steps' => $renderer->describe($number),
+            ])
+            ->values()
+            ->all();
+
+        return response()->json(['data' => $rows]);
     }
 
     /**

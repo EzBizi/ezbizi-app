@@ -7,6 +7,7 @@ import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/tag.dart';
+import 'call_flow_pane.dart';
 import 'flows_pane.dart';
 import 'hours_pane.dart';
 import 'numbers_pane.dart';
@@ -34,9 +35,10 @@ class PhoneSettingsTab extends StatefulWidget {
 
 class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   static const _sections = <(String, IconData)>[
+    ('Call flow', Icons.account_tree_outlined),
     ('Connection', Icons.link_outlined),
     ('Numbers', Icons.dialpad_outlined),
-    ('Call flows', Icons.account_tree_outlined),
+    ('IVR menus', Icons.touch_app_outlined),
     ('Hours', Icons.schedule_outlined),
     ('Ring groups', Icons.groups_outlined),
     ('Tags', Icons.sell_outlined),
@@ -44,7 +46,15 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     ('Messaging', Icons.sms_outlined),
   ];
 
-  int _section = 0;
+  /// Connection, not Call flow.
+  ///
+  /// Call flow leads the rail because it is the screen that says whether any
+  /// of the others are doing anything — but it has nothing to say until a
+  /// phone account exists, and landing a brand new organization on "no lines
+  /// yet" would be answering a question they have not asked. Connection is
+  /// where somebody with nothing set up actually needs to start.
+  int _section = 1;
+
   bool _paneOpen = false;
 
   bool _loading = true;
@@ -281,13 +291,16 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
 
   Widget _sectionBody() {
     return switch (_section) {
-      0 => _connectionBody(),
-      1 => NumbersPane(api: widget.api, session: widget.session),
-      2 => FlowsPane(api: widget.api, session: widget.session),
-      3 => HoursPane(api: widget.api, session: widget.session),
-      4 => RingGroupsPane(api: widget.api, session: widget.session),
-      5 => TagsPane(api: widget.api, session: widget.session),
-      6 => TrustPane(api: widget.api, session: widget.session),
+      // Call flow leads, because it is the only screen that says whether any
+      // of the others are doing anything.
+      0 => CallFlowPane(api: widget.api),
+      1 => _connectionBody(),
+      2 => NumbersPane(api: widget.api, session: widget.session),
+      3 => FlowsPane(api: widget.api, session: widget.session),
+      4 => HoursPane(api: widget.api, session: widget.session),
+      5 => RingGroupsPane(api: widget.api, session: widget.session),
+      6 => TagsPane(api: widget.api, session: widget.session),
+      7 => TrustPane(api: widget.api, session: widget.session),
       _ => _unbuilt('Messaging campaigns will be set here.'),
     };
   }

@@ -5,7 +5,7 @@ import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 
-/// Phone › Settings › Call flows — the menu a caller hears.
+/// Phone › Settings › IVR menus — the menu a caller hears.
 ///
 /// ── Why this draws one menu and not a tree ───────────────────────
 ///
@@ -225,7 +225,7 @@ class _FlowsPaneState extends State<FlowsPane> {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        Text('Call flows', style: theme.textTheme.titleMedium),
+        Text('IVR menus', style: theme.textTheme.titleMedium),
         const SizedBox(height: 4),
         Text(
           'What a caller hears before anybody picks up. A line with no menu '

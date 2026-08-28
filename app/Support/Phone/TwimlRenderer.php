@@ -108,6 +108,116 @@ final class TwimlRenderer
     }
 
     /**
+     * What an inbound call to this line actually does, step by step.
+     *
+     * ── Why this lives in the renderer ───────────────────────────────
+     *
+     * It answers "what happens when somebody rings this number", and the only
+     * honest answer is the one the thing that answers the phone would give. A
+     * second copy of these conditions in a controller would be a second rule,
+     * and rules drift — the Numbers screen spent an afternoon telling five
+     * lines they were fine while every call went to voicemail, because what
+     * was displayed and what was dialled were worked out separately.
+     *
+     * So this calls the SAME private predicates `inbound()` branches on. If a
+     * step is judged usable here it is usable there, by construction.
+     *
+     * Read-only, and it must stay that way: it is called to draw a screen.
+     *
+     * @param  array<string, mixed>  $context
+     * @return list<array{step: string, title: string, detail: string, usable: bool}>
+     */
+    public function describe(PhoneNumber $number, array $context = []): array
+    {
+        $steps = [];
+
+        // Step 0. Nothing below matters if the carrier never reaches us.
+        $pointed = filled($number->twilio_sid);
+        $steps[] = [
+            'step' => 'arrival',
+            'title' => $pointed
+                ? 'A call arrives on '.$number->e164
+                : 'A call arrives — but this line is not pointed at EzBizi yet',
+            'detail' => $pointed
+                ? 'Twilio posts it to EzBizi and the steps below run in order.'
+                : 'Nothing below runs until the number is imported or bought here.',
+            'usable' => $pointed,
+        ];
+
+        $schedule = $number->hours_schedule_id === null
+            ? null
+            : PhoneHoursSchedule::query()->find($number->hours_schedule_id);
+
+        if ($schedule === null) {
+            $steps[] = [
+                'step' => 'hours',
+                'title' => 'Business hours: always open',
+                'detail' => 'No schedule is set, so the call is never treated as after hours.',
+                'usable' => true,
+            ];
+        } else {
+            $closed = $this->closed($number, $context);
+            $steps[] = [
+                'step' => 'hours',
+                'title' => 'Business hours: '.$schedule->name.' — '
+                    .($closed ? 'CLOSED right now' : 'OPEN right now'),
+                'detail' => $closed
+                    ? match ($number->after_hours) {
+                        'forward' => 'Closed, so the call is forwarded to '
+                            .($number->after_hours_number ?: 'nowhere — no number is set').'.',
+                        'closed' => 'Closed, so the caller is told so and the call ends here.',
+                        default => 'Closed, so the caller goes straight to voicemail. Nothing below runs.',
+                    }
+                    : 'Open, so the call carries on to the steps below.',
+                'usable' => true,
+            ];
+        }
+
+        // Judged by the renderer's own prompt lookup: a flow with no menu node
+        // returns null there and is skipped, however it looks in the builder.
+        $prompt = $this->menuPrompt($number);
+        $steps[] = [
+            'step' => 'menu',
+            'title' => $prompt === null
+                ? 'IVR menu: none'
+                : 'IVR menu plays',
+            'detail' => $prompt === null
+                ? ($number->flow_id === null
+                    ? 'No menu is set on this line, so the call goes straight to whoever answers.'
+                    : 'A menu is set but has no usable menu step, so it is skipped.')
+                : 'The caller hears it and presses a key: “'.$prompt.'”',
+            'usable' => true,
+        ];
+
+        $connection = $number->connection;
+        $group = $number->ring_group_id === null
+            ? null
+            : PhoneRingGroup::query()->find($number->ring_group_id);
+
+        // The same three conditions ringOrVoicemail() checks before it can
+        // emit a Dial. Any one of them missing means every call is voicemail.
+        $reaches = $group !== null
+            && $connection !== null
+            && DialPlan::batches($group, $connection) !== [];
+
+        $steps[] = [
+            'step' => 'answer',
+            'title' => $reaches
+                ? 'Rings '.$group->name
+                : 'Nobody answers this line',
+            'detail' => match (true) {
+                $group === null => 'No ring group is set, so every call goes straight to voicemail.',
+                $connection === null => 'This line has no phone account, so nobody can be dialled.',
+                ! $reaches => $group->name.' has nobody available to ring, so every call goes to voicemail.',
+                default => 'Whoever is on duty in that group is dialled.',
+            },
+            'usable' => $reaches,
+        ];
+
+        return $steps;
+    }
+
+    /**
      * @param  array<string, mixed>  $context
      */
     private function startTranscription(VoiceResponse $response, array $context): void

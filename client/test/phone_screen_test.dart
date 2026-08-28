@@ -184,7 +184,7 @@ void main() {
 
     expect(find.text('Connection'), findsOneWidget);
     expect(find.text('Numbers'), findsOneWidget);
-    expect(find.text('Call flows'), findsOneWidget);
+    expect(find.text('IVR menus'), findsOneWidget);
     expect(find.text('Hours'), findsOneWidget);
     expect(find.text('Ring groups'), findsOneWidget);
     expect(find.text('Trust'), findsOneWidget);
@@ -679,6 +679,90 @@ void main() {
     });
   });
 
+  group('Settings › Call flow', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'kind': 'subaccount',
+      'account_sid': 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'status': 'connected',
+      'status_reason': null,
+    };
+
+    Future<void> openCallFlow(WidgetTester tester) async {
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Call flow'));
+    }
+
+    /// The whole reason this screen exists. Five production lines sat with no
+    /// ring group for months and every caller heard voicemail; the state WAS
+    /// disclosed, in grey, as a caption on another screen. A count at the top
+    /// is the difference between disclosed and told.
+    testWidgets('a line that reaches nobody is counted at the top, not just described', (tester) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        callFlow: const [
+          {
+            'id': 'n-1',
+            'e164': '+15612323929',
+            'label': 'EZBZ',
+            'record': false,
+            'transcribe': false,
+            'steps': [
+              {'step': 'arrival', 'title': 'A call arrives on +15612323929', 'detail': 'x', 'usable': true},
+              {'step': 'hours', 'title': 'Business hours: always open', 'detail': 'x', 'usable': true},
+              {'step': 'menu', 'title': 'IVR menu: none', 'detail': 'x', 'usable': true},
+              {
+                'step': 'answer',
+                'title': 'Nobody answers this line',
+                'detail': 'No ring group is set, so every call goes straight to voicemail.',
+                'usable': false,
+              },
+            ],
+          },
+        ],
+      );
+
+      await openCallFlow(tester);
+
+      expect(
+        find.textContaining('One line reaches nobody'),
+        findsOneWidget,
+        reason: 'the count is what makes a silent line impossible to scan past',
+      );
+      expect(find.text('Nobody answers this line'), findsOneWidget);
+    });
+
+    testWidgets('a healthy line raises no alarm', (tester) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        callFlow: const [
+          {
+            'id': 'n-1',
+            'e164': '+15612323929',
+            'label': 'EZBZ',
+            'record': false,
+            'transcribe': false,
+            'steps': [
+              {'step': 'arrival', 'title': 'A call arrives on +15612323929', 'detail': 'x', 'usable': true},
+              {'step': 'answer', 'title': 'Rings Front desk', 'detail': 'x', 'usable': true},
+            ],
+          },
+        ],
+      );
+
+      await openCallFlow(tester);
+
+      expect(find.textContaining('reaches nobody'), findsNothing);
+      expect(find.text('Rings Front desk'), findsOneWidget);
+    });
+  });
+
   group('Settings › Trust', () {
     const conn = {
       'id': 'cx-1',
@@ -712,7 +796,7 @@ void main() {
     });
   });
 
-  group('Settings › Call flows', () {
+  group('Settings › IVR menus', () {
     const conn = {
       'id': 'cx-1',
       'scope_type': 'company',
@@ -736,7 +820,7 @@ void main() {
       );
 
       await _tap(tester, find.text('Settings'));
-      await _tap(tester, find.text('Call flows'));
+      await _tap(tester, find.text('IVR menus'));
       await _tap(tester, find.text('Add a menu'));
 
       await tester.enterText(find.byType(TextFormField).at(0), 'Main menu');
@@ -791,7 +875,7 @@ void main() {
       );
 
       await _tap(tester, find.text('Settings'));
-      await _tap(tester, find.text('Call flows'));
+      await _tap(tester, find.text('IVR menus'));
       await _tap(tester, find.text('Add a menu'));
 
       await tester.enterText(find.byType(TextFormField).at(0), 'Main menu');
@@ -827,7 +911,7 @@ void main() {
       );
 
       await _tap(tester, find.text('Settings'));
-      await _tap(tester, find.text('Call flows'));
+      await _tap(tester, find.text('IVR menus'));
       await _tap(tester, find.text('Add a menu'));
 
       expect(
@@ -891,6 +975,7 @@ Future<void> _pump(
   Map<String, Object?> trust = const {},
   void Function(Map<String, dynamic> body)? onHours,
   List<Map<String, Object?>> importable = const [],
+  List<Map<String, Object?>> callFlow = const [],
   List<Map<String, Object?>> schedules = const [],
   void Function(Map<String, dynamic> body)? onImport,
   Size size = const Size(1280, 900),
@@ -939,6 +1024,7 @@ Future<void> _pump(
         onNumberPatch: onNumberPatch,
         onDelete: onDelete,
         importable: importable,
+    callFlow: callFlow,
         schedules: schedules,
         onImport: onImport,
         trust: trust,
@@ -1000,6 +1086,7 @@ MockClientHandler _handler({
   Map<String, Object?> trust = const {},
   void Function(Map<String, dynamic> body)? onHours,
   List<Map<String, Object?>> importable = const [],
+  List<Map<String, Object?>> callFlow = const [],
   List<Map<String, Object?>> schedules = const [],
   void Function(Map<String, dynamic> body)? onImport,
   List<String> permissions = const ['phone.view', 'phone.edit'],
@@ -1064,6 +1151,10 @@ MockClientHandler _handler({
 
     if (path.endsWith('/phone/connections') && request.method == 'GET') {
       return _json({'data': connections});
+    }
+
+    if (path.endsWith('/phone/call-flow') && request.method == 'GET') {
+      return _json({'data': callFlow});
     }
 
     if (path.endsWith('/phone/numbers/importable') && request.method == 'GET') {

@@ -894,6 +894,10 @@ Route::prefix('v1')
 
         // Shopping for a new line: what Twilio has, and where it can sell.
         // Both are phone.edit — the only reason to look is to buy.
+        // What actually happens when somebody rings each line, in the order
+        // the renderer evaluates. phone.view: it is a read of our own rows.
+        Route::get('phone/call-flow', [PhoneNumbersController::class, 'callFlow']);
+
         Route::get('phone/numbers/available', [PhoneNumbersController::class, 'available']);
         Route::get('phone/numbers/countries', [PhoneNumbersController::class, 'countries']);
 

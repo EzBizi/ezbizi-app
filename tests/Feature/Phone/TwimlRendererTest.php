@@ -96,6 +96,70 @@ class TwimlRendererTest extends TestCase
         $this->assertStringNotContainsString('<Start>', $on);
     }
 
+    /**
+     * The Call Flow screen reads describe(); the caller hears inbound(). If
+     * those two ever disagree the screen becomes a liar, which is exactly the
+     * failure that let five production lines sit on ring_group_id = null while
+     * the Numbers screen reported them as ordinary.
+     *
+     * So this asserts the pair AGREE, and it does so on the case that can
+     * actually drift: a ring group that EXISTS but can reach nobody. Checking
+     * only the null-group case proves nothing — both sides read the same
+     * column there and would agree even if the availability rule were dropped
+     * from one of them. Verified by deleting that rule from describe() and
+     * watching this fail.
+     */
+    public function test_the_trace_agrees_with_what_the_caller_actually_gets(): void
+    {
+        $t = $this->provisionTenant();
+
+        $answers = static fn (array $steps) => collect($steps)->firstWhere('step', 'answer');
+
+        // One connection, two lines on it — a second connection in the same
+        // scope violates the uniqueness the module depends on.
+        [$dndSteps, $dndXml, $liveSteps, $liveXml] = $this->inTenant($t['org'], function () use ($t) {
+            $connection = $this->connection($t);
+            $renderer = new TwimlRenderer;
+
+            // Set, but its only member is at Do Not Disturb. Anything reading
+            // ring_group_id alone would call this line healthy.
+            $away = $this->member($t, 'Away', 'away@'.$t['org']->slug.'.test');
+            PhonePresence::query()->create([
+                'connection_id' => $connection->id,
+                'user_id' => $away->id,
+                'state' => PhonePresence::STATE_DND,
+            ]);
+            $quiet = $this->number($t, $connection, [
+                'ring_group_id' => $this->group($connection, [$away->id])->id,
+            ]);
+
+            $desk = $this->member($t, 'Desk', 'desk@'.$t['org']->slug.'.test');
+            PhonePresence::query()->create([
+                'connection_id' => $connection->id,
+                'user_id' => $desk->id,
+                'state' => PhonePresence::STATE_REGISTERED,
+            ]);
+            $live = $this->number($t, $connection, [
+                'ring_group_id' => $this->group($connection, [$desk->id])->id,
+            ]);
+
+            return [
+                $renderer->describe($quiet), $renderer->inbound($quiet, []),
+                $renderer->describe($live), $renderer->inbound($live, []),
+            ];
+        });
+
+        $this->assertFalse(
+            $answers($dndSteps)['usable'],
+            'the group is set but nobody is available, and the trace called it usable',
+        );
+        $this->assertStringNotContainsString('<Dial', $dndXml);
+        $this->assertStringContainsString('<Record', $dndXml);
+
+        $this->assertTrue($answers($liveSteps)['usable']);
+        $this->assertStringContainsString('<Dial', $liveXml);
+    }
+
     public function test_hours_closed_goes_to_voicemail_without_dialing(): void
     {
         $t = $this->provisionTenant();
