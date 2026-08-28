@@ -334,4 +334,36 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
   wants macos && echo "→ the macOS .app is on the Mac under ${MAC_PROJECT}/build — UNSIGNED"
 fi
 
+# ── put the tree back the way the guard above requires ──────────
+#
+# `flutter pub get` regenerates the plugin registrants for linux, macos AND
+# windows on every run, whatever platform you asked for, and all seven files
+# are tracked. So a build leaves the tree dirty, and the cleanliness guard at
+# the top of this script then refuses THE NEXT ONE.
+#
+# That is why `./scripts/release.sh` with no arguments — the documented
+# default, all four platforms — could only ever build its first target. Every
+# target after it died on dirt the previous target had created:
+#
+#     x refusing to build: the working tree has uncommitted changes.
+#          M client/macos/Flutter/GeneratedPluginRegistrant.swift
+#
+# Traced on 2026-08-28 back from the Windows installer sitting thirteen
+# versions stale on the download page while every desktop client polled its
+# manifest and was told, truthfully, that there was nothing newer. Nobody had
+# been ignoring the release script; it had been refusing itself.
+#
+# Restored AFTER the build, never before: a native build compiles these files,
+# so handing it a committed copy that predates a plugin change would build the
+# wrong plugin list. deploy.sh restores before its build instead and is right
+# to — the web target does not read them at all.
+#
+# Only the registrants, by pathspec, so a real edit elsewhere survives —
+# including under --allow-dirty, where the tree was dirty on purpose.
+REGENERATED=$(git diff --name-only -- "client/*/flutter/generated_plugin_registrant.*" "client/*/flutter/generated_plugins.cmake" "client/*/Flutter/GeneratedPluginRegistrant.*" 2>/dev/null || true)
+if [ -n "$REGENERATED" ]; then
+  # shellcheck disable=SC2086  # deliberate word-splitting: a newline-separated path list
+  git checkout -- $REGENERATED 2>/dev/null || true
+fi
+
 echo "✓ built v${VERSION} · ${COMMIT}"
