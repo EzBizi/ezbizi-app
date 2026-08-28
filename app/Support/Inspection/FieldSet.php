@@ -106,6 +106,26 @@ final class FieldSet
                  * author to name one. An alert with neither a title nor a body
                  * is a blank box on a form somebody has to fill in.
                  */
+                /*
+                  * How this field prints. `text` unless told otherwise, because
+                  * nothing in the product carries this key and any other default
+                  * would silently restyle every report ever submitted.
+                  */
+                if (array_key_exists('print', $row)) {
+                    $print = (string) ($row['print'] ?? '');
+
+                    if (! in_array($print, PrintAs::ALL, true)) {
+                        $errors["{$at}.print"] = sprintf(
+                            "'%s' is not a way a field can print. Use one of: %s.",
+                            $print === '' ? '(empty)' : $print,
+                            implode(', ', PrintAs::ALL),
+                        );
+                        $print = PrintAs::TEXT;
+                    }
+
+                    $row['print'] = $print;
+                }
+
                 if ($type === FieldType::ALERT) {
                     $row['title'] = trim((string) ($row['title'] ?? ''));
                     $row['body'] = trim((string) ($row['body'] ?? ''));

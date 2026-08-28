@@ -95,8 +95,22 @@ final class ReportDocument
                     continue;
                 }
 
+                $print = PrintAs::of($field);
+
+                // Answered to steer the form, never printed. A customer does not
+                // need to be told "masonry" eleven times.
+                if ($print === PrintAs::IGNORE) {
+                    continue;
+                }
+
                 $key = (string) ($field['key'] ?? '');
                 $label = (string) ($field['label'] ?? $key);
+
+                if ($print === PrintAs::ROOT) {
+                    $body .= $this->finding($field, $answers, $photos);
+
+                    continue;
+                }
 
                 $body .= '<div class="f"><div class="l">'.$this->text($label).'</div>'
                     .$this->answer($field, $answers[$key] ?? null, $photos)
@@ -109,7 +123,7 @@ final class ReportDocument
             $body = '<p class="empty">This inspection had no questions.</p>';
         }
 
-        return $this->page($report, $body);
+        return $this->page($report, $this->summary($screens, $answers).$body);
     }
 
     /**
@@ -166,6 +180,147 @@ final class ReportDocument
         return $text === ''
             ? '<div class="v none">Not answered</div>'
             : '<div class="v">'.nl2br($this->text($text)).'</div>';
+    }
+
+    /**
+     * One FINDING: a heading, and everything it gathered beneath it.
+     *
+     * The chosen option in WORDS — "not-ok" is a key for the engine, "Does not
+     * meet standards" is what the customer is being told — coloured by that
+     * option's variant so a failure is visible without reading, then the code
+     * it is measured against, then whatever the option revealed: the
+     * photograph, the explanation, the recommended work.
+     *
+     * Grouping is the whole point. Those three used to print as three unrelated
+     * rows further down the page, and a reader had no way to tell which finding
+     * a photograph belonged to.
+     *
+     * @param  array<string, mixed>  $field
+     * @param  array<string, mixed>  $answers
+     */
+    private function finding(array $field, array $answers, $photos): string
+    {
+        $key = (string) ($field['key'] ?? '');
+        $label = (string) ($field['label'] ?? $key);
+        $chosen = $this->chosenOption($field, $answers);
+
+        $variant = $chosen['variant'] ?? OptionSet::DEFAULT_VARIANT;
+        $said = $chosen['label'] ?? '';
+
+        $inner = '';
+
+        // What the option revealed, in the order the technician filled it in.
+        foreach (OptionSet::revealedBy($field, $answers) as $nested) {
+            if (! is_array($nested) || PrintAs::of($nested) === PrintAs::IGNORE) {
+                continue;
+            }
+
+            $nestedKey = (string) ($nested['key'] ?? '');
+            $nestedLabel = (string) ($nested['label'] ?? $nestedKey);
+
+            $inner .= '<div class="f"><div class="l">'.$this->text($nestedLabel).'</div>'
+                .$this->answer($nested, $answers[$nestedKey] ?? null, $photos)
+                .'</div>';
+        }
+
+        return '<div class="finding '.$this->text($variant).'">'
+            .'<div class="fh">'.$this->text($label).'</div>'
+            .($said === '' ? '' : '<div class="fs">'.$this->text($said).'</div>')
+            .$this->citation($field)
+            .$inner
+            .'</div>';
+    }
+
+    /**
+     * The option this answer chose, normalised.
+     *
+     * Null-ish when the field is not a choice or nothing was answered, in which
+     * case the finding still prints its heading — a question that was asked and
+     * not answered is itself worth seeing on a report.
+     *
+     * @param  array<string, mixed>  $field
+     * @param  array<string, mixed>  $answers
+     * @return array{label?: string, variant?: string}
+     */
+    private function chosenOption(array $field, array $answers): array
+    {
+        if (($field['type'] ?? '') !== FieldType::CHOICE) {
+            return [];
+        }
+
+        $answer = $answers[$field['key'] ?? ''] ?? null;
+        if ($answer === null || $answer === '' || $answer === []) {
+            return [];
+        }
+
+        $chosen = array_map(
+            static fn ($v) => is_scalar($v) ? (string) $v : '',
+            is_array($answer) ? $answer : [$answer],
+        );
+
+        $labels = [];
+        $variant = OptionSet::DEFAULT_VARIANT;
+
+        foreach ((is_array($field['options'] ?? null) ? $field['options'] : []) as $option) {
+            $option = OptionSet::normalise($option);
+
+            if ($option === null || ! in_array($option['value'], $chosen, true)) {
+                continue;
+            }
+
+            $labels[] = $option['label'];
+
+            // A multi-choice takes the WORST of what was chosen: one failing
+            // item among three makes the finding a failure, and colouring it by
+            // the first pick would hide that.
+            if ($option['variant'] === 'fail') {
+                $variant = 'fail';
+            } elseif ($option['variant'] === 'pass' && $variant !== 'fail') {
+                $variant = 'pass';
+            } elseif ($variant === OptionSet::DEFAULT_VARIANT) {
+                $variant = $option['variant'];
+            }
+        }
+
+        return ['label' => implode(', ', $labels), 'variant' => $variant];
+    }
+
+    /**
+     * How many findings did not meet standards.
+     *
+     * The single most useful line on a chimney report, and derivable only
+     * because options carry a variant. Absent entirely when there are no
+     * findings — an empty banner saying "0 of 0" is worse than no banner.
+     *
+     * @param  list<array<string, mixed>>  $screens
+     * @param  array<string, mixed>  $answers
+     */
+    private function summary(array $screens, array $answers): string
+    {
+        $total = 0;
+        $failed = 0;
+
+        foreach ($screens as $screen) {
+            foreach ((is_array($screen['fields'] ?? null) ? $screen['fields'] : []) as $field) {
+                if (! is_array($field) || PrintAs::of($field) !== PrintAs::ROOT) {
+                    continue;
+                }
+
+                $total++;
+
+                if (($this->chosenOption($field, $answers)['variant'] ?? '') === 'fail') {
+                    $failed++;
+                }
+            }
+        }
+
+        if ($total === 0) {
+            return '';
+        }
+
+        return '<div class="sum'.($failed > 0 ? ' bad' : '').'">'
+            .$failed.' of '.$total.' item'.($total === 1 ? '' : 's')
+            .' did not meet standards.</div>';
     }
 
     /**
@@ -362,6 +517,14 @@ final class ReportDocument
             .'table.w td.q{width:40pt;text-align:right}'
             .'table.w td.m{width:70pt;text-align:right}'
             .'table.w tr.tot td{font-weight:bold;border-bottom:0;border-top:1px solid #999}'
+            .'.finding{margin:8pt 0;padding:6pt 8pt;border-left:3pt solid #bbb}'
+            .'.finding.pass{border-left-color:#2e7d32}'
+            .'.finding.fail{border-left-color:#c62828;background:#fdf6f6}'
+            .'.finding.not_applicable{border-left-color:#999}'
+            .'.fh{font-weight:bold;font-size:11pt}'
+            .'.fs{margin:1pt 0 3pt}'
+            .'.sum{margin:0 0 10pt;padding:6pt 8pt;background:#eef4ee;font-weight:bold}'
+            .'.sum.bad{background:#fdecea}'
             .'.intro{margin:0 0 10pt}'
             .'img{max-width:220pt;max-height:220pt;margin:3pt 6pt 0 0}'
             .'</style></head><body>'
