@@ -77,6 +77,7 @@ final class ReportDocument
 
                 $body .= '<div class="f"><div class="l">'.$this->text($label).'</div>'
                     .$this->answer($field, $answers[$key] ?? null, $photos)
+                    .$this->citation($field)
                     .'</div>';
             }
         }
@@ -131,6 +132,35 @@ final class ReportDocument
         return $text === ''
             ? '<div class="v none">Not answered</div>'
             : '<div class="v">'.nl2br($this->text($text)).'</div>';
+    }
+
+    /**
+     * The building code this finding is measured against.
+     *
+     * Printed from the copy frozen INTO THE VERSION at publish, never looked up
+     * live: a report says what the violation was on the day, and correcting the
+     * library afterwards must not rewrite it. That is why the words are here at
+     * all rather than an id.
+     */
+    private function citation(array $field): string
+    {
+        $code = $field['code'] ?? null;
+
+        if (! is_array($code)) {
+            return '';
+        }
+
+        $title = trim((string) ($code['title'] ?? $code['code'] ?? ''));
+        $bodyText = trim((string) ($code['body'] ?? ''));
+
+        if ($title === '' && $bodyText === '') {
+            return '';
+        }
+
+        return '<div class="code">'
+            .($title === '' ? '' : '<span class="ct">'.$this->text($title).'</span>')
+            .($bodyText === '' ? '' : ' '.$this->text($bodyText))
+            .'</div>';
     }
 
     /**
@@ -210,6 +240,9 @@ final class ReportDocument
             .'.l{font-weight:bold;font-size:10pt}'
             .'.v{margin-top:1pt}'
             .'.none{color:#777;font-style:italic}'
+            .'.code{margin:3pt 0 0;padding:4pt 6pt;border-left:2pt solid #ccc;'
+            .'font-size:9pt;color:#444}'
+            .'.ct{font-weight:bold}'
             .'.intro{margin:0 0 10pt}'
             .'img{max-width:220pt;max-height:220pt;margin:3pt 6pt 0 0}'
             .'</style></head><body>'

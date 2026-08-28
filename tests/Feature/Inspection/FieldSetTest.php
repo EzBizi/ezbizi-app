@@ -77,9 +77,17 @@ class FieldSetTest extends TestCase
             ]],
         ]]);
 
+        // Options are objects now — value, label, variant and any fields the
+        // option reveals — so everything downstream reads ONE shape whether the
+        // author typed a plain list or built a pass/fail finding. A trimmed
+        // string still becomes exactly what it always meant.
         $this->assertSame(
             ['Clay', 'Metal'],
-            $set->toArray()[0]['fields'][0]['options'],
+            array_column($set->toArray()[0]['fields'][0]['options'], 'value'),
+        );
+        $this->assertSame(
+            ['Clay', 'Metal'],
+            array_column($set->toArray()[0]['fields'][0]['options'], 'label'),
         );
     }
 
@@ -156,5 +164,120 @@ class FieldSetTest extends TestCase
             ['step_strip', 'document', 'quiet_stack'],
             LayoutPreset::keys(),
         );
+    }
+
+    // ── visible_if ───────────────────────────────────────────────
+
+    /**
+     * A condition reaches ACROSS screens, and that is the whole point.
+     *
+     * required_if is deliberately local; visible_if is not. Answering "masonry"
+     * on screen one has to remove the wood-stove questions from screen four, or
+     * the A1 inspection cannot be expressed at all.
+     */
+    public function test_a_condition_may_name_a_field_on_another_screen(): void
+    {
+        $set = FieldSet::fromInput([
+            ['fields' => [
+                ['key' => 'system_type', 'label' => 'System', 'type' => 'choice',
+                 'options' => ['masonry', 'wood']],
+            ]],
+            ['fields' => [
+                ['key' => 'stove', 'label' => 'Stove', 'type' => 'text',
+                 'visible_if' => ['field' => 'system_type', 'op' => 'eq', 'value' => 'wood']],
+            ]],
+        ]);
+
+        $this->assertSame(
+            ['field' => 'system_type', 'op' => 'eq', 'value' => 'wood'],
+            $set->toArray()[1]['fields'][0]['visible_if'],
+        );
+    }
+
+    public function test_a_screen_may_carry_a_condition(): void
+    {
+        $set = FieldSet::fromInput([
+            ['fields' => [
+                ['key' => 'level', 'label' => 'Level', 'type' => 'choice', 'options' => ['1', '2']],
+            ]],
+            [
+                'visible_if' => ['field' => 'level', 'op' => 'eq', 'value' => '2'],
+                'fields' => [['key' => 'crown', 'label' => 'Crown', 'type' => 'text']],
+            ],
+        ]);
+
+        $this->assertSame('level', $set->toArray()[1]['visible_if']['field']);
+    }
+
+    public function test_a_condition_pointing_at_nothing_is_refused(): void
+    {
+        try {
+            FieldSet::fromInput([
+                ['fields' => [
+                    ['key' => 'crown', 'label' => 'Crown', 'type' => 'text',
+                     'visible_if' => ['field' => 'not_a_field', 'op' => 'eq', 'value' => 'x']],
+                ]],
+            ]);
+            $this->fail('a condition naming no field should be refused');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString(
+                'no field in this inspection has that key',
+                implode(' ', $e->errors()['screens.0.fields.0.visible_if'] ?? []),
+            );
+        }
+    }
+
+    /**
+     * The narrow refusal: an ambiguous key stops the CONDITION, not the form.
+     *
+     * Duplicate keys across screens still publish exactly as they always did —
+     * refusing them outright would be a tightening that stops somebody working
+     * on a form they already have, for a reason unrelated to what they were
+     * doing. Only a condition that would have to guess is refused, and it names
+     * both screens, because "ambiguous" without saying where is unfixable.
+     */
+    public function test_a_condition_naming_a_key_two_screens_share_is_refused(): void
+    {
+        $duplicated = [
+            ['fields' => [['key' => 'note', 'label' => 'Note', 'type' => 'text']]],
+            ['fields' => [['key' => 'note', 'label' => 'Note again', 'type' => 'text']]],
+        ];
+
+        // The duplicate itself is fine, and keeps publishing.
+        $this->assertCount(2, FieldSet::fromInput($duplicated)->toArray());
+
+        try {
+            FieldSet::fromInput([
+                ...$duplicated,
+                ['fields' => [
+                    ['key' => 'crown', 'label' => 'Crown', 'type' => 'text',
+                     'visible_if' => ['field' => 'note', 'op' => 'eq', 'value' => 'x']],
+                ]],
+            ]);
+            $this->fail('an ambiguous condition should be refused');
+        } catch (ValidationException $e) {
+            $message = implode(' ', $e->errors()['screens.2.fields.0.visible_if'] ?? []);
+            $this->assertStringContainsString('2 screens have a field with that key', $message);
+            $this->assertStringContainsString('screens 1 and 2', $message);
+        }
+    }
+
+    public function test_a_malformed_condition_is_refused(): void
+    {
+        try {
+            FieldSet::fromInput([
+                ['fields' => [
+                    ['key' => 'a', 'label' => 'A', 'type' => 'text'],
+                    ['key' => 'b', 'label' => 'B', 'type' => 'text',
+                     'visible_if' => ['field' => 'a', 'op' => 'matches', 'value' => 'x']],
+                ]],
+            ]);
+            $this->fail('an unknown operator should be refused');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString(
+                'is not something a condition can do',
+                implode(' ', $e->errors()['screens.0.fields.1.visible_if'] ?? []),
+            );
+        }
     }
 }

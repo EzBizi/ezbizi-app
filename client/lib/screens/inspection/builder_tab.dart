@@ -5,6 +5,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/dashboard_card.dart';
+import 'option.dart';
 import '../../widgets/tag.dart';
 
 /// Builder: named inspections on the left, the selected field in the middle,
@@ -29,6 +30,16 @@ class _BuilderTabState extends State<BuilderTab> {
   List<Map<String, dynamic>> _definitions = const [];
   List<Map<String, dynamic>> _fieldTypes = const [];
   List<Map<String, dynamic>> _presets = const [];
+
+  /// The places this author may give an inspection to, from the catalogue.
+  ///
+  /// Server-built, because who may act on what is the server's answer. An
+  /// empty list means the catalogue has not loaded yet, not that there is
+  /// nowhere to put it.
+  List<Map<String, dynamic>> _scopes = const [];
+
+  /// The organization's building-code library, for the citation picker.
+  List<Map<String, dynamic>> _codes = const [];
   List<Map<String, dynamic>> _bindable = const [];
 
   String? _selectedId;
@@ -100,7 +111,7 @@ class _BuilderTabState extends State<BuilderTab> {
         : fields[_fieldIndex.clamp(0, fields.length - 1)];
     _label.text = '${field?['label'] ?? ''}';
     _options.text = [
-      for (final option in (field?['options'] as List? ?? const [])) '$option',
+      for (final option in InspectionOption.allOf(field?['options'])) option.value,
     ].join('\n');
   }
 
@@ -134,10 +145,42 @@ class _BuilderTabState extends State<BuilderTab> {
         final data = Map<String, dynamic>.from(catalogue.data as Map);
         _fieldTypes = _maps(data['field_types']);
         _presets = _maps(data['layout_presets']);
+        _scopes = _maps(data['scopes']);
+        _codes = _maps(data['codes']);
         _bindable = _maps(data['bindable']);
       }
     });
     _adoptControllers();
+  }
+
+  /// The dropdown value for whatever this definition currently says.
+  ///
+  /// The organization is a real selectable value rather than a null, because
+  /// "belongs to nobody" and "belongs to everybody" read identically on screen
+  /// otherwise. Falls back to the first offered scope when the stored one is
+  /// not among them — which happens when a definition scoped to a place this
+  /// author cannot reach is opened by somebody who can still edit it.
+  String? _scopeValue(Map<String, dynamic> current) {
+    final scope = current['scope'] as Map?;
+    final value = '${scope?['type'] ?? 'organization'}:${scope?['id'] ?? ''}';
+
+    final offered = _scopes
+        .map((s) => '${s['type'] ?? 'organization'}:${s['id'] ?? ''}')
+        .toList();
+
+    return offered.contains(value) ? value : (offered.isEmpty ? null : offered.first);
+  }
+
+  /// The dropdown value for this field's citation.
+  ///
+  /// Falls back to "No code" when the field cites something no longer in the
+  /// library — the same case publish handles by dropping the pointer, shown
+  /// here rather than leaving a dropdown with a value it cannot render.
+  String _codeValue(Map<String, dynamic>? field) {
+    final id = '${field?['code_id'] ?? ''}';
+    final known = _codes.any((c) => '${c['id']}' == id);
+
+    return known ? id : '';
   }
 
   Future<void> _create() async {
@@ -170,6 +213,11 @@ class _BuilderTabState extends State<BuilderTab> {
         'intro': current['intro'],
         'layout_preset': current['layout_preset'],
         'screens': current['screens'],
+        // Flat keys, not the nested `scope` object the server SENDS. It reads
+        // `scope_type`/`scope_id` on the way in and answers `scope` on the way
+        // out; posting the nested object silently changes nothing.
+        'scope_type': (current['scope'] as Map?)?['type'],
+        'scope_id': (current['scope'] as Map?)?['id'],
       },
     );
     if (!mounted) return;
@@ -511,6 +559,38 @@ class _BuilderTabState extends State<BuilderTab> {
           ],
         ),
         const SizedBox(height: 16),
+        if (_scopes.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: DropdownButtonFormField<String>(
+              key: const Key('inspection-scope-picker'),
+              initialValue: _scopeValue(current),
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Belongs to',
+                helperText: 'Who this inspection exists for. Roles still gate who may run it.',
+              ),
+              items: [
+                for (final scope in _scopes)
+                  DropdownMenuItem(
+                    // Keyed on type:id, never on the label — a company and its
+                    // only franchise are very often called the same thing.
+                    value: '${scope['type'] ?? 'organization'}:${scope['id'] ?? ''}',
+                    child: Text('${scope['label'] ?? ''}'),
+                  ),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                final split = value.indexOf(':');
+                final type = value.substring(0, split);
+                final id = value.substring(split + 1);
+                _mutate((row) => row['scope'] = {
+                      'type': type == 'organization' ? null : type,
+                      'id': id.isEmpty ? null : id,
+                    });
+              },
+            ),
+          ),
         TextField(
           controller: _intro,
           decoration: const InputDecoration(
@@ -630,10 +710,47 @@ class _BuilderTabState extends State<BuilderTab> {
                 helperText: 'One per line. Blank lines are ignored.',
                 alignLabelWithHint: true,
               ),
-              onChanged: (value) => _updateField((row) => row['options'] = [
-                    for (final line in value.split('\n'))
-                      if (line.trim().isNotEmpty) line.trim(),
-                  ]),
+              // Typing here must not FLATTEN an option that carries a variant
+              // or its own fields. The box edits the list of VALUES; anything
+              // already attached to a value it still contains is carried over,
+              // so editing a neighbouring line cannot silently delete the
+              // photograph a failing finding demands.
+              onChanged: (value) => _updateField((row) {
+                final existing = {
+                  for (final o in InspectionOption.allOf(row['options'])) o.value: o,
+                };
+
+                row['options'] = [
+                  for (final line in value.split('\n'))
+                    if (line.trim().isNotEmpty)
+                      _keptOrPlain(existing[line.trim()], line.trim()),
+                ];
+              }),
+            ),
+          ],
+          if (_codes.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: const Key('field-code'),
+              initialValue: _codeValue(field),
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Building code',
+                helperText: 'Printed on the report beside this finding. '
+                    'The wording is copied in when you publish.',
+              ),
+              items: [
+                const DropdownMenuItem(value: '', child: Text('No code')),
+                for (final code in _codes)
+                  DropdownMenuItem(
+                    value: '${code['id']}',
+                    child: Text('${code['code']} — ${code['title'] ?? ''}',
+                        overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+              onChanged: (value) => _updateField(
+                (row) => row['code_id'] = (value ?? '').isEmpty ? null : value,
+              ),
             ),
           ],
           if (field['type'] == 'photo') ...[
@@ -873,11 +990,30 @@ class InspectionPhonePreview extends StatelessWidget {
     if (bind == 'job.scheduled_for') return '9:00 AM';
     final type = '${field['type'] ?? ''}';
     if (type == 'choice') {
-      final options = field['options'];
-      if (options is List && options.isNotEmpty) return '${options.first}';
+      final options = InspectionOption.allOf(field['options']);
+      if (options.isNotEmpty) return options.first.label;
     }
     if (type == 'signature') return 'Signed (sample)';
     if (type == 'photo') return 'Photo (sample)';
     return 'Sample answer';
   }
+}
+
+/// An option line, keeping whatever was already attached to that value.
+///
+/// Returns a plain string when there is nothing to keep, so a simple list stays
+/// a simple list in the stored JSON and reads the way an author wrote it. Only
+/// an option that actually carries a variant or nested fields is written in the
+/// long form.
+dynamic _keptOrPlain(InspectionOption? kept, String line) {
+  if (kept == null || (kept.variant == 'neutral' && kept.fields.isEmpty)) {
+    return line;
+  }
+
+  return {
+    'value': kept.value,
+    'label': kept.label,
+    'variant': kept.variant,
+    'fields': kept.fields,
+  };
 }

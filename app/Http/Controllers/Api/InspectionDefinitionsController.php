@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\InspectionCode;
 use App\Models\InspectionDefinition;
 use App\Models\InspectionDefinitionVersion;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\FileStore;
+use App\Support\Access\ScopeReach;
 use App\Support\Inspection\BindableFields;
 use App\Support\Inspection\FieldSet;
 use App\Support\Inspection\FieldType;
+use App\Support\Inspection\InspectionScope;
 use App\Support\Inspection\LayoutPreset;
 use App\Support\Inspection\WorkingTitle;
 use App\Support\Tenancy\TenantContext;
@@ -36,6 +39,8 @@ class InspectionDefinitionsController extends Controller
         private readonly AuditLogger $audit,
         private readonly TenantContext $tenant,
         private readonly FileStore $files,
+        private readonly InspectionScope $scope,
+        private readonly ScopeReach $reach,
     ) {}
 
     public function catalogue(): JsonResponse
@@ -61,6 +66,13 @@ class InspectionDefinitionsController extends Controller
             'field_types' => $types,
             'layout_presets' => $presets,
             'bindable' => BindableFields::catalogue(),
+            'scopes' => $this->scopeOptions(),
+            // The library, so a field can cite without a second round trip.
+            // Small by nature — A1's whole tool has eight codes.
+            'codes' => InspectionCode::query()->orderBy('code')->get()
+                ->map(fn (InspectionCode $c) => [
+                    'id' => $c->id, 'code' => $c->code, 'title' => $c->title,
+                ])->values(),
         ]]);
     }
 
@@ -68,10 +80,16 @@ class InspectionDefinitionsController extends Controller
     {
         $this->authorize('viewAny', InspectionDefinition::class);
 
-        $rows = InspectionDefinition::query()
+        $query = InspectionDefinition::query()
             ->with('currentVersion')
-            ->orderBy('name')
-            ->get()
+            ->orderBy('name');
+
+        // The Builder lists what exists HERE, the same as the picker does.
+        // Without this a franchise manager browses every company's inspections
+        // and can open one they may not run - a disclosure, not an annoyance.
+        $this->scope->constrain($query, request()->user());
+
+        $rows = $query->get()
             ->map(fn (InspectionDefinition $d) => $this->present($d))
             ->values();
 
@@ -125,6 +143,8 @@ class InspectionDefinitionsController extends Controller
             $validated['screens'] = FieldSet::fromInput($validated['screens'])->toArray();
         }
 
+        $validated = [...$validated, ...$this->scopeFrom($request, $inspectionDefinition)];
+
         $inspectionDefinition->fill($validated)->save();
 
         $this->audit->log('inspection.updated', $inspectionDefinition);
@@ -132,6 +152,229 @@ class InspectionDefinitionsController extends Controller
         return response()->json([
             'data' => $this->present($inspectionDefinition->fresh()->load('currentVersion'), detailed: true),
         ]);
+    }
+
+    /**
+     * The place this inspection belongs to, checked before it is written.
+     *
+     * TWO separate checks, because they refuse for different reasons and
+     * collapsing them into one would lose the second:
+     *
+     *   1. The place must be THIS organization's. `scope_id` has no foreign key
+     *      - it names a row in one of two tables depending on `scope_type` - so
+     *      nothing else would catch an id from elsewhere on the platform. It
+     *      would never match anything, but a tenant boundary that is stated and
+     *      not enforced is one that stops being true later.
+     *      AutomationsController makes the same check on the same column.
+     *
+     *   2. The author must REACH the place. The first check PASSES for a
+     *      sibling franchise - it is this organization's - so without this a
+     *      franchise manager could scope the group's inspection to a franchise
+     *      they have nothing to do with and take it from everybody else.
+     *
+     * Reach here, and deliberately NOT InspectionScope: authoring asks "may I
+     * act on that place", which is what ScopeReach answers. Visibility asks a
+     * different question and gets a different answer - see InspectionScope.
+     *
+     * @return array{scope_type: ?string, scope_id: ?string}
+     */
+    /**
+     * Forget citations whose code no longer exists.
+     *
+     * Only at publish — see the call site. One query, not one per field.
+     *
+     * @param  list<array<string, mixed>>  $screens
+     * @return list<array<string, mixed>>
+     */
+    private static function dropMissingCitations(array $screens): array
+    {
+        $ids = [];
+        foreach ($screens as $screen) {
+            foreach (($screen['fields'] ?? []) as $field) {
+                if (is_array($field) && ($field['code_id'] ?? null) !== null) {
+                    $ids[] = $field['code_id'];
+                }
+            }
+        }
+
+        if ($ids === []) {
+            return $screens;
+        }
+
+        $alive = InspectionCode::query()
+            ->whereIn('id', array_unique($ids))
+            ->pluck('id')
+            ->all();
+
+        foreach ($screens as $si => $screen) {
+            foreach (($screen['fields'] ?? []) as $fi => $field) {
+                $codeId = is_array($field) ? ($field['code_id'] ?? null) : null;
+
+                if ($codeId !== null && ! in_array($codeId, $alive, true)) {
+                    $screens[$si]['fields'][$fi]['code_id'] = null;
+                }
+            }
+        }
+
+        return $screens;
+    }
+
+    /**
+     * Copy each cited code's WORDING into the version being written.
+     *
+     * The draft carries `code_id`, a pointer. A version carries the words,
+     * because a version is written once and a report pins one — so correcting a
+     * typo in the library in September cannot change what an August report told
+     * a customer the violation was. Exactly the reason a bound customer name is
+     * frozen at submit.
+     *
+     * A code that has since been DELETED publishes without a citation rather
+     * than refusing. Refusing would let removing one library row block every
+     * form that ever mentioned it, and the field keeps its question either way —
+     * losing the reference is the smaller loss, and the visible one.
+     *
+     * One query for the whole definition rather than one per field: the A1
+     * inspection cites the same handful of codes from a hundred and twenty
+     * fields, and a lookup per field is a hundred and twenty round trips to
+     * publish one form.
+     *
+     * @param  list<array<string, mixed>>  $screens
+     * @return list<array<string, mixed>>
+     */
+    private static function freezeCitations(array $screens): array
+    {
+        $ids = [];
+        foreach ($screens as $screen) {
+            foreach (($screen['fields'] ?? []) as $field) {
+                if (is_array($field) && ($field['code_id'] ?? null) !== null) {
+                    $ids[] = $field['code_id'];
+                }
+            }
+        }
+
+        if ($ids === []) {
+            return $screens;
+        }
+
+        $codes = InspectionCode::query()
+            ->whereIn('id', array_unique($ids))
+            ->get()
+            ->keyBy('id');
+
+        foreach ($screens as $si => $screen) {
+            foreach (($screen['fields'] ?? []) as $fi => $field) {
+                $codeId = is_array($field) ? ($field['code_id'] ?? null) : null;
+                $code = $codeId === null ? null : $codes->get($codeId);
+
+                if ($code === null) {
+                    continue;
+                }
+
+                $screens[$si]['fields'][$fi]['code'] = [
+                    'code' => $code->code,
+                    'title' => $code->title,
+                    'body' => $code->body,
+                ];
+            }
+        }
+
+        return $screens;
+    }
+
+    private function scopeFrom(Request $request, ?InspectionDefinition $existing): array
+    {
+        $input = $request->validate([
+            'scope_type' => ['sometimes', 'nullable', Rule::in([
+                InspectionDefinition::SCOPE_COMPANY,
+                InspectionDefinition::SCOPE_FRANCHISE,
+            ])],
+            'scope_id' => ['sometimes', 'nullable', 'uuid'],
+        ]);
+
+        $type = array_key_exists('scope_type', $input)
+            ? $input['scope_type']
+            : $existing?->scope_type;
+        $id = array_key_exists('scope_id', $input)
+            ? $input['scope_id']
+            : $existing?->scope_id;
+
+        // Clearing the type clears the id with it, or the row keeps a franchise
+        // id under a null type and the next reader has to guess which one won.
+        if (array_key_exists('scope_type', $input) && $input['scope_type'] === null) {
+            $id = null;
+        }
+
+        if ($type === null && $id !== null) {
+            throw ValidationException::withMessages([
+                'scope_id' => 'Choose a company or a franchise before choosing which one.',
+            ]);
+        }
+
+        if ($type !== null && $id === null) {
+            throw ValidationException::withMessages([
+                'scope_id' => "Choose which {$type} this inspection belongs to.",
+            ]);
+        }
+
+        if ($type !== null) {
+            $table = $type === InspectionDefinition::SCOPE_COMPANY ? 'companies' : 'franchises';
+
+            $exists = DB::table($table)
+                ->where('id', $id)
+                ->where('organization_id', $this->tenant->idOrFail())
+                ->exists();
+
+            if (! $exists) {
+                throw ValidationException::withMessages([
+                    'scope_id' => "That is not one of this organization's {$table}.",
+                ]);
+            }
+
+            $this->reach->assertCovers($request->user(), $type, $id, 'scope_id');
+        }
+
+        return ['scope_type' => $type, 'scope_id' => $id];
+    }
+
+    /**
+     * The places this author may give an inspection to, flat and ordered.
+     *
+     * `ScopeReach::optionsFor` returns three separate lists; a dropdown wants
+     * one. The organization comes first and ONLY when this person may act on it
+     * - `optionsFor` answers null otherwise, and offering "Whole organization"
+     * to somebody the save would then refuse is worse than not offering it.
+     *
+     * A company and its only franchise are very often called the same thing, so
+     * the label is not unique and the client keys on type:id rather than on it.
+     *
+     * @return list<array{type: ?string, id: ?string, label: string}>
+     */
+    private function scopeOptions(): array
+    {
+        $options = $this->reach->optionsFor(request()->user());
+        $scopes = [];
+
+        if ($options['organization'] !== null) {
+            $scopes[] = ['type' => null, 'id' => null, 'label' => 'Whole organization'];
+        }
+
+        foreach ($options['companies'] as $company) {
+            $scopes[] = [
+                'type' => InspectionDefinition::SCOPE_COMPANY,
+                'id' => $company['id'],
+                'label' => $company['name'],
+            ];
+        }
+
+        foreach ($options['franchises'] as $franchise) {
+            $scopes[] = [
+                'type' => InspectionDefinition::SCOPE_FRANCHISE,
+                'id' => $franchise['id'],
+                'label' => $franchise['name'],
+            ];
+        }
+
+        return $scopes;
     }
 
     public function publish(InspectionDefinition $inspectionDefinition): JsonResponse
@@ -145,7 +388,20 @@ class InspectionDefinitionsController extends Controller
             ]);
         }
 
-        $screens = FieldSet::fromInput($inspectionDefinition->screens ?? [])->toArray();
+        /*
+         * A citation whose code has since been deleted is DROPPED here, before
+         * validation, rather than refusing the publish.
+         *
+         * FieldSet is strict about `code_id` on the way IN, which is right: an
+         * author picking a code should be told immediately if it is not one of
+         * theirs. It is the wrong answer at publish, where the pointer was valid
+         * when it was written and somebody has since tidied the library —
+         * refusing would let removing one row block every form that ever
+         * mentioned it, and the field keeps its question either way.
+         */
+        $screens = FieldSet::fromInput(
+            self::dropMissingCitations($inspectionDefinition->screens ?? []),
+        )->toArray();
         $preset = $inspectionDefinition->layout_preset ?: LayoutPreset::DEFAULT;
 
         if (! in_array($preset, LayoutPreset::keys(), true)) {
@@ -168,7 +424,7 @@ class InspectionDefinitionsController extends Controller
                 'inspection_definition_id' => $locked->id,
                 'version' => $next,
                 'layout_preset' => $preset,
-                'screens' => $screens,
+                'screens' => self::freezeCitations($screens),
                 'intro' => $locked->intro,
                 'cover_path' => $coverPath,
                 'cover_disk' => $coverDisk,
@@ -341,6 +597,12 @@ class InspectionDefinitionsController extends Controller
         $row = [
             'id' => $definition->id,
             'name' => $definition->name,
+            // Always present, both keys, nulls and all. A client made to tell
+            // "the organization" from "the server did not say" would guess.
+            'scope' => [
+                'type' => $definition->scope_type,
+                'id'   => $definition->scope_id,
+            ],
             'intro' => $definition->intro,
             'layout_preset' => $definition->layout_preset ?: LayoutPreset::DEFAULT,
             'screens' => $definition->screens ?? [],
