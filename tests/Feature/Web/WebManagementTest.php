@@ -391,6 +391,34 @@ class WebManagementTest extends TestCase
             ->assertNotFound();
     }
 
+    /**
+     * The plugin's own behaviour, run against a stub WordPress.
+     *
+     * Everything else in this file tests EzBizi's end and never loads one line
+     * of the plugin — so until this ran, the first person to execute ezbizi.php
+     * would have been a wordpress.org reviewer. Shelling out rather than
+     * inlining it: the harness defines two dozen global functions named
+     * `get_option`, `esc_html` and so on, which must not exist in this process.
+     *
+     * See wordpress-plugin/tests/plugin-check.php for what it does and does not
+     * cover, and why it is not a real WordPress install.
+     */
+    public function test_the_plugin_behaves_when_actually_executed(): void
+    {
+        $script = base_path('wordpress-plugin/tests/plugin-check.php');
+
+        $this->assertFileExists($script);
+
+        $output = [];
+        $status = 0;
+        exec(escapeshellarg(PHP_BINARY).' '.escapeshellarg($script).' 2>&1', $output, $status);
+
+        $report = implode("\n", $output);
+
+        $this->assertSame(0, $status, "The WordPress plugin failed its own checks:\n".$report);
+        $this->assertStringContainsString('PASS', $report);
+    }
+
     // ── helpers ─────────────────────────────────────────────────────
 
     /** @param array{org: \App\Models\Organization, franchise: \App\Models\Franchise} $tenant */
