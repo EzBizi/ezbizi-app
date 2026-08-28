@@ -22,11 +22,17 @@ use Illuminate\Support\Facades\Schema;
  * explicitly (task-1 brief).
  *
  * `task_recurrence_occurrences` is a marker table shaped like
- * `task_overdue_occurrences`: unique (task_id, occurrence_date) is its entire
- * idempotency story for a retried or overlapping worker run. Its column list
- * omits board_id on purpose (task-1 brief) — it is always about one series
- * task, never an edge between two, so a single-column reference to
- * `tasks.id` is enough and does not need a new candidate key.
+ * `task_overdue_occurrences`/`task_due_reminder_occurrences`: unique
+ * (task_id, occurrence_date) is its entire idempotency story for a retried or
+ * overlapping worker run, and — like both of those siblings — it carries
+ * `board_id` so both task references are compound-keyed against
+ * `(organization_id, board_id, id)` on `tasks`. Without board_id the only
+ * remaining constraint on organization_id is "a real organization", which
+ * does not stop a row naming a task from a different organization; the
+ * compound key is what actually rejects that below the HTTP layer, same as
+ * every other board child. A recurrence instance is created on the same
+ * board as its series task, so the compound key holds for both `task_id` and
+ * `created_task_id`.
  */
 return new class extends Migration
 {
@@ -34,9 +40,6 @@ return new class extends Migration
     {
         Schema::table('tasks', function (Blueprint $table) {
             $table->json('recurrence')->nullable()->after('due_on');
-        });
-
-        Schema::table('tasks', function (Blueprint $table) {
             $table->index(['board_id', 'start_on', 'due_on'], 'tasks_board_start_due_index');
         });
 
@@ -66,16 +69,17 @@ return new class extends Migration
         Schema::create('task_recurrence_occurrences', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->foreignUuid('organization_id')->constrained()->restrictOnDelete();
+            $table->uuid('board_id');
             $table->uuid('task_id');
             $table->date('occurrence_date');
             $table->uuid('created_task_id')->nullable();
             $table->timestamp('created_at')->useCurrent();
 
             $table->unique(['task_id', 'occurrence_date'], 'task_recurrence_occurrences_task_date_unique');
-            $table->foreign('task_id', 'task_recurrence_occurrences_task_foreign')
-                ->references('id')->on('tasks')->restrictOnDelete();
-            $table->foreign('created_task_id', 'task_recurrence_occurrences_created_task_foreign')
-                ->references('id')->on('tasks')->restrictOnDelete();
+            $table->foreign(['organization_id', 'board_id', 'task_id'], 'task_recurrence_occurrences_task_foreign')
+                ->references(['organization_id', 'board_id', 'id'])->on('tasks')->restrictOnDelete();
+            $table->foreign(['organization_id', 'board_id', 'created_task_id'], 'task_recurrence_occurrences_created_task_foreign')
+                ->references(['organization_id', 'board_id', 'id'])->on('tasks')->restrictOnDelete();
         });
 
         if (DB::getDriverName() === 'mysql') {
@@ -90,9 +94,6 @@ return new class extends Migration
 
         Schema::table('tasks', function (Blueprint $table) {
             $table->dropIndex('tasks_board_start_due_index');
-        });
-
-        Schema::table('tasks', function (Blueprint $table) {
             $table->dropColumn('recurrence');
         });
     }

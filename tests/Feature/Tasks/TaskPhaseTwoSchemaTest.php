@@ -135,22 +135,48 @@ class TaskPhaseTwoSchemaTest extends TestCase
         $seriesTask = $this->insertTask($tenant, $boardId, $groupId, $statusId, $now, 'Series');
         $createdTask = $this->insertTask($tenant, $boardId, $groupId, $statusId, $now, 'Created instance');
 
-        $firstOccurrence = $this->insertOccurrence($tenant, $seriesTask, '2026-09-01', $createdTask, $now);
+        $firstOccurrence = $this->insertOccurrence($tenant, $boardId, $seriesTask, '2026-09-01', $createdTask, $now);
         $this->assertSame($createdTask, DB::table('task_recurrence_occurrences')->find($firstOccurrence)->created_task_id);
 
         // Retried/overlapping worker run on the same occurrence date is rejected.
         $this->assertConstraintRejects(
-            fn () => $this->insertOccurrence($tenant, $seriesTask, '2026-09-01', $createdTask, $now),
+            fn () => $this->insertOccurrence($tenant, $boardId, $seriesTask, '2026-09-01', $createdTask, $now),
             'task_recurrence_occurrences_task_date_unique',
         );
 
         // A different occurrence date for the same series is fine.
-        $secondOccurrence = $this->insertOccurrence($tenant, $seriesTask, '2026-10-01', $createdTask, $now);
+        $secondOccurrence = $this->insertOccurrence($tenant, $boardId, $seriesTask, '2026-10-01', $createdTask, $now);
         $this->assertNotEmpty($secondOccurrence);
 
         // A final occurrence records no created task at all (series ended).
-        $finalOccurrence = $this->insertOccurrence($tenant, $seriesTask, '2026-11-01', null, $now);
+        $finalOccurrence = $this->insertOccurrence($tenant, $boardId, $seriesTask, '2026-11-01', null, $now);
         $this->assertNull(DB::table('task_recurrence_occurrences')->find($finalOccurrence)->created_task_id);
+    }
+
+    public function test_task_recurrence_occurrences_rejects_a_task_from_another_organization(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $beta = $this->provisionTenant('Beta');
+        $now = now();
+        [$betaBoard, $betaGroup, $betaStatus] = $this->insertBoard($beta, $now);
+        $betaTask = $this->insertTask($beta, $betaBoard, $betaGroup, $betaStatus, $now, 'Beta series');
+
+        // organization_id says Alpha; task_id names a task that belongs to
+        // Beta. Only the compound (organization_id, board_id, task_id) foreign
+        // key against tasks(organization_id, board_id, id) can catch this —
+        // organization_id alone is only constrained to be a real organization.
+        $this->assertConstraintRejects(
+            fn () => $this->insertOccurrence($alpha, $betaBoard, $betaTask, '2026-09-01', null, $now, organizationId: $alpha['org']->id),
+            'task_recurrence_occurrences_task_foreign',
+        );
+
+        // The same cross-tenant mismatch on created_task_id is rejected too.
+        [$alphaBoard, $alphaGroup, $alphaStatus] = $this->insertBoard($alpha, $now);
+        $alphaTask = $this->insertTask($alpha, $alphaBoard, $alphaGroup, $alphaStatus, $now, 'Alpha series');
+        $this->assertConstraintRejects(
+            fn () => $this->insertOccurrence($alpha, $alphaBoard, $alphaTask, '2026-09-01', $betaTask, $now),
+            'task_recurrence_occurrences_created_task_foreign',
+        );
     }
 
     public function test_new_models_declare_retention_and_personal_data_purpose(): void
@@ -234,12 +260,13 @@ class TaskPhaseTwoSchemaTest extends TestCase
     }
 
     /** @param array{org: object} $tenant */
-    private function insertOccurrence(array $tenant, string $taskId, string $occurrenceDate, ?string $createdTaskId, mixed $now): string
+    private function insertOccurrence(array $tenant, string $boardId, string $taskId, string $occurrenceDate, ?string $createdTaskId, mixed $now, ?string $organizationId = null): string
     {
         $id = (string) Str::uuid7();
         DB::table('task_recurrence_occurrences')->insert([
-            'id' => $id, 'organization_id' => $tenant['org']->id, 'task_id' => $taskId,
-            'occurrence_date' => $occurrenceDate, 'created_task_id' => $createdTaskId, 'created_at' => $now,
+            'id' => $id, 'organization_id' => $organizationId ?? $tenant['org']->id, 'board_id' => $boardId,
+            'task_id' => $taskId, 'occurrence_date' => $occurrenceDate, 'created_task_id' => $createdTaskId,
+            'created_at' => $now,
         ]);
 
         return $id;

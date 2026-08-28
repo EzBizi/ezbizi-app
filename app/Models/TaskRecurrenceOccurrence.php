@@ -21,6 +21,11 @@ use RuntimeException;
  * creating duplicates. created_task_id is nullable on purpose: the row is
  * written in the same transaction as the created task, but a series that ends
  * (until/count exhausted) records a final occurrence with no task.
+ *
+ * board_id is carried, same as TaskOverdueOccurrence, so both task_id and
+ * created_task_id are compound-keyed against (organization_id, board_id, id)
+ * on tasks — organization_id alone constrains only "a real organization" and
+ * does not stop a row naming a task from a different organization.
  */
 class TaskRecurrenceOccurrence extends Model implements HoldsPersonalData
 {
@@ -28,7 +33,7 @@ class TaskRecurrenceOccurrence extends Model implements HoldsPersonalData
 
     public const UPDATED_AT = null;
 
-    protected $fillable = ['task_id', 'occurrence_date', 'created_task_id', 'created_at'];
+    protected $fillable = ['board_id', 'task_id', 'occurrence_date', 'created_task_id', 'created_at'];
 
     protected function casts(): array
     {
