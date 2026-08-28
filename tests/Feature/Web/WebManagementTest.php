@@ -419,6 +419,137 @@ class WebManagementTest extends TestCase
         $this->assertStringContainsString('PASS', $report);
     }
 
+    // ── 7. the public key, for sites with nowhere to keep a secret ──
+
+    public function test_every_site_gets_a_public_key_that_is_not_the_token(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $created = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $key = $created['data']['public_key'];
+
+        $this->assertStringStartsWith('pk_', $key);
+        $this->assertNotSame($created['token'], $key);
+        $this->assertStringStartsWith('ezb_', $created['token']);
+
+        // Unlike the token, it comes back on an ordinary read — it is meant to
+        // be pasted into a public page, so hiding it helps nobody.
+        $this->assertSame(
+            $key,
+            $this->signedInAs($editor)
+                ->getJson("/api/v1/web/sites/{$created['data']['id']}")
+                ->assertOk()->json('data.public_key'),
+        );
+    }
+
+    public function test_two_sites_never_share_a_public_key(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $one = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $two = $this->registerSite($editor, $tenant, 'nj.a-1chimney.com');
+
+        $this->assertNotSame($one['data']['public_key'], $two['data']['public_key']);
+    }
+
+    public function test_a_browser_reads_values_with_the_public_key_and_no_token(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $this->setValues($editor, $site['data']['id'], ['phone' => '555-0100']);
+
+        $body = $this->getJson(
+            '/api/v1/web/public/values?key='.$site['data']['public_key'],
+        )->assertOk();
+
+        $this->assertSame('555-0100', $body->json('values.phone'));
+        $this->assertNotEmpty($body->json('fields'));
+    }
+
+    /**
+     * The point of a separate endpoint rather than reusing the plugin's.
+     *
+     * The authenticated response names the host, the label and the company. A
+     * key scraped from somebody's page source must not turn into a map of which
+     * businesses use EzBizi and how their sites are grouped.
+     */
+    public function test_the_public_endpoint_never_names_the_company_or_the_host(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $this->setValues($editor, $site['data']['id'], ['phone' => '555-0100']);
+
+        $body = $this->getJson('/api/v1/web/public/values?key='.$site['data']['public_key'])
+            ->assertOk()->json();
+
+        $this->assertSame(['fields', 'values', 'pages'], array_keys($body));
+        $this->assertStringNotContainsString('a-1chimney.com', json_encode($body));
+        $this->assertStringNotContainsString('Alpha Co', json_encode($body));
+    }
+
+    public function test_a_page_override_reaches_the_browser_too(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $this->setValues($editor, $site['data']['id'], ['phone' => '555-0100']);
+
+        $this->signedInAs($editor)->putJson(
+            "/api/v1/web/sites/{$site['data']['id']}/values",
+            ['path' => '/contact', 'values' => ['phone' => '555-0999']],
+        )->assertOk();
+
+        $body = $this->getJson('/api/v1/web/public/values?key='.$site['data']['public_key'])
+            ->assertOk();
+
+        $this->assertSame('555-0100', $body->json('values.phone'));
+        $this->assertSame('555-0999', $body->json('pages./contact.phone'));
+    }
+
+    public function test_a_missing_key_and_a_wrong_key_answer_the_same_way(): void
+    {
+        $this->getJson('/api/v1/web/public/values')->assertNotFound();
+        $this->getJson('/api/v1/web/public/values?key=pk_nonsense')->assertNotFound();
+
+        $this->assertSame(
+            $this->getJson('/api/v1/web/public/values')->json('message'),
+            $this->getJson('/api/v1/web/public/values?key=pk_nonsense')->json('message'),
+        );
+    }
+
+    public function test_the_browser_response_is_cacheable_and_cross_origin(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $this->getJson('/api/v1/web/public/values?key='.$site['data']['public_key'])
+            ->assertOk()
+            ->assertHeader('Access-Control-Allow-Origin', '*')
+            ->assertHeader('Cache-Control', 'max-age=300, public');
+    }
+
+    public function test_the_token_still_does_not_work_as_a_public_key(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        // The two credentials are not interchangeable in either direction.
+        $this->getJson('/api/v1/web/public/values?key='.$site['token'])->assertNotFound();
+        $this->pluginRead($site['data']['public_key'], 'a-1chimney.com')->assertUnauthorized();
+    }
+
     // ── helpers ─────────────────────────────────────────────────────
 
     /** @param array{org: \App\Models\Organization, franchise: \App\Models\Franchise} $tenant */
