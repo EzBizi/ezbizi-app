@@ -53,8 +53,19 @@ class PublicValuesController extends Controller
     {
         $key = $request->query('key');
 
+        /*
+         * No key at all is a DIFFERENT answer from a key that does not match,
+         * and the oracle argument below does not apply to it: nobody supplied
+         * anything to probe with. Saying so plainly matters because the deploy
+         * session read `404 {"message":"That key is not valid."}` on a request
+         * with no key and reasonably concluded the ROUTE was missing — same
+         * status, opposite meaning. 400 cannot be confused with the router.
+         */
         if (! is_string($key) || $key === '') {
-            return $this->refuse();
+            return response()->json(
+                ['message' => 'No key was given. Add ?key=pk_... from Web Management.'],
+                Response::HTTP_BAD_REQUEST,
+            )->withHeaders($this->browserHeaders());
         }
 
         /*

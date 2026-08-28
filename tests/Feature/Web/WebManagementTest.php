@@ -420,6 +420,89 @@ class WebManagementTest extends TestCase
      * See wordpress-plugin/tests/plugin-check.php for what it does and does not
      * cover, and why it is not a real WordPress install.
      */
+    // ── the snippet has to be reachable, not merely shipped ─────────
+
+    /**
+     * The snippet is served by a ROUTE, and these tests exist because shipping
+     * the file was not enough.
+     *
+     * `public/ezbizi.js` deployed perfectly and was unreachable on every
+     * release: nginx roots app.ezbizi.com at the Flutter build and sends only
+     * `/api` to Laravel, so Laravel's `public/` is not a web root here. The
+     * docs handed customers a URL that answered 404 and nothing failed — no
+     * test, no gate, no deploy check. It was found by somebody reading the
+     * nginx config.
+     */
+    public function test_the_browser_snippet_is_actually_served(): void
+    {
+        $response = $this->get('/api/v1/web/ezbizi.js')->assertOk();
+
+        $this->assertStringContainsString(
+            'application/javascript',
+            (string) $response->headers->get('Content-Type'),
+            'A script tag will not execute a response served as something else.',
+        );
+
+        $body = $response->getContent();
+
+        $this->assertStringContainsString('data-ezbizi', (string) $body);
+        $this->assertStringContainsString('textContent', (string) $body);
+    }
+
+    /**
+     * The URL the documentation gives must be the URL that exists.
+     *
+     * This is the assertion that would have caught the original defect, and it
+     * is the general form of it: a promise made to a customer in prose is not
+     * checked by anything unless something checks it. Reading the doc rather
+     * than hardcoding the path means the two cannot drift apart silently —
+     * change the route without the doc and this goes red.
+     */
+    public function test_the_documented_snippet_url_is_the_one_that_works(): void
+    {
+        $doc = file_get_contents(base_path('docs/WEB-MANAGEMENT-WITHOUT-WORDPRESS.md'));
+
+        $this->assertIsString($doc);
+        $this->assertSame(
+            1,
+            preg_match('#<script src="https://app\.ezbizi\.com(/[^"]+)"#', $doc, $found),
+            'The doc no longer shows a script tag, so this guard cannot check it.',
+        );
+
+        $this->get($found[1])->assertOk();
+    }
+
+    /**
+     * `public/` is not served on this host, so a file there is a file nobody
+     * can fetch. Somebody tidying the snippet "back where static assets go"
+     * would reintroduce the exact bug, and the move is invisible in review.
+     */
+    public function test_the_snippet_does_not_move_back_into_the_unserved_directory(): void
+    {
+        $this->assertFileExists(resource_path('snippet/ezbizi.js'));
+        $this->assertFileDoesNotExist(
+            public_path('ezbizi.js'),
+            'public/ is not a web root on app.ezbizi.com — see SnippetController.',
+        );
+    }
+
+    /**
+     * A missing key and a wrong key are different questions, and answering both
+     * with 404 cost a colleague a misdiagnosis: they read
+     * `404 {"message":"That key is not valid."}` on a keyless request and
+     * concluded the route was missing. Same status, opposite meaning.
+     */
+    public function test_a_request_with_no_key_is_told_so_rather_than_404(): void
+    {
+        $this->getJson('/api/v1/web/public/values')
+            ->assertStatus(400)
+            ->assertJsonFragment(['message' => 'No key was given. Add ?key=pk_... from Web Management.']);
+
+        $this->getJson('/api/v1/web/public/values?key=pk_nonsense')
+            ->assertStatus(404)
+            ->assertJsonFragment(['message' => 'That key is not valid.']);
+    }
+
     public function test_the_plugin_behaves_when_actually_executed(): void
     {
         $script = base_path('wordpress-plugin/tests/plugin-check.php');
@@ -531,15 +614,35 @@ class WebManagementTest extends TestCase
         $this->assertSame('555-0999', $body->json('pages./contact.phone'));
     }
 
-    public function test_a_missing_key_and_a_wrong_key_answer_the_same_way(): void
+    /**
+     * A key that never existed and one that was rotated away answer IDENTICALLY.
+     *
+     * That is the whole oracle guarantee: a caller holding a harvested key must
+     * not be able to learn whether it was ever real, so "wrong" and "retired"
+     * are one answer.
+     *
+     * This test used to assert that a MISSING key answered the same way too,
+     * which was the rule drawn too wide. Nobody sending no key is probing
+     * anything, and merging that case cost a colleague a misdiagnosis — see
+     * test_a_request_with_no_key_is_told_so_rather_than_404. The oracle applies
+     * between two keys, not between a key and its absence.
+     */
+    public function test_a_wrong_key_and_a_retired_key_answer_the_same_way(): void
     {
-        $this->getJson('/api/v1/web/public/values')->assertNotFound();
-        $this->getJson('/api/v1/web/public/values?key=pk_nonsense')->assertNotFound();
+        $tenant = $this->provisionTenant('Oracle');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'rotated.example.com');
 
-        $this->assertSame(
-            $this->getJson('/api/v1/web/public/values')->json('message'),
-            $this->getJson('/api/v1/web/public/values?key=pk_nonsense')->json('message'),
-        );
+        $retired = $site['data']['public_key'];
+
+        $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$site['data']['id']}/public-key")
+            ->assertOk();
+
+        $never = $this->getJson('/api/v1/web/public/values?key=pk_nonsense')->assertNotFound();
+        $was = $this->getJson('/api/v1/web/public/values?key='.$retired)->assertNotFound();
+
+        $this->assertSame($never->json('message'), $was->json('message'));
     }
 
     public function test_the_browser_response_is_cacheable_and_cross_origin(): void

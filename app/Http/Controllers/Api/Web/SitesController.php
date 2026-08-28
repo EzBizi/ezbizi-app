@@ -232,6 +232,30 @@ class SitesController extends Controller
             ->deleteFileAfterSend();
     }
 
+    /**
+     * POST /api/v1/web/sites/{site}/public-key
+     *
+     * The public key is printed in the page source of a public website, so it
+     * is harvestable by anyone who views source — which is fine, because it
+     * reads only what that page already displays. What it is NOT immune to is
+     * somebody polling it, and the customer needs a way out of that without
+     * changing their domain.
+     *
+     * Unlike the secret token this is returned on every read anyway, so there
+     * is no show-once ceremony. Rotating breaks any page still carrying the old
+     * key until the snippet's `data-key` is updated, which is why it is a
+     * deliberate action and not something that happens on its own.
+     */
+    public function rotatePublicKey(WebSite $site): JsonResponse
+    {
+        $this->authorize('update', $site);
+
+        $site->public_key = WebSite::newPublicKey();
+        $site->save();
+
+        return response()->json(['data' => $this->present($site->fresh())]);
+    }
+
     private function newToken(): string
     {
         return 'ezb_'.Str::random(48);

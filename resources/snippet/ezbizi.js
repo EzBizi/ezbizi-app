@@ -1,7 +1,7 @@
 /*
  * EzBizi — business details on a site that isn't WordPress.
  *
- *   <script src="https://app.ezbizi.com/ezbizi.js" data-key="pk_..."></script>
+ *   <script src="https://app.ezbizi.com/api/v1/web/ezbizi.js" data-key="pk_..."></script>
  *   <span data-ezbizi="phone"></span>
  *   <a data-ezbizi-href="booking_url" data-ezbizi="booking_url">Book now</a>
  *

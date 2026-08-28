@@ -107,7 +107,7 @@ For a hand-written page, a static host with no build step, or a CMS that only
 lets you paste HTML.
 
 ```html
-<script src="https://app.ezbizi.com/ezbizi.js" data-key="pk_..."></script>
+<script src="https://app.ezbizi.com/api/v1/web/ezbizi.js" data-key="pk_..."></script>
 
 <span data-ezbizi="phone">(555) 555-0100</span>
 <a href="mailto:hello@example.com" data-ezbizi-href="email" data-ezbizi="email">hello@example.com</a>

@@ -124,6 +124,7 @@ use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\PluginController as WebPluginController;
 use App\Http\Controllers\Api\Web\PublicValuesController as WebPublicValuesController;
+use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Http\Middleware\EnsureTaskRouteAccess;
@@ -357,6 +358,15 @@ Route::get('v1/web/plugin/values', [WebPluginController::class, 'values'])
 Route::get('v1/web/public/values', [WebPublicValuesController::class, 'show'])
     ->middleware('throttle:60,1')
     ->name('web.public.values');
+
+/*
+| The browser snippet itself. Under /api because nginx roots this host at the
+| Flutter build and never serves Laravel's public/ — see SnippetController for
+| why that is not worked around with an nginx location.
+*/
+Route::get('v1/web/ezbizi.js', [WebSnippetController::class, 'show'])
+    ->middleware('throttle:120,1')
+    ->name('web.snippet');
 
 /*
 |--------------------------------------------------------------------------
@@ -595,6 +605,9 @@ Route::prefix('v1')
         Route::apiResource('web/sites', WebSitesController::class)
             ->parameters(['sites' => 'site']);
         Route::post('web/sites/{site}/token', [WebSitesController::class, 'rotateToken']);
+        // The browser key. Separate from the token above because they are different
+        // credentials with different blast radii — see rotatePublicKey.
+        Route::post('web/sites/{site}/public-key', [WebSitesController::class, 'rotatePublicKey']);
         Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
         Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
         Route::post('inventory/purchase-orders/{purchase_order}/open', [InventoryPurchaseOrdersController::class, 'open']);
