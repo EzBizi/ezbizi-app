@@ -42,6 +42,7 @@ enum SocialProvider: string
 
     case GoogleBusinessProfile = 'google_business_profile';
     case GoogleAds = 'google_ads';
+    case Thumbtack = 'thumbtack';
 
     public function label(): string
     {
@@ -57,6 +58,7 @@ enum SocialProvider: string
             self::Bluesky => 'Bluesky',
             self::GoogleBusinessProfile => 'Google Business Profile',
             self::GoogleAds => 'Google Ads',
+            self::Thumbtack => 'Thumbtack',
         };
     }
 
@@ -75,6 +77,7 @@ enum SocialProvider: string
             self::Bluesky => 'bluesky',
             self::GoogleBusinessProfile => 'business-profile',
             self::GoogleAds => 'google-ads',
+            self::Thumbtack => 'thumbtack',
         };
     }
 
@@ -103,7 +106,7 @@ enum SocialProvider: string
      */
     public static function dataSources(): array
     {
-        return [self::GoogleBusinessProfile, self::GoogleAds];
+        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack];
     }
 
     /**
@@ -124,6 +127,7 @@ enum SocialProvider: string
     {
         return match ($this) {
             self::GoogleAds => 'leads.edit',
+            self::Thumbtack => 'leads.edit',
             self::GoogleBusinessProfile => 'reviews.edit',
             default => 'marketing.edit',
         };

@@ -170,6 +170,30 @@ return [
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/youtube/callback',
     ],
 
+    /*
+    | Thumbtack, for EZ Leads. Endpoints have NO defaults on purpose: their
+    | Partner API is gated and the documentation arrives with the credentials.
+    | A plausible-looking guessed URL would compile and fail against the real
+    | service, which is worse than an empty value that says it does not know.
+    | Application PINT-4039.
+    */
+    'thumbtack' => [
+        'client_id'     => env('THUMBTACK_CLIENT_ID'),
+        'client_secret' => env('THUMBTACK_CLIENT_SECRET'),
+
+        // Named outright rather than derived from APP_URL, so staging and
+        // production can hold different credentials at the same time -
+        // Thumbtack issues staging keys against their own redirect URI.
+        'redirect'      => env('THUMBTACK_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/thumbtack/callback',
+
+        'authorize_url' => env('THUMBTACK_AUTHORIZE_URL'),
+        'token_url'     => env('THUMBTACK_TOKEN_URL'),
+        'account_url'   => env('THUMBTACK_ACCOUNT_URL'),
+        'scopes'        => env('THUMBTACK_SCOPES'),
+        'pkce'          => env('THUMBTACK_PKCE', false),
+    ],
+
     'x' => [
         'client_id'     => env('X_CLIENT_ID'),
         'client_secret' => env('X_CLIENT_SECRET'),

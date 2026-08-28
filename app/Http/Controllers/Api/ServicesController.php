@@ -223,14 +223,12 @@ class ServicesController extends Controller
             'group_id' => array_key_exists('group_id', $input) ? $group?->getKey() : $service->group_id,
             'label_id' => array_key_exists('label_id', $input) ? $label?->getKey() : $service->label_id,
         ]);
-        DB::transaction(function () use ($service, $before) {
-            $service->save();
+        $service->save();
 
-            $this->events->emit('service.updated', $service, [
-                'before' => $before,
-                'after' => $this->scalars($service),
-            ]);
-        });
+        $this->events->emit('service.updated', $service, [
+            'before' => $before,
+            'after' => $this->scalars($service),
+        ]);
 
         return response()->json([
             'data' => $this->present($service->fresh(['group', 'label', 'company', 'franchise'])),
@@ -243,19 +241,10 @@ class ServicesController extends Controller
         $this->authorize('delete', $service);
 
         $before = $this->scalars($service);
-
-        // The outbox row and the delete commit together or not at all. Emitting
-        // first and deleting after — which this did — publishes `service.deleted`
-        // for a service that is still in the catalogue when the delete fails, and
-        // `ezbizi:dispatch-automation-events` drains the outbox every minute, so
-        // a tenant's "when a service is deleted" rule runs against a live record
-        // inside the minute. Do not lift either statement back out of here.
-        DB::transaction(function () use ($service, $before) {
-            $this->events->emit('service.deleted', $service, [
-                'before' => $before,
-            ]);
-            $service->delete();
-        });
+        $this->events->emit('service.deleted', $service, [
+            'before' => $before,
+        ]);
+        $service->delete();
 
         return response()->json([], Response::HTTP_NO_CONTENT);
     }

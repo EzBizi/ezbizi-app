@@ -10,6 +10,8 @@ use App\Support\Social\TikTokOAuth;
 use App\Support\Social\ThreadsOAuth;
 use App\Support\Social\XOAuth;
 use App\Support\Social\YouTubeOAuth;
+use App\Support\Social\SocialProvider;
+use App\Support\Social\ThumbtackOAuth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -192,6 +194,63 @@ class SocialNetworkOAuthTest extends TestCase
         // A refusal must not look like a success.
         $this->assertStringContainsString('cold', $html);
         $this->assertStringNotContainsString('#1E9E62', $html);
+    }
+
+    /**
+     * The redirect URI we gave Thumbtack has to resolve.
+     *
+     * PINT-4039 asks for a production and a staging redirect URI, and says
+     * staging credentials are not issued until one exists. A 404 there is the
+     * whole application failing on a detail nobody would think to check, so the
+     * route is pinned: 400 means "reached us and refused an unsigned request",
+     * which is right. 404 would mean the enum case went missing, because the
+     * route constraint is generated from it.
+     */
+    public function test_the_thumbtack_callback_resolves_rather_than_404s(): void
+    {
+        $this->get('/api/v1/social/thumbtack/callback')->assertStatus(400);
+    }
+
+    /**
+     * Thumbtack is a lead source, not a place anybody posts.
+     *
+     * Classed as a publishing network it would appear in the Marketing
+     * catalogue offering to be posted to, which EzBizi cannot do and Thumbtack
+     * does not offer. The permission follows the module that uses the
+     * connection, so leads.edit rather than marketing.edit.
+     */
+    public function test_thumbtack_is_a_lead_source_on_the_leads_permission(): void
+    {
+        $this->assertContains(SocialProvider::Thumbtack, SocialProvider::dataSources());
+        $this->assertFalse(SocialProvider::Thumbtack->isPublishingNetwork());
+        $this->assertSame('leads.edit', SocialProvider::Thumbtack->connectPermission());
+    }
+
+    /**
+     * Credentials alone are not enough to connect, and it says so.
+     *
+     * Thumbtack publishes its API addresses with the partner documentation, so
+     * there is a real state where keys exist and endpoints do not. Left unsaid,
+     * Connect would open a window to an empty URL. The two refusals name
+     * different missing things because different people fix them.
+     */
+    public function test_thumbtack_says_which_piece_is_missing(): void
+    {
+        $driver = app(ThumbtackOAuth::class);
+
+        config()->set('services.thumbtack.client_id', null);
+        config()->set('services.thumbtack.client_secret', null);
+        $this->assertStringContainsString('no Thumbtack app set up', (string) $driver->notReadyBecause());
+
+        config()->set('services.thumbtack.client_id', 'an-id');
+        config()->set('services.thumbtack.client_secret', 'a-secret');
+        config()->set('services.thumbtack.authorize_url', '');
+        $this->assertStringContainsString('not the API addresses', (string) $driver->notReadyBecause());
+
+        config()->set('services.thumbtack.authorize_url', 'https://example.test/oauth');
+        config()->set('services.thumbtack.token_url', 'https://example.test/token');
+        config()->set('services.thumbtack.account_url', 'https://example.test/me');
+        $this->assertNull($driver->notReadyBecause());
     }
 
     public function test_host_header_cannot_move_a_facebook_redirect(): void
