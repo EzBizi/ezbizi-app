@@ -78,7 +78,14 @@ class DuplicateCustomerFinder
             return collect();
         }
 
-        return $matched->with('owningFranchise:id,name')->limit(10)->get();
+        // Same load as the list (CustomersController::index) on purpose: this
+        // payload goes through the same present(), where a franchise selected
+        // without company_id makes `company` null — indistinguishable from a
+        // franchise that genuinely has none.
+        return $matched
+            ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name')
+            ->limit(10)
+            ->get();
     }
 
     /**

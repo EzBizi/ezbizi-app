@@ -555,6 +555,16 @@ class VerticalSliceTest extends TestCase
         // second household on one line is real.
         $this->assertCount(1, $response->json('possible_duplicates'));
         $this->assertSame('First Entry', $response->json('possible_duplicates.0.name'));
+
+        // The duplicates list crosses franchise boundaries by design (sharing,
+        // §5.2), so it is a scope-crossing surface exactly like search — and it
+        // is the one screen whose whole question is "is this the same person?".
+        // A null company here would read as "no company" rather than "not
+        // loaded", on the surface least able to afford that.
+        $this->assertSame(
+            'Alpha Co',
+            $response->json('possible_duplicates.0.owning_franchise.company.name')
+        );
     }
 
     // ── the contract says what the columns say ───────────────────
