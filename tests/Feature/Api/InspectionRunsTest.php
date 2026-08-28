@@ -214,11 +214,67 @@ class InspectionRunsTest extends TestCase
             ->assertStatus(422);
     }
 
+    /**
+     * Scope narrows; the grant still gates. Both, and in that order.
+     *
+     * This definition is GRANTED to the technician's role and published — so
+     * every rule that existed before scope says they may run it — and it belongs
+     * to a franchise that is not theirs. If scope were merely advisory the
+     * picker would offer it and the start would succeed.
+     */
+    public function test_the_picker_omits_an_inspection_scoped_to_another_franchise(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+        $seeded = $this->seedOffered($tenant, $tech);
+        $elsewhere = $this->extraFranchise($tenant, 'Second');
+
+        $this->inTenant($tenant['org'], fn () => $seeded['definition']->update([
+            'scope_type' => InspectionDefinition::SCOPE_FRANCHISE,
+            'scope_id' => $elsewhere->id,
+        ]));
+
+        $response = $this->signedInAs($tech)
+            ->getJson('/api/v1/inspections/startable?customer_id='.$seeded['customer']->id)
+            ->assertOk();
+
+        $this->assertSame([], $response->json('data'),
+            'a definition scoped elsewhere must not be offered, grant or no grant');
+    }
+
+    /**
+     * Refused at the API, not merely hidden in the picker.
+     *
+     * A thing that is hidden but still starts when its id is posted is not
+     * scoped at all — it is decorated.
+     */
+    public function test_starting_an_inspection_scoped_elsewhere_is_refused(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+        $seeded = $this->seedOffered($tenant, $tech);
+        $elsewhere = $this->extraFranchise($tenant, 'Second');
+
+        $this->inTenant($tenant['org'], fn () => $seeded['definition']->update([
+            'scope_type' => InspectionDefinition::SCOPE_FRANCHISE,
+            'scope_id' => $elsewhere->id,
+        ]));
+
+        $this->signedInAs($tech)->postJson('/api/v1/inspections/runs', [
+            'customer_id' => $seeded['customer']->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+        ])->assertStatus(422);
+    }
+
     private function tech(array $tenant, string $name = 'Rodrigo', array $extra = [])
     {
-        return $this->userWithRole($tenant, $name, [
-            'inspection.view', 'inspection.create', ...$extra,
-        ]);
+        return $this->userWithRole(
+            $tenant, $name, ['inspection.view', 'inspection.create', ...$extra],
+            // Pinned to the tenant's own franchise. The default is ORGANIZATION
+            // level, which reaches every franchise — and a scope test written
+            // against that passes whether or not scope works at all.
+            onlyAt: $tenant['franchise'],
+        );
     }
 
     private function grant(array $tenant, InspectionDefinition $definition, string $roleId): void

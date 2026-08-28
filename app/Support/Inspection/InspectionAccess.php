@@ -11,10 +11,15 @@ use Illuminate\Support\Collection;
 /**
  * May this person start that named inspection, see this draft, or submit it?
  *
- * Three questions, same shape as MailboxAccess:
+ * Four questions, same shape as MailboxAccess:
  *   1. Permission — `inspection.create` to start or submit, owner-only to see a run.
- *   2. Grant — the organization offered this named inspection to their role.
- *   3. Reach — customers are org-visible; jobs stay franchise-scoped (asked at start).
+ *   2. Scope — the named inspection exists in one of this person's places.
+ *   3. Grant — the organization offered this named inspection to their role.
+ *   4. Reach — customers are org-visible; jobs stay franchise-scoped (asked at start).
+ *
+ * Scope and grant are separate on purpose: scope says WHERE an inspection
+ * exists, the grant says WHO may run it. Answering both in one clause would
+ * make a refusal impossible to read.
  *
  * A grant is about the named inspection, not about someone else's draft.
  * Drafts are personal: Rodrigo's run is not Carlos's even when both are granted.
@@ -27,6 +32,10 @@ final class InspectionAccess
 {
     public const VIEW   = 'inspection.view';
     public const CREATE = 'inspection.create';
+
+    public function __construct(
+        private readonly InspectionScope $scope,
+    ) {}
 
     public function maySeeRun(User $user, InspectionRun $run): bool
     {
@@ -57,6 +66,11 @@ final class InspectionAccess
         $query = InspectionDefinition::query()
             ->whereNotNull('published_at')
             ->orderBy('name');
+
+        // Scope first, then grants. An Administrator passes both — the scope
+        // class exempts them for the same reason this method does, so the role
+        // that hands out grants cannot be locked out of its own picker.
+        $this->scope->constrain($query, $user);
 
         if (! $user->isAdministrator()) {
             if ($user->role_id === null) {
