@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -22,22 +23,38 @@ class SocialMediaTab extends StatefulWidget {
     required this.api,
     required this.session,
     this.openConsent = openConsentWindow,
+    this.pickMedia = _pickMedia,
   });
 
   final ApiClient api;
   final Session session;
   final OpenConsentWindow openConsent;
 
+  /// How a file is chosen. Injectable for the same reason [openConsent] is:
+  /// `Files.pickBytes` reaches the platform, so a test that could not replace
+  /// it could not reach the preview at all — and the preview is the whole
+  /// point of attaching a file you are about to publish under your own name.
+  final Future<PickedBytes?> Function() pickMedia;
+
   @override
   State<SocialMediaTab> createState() => _SocialMediaTabState();
 }
 
+Future<PickedBytes?> _pickMedia() => Files.pickBytes(accept: 'image/*,video/*');
+
 class _SocialMediaTabState extends State<SocialMediaTab> {
+  /// Roughly a minute at three seconds a try. Long enough for a video upload
+  /// to a slow network, short enough that a dead worker is reported rather
+  /// than drawn as progress forever.
+  static const int _pollLimit = 20;
+
   int _tab = 0;
   List<_SocialNetwork> _providers = const [];
   List<_SocialConnection> _connections = const [];
   List<_SentPost> _posts = const [];
   String? _loadError;
+  Timer? _poll;
+  bool _gaveUpWaiting = false;
 
   String get _viewName =>
       widget.session.me?.scope.label ??
@@ -48,6 +65,12 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -86,6 +109,70 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
               .map(_SentPost.fromJson)
               .toList();
     });
+
+    _watchPending();
+  }
+
+  /// Just the Sent list. Used by the poll below, which has no business
+  /// re-reading the catalogue and the connections every few seconds.
+  Future<void> _loadPosts() async {
+    final posts = await widget.api.get('/social/posts');
+    if (!mounted || !posts.ok) return;
+
+    setState(() {
+      _posts = ((posts.body['data'] as List<dynamic>?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(_SentPost.fromJson)
+          .toList();
+    });
+  }
+
+  bool get _anyQueued =>
+      _posts.any((p) => p.targets.any((t) => t.status == 'queued'));
+
+  /// Follow a post until the queue has actually dealt with it.
+  ///
+  /// ── The defect this exists to fix ────────────────────────────
+  ///
+  /// Publishing is a job per account, so a 201 means QUEUED and never means
+  /// posted. The screen loaded the Sent list once, immediately, and never
+  /// again — so a target that failed two seconds later sat on screen saying
+  /// "waiting to send" indefinitely. On 2026-08-28 that is exactly what
+  /// happened on production: TikTok had already refused the post and been
+  /// written `failed`, while the composer showed it still in flight.
+  ///
+  /// A failure displayed as progress is worse than an error. An error sends
+  /// somebody looking; a spinner tells them it is working and to wait.
+  ///
+  /// It gives up rather than polling forever: if the queue worker is down,
+  /// every row stays `queued` and an endless timer would hammer the server to
+  /// keep drawing a lie. `_gaveUpWaiting` then says so on screen.
+  void _watchPending() {
+    _poll?.cancel();
+
+    if (!_anyQueued) return;
+
+    var tries = 0;
+
+    _poll = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (++tries > _pollLimit) {
+        timer.cancel();
+        setState(() => _gaveUpWaiting = true);
+        return;
+      }
+
+      await _loadPosts();
+
+      if (!mounted || !_anyQueued) {
+        timer.cancel();
+        if (mounted) setState(() => _gaveUpWaiting = false);
+      }
+    });
   }
 
   @override
@@ -110,6 +197,8 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                   viewName: _viewName,
                   connections: _connections,
                   posts: _posts,
+                  stillWaiting: _gaveUpWaiting,
+                  pickMedia: widget.pickMedia,
                   onSent: _load,
                   onConnect: () => _openConnect(context),
                 )
@@ -194,6 +283,8 @@ class _PostsPane extends StatelessWidget {
     required this.viewName,
     required this.connections,
     required this.posts,
+    required this.stillWaiting,
+    required this.pickMedia,
     required this.onSent,
     required this.onConnect,
   });
@@ -203,6 +294,8 @@ class _PostsPane extends StatelessWidget {
   final String viewName;
   final List<_SocialConnection> connections;
   final List<_SentPost> posts;
+  final bool stillWaiting;
+  final Future<PickedBytes?> Function() pickMedia;
   final Future<void> Function() onSent;
   final VoidCallback onConnect;
 
@@ -224,6 +317,8 @@ class _PostsPane extends StatelessWidget {
           viewName: viewName,
           connections: connections,
           posts: posts,
+          stillWaiting: stillWaiting,
+          pickMedia: pickMedia,
           onSent: onSent,
         );
 
@@ -333,6 +428,8 @@ class _ComposeColumn extends StatefulWidget {
     required this.viewName,
     required this.connections,
     required this.posts,
+    required this.stillWaiting,
+    required this.pickMedia,
     required this.onSent,
   });
 
@@ -341,6 +438,8 @@ class _ComposeColumn extends StatefulWidget {
   final String viewName;
   final List<_SocialConnection> connections;
   final List<_SentPost> posts;
+  final bool stillWaiting;
+  final Future<PickedBytes?> Function() pickMedia;
   final Future<void> Function() onSent;
 
   @override
@@ -395,7 +494,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   }
 
   Future<void> _attach() async {
-    final picked = await Files.pickBytes(accept: 'image/*,video/*');
+    final picked = await widget.pickMedia();
     if (picked == null || !mounted) return;
 
     setState(() => _media = picked);
@@ -503,7 +602,15 @@ class _ComposeColumnState extends State<_ComposeColumn> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  subtitle: Text(account.providerLabel),
+                  // The note goes here, under the account, BEFORE anybody
+                  // presses Publish. "Sent" and "sent, but you must go and
+                  // finish it in TikTok" are different enough that learning it
+                  // afterwards is learning it too late.
+                  subtitle: Text(
+                    account.postingNote == null
+                        ? account.providerLabel
+                        : '${account.providerLabel} · ${account.postingNote}',
+                  ),
                 ),
               ),
             const SizedBox(height: 8),
@@ -526,7 +633,10 @@ class _ComposeColumnState extends State<_ComposeColumn> {
             const SizedBox(height: 16),
             const Divider(height: 1),
             const SizedBox(height: 12),
-            _RecentPosts(posts: widget.posts),
+            _RecentPosts(
+              posts: widget.posts,
+              stillWaiting: widget.stillWaiting,
+            ),
           ],
         ],
       ),
@@ -547,24 +657,104 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       );
     }
 
-    return Row(
+    final isImage = _looksLikeImage(media.name);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Icon(Icons.attachment_outlined, size: 18),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            media.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+        /*
+         * The picture itself, not its filename.
+         *
+         * A label is not confirmation. This goes to a public account under the
+         * tenant's own name, and the cost of the wrong file is a real audience
+         * seeing it — so the check has to be the thing a person can actually
+         * perform, which is looking at it.
+         *
+         * `Image.memory` on the bytes already in hand: nothing uploaded yet,
+         * no dependency, no network. Video gets a named placeholder rather
+         * than a frame — decoding one needs a player package, which is a
+         * decision rather than a detail. See the note below it.
+         */
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            height: 160,
+            width: double.infinity,
+            child: isImage
+                ? Image.memory(
+                    Uint8List.fromList(media.bytes),
+                    fit: BoxFit.contain,
+                    // A file that claims .png and is not decodable should say
+                    // so here, while it can still be swapped — not fail at the
+                    // network days later.
+                    errorBuilder: (context, _, _) => _mediaFallback(
+                      context,
+                      Icons.broken_image_outlined,
+                      'That file could not be read as an image.',
+                    ),
+                  )
+                : _mediaFallback(
+                    context,
+                    Icons.movie_outlined,
+                    '${media.name} · ${_sizeOf(media.bytes.length)}',
+                  ),
           ),
         ),
-        TextButton(
-          onPressed: _sending ? null : () => setState(() => _media = null),
-          child: const Text('Remove'),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                media.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            TextButton(
+              onPressed: _sending ? null : () => setState(() => _media = null),
+              child: const Text('Remove'),
+            ),
+          ],
         ),
       ],
     );
   }
+
+  Widget _mediaFallback(BuildContext context, IconData icon, String label) {
+    final theme = Theme.of(context);
+
+    return ColoredBox(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 32, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static bool _looksLikeImage(String name) {
+    final ext = name.toLowerCase().split('.').last;
+    return const ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif']
+        .contains(ext);
+  }
+
+  static String _sizeOf(int bytes) => bytes >= 1048576
+      ? '${(bytes / 1048576).toStringAsFixed(1)} MB'
+      : '${(bytes / 1024).round()} KB';
 }
 
 /// What went out, and what each account said back.
@@ -574,9 +764,13 @@ class _ComposeColumnState extends State<_ComposeColumn> {
 /// nothing three clicks away. A real queue with paging and filters is a later
 /// piece; this is the receipt.
 class _RecentPosts extends StatelessWidget {
-  const _RecentPosts({required this.posts});
+  const _RecentPosts({required this.posts, required this.stillWaiting});
 
   final List<_SentPost> posts;
+
+  /// The queue stopped answering before anything left `queued`. Said out loud
+  /// rather than drawn as an indefinite wait — see `_watchPending`.
+  final bool stillWaiting;
 
   @override
   Widget build(BuildContext context) {
@@ -587,6 +781,14 @@ class _RecentPosts extends StatelessWidget {
       children: [
         Text('Sent', style: theme.textTheme.titleSmall),
         const SizedBox(height: 8),
+        if (stillWaiting) ...[
+          const DashboardNote(
+            'Something is still waiting to send and the queue has stopped '
+            'answering. Nothing is lost — but nothing is going out either '
+            'until somebody looks at the send queue.',
+          ),
+          const SizedBox(height: 8),
+        ],
         for (final post in posts)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -1202,6 +1404,7 @@ class _SocialConnection {
     this.handle,
     this.canPublish = false,
     this.cannotPublishBecause,
+    this.postingNote,
   });
 
   final String id;
@@ -1217,6 +1420,11 @@ class _SocialConnection {
   final bool canPublish;
   final String? cannotPublishBecause;
 
+  /// What posting here actually does, when it is not what somebody would
+  /// assume — TikTok going to drafts rather than to the profile. The server's
+  /// sentence; null when the network holds no surprise.
+  final String? postingNote;
+
   factory _SocialConnection.fromJson(Map<String, dynamic> json) {
     return _SocialConnection(
       id: json['id'] as String? ?? '',
@@ -1226,6 +1434,7 @@ class _SocialConnection {
       handle: json['handle'] as String?,
       canPublish: json['can_publish'] as bool? ?? false,
       cannotPublishBecause: json['cannot_publish_because'] as String?,
+      postingNote: json['posting_note'] as String?,
     );
   }
 }

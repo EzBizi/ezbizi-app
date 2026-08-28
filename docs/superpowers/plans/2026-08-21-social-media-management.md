@@ -63,6 +63,12 @@ Create post + targets. Schedule wall-clock. Queue lists targets. Publish now enq
 
 The stub worker in the paragraph above was never needed. Pinterest and TikTok publishers already existed (27 Aug, reachable only from `social:post-test`), so Publish now sends for real on those two and refuses **before writing a row** for the rest — `Publishers::refusalFor()` is the one map, and `GET /social/connections` carries `can_publish` so the composer greys the account rather than queueing something that cannot go.
 
+**Fixed 28 Aug, from a real publish on production.** Three defects the tests could not have found, because all three needed a live network:
+
+1. **TikTok refused every post** — "Please review our integration guidelines", which names no field and reads like the video was rejected. It was not. `Publishers::for()` defaulted to Direct Post, which requires TikTok's audit; the app is unaudited, so that endpoint was never going to answer anything else. Circular, too: the audit submission needs a filmed demo of a working publish. `services.tiktok.direct_post` (default **false**) now sends posts to the creator's drafts, which needs only `video.upload` and works from day one — so there is a real publish to film.
+2. **"Waiting to send" was a lie.** The composer read the Sent list once and never again, so a target that failed two seconds later sat on screen claiming to be in flight. A failure displayed as progress is worse than an error: an error sends somebody looking. It now polls until the queue answers, and says so plainly if the queue stops answering rather than spinning forever.
+3. **An attached file showed only its name.** It is displayed now — images decode from the bytes in hand, video gets its name and size. A filename is not confirmation when the cost of the wrong file is a public account under the tenant's own name.
+
 Still open from this task: **scheduling** (`scheduled_for` in the view's wall clock — the calendar beside the composer has nothing to draw until it lands) and **per-network body limits** (one 5,000-character cap for now; Bluesky's 300 and X's 280 belong on `SocialProvider` when either gets a publisher).
 
 ### Task 6 — Facebook Page publish (sandbox)
