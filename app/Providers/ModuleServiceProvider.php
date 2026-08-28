@@ -1440,6 +1440,20 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Services',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
                 subject: new AutomationSubject(Service::class, 'Service'),
+                /*
+                 * No `automationActions`, and that is a ruling rather than an
+                 * oversight: spec decision 8 in
+                 * docs/superpowers/specs/2026-08-25-services-design.md reads
+                 * "No automation action writes the catalogue."
+                 *
+                 * The spec records the decision and NOT the reason for it, so
+                 * neither does this comment. Anyone who wants to know why, or
+                 * who wants to add an action here, is re-opening a human
+                 * decision and should go and ask rather than infer a rationale
+                 * from a plausible-sounding sentence in a provider. Triggers
+                 * are the other direction — listening, not writing — and are
+                 * declared below.
+                 */
                 triggers: [
                     new TriggerDefinition(
                         key: 'service.created',
