@@ -211,6 +211,7 @@ class _TaskTableState extends State<TaskTable> {
                           if (!_collapsed.contains(id))
                             for (final row in groups[id] ?? const <TaskRow>[])
                               _PinnedRow(
+                                key: ValueKey<String>('task:${row.id}:pinned'),
                                 task: row,
                                 selected: row.id == widget.selectedTaskId,
                                 checked: _selection.contains(row.id),
@@ -242,6 +243,9 @@ class _TaskTableState extends State<TaskTable> {
                                 for (final row
                                     in groups[id] ?? const <TaskRow>[])
                                   _OperationalRow(
+                                    key: ValueKey<String>(
+                                      'task:${row.id}:operational',
+                                    ),
                                     task: row,
                                     board: widget.board,
                                     columns: columns,
@@ -480,6 +484,7 @@ class _BulkBar extends StatelessWidget {
 
 class _PinnedRow extends StatefulWidget {
   const _PinnedRow({
+    super.key,
     required this.task,
     required this.selected,
     required this.checked,
@@ -609,6 +614,7 @@ class _OperationalHeader extends StatelessWidget {
 
 class _OperationalRow extends StatelessWidget {
   const _OperationalRow({
+    super.key,
     required this.task,
     required this.board,
     required this.columns,
@@ -642,7 +648,11 @@ class _OperationalRow extends StatelessWidget {
       child: Row(
         children: [
           for (final column in columns)
-            SizedBox(width: column.width, child: _cell(column)),
+            SizedBox(
+              key: ValueKey<String>('task:${task.id}:column:${column.key}'),
+              width: column.width,
+              child: _cell(column),
+            ),
         ],
       ),
     ),

@@ -353,19 +353,23 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   Future<void> _refreshBoardRows(
     TaskBoard board, {
     bool conditional = false,
+    int? requestedPage,
   }) async {
     final token = ++_queryToken;
     final privacy = _privacyGeneration;
+    final viewId = _activeViewId;
+    final targetPage = requestedPage ?? _page;
     final result = await _tasks.boardRows(
       board.id,
-      viewId: _activeViewId,
+      viewId: viewId,
       configuration: _viewDirty ? _configuration : null,
-      page: _page,
+      page: targetPage,
       etag: conditional ? _boardEtag : null,
     );
     if (!_isCurrentPrivacy(privacy) ||
         token != _queryToken ||
-        _board?.id != board.id) {
+        _board?.id != board.id ||
+        _activeViewId != viewId) {
       return;
     }
     if (result is TaskApiUnavailable<TaskRowsPage>) {
@@ -378,6 +382,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       return;
     }
     final page = result.data;
+    if (page.page != targetPage || page.viewId != viewId) return;
     if (_dirtyDraftIds.isNotEmpty || _mutationQueues.isNotEmpty) {
       setState(() => _conflict = true);
       return;
@@ -595,29 +600,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     if (_bulkBusy) return;
     final board = _board;
     if (board == null || page < 1 || page > _lastPage) return;
-    final privacy = _privacyGeneration;
-    final result = await _tasks.boardRows(
-      board.id,
-      viewId: _activeViewId,
-      configuration: _configuration,
-      page: page,
-    );
-    if (!_isCurrentPrivacy(privacy)) return;
-    if (result is TaskApiUnavailable<TaskRowsPage>) {
-      _evict(result.message);
-      return;
-    }
-    if (result is TaskApiSuccess<TaskRowsPage>) {
-      setState(() {
-        _rows = result.data.rows;
-        _page = result.data.page;
-        _lastPage = result.data.lastPage;
-        _total = result.data.total;
-        _statusSummaries = result.data.statusSummaries;
-        _groupCounts = result.data.groupCounts;
-        _boardEtag = result.data.etag;
-      });
-    }
+    await _refreshBoardRows(board, requestedPage: page);
   }
 
   void _changeConfiguration(TaskViewConfiguration configuration) {
@@ -625,6 +608,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _configuration = configuration;
       _viewDirty = true;
       _page = 1;
+      _queryToken++;
     });
     _queryDebounce?.cancel();
     _queryDebounce = Timer(const Duration(milliseconds: 300), () {
@@ -1103,6 +1087,22 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _reloadBoardDefinition() async {
+    final boardId = _board?.id;
+    if (boardId == null) return;
+    setState(() => _conflict = false);
+    final privacy = _privacyGeneration;
+    final result = await _tasks.board(boardId);
+    if (!_isCurrentPrivacy(privacy) || _board?.id != boardId) return;
+    if (result is TaskApiUnavailable<TaskBoard>) {
+      _evict(result.message);
+    } else if (result is TaskApiSuccess<TaskBoard>) {
+      await _loadBoard(result.data);
+    } else {
+      setState(() => _error = result.message);
+    }
+  }
+
   void _evict(String? message) {
     _tasks.clearCache();
     if (!mounted) return;
@@ -1165,10 +1165,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                             ),
                             actions: [
                               TextButton(
-                                onPressed: () {
-                                  setState(() => _conflict = false);
-                                  if (_board != null) _loadBoard(_board!);
-                                },
+                                onPressed: _reloadBoardDefinition,
                                 child: const Text('Refresh board'),
                               ),
                             ],

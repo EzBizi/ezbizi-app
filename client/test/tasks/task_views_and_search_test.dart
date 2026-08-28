@@ -1026,6 +1026,215 @@ void main() {
     expect(boardShowReads, 1);
   });
 
+  testWidgets(
+    'page navigation drops stale view responses and omits clean configuration',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final stalePage = Completer<http.Response>();
+      String? pageTwoConfiguration;
+      var initialRowsRead = false;
+      final api = ApiClient(
+        client: MockClient((request) async {
+          switch (request.url.path) {
+            case '/api/v1/tasks/boards':
+              return _json(200, <String, Object?>{
+                'data': <Object?>[_boardWithColumns()],
+              });
+            case '/api/v1/tasks/boards/board-1/rows':
+              final page = request.url.queryParameters['page'];
+              final view = request.url.queryParameters['view_id'];
+              if (!initialRowsRead) {
+                initialRowsRead = true;
+                return _pagedRowsResponse(
+                  title: 'View one page one',
+                  page: 1,
+                  lastPage: 2,
+                  viewId: 'view-1',
+                );
+              }
+              if (page == '2' && view == 'view-1') {
+                pageTwoConfiguration =
+                    request.url.queryParameters['configuration'];
+                return stalePage.future;
+              }
+              if (page == '1' && view == 'view-2') {
+                return _pagedRowsResponse(
+                  title: 'View two page one',
+                  page: 1,
+                  lastPage: 2,
+                  viewId: 'view-2',
+                );
+              }
+            case '/api/v1/tasks/boards/board-1/views':
+              return _json(200, <String, Object?>{
+                'data': <Object?>[
+                  _view(name: 'Main', locked: false),
+                  _view(id: 'view-2', name: 'Other', locked: false),
+                ],
+                'meta': _viewCapabilities(),
+              });
+            case '/api/v1/tasks/boards/board-1/participants':
+              return _json(200, <String, Object?>{'data': <Object?>[]});
+            case '/api/v1/tasks/boards/board-1/views/view-2/preference':
+              return _json(200, <String, Object?>{
+                'data': <String, Object?>{
+                  'view_id': 'view-2',
+                  'collapsed_group_ids': <Object?>[],
+                  'density': 'compact',
+                  'is_last_active': true,
+                  'scroll_left': 0,
+                  'scroll_top': 0,
+                },
+              });
+          }
+          return _json(500, <String, Object?>{'message': 'Unexpected request'});
+        }),
+      );
+      await tester.pumpWidget(
+        _app(
+          TasksScreen(
+            api: api,
+            session: Session(api),
+            pollInterval: const Duration(days: 1),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.text('Operations'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.text('Next'));
+      await tester.pump();
+      await tester.tap(find.text('Other'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('View two page one'), findsOneWidget);
+
+      stalePage.complete(
+        _pagedRowsResponse(
+          title: 'Stale view one page two',
+          page: 2,
+          lastPage: 2,
+          viewId: 'view-1',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(pageTwoConfiguration, isNull);
+      expect(find.text('View two page one'), findsOneWidget);
+      expect(find.text('Stale view one page two'), findsNothing);
+      expect(find.text('Page 1 of 2'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Refresh board reloads its authoritative structure before shared actions',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var rowReads = 0;
+      var boardShowReads = 0;
+      int? deletedAtStructureVersion;
+      final api = ApiClient(
+        client: MockClient((request) async {
+          switch (request.url.path) {
+            case '/api/v1/tasks/boards':
+              return _json(200, <String, Object?>{
+                'data': <Object?>[_boardWithColumns()],
+              });
+            case '/api/v1/tasks/boards/board-1':
+              boardShowReads++;
+              return _json(200, <String, Object?>{
+                'data': <String, Object?>{
+                  ..._boardWithColumns(),
+                  'structure_version': 11,
+                },
+              });
+            case '/api/v1/tasks/boards/board-1/rows':
+              rowReads++;
+              return _rowsResponse(
+                title: switch (rowReads) {
+                  1 => 'Original title',
+                  2 => 'Remote title',
+                  _ => 'Reloaded title',
+                },
+                etag: '"board-$rowReads"',
+              );
+            case '/api/v1/tasks/boards/board-1/views':
+              return _json(200, <String, Object?>{
+                'data': <Object?>[
+                  _view(
+                    name: 'Shared dispatch',
+                    locked: false,
+                    actions: const <String>['delete'],
+                  ),
+                ],
+                'meta': _viewCapabilities(),
+              });
+            case '/api/v1/tasks/boards/board-1/participants':
+              return _json(200, <String, Object?>{'data': <Object?>[]});
+            case '/api/v1/tasks/boards/board-1/views/view-1':
+              deletedAtStructureVersion =
+                  (jsonDecode(request.body)
+                          as Map<String, dynamic>)['expected_structure_version']
+                      as int?;
+              return _json(409, <String, Object?>{
+                'message': 'The board structure changed.',
+                'meta': <String, Object?>{'current_structure_version': 11},
+              });
+          }
+          return _json(500, <String, Object?>{'message': 'Unexpected request'});
+        }),
+      );
+      await tester.pumpWidget(
+        _app(
+          TasksScreen(
+            api: api,
+            session: Session(api),
+            pollInterval: const Duration(days: 1),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.text('Operations'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      final title = find.descendant(
+        of: find.byKey(const Key('task-row-task-1')),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(title, 'Local draft');
+      await tester.tap(find.byTooltip('Refresh tasks'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Refresh board'), findsOneWidget);
+
+      await tester.tap(find.text('Refresh board'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.byTooltip('Saved view actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete view'));
+      await tester.pump();
+
+      expect(boardShowReads, 1);
+      expect(deletedAtStructureVersion, 11);
+    },
+  );
+
   testWidgets('participant reach loss evicts the loaded board', (tester) async {
     final api = ApiClient(
       client: MockClient((request) async {
@@ -1278,32 +1487,40 @@ http.Response _searchResponse(String title) => _json(200, <String, Object?>{
 });
 
 http.Response _rowsResponse({required String title, required String etag}) =>
-    _json(
-      200,
-      <String, Object?>{
-        'data': <Object?>[_taskWithTitle(title)],
-        'meta': <String, Object?>{
-          'total': 1,
-          'page': 1,
-          'per_page': 50,
-          'last_page': 1,
-          'group_counts': <Object?>[
-            <String, Object?>{
-              'group_id': 'group-1',
-              'group_by_value': 'group-1',
-              'count': 1,
-            },
-          ],
-          'status_summaries': <Object?>[
-            <String, Object?>{'status_option_id': 'status-1', 'count': 1},
-          ],
-          'view_id': 'view-1',
-          'view_version': 1,
-          'configuration': _configuration(),
+    _pagedRowsResponse(title: title, page: 1, lastPage: 1, etag: etag);
+
+http.Response _pagedRowsResponse({
+  required String title,
+  required int page,
+  required int lastPage,
+  String viewId = 'view-1',
+  String etag = '"board-page"',
+}) => _json(
+  200,
+  <String, Object?>{
+    'data': <Object?>[_taskWithTitle(title)],
+    'meta': <String, Object?>{
+      'total': 1,
+      'page': page,
+      'per_page': 50,
+      'last_page': lastPage,
+      'group_counts': <Object?>[
+        <String, Object?>{
+          'group_id': 'group-1',
+          'group_by_value': 'group-1',
+          'count': 1,
         },
-      },
-      headers: <String, String>{'etag': etag},
-    );
+      ],
+      'status_summaries': <Object?>[
+        <String, Object?>{'status_option_id': 'status-1', 'count': 1},
+      ],
+      'view_id': viewId,
+      'view_version': 1,
+      'configuration': _configuration(),
+    },
+  },
+  headers: <String, String>{'etag': etag},
+);
 
 Map<String, Object?> _taskWithTitle(String title) => <String, Object?>{
   ..._task(),

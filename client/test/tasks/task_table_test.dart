@@ -121,6 +121,112 @@ void main() {
     expect(selectionCount, 1);
     expect(find.text('1 selected'), findsOneWidget);
   });
+
+  testWidgets('a row reorder keeps the dirty title with its task identity', (
+    tester,
+  ) async {
+    var rows = const <TaskRow>[_row, _secondRow];
+    late StateSetter rebuild;
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (context, setState) {
+          rebuild = setState;
+          return MaterialApp(
+            theme: EzBiziTheme.light(),
+            home: Scaffold(
+              body: TaskTable(
+                board: _board,
+                rows: rows,
+                selectedTaskId: null,
+                onSelected: (_) {},
+                onTitleChanged: (_, _) {},
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    Finder title(String taskId) => find.descendant(
+      of: find.byKey(Key('task-row-$taskId')),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(title(_row.id), 'Draft for task one');
+    rebuild(() => rows = const <TaskRow>[_secondRow, _row]);
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(title(_row.id)).controller?.text,
+      'Draft for task one',
+    );
+    expect(
+      tester.widget<TextField>(title(_secondRow.id)).controller?.text,
+      _secondRow.title,
+    );
+  });
+
+  testWidgets(
+    'a column reorder keeps the dirty controller with its task and column',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var configuration = TaskViewConfiguration.empty.copyWith(
+        hiddenColumns: const <String>[
+          'owner',
+          'status',
+          'priority',
+          'start_on',
+          'due_on',
+        ],
+        columnOrder: const <String>['custom:alpha', 'custom:beta'],
+      );
+      late StateSetter rebuild;
+      await tester.pumpWidget(
+        StatefulBuilder(
+          builder: (context, setState) {
+            rebuild = setState;
+            return MaterialApp(
+              theme: EzBiziTheme.light(),
+              home: Scaffold(
+                body: TaskTable(
+                  board: _customBoard,
+                  rows: const <TaskRow>[_customRow],
+                  selectedTaskId: null,
+                  configuration: configuration,
+                  onSelected: (_) {},
+                  onTitleChanged: (_, _) {},
+                  onCustomChanged: (_, _, _) async {},
+                ),
+              ),
+            );
+          },
+        ),
+      );
+
+      Finder field(String label) => find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.labelText == label,
+      );
+      await tester.enterText(field('Alpha'), 'Draft alpha');
+      rebuild(
+        () => configuration = configuration.copyWith(
+          columnOrder: const <String>['custom:beta', 'custom:alpha'],
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        tester.widget<TextField>(field('Alpha')).controller?.text,
+        'Draft alpha',
+      );
+      expect(
+        tester.widget<TextField>(field('Beta')).controller?.text,
+        'Beta note',
+      );
+    },
+  );
 }
 
 const _board = TaskBoard(
@@ -200,6 +306,83 @@ const _secondRow = TaskRow(
   version: 1,
   detailVersion: 1,
   values: {},
+  groupByValue: 'group-1',
+  subtasks: [],
+);
+
+const _alphaColumn = TaskColumnDefinition(
+  id: 'alpha',
+  name: 'Alpha',
+  kind: TaskColumnKind.text,
+  rawType: 'text',
+  numberSuffix: null,
+  position: 1,
+  archived: false,
+  options: [],
+);
+
+const _betaColumn = TaskColumnDefinition(
+  id: 'beta',
+  name: 'Beta',
+  kind: TaskColumnKind.text,
+  rawType: 'text',
+  numberSuffix: null,
+  position: 2,
+  archived: false,
+  options: [],
+);
+
+final _customBoard = TaskBoard(
+  id: 'board-1',
+  name: 'Operations',
+  description: null,
+  visibility: TaskBoardVisibility.scope,
+  rawVisibility: 'scope',
+  companyId: 'company-1',
+  franchiseId: null,
+  folderId: null,
+  structureVersion: 1,
+  archived: false,
+  isFavorite: false,
+  lastOpenedAt: null,
+  groups: _board.groups,
+  statuses: _board.statuses,
+  priorities: [],
+  coreColumns: [],
+  customColumns: [_alphaColumn, _betaColumn],
+  views: [],
+);
+
+const _customRow = TaskRow(
+  id: 'task-1',
+  boardId: 'board-1',
+  groupId: 'group-1',
+  parentTaskId: null,
+  number: 'TASK-1',
+  title: 'Measure opening',
+  ownerUserId: null,
+  collaboratorUserIds: [],
+  statusOptionId: 'status-1',
+  priorityOptionId: null,
+  startOn: null,
+  dueOn: null,
+  position: 1,
+  version: 1,
+  detailVersion: 1,
+  values: {
+    'alpha': TaskCellValue(
+      kind: TaskColumnKind.text,
+      value: 'Alpha note',
+      rawValue: 'Alpha note',
+      isReadOnly: false,
+    ),
+    'beta': TaskCellValue(
+      kind: TaskColumnKind.text,
+      value: 'Beta note',
+      rawValue: 'Beta note',
+      isReadOnly: false,
+    ),
+  },
   groupByValue: 'group-1',
   subtasks: [],
 );
