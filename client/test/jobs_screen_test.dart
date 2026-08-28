@@ -149,6 +149,24 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('a shared-customer row at 375px does not overflow without a role', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      jobs: [
+        _job(
+          number: 'JOB-1047',
+          title: 'Full exterior chimney crown and flashing inspection',
+          ownedHere: false,
+        ),
+      ],
+      size: const Size(375, 800),
+    );
+
+    expect(tester.takeException(), isNull);
+  });
 }
 
 const _crown = {

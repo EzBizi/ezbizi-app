@@ -369,7 +369,14 @@ class _JobsScreenState extends State<JobsScreen> {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
-            Tag(job['status_label'] as String? ?? job['status'] as String),
+            // Flexible for the same reason the role tag below is: the label is
+            // organization-chosen text of no trusted length, and a Row hands a
+            // non-flex child unbounded width.
+            Flexible(
+              child: Tag(
+                job['status_label'] as String? ?? job['status'] as String,
+              ),
+            ),
             // Null for the common case at booking time — a job has no
             // performer yet and often no role either — so this must not draw
             // an empty tag for the row that names nobody (§12.1).
