@@ -314,15 +314,22 @@ class WebManagementTest extends TestCase
 
         $this->assertNotSame('', $readme, 'The zip has no readme.txt.');
         $this->assertStringContainsString('Stable tag: 1.0.0', $readme);
-        $this->assertStringContainsString('== External services ==', $readme);
+        $this->assertStringContainsString('== External Services ==', $readme);
 
         /*
          * The disclosure has to name the token and the hostname specifically.
          * "Connects to an API" is the wording that gets a plugin rejected, and
          * it is also not true enough to be worth saying.
          */
-        $this->assertStringContainsString('your site token', $readme);
-        $this->assertStringContainsString('hostname', $readme);
+        $this->assertStringContainsStringIgnoringCase('site token', $readme);
+        $this->assertStringContainsStringIgnoringCase('hostname', $readme);
+
+        // The reviewer wants the endpoint named, not "an API". A1 Tools was
+        // approved with this line and it is the format being copied here.
+        $this->assertStringContainsString(
+            'https://app.ezbizi.com/api/v1/web/plugin/values',
+            $readme,
+        );
 
         $this->assertNotFalse(
             $zip->locateName('ezbizi/uninstall.php'),
