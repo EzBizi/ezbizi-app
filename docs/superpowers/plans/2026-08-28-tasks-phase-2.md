@@ -52,7 +52,7 @@
 | `app/Support/Tasks/TaskViewCodec.php` | `schema:2`; accept `presentation` and `window`; upgrade `schema:1` on read |
 | `app/Support/Tasks/TaskListQuery.php` | Window-aware querying and complete-result summaries |
 | `app/Http/Controllers/Api/Tasks/TaskBoardRowsController.php` | Accept and validate `window`; window-sensitive ETag |
-| `app/Support/Tasks/TaskWriter.php` | `start_date` write, recurrence declaration, recurrence-aware completion |
+| `app/Support/Tasks/TaskWriter.php` | `start_on` write, recurrence declaration, recurrence-aware completion |
 | `app/Providers/TaskServiceProvider.php` | Register three triggers and the recurrence command |
 | `app/Models/Task.php` | `recurrence` cast and relations |
 
@@ -83,7 +83,7 @@
 - [ ] Create `task_dependencies`: UUIDv7 id, `organization_id`, `board_id`, `blocker_task_id`, `blocked_task_id`, `created_by`, timestamps. Unique `(blocker_task_id, blocked_task_id)`. Compound foreign keys carrying `(organization_id, board_id, id)` for both task references so a mismatched tenant or board is rejected below the HTTP layer — the same pattern Phase 1 used for every board child. `CHECK (blocker_task_id <> blocked_task_id)`. Cascade on task removal. Index `(blocked_task_id)` and `(blocker_task_id)` separately; the graph is walked in both directions.
 - [ ] Create `task_recurrence_occurrences`: UUIDv7 id, `organization_id`, `task_id` (the series task), `occurrence_date`, `created_task_id` nullable, `created_at`. Unique `(task_id, occurrence_date)` — this uniqueness is the entire idempotency story for a retried or overlapping worker run, exactly as `task_overdue_occurrences` is for overdue.
 - [ ] Add indexes `(board_id, start_on, due_on)` for timeline and calendar windows and `(organization_id, owner_id, due_on)` for workload.
-- [ ] Declare `retention()` and `personalDataPurpose()` on both new models. `TaskDependency` is `RetentionPolicy::forever(...)` — it is board structure. `TaskRecurrenceOccurrence` is also `RetentionPolicy::forever(...)`, mirroring `TaskOverdueOccurrence`: the occurrence key stays as durable idempotency evidence. Phase 2 builds no cleaner for this table, so `RetentionPolicy::elsewhere(...)` would name a mechanism that does not exist — a false declaration.
+- [ ] Declare `retention()` and `personalDataPurpose()` on both new models. `TaskDependency` is `RetentionPolicy::forever(...)` — it is board structure. `TaskRecurrenceOccurrence` is also `RetentionPolicy::forever(...)`, mirroring `TaskOverdueOccurrence`: the occurrence key stays as durable idempotency evidence. Phase 2 builds no cleaner for this table, so naming any removal mechanism here would be a false declaration.
 - [ ] Rerun the focused test, then break one assertion on purpose (drop the `CHECK`) and confirm it fails before restoring.
 - [ ] Commit via the §4 private-index recipe: `database/migrations/2026_08_29_100000_add_task_phase_two_storage.php`, both new models, `app/Models/Task.php`, `tests/Feature/Tasks/TaskPhaseTwoSchemaTest.php`. Message: `feat(tasks): add phase 2 storage`.
 

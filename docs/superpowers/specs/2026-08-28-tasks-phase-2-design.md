@@ -349,7 +349,7 @@ Changed:
 - `task_views` configuration moves to `schema:2` with `presentation` and `window`.
 
 Indexes: `(board_id, start_on, due_on)` for timeline and calendar windows;
-`(organization_id, owner_id, due_date)` for workload; `(blocked_task_id)` and
+`(organization_id, owner_id, due_on)` for workload; `(blocked_task_id)` and
 `(blocker_task_id)` for edge lookup in both directions.
 
 MySQL is the truth. JSON key order is never asserted — the `recurrence` codec
