@@ -49,7 +49,11 @@ echo "→ testing the tree about to ship ($GATED_SHA)"
 # Captured, not just streamed. STATUS.md's test count was retyped by hand and was
 # wrong three times in one day; the number is right here, in the run that gates
 # the deploy, so it is taken from there rather than remembered.
-BACKEND_OUT=$(git archive "$GATED_SHA" | ssh "$REMOTE" '
+# Every top-level entry the archive carries, so nothing tracked can be left
+# behind stale in the sandbox. See the note beside `rm -rf $WIPE` below.
+WIPE=$(git ls-tree --name-only "$GATED_SHA" | grep -vx storage | tr '
+' ' ')
+BACKEND_OUT=$(git archive "$GATED_SHA" | ssh "$REMOTE" "WIPE='$WIPE'"'
   set -e
   # /opt, not /var/www. The sandbox holds dev dependencies and a full Laravel
   # tree; sitting it beside the production .env is what let `--env=testing` fall
@@ -64,20 +68,30 @@ BACKEND_OUT=$(git archive "$GATED_SHA" | ssh "$REMOTE" '
   cd /opt/ezbizi-test
   # Removed files must disappear too, or a deleted class keeps passing.
   #
-  # `client` is on this list, and was not until a test went looking. The
-  # reasoning above always applied to it — `tar -x` overwrites what it carries
-  # and deletes nothing — but the list was written when nothing server-side read
-  # the Dart source. Two tests do now (ClientModuleScreensTest and
-  # ClientCallsRealRoutesTest), and the first run of the second one failed here
-  # while passing everywhere else: it had found seven dead API calls in
-  # `client/lib/screens/workflows_screen.dart`, a file deleted from the repo in
-  # the workflows-to-automations rename and still sitting in this directory from
-  # an extraction on 10 August.
+  # This used to be a hand-written list of eight directories, and it was wrong
+  # twice for the same reason: a directory is only added to it after a test goes
+  # looking and fails. `client` was added when ClientCallsRealRoutesTest found
+  # seven dead API calls in `client/lib/screens/workflows_screen.dart` — a file
+  # deleted in the workflows-to-automations rename and still sitting here from an
+  # extraction on 10 August. On 2026-08-28 `public` was missing from the list, and
+  # the WebManagementTest guard against the snippet moving back into public/ went
+  # red against a stale `public/ezbizi.js` while the tree it was gating did not
+  # contain that file at all. A correct commit, refused.
   #
-  # A ghost that only exists in the gate is the worst place for one. It fails
-  # honest work and passes nothing useful, and the failure reads as "your change
-  # is broken" rather than "this directory is stale".
-  rm -rf app tests routes config database bootstrap resources client
+  # So the list is no longer written by hand. $WIPE is every top-level entry the
+  # archive is about to provide, derived from that same tree listing, which means
+  # a directory can never be forgotten again. `storage` is the one exclusion: it
+  # is tracked, but it holds no source — only logs, and the refusal log is worth
+  # more than the churn. Untracked things (vendor, .env.testing, .git) are absent
+  # from the tree listing and therefore survive, which is the point.
+  #
+  # A ghost that only exists in the gate is the worst place for one: it fails
+  # honest work, and it reads as "your change is broken" rather than "this
+  # directory is stale".
+  rm -rf $WIPE
+  # Untracked, so $WIPE cannot reach it, and it is a documented way to lose a
+  # run: it grows until phpunit dies inside DefaultResultCache on a 128M limit.
+  rm -f .phpunit.result.cache
   tar -x
   # Releases install --no-dev and have no phpunit; this sandbox keeps dev deps,
   # its own .env and its own test database.
@@ -282,5 +296,15 @@ else
   echo "peer watchdog unchanged"
 fi
 ' || echo "warning: peer watchdog refresh failed; box may be on an older copy" >&2
+
+# The marketing site, last, for the same reason the code goes before the UI:
+# www/index.html loads the snippet from app.ezbizi.com, so a site published
+# ahead of the API advertises a URL that is not there yet.
+#
+# Announced rather than fatal. Everything above has already shipped by this
+# point, and a red exit here would say the release failed when the release is
+# live. Re-run it alone with scripts/deploy-www.sh.
+echo "→ publishing the marketing site"
+scripts/deploy-www.sh || echo "⚠ the SITE did not publish — the app release above is fine. Re-run: scripts/deploy-www.sh" >&2
 
 echo "✓ done — https://app.ezbizi.com"
