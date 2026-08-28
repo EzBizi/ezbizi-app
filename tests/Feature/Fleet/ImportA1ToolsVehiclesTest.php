@@ -3,6 +3,7 @@
 namespace Tests\Feature\Fleet;
 
 use App\Models\Vehicle;
+use Illuminate\Support\Facades\Artisan;
 use App\Support\Fleet\VehicleStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -157,6 +158,76 @@ class ImportA1ToolsVehiclesTest extends TestCase
         $period = $vehicle->ownershipPeriods->firstOrFail();
         $this->assertNull($period->lienholder);
         $this->assertNull($period->counterparty);
+    }
+
+    /**
+     * The first dry run against the real export printed A1 Tools' own stored
+     * label, which already reads '... · NA'. That hid four '(NEW)' plates
+     * the guard was not catching: a fixed row and a broken one looked the same.
+     */
+    public function test_a_van_awaiting_plates_arrives_without_new_as_its_plate(): void
+    {
+        $tenant = $this->provisionTenant('A1-Group');
+
+        $file = $this->export([$this->row([
+            'franchise_name' => $tenant['franchise']->name,
+            'label' => '2026 Ford Transit Cargo Van · (NEW)',
+            'year' => 2026,
+            'make' => 'Ford',
+            'model' => 'Transit Cargo Van',
+            'license_plate' => '(NEW)',
+        ])]);
+
+        $this->artisan('fleet:import-a1-tools', [
+            'file' => $file,
+            '--organization' => $tenant['org']->name,
+            '--company' => $tenant['company']->name,
+        ])->assertSuccessful();
+
+        $vehicle = $this->inTenant(
+            $tenant['org'],
+            fn () => Vehicle::query()->firstOrFail(),
+        );
+
+        $this->assertNull($vehicle->plate);
+        $this->assertStringNotContainsString('NEW', $vehicle->label);
+    }
+
+    /**
+     * Written with expectsOutputToContain first; it passed against the reverted
+     * code, so it was proving nothing. Reading Artisan::output() directly is
+     * blunter and actually fails.
+     */
+    public function test_the_dry_run_prints_the_label_it_would_store_not_the_source_one(): void
+    {
+        $tenant = $this->provisionTenant('A1-Group');
+
+        $file = $this->export([$this->row([
+            'franchise_name' => $tenant['franchise']->name,
+            'label' => '2026 Ford Transit Cargo Van · NA',
+            'year' => 2026,
+            'make' => 'Ford',
+            'model' => 'Transit Cargo Van',
+            'license_plate' => 'NA',
+        ])]);
+
+        $code = Artisan::call('fleet:import-a1-tools', [
+            'file' => $file,
+            '--organization' => $tenant['org']->name,
+            '--company' => $tenant['company']->name,
+            '--dry-run' => true,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('2026 Ford Transit Cargo Van', $output);
+        $this->assertStringNotContainsString('· NA', $output);
+        $this->assertStringNotContainsString('NA →', $output);
+
+        $this->assertSame(0, $this->inTenant(
+            $tenant['org'],
+            fn () => Vehicle::query()->count(),
+        ));
     }
 
     public function test_a_place_that_is_not_under_this_company_is_refused_not_guessed(): void

@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\Vehicle;
 use App\Models\VehicleInsurancePolicy;
 use App\Models\VehicleOwnershipPeriod;
+use App\Support\Fleet\VehicleName;
 use App\Support\Fleet\VehicleOwnershipKind;
 use App\Support\Fleet\VehicleStatus;
 use App\Support\Numbering\RecordNumberGenerator;
@@ -86,7 +87,17 @@ class ImportA1ToolsVehicles extends Command
 
         foreach ($rows as $row) {
             $vin = $this->text($row['vin'] ?? null);
-            $label = $this->text($row['label'] ?? null) ?? '(no label)';
+            // Not $row['label'] — that is A1 Tools' own string, and it carries
+            // the '· NA' the guard below strips. A dry run printing the source
+            // label cannot distinguish a row this import fixes from one it does
+            // not, which is how four '(NEW)' plates read as already-handled.
+            $label = VehicleName::derive(
+                $this->int($row['year'] ?? null),
+                $this->text($row['make'] ?? null),
+                $this->text($row['model'] ?? null),
+                $this->text($row['license_plate'] ?? null),
+                $vin,
+            );
 
             if ($vin !== null && Vehicle::query()
                 ->where('organization_id', $organization->getKey())
@@ -226,10 +237,15 @@ class ImportA1ToolsVehicles extends Command
 
     /**
      * A1 Tools has no empty state in its forms, so people typed the absence in:
-     * thirty values across plate, lienholder, loan account and purchased-from
-     * are the literal 'NA' or 'N/A'. Carried across verbatim they would read as
-     * a lienholder called NA on the ownership card, and the derived label would
-     * end '· N/A'. They mean nothing, so they arrive as nothing.
+     * thirty-four values across plate, lienholder, loan account and
+     * purchased-from are a literal 'NA', 'N/A' or '(NEW)'. Carried across
+     * verbatim they would read as a lienholder called NA on the ownership card,
+     * and the derived label would end '· N/A'. They mean nothing, so they
+     * arrive as nothing.
+     *
+     * '(NEW)' is here because the first dry run against the real export found
+     * four of them still going through — a van awaiting plates is exactly as
+     * plateless as one whose plate nobody typed.
      */
     private function text(mixed $value): ?string
     {
@@ -238,7 +254,9 @@ class ImportA1ToolsVehicles extends Command
         }
         $text = trim((string) $value);
 
-        if ($text === '' || in_array(strtoupper($text), ['NA', 'N/A', 'NONE'], true)) {
+        $sentinels = ['NA', 'N/A', 'N.A.', 'NONE', 'NEW', '(NEW)', 'TBD', 'UNKNOWN', '-', '--'];
+
+        if ($text === '' || in_array(strtoupper($text), $sentinels, true)) {
             return null;
         }
 
