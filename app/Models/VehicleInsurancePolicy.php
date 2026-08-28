@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'vehicle_id', 'carrier', 'policy_number', 'coverage', 'started_on',
     'expires_on', 'ended_on', 'premium_cents', 'premium_period',
+    'agent', 'agent_phone', 'listed_drivers',
 ])]
 class VehicleInsurancePolicy extends Model implements StatesRetention
 {

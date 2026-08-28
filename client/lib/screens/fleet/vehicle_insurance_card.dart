@@ -33,6 +33,9 @@ class _VehicleInsuranceCardState extends State<VehicleInsuranceCard> {
   final _startedOn = TextEditingController();
   final _expiresOn = TextEditingController();
   final _premium = TextEditingController();
+  final _agent = TextEditingController();
+  final _agentPhone = TextEditingController();
+  final _listedDrivers = TextEditingController();
   String? _premiumPeriod;
   bool _busy = false;
   String? _error;
@@ -63,6 +66,9 @@ class _VehicleInsuranceCardState extends State<VehicleInsuranceCard> {
       _startedOn,
       _expiresOn,
       _premium,
+      _agent,
+      _agentPhone,
+      _listedDrivers,
     ]) {
       c.dispose();
     }
@@ -84,6 +90,11 @@ class _VehicleInsuranceCardState extends State<VehicleInsuranceCard> {
         'started_on': _startedOn.text.trim(),
       if (_expiresOn.text.trim().isNotEmpty)
         'expires_on': _expiresOn.text.trim(),
+      if (_agent.text.trim().isNotEmpty) 'agent': _agent.text.trim(),
+      if (_agentPhone.text.trim().isNotEmpty)
+        'agent_phone': _agentPhone.text.trim(),
+      if (_listedDrivers.text.trim().isNotEmpty)
+        'listed_drivers': _listedDrivers.text.trim(),
     };
 
     if (_financials) {
@@ -180,6 +191,14 @@ class _VehicleInsuranceCardState extends State<VehicleInsuranceCard> {
       ].where((s) => s.isNotEmpty).join(' · '),
       if (_financials && fleetCents(policy['premium_cents']) != null)
         'Premium ${fleetCents(policy['premium_cents'])} / ${fleetPairLabel(fleetPremiumPeriods, policy['premium_period'] as String?)}',
+      if ((policy['agent'] as String?)?.isNotEmpty == true)
+        [
+          'Agent ${policy['agent']}',
+          if ((policy['agent_phone'] as String?)?.isNotEmpty == true)
+            policy['agent_phone'],
+        ].join(' · '),
+      if ((policy['listed_drivers'] as String?)?.isNotEmpty == true)
+        'Drivers ${policy['listed_drivers']}',
     ];
 
     return Padding(
@@ -227,6 +246,20 @@ class _VehicleInsuranceCardState extends State<VehicleInsuranceCard> {
           'Expires on',
           formats: widget.session.me!.display,
           enabled: !_busy,
+        ),
+        fleetField(_agent, 'Agent', enabled: !_busy),
+        fleetField(
+          _agentPhone,
+          'Agent phone',
+          enabled: !_busy,
+          keyboard: TextInputType.phone,
+        ),
+        fleetField(
+          _listedDrivers,
+          'Listed drivers',
+          enabled: !_busy,
+          minLines: 2,
+          maxLines: 4,
         ),
         if (_financials) ...[
           fleetField(

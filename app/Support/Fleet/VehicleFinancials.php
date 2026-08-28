@@ -27,6 +27,7 @@ final class VehicleFinancials
             'loan_monthly_payment_cents',
             'loan_payoff_date',
             'transport_cost_cents',
+            'toll_flat_rate_cents',
             'rental_rate_cents',
             'rental_rate_period',
             'rental_deposit_cents',

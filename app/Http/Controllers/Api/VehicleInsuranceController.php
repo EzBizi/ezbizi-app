@@ -36,6 +36,9 @@ class VehicleInsuranceController extends Controller
             'expires_on' => ['nullable', 'date'],
             'premium_cents' => ['nullable', 'integer', 'min:0'],
             'premium_period' => ['nullable', 'string', Rule::in(VehiclePremiumPeriod::values())],
+            'agent' => ['nullable', 'string', 'max:200'],
+            'agent_phone' => ['nullable', 'string', 'max:50'],
+            'listed_drivers' => ['nullable', 'string', 'max:2000'],
         ]);
 
         if (! $request->user()->hasPermission('fleet_management.financials')) {
@@ -60,6 +63,9 @@ class VehicleInsuranceController extends Controller
                 'expires_on' => $input['expires_on'] ?? null,
                 'premium_cents' => $input['premium_cents'] ?? null,
                 'premium_period' => $input['premium_period'] ?? null,
+                'agent' => $input['agent'] ?? null,
+                'agent_phone' => $input['agent_phone'] ?? null,
+                'listed_drivers' => $input['listed_drivers'] ?? null,
             ]);
 
             $this->events->emit('vehicle.insurance_started', $vehicle, [
@@ -92,6 +98,9 @@ class VehicleInsuranceController extends Controller
             'carrier' => $policy->carrier,
             'policy_number' => $policy->policy_number,
             'coverage' => $policy->coverage,
+            'agent' => $policy->agent,
+            'agent_phone' => $policy->agent_phone,
+            'listed_drivers' => $policy->listed_drivers,
             'started_on' => $policy->started_on?->toDateString(),
             'expires_on' => $policy->expires_on?->toDateString(),
             'ended_on' => $policy->ended_on?->toDateString(),

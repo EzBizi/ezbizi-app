@@ -31,12 +31,20 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
   final _year = TextEditingController();
   final _make = TextEditingController();
   final _model = TextEditingController();
+  final _trim = TextEditingController();
   final _plate = TextEditingController();
+  final _plateState = TextEditingController();
   final _vin = TextEditingController();
   final _colour = TextEditingController();
   final _odometer = TextEditingController();
   final _nextServiceOn = TextEditingController();
   final _nextServiceMiles = TextEditingController();
+  final _registrationExpiresOn = TextEditingController();
+  final _inspectionExpiresOn = TextEditingController();
+  final _tollDeviceNumber = TextEditingController();
+  final _tollPlan = TextEditingController();
+  final _tollFlatRate = TextEditingController();
+  final _notes = TextEditingController();
   final _counterparty = TextEditingController();
   final _startedOn = TextEditingController();
 
@@ -51,6 +59,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
 
   Me get _me => widget.session.me!;
   bool get _canEdit => _me.can('fleet_management.edit');
+  bool get _financials => _me.can('fleet_management.financials');
   bool get _atOrganization => _me.scope.type == 'organization';
   bool get _showCompanyField => _me.offersCompanyChoice;
 
@@ -90,6 +99,14 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
       _odometer,
       _nextServiceOn,
       _nextServiceMiles,
+      _trim,
+      _plateState,
+      _registrationExpiresOn,
+      _inspectionExpiresOn,
+      _tollDeviceNumber,
+      _tollPlan,
+      _tollFlatRate,
+      _notes,
       _counterparty,
       _startedOn,
     ]) {
@@ -103,7 +120,9 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
     if (_year.text == 'null') _year.text = '';
     _make.text = row['make'] as String? ?? '';
     _model.text = row['model'] as String? ?? '';
+    _trim.text = row['trim'] as String? ?? '';
     _plate.text = row['plate'] as String? ?? '';
+    _plateState.text = row['plate_state'] as String? ?? '';
     _vin.text = row['vin'] as String? ?? '';
     _colour.text = row['colour'] as String? ?? '';
     _odometer.text = row['odometer_miles'] == null
@@ -113,6 +132,14 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
     _nextServiceMiles.text = row['next_service_miles'] == null
         ? ''
         : '${row['next_service_miles']}';
+    _registrationExpiresOn.text = row['registration_expires_on'] as String? ?? '';
+    _inspectionExpiresOn.text = row['inspection_expires_on'] as String? ?? '';
+    _tollDeviceNumber.text = row['toll_device_number'] as String? ?? '';
+    _tollPlan.text = row['toll_plan'] as String? ?? '';
+    _tollFlatRate.text = row['toll_flat_rate_cents'] is int
+        ? ((row['toll_flat_rate_cents'] as int) / 100).toStringAsFixed(2)
+        : '';
+    _notes.text = row['notes'] as String? ?? '';
     _bodyType = row['body_type'] as String? ?? 'van';
     _fuelType = row['fuel_type'] as String? ?? 'gas';
     _status = row['status'] as String? ?? 'active';
@@ -167,7 +194,11 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
       'year': year,
       'make': _make.text.trim().isEmpty ? null : _make.text.trim(),
       'model': _model.text.trim().isEmpty ? null : _model.text.trim(),
+      'trim': _trim.text.trim().isEmpty ? null : _trim.text.trim(),
       'plate': _plate.text.trim().isEmpty ? null : _plate.text.trim(),
+      'plate_state': _plateState.text.trim().isEmpty
+          ? null
+          : _plateState.text.trim(),
       'vin': _vin.text.trim().isEmpty ? null : _vin.text.trim(),
       'colour': _colour.text.trim().isEmpty ? null : _colour.text.trim(),
       'body_type': _bodyType,
@@ -177,6 +208,19 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
           ? null
           : _nextServiceOn.text.trim(),
       'next_service_miles': nextMiles,
+      'registration_expires_on': _registrationExpiresOn.text.trim().isEmpty
+          ? null
+          : _registrationExpiresOn.text.trim(),
+      'inspection_expires_on': _inspectionExpiresOn.text.trim().isEmpty
+          ? null
+          : _inspectionExpiresOn.text.trim(),
+      'toll_device_number': _tollDeviceNumber.text.trim().isEmpty
+          ? null
+          : _tollDeviceNumber.text.trim(),
+      'toll_plan': _tollPlan.text.trim().isEmpty ? null : _tollPlan.text.trim(),
+      if (_financials)
+        'toll_flat_rate_cents': fleetParseCents(_tollFlatRate.text),
+      'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       'status': _status,
       if (_showCompanyField) 'company_id': _companyId,
       'franchise_id': _companyId == null ? null : _franchiseId,
@@ -257,7 +301,9 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
           fleetField(_year, 'Year', enabled: enabled, keyboard: TextInputType.number),
           fleetField(_make, 'Make', enabled: enabled),
           fleetField(_model, 'Model', enabled: enabled),
+          fleetField(_trim, 'Trim', enabled: enabled),
           fleetField(_plate, 'Plate', enabled: enabled),
+          fleetField(_plateState, 'Plate state', enabled: enabled),
           fleetField(_vin, 'VIN', enabled: enabled),
           fleetField(_colour, 'Colour', enabled: enabled),
           const SizedBox(height: 12),
@@ -305,6 +351,34 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
             'Next service miles',
             enabled: enabled,
             keyboard: TextInputType.number,
+          ),
+          fleetCalendarDay(
+            _registrationExpiresOn,
+            'Registration expires on',
+            formats: _me.display,
+            enabled: enabled,
+          ),
+          fleetCalendarDay(
+            _inspectionExpiresOn,
+            'Inspection expires on',
+            formats: _me.display,
+            enabled: enabled,
+          ),
+          fleetField(_tollDeviceNumber, 'Toll device number', enabled: enabled),
+          fleetField(_tollPlan, 'Toll plan', enabled: enabled),
+          if (_financials)
+            fleetField(
+              _tollFlatRate,
+              'Toll flat rate',
+              enabled: enabled,
+              keyboard: TextInputType.number,
+            ),
+          fleetField(
+            _notes,
+            'Notes',
+            enabled: enabled,
+            minLines: 2,
+            maxLines: 4,
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(

@@ -29,6 +29,9 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
   bool _starting = false;
   String? _kind;
   final _counterparty = TextEditingController();
+  final _registeredOwner = TextEditingController();
+  final _rentalAgreementNumber = TextEditingController();
+  final _mileageAllowance = TextEditingController();
   final _startedOn = TextEditingController();
   final _purchasePrice = TextEditingController();
   final _lienholder = TextEditingController();
@@ -68,6 +71,9 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
   void dispose() {
     for (final c in [
       _counterparty,
+      _registeredOwner,
+      _rentalAgreementNumber,
+      _mileageAllowance,
       _startedOn,
       _purchasePrice,
       _lienholder,
@@ -92,6 +98,15 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
       'kind': kind,
       if (_counterparty.text.trim().isNotEmpty)
         'counterparty': _counterparty.text.trim(),
+      if (_registeredOwner.text.trim().isNotEmpty)
+        'registered_owner': _registeredOwner.text.trim(),
+      if (_kind == 'rented' && _rentalAgreementNumber.text.trim().isNotEmpty)
+        'rental_agreement_number': _rentalAgreementNumber.text.trim(),
+      if (_kind == 'rented' && _mileageAllowance.text.trim().isNotEmpty)
+        'mileage_allowance': fleetParseInt(
+          _mileageAllowance.text,
+          'Mileage allowance has to be a whole number of miles.',
+        ),
       if (_startedOn.text.trim().isNotEmpty)
         'started_on': _startedOn.text.trim(),
     };
@@ -226,6 +241,8 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
         if ((period['lienholder'] as String?)?.isNotEmpty == true)
           'Lienholder ${period['lienholder']}',
       ],
+      if ((period['registered_owner'] as String?)?.isNotEmpty == true)
+        'Registered to ${period['registered_owner']}',
       if (_financials && period['kind'] == 'rented') ...[
         if (fleetCents(period['rental_rate_cents']) != null)
           'Rate ${fleetCents(period['rental_rate_cents'])} / ${period['rental_rate_period'] ?? ''}',
@@ -287,6 +304,21 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
           _kind == 'rented' ? 'Rented from' : 'Bought from',
           enabled: !_busy,
         ),
+        // Who the title names, which is not always who we bought it from.
+        fleetField(_registeredOwner, 'Registered owner', enabled: !_busy),
+        if (_kind == 'rented') ...[
+          fleetField(
+            _rentalAgreementNumber,
+            'Agreement number',
+            enabled: !_busy,
+          ),
+          fleetField(
+            _mileageAllowance,
+            'Mileage allowance',
+            enabled: !_busy,
+            keyboard: TextInputType.number,
+          ),
+        ],
         fleetCalendarDay(
           _startedOn,
           'Started on',

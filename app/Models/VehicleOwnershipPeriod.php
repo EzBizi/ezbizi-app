@@ -22,11 +22,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * One owned/rented stretch for a vehicle. Open = `ended_on` null (at most one).
  */
 #[Fillable([
-    'vehicle_id', 'kind', 'counterparty', 'started_on', 'ended_on', 'ended_reason',
+    'vehicle_id', 'kind', 'counterparty', 'registered_owner', 'started_on',
+    'ended_on', 'ended_reason',
     'purchase_price_cents', 'lienholder', 'loan_account', 'loan_monthly_payment_cents',
     'loan_payoff_date', 'transport_cost_cents', 'rental_rate_cents', 'rental_rate_period',
     'rental_deposit_cents', 'rental_account_number', 'rental_payment_terms',
-    'rental_payment_method',
+    'rental_payment_method', 'rental_agreement_number', 'mileage_allowance',
 ])]
 class VehicleOwnershipPeriod extends Model implements StatesRetention
 {
@@ -61,6 +62,7 @@ class VehicleOwnershipPeriod extends Model implements StatesRetention
             'rental_deposit_cents' => 'integer',
             'rental_payment_terms' => VehicleRentalTerms::class,
             'rental_payment_method' => VehiclePaymentMethod::class,
+            'mileage_allowance' => 'integer',
         ];
     }
 

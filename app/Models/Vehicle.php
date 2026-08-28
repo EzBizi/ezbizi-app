@@ -25,9 +25,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * not used: sold/returned stay as statuses; hard delete only when isEmpty().
  */
 #[Fillable([
-    'company_id', 'franchise_id', 'number', 'year', 'make', 'model', 'plate',
-    'vin', 'colour', 'body_type', 'fuel_type', 'odometer_miles',
-    'next_service_on', 'next_service_miles', 'status',
+    'company_id', 'franchise_id', 'number', 'year', 'make', 'model', 'trim',
+    'plate', 'plate_state', 'vin', 'colour', 'body_type', 'fuel_type',
+    'odometer_miles', 'odometer_updated_at', 'next_service_on',
+    'next_service_miles', 'registration_expires_on', 'inspection_expires_on',
+    'toll_device_number', 'toll_plan', 'toll_flat_rate_cents', 'status',
+    'notes',
 ])]
 class Vehicle extends Model implements StatesRetention
 {
@@ -64,8 +67,12 @@ class Vehicle extends Model implements StatesRetention
             'body_type' => VehicleBodyType::class,
             'fuel_type' => VehicleFuelType::class,
             'odometer_miles' => 'integer',
+            'odometer_updated_at' => 'datetime',
             'next_service_on' => 'date',
             'next_service_miles' => 'integer',
+            'registration_expires_on' => 'date',
+            'inspection_expires_on' => 'date',
+            'toll_flat_rate_cents' => 'integer',
             'status' => VehicleStatus::class,
         ];
     }
