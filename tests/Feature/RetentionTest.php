@@ -55,8 +55,8 @@ class RetentionTest extends TestCase
         }
 
         foreach ([TaskUpdateAttachmentCandidate::class, TaskImportSession::class] as $class) {
-            $this->assertSame(RetentionPolicy::FOREVER, $class::retention()->kind);
-            $this->assertStringContainsString('cleanup', $class::retention()->because);
+            $this->assertSame(RetentionPolicy::ELSEWHERE, $class::retention()->kind);
+            $this->assertStringContainsString('cleaner', $class::retention()->enforcedBy);
         }
     }
 
