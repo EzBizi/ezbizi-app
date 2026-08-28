@@ -555,6 +555,7 @@ class _SiteCardState extends State<_SiteCard> {
                       children: [
                         if (widget.freshToken != null) _tokenBlock(theme),
                         if (!_connected) _installGuide(theme),
+                        _snippetBlock(theme),
                         for (final field in _fields)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 12),
@@ -702,6 +703,90 @@ class _SiteCardState extends State<_SiteCard> {
   /// They stay while the site is unconnected because that is exactly when they
   /// are needed, and go once it has read, because a permanent install guide
   /// above a working site is noise on every later visit.
+  /// The other way in, for a site that is not WordPress.
+  ///
+  /// ── Why this block exists at all ──
+  ///
+  /// The public key shipped in the API and had nowhere to appear, so the only
+  /// credential this screen showed was the SECRET token. Asked for the browser
+  /// key, the honest answer from anybody looking at this panel was to hand over
+  /// the `ezb_` one, because it was the only key on screen. That is not a user
+  /// error; a screen that shows one credential and needs another is the error.
+  ///
+  /// So the two are shown TOGETHER and named for what they are: `ezb_` is the
+  /// plugin's, never public; `pk_` is the browser's, printed in page source on
+  /// purpose. Seeing them side by side is what makes the difference legible.
+  Widget _snippetBlock(ThemeData theme) {
+    final key = widget.site['public_key'] as String? ?? '';
+
+    if (key.isEmpty) return const SizedBox.shrink();
+
+    final snippet =
+        '<script src="${ApiClient.baseUrl}/api/v1/web/ezbizi.js" '
+        'data-key="$key"></script>';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Not WordPress?', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
+          const Text(
+            'Put this one line in the page, then mark any element with '
+            'data-ezbizi to fill it:',
+          ),
+          const SizedBox(height: 8),
+          SelectableText(snippet, style: theme.textTheme.bodySmall),
+          const SizedBox(height: 8),
+          const SelectableText(
+            '<span data-ezbizi="phone">555-0100</span>',
+            style: TextStyle(fontFamily: 'monospace'),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Whatever is already between the tags stays if the value is '
+            'blank, so the page never shows an empty gap — and a search '
+            'engine still reads a real value.',
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: SelectableText(
+                  key,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Copy the snippet',
+                icon: const Icon(Icons.copy_outlined, size: 18),
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: snippet));
+
+                  if (mounted) setState(() => _saved = 'Snippet copied.');
+                },
+              ),
+            ],
+          ),
+          Text(
+            'This key is safe in public page source — it reads only what this '
+            'site already publishes. The plugin token above is not: it starts '
+            'ezb_ and belongs on your server only.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _installGuide(ThemeData theme) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
