@@ -1,13 +1,29 @@
 # ── secrets: never commit ──────────────────────────────
+#
+# Case matters, and it nearly cost us. `*credentials*` alone does NOT match
+# CREDENTIALS.md on a case-sensitive filesystem — it matched on this Windows box
+# only because core.ignorecase=true. Every Linux checkout, CI runner and GitHub
+# Action loses the protection, and the 2026-08-17 near-miss (StartUp.md §13) was
+# stopped by a control that only works on one developer's machine. Globs here are
+# spelled case-insensitively rather than trusting the filesystem.
 .env
 .env.*
 !.env.example
 *.pem
 *.key
 *.p12
+*.pfx
+*.p8
+*.jks
+*.keystore
 auth.json
 oauth2*.json
-*credentials*
+.netrc
+.npmrc
+id_rsa*
+*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]*
+*[Ss][Ee][Cc][Rr][Ee][Tt]*
+*.stackdump
 
 # ── dependencies / build ──────────────────────────────
 /vendor
