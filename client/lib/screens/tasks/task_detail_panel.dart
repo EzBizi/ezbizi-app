@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'task_models.dart';
 import 'task_api.dart';
+import 'task_participants.dart';
 import 'task_record_links.dart';
 
 class TaskDetailPanel extends StatelessWidget {
@@ -13,6 +14,11 @@ class TaskDetailPanel extends StatelessWidget {
     required this.onClose,
     this.fullScreen = false,
     this.onDraftChanged,
+    this.currentUserId = '',
+    this.canComment = false,
+    this.canEdit = false,
+    this.privacyEpoch = 0,
+    this.onUnavailable,
   });
   final TaskDetailSnapshot? task;
   final TaskApi taskApi;
@@ -24,6 +30,11 @@ class TaskDetailPanel extends StatelessWidget {
   /// Reserved for detail editors and the Task 17B update composer so they join
   /// the board's convergence draft registry by stable identity.
   final TaskDraftChanged? onDraftChanged;
+  final String currentUserId;
+  final bool canComment;
+  final bool canEdit;
+  final int privacyEpoch;
+  final ValueChanged<String?>? onUnavailable;
   @override
   Widget build(BuildContext context) {
     if (task == null) {
@@ -64,26 +75,6 @@ class TaskDetailPanel extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                const Text(
-                  'Description',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  row.values.values
-                          .where((value) => value.kind == TaskColumnKind.text)
-                          .map((value) => value.value)
-                          .whereType<String>()
-                          .join('\n')
-                          .isEmpty
-                      ? 'No description yet.'
-                      : row.values.values
-                            .where((value) => value.kind == TaskColumnKind.text)
-                            .map((value) => value.value)
-                            .whereType<String>()
-                            .join('\n'),
-                ),
-                const SizedBox(height: 24),
                 TaskRecordLinks(
                   api: taskApi,
                   snapshot: task!,
@@ -91,12 +82,17 @@ class TaskDetailPanel extends StatelessWidget {
                   onOpenRoute: onOpenRecordRoute,
                 ),
                 const SizedBox(height: 24),
-                const Text(
-                  'Conversation',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                TaskCollaborationPanel(
+                  snapshot: task!,
+                  api: taskApi,
+                  currentUserId: currentUserId,
+                  canComment: canComment,
+                  canEdit: canEdit,
+                  privacyEpoch: privacyEpoch,
+                  onChanged: onTaskChanged,
+                  onUnavailable: onUnavailable ?? (_) {},
+                  onDraftChanged: onDraftChanged,
                 ),
-                const SizedBox(height: 8),
-                const Text('Updates will appear here.'),
               ],
             ),
           ),

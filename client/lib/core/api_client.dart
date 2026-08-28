@@ -288,6 +288,14 @@ class ApiClient {
   /// a download has to carry the bearer token: a plain link cannot send a
   /// header, which is what makes "just open the URL" not an option here.
   Future<List<int>?> getBytes(String path) async {
+    final response = await getBytesResponse(path);
+    return response.bytes;
+  }
+
+  /// A binary response that preserves refusal status and words for callers
+  /// whose privacy boundary depends on distinguishing access loss from an
+  /// ordinary network failure.
+  Future<ApiBytesResponse> getBytesResponse(String path) async {
     try {
       final response = await _http.get(
         Uri.parse('$_root/api/v1$path'),
@@ -303,9 +311,39 @@ class ApiClient {
 
       _noticeUpgradeRequired(response.statusCode, response.body);
 
-      return response.statusCode == 200 ? response.bodyBytes : null;
+      if (response.statusCode == 401 && _token != null) {
+        onUnauthorized?.call();
+      }
+
+      if (response.statusCode == 200) {
+        return ApiBytesResponse(
+          statusCode: response.statusCode,
+          bytes: response.bodyBytes,
+          correlationId: response.headers['x-correlation-id'],
+        );
+      }
+
+      var message = 'Something went wrong (HTTP ${response.statusCode}).';
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map) {
+          message = ApiResponse(
+            statusCode: response.statusCode,
+            body: Map<String, dynamic>.from(decoded),
+          ).reason;
+        }
+      } catch (_) {}
+
+      return ApiBytesResponse(
+        statusCode: response.statusCode,
+        message: message,
+        correlationId: response.headers['x-correlation-id'],
+      );
     } catch (_) {
-      return null;
+      return const ApiBytesResponse(
+        statusCode: 0,
+        message: 'Could not download that. Check your connection.',
+      );
     }
   }
 
@@ -578,4 +616,20 @@ class ApiResponse {
   }
 
   dynamic get data => body['data'];
+}
+
+class ApiBytesResponse {
+  const ApiBytesResponse({
+    required this.statusCode,
+    this.bytes,
+    this.message,
+    this.correlationId,
+  });
+
+  final int statusCode;
+  final List<int>? bytes;
+  final String? message;
+  final String? correlationId;
+
+  bool get ok => statusCode >= 200 && statusCode < 300;
 }

@@ -458,6 +458,8 @@ final class TaskRow {
     required this.parentTaskId,
     required this.number,
     required this.title,
+    this.description,
+    this.descriptionPlain,
     required this.ownerUserId,
     required this.collaboratorUserIds,
     required this.statusOptionId,
@@ -490,6 +492,12 @@ final class TaskRow {
       parentTaskId: _nullableString(json, 'parent_task_id'),
       number: _string(json, 'number'),
       title: _string(json, 'title'),
+      description: json.containsKey('description')
+          ? _nullableString(json, 'description')
+          : null,
+      descriptionPlain: json.containsKey('description_plain')
+          ? _nullableString(json, 'description_plain')
+          : null,
       ownerUserId: _nullableString(json, 'owner_user_id'),
       collaboratorUserIds: _optionalStrings(json, 'collaborator_user_ids'),
       statusOptionId: _nullableString(json, 'status_option_id'),
@@ -513,6 +521,8 @@ final class TaskRow {
   final String? parentTaskId;
   final String number;
   final String title;
+  final String? description;
+  final String? descriptionPlain;
   final String? ownerUserId;
   final List<String> collaboratorUserIds;
   final String? statusOptionId;
@@ -1170,6 +1180,8 @@ final class TaskUpdate {
     required this.bodyPlain,
     required this.version,
     required this.mentionUserIds,
+    this.attachments = const <TaskAttachment>[],
+    this.versions = const <TaskUpdateVersion>[],
     required this.createdAt,
     required this.updatedAt,
   });
@@ -1181,6 +1193,12 @@ final class TaskUpdate {
     bodyPlain: _string(json, 'body_plain'),
     version: _integer(json, 'version'),
     mentionUserIds: _strings(json, 'mention_user_ids'),
+    attachments: (_optionalObjects(json, 'attachments') ?? const [])
+        .map(TaskAttachment.fromJson)
+        .toList(growable: false),
+    versions: (_optionalObjects(json, 'versions') ?? const [])
+        .map(TaskUpdateVersion.fromJson)
+        .toList(growable: false),
     createdAt: _dateTime(json, 'created_at'),
     updatedAt: _dateTime(json, 'updated_at'),
   );
@@ -1191,8 +1209,172 @@ final class TaskUpdate {
   final String bodyPlain;
   final int version;
   final List<String> mentionUserIds;
+  final List<TaskAttachment> attachments;
+  final List<TaskUpdateVersion> versions;
   final DateTime createdAt;
   final DateTime updatedAt;
+}
+
+final class TaskAttachment {
+  const TaskAttachment({
+    required this.id,
+    required this.originalName,
+    required this.mime,
+    required this.sizeBytes,
+    required this.checksum,
+    required this.uploadedByUserId,
+    required this.uploadedByName,
+    required this.uploadedAt,
+  });
+
+  factory TaskAttachment.fromJson(Map<String, Object?> json) {
+    final uploader = _optionalObject(json, 'uploaded_by');
+    return TaskAttachment(
+      id: _string(json, 'id'),
+      originalName: _string(json, 'original_name'),
+      mime: _string(json, 'mime'),
+      sizeBytes: _integer(json, 'size_bytes'),
+      checksum: _string(json, 'checksum'),
+      uploadedByUserId: uploader == null
+          ? null
+          : _nullableString(uploader, 'id'),
+      uploadedByName: uploader == null
+          ? null
+          : _nullableString(uploader, 'name'),
+      uploadedAt: _nullableDateTime(json, 'uploaded_at'),
+    );
+  }
+
+  final String id;
+  final String originalName;
+  final String mime;
+  final int sizeBytes;
+  final String checksum;
+  final String? uploadedByUserId;
+  final String? uploadedByName;
+  final DateTime? uploadedAt;
+}
+
+final class TaskAttachmentCandidate {
+  const TaskAttachmentCandidate({
+    required this.id,
+    required this.originalName,
+    required this.mime,
+    required this.sizeBytes,
+    required this.checksum,
+    required this.uploadedAt,
+    required this.expiresAt,
+  });
+
+  factory TaskAttachmentCandidate.fromJson(Map<String, Object?> json) =>
+      TaskAttachmentCandidate(
+        id: _string(json, 'id'),
+        originalName: _string(json, 'original_name'),
+        mime: _string(json, 'mime'),
+        sizeBytes: _integer(json, 'size_bytes'),
+        checksum: _string(json, 'checksum'),
+        uploadedAt: _nullableDateTime(json, 'uploaded_at'),
+        expiresAt: _nullableDateTime(json, 'expires_at'),
+      );
+
+  final String id;
+  final String originalName;
+  final String mime;
+  final int sizeBytes;
+  final String checksum;
+  final DateTime? uploadedAt;
+  final DateTime? expiresAt;
+}
+
+final class TaskUpdateVersion {
+  const TaskUpdateVersion({
+    required this.version,
+    required this.body,
+    required this.bodyPlain,
+    required this.editedBy,
+    required this.createdAt,
+  });
+
+  factory TaskUpdateVersion.fromJson(Map<String, Object?> json) =>
+      TaskUpdateVersion(
+        version: _integer(json, 'version'),
+        body: _string(json, 'body'),
+        bodyPlain: _string(json, 'body_plain'),
+        editedBy: _nullableString(json, 'edited_by'),
+        createdAt: _nullableDateTime(json, 'created_at'),
+      );
+
+  final int version;
+  final String body;
+  final String bodyPlain;
+  final String? editedBy;
+  final DateTime? createdAt;
+}
+
+enum TaskWatchChoice { automatic, watched, muted }
+
+final class TaskWatchState {
+  const TaskWatchState({
+    required this.preference,
+    required this.mandatory,
+    required this.watched,
+  });
+
+  factory TaskWatchState.fromJson(Map<String, Object?> json) => TaskWatchState(
+    preference: _watchChoice(_nullableString(json, 'preference')),
+    mandatory: _boolean(json, 'mandatory'),
+    watched: _boolean(json, 'watched'),
+  );
+
+  static const none = TaskWatchState(
+    preference: TaskWatchChoice.automatic,
+    mandatory: false,
+    watched: false,
+  );
+
+  final TaskWatchChoice preference;
+  final bool mandatory;
+  final bool watched;
+}
+
+final class TaskWatchMutation {
+  const TaskWatchMutation({required this.taskId, required this.preference});
+
+  factory TaskWatchMutation.fromJson(Map<String, Object?> json) =>
+      TaskWatchMutation(
+        taskId: _string(json, 'task_id'),
+        preference: _watchChoice(_nullableString(json, 'preference')),
+      );
+
+  final String taskId;
+  final TaskWatchChoice preference;
+}
+
+final class TaskActivity {
+  const TaskActivity({
+    required this.id,
+    required this.actorUserId,
+    required this.kind,
+    required this.summary,
+    required this.data,
+    required this.createdAt,
+  });
+
+  factory TaskActivity.fromJson(Map<String, Object?> json) => TaskActivity(
+    id: _string(json, 'id'),
+    actorUserId: _nullableString(json, 'actor_user_id'),
+    kind: _string(json, 'kind'),
+    summary: _string(json, 'summary'),
+    data: _optionalObject(json, 'data') ?? const <String, Object?>{},
+    createdAt: _nullableDateTime(json, 'created_at'),
+  );
+
+  final String id;
+  final String? actorUserId;
+  final String kind;
+  final String summary;
+  final Map<String, Object?> data;
+  final DateTime? createdAt;
 }
 
 final class TaskDetailSnapshot {
@@ -1201,6 +1383,9 @@ final class TaskDetailSnapshot {
     required this.etag,
     this.recordLinks = const <TaskRecordLink>[],
     this.subtasks = const <TaskSubtaskSummary>[],
+    this.updates = const <TaskUpdate>[],
+    this.watch = TaskWatchState.none,
+    this.activities = const <TaskActivity>[],
   });
 
   factory TaskDetailSnapshot.fromJson(
@@ -1220,6 +1405,15 @@ final class TaskDetailSnapshot {
         json,
         'subtasks',
       ).map(TaskSubtaskSummary.fromJson).toList(growable: false),
+      updates: (_optionalObjects(json, 'updates') ?? const [])
+          .map(TaskUpdate.fromJson)
+          .toList(growable: false),
+      watch: json['watch'] == null
+          ? TaskWatchState.none
+          : TaskWatchState.fromJson(_object(json, 'watch')),
+      activities: (_optionalObjects(json, 'activities') ?? const [])
+          .map(TaskActivity.fromJson)
+          .toList(growable: false),
     );
   }
 
@@ -1227,6 +1421,25 @@ final class TaskDetailSnapshot {
   final String? etag;
   final List<TaskRecordLink> recordLinks;
   final List<TaskSubtaskSummary> subtasks;
+  final List<TaskUpdate> updates;
+  final TaskWatchState watch;
+  final List<TaskActivity> activities;
+
+  TaskDetailSnapshot copyWith({
+    TaskRow? task,
+    String? etag,
+    List<TaskUpdate>? updates,
+    TaskWatchState? watch,
+    List<TaskActivity>? activities,
+  }) => TaskDetailSnapshot(
+    task: task ?? this.task,
+    etag: etag ?? this.etag,
+    recordLinks: recordLinks,
+    subtasks: subtasks,
+    updates: updates ?? this.updates,
+    watch: watch ?? this.watch,
+    activities: activities ?? this.activities,
+  );
 }
 
 final class TaskMoveMutation {
@@ -1424,6 +1637,13 @@ TaskPriorityRank _priorityRank(String raw) => switch (raw) {
   'high' => TaskPriorityRank.high,
   'urgent' => TaskPriorityRank.urgent,
   _ => TaskPriorityRank.unknown,
+};
+
+TaskWatchChoice _watchChoice(String? raw) => switch (raw) {
+  'watched' => TaskWatchChoice.watched,
+  'muted' => TaskWatchChoice.muted,
+  null => TaskWatchChoice.automatic,
+  _ => throw FormatException('preference has an unsupported value.'),
 };
 
 TaskColumnKind _columnKind(String raw) => switch (raw) {

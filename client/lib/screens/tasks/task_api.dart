@@ -400,6 +400,107 @@ final class TaskApi {
     return _decode(response, (data) => TaskUpdate.fromJson(_map(data, 'data')));
   }
 
+  Future<TaskApiResult<TaskUpdate>> createTaskUpdate(
+    String taskId, {
+    required String body,
+    required List<String> mentionUserIds,
+    required List<String> attachmentCandidateIds,
+    required String idempotencyKey,
+  }) async {
+    final response = await _api
+        .post('/tasks/$taskId/updates', <String, Object?>{
+          if (body.trim().isNotEmpty) 'body': body,
+          'mention_user_ids': List<String>.unmodifiable(mentionUserIds),
+          'attachment_candidate_ids': List<String>.unmodifiable(
+            attachmentCandidateIds,
+          ),
+          'idempotency_key': idempotencyKey,
+        });
+    return _decode(response, (data) => TaskUpdate.fromJson(_map(data, 'data')));
+  }
+
+  Future<TaskApiResult<TaskUpdate>> archiveTaskUpdate(
+    String taskId,
+    String updateId, {
+    required int expectedUpdateVersion,
+  }) async {
+    final response = await _api.post(
+      '/tasks/$taskId/updates/$updateId/archive',
+      <String, Object?>{'expected_update_version': expectedUpdateVersion},
+    );
+    return _decode(response, (data) => TaskUpdate.fromJson(_map(data, 'data')));
+  }
+
+  Future<TaskApiResult<TaskAttachmentCandidate>> uploadUpdateAttachment(
+    String taskId, {
+    required String filename,
+    required List<int> bytes,
+  }) async {
+    final response = await _api.postFile(
+      '/tasks/$taskId/update-attachments',
+      'file',
+      filename,
+      bytes,
+    );
+    return _decode(
+      response,
+      (data) => TaskAttachmentCandidate.fromJson(_map(data, 'data')),
+    );
+  }
+
+  Future<TaskApiResult<List<int>>> downloadAttachment(
+    String attachmentId,
+  ) async {
+    final response = await _api.getBytesResponse('/attachments/$attachmentId');
+    if (response.statusCode == 403 || response.statusCode == 404) {
+      return TaskApiUnavailable<List<int>>(
+        message: response.message,
+        correlationId: response.correlationId,
+      );
+    }
+    if (!response.ok || response.bytes == null) {
+      return TaskApiFailure<List<int>>(
+        statusCode: response.statusCode,
+        message: response.message,
+        correlationId: response.correlationId,
+      );
+    }
+    return TaskApiSuccess<List<int>>(
+      response.bytes!,
+      correlationId: response.correlationId,
+    );
+  }
+
+  Future<TaskApiResult<TaskRow>> updateCollaborators(
+    String taskId, {
+    required int expectedTaskVersion,
+    required List<String> userIds,
+  }) async {
+    final response = await _api
+        .put('/tasks/$taskId/collaborators', <String, Object?>{
+          'expected_version': expectedTaskVersion,
+          'user_ids': List<String>.unmodifiable(userIds),
+        });
+    return _decode(response, (data) => TaskRow.fromJson(_map(data, 'data')));
+  }
+
+  Future<TaskApiResult<TaskWatchMutation>> setWatchPreference(
+    String taskId,
+    TaskWatchChoice preference,
+  ) async {
+    final response = await _api.put('/tasks/$taskId/watch', <String, Object?>{
+      'preference': switch (preference) {
+        TaskWatchChoice.automatic => null,
+        TaskWatchChoice.watched => 'watched',
+        TaskWatchChoice.muted => 'muted',
+      },
+    });
+    return _decode(
+      response,
+      (data) => TaskWatchMutation.fromJson(_map(data, 'data')),
+    );
+  }
+
   Future<TaskApiResult<TaskViewMutationResult>> updateView(
     String boardId,
     String viewId, {
