@@ -2,6 +2,7 @@
 
 namespace App\Support\Tasks;
 
+use App\Models\Attachment;
 use App\Models\AutomationEvent;
 use App\Models\Task;
 use App\Models\TaskActivity;
@@ -9,6 +10,7 @@ use App\Models\TaskBoard;
 use App\Models\TaskBoardMember;
 use App\Models\TaskNotificationIntent;
 use App\Models\TaskUpdate;
+use App\Models\TaskUpdateAttachmentCandidate;
 use App\Models\TaskUpdateMention;
 use App\Models\TaskUpdateVersion;
 use App\Models\TaskWatchPreference;
@@ -32,17 +34,18 @@ final class TaskUpdateWriter
         private readonly EventEmitter $events,
     ) {}
 
-    /** @param list<string> $mentionUserIds */
+    /** @param list<string> $mentionUserIds @param list<string> $attachmentCandidateIds */
     public function create(
         User $actor,
         Task $task,
         ViewScope $scope,
-        string $body,
+        ?string $body,
         string $idempotencyKey,
         ?AutomationEvent $causedBy = null,
         array $mentionUserIds = [],
+        array $attachmentCandidateIds = [],
     ): TaskUpdate {
-        return DB::transaction(function () use ($actor, $task, $scope, $body, $idempotencyKey, $causedBy, $mentionUserIds): TaskUpdate {
+        return DB::transaction(function () use ($actor, $task, $scope, $body, $idempotencyKey, $causedBy, $mentionUserIds, $attachmentCandidateIds): TaskUpdate {
             [$board, $locked] = $this->lockForComment($actor, $task, $scope);
             $existing = TaskUpdate::query()->where('task_id', $locked->id)
                 ->where('idempotency_key', $idempotencyKey)->first();
@@ -50,7 +53,8 @@ final class TaskUpdateWriter
                 return $this->load($existing);
             }
 
-            $content = $this->content($body);
+            $candidates = $this->claimableCandidates($actor, $locked, $attachmentCandidateIds);
+            $content = $this->content($body, $candidates->isNotEmpty());
             $mentions = $this->eligibleMentions($board, $mentionUserIds);
             $update = TaskUpdate::create([
                 'board_id' => $board->id,
@@ -61,6 +65,7 @@ final class TaskUpdateWriter
                 'idempotency_key' => $idempotencyKey,
             ]);
             $this->replaceMentions($update, $mentions);
+            $this->claimAttachments($update, $candidates);
             $this->touchTask($locked, $actor);
             $occurrence = $this->record($update, $locked, $board, $actor, 'task.update_added', [], [
                 'body' => $content['html'], 'mention_user_ids' => $mentions->modelKeys(),
@@ -205,14 +210,77 @@ final class TaskUpdateWriter
     }
 
     /** @return array{html:string,plain:string} */
-    private function content(string $body): array
+    private function content(?string $body, bool $hasAttachments = false): array
     {
-        $content = $this->richText->normalize($body);
+        if (($body === null || trim($body) === '') && $hasAttachments) {
+            return ['html' => '', 'plain' => ''];
+        }
+
+        $content = $this->richText->normalize($body ?? '');
         if (trim($content['plain'] ?? '') === '') {
             throw ValidationException::withMessages(['body' => 'Write an update before saving it.']);
         }
 
         return $content;
+    }
+
+    /** @param list<string> $ids @return Collection<int,TaskUpdateAttachmentCandidate> */
+    private function claimableCandidates(User $actor, Task $task, array $ids): Collection
+    {
+        $ids = array_values(array_unique($ids));
+        sort($ids);
+        if ($ids === []) {
+            return collect();
+        }
+
+        $candidates = TaskUpdateAttachmentCandidate::query()
+            ->whereIn('attachment_id', $ids)
+            ->orderBy('attachment_id')
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('attachment_id');
+        if ($candidates->count() !== count($ids)) {
+            throw ValidationException::withMessages([
+                'attachment_candidate_ids' => 'One or more staged attachments are unavailable.',
+            ]);
+        }
+
+        $attachments = Attachment::query()->whereIn('id', $ids)
+            ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        foreach ($ids as $id) {
+            $candidate = $candidates->get($id);
+            $attachment = $attachments->get($id);
+            $valid = $candidate !== null && $attachment !== null
+                && $candidate->organization_id === $task->organization_id
+                && $candidate->board_id === $task->board_id
+                && $candidate->task_id === $task->id
+                && $candidate->actor_user_id === $actor->id
+                && $candidate->expires_at->isFuture()
+                && $attachment->organization_id === $task->organization_id
+                && $attachment->attachable_type === 'tasks'
+                && $attachment->attachable_id === $task->id
+                && $attachment->uploaded_by_user_id === $actor->id;
+            if (! $valid) {
+                throw ValidationException::withMessages([
+                    'attachment_candidate_ids' => 'One or more staged attachments are unavailable.',
+                ]);
+            }
+            $candidate->setRelation('attachment', $attachment);
+        }
+
+        return collect($ids)->map(fn (string $id) => $candidates->get($id));
+    }
+
+    /** @param Collection<int,TaskUpdateAttachmentCandidate> $candidates */
+    private function claimAttachments(TaskUpdate $update, Collection $candidates): void
+    {
+        foreach ($candidates as $candidate) {
+            $candidate->attachment->forceFill([
+                'attachable_type' => 'task_updates',
+                'attachable_id' => $update->id,
+            ])->save();
+            $candidate->delete();
+        }
     }
 
     /** @param list<string> $ids @return Collection<int,User> */
@@ -316,6 +384,6 @@ final class TaskUpdateWriter
 
     private function load(TaskUpdate $update): TaskUpdate
     {
-        return $update->fresh(['author', 'mentions.user', 'versions.editor']);
+        return $update->fresh(['author', 'mentions.user', 'versions.editor', 'attachments.uploadedBy']);
     }
 }

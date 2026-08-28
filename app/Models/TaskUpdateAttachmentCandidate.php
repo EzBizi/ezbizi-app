@@ -25,7 +25,10 @@ class TaskUpdateAttachmentCandidate extends Model implements HoldsPersonalData
 
     public static function retention(): RetentionPolicy
     {
-        return RetentionPolicy::forever('No expiry cleanup is active yet, so candidates are truthfully retained until the locked hourly cleaner ships; claimed rows will then be removed in the successful update transaction.');
+        return RetentionPolicy::elsewhere(
+            'the hourly locked task-update attachment candidate cleaner after 24 hours',
+            'A successful update claim removes the temporary marker immediately; an ownership mismatch removes only the stale marker and preserves the file.',
+        );
     }
 
     public static function personalDataPurpose(): string

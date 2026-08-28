@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\HasAttachments;
 use App\Support\Automations\CarriesAutomationScope;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
@@ -21,7 +22,7 @@ use RuntimeException;
 class Task extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     /** @use HasFactory<TaskFactory> */
-    use BelongsToTenant, HasFactory, HasUuids;
+    use BelongsToTenant, HasAttachments, HasFactory, HasUuids;
 
     protected $fillable = [
         'title', 'description', 'description_plain', 'owner_user_id',

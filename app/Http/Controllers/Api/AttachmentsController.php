@@ -4,14 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Attachment;
 use App\Models\InventoryPurchaseOrder;
+use App\Models\TaskUpdateAttachmentCandidate;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\Attachables;
+use App\Support\Files\AttachmentUploader;
 use App\Support\Files\FileStore;
 use App\Support\Files\UploadLimits;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -53,6 +56,7 @@ class AttachmentsController extends Controller
         private readonly FileStore $files,
         private readonly UploadLimits $limits,
         private readonly AuditLogger $audit,
+        private readonly AttachmentUploader $uploader,
     ) {}
 
     /**
@@ -110,67 +114,17 @@ class AttachmentsController extends Controller
 
         $file = $request->file('file');
 
-        /*
-         * All three read BEFORE the file moves.
-         *
-         * `store()` moves the temporary upload, after which `getSize()` and
-         * `getRealPath()` describe a file that is no longer there. Read
-         * afterwards they answer false and 0, and the row records a zero-byte
-         * file with the sha256 of an empty string — which looks like data and
-         * is not.
-         */
-        $size     = $file->getSize();
-        $checksum = hash_file('sha256', $file->getRealPath());
-        // From the CONTENT. `getClientMimeType()` is whatever the uploader's
-        // browser claimed, and this value is echoed back as a Content-Type on
-        // every download — a caller-supplied one is a caller-supplied header.
+        // Service-photo validation needs the temporary file. AttachmentUploader
+        // owns the shared size, checksum and detected-mime reads before moving it.
         $mime = $file->getMimeType() ?: 'application/octet-stream';
 
         if ($request->input('attachable_type') === 'services') {
             $this->assertSquareServicePhoto($file, $mime);
         }
 
-        $path = $this->files->put(
-            $file,
-            $this->files->directoryFor('attachments', $request->user()->organization_id),
+        $attachment = $this->uploader->upload(
+            $request->user(), $subject, $file, (string) $request->input('attachable_type'),
         );
-
-        $attachment = DB::transaction(function () use ($request, $subject, $path, $file, $mime, $size, $checksum) {
-            $attachment = new Attachment([
-                'attachable_type' => $request->input('attachable_type'),
-                'attachable_id'   => $subject->getKey(),
-                // Kept for the person, not for the filesystem: `path` is the
-                // framework's own random name, and a filename from a request
-                // never goes near a directory. Trimmed to the column rather
-                // than refused — a long name is not a reason to lose the file.
-                'original_name' => mb_substr((string) $file->getClientOriginalName(), 0, 255),
-                'mime'          => mb_substr($mime, 0, 160),
-                'uploaded_by_user_id' => $request->user()->getKey(),
-            ]);
-
-            $attachment->forceFill([
-                'disk'       => $this->files->defaultDisk(),
-                'path'       => $path,
-                'size_bytes' => $size,
-                'checksum'   => $checksum,
-            ])->save();
-
-            // §10: the record and its history in one transaction. The checksum
-            // is in the entry because "which file was attached" is a question
-            // an audit trail should be able to answer after the file is gone.
-            $this->audit->log('attachment.added', $attachment, metadata: [
-                'original_name' => $attachment->original_name,
-                'mime'          => $attachment->mime,
-                'size_bytes'    => $attachment->size_bytes,
-                'checksum'      => $attachment->checksum,
-                'attached_to'   => [
-                    'type' => $attachment->attachable_type,
-                    'id'   => $attachment->attachable_id,
-                ],
-            ]);
-
-            return $attachment;
-        });
 
         return response()->json(['data' => $attachment->present()], Response::HTTP_CREATED);
     }
@@ -185,6 +139,25 @@ class AttachmentsController extends Controller
      */
     public function show(Attachment $attachment): StreamedResponse
     {
+        $candidate = TaskUpdateAttachmentCandidate::query()
+            ->where('attachment_id', $attachment->id)->first();
+        if ($candidate !== null) {
+            $task = $candidate->task()->active()->first();
+            $available = $task !== null
+                && $candidate->actor_user_id === request()->user()->id
+                && $candidate->expires_at->isFuture()
+                && $attachment->attachable_type === 'tasks'
+                && $attachment->attachable_id === $candidate->task_id
+                && $attachment->uploaded_by_user_id === $candidate->actor_user_id
+                && Gate::forUser(request()->user())->check('comment', $task);
+            abort_unless($available, Response::HTTP_NOT_FOUND);
+
+            return $this->files->serve(
+                $attachment->path, $attachment->disk, $attachment->mime,
+                $attachment->original_name, disposition: 'attachment',
+            );
+        }
+
         $subject = $this->subjectOf($attachment);
 
         $this->authorizeAttachment('view', $subject);
@@ -238,6 +211,11 @@ class AttachmentsController extends Controller
     /** DELETE /api/v1/attachments/{attachment} */
     public function destroy(Attachment $attachment): JsonResponse
     {
+        abort_if(
+            TaskUpdateAttachmentCandidate::query()->where('attachment_id', $attachment->id)->exists(),
+            Response::HTTP_NOT_FOUND,
+        );
+
         $subject = $this->subjectOf($attachment);
 
         $this->authorizeAttachment('update', $subject);

@@ -94,6 +94,7 @@ use App\Http\Controllers\Api\Tasks\TaskQuickSearchController;
 use App\Http\Controllers\Api\Tasks\TaskRecordLinksController;
 use App\Http\Controllers\Api\Tasks\TasksController;
 use App\Http\Controllers\Api\Tasks\TaskStatusesController;
+use App\Http\Controllers\Api\Tasks\TaskUpdateAttachmentsController;
 use App\Http\Controllers\Api\Tasks\TaskUpdatesController;
 use App\Http\Controllers\Api\Tasks\TaskViewsController;
 use App\Http\Controllers\Api\Tasks\TaskWatchPreferencesController;
@@ -374,6 +375,7 @@ Route::prefix('v1')
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
         Route::put('tasks/{task}/collaborators', [TaskCollaboratorsController::class, 'update']);
         Route::put('tasks/{task}/watch', [TaskWatchPreferencesController::class, 'update']);
+        Route::post('tasks/{task}/update-attachments', [TaskUpdateAttachmentsController::class, 'store']);
         Route::post('tasks/{task}/updates', [TaskUpdatesController::class, 'store']);
         Route::patch('tasks/{task}/updates/{update}', [TaskUpdatesController::class, 'update']);
         Route::post('tasks/{task}/updates/{update}/archive', [TaskUpdatesController::class, 'archive']);

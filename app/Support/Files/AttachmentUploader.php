@@ -1,0 +1,92 @@
+<?php
+
+namespace App\Support\Files;
+
+use App\Models\Attachment;
+use App\Models\User;
+use App\Support\Audit\AuditLogger;
+use Closure;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
+use Throwable;
+
+final class AttachmentUploader
+{
+    public function __construct(
+        private readonly FileStore $files,
+        private readonly AuditLogger $audit,
+    ) {}
+
+    /**
+     * Persist an upload and its audit record together. Optional hooks let a
+     * domain re-authorize under lock and add its own row in the same transaction.
+     *
+     * @param  (Closure(): Model)|null  $prepareSubject
+     * @param  (Closure(Attachment, Model): void)|null  $afterPersist
+     */
+    public function upload(
+        User $actor,
+        Model $subject,
+        UploadedFile $file,
+        ?string $attachableType = null,
+        ?Closure $prepareSubject = null,
+        ?Closure $afterPersist = null,
+    ): Attachment {
+        $size = $file->getSize();
+        $checksum = hash_file('sha256', $file->getRealPath());
+        $mime = $file->getMimeType() ?: 'application/octet-stream';
+        $disk = $this->files->defaultDisk();
+        $path = $this->files->put(
+            $file,
+            $this->files->directoryFor('attachments', $actor->organization_id),
+            $disk,
+        );
+
+        try {
+            return DB::transaction(function () use (
+                $actor, $subject, $file, $attachableType, $prepareSubject,
+                $afterPersist, $size, $checksum, $mime, $disk, $path,
+            ): Attachment {
+                $target = $prepareSubject === null ? $subject : $prepareSubject();
+                if ($target->getAttribute('organization_id') !== $actor->organization_id) {
+                    throw new RuntimeException('An attachment cannot cross organization boundaries.');
+                }
+
+                $attachment = new Attachment([
+                    'attachable_type' => $attachableType ?? $target->getMorphClass(),
+                    'attachable_id' => $target->getKey(),
+                    'original_name' => mb_substr((string) $file->getClientOriginalName(), 0, 255),
+                    'mime' => mb_substr($mime, 0, 160),
+                    'uploaded_by_user_id' => $actor->getKey(),
+                ]);
+                $attachment->forceFill([
+                    'disk' => $disk,
+                    'path' => $path,
+                    'size_bytes' => $size,
+                    'checksum' => $checksum,
+                ])->save();
+
+                $this->audit->log('attachment.added', $attachment, metadata: [
+                    'original_name' => $attachment->original_name,
+                    'mime' => $attachment->mime,
+                    'size_bytes' => $attachment->size_bytes,
+                    'checksum' => $attachment->checksum,
+                    'attached_to' => [
+                        'type' => $attachment->attachable_type,
+                        'id' => $attachment->attachable_id,
+                    ],
+                ], actor: $actor);
+
+                $afterPersist?->__invoke($attachment, $target);
+
+                return $attachment->fresh('uploadedBy:id,name');
+            });
+        } catch (Throwable $failure) {
+            $this->files->delete($path, $disk);
+
+            throw $failure;
+        }
+    }
+}

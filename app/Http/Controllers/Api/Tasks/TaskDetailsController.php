@@ -28,6 +28,7 @@ final class TaskDetailsController extends TaskApiController
             'collaborators.user', 'columnValues', 'columnPeople', 'columnLabels', 'columnFiles',
             'updates' => fn ($query) => $query->active()->oldest('created_at'),
             'updates.author', 'updates.mentions.user', 'updates.versions.editor',
+            'updates.attachments.uploadedBy',
             'recordLinks',
             'watchPreferences' => fn ($query) => $query->where('user_id', $request->user()->id),
             'activities' => fn ($query) => $query->latest('created_at')->limit(200),
@@ -42,6 +43,7 @@ final class TaskDetailsController extends TaskApiController
             'body_plain' => $update->body_plain,
             'version' => (int) $update->version,
             'mention_user_ids' => $update->mentions->pluck('user_id')->values()->all(),
+            'attachments' => $update->attachments->map(fn ($attachment) => $attachment->present())->values(),
             'versions' => $update->versions->map(fn ($version) => [
                 'version' => (int) $version->version,
                 'body' => $version->body,

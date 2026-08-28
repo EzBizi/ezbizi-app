@@ -17,12 +17,15 @@ final class TaskUpdatesController extends TaskApiController
 
     public function store(Request $request, Task $task): JsonResponse
     {
+        $this->authorize('comment', $task);
         $input = $request->validate($this->rules(creating: true));
         $existed = TaskUpdate::query()->where('task_id', $task->id)
             ->where('idempotency_key', $input['idempotency_key'])->exists();
         $update = $this->writer->create(
             $request->user(), $task, ViewScope::forUser($request->user()),
-            $input['body'], $input['idempotency_key'], mentionUserIds: $input['mention_user_ids'] ?? [],
+            $input['body'] ?? null, $input['idempotency_key'],
+            mentionUserIds: $input['mention_user_ids'] ?? [],
+            attachmentCandidateIds: $input['attachment_candidate_ids'] ?? [],
         );
 
         return response()->json(['data' => $this->present($update)],
@@ -66,9 +69,11 @@ final class TaskUpdatesController extends TaskApiController
     private function rules(bool $creating = false): array
     {
         return [
-            'body' => ['required', 'string'],
+            'body' => [$creating ? 'required_without:attachment_candidate_ids' : 'required', 'string'],
             'mention_user_ids' => ['sometimes', 'array', 'max:100'],
             'mention_user_ids.*' => ['uuid', 'distinct'],
+            'attachment_candidate_ids' => [$creating ? 'required_without:body' : 'prohibited', 'array', 'max:20'],
+            'attachment_candidate_ids.*' => ['uuid', 'distinct'],
             'idempotency_key' => [$creating ? 'required' : 'prohibited', 'string', 'max:100'],
             'expected_update_version' => [$creating ? 'prohibited' : 'required', 'integer', 'min:1'],
         ];
@@ -82,6 +87,7 @@ final class TaskUpdatesController extends TaskApiController
             'body_plain' => $update->body_plain, 'version' => (int) $update->version,
             'archived' => $update->archived_at !== null,
             'mention_user_ids' => $update->mentions->pluck('user_id')->values()->all(),
+            'attachments' => $update->attachments->map(fn ($attachment) => $attachment->present())->values(),
             'versions' => $update->versions->map(fn ($version) => [
                 'version' => (int) $version->version, 'body' => $version->body,
                 'body_plain' => $version->body_plain, 'edited_by' => $version->edited_by,

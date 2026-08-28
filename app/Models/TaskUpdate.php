@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\HasAttachments;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TaskUpdate extends Model implements HoldsPersonalData
 {
-    use BelongsToTenant, HasUuids;
+    use BelongsToTenant, HasAttachments, HasUuids;
 
     protected $fillable = ['board_id', 'task_id', 'author_user_id', 'body', 'body_plain', 'idempotency_key', 'archived_at', 'archived_by'];
 

@@ -2,6 +2,7 @@
 
 namespace App\Support\Tasks;
 
+use App\Models\Attachment;
 use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskBoard;
@@ -12,6 +13,8 @@ use App\Models\TaskColumnLabel;
 use App\Models\TaskColumnOption;
 use App\Models\TaskColumnPerson;
 use App\Models\TaskColumnValue;
+use App\Models\TaskUpdate;
+use App\Models\TaskUpdateAttachmentCandidate;
 use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
@@ -65,7 +68,7 @@ final class TaskColumnValueStore
                 ], ['column:'.$column->id]);
             }
 
-            $normalized = $this->normalize($board, $column, $value);
+            $normalized = $this->normalize($board, $locked, $column, $value);
             $before = $this->value($locked, $column);
             if ($before === $normalized) {
                 return $locked;
@@ -126,7 +129,7 @@ final class TaskColumnValueStore
         };
     }
 
-    private function normalize(TaskBoard $board, TaskColumnDefinition $definition, mixed $value): mixed
+    private function normalize(TaskBoard $board, Task $task, TaskColumnDefinition $definition, mixed $value): mixed
     {
         if ($value === null) {
             return in_array($definition->type, [ColumnType::People, ColumnType::Label, ColumnType::File], true)
@@ -142,7 +145,7 @@ final class TaskColumnValueStore
             ColumnType::People => $this->people($board, $value),
             ColumnType::Label => $this->labels($board, $definition, $value),
             ColumnType::Link => $this->link($value),
-            ColumnType::File => $this->invalid('value', 'File columns remain unavailable until the off-instance restore gate passes.'),
+            ColumnType::File => $this->files($task, $value),
         };
     }
 
@@ -237,6 +240,42 @@ final class TaskColumnValueStore
         }
 
         return ['url' => $url, 'label' => isset($value['label']) && $value['label'] !== '' ? $value['label'] : null];
+    }
+
+    private function files(Task $task, mixed $value): array
+    {
+        $ids = $this->idList($value, 'File');
+        if ($ids === []) {
+            return [];
+        }
+
+        $candidateIds = TaskUpdateAttachmentCandidate::query()
+            ->whereIn('attachment_id', $ids)->pluck('attachment_id')->all();
+        if ($candidateIds !== []) {
+            return $this->invalid('value', 'One or more File values are not committed to this task.');
+        }
+
+        $attachments = Attachment::query()->whereIn('id', $ids)->get()->keyBy('id');
+        if ($attachments->count() !== count($ids)) {
+            return $this->invalid('value', 'One or more File values are unavailable.');
+        }
+
+        $updateIds = $attachments->where('attachable_type', 'task_updates')
+            ->pluck('attachable_id')->unique()->values()->all();
+        $validUpdateIds = TaskUpdate::query()->where('task_id', $task->id)
+            ->whereIn('id', $updateIds)->pluck('id')->all();
+        foreach ($attachments as $attachment) {
+            $taskBound = $attachment->attachable_type === 'tasks'
+                && $attachment->attachable_id === $task->id;
+            $updateBound = $attachment->attachable_type === 'task_updates'
+                && in_array($attachment->attachable_id, $validUpdateIds, true);
+            if (! $taskBound && ! $updateBound) {
+                return $this->invalid('value', 'One or more File values are not committed to this task.');
+            }
+        }
+        sort($ids);
+
+        return $ids;
     }
 
     private function idList(mixed $value, string $type): array

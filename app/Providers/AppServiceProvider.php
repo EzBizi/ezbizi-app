@@ -145,7 +145,14 @@ class AppServiceProvider extends ServiceProvider
          * the validation rule are one list rather than three.
          */
         \Illuminate\Database\Eloquent\Relations\Relation::morphMap(
-            \App\Support\Files\Attachables::all(),
+            [
+                ...\App\Support\Files\Attachables::all(),
+                // Internal-only identities. They are intentionally absent from
+                // Attachables::all(), so the generic public upload/list API can
+                // never target Tasks or rebind an update attachment.
+                'tasks' => \App\Models\Task::class,
+                'task_updates' => \App\Models\TaskUpdate::class,
+            ],
         );
 
         $this->defineRateLimiters();
