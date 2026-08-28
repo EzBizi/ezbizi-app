@@ -47,6 +47,7 @@
 # vendor/ this morning, taking every session's tests down with it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+REPO="$(pwd)"
 
 MODULE="${1:-}"
 [ -z "$MODULE" ] && { echo "usage: $0 <module> [--with-vendor]" >&2; exit 1; }
@@ -77,7 +78,37 @@ fi
 
 if [ "${2:-}" = "--with-vendor" ]; then
   echo "→ composer install (its own vendor, never a link to another tree)"
-  (cd "$DEST" && composer install --no-interaction -q)
+  # `composer` is not on PATH on this machine; the repo ships composer.phar and
+  # every documented invocation is `php composer.phar`. Prefer a real composer
+  # where one exists, so this keeps working on a machine that has one.
+  #
+  # An ABSOLUTE path, because $DEST is outside the repo and a relative
+  # composer.phar will not resolve from there.
+  #
+  # And `|| true`: the worktree is already created by this point, so a
+  # dependency failure must not abort and leave a half-made tree that the
+  # existence guard above then refuses to recreate. That is three confusing
+  # signals from one missing package. Vendor is recoverable; the worktree
+  # being un-creatable is not, without a manual `git worktree remove`.
+  if command -v composer >/dev/null 2>&1; then
+    (cd "$DEST" && composer install --no-interaction -q) || VENDOR_FAILED=1
+  elif [ -f "$REPO/composer.phar" ]; then
+    (cd "$DEST" && php "$REPO/composer.phar" install --no-interaction -q) || VENDOR_FAILED=1
+  else
+    echo "  ⚠ no composer and no composer.phar — skipping vendor" >&2
+    VENDOR_FAILED=1
+  fi
+  # The artefact, not the exit status. `composer install` returning 0 and
+  # vendor/autoload.php existing are DIFFERENT CLAIMS, and this script exists
+  # because of a day spent on exactly that distinction. The first version of it
+  # reported success while --with-vendor had done nothing at all.
+  [ -f "$DEST/vendor/autoload.php" ] || VENDOR_FAILED=1
+
+  if [ "${VENDOR_FAILED:-0}" = "1" ]; then
+    echo "  ⚠ vendor install FAILED. The worktree is fine and yours; only vendor" >&2
+    echo "    is missing. Fix it in the worktree with:  php \"$REPO/composer.phar\" install" >&2
+    echo "    (you only need vendor to run PHP tests — a client-only session can ignore this)" >&2
+  fi
 fi
 
 cat <<EOF
