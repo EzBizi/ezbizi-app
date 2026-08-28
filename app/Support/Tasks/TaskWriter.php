@@ -209,6 +209,54 @@ final class TaskWriter
         });
     }
 
+    /**
+     * Declare (or clear) a task's recurrence (Tasks Phase 2 design, task-5
+     * brief). Same optimistic-concurrency and audit path as every other
+     * task write — `version` is checked against a row-locked task and a
+     * stale caller gets a TaskConflict, exactly like update().
+     *
+     * This is a declaration only: it never schedules an occurrence, never
+     * dispatches an automation event, and never touches `due_on`. Task 6
+     * builds the worker that reads `recurrence` and acts on it.
+     */
+    public function setRecurrence(User $actor, Task $task, ?array $raw, int $version): Task
+    {
+        return DB::transaction(function () use ($actor, $task, $raw, $version): Task {
+            $board = TaskBoard::query()->lockForUpdate()->findOrFail($task->board_id);
+            if (! $actor->hasPermission('tasks.edit')) {
+                Refusal::permission('change this task')->authorize();
+            }
+            if ($actor->organization?->isReadOnly()) {
+                throw ValidationException::withMessages(['organization' => 'This organization is read-only because its subscription has ended.']);
+            }
+
+            $locked = Task::query()->where('board_id', $board->id)->lockForUpdate()->findOrFail($task->id);
+            abort_if($locked->archived_at !== null, 404);
+            $this->assertVersion($locked, $version, ['recurrence']);
+
+            $recurrence = TaskRecurrenceCodec::parse($raw);
+            $before = $this->auditFields($locked);
+            $locked->forceFill([
+                'recurrence' => $recurrence === null ? null : TaskRecurrenceCodec::encode($recurrence),
+                'version' => (int) $locked->version + 1,
+                'detail_version' => (int) $locked->detail_version + 1,
+                'updated_by' => $actor->id,
+            ])->save();
+
+            $this->recordMutation(
+                $locked,
+                $actor,
+                'task.recurrence_declared',
+                $before,
+                $this->auditFields($locked),
+                [],
+                changedFields: ['recurrence'],
+            );
+
+            return $locked->fresh($this->relations());
+        });
+    }
+
     /** @param list<array{id:string,expected_version:int}> $targets */
     public function bulk(
         User $actor,
@@ -530,7 +578,7 @@ final class TaskWriter
             return;
         }
 
-        $fields = array_values(array_intersect($fields, [...self::CORE_FIELDS, 'group_id', 'archived_at']));
+        $fields = array_values(array_intersect($fields, [...self::CORE_FIELDS, 'group_id', 'archived_at', 'recurrence']));
         $current = ['id' => $task->id, 'version' => (int) $task->version];
         foreach ($fields as $field) {
             $current[$field] = match ($field) {
@@ -703,6 +751,7 @@ final class TaskWriter
                 'task.restored' => 'Task restored',
                 'task.moved' => 'Task moved to another group',
                 'task.reordered' => 'Task reordered',
+                'task.recurrence_declared' => 'Task recurrence updated',
                 default => 'Task changed',
             },
             'data' => [
@@ -808,6 +857,7 @@ final class TaskWriter
             'start_on' => $task->start_on?->format('Y-m-d'),
             'due_on' => $task->due_on?->format('Y-m-d'),
             'due_revision' => (int) $task->due_revision,
+            'recurrence' => $task->recurrence,
             'completed_at' => $task->completed_at?->toIso8601String(),
             'completed_by' => $task->completed_by,
             'cancelled_at' => $task->cancelled_at?->toIso8601String(),
