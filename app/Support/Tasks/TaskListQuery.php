@@ -38,11 +38,11 @@ final class TaskListQuery
         [$windowed, $omitted, $paginate] = $this->applyWindow($query, $board, $presentation, $window, $summaryTotal);
 
         $total = $paginate ? $summaryTotal : (clone $windowed)->reorder()->count();
-        $rowsQuery = (clone $windowed)->with($this->relations());
+        $rowsQuery = (clone $windowed)->with($this->relations($presentation));
         $rows = $paginate ? $rowsQuery->forPage($page, $perPage)->get() : $rowsQuery->get();
 
         return [
-            'data' => $rows->map(fn (Task $task) => $this->present($task, $configuration['group_by']))->values()->all(),
+            'data' => $rows->map(fn (Task $task) => $this->present($task, $configuration['group_by'], $presentation))->values()->all(),
             'total' => $total,
             'page' => $paginate ? $page : 1,
             'per_page' => $perPage,
@@ -113,11 +113,12 @@ final class TaskListQuery
             ->whereIn('board_id', (clone $visibleBoards)->select('task_boards.id'))
             ->orderByRaw('due_on IS NULL')->orderBy('due_on')->orderBy('number');
         $total = (clone $query)->reorder()->count();
-        $rows = (clone $query)->with([...$this->relations(), 'board:id,name'])->forPage($page, $perPage)->get();
+        $rows = (clone $query)->with([...$this->relations(TaskPresentation::Table), 'board:id,name'])
+            ->forPage($page, $perPage)->get();
 
         return [
             'data' => $rows->map(function (Task $task): array {
-                $row = $this->present($task, null);
+                $row = $this->present($task, null, TaskPresentation::Table);
                 $row['board'] = ['id' => $task->board->id, 'name' => $task->board->name];
 
                 return $row;
@@ -279,7 +280,7 @@ final class TaskListQuery
         ])->values()->all();
     }
 
-    private function present(Task $task, ?string $groupBy): array
+    private function present(Task $task, ?string $groupBy, TaskPresentation $presentation): array
     {
         $effectiveGroup = $task->group ?? $task->parent?->group;
         $custom = [];
@@ -298,7 +299,7 @@ final class TaskListQuery
             $custom[$id] = $values->pluck('attachment_id')->sort()->values()->all();
         }
 
-        return [
+        $row = [
             'id' => $task->id, 'board_id' => $task->board_id, 'group_id' => $effectiveGroup?->id,
             'parent_task_id' => $task->parent_task_id, 'number' => $task->number, 'title' => $task->title,
             'owner_user_id' => $task->owner_user_id,
@@ -308,8 +309,24 @@ final class TaskListQuery
             'position' => (int) $task->position, 'version' => (int) $task->version,
             'detail_version' => (int) $task->detail_version, 'custom_values' => $custom,
             'group_by_value' => $this->groupValue($task, $groupBy, $custom),
-            'subtasks' => $task->subtasks->map(fn (Task $subtask) => $this->present($subtask, $groupBy))->values()->all(),
+            'subtasks' => $task->subtasks
+                ->map(fn (Task $subtask) => $this->present($subtask, $groupBy, $presentation))->values()->all(),
         ];
+
+        // Task 12 draws lines between Timeline bars and cannot fetch a detail
+        // response for every row it renders, so this rides on the row here —
+        // omitted elsewhere because a Kanban card (etc.) has nowhere to draw
+        // one and the payload would be dead weight (task-4 brief).
+        if ($presentation === TaskPresentation::Timeline) {
+            $row['blocked_by'] = $task->blockedByEdges->map(fn ($edge) => [
+                'id' => $edge->id,
+                'task_id' => $edge->blocker_task_id,
+                'number' => $edge->blocker?->number,
+                'title' => $edge->blocker?->title,
+            ])->values()->all();
+        }
+
+        return $row;
     }
 
     private function groupValue(Task $task, ?string $groupBy, array $custom): mixed
@@ -358,9 +375,12 @@ final class TaskListQuery
             (int) $row->aggregate_detail_version, (string) $row->aggregate_updated];
     }
 
-    private function relations(): array
+    private function relations(TaskPresentation $presentation): array
     {
         $values = ['group', 'parent.group', 'collaborators', 'columnValues', 'columnPeople', 'columnLabels', 'columnFiles'];
+        if ($presentation === TaskPresentation::Timeline) {
+            $values[] = 'blockedByEdges.blocker';
+        }
 
         return [...$values, 'subtasks' => fn ($query) => $query->active()->orderBy('position')->with($values)];
     }

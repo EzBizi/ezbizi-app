@@ -215,4 +215,14 @@ class Task extends Model implements CarriesAutomationScope, HoldsPersonalData
     {
         return $this->hasMany(TaskRecordLink::class);
     }
+
+    /**
+     * Edges where this task is the one waiting — its blockers (task-4 brief).
+     * Display only: `blocked_by` is drawn from this on task detail and on
+     * Timeline rows, and nothing here refuses a completion.
+     */
+    public function blockedByEdges(): HasMany
+    {
+        return $this->hasMany(TaskDependency::class, 'blocked_task_id');
+    }
 }
