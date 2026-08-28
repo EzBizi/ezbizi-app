@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/files.dart';
 import 'package:ezbizi_client/screens/tasks/task_api.dart';
 import 'package:ezbizi_client/screens/tasks/task_models.dart';
 import 'package:ezbizi_client/screens/tasks/task_participants.dart';
@@ -55,6 +57,46 @@ void main() {
     },
   );
 
+  testWidgets('composer reuses its idempotency key across a retry', (
+    tester,
+  ) async {
+    final submitted = <String>[];
+    final firstAttempt = Completer<TaskComposerResult>();
+    final secondAttempt = Completer<TaskComposerResult>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TaskUpdateComposer(
+            taskId: 'task-1',
+            idempotencyKeyFactory: () => 'stable-key',
+            onSubmit: (draft) {
+              submitted.add(draft.idempotencyKey);
+              return submitted.length == 1
+                  ? firstAttempt.future
+                  : secondAttempt.future;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'Retry safely');
+    await tester.pump();
+    final post = find.widgetWithText(FilledButton, 'Post update');
+    await tester.tap(post);
+    await tester.pump();
+    expect(submitted, const ['stable-key']);
+
+    firstAttempt.complete(const TaskComposerTransientFailure('Try again.'));
+    await tester.pumpAndSettle();
+    await tester.tap(post);
+    await tester.pump();
+
+    expect(submitted, const ['stable-key', 'stable-key']);
+    secondAttempt.complete(const TaskComposerSaved());
+    await tester.pumpAndSettle();
+  });
+
   test(
     'detail collaboration is parsed from the server response without names being invented',
     () {
@@ -76,8 +118,25 @@ void main() {
       expect(snapshot.watch.mandatory, isFalse);
       expect(snapshot.watch.watched, isTrue);
       expect(snapshot.activities.single.summary, 'A collaborator was added.');
+      expect(snapshot.can('create_update'), isTrue);
+      expect(snapshot.updates.single.can('edit'), isFalse);
     },
   );
+
+  test('file-only updates accept nullable formatted and plain bodies', () {
+    final update =
+        Map<String, Object?>.from(
+            (_detailJson()['updates'] as List).single as Map,
+          )
+          ..['body'] = null
+          ..['body_plain'] = null;
+
+    final parsed = TaskUpdate.fromJson(update);
+
+    expect(parsed.body, isNull);
+    expect(parsed.bodyPlain, isNull);
+    expect(parsed.attachments.single.originalName, 'proof.pdf');
+  });
 
   test(
     'collaboration API sends exact update, collaborator, and watch contracts',
@@ -244,9 +303,6 @@ void main() {
               child: TaskCollaborationPanel(
                 snapshot: TaskDetailSnapshot.fromJson(detail, etag: null),
                 api: api,
-                currentUserId: 'user-1',
-                canComment: false,
-                canEdit: false,
                 privacyEpoch: 2,
                 onChanged: (_) {},
                 onUnavailable: (_) {},
@@ -266,6 +322,102 @@ void main() {
       expect(find.text('Mute'), findsNothing);
     },
   );
+
+  testWidgets('file picker result is discarded after privacy context changes', (
+    tester,
+  ) async {
+    final picked = Completer<PickedBytes?>();
+    var uploads = 0;
+    final api = TaskApi(
+      ApiClient(
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('/update-attachments')) uploads++;
+          return _json(200, <String, Object?>{'data': <Object?>[]});
+        }),
+      ),
+    );
+    Widget panel(int privacy) => MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: TaskCollaborationPanel(
+            snapshot: TaskDetailSnapshot.fromJson(_detailJson(), etag: null),
+            api: api,
+            privacyEpoch: privacy,
+            onChanged: (_) {},
+            onUnavailable: (_) {},
+            pickFile: () => picked.future,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(panel(2));
+    await tester.ensureVisible(find.text('Attach file'));
+    await tester.tap(find.text('Attach file'));
+    await tester.pumpWidget(panel(3));
+    picked.complete(const PickedBytes('private.pdf', <int>[1, 2, 3]));
+    await tester.pump();
+
+    expect(uploads, 0);
+  });
+
+  testWidgets('formatted edits preserve exact HTML and history guards links', (
+    tester,
+  ) async {
+    final source = Map<String, Object?>.from(
+      (_detailJson()['updates'] as List).single as Map,
+    );
+    source['actions'] = <Object?>['edit', 'archive'];
+    source['versions'] = <Object?>[
+      <String, Object?>{
+        'version': 1,
+        'body':
+            '<p>Earlier <strong>bold</strong> <a href="javascript:alert(1)">unsafe</a></p>',
+        'body_plain': 'Earlier bold unsafe',
+        'edited_by': 'user-2',
+        'created_at': '2026-08-27T12:01:00Z',
+      },
+    ];
+    String? saved;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: TaskUpdateCard(
+              update: TaskUpdate.fromJson(source),
+              onEdit: (body) async {
+                saved = body;
+                return null;
+              },
+              onArchive: () async => null,
+              onDownload: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('Update actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit update'));
+    await tester.pump();
+    await tester.tap(find.text('Save changes'));
+    await tester.pump();
+    expect(saved, source['body']);
+
+    await tester.tap(find.text('Edit history (1)'));
+    await tester.pumpAndSettle();
+    final formatted = tester.widgetList<TaskFormattedText>(
+      find.byType(TaskFormattedText),
+    );
+    expect(
+      formatted.last.html,
+      source['versions'] is List
+          ? (source['versions'] as List).single['body']
+          : null,
+    );
+    expect(safeTaskExternalUri('javascript:alert(1)'), isNull);
+  });
 }
 
 http.Response _json(int status, Map<String, Object?> body) => http.Response(
@@ -295,6 +447,7 @@ Map<String, Object?> _detailJson() => <String, Object?>{
   'custom_values': <String, Object?>{},
   'subtasks': <Object?>[],
   'record_links': <Object?>[],
+  'actions': <Object?>['create_update', 'watch', 'mute'],
   'updates': <Object?>[
     <String, Object?>{
       'id': 'update-1',
@@ -303,6 +456,7 @@ Map<String, Object?> _detailJson() => <String, Object?>{
       'body_plain': 'Uploaded proof.',
       'version': 2,
       'mention_user_ids': <Object?>['user-1'],
+      'actions': <Object?>[],
       'attachments': <Object?>[
         <String, Object?>{
           'id': 'file-1',

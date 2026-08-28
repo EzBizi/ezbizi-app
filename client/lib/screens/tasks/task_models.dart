@@ -1182,6 +1182,7 @@ final class TaskUpdate {
     required this.mentionUserIds,
     this.attachments = const <TaskAttachment>[],
     this.versions = const <TaskUpdateVersion>[],
+    this.actions = const <String>[],
     required this.createdAt,
     required this.updatedAt,
   });
@@ -1189,8 +1190,8 @@ final class TaskUpdate {
   factory TaskUpdate.fromJson(Map<String, Object?> json) => TaskUpdate(
     id: _string(json, 'id'),
     authorUserId: _string(json, 'author_user_id'),
-    body: _string(json, 'body'),
-    bodyPlain: _string(json, 'body_plain'),
+    body: _nullableString(json, 'body'),
+    bodyPlain: _nullableString(json, 'body_plain'),
     version: _integer(json, 'version'),
     mentionUserIds: _strings(json, 'mention_user_ids'),
     attachments: (_optionalObjects(json, 'attachments') ?? const [])
@@ -1199,20 +1200,24 @@ final class TaskUpdate {
     versions: (_optionalObjects(json, 'versions') ?? const [])
         .map(TaskUpdateVersion.fromJson)
         .toList(growable: false),
+    actions: _optionalStrings(json, 'actions'),
     createdAt: _dateTime(json, 'created_at'),
     updatedAt: _dateTime(json, 'updated_at'),
   );
 
   final String id;
   final String authorUserId;
-  final String body;
-  final String bodyPlain;
+  final String? body;
+  final String? bodyPlain;
   final int version;
   final List<String> mentionUserIds;
   final List<TaskAttachment> attachments;
   final List<TaskUpdateVersion> versions;
+  final List<String> actions;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  bool can(String action) => actions.contains(action);
 }
 
 final class TaskAttachment {
@@ -1386,6 +1391,7 @@ final class TaskDetailSnapshot {
     this.updates = const <TaskUpdate>[],
     this.watch = TaskWatchState.none,
     this.activities = const <TaskActivity>[],
+    this.actions = const <String>[],
   });
 
   factory TaskDetailSnapshot.fromJson(
@@ -1414,6 +1420,7 @@ final class TaskDetailSnapshot {
       activities: (_optionalObjects(json, 'activities') ?? const [])
           .map(TaskActivity.fromJson)
           .toList(growable: false),
+      actions: _optionalStrings(json, 'actions'),
     );
   }
 
@@ -1424,6 +1431,9 @@ final class TaskDetailSnapshot {
   final List<TaskUpdate> updates;
   final TaskWatchState watch;
   final List<TaskActivity> activities;
+  final List<String> actions;
+
+  bool can(String action) => actions.contains(action);
 
   TaskDetailSnapshot copyWith({
     TaskRow? task,
@@ -1439,6 +1449,7 @@ final class TaskDetailSnapshot {
     updates: updates ?? this.updates,
     watch: watch ?? this.watch,
     activities: activities ?? this.activities,
+    actions: actions,
   );
 }
 

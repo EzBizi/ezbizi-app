@@ -22,10 +22,12 @@ final class TaskUpdateDraft {
     required this.body,
     required this.mentionUserIds,
     required this.attachmentCandidateIds,
+    required this.idempotencyKey,
   });
   final String body;
   final List<String> mentionUserIds;
   final List<String> attachmentCandidateIds;
+  final String idempotencyKey;
 }
 
 Uri? safeTaskExternalUri(String? raw) {
@@ -91,6 +93,7 @@ class TaskUpdateComposer extends StatefulWidget {
     this.onCancelExtras,
     this.mentions,
     this.uploading = false,
+    this.idempotencyKeyFactory,
   });
   final String taskId;
   final Future<TaskComposerResult> Function(TaskUpdateDraft draft) onSubmit;
@@ -103,6 +106,7 @@ class TaskUpdateComposer extends StatefulWidget {
   final VoidCallback? onCancelExtras;
   final Widget? mentions;
   final bool uploading;
+  final String Function()? idempotencyKeyFactory;
 
   @override
   State<TaskUpdateComposer> createState() => _TaskUpdateComposerState();
@@ -113,6 +117,7 @@ class _TaskUpdateComposerState extends State<TaskUpdateComposer> {
   bool _saving = false;
   bool _dirty = false;
   String? _error;
+  String? _idempotencyKey;
   String get _draftId => 'task:${widget.taskId}:update-composer';
   bool get _hasDraft =>
       _controller.text.trim().isNotEmpty ||
@@ -124,6 +129,7 @@ class _TaskUpdateComposerState extends State<TaskUpdateComposer> {
     super.initState();
     _controller.addListener(_changed);
     _dirty = _hasDraft;
+    if (_dirty) _idempotencyKey = _newIdempotencyKey();
   }
 
   @override
@@ -140,18 +146,23 @@ class _TaskUpdateComposerState extends State<TaskUpdateComposer> {
   void _syncDirty() {
     final dirty = _hasDraft;
     if (dirty == _dirty) return;
+    if (dirty) _idempotencyKey ??= _newIdempotencyKey();
     _dirty = dirty;
     widget.onDraftChanged?.call(_draftId, dirty);
   }
 
   void _changed() {
+    final wasDirty = _dirty;
     _syncDirty();
-    if (mounted && _error != null) setState(() => _error = null);
+    if (mounted && (wasDirty != _dirty || _error != null)) {
+      setState(() => _error = null);
+    }
   }
 
   void _clear({String? oldDraftId}) {
     if (_dirty) widget.onDraftChanged?.call(oldDraftId ?? _draftId, false);
     _dirty = false;
+    _idempotencyKey = null;
     _controller.clear();
     widget.onCancelExtras?.call();
     _error = null;
@@ -170,6 +181,7 @@ class _TaskUpdateComposerState extends State<TaskUpdateComposer> {
         attachmentCandidateIds: widget.attachmentCandidates
             .map((candidate) => candidate.id)
             .toList(growable: false),
+        idempotencyKey: _idempotencyKey ??= _newIdempotencyKey(),
       ),
     );
     if (!mounted) return;
@@ -182,6 +194,10 @@ class _TaskUpdateComposerState extends State<TaskUpdateComposer> {
       }
     });
   }
+
+  String _newIdempotencyKey() =>
+      widget.idempotencyKeyFactory?.call() ??
+      '${widget.taskId}-${DateTime.now().microsecondsSinceEpoch}';
 
   @override
   void dispose() {
@@ -264,14 +280,12 @@ class TaskUpdateCard extends StatefulWidget {
   const TaskUpdateCard({
     super.key,
     required this.update,
-    required this.canEdit,
     required this.onEdit,
     required this.onArchive,
     required this.onDownload,
     this.onUnsafeLink,
   });
   final TaskUpdate update;
-  final bool canEdit;
   final Future<String?> Function(String body) onEdit;
   final Future<String?> Function() onArchive;
   final ValueChanged<TaskAttachment> onDownload;
@@ -285,7 +299,7 @@ class _TaskUpdateCardState extends State<TaskUpdateCard> {
   bool _editing = false;
   bool _saving = false;
   late final TextEditingController _editor = TextEditingController(
-    text: widget.update.bodyPlain,
+    text: widget.update.body ?? '',
   );
   String? _error;
 
@@ -293,7 +307,7 @@ class _TaskUpdateCardState extends State<TaskUpdateCard> {
   void didUpdateWidget(covariant TaskUpdateCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!_editing && oldWidget.update.version != widget.update.version) {
-      _editor.text = widget.update.bodyPlain;
+      _editor.text = widget.update.body ?? '';
     }
   }
 
@@ -333,7 +347,7 @@ class _TaskUpdateCardState extends State<TaskUpdateCard> {
                 ),
               ),
               if (widget.update.version > 1) const Text('Edited'),
-              if (widget.canEdit)
+              if (widget.update.can('edit') || widget.update.can('archive'))
                 PopupMenuButton<String>(
                   tooltip: 'Update actions',
                   onSelected: (action) async {
@@ -343,18 +357,31 @@ class _TaskUpdateCardState extends State<TaskUpdateCard> {
                       if (mounted) setState(() => _error = error);
                     }
                   },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'edit', child: Text('Edit update')),
-                    PopupMenuItem(
-                      value: 'archive',
-                      child: Text('Remove update'),
-                    ),
+                  itemBuilder: (_) => [
+                    if (widget.update.can('edit'))
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Text('Edit update'),
+                      ),
+                    if (widget.update.can('archive'))
+                      const PopupMenuItem(
+                        value: 'archive',
+                        child: Text('Remove update'),
+                      ),
                   ],
                 ),
             ],
           ),
           if (_editing) ...[
-            TextField(controller: _editor, minLines: 2, maxLines: 8),
+            TextField(
+              controller: _editor,
+              minLines: 2,
+              maxLines: 8,
+              decoration: const InputDecoration(
+                labelText: 'Formatted update (HTML)',
+                helperText: 'Formatting is preserved when you save.',
+              ),
+            ),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -372,8 +399,8 @@ class _TaskUpdateCardState extends State<TaskUpdateCard> {
             ),
           ] else
             TaskFormattedText(
-              html: widget.update.body,
-              plainFallback: widget.update.bodyPlain,
+              html: widget.update.body ?? '',
+              plainFallback: widget.update.bodyPlain ?? '',
               onUnsafeLink: widget.onUnsafeLink,
             ),
           for (final attachment in widget.update.attachments)
@@ -397,7 +424,12 @@ class _TaskUpdateCardState extends State<TaskUpdateCard> {
                 for (final version in widget.update.versions)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: Text(version.bodyPlain),
+                    title: TaskFormattedText(
+                      html: version.body,
+                      plainFallback: version.bodyPlain,
+                      onUnsafeLink: (message) =>
+                          setState(() => _error = message),
+                    ),
                     subtitle: Text('Earlier version ${version.version}'),
                   ),
               ],

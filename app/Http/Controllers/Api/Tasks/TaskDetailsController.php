@@ -7,6 +7,7 @@ use App\Models\TaskBoard;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\TaskBoardAccess;
 use App\Support\Tasks\TaskRecordLinkRegistry;
+use App\Support\Tasks\TaskParticipantEligibility;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -15,6 +16,7 @@ final class TaskDetailsController extends TaskApiController
     public function __construct(
         private readonly TaskBoardAccess $access,
         private readonly TaskRecordLinkRegistry $recordLinks,
+        private readonly TaskParticipantEligibility $participants,
     ) {}
 
     public function show(Request $request, TaskBoard $board, string $taskId): Response
@@ -36,6 +38,7 @@ final class TaskDetailsController extends TaskApiController
         ])->findOrFail($taskId);
         $data = $this->presentTask($task);
         $data['custom_values'] = $this->customValues($task);
+        $canComment = $request->user()->can('comment', $task);
         $data['updates'] = $task->updates->map(fn ($update) => [
             'id' => $update->id,
             'author_user_id' => $update->author_user_id,
@@ -43,6 +46,9 @@ final class TaskDetailsController extends TaskApiController
             'body_plain' => $update->body_plain,
             'version' => (int) $update->version,
             'mention_user_ids' => $update->mentions->pluck('user_id')->values()->all(),
+            'actions' => $canComment && $update->author_user_id === $request->user()->id
+                ? ['edit', 'archive']
+                : [],
             'attachments' => $update->attachments->map(fn ($attachment) => $attachment->present())->values(),
             'versions' => $update->versions->map(fn ($version) => [
                 'version' => (int) $version->version,
@@ -65,6 +71,16 @@ final class TaskDetailsController extends TaskApiController
             'watched' => $task->owner_user_id === $request->user()->id
                 || ($preference !== 'muted' && ($preference === 'watched' || $defaultWatched)),
         ];
+        $data['actions'] = array_values(array_filter([
+            $canComment ? 'create_update' : null,
+            $request->user()->can('update', $task) ? 'manage_collaborators' : null,
+            $task->owner_user_id !== $request->user()->id
+                && $this->participants->forTaskParticipation($request->user(), $task->board)->allowed()
+                    ? 'watch'
+                    : null,
+            $task->owner_user_id !== $request->user()->id ? 'mute' : null,
+            $task->owner_user_id !== $request->user()->id && $preference !== null ? 'clear_watch' : null,
+        ]));
         $data['record_links'] = $task->recordLinks->map(function ($link) use ($request, $board, $scope): array {
             $definition = $this->recordLinks->get($link->record_type);
             $record = $definition->resolve($request->user(), $board, $scope, $link->record_id);
@@ -87,6 +103,7 @@ final class TaskDetailsController extends TaskApiController
             $task->subtasks->map(fn (Task $subtask) => [
                 $subtask->id, (int) $subtask->version, (int) $subtask->detail_version,
             ])->values()->all(),
+            $data['actions'],
             $data['record_links']->all(),
         ], JSON_THROW_ON_ERROR));
 

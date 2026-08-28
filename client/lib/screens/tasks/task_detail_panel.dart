@@ -14,9 +14,6 @@ class TaskDetailPanel extends StatelessWidget {
     required this.onClose,
     this.fullScreen = false,
     this.onDraftChanged,
-    this.currentUserId = '',
-    this.canComment = false,
-    this.canEdit = false,
     this.privacyEpoch = 0,
     this.onUnavailable,
   });
@@ -30,9 +27,6 @@ class TaskDetailPanel extends StatelessWidget {
   /// Reserved for detail editors and the Task 17B update composer so they join
   /// the board's convergence draft registry by stable identity.
   final TaskDraftChanged? onDraftChanged;
-  final String currentUserId;
-  final bool canComment;
-  final bool canEdit;
   final int privacyEpoch;
   final ValueChanged<String?>? onUnavailable;
   @override
@@ -85,9 +79,6 @@ class TaskDetailPanel extends StatelessWidget {
                 TaskCollaborationPanel(
                   snapshot: task!,
                   api: taskApi,
-                  currentUserId: currentUserId,
-                  canComment: canComment,
-                  canEdit: canEdit,
                   privacyEpoch: privacyEpoch,
                   onChanged: onTaskChanged,
                   onUnavailable: onUnavailable ?? (_) {},

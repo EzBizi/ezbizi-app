@@ -128,6 +128,35 @@ class TaskCollaborationTest extends TestCase
             ->assertUnprocessable();
     }
 
+    public function test_detail_authors_collaboration_actions_and_update_ownership(): void
+    {
+        $commenter = $this->userWithRole($this->tenant, 'Detail commenter', ['tasks.view', 'tasks.comment']);
+        $editor = $this->userWithRole($this->tenant, 'Detail editor', ['tasks.view', 'tasks.edit']);
+        $this->signedInAs($commenter);
+        $updateId = $this->postJson("/api/v1/tasks/{$this->task->id}/updates", [
+            'body' => '<p>Authored update.</p>', 'idempotency_key' => 'detail-actions-1',
+        ])->assertCreated()->json('data.id');
+
+        $this->getJson("/api/v1/tasks/boards/{$this->board->id}/tasks/{$this->task->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions', ['create_update', 'watch', 'mute'])
+            ->assertJsonPath('data.updates.0.id', $updateId)
+            ->assertJsonPath('data.updates.0.actions', ['edit', 'archive']);
+
+        $this->signedInAs($editor);
+        $this->getJson("/api/v1/tasks/boards/{$this->board->id}/tasks/{$this->task->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions', ['manage_collaborators', 'watch', 'mute'])
+            ->assertJsonPath('data.updates.0.actions', []);
+
+        $this->enterTenant();
+        $this->task->forceFill(['owner_user_id' => $editor->id])->save();
+        $this->getJson("/api/v1/tasks/boards/{$this->board->id}/tasks/{$this->task->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions', ['manage_collaborators'])
+            ->assertJsonPath('data.watch.mandatory', true);
+    }
+
     public function test_notification_delivery_is_deduplicated_and_revoked_work_is_filtered_before_count_and_read(): void
     {
         $recipient = $this->userWithRole($this->tenant, 'Recipient', ['tasks.view']);

@@ -165,24 +165,20 @@ class TaskCollaborationPanel extends StatefulWidget {
     super.key,
     required this.snapshot,
     required this.api,
-    required this.currentUserId,
-    required this.canComment,
-    required this.canEdit,
     required this.privacyEpoch,
     required this.onChanged,
     required this.onUnavailable,
     this.onDraftChanged,
+    this.pickFile,
   });
 
   final TaskDetailSnapshot snapshot;
   final TaskApi api;
-  final String currentUserId;
-  final bool canComment;
-  final bool canEdit;
   final int privacyEpoch;
   final ValueChanged<TaskDetailSnapshot> onChanged;
   final ValueChanged<String?> onUnavailable;
   final TaskDraftChanged? onDraftChanged;
+  final Future<PickedBytes?> Function()? pickFile;
 
   @override
   State<TaskCollaborationPanel> createState() => _TaskCollaborationPanelState();
@@ -254,7 +250,7 @@ class _TaskCollaborationPanelState extends State<TaskCollaborationPanel> {
       body: draft.body,
       mentionUserIds: draft.mentionUserIds,
       attachmentCandidateIds: draft.attachmentCandidateIds,
-      idempotencyKey: '$taskId-${DateTime.now().microsecondsSinceEpoch}',
+      idempotencyKey: draft.idempotencyKey,
     );
     if (!_current(privacy, taskId)) {
       return const TaskComposerTransientFailure(
@@ -282,10 +278,10 @@ class _TaskCollaborationPanelState extends State<TaskCollaborationPanel> {
   }
 
   Future<void> _pickFile() async {
-    final picked = await Files.pickBytes();
-    if (picked == null || !mounted) return;
     final privacy = widget.privacyEpoch;
     final taskId = _snapshot.task.id;
+    final picked = await (widget.pickFile?.call() ?? Files.pickBytes());
+    if (picked == null || !_current(privacy, taskId)) return;
     setState(() {
       _uploading = true;
       _message = null;
@@ -454,18 +450,20 @@ class _TaskCollaborationPanelState extends State<TaskCollaborationPanel> {
             ),
             if (_snapshot.watch.mandatory)
               const Text('Owner · always watching')
-            else
+            else if (_snapshot.can('watch') || _snapshot.can('mute'))
               SegmentedButton<TaskWatchChoice>(
                 emptySelectionAllowed: true,
-                segments: const [
-                  ButtonSegment(
-                    value: TaskWatchChoice.watched,
-                    label: Text('Watch'),
-                  ),
-                  ButtonSegment(
-                    value: TaskWatchChoice.muted,
-                    label: Text('Mute'),
-                  ),
+                segments: [
+                  if (_snapshot.can('watch'))
+                    const ButtonSegment(
+                      value: TaskWatchChoice.watched,
+                      label: Text('Watch'),
+                    ),
+                  if (_snapshot.can('mute'))
+                    const ButtonSegment(
+                      value: TaskWatchChoice.muted,
+                      label: Text('Mute'),
+                    ),
                 ],
                 selected:
                     _snapshot.watch.preference == TaskWatchChoice.automatic
@@ -475,9 +473,14 @@ class _TaskCollaborationPanelState extends State<TaskCollaborationPanel> {
                   if (choices.isNotEmpty) _setWatch(choices.single);
                 },
               ),
+            if (_snapshot.can('clear_watch'))
+              TextButton(
+                onPressed: () => _setWatch(TaskWatchChoice.automatic),
+                child: const Text('Use automatic'),
+              ),
           ],
         ),
-        if (widget.canEdit) ...[
+        if (_snapshot.can('manage_collaborators')) ...[
           const SizedBox(height: 24),
           Text(
             'Collaborators (${task.collaboratorUserIds.length})',
@@ -509,15 +512,12 @@ class _TaskCollaborationPanelState extends State<TaskCollaborationPanel> {
           TaskUpdateCard(
             key: ValueKey(update.id),
             update: update,
-            canEdit:
-                widget.canComment &&
-                update.authorUserId == widget.currentUserId,
             onEdit: (body) => _edit(update, body),
             onArchive: () => _archive(update),
             onDownload: _download,
             onUnsafeLink: (message) => setState(() => _message = message),
           ),
-        if (widget.canComment)
+        if (_snapshot.can('create_update'))
           TaskUpdateComposer(
             key: ValueKey('composer:${task.id}:${widget.privacyEpoch}'),
             taskId: task.id,
