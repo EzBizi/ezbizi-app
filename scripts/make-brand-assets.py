@@ -128,7 +128,17 @@ def main() -> None:
     base.resize((64, 64), Image.LANCZOS).save(out("client/web/favicon.png"))
     base.resize((512, 512), Image.LANCZOS).convert("RGB").save(out("www/icon-512.png"), optimize=True)
     base.resize((180, 180), Image.LANCZOS).convert("RGB").save(out("www/apple-touch-icon.png"), optimize=True)
-    base.save(out("www/favicon.ico"), sizes=[(16, 16), (32, 32), (48, 48)])
+    #    Six frames, not three. A 48px ceiling is fine in a tab and poor everywhere
+    #    else a favicon is used — bookmarks bar, a pinned tab, a desktop shortcut,
+    #    the browser's own history UI — which fall back to upscaling 48px.
+    #    The live site has carried the six-frame version since 26 August; this line
+    #    still wrote three, so ANY run of this script silently reverted it, and
+    #    `deploy-www.sh` would then publish the revert. The docstring above tells
+    #    people www/ is derived and safe to regenerate, which is what made that a
+    #    trap rather than a mistake. `www/check-site.py` now fails if the 256px
+    #    frame goes missing again.
+    base.save(out("www/favicon.ico"),
+              sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
 
     # 6. Play feature graphic.
     feature = Image.new("RGB", (1024, 500), BRAND)
