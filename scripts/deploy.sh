@@ -199,6 +199,25 @@ if [ "$CODE_ONLY" != "--code" ]; then
   "
 fi
 
+# GitHub gets what actually shipped, and only once it has shipped.
+#
+# Until 2026-08-28 every commit in this project existed on one disk. The backup
+# is worth nothing if it is a step somebody has to remember, so it runs here
+# rather than by hand — and AFTER the production push, so origin never shows a
+# release that did not land.
+#
+# Non-fatal on purpose. GitHub being unreachable is not a reason to fail a
+# deploy that already succeeded; it is a reason to say so and let the next
+# deploy catch up. The failure is announced rather than swallowed, because a
+# backup that quietly stops is worse than one that was never set up.
+if git remote get-url origin >/dev/null 2>&1; then
+  echo "→ pushing $GATED_SHA to GitHub"
+  git push origin "$GATED_SHA":main 2>&1 | tail -2 || {
+    echo "⚠ GitHub push FAILED — the release is live, but origin is behind."
+    echo "  Run: git push origin main"
+  }
+fi
+
 # The four volatile rows of STATUS.md, from the things themselves. This is the
 # one moment all of them are known at once — both suites have just run and the
 # release is live — and the reason it is automated at all is that every one of
