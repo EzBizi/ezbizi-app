@@ -44,6 +44,36 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a total that predates any line does not claim to be summed from lines',
+    (tester) async {
+      // A job priced before it had lines — old data from before the Price
+      // field was removed from Create, or a job still waiting on its first
+      // line. `lines` is empty but `amount` is not zero: "Summed from 0
+      // lines." would be false on this exact number, so it must not appear.
+      await _pump(
+        tester,
+        onRequest: (request) {
+          if (request.method == 'GET' &&
+              request.url.path.endsWith('/jobs/j-1')) {
+            return _json({'data': _crownDetailPriceOnly});
+          }
+          return null;
+        },
+      );
+
+      await tester.tap(find.text('Chimney sweep call'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(r'$314.00'), findsOneWidget);
+      expect(
+        find.text('Set before this job had any service lines.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Summed from'), findsNothing);
+    },
+  );
+
   testWidgets('adding a service does not open a dialog', (tester) async {
     await _pump(
       tester,
@@ -311,6 +341,20 @@ const _crownDetail = {
   'duration_minutes': null,
   'allowed_statuses': ['scheduled', 'completed'],
   'lines': _crownLines,
+  'performed_by': null,
+  'earned_at': null,
+};
+
+/// A job priced the old way — a typed amount, zero lines. `JobsController`
+/// never recomputes the total for a job that has none, so this is not a
+/// transient state: it is what every job created before Task 8 removed the
+/// Create form's Price field looks like forever, unless a line is added.
+final _crownDetailPriceOnly = {
+  ..._crown,
+  'description': null,
+  'duration_minutes': null,
+  'allowed_statuses': ['scheduled', 'completed'],
+  'lines': const <Map<String, dynamic>>[],
   'performed_by': null,
   'earned_at': null,
 };

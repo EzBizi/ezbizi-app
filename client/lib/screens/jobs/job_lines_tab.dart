@@ -89,6 +89,7 @@ class _JobLinesTabState extends State<JobLinesTab> {
   Map<String, dynamic>? get _amount =>
       widget.job['amount'] as Map<String, dynamic>?;
   String get _currency => _amount?['currency'] as String? ?? 'USD';
+  int get _amountMinor => (_amount?['minor'] as num?)?.toInt() ?? 0;
 
   Future<void> _startAdding() async {
     setState(() {
@@ -275,9 +276,17 @@ class _JobLinesTabState extends State<JobLinesTab> {
         ),
         const SizedBox(height: 4),
         // Says where the number above came from, so nobody goes looking for
-        // the field that used to let them type over it.
+        // the field that used to let them type over it — except when that
+        // would itself be false. A job priced before it had any lines (old
+        // data from before this field was removed from Create, or a job still
+        // waiting on its first line) shows a total nothing here summed. Saying
+        // "Summed from 0 lines." on that number would be the same kind of lie
+        // this module exists to remove, just moved into the caption instead of
+        // the field.
         Text(
-          'Summed from ${lines.length} line${lines.length == 1 ? '' : 's'}.',
+          lines.isEmpty && _amountMinor != 0
+              ? 'Set before this job had any service lines.'
+              : 'Summed from ${lines.length} line${lines.length == 1 ? '' : 's'}.',
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: 16),
