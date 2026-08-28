@@ -138,6 +138,20 @@ class _ActionRow {
   TextEditingController parameter(String key) =>
       parameters.putIfAbsent(key, TextEditingController.new);
 
+  /// The `_` arm below throws, and it is UNREACHABLE — see [knownTypes].
+  ///
+  /// Read on its own this method looks like it crashes on any action type the
+  /// build does not know, which would make every server-side action
+  /// registration a hazard. It does not: the picker consults [knownTypes]
+  /// first and offers an unknown type disabled, so nothing unknown ever
+  /// reaches here to be serialised.
+  ///
+  /// Said here because two people checking whether a new automation action
+  /// could break a released build both read the throw, concluded it could, and
+  /// stopped — separately, within an hour, on 2026-08-28, while an App Store
+  /// binary was frozen and the answer decided whether work shipped. The guard
+  /// is forty lines down behind a docblock neither scrolled to. One of them
+  /// then told the other to hold a finished, correct commit.
   Map<String, dynamic> toJson(CatalogueActionType? definition) {
     if (type?.startsWith('task.') == true && definition != null) {
       final payload = <String, dynamic>{'type': type};
