@@ -2,17 +2,22 @@
 #
 # One release, every platform.
 #
-#   ./scripts/release.sh                    web + windows installer + android aab
+#   ./scripts/release.sh                    all four: web, windows, android, ios
 #   ./scripts/release.sh --only windows     just that one
 #   ./scripts/release.sh --only web,android
 #   ./scripts/release.sh --dry-run          say what it would do, build nothing
 #
 #   ./scripts/release.sh --only ios        signed .ipa via the Mac relay
 #
-# iOS is a target but not a default. It is the only platform whose signing
-# identity lives on another machine, so a release that included it by default
-# would fail for anyone whose Mac was asleep. Ask for it explicitly until that
-# stops being true.
+# iOS IS a default target as of 28 Aug (Jose's ruling: every release builds all
+# four). It was excluded before because its signing identity lives on another
+# machine and an asleep Mac would have failed the whole release. That is no
+# longer true: a failing target is recorded and skipped, so a sleeping relay now
+# costs the .ipa and nothing else.
+#
+# This comment said the opposite until the defaults changed under it. Worth
+# noticing: it was accurate when written, and became misleading without anyone
+# editing it.
 #
 # ── what this is, and what it is not ─────────────────────────────
 #
@@ -299,6 +304,39 @@ if wants windows; then
     exit 1
   fi
 
+  # ── do not advertise a client the API cannot serve ───────────────
+  #
+  # BUILDING after a failed web deploy is harmless. PUBLISHING is not, and this
+  # step publishes: it writes the installer AND windows.json to
+  # www.ezbizi.com/download, and windows.json is what the in-app updater polls.
+  # So a failed web deploy plus a successful Windows build would push a newer
+  # client onto every installed desktop, automatically, against an API still
+  # running the old code. Nobody asked for that update and nobody can easily
+  # take it back.
+  #
+  # Same rule as the ordering comment at the top of this file, but it has to be
+  # enforced HERE now that a failed target no longer aborts the release.
+  #
+  # Only when web was part of this release. `--only windows` publishes freely:
+  # the API is whatever it already was, and shipping an installer fix against an
+  # unchanged API is the normal case.
+  PUBLISH_WINDOWS=1
+  if wants web; then
+    for f in ${FAILED[@]+"${FAILED[@]}"}; do
+      [ "$f" = "web" ] && PUBLISH_WINDOWS=0
+    done
+  fi
+
+  if [ "$PUBLISH_WINDOWS" -eq 0 ]; then
+    echo "⚠ windows — built, but NOT published: the web deploy failed." >&2
+    echo "  windows.json drives the in-app updater, so publishing it now would" >&2
+    echo "  push this client onto every installed desktop against an API still" >&2
+    echo "  on the previous version. The installer is in ${DIST}/ and can be" >&2
+    echo "  published by hand once web lands." >&2
+    FAILED+=("windows-publish")
+  fi
+
+  if [ "$PUBLISH_WINDOWS" -eq 1 ]; then
   echo "→ windows — publishing the installer and its manifest"
   run ssh "$WEB_REMOTE" "sudo mkdir -p '$WEB_DOWNLOADS' && sudo chown www-data:www-data '$WEB_DOWNLOADS'"
 
@@ -313,6 +351,7 @@ if wants windows; then
     "
   else
     echo "   would upload $WIN_EXE and write windows.json"
+  fi
   fi
 else
   FAILED+=("windows")
@@ -354,7 +393,11 @@ if wants ios; then
   echo "→ ios — building signed archive on the Mac relay"
   if run ./scripts/build-app.sh ios ${GATES}; then
 
-  if [ "$DRY_RUN" -eq 0 ] && ! ls "$DIST"/EzBizi-*.ipa >/dev/null 2>&1; then
+  # EzBizi-${VERSION}-*.ipa, not EzBizi-*.ipa. dist/ keeps every past release,
+  # so a bare glob matches a months-old artefact and reports a build that
+  # produced nothing as fine — the one failure this check exists to catch.
+  # Windows and Android were already version-specific; this was not.
+  if [ "$DRY_RUN" -eq 0 ] && ! ls "$DIST"/EzBizi-"${VERSION}"-*.ipa >/dev/null 2>&1; then
     echo "✗ build-app.sh finished but left no .ipa in ${DIST}/." >&2
     exit 1
   fi
