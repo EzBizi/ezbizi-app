@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -22,6 +23,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * Doing a job for another franchise's customer is normal and adds you to their
  * "served by" list; it does not make the job co-owned, and it does not move the
  * customer.
+ *
+ * `performed_by_user_id` **is** personal data (spec §5, §9): the record of who
+ * performed work for a customer, kept as long as the job is, and nulled on
+ * erasure while the job survives.
  */
 #[Fillable([
     'franchise_id', 'customer_id', 'number', 'title', 'description',
@@ -66,6 +71,34 @@ class Job extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function lines(): HasMany
+    {
+        return $this->hasMany(JobLine::class)->orderBy('position')->orderBy('created_at');
+    }
+
+    public function assignedRole(): BelongsTo
+    {
+        return $this->belongsTo(Role::class, 'assigned_role_id');
+    }
+
+    public function performedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'performed_by_user_id');
+    }
+
+    /**
+     * The total is what the lines come to — never what somebody typed.
+     *
+     * Call inside the transaction that changed a line, so a rolled-back line
+     * cannot leave a total that outlived it.
+     */
+    public function recomputeTotal(): void
+    {
+        $this->forceFill([
+            'amount_minor' => (int) $this->lines()->sum('amount_minor'),
+        ])->save();
     }
 
     // ── status (§2.1 category 5) ─────────────────────────────────

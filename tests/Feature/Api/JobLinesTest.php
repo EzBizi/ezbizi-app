@@ -110,4 +110,73 @@ class JobLinesTest extends TestCase
         $this->assertSame(24999, (int) $line->amount_minor);
         $this->assertSame(0, (int) $line->position);
     }
+
+    public function test_the_total_is_the_sum_of_its_lines(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            $customer = Customer::create([
+                'owning_franchise_id' => $alpha['franchise']->id,
+                'number' => 'C-0001',
+                'name' => 'Sum Of Lines Customer',
+            ]);
+
+            $job = Job::factory()->create([
+                'franchise_id' => $alpha['franchise']->id,
+                'customer_id' => $customer->id,
+                'amount_minor' => null,
+            ]);
+
+            $job->lines()->create([
+                'organization_id'  => $job->organization_id,
+                'name'             => 'Chimney sweep',
+                'unit_price_minor' => 18900,
+                'qty'              => 1,
+                'amount_minor'     => 18900,
+            ]);
+            $job->lines()->create([
+                'organization_id'  => $job->organization_id,
+                'name'             => 'Level 1 inspection',
+                'unit_price_minor' => 12500,
+                'qty'              => 2,
+                'amount_minor'     => 25000,
+            ]);
+
+            $job->recomputeTotal();
+
+            $this->assertSame(43900, $job->fresh()->amount_minor);
+        });
+    }
+
+    /**
+     * The bug `recomputeTotal()` exists to prevent: a job whose last line is
+     * removed must go to 0, not keep a stale total. `sum()` on an empty set is
+     * exactly where that would hide, so this proves the empty case explicitly
+     * rather than trusting the summing test above to cover it.
+     */
+    public function test_the_total_is_zero_when_a_job_has_no_lines(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            $customer = Customer::create([
+                'owning_franchise_id' => $alpha['franchise']->id,
+                'number' => 'C-0002',
+                'name' => 'Zero Lines Customer',
+            ]);
+
+            $job = Job::factory()->create([
+                'franchise_id' => $alpha['franchise']->id,
+                'customer_id' => $customer->id,
+                'amount_minor' => 24999,
+            ]);
+
+            $this->assertSame(0, $job->lines()->count());
+
+            $job->recomputeTotal();
+
+            $this->assertSame(0, $job->fresh()->amount_minor);
+        });
+    }
 }
