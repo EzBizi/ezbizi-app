@@ -92,6 +92,36 @@ void main() {
     expect(find.text('Phone number'), findsOneWidget);
   });
 
+  /// The panel must SHOW the browser key, and must not let it be confused with
+  /// the plugin token.
+  ///
+  /// This test exists because of a real incident: the public key shipped in the
+  /// API with no UI behind it, so the only credential this screen displayed was
+  /// the secret `ezb_` token. Asked for the browser key, the only reasonable
+  /// thing to hand over was the token — which is a screen defect, not a user
+  /// mistake, and it put a live secret somewhere it should never have gone.
+  testWidgets('a site offers its browser key, distinguished from the token', (
+    tester,
+  ) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+    );
+
+    await tester.tap(find.text('a-1chimney.com'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('pk_fixture_browser_key'), findsWidgets);
+
+    // The snippet points at the route that is actually served — public/ is not
+    // a web root on this host, so /ezbizi.js at the domain root is not it.
+    expect(find.textContaining('/api/v1/web/ezbizi.js'), findsOneWidget);
+
+    // And it says which key is safe in public, because that is the whole
+    // distinction somebody has to get right.
+    expect(find.textContaining('ezb_'), findsOneWidget);
+  });
+
   // §6 — no pop-ups, ever. Adding is a form in place, not a dialog.
   testWidgets('adding a website opens a form in place and never a dialog', (
     tester,
@@ -251,6 +281,7 @@ const List<Map<String, Object?>> _sites = [
     'connected_at': '2026-08-28T10:00:00+00:00',
     'last_seen_at': '2026-08-28T11:00:00+00:00',
     'plugin_version': '1.0.0',
+    'public_key': 'pk_fixture_browser_key',
   },
   {
     'id': 'site-2',
@@ -260,6 +291,7 @@ const List<Map<String, Object?>> _sites = [
     'connected_at': null,
     'last_seen_at': null,
     'plugin_version': null,
+    'public_key': 'pk_fixture_branch_key',
   },
 ];
 
