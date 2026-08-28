@@ -123,6 +123,17 @@ if [ "$CODE_ONLY" != "--code" ]; then
   CLIENT_OUT=$( (cd "$WORKTREE/client" && flutter pub get && flutter analyze && flutter test) 2>&1 ) || {
     echo "$CLIENT_OUT"; echo "✗ client checks failed — nothing deployed"; exit 1;
   }
+
+  # `flutter pub get` rewrites the generated plugin registrants for linux, macos
+  # and windows, and those files are tracked. So the worktree — which was
+  # pristine by construction, the whole reason for using one — is dirty by the
+  # time build-web.sh looks, and its refusal to stamp an unreproducible build
+  # fires on artifacts the web build never reads.
+  #
+  # Restoring the worktree to the pinned commit is the honest fix rather than
+  # passing --allow-dirty: the build then genuinely is the commit it claims,
+  # and the guard keeps its meaning for the case it was written for.
+  git -C "$WORKTREE" checkout -- . 2>/dev/null || true
   echo "$CLIENT_OUT" | tail -2
   CLIENT_TESTS=$(echo "$CLIENT_OUT" | grep -oE '\+[0-9]+' | tail -1 | tr -d '+')
 
