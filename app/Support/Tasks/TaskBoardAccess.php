@@ -341,6 +341,23 @@ final class TaskBoardAccess
         return $this->ownerManagementDecision($user, $board);
     }
 
+    public function manageAtFiledPlaceDecision(User $user, TaskBoard $board): Response
+    {
+        $base = $this->baseDecision($user, $board);
+        if ($base->denied()) {
+            return $base;
+        }
+        if ($board->archived_at !== null || ! TaskPlace::reachedBy($user, $board, $this->reach)) {
+            return Response::denyAsNotFound();
+        }
+        $membership = $this->privateMembershipDecision($user, $board);
+        if ($membership->denied()) {
+            return $membership;
+        }
+
+        return $this->ownerManagementDecision($user, $board);
+    }
+
     public function manageArchivedDecision(User $user, TaskBoard $board, ViewScope $scope): Response
     {
         $base = $this->baseDecision($user, $board);

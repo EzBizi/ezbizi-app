@@ -117,8 +117,7 @@ final class TaskBoardWriter
     ): TaskBoard {
         return DB::transaction(function () use ($actor, $source, $scope, $expected, $name, $includeTasks): TaskBoard {
             $locked = TaskBoard::query()->lockForUpdate()->findOrFail($source->id);
-            $this->access->viewDecision($actor, $locked, $scope)->authorize();
-            $this->access->manageDecision($actor, $locked, $scope)->authorize();
+            $this->access->manageAtFiledPlaceDecision($actor, $locked)->authorize();
             $this->access->createDecision($actor, $scope)->authorize();
             if ((int) $locked->structure_version !== $expected) {
                 throw new TaskStructureConflict((int) $locked->structure_version);

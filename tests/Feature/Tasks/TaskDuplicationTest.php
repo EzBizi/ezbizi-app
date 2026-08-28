@@ -3,6 +3,8 @@
 namespace Tests\Feature\Tasks;
 
 use App\Models\AuditEvent;
+use App\Models\Company;
+use App\Models\Franchise;
 use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskBoard;
@@ -231,6 +233,57 @@ class TaskDuplicationTest extends TestCase
         $this->assertSame('REF-42', TaskColumnValue::where('task_id', $copiedParent->id)
             ->where('column_definition_id', $copiedDefinition->id)->value('text_value'));
         $this->assertSame(1, $copy->members()->count());
+    }
+
+    public function test_cross_place_board_copy_authorizes_source_and_current_destination_independently(): void
+    {
+        $this->enterTenant();
+        $destinationCompany = Company::create(['name' => 'Sibling destination', 'is_active' => true]);
+        $destinationFranchise = Franchise::create([
+            'company_id' => $destinationCompany->id,
+            'name' => 'Sibling destination branch',
+            'is_active' => true,
+        ]);
+        $this->lookAt(ViewScope::COMPANY, $destinationCompany->id);
+        $this->actingAs($this->alpha['admin']->fresh());
+        $this->app->forgetScopedInstances();
+
+        $copyId = $this->postJson("/api/v1/tasks/boards/{$this->source->id}/duplicate", [
+            'name' => 'Cross-place structure copy',
+            'expected_structure_version' => $this->source->structure_version,
+        ])->assertCreated()
+            ->assertJsonPath('data.company_id', $destinationCompany->id)
+            ->assertJsonPath('data.franchise_id', null)
+            ->json('data.id');
+        $this->enterTenant();
+        $copy = TaskBoard::findOrFail($copyId);
+        $this->assertSame(0, $copy->tasks()->count());
+        $this->assertSame($this->source->groups()->count(), $copy->groups()->count());
+
+        $before = TaskBoard::count();
+        $this->postJson("/api/v1/tasks/boards/{$this->source->id}/duplicate", [
+            'name' => 'Cross-place work copy',
+            'include_tasks' => true,
+            'expected_structure_version' => $this->source->structure_version,
+        ])->assertUnprocessable()->assertJsonValidationErrors('include_tasks');
+        $this->enterTenant();
+        $this->assertSame($before, TaskBoard::count());
+
+        $sibling = $this->userWithRole(
+            $this->alpha,
+            'Sibling-only board manager',
+            ['tasks.view', 'tasks.manage'],
+            onlyAt: $destinationFranchise,
+        );
+        $this->enterTenant();
+        $sibling->forceFill(['preferences' => [
+            'navigation.scope' => ViewScope::FRANCHISE.':'.$destinationFranchise->id,
+        ]])->save();
+        $this->signedInAs($sibling);
+        $this->postJson("/api/v1/tasks/boards/{$this->source->id}/duplicate", [
+            'name' => 'Forbidden sibling copy',
+            'expected_structure_version' => $this->source->structure_version,
+        ])->assertNotFound();
     }
 
     private function createBoard(string $name): TaskBoard
