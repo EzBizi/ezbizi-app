@@ -699,7 +699,30 @@ footer p{font-size:.83rem;color:var(--muted-2)}
 <!-- Commented out until a real pk_ key exists: a placeholder key makes this a
      request on every page view that can never resolve. Generate the public key in
      Web Management, paste it over the placeholder, and uncomment the line.
-<script src="https://app.ezbizi.com/api/v1/web/ezbizi.js" data-key="pk_REPLACE_WITH_KEY_FROM_WEB_MANAGEMENT"></script>
+<!--
+  The EzBizi snippet belongs here, and it is deliberately NOT here yet.
+
+  It shipped once with data-key="pk_REPLACE_WITH_KEY_FROM_WEB_MANAGEMENT",
+  which is a real script tag carrying a key that matches no site: every
+  visitor fetched it, it asked our API for a key that does not exist, got a
+  404, and rendered nothing. A placeholder is fine in documentation and is not
+  fine in our own shop window — it cost a request per visitor and put 404s in
+  our own logs, to do nothing at all.
+
+  Putting it back needs two things, in order: the real pk_ key for ezbizi.com
+  from Web Management → SEO, and the values actually filled in there. Until
+  both exist, the addresses below are the truth and should stay hand-written.
+
+  When it does go back, the pattern is
+    <span data-ezbizi="email">contact@ezbizi.com</span>
+  — real value between the tags, so the page reads correctly to a person and a
+  crawler even if the script never loads.
+
+  Note the JSON-LD block at the top of this file also carries the email and the
+  postal address. The snippet cannot maintain those: it writes element text,
+  not JSON, and structured data edited by JavaScript is not reliably read. That
+  half needs build-time injection and is a separate piece of work.
+-->
 -->
 </body>
 </html>

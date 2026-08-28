@@ -122,6 +122,41 @@ void main() {
     expect(find.textContaining('ezb_'), findsOneWidget);
   });
 
+  /// The browser key must be rotatable FROM THE SCREEN, not only from the API.
+  ///
+  /// The doc promised the public key "rotates independently" before any
+  /// endpoint existed; the endpoint was then built and still had no control
+  /// behind it. Same defect, one layer up — a capability nobody can reach is
+  /// indistinguishable from one that does not exist.
+  testWidgets('a browser key can be reissued, inline and never in a dialog', (
+    tester,
+  ) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+    );
+
+    await tester.tap(find.text('a-1chimney.com'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('New key'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.textContaining('Issue a new browser key?'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+  });
+
+  testWidgets('view alone cannot reissue a browser key', (tester) async {
+    await _pumpDestination(tester, permissions: ['web_management.view']);
+
+    await tester.tap(find.text('a-1chimney.com'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('New key'), findsNothing);
+  });
+
   // §6 — no pop-ups, ever. Adding is a form in place, not a dialog.
   testWidgets('adding a website opens a form in place and never a dialog', (
     tester,
