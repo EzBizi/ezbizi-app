@@ -327,6 +327,29 @@ https://app.ezbizi.com/api/v1/web/ezbizi.js 200 application/javascript
 https://app.ezbizi.com/api/v1/web/public/values 400 application/json
 SMOKE
 
+# The last unverified hop. The UI does not travel through git — it is a 36 MB
+# tarball unpacked into a shared directory — so everything above proves what the
+# SERVER holds and nothing proves what a BROWSER is handed. A UI upload that
+# silently served the previous build looks exactly like a healthy release: new
+# API, old client, every user on yesterday.
+#
+# build-web.sh compiles the identity in with --dart-define=BUILD_ID, so the SHA
+# is a string inside the bundle. Do NOT reach for /version.json instead: it
+# reports pubspec's 1.0.0 build 1, which has never changed and never will.
+if [ "$CODE_ONLY" != "--code" ]; then
+  # To a file, not a pipe. `grep -q` exits on the first match and curl then dies
+  # writing into a closed pipe, printing "Failure writing output to destination"
+  # on a check that PASSED — an alarming line under a tick.
+  BUNDLE=$(mktemp)
+  curl -sS -o "$BUNDLE" https://app.ezbizi.com/main.dart.js || true
+  if grep -q "$(git rev-parse --short "$GATED_SHA")" "$BUNDLE"; then
+    echo "   ok   main.dart.js carries $(git rev-parse --short "$GATED_SHA")"
+  else
+    echo "   ✗    main.dart.js does NOT carry $(git rev-parse --short "$GATED_SHA") — browsers may still be served the previous build" >&2
+  fi
+  rm -f "$BUNDLE"
+fi
+
 # The marketing site, last, for the same reason the code goes before the UI:
 # www/index.html loads the snippet from app.ezbizi.com, so a site published
 # ahead of the API advertises a URL that is not there yet.
