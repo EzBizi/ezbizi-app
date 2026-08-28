@@ -14,6 +14,7 @@ import 'numbers_pane.dart';
 import 'ring_groups_pane.dart';
 import 'tags_pane.dart';
 import 'trust_pane.dart';
+import 'usage_pane.dart';
 import 'service_request_pane.dart';
 
 /// Phone › Settings — layout 6: a rail of sections, and the form beside it.
@@ -43,6 +44,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     ('Ring groups', Icons.groups_outlined),
     ('Tags', Icons.sell_outlined),
     ('Trust', Icons.verified_outlined),
+    ('Cost', Icons.receipt_long_outlined),
     ('Messaging', Icons.sms_outlined),
   ];
 
@@ -301,6 +303,12 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       5 => RingGroupsPane(api: widget.api, session: widget.session),
       6 => TagsPane(api: widget.api, session: widget.session),
       7 => TrustPane(api: widget.api, session: widget.session),
+      8 => UsagePane(
+        api: widget.api,
+        session: widget.session,
+        scopeType: _places.first.type,
+        scopeId: _places.first.id,
+      ),
       _ => _unbuilt('Messaging campaigns will be set here.'),
     };
   }
