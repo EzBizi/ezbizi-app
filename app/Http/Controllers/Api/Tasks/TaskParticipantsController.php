@@ -38,6 +38,9 @@ final class TaskParticipantsController extends TaskApiController
         if ($input['purpose'] === 'membership') {
             $manage = $this->access->manageDecision($request->user(), $board, $scope);
             if ($manage->denied()) {
+                if (! $this->access->canBrowseRecoverable($request->user(), $scope)) {
+                    $manage->authorize();
+                }
                 $this->access->recoveryAtCurrentViewDecision(
                     $request->user(), $board, $scope,
                 )->authorize();

@@ -108,7 +108,7 @@ class TaskBoardMembershipApiTest extends TestCase
         ])->save();
         $this->actingAs($viewer);
         $this->getJson("/api/v1/tasks/boards/{$board->id}/participants?purpose=membership")
-            ->assertForbidden()->assertJsonMissing(['id' => $replacement->id]);
+            ->assertNotFound()->assertJsonMissing(['id' => $replacement->id]);
 
         $this->lookAt(ViewScope::FRANCHISE, $this->alpha['franchise']->id);
         $this->actingAs($this->alpha['admin']->fresh());
