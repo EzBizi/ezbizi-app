@@ -57,17 +57,47 @@ final class TaskViewCodec
         ];
     }
 
-    public function decode(TaskBoard $board, mixed $input): array
+    private const SCHEMA_ONE_FIELDS = ['schema', 'presentation', 'filters', 'sorts', 'hidden_columns', 'column_order', 'column_widths', 'group_by', 'search'];
+
+    private const SCHEMA_TWO_FIELDS = ['schema', 'presentation', 'filters', 'sorts', 'hidden_columns', 'column_order', 'column_widths', 'group_by', 'search', 'window'];
+
+    public function decode(TaskBoard $board, mixed $input, bool $isPermanentMain = false): array
     {
         if (! is_array($input)) {
             $this->invalid('configuration', 'A view configuration must be an object.');
         }
-        $expected = ['schema', 'presentation', 'filters', 'sorts', 'hidden_columns', 'column_order', 'column_widths', 'group_by', 'search'];
-        if (array_diff(array_keys($input), $expected) !== [] || array_diff($expected, array_keys($input)) !== []) {
-            $this->invalid('configuration', 'A view configuration must contain exactly the versioned table fields.');
+        $schema = $input['schema'] ?? null;
+        $expected = match ($schema) {
+            1 => self::SCHEMA_ONE_FIELDS,
+            2 => self::SCHEMA_TWO_FIELDS,
+            default => null,
+        };
+        if ($expected === null) {
+            $this->invalid('configuration.schema', 'Only schema 1 or schema 2 view configurations are supported.');
         }
-        if ($input['schema'] !== 1 || $input['presentation'] !== 'table') {
+        if (array_diff(array_keys($input), $expected) !== [] || array_diff($expected, array_keys($input)) !== []) {
+            $this->invalid('configuration', 'A view configuration must contain exactly the versioned schema fields.');
+        }
+        if ($schema === 1 && $input['presentation'] !== 'table') {
             $this->invalid('configuration.schema', 'Only schema 1 table views are supported.');
+        }
+        $presentation = is_string($input['presentation']) ? TaskPresentation::tryFrom($input['presentation']) : null;
+        if ($presentation === null) {
+            $this->invalid('configuration.presentation', 'Unknown presentation.');
+        }
+        if ($isPermanentMain && $presentation !== TaskPresentation::Table) {
+            $this->invalid('configuration.presentation', 'The permanent Main view must keep the table presentation.');
+        }
+        $rawWindow = $schema === 2 ? $input['window'] : null;
+        if ($rawWindow !== null && ! is_array($rawWindow)) {
+            $this->invalid('configuration.window', 'A window must be an object or null.');
+        }
+        $window = TaskWindow::parse($presentation, $rawWindow);
+        if ($presentation === TaskPresentation::Kanban) {
+            $field = $this->field($board, $window->bucketField(), 'configuration.window.bucket_field');
+            if (! $this->isGroupable($field)) {
+                $this->invalid('configuration.window.bucket_field', 'Multi-value and File fields cannot bucket a kanban board.');
+            }
         }
         if (! is_array($input['filters']) || ! array_is_list($input['filters']) || count($input['filters']) > 20) {
             $this->invalid('configuration.filters', 'Filters must be a list of at most 20 conditions.');
@@ -140,7 +170,7 @@ final class TaskViewCodec
                 $this->invalid('configuration.group_by', 'Group by must be a column reference or null.');
             }
             $group = $this->field($board, $input['group_by'], 'configuration.group_by');
-            if ($group['custom'] && in_array($group['type'], ['people', 'label', 'file'], true)) {
+            if (! $this->isGroupable($group)) {
                 $this->invalid('configuration.group_by', 'Multi-value and File fields cannot group a table.');
             }
         }
@@ -150,8 +180,8 @@ final class TaskViewCodec
         }
 
         return [
-            'schema' => 1,
-            'presentation' => 'table',
+            'schema' => 2,
+            'presentation' => $presentation->value,
             'filters' => $filters,
             'sorts' => $sorts,
             'hidden_columns' => $hidden,
@@ -159,7 +189,14 @@ final class TaskViewCodec
             'column_widths' => (object) $widths,
             'group_by' => $input['group_by'],
             'search' => trim($search),
+            'window' => $window->toArray(),
         ];
+    }
+
+    /** @param array{reference:string,type:string,custom:bool,id:?string} $field */
+    private function isGroupable(array $field): bool
+    {
+        return ! ($field['custom'] && in_array($field['type'], ['people', 'label', 'file'], true));
     }
 
     /** @return array{reference:string,type:string,custom:bool,id:?string} */
