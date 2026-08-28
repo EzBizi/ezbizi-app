@@ -215,6 +215,23 @@ base UI, so they are recorded here rather than fixed piecemeal.
 
 ## Done
 
+- ✅ **An inspection belongs to a place** — *2026-08-29.* A named inspection is the
+  organization's, a company's, or a franchise's, using the same `scope_type`/`scope_id`
+  pair Automation and Mailbox carry. Scope decides where a definition EXISTS; the
+  per-role grant still decides who may run it, and **both** must pass — `startable()`
+  asks them separately so a refusal is readable. Visibility walks **up** a franchise's
+  company chain and never down, so a technician sees the inspection their parent
+  company owns and never a sibling franchise's. That is `InspectionScope`, and it is a
+  different class from `ScopeReach` on purpose: reach answers "may this person act on
+  that place", which is the right question for who may SET a scope and the wrong one
+  for who may SEE the result — a technician does not reach the company above them, and
+  using reach for both would hide every company-scoped inspection from exactly the
+  people meant to run it, showing up as an empty picker rather than as a bug.
+  Authoring still asks reach, so a franchise manager cannot scope the group's
+  inspection to themselves. `scope` is on the wire with both keys always present.
+  One additive migration, no permission changes. Phase 1 of
+  `docs/superpowers/specs/2026-08-28-inspection-engine-design.md`.
+
 - ✅ **Sidebar icons no longer vanish for a regular (cached) session** — *2026-08-21.*
   `FontManifest.json` was on the "hashed assets are immutable" nginx list even though
   Flutter does not hash it. A browser that had loaded the app kept a 30-day copy

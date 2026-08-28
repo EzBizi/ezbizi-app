@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\HrDashboardController;
 use App\Http\Controllers\Api\HrInvitationsController;
 use App\Http\Controllers\Api\HrOnboardingsController;
 use App\Http\Controllers\Api\HrPeopleController;
+use App\Http\Controllers\Api\InspectionCodesController;
 use App\Http\Controllers\Api\InspectionDefinitionsController;
 use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
@@ -1019,6 +1020,14 @@ Route::prefix('v1')
         // one). DELETE is only a never-published draft; unpublish hides a
         // published one from the picker without touching versions or reports.
         Route::get('inspections/catalogue', [InspectionDefinitionsController::class, 'catalogue']);
+
+        // The building-code library. Before `{inspection_definition}`, which
+        // would otherwise happily bind the word "codes".
+        Route::get('inspections/codes', [InspectionCodesController::class, 'index']);
+        Route::post('inspections/codes', [InspectionCodesController::class, 'store']);
+        Route::get('inspections/codes/{inspection_code}', [InspectionCodesController::class, 'show']);
+        Route::patch('inspections/codes/{inspection_code}', [InspectionCodesController::class, 'update']);
+        Route::delete('inspections/codes/{inspection_code}', [InspectionCodesController::class, 'destroy']);
         Route::get('inspections/search', [InspectionRunsController::class, 'search']);
         Route::get('inspections/startable', [InspectionRunsController::class, 'startable']);
         Route::get('inspections', [InspectionDefinitionsController::class, 'index']);

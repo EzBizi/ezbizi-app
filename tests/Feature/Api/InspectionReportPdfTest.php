@@ -246,6 +246,51 @@ class InspectionReportPdfTest extends TestCase
     }
 
     /**
+     * The code a finding is measured against is printed with it.
+     *
+     * This is what the report is FOR, on a failed finding: the customer is
+     * being told their chimney does not meet a named standard, and the standard
+     * has to be on the page or the claim is just an opinion.
+     */
+    public function test_a_frozen_citation_is_printed_on_the_report(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+
+        $seeded = $this->seedOffered($tenant, $tech, [[
+            'name' => 'Liner',
+            'fields' => [[
+                'key' => 'liner', 'label' => 'Chimney liner', 'type' => 'text',
+                // As publish would have written it: the words, not a pointer.
+                'code' => [
+                    'code' => 'R1003.11',
+                    'title' => 'R1003.11 FLUE LINING (MATERIAL)',
+                    'body' => 'All chimneys shall be lined.',
+                ],
+            ]],
+        ]]);
+
+        $report = $this->inTenant($tenant['org'], fn () => InspectionReport::create([
+            'customer_id' => $seeded['customer']->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+            'inspection_definition_version_id' => $seeded['version']->id,
+            'submitted_by' => $tech->id,
+            'submitted_at' => now(),
+            'answers' => ['liner' => 'Cracked'],
+            'layout_preset' => 'step_strip',
+            'definition_name' => 'Level 1',
+        ]));
+
+        $html = $this->inTenant(
+            $tenant['org'],
+            fn () => app(\App\Support\Inspection\ReportDocument::class)->html($report),
+        );
+
+        $this->assertStringContainsString('R1003.11 FLUE LINING (MATERIAL)', $html);
+        $this->assertStringContainsString('All chimneys shall be lined.', $html);
+    }
+
+    /**
      * A label somebody typed is TEXT, never markup.
      *
      * The builder lets a company name its own fields, and the page they end up

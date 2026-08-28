@@ -76,11 +76,19 @@ else
   git worktree add -b "$BRANCH" "$DEST" "$BASE"
 fi
 
-# .env is gitignored, so a fresh worktree has none — and the first symptom is
-# "No application encryption key has been specified" on every DB-backed test,
-# which reads like a broken application rather than a missing file. Worse, the
-# tests that need no database still pass, so it looks like a real failure in
-# exactly the suites that touch the database.
+# .env is gitignored, so a fresh worktree has none. The symptom is "No
+# application encryption key has been specified", which reads like a broken
+# application rather than a missing file.
+#
+# THE AXIS IS ENCRYPTION, NOT THE DATABASE, and getting that wrong sends people
+# hunting the wrong thing. Measured: 19 DB-backed feature tests — provisioning
+# orgs, companies, franchises, POSTing through the API — pass with no .env at
+# all, because the connection is satisfied by config/database.php defaults plus
+# whatever DB_DATABASE you pass in front of the command. What fails is anything
+# that actually encrypts: sessions, cookies, Crypt, an encrypted cast.
+#
+# So a green run in an unprovisioned worktree does NOT prove the worktree is
+# correctly set up. It proves that suite does not encrypt anything.
 #
 # Copied rather than linked, for the same reason vendor is: nothing in a
 # worktree should point back into another tree.
@@ -88,7 +96,7 @@ if [ -f "$REPO/.env" ]; then
   cp "$REPO/.env" "$DEST/.env"
   echo "→ copied .env"
 fi
-[ -f "$DEST/.env" ] || echo "  ⚠ no .env in this worktree — DB-backed tests will fail with an encryption-key error" >&2
+[ -f "$DEST/.env" ] || echo "  ⚠ no .env here — anything that encrypts will fail; DB tests may still pass, so a green run does not prove this tree is provisioned" >&2
 
 if [ "${2:-}" = "--with-vendor" ]; then
   echo "→ composer install (its own vendor, never a link to another tree)"
@@ -136,6 +144,16 @@ cat <<EOF
   Pull main in with:  git merge main
   Hand the deploy session your branch and SHAs; they merge and deploy.
 
-  Your own test database still applies:
+  THE DATABASE IS NOT ISOLATED BY THIS. A worktree gives you your own files
+  and your own index; it does NOT give you your own schema. phpunit.xml:27
+  pins DB_DATABASE=ezbizi_testing, and a .env cannot beat it — only a real
+  shell variable can, because that <env> has no force="true". So a perfectly
+  provisioned worktree still runs against the SHARED schema the moment anyone
+  types \`php artisan test\` without the prefix, and RefreshDatabase drops it
+  under whoever else is mid-run.
+
+  THE PREFIX IS NOT OPTIONAL:
+
+    DB_DATABASE=ezbizi_testing_$MODULE php artisan test
     DB_DATABASE=ezbizi_testing_$MODULE vendor/bin/phpunit
 EOF
