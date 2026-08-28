@@ -498,6 +498,32 @@ class _SiteCardState extends State<_SiteCard> {
     }
   }
 
+  /// The browser key is public, so this is not a leak response — it is the
+  /// answer to somebody polling it, or to a key that ended up somewhere the
+  /// customer would rather it had not.
+  ///
+  /// Unlike the token there is no show-once ceremony: the new key comes back
+  /// in the site payload like any other field, because it was never a secret.
+  Future<void> _rotatePublicKey() async {
+    final response = await widget.api.post(
+      '/web/sites/$_id/public-key',
+      {},
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _confirming = null;
+      if (response.ok) {
+        _saved = 'New browser key issued. Paste the snippet again.';
+      } else {
+        _error = response.message;
+      }
+    });
+
+    if (response.ok) await widget.onChanged();
+  }
+
   Future<void> _remove() async {
     final response = await widget.api.delete('/web/sites/$_id');
 
@@ -609,6 +635,44 @@ class _SiteCardState extends State<_SiteCard> {
 
   Widget _confirmRow(ThemeData theme) {
     final removing = _confirming == 'remove';
+    final rekeying = _confirming == 'rotate-key';
+
+    if (rekeying) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Issue a new browser key? Any page still carrying the old one '
+              'stops updating — it keeps whatever text is written between the '
+              'tags, so nothing goes blank, but it stops following $_host '
+              'until you paste the new snippet in.',
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => setState(() => _confirming = null),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: _rotatePublicKey,
+                  child: const Text('Issue a new browser key'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -774,6 +838,12 @@ class _SiteCardState extends State<_SiteCard> {
                   if (mounted) setState(() => _saved = 'Snippet copied.');
                 },
               ),
+              if (widget.canEdit)
+                TextButton(
+                  onPressed: () =>
+                      setState(() => _confirming = 'rotate-key'),
+                  child: const Text('New key'),
+                ),
             ],
           ),
           Text(

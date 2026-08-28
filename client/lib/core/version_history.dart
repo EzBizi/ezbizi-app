@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0117',
+      date: '28 Aug 2026',
+      items: [
+        'Web Management: you can issue a new browser key without touching the '
+            'plugin token. A page still carrying the old key keeps whatever '
+            'text is already written into it rather than going blank.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0116',
       date: '28 Aug 2026',
       items: [
