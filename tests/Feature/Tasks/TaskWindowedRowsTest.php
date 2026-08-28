@@ -63,12 +63,19 @@ class TaskWindowedRowsTest extends TestCase
         $inside = $this->createTask('Fully inside', '2026-09-10', '2026-09-15');
         $this->createTask('Fully after', '2026-10-01', '2026-10-05');
         $this->createTask('No dates at all', null, null);
+        // The other two of the four span cases: a lone start_on and a lone due_on, each
+        // once inside the window (must be returned) and once outside it (must not be).
+        $startOnlyInside = $this->createTask('Start only, inside window', '2026-09-20', null);
+        $this->createTask('Start only, outside window', '2026-10-15', null);
+        $dueOnlyInside = $this->createTask('Due only, inside window', null, '2026-09-05');
+        $this->createTask('Due only, outside window', null, '2026-08-15');
 
         $configuration = $this->configuration('timeline', ['from' => '2026-09-01', 'to' => '2026-09-30']);
         $response = $this->getJson($this->rowsUrl($configuration))->assertOk();
 
         $ids = collect($response->json('data'))->pluck('id')->sort()->values()->all();
-        $expected = collect([$spanning->id, $inside->id])->sort()->values()->all();
+        $expected = collect([$spanning->id, $inside->id, $startOnlyInside->id, $dueOnlyInside->id])
+            ->sort()->values()->all();
         $this->assertSame($expected, $ids);
         $this->assertSame(1, $response->json('meta.omitted.undated'));
     }
