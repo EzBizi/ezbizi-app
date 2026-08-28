@@ -1,5 +1,13 @@
 # Inventory Implementation Plan
 
+> **SHIPPED — this plan is complete. Do not work it.** All 13 tasks landed in
+> `f8393ad` … `477b06c`; Inventory has been live since client `v0.0.0081` and is
+> green in the deploy gate. The unticked `- [ ]` boxes below are historical, not
+> outstanding work — they were never ticked as the tasks landed. Read this file
+> as a record of how Inventory was built, and
+> `docs/superpowers/specs/2026-08-24-inventory-design.md` for what it does.
+> Sales orders (`v0.0.0091`, `81ce084`) came after this plan and are not in it.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > **Do not deploy, `git push production`, or SSH** unless the owner says so in that session.
@@ -66,7 +74,7 @@
 | `app/Http/Controllers/Api/InventoryTransfersController.php` | POST transfer |
 | `app/Http/Controllers/Api/InventoryVendorsController.php` | CRUD vendors |
 | `app/Http/Controllers/Api/InventoryPurchaseOrdersController.php` | CRUD PO, open, cancel |
-| `app/Http/Controllers/Api/InventoryReceivesController.php` | POST receive |
+| ~~`app/Http/Controllers/Api/InventoryReceivesController.php`~~ | POST receive — **shipped instead as `InventoryPurchaseOrdersController::receive`, routed `POST inventory/purchase-orders/{purchase_order}/receives`. No such standalone controller exists; do not go looking for it.** |
 | `app/Http/Controllers/Api/InventoryIssuesController.php` | POST issue, list |
 | `app/Providers/ModuleServiceProvider.php` | Replace inventory stub |
 | `app/Support/Numbering/RecordNumberGenerator.php` | `ITEMS` `PURCHASE_ORDERS` `ISSUES` `TRANSFERS` |
