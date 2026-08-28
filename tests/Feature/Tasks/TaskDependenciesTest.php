@@ -132,6 +132,52 @@ final class TaskDependenciesTest extends TestCase
         $this->assertSame(0, TaskDependency::count());
     }
 
+    public function test_deleting_a_dependency_on_an_invisible_board_is_refused_without_disclosing_existence(): void
+    {
+        // A real dependency edge on a private board the admin creates and
+        // stays the only member of, plus a second, unrelated user with full
+        // organization-wide reach but no membership on it — the edge, and the
+        // board's structure with it, is invisible to that second user.
+        $privateBoardId = $this->postJson('/api/v1/tasks/boards', ['name' => 'Confidential Delete', 'visibility' => 'private'])
+            ->assertCreated()->json('data.id');
+        $this->enterTenant();
+        $privateBoard = TaskBoard::findOrFail($privateBoardId);
+        $hiddenA = $this->createTaskOn($privateBoard, 'Hidden A');
+        $hiddenB = $this->createTaskOn($privateBoard, 'Hidden B');
+
+        $this->signedInAs($this->tenant['admin']->fresh());
+        $dependencyId = $this->postJson("/api/v1/tasks/{$hiddenA->id}/dependencies", ['blocker_task_id' => $hiddenB->id])
+            ->assertCreated()->json('data.id');
+
+        $stranger = $this->userWithRole($this->tenant, 'Delete stranger', ['tasks.edit', 'tasks.view']);
+        $this->signedInAs($stranger);
+
+        $realButHidden = $this->deleteJson("/api/v1/tasks/dependencies/{$dependencyId}");
+        $madeUp = $this->deleteJson('/api/v1/tasks/dependencies/'.(string) Str::uuid());
+
+        $realButHidden->assertNotFound();
+        $madeUp->assertNotFound();
+        $this->assertSame($madeUp->status(), $realButHidden->status());
+        // Body shape, not just status: a 404 that quietly said 'you cannot
+        // access this' while the other said 'not found' would still disclose
+        // which case occurred even at identical status codes. The two ids
+        // necessarily differ (one is the real edge, the other invented), so
+        // this checks both bodies are the SAME Eloquent "no query results"
+        // shape rather than one being a bare, different-shaped 403-turned-404.
+        $this->assertSame(array_keys($madeUp->json()), array_keys($realButHidden->json()));
+        $this->assertStringStartsWith(
+            'No query results for model [App\Models\TaskDependency]',
+            (string) $realButHidden->json('message'),
+        );
+        $this->assertStringStartsWith(
+            'No query results for model [App\Models\TaskDependency]',
+            (string) $madeUp->json('message'),
+        );
+
+        $this->enterTenant();
+        $this->assertSame(1, TaskDependency::count());
+    }
+
     public function test_add_and_remove_each_write_an_audit_row_and_an_outbox_event(): void
     {
         $a = $this->createTask('A');
