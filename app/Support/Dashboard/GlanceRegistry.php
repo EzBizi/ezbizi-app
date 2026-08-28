@@ -38,6 +38,7 @@ class GlanceRegistry
         'tasks', 'hr', 'customers', 'jobs', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         'services', 'leads', 'reviews', 'business_profile', 'email', 'automations',
+        'monitoring',
     ];
 
     /**
@@ -53,6 +54,10 @@ class GlanceRegistry
         'phone' => [
             'label' => 'Phone',
             'sentence' => 'Phone is where the team places and receives calls, and sends texts. Open the Phone tab for the desk.',
+        ],
+        'monitoring' => [
+            'label' => 'Monitoring',
+            'sentence' => 'Monitoring will show who is online and on which device here. Open the Monitoring tab for the roster.',
         ],
     ];
 
