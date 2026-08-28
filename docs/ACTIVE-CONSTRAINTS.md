@@ -76,6 +76,22 @@ minutes. It has already overturned three confident guesses — including one of 
   "which existing responses does my registration appear in", not "which routes did I
   add".
 
+  **Carry the mechanism next to the verdict, because they decay differently.** On
+  present evidence all of triggers, actions, glances, settings and `SocialProvider`
+  are safe — but for three different reasons. Glances and settings are safe because
+  the client handles an unknown member **generically**, which is a property of the
+  parser. Actions are safe because the write path is **guarded before it can be
+  reached**, and a guard can be dropped by a later commit. `SocialProvider` is safe
+  because a **filter** excludes the member from the response entirely, and a filter
+  can be relaxed. "Safe" flattens three claims with different shelf lives.
+
+  **And declaring a thing is often only half of it.** `AutomationsController:50`
+  holds a private `IMPLEMENTED_ACTIONS`; an action absent from it is published as
+  `implemented: false` at `:217` and refused at `:918`, so it is drawn as "not built
+  yet" and can never run. Nothing fails if you forget — no test, no error, green
+  everywhere. Before trusting that a registration is real, find the second const in
+  the other file.
+
 ## 2 · Do not set or raise a minimum client version
 
 This outranks everything above, because it needs no deploy and passes no gate.
