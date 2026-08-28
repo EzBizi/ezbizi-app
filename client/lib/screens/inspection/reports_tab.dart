@@ -86,7 +86,8 @@ class _ReportsTabState extends State<ReportsTab> {
     for (final screen in (report['screens'] as List? ?? const [])) {
       if (screen is! Map) continue;
       for (final field in (screen['fields'] as List? ?? const [])) {
-        if (field is! Map || field['type'] != 'photo') continue;
+        if (field is! Map) continue;
+        if (field['type'] != 'photo' && field['type'] != 'signature') continue;
         for (final id in (answers['${field['key']}'] as List? ?? const [])) {
           final key = '$id';
           if (_photos.containsKey(key)) continue;
@@ -185,7 +186,11 @@ class _ReportsTabState extends State<ReportsTab> {
   Widget _answer(Map<String, dynamic> field, dynamic value) {
     final type = '${field['type'] ?? 'text'}';
 
-    if (type == 'photo') return _photoRow(value);
+    // A signature is stored as a picture — the same one-element id list a
+    // photo uses — so it renders the same way. Text would print a uuid.
+    if (type == 'photo' || type == 'signature') {
+      return _photoRow(value, signature: type == 'signature');
+    }
 
     final text = value == null ? '' : '$value';
 
@@ -212,12 +217,12 @@ class _ReportsTabState extends State<ReportsTab> {
   ///
   /// No remove control: a submitted report is frozen, and the server refuses a
   /// delete against one. A button that always failed would be a lie on screen.
-  Widget _photoRow(dynamic value) {
+  Widget _photoRow(dynamic value, {bool signature = false}) {
     final ids = [for (final id in (value as List? ?? const [])) '$id'];
 
     if (ids.isEmpty) {
       return Text(
-        'No photograph',
+        signature ? 'Not signed' : 'No photograph',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
           fontStyle: FontStyle.italic,
           color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -231,8 +236,8 @@ class _ReportsTabState extends State<ReportsTab> {
       children: [
         for (final id in ids)
           SizedBox(
-            width: 96,
-            height: 96,
+            width: signature ? 220 : 96,
+            height: signature ? 90 : 96,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: _photos[id] == null
@@ -246,7 +251,10 @@ class _ReportsTabState extends State<ReportsTab> {
                         ),
                       ),
                     )
-                  : Image.memory(_photos[id]!, fit: BoxFit.cover),
+                  // contain, not cover, for a signature: cropping somebody's
+                  // name to fill a square is not a rendering choice to make.
+                  : Image.memory(_photos[id]!,
+                      fit: signature ? BoxFit.contain : BoxFit.cover),
             ),
           ),
       ],

@@ -120,6 +120,100 @@ class InspectionReportPdfTest extends TestCase
     }
 
     /**
+     * A signature reaches the report as a picture, not as a uuid.
+     *
+     * The pad rasterises to PNG and stores the attachment id in the same
+     * one-element list a photo answer uses, so this is really a test that
+     * ReportDocument treats SIGNATURE like PHOTO. Before it did, the id printed
+     * as text in the place the signature goes — which is the exact failure the
+     * drawn mark was built to fix, reappearing one layer down.
+     */
+    public function test_a_signature_is_embedded_as_an_image_not_printed_as_an_id(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+        $seeded = $this->seedOffered($tenant, $tech, [[
+            'name' => 'Sign off',
+            'fields' => [[
+                'key' => 'signed_by',
+                'label' => 'Customer signature',
+                'type' => 'signature',
+            ]],
+        ]]);
+
+        $runId = $this->signedInAs($tech)->postJson('/api/v1/inspections/runs', [
+            'customer_id' => $seeded['customer']->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+        ])->assertCreated()->json('data.id');
+
+        // What the pad uploads: a PNG, against the run.
+        $signatureId = $this->signedInAs($tech)->post('/api/v1/attachments', [
+            'attachable_type' => 'inspection_runs',
+            'attachable_id' => $runId,
+            'file' => UploadedFile::fake()->image('signature.png', 600, 200),
+        ], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
+
+        $this->signedInAs($tech)->patchJson("/api/v1/inspections/runs/{$runId}", [
+            'answers' => ['signed_by' => [$signatureId]],
+        ])->assertOk();
+
+        $reportId = $this->signedInAs($tech)
+            ->postJson("/api/v1/inspections/runs/{$runId}/submit")
+            ->assertOk()->json('data.id');
+
+        $report = $this->inTenant($tenant['org'], fn () => InspectionReport::findOrFail($reportId));
+        $html = $this->inTenant(
+            $tenant['org'],
+            fn () => app(\App\Support\Inspection\ReportDocument::class)->html($report),
+        );
+
+        $this->assertStringContainsString('src="data:image/', $html,
+            'the signature must be embedded, the way a photograph is');
+        $this->assertStringNotContainsString($signatureId, $html,
+            'the attachment id must never appear as text where the signature goes');
+
+        $this->signedInAs($tech)
+            ->get("/api/v1/inspections/reports/{$reportId}/pdf")
+            ->assertOk();
+    }
+
+    /**
+     * An unsigned signature field says "Not signed", not "No photograph".
+     */
+    public function test_an_unsigned_field_says_not_signed(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+        $seeded = $this->seedOffered($tenant, $tech, [[
+            'name' => 'Sign off',
+            'fields' => [[
+                'key' => 'signed_by',
+                'label' => 'Customer signature',
+                'type' => 'signature',
+            ]],
+        ]]);
+
+        $report = $this->inTenant($tenant['org'], fn () => InspectionReport::create([
+            'customer_id' => $seeded['customer']->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+            'inspection_definition_version_id' => $seeded['version']->id,
+            'submitted_by' => $tech->id,
+            'submitted_at' => now(),
+            'answers' => ['signed_by' => []],
+            'layout_preset' => 'step_strip',
+            'definition_name' => 'Level 1',
+        ]));
+
+        $html = $this->inTenant(
+            $tenant['org'],
+            fn () => app(\App\Support\Inspection\ReportDocument::class)->html($report),
+        );
+
+        $this->assertStringContainsString('Not signed', $html);
+        $this->assertStringNotContainsString('No photograph', $html);
+    }
+
+    /**
      * An unanswered field says so.
      *
      * Blank space reads as "nothing to report", and "nobody looked" is a

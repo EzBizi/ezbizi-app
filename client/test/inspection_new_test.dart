@@ -96,6 +96,51 @@ void main() {
     );
   });
 
+  /// A signature is a pad, and an unsigned one blocks Next.
+  ///
+  /// This field used to be a TextField. The failure that made it worth building
+  /// was not cosmetic: a typed name printed in the position a signature goes
+  /// reads as somebody having signed, and nobody had.
+  testWidgets('a signature is drawn, and an unsigned one blocks Next', (tester) async {
+    await _pump(tester, startBody: _signatureRun);
+
+    await tester.tap(find.text('14 Maple'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Level 1'));
+    await tester.pumpAndSettle();
+
+    // A pad, not a box. No EditableText anywhere on this screen.
+    expect(find.byKey(const Key('signature-pad-Customer signature')), findsOneWidget);
+    expect(find.byType(EditableText), findsNothing,
+        reason: 'a signature must never be typed');
+
+    // Nothing drawn yet, so there is nothing to save.
+    final save = tester.widget<FilledButton>(
+      find.byKey(const Key('signature-save-Customer signature')),
+    );
+    expect(save.onPressed, isNull);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Submit'));
+    await tester.pump();
+
+    expect(
+      find.text('Customer signature needs an answer before you can continue.'),
+      findsOneWidget,
+    );
+
+    // Draw, and the save becomes live.
+    await tester.drag(
+      find.byKey(const Key('signature-pad-Customer signature')),
+      const Offset(60, 20),
+    );
+    await tester.pump();
+
+    final armed = tester.widget<FilledButton>(
+      find.byKey(const Key('signature-save-Customer signature')),
+    );
+    expect(armed.onPressed, isNotNull, reason: 'a drawn mark can be saved');
+  });
+
   testWidgets('resume vs start again is a panel, not a modal', (tester) async {
     await _pump(tester, startStatus: 409, startBody: _resume);
 
@@ -204,6 +249,27 @@ const _typedRun = '''
            "options": ["Clay", "Metal"]},
           {"key": "seen", "label": "Seen on", "type": "date"},
           {"key": "notes", "label": "Notes", "type": "text"}
+        ]
+      }
+    ]
+  }
+}
+''';
+
+const _signatureRun = '''
+{
+  "data": {
+    "id": "run-1",
+    "definition_name": "Level 1",
+    "customer_name": "14 Maple",
+    "layout_preset": "step_strip",
+    "answers": {},
+    "screens": [
+      {
+        "name": "Sign off",
+        "fields": [
+          {"key": "signed_by", "label": "Customer signature",
+           "type": "signature", "required": true}
         ]
       }
     ]

@@ -7,6 +7,7 @@ import '../../widgets/calendar_day_field.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/error_note.dart';
 import 'photo_field.dart';
+import 'signature_field.dart';
 
 /// New Inspection: search a client or job, pick a named inspection, fill, submit.
 ///
@@ -190,7 +191,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     for (final screen in _screensOf(run)) {
       for (final field in _fieldsOf(screen)) {
         final key = '${field['key']}';
-        if (field['type'] == 'photo') {
+        if (field['type'] == 'photo' || field['type'] == 'signature') {
           _photos[key] = [
             for (final id in (answers[key] as List? ?? const [])) '$id',
           ];
@@ -465,20 +466,19 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
         );
 
       case 'signature':
-        // ponytail: honest placeholder, not a text box.
-        //
-        // A signature is somebody drawing on the glass, and this app has no pad
-        // to draw on — HR's signing is a document ceremony, not a canvas, so
-        // there is nothing to reuse. A TextField here would collect a typed name
-        // and present it on a report as if somebody had signed, which is worse
-        // than not offering it. Build the pad, then replace this branch.
-        return InputDecorator(
+        // Stored the same way a photograph is — an attachment id in a list — so
+        // the report renderer, the reports pane and the §9 purge treat a
+        // signature as a picture without learning a fourth answer shape.
+        return InspectionSignatureField(
           key: widgetKey,
-          decoration: InputDecoration(labelText: label),
-          child: Text(
-            'Signatures cannot be captured in this build yet.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+          api: widget.api,
+          runId: '${run['id']}',
+          label: label,
+          ids: _photos[key] ?? const [],
+          onChanged: (ids) {
+            setState(() => _photos[key] = ids);
+            _save();
+          },
         );
 
       default:

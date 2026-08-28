@@ -97,7 +97,13 @@ final class ReportDocument
      */
     private function answer(array $field, mixed $value, $photos): string
     {
-        if (($field['type'] ?? '') === FieldType::PHOTO) {
+        // A signature is a picture too — the pad rasterises to PNG and stores
+        // the attachment id in the same one-element list a photo answer uses.
+        // Falling through to the text branch would print a uuid where the
+        // signature goes, which is the failure the drawn mark exists to fix.
+        $type = $field['type'] ?? '';
+
+        if ($type === FieldType::PHOTO || $type === FieldType::SIGNATURE) {
             $ids = is_array($value) ? $value : [];
             $shown = '';
 
@@ -110,7 +116,9 @@ final class ReportDocument
             }
 
             return $shown === ''
-                ? '<div class="v none">No photograph</div>'
+                ? '<div class="v none">'
+                    .($type === FieldType::SIGNATURE ? 'Not signed' : 'No photograph')
+                    .'</div>'
                 : '<div class="v photos">'.$shown.'</div>';
         }
 
