@@ -556,9 +556,7 @@ void main() {
       final api = ApiClient(
         client: MockClient((request) async {
           if (request.url.path == '/api/v1/tasks/boards') {
-            return _json(200, <String, Object?>{
-              'data': <Object?>[_boardWithColumns()],
-            });
+            return _directoryResponse();
           }
           if (request.url.path == '/api/v1/tasks/my') {
             final page = int.parse(request.url.queryParameters['page']!);
@@ -718,9 +716,7 @@ void main() {
         client: MockClient((request) async {
           switch (request.url.path) {
             case '/api/v1/tasks/boards':
-              return _json(200, <String, Object?>{
-                'data': <Object?>[_boardWithColumns()],
-              });
+              return _directoryResponse();
             case '/api/v1/tasks/boards/board-1/rows':
               rowReads++;
               rowHeaders.add(request.headers['if-none-match']);
@@ -791,9 +787,7 @@ void main() {
       client: MockClient((request) async {
         switch (request.url.path) {
           case '/api/v1/tasks/boards':
-            return _json(200, <String, Object?>{
-              'data': <Object?>[_boardWithColumns()],
-            });
+            return _directoryResponse();
           case '/api/v1/tasks/boards/board-1/rows':
             rowReads++;
             return _rowsResponse(
@@ -858,9 +852,7 @@ void main() {
         client: MockClient((request) async {
           switch (request.url.path) {
             case '/api/v1/tasks/boards':
-              return _json(200, <String, Object?>{
-                'data': <Object?>[_boardWithColumns()],
-              });
+              return _directoryResponse();
             case '/api/v1/tasks/boards/board-1/rows':
               rowReads++;
               if (rowReads == 1) {
@@ -956,9 +948,7 @@ void main() {
       client: MockClient((request) async {
         switch (request.url.path) {
           case '/api/v1/tasks/boards':
-            return _json(200, <String, Object?>{
-              'data': <Object?>[_boardWithColumns()],
-            });
+            return _directoryResponse();
           case '/api/v1/tasks/boards/board-1':
             boardShowReads++;
             return _json(200, <String, Object?>{
@@ -1044,9 +1034,7 @@ void main() {
         client: MockClient((request) async {
           switch (request.url.path) {
             case '/api/v1/tasks/boards':
-              return _json(200, <String, Object?>{
-                'data': <Object?>[_boardWithColumns()],
-              });
+              return _directoryResponse();
             case '/api/v1/tasks/boards/board-1/rows':
               final page = request.url.queryParameters['page'];
               final view = request.url.queryParameters['view_id'];
@@ -1152,9 +1140,7 @@ void main() {
         client: MockClient((request) async {
           switch (request.url.path) {
             case '/api/v1/tasks/boards':
-              return _json(200, <String, Object?>{
-                'data': <Object?>[_boardWithColumns()],
-              });
+              return _directoryResponse();
             case '/api/v1/tasks/boards/board-1':
               boardShowReads++;
               return _json(200, <String, Object?>{
@@ -1244,9 +1230,7 @@ void main() {
       client: MockClient((request) async {
         switch (request.url.path) {
           case '/api/v1/tasks/boards':
-            return _json(200, <String, Object?>{
-              'data': <Object?>[_boardWithColumns()],
-            });
+            return _directoryResponse();
           case '/api/v1/tasks/boards/board-1/rows':
             return _rowsResponse(title: 'Private assignment', etag: '"b1"');
           case '/api/v1/tasks/boards/board-1/views':
@@ -1292,9 +1276,7 @@ void main() {
       client: MockClient((request) async {
         switch (request.url.path) {
           case '/api/v1/tasks/boards':
-            return _json(200, <String, Object?>{
-              'data': <Object?>[_boardWithColumns()],
-            });
+            return _directoryResponse();
           case '/api/v1/tasks/my':
             myReads++;
             if (myReads == 1) {
@@ -1376,6 +1358,13 @@ http.Response _json(
   status,
   headers: <String, String>{'content-type': 'application/json', ...headers},
 );
+
+http.Response _directoryResponse() => _json(200, <String, Object?>{
+  'data': <Object?>[_boardWithColumns()],
+  'meta': const <String, Object?>{
+    'capabilities': <String, Object?>{'actions': <Object?>[]},
+  },
+});
 
 Map<String, Object?> _view({
   String id = 'view-1',

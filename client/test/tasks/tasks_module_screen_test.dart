@@ -18,11 +18,15 @@ void main() {
     await _pump(tester, (_) => pending.future, settle: false);
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    pending.complete(_json({'data': <Object>[]}));
+    pending.complete(_directory(const <Object>[], actions: const []));
   });
 
   testWidgets('an empty directory invites the first board', (tester) async {
-    await _pump(tester, (_) async => _json({'data': <Object>[]}));
+    await _pump(
+      tester,
+      (_) async =>
+          _directory(const <Object>[], actions: const <Object>['create_board']),
+    );
 
     expect(find.text('No task boards yet'), findsOneWidget);
     expect(find.text('New board'), findsOneWidget);
@@ -70,3 +74,13 @@ http.Response _json(Map<String, dynamic> body, [int status = 200]) =>
       status,
       headers: {'content-type': 'application/json'},
     );
+
+http.Response _directory(
+  List<Object> boards, {
+  required List<Object> actions,
+}) => _json(<String, dynamic>{
+  'data': boards,
+  'meta': <String, Object>{
+    'capabilities': <String, Object>{'actions': actions},
+  },
+});

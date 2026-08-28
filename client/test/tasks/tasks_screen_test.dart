@@ -16,11 +16,10 @@ void main() {
   ) async {
     final api = ApiClient(
       client: MockClient(
-        (_) async => http.Response(
-          jsonEncode(<String, Object?>{'data': <Object?>[]}),
-          200,
-          headers: const {'content-type': 'application/json'},
-        ),
+        (_) async => _json(<String, Object?>{
+          'data': <Object?>[],
+          'meta': _directoryMeta,
+        }),
       ),
     );
     await tester.pumpWidget(
@@ -72,6 +71,7 @@ void main() {
           case '/api/v1/tasks/boards':
             return _json(<String, Object?>{
               'data': <Object?>[_board()],
+              'meta': _directoryMeta,
             });
           case '/api/v1/tasks/boards/board-1/rows':
             return _json(<String, Object?>{
@@ -132,6 +132,7 @@ void main() {
             case '/api/v1/tasks/boards':
               return _json(<String, Object?>{
                 'data': <Object?>[_board()],
+                'meta': _directoryMeta,
               });
             case '/api/v1/tasks/boards/board-1/rows':
               return _json(<String, Object?>{
@@ -185,6 +186,7 @@ void main() {
           case '/api/v1/tasks/boards':
             return _json(<String, Object?>{
               'data': <Object?>[_board()],
+              'meta': _directoryMeta,
             });
           case '/api/v1/tasks/boards/board-1/rows':
             return _json(<String, Object?>{
@@ -340,4 +342,10 @@ Map<String, Object?> _configuration() => <String, Object?>{
   'column_widths': <String, Object?>{},
   'group_by': null,
   'search': '',
+};
+
+const Map<String, Object?> _directoryMeta = <String, Object?>{
+  'capabilities': <String, Object?>{
+    'actions': <Object?>['create_board'],
+  },
 };
