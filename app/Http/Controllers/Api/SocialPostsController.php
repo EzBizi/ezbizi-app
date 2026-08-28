@@ -287,7 +287,30 @@ class SocialPostsController extends Controller
         foreach ($connections as $connection) {
             $provider = $connection->providerEnum();
 
-            $because = Publishers::refusalFor($provider) ?? $provider?->refuses($kind);
+            /*
+             * Three different refusals, and the ORDER is the whole point —
+             * each one is the truest thing that can be said at that step, and
+             * a later one said earlier is misleading rather than merely worse.
+             *
+             *   1. No publisher for this network at all. "Facebook is not built
+             *      yet" — nothing about the post could change that.
+             *   2. The NETWORK will not take a post of this kind. "Pinterest
+             *      needs a picture or a video" — the remedy is to attach one.
+             *   3. The network WOULD take it and EzBizi has not built that
+             *      half. "Cannot post video to Pinterest yet; the connection is
+             *      fine" — the remedy is on us, and saying so stops somebody
+             *      hunting through their Pinterest settings.
+             *
+             * Getting 2 and 3 the wrong way round tells a person with a
+             * text-only post that our video poster is missing, which is true
+             * and not their problem. Number 3 was absent entirely until
+             * 2026-08-28, which cost a real post: Pinterest accepts video, so
+             * step 2 passed, a row was written, the job ran, and only the
+             * publisher knew.
+             */
+            $because = Publishers::refusalFor($provider)
+                ?? $provider?->refuses($kind)
+                ?? Publishers::for($provider)?->cannotSend($kind);
 
             if ($because !== null) {
                 /*

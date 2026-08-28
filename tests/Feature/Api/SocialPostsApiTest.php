@@ -115,6 +115,42 @@ class SocialPostsApiTest extends TestCase
         $this->assertNothingWasWritten($t);
     }
 
+    /**
+     * The gap a real post fell through on 2026-08-28.
+     *
+     * Pinterest ACCEPTS video — `SocialProvider::refuses()` rightly said yes —
+     * and EzBizi's poster does not SEND it. Two different facts, and only the
+     * network-level one was checked, so the row was written, queued, run, and
+     * failed. Everything this controller promises to refuse before writing a
+     * row, it now actually refuses.
+     */
+    public function test_a_network_that_takes_video_but_has_no_video_poster_is_refused_before_a_row_is_written(): void
+    {
+        $t   = $this->provisionTenant('A1-Group');
+        $row = $this->connection($t, 'company', $t['company']->id);
+
+        Http::fake();
+
+        $this->signedInAs($t['admin'])
+            ->post(self::ENDPOINT, [
+                'connections' => [$row->getKey()],
+                'body'        => 'A sweep, on video.',
+                'media'       => UploadedFile::fake()->create('sweep.mp4', 12, 'video/mp4'),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath(
+                'errors.connections.0',
+                // The sentence separates "your account is broken" from "we have
+                // not built this", and names the half that IS working so nobody
+                // goes hunting through their Pinterest settings.
+                fn (string $m) => str_contains($m, 'cannot post video to Pinterest yet')
+                    && str_contains($m, 'connection is fine'),
+            );
+
+        $this->assertNothingWasWritten($t);
+        Http::assertNothingSent();
+    }
+
     public function test_a_post_with_neither_words_nor_a_file_is_refused(): void
     {
         $t   = $this->provisionTenant('A1-Group');
