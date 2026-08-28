@@ -64,4 +64,33 @@ class JobEarnedStatusesTest extends TestCase
             $this->assertNotContains('invented', EarnedStatuses::for($fresh));
         });
     }
+
+    /**
+     * Pins the review finding on SettingRegistry.php:101-108: `jobs.earned_statuses`
+     * is TYPE_JSON, not TYPE_LIST, because TYPE_LIST's castList() throws on the
+     * empty-array default this setting requires. But castJson() only checks
+     * is_array() — unlike castList() it does not enforce array_is_list() or
+     * uniqueness — so a string-keyed map with a repeated value passes PATCH
+     * validation exactly like a plain list would, and array_intersect() in
+     * EarnedStatuses::for() matches by value, not key, so it would carry both
+     * entries through untouched without the defensive array_unique() there.
+     */
+    public function test_a_duplicated_or_map_shaped_stored_value_is_deduped_to_a_plain_list(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $this->signedInAs($alpha['admin'])
+            ->patchJson('/api/v1/settings/jobs.earned_statuses?scope_type=organization&scope_id='
+                .$alpha['org']->id, ['value' => ['a' => 'completed', 'b' => 'completed']])
+            ->assertOk();
+
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            $fresh = Franchise::findOrFail($alpha['franchise']->id);
+
+            $earned = EarnedStatuses::for($fresh);
+
+            $this->assertSame(['completed'], $earned);
+            $this->assertTrue(array_is_list($earned));
+        });
+    }
 }

@@ -36,10 +36,26 @@ final class EarnedStatuses
         // a value nothing can reach.
         $published = Job::allowedStatuses($scope);
 
-        return array_values(array_intersect(
+        $earned = array_intersect(
             array_filter($chosen, 'is_string'),
             $published,
-        ));
+        );
+
+        // Dedupe defensively, HERE, and not because the type layer already
+        // did it. This setting is TYPE_JSON, not TYPE_LIST — a TYPE_LIST
+        // default cannot be empty (castList() throws on `[]`) and this
+        // setting's default is `[]` (see the docblock on jobs.earned_statuses
+        // in SettingRegistry.php). castJson() only checks is_array(); unlike
+        // castList() it does not enforce array_is_list() or uniqueness. So a
+        // stored value can be a string-keyed map —
+        // {"a":"completed","b":"completed"} — and still pass cast()
+        // validation. array_intersect() above matches by VALUE, not key, so
+        // it carries every duplicate straight through. This array_unique() is
+        // the only place left in the pipeline that can still guarantee the
+        // `list<string>` contract this method documents — one entry per
+        // status. Do not delete it as "redundant" with the cast; the cast
+        // stopped guaranteeing that the moment this became TYPE_JSON.
+        return array_values(array_unique($earned));
     }
 
     public static function isEarned(string $status, Franchise $scope): bool
