@@ -164,9 +164,12 @@ void main() {
             body: TaskDuplicateFlow(
               api: api,
               board: TaskBoard.fromJson(
-                _board(actions: const <Object?>['duplicate']),
+                _board(
+                  actions: const <Object?>['duplicate', 'duplicate_with_tasks'],
+                ),
               ),
               destinationLabel: 'A-1 Chimney › Connecticut',
+              samePlace: false,
               onDuplicated: (board) => duplicated = board,
               onUnavailable: (_) {},
             ),
@@ -175,6 +178,10 @@ void main() {
       );
 
       expect(find.text('Copy tasks too'), findsNothing);
+      expect(
+        find.textContaining('Change the top-bar view before opening'),
+        findsNothing,
+      );
       expect(find.text('A-1 Chimney › Connecticut'), findsOneWidget);
       await tester.tap(find.widgetWithText(FilledButton, 'Duplicate board'));
       await tester.pumpAndSettle();
@@ -188,57 +195,118 @@ void main() {
     },
   );
 
-  testWidgets('transfer flow blocks commit on authoritative reconciliation', (
+  testWidgets('duplicate draft survives a scope-keyed remount', (tester) async {
+    final board = TaskBoard.fromJson(
+      _board(actions: const <Object?>['duplicate', 'duplicate_with_tasks']),
+    );
+    TaskDuplicateDraftStore.pending = TaskDuplicateDraft(
+      board: board,
+      name: 'Operations copy',
+      originScopeKey: 'company:one',
+      includeTasks: false,
+      actorUserId: 'user-1',
+    );
+    final api = TaskApi(
+      ApiClient(
+        client: MockClient((_) async => _json(500, <String, Object?>{})),
+      ),
+    );
+
+    Widget flow({required bool samePlace, required String destination}) =>
+        MaterialApp(
+          home: Scaffold(
+            body: TaskDuplicateFlow(
+              api: api,
+              board: board,
+              destinationLabel: destination,
+              samePlace: samePlace,
+              initialDraft: TaskDuplicateDraftStore.pending,
+              onDraftChanged: (draft) =>
+                  TaskDuplicateDraftStore.pending = draft,
+              onDuplicated: (_) {},
+              onUnavailable: (_) {},
+            ),
+          ),
+        );
+
+    await tester.pumpWidget(flow(samePlace: true, destination: 'Company one'));
+    await tester.enterText(
+      find.byKey(const ValueKey('task-duplicate-name')),
+      'Regional structure',
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(flow(samePlace: false, destination: 'Company two'));
+
+    expect(find.text('Regional structure'), findsOneWidget);
+    expect(find.text('Company two'), findsOneWidget);
+    expect(find.text('Copy tasks too'), findsNothing);
+    TaskDuplicateDraftStore.pending = null;
+  });
+
+  testWidgets('reconciliation decision can make an import committable', (
     tester,
   ) async {
     var previewCall = 0;
+    final requests = <http.Request>[];
     final api = TaskApi(
       ApiClient(
         client: MockClient((request) async {
+          requests.add(request);
           previewCall++;
           return _json(200, <String, Object?>{
             'data': <String, Object?>{
               'format': 'csv',
-              'headings': <Object?>['Task', 'Owner Email'],
+              'headings': <Object?>['Task', 'Status'],
               'sample': <Object?>[
                 <String, Object?>{
                   'Task': 'Inspect chimney',
-                  'Owner Email': 'unknown@example.com',
+                  'Status': 'Monday To do',
                 },
               ],
               'unsupported_fields': <Object?>[],
               'counts': <String, Object?>{
                 'rows': 1,
-                'ready': previewCall == 1 ? 0 : 0,
-                'errors': previewCall == 1 ? 0 : 1,
+                'ready': previewCall == 3 ? 1 : 0,
+                'errors': previewCall == 2 ? 1 : 0,
               },
-              'reconciliation': previewCall == 1
-                  ? <Object?>[]
-                  : <Object?>[
+              'reconciliation': previewCall == 2
+                  ? <Object?>[
                       <String, Object?>{
                         'row': 2,
-                        'field': 'owner_email',
-                        'code': 'ineligible_owner',
-                        'message': 'That owner is not eligible for this board.',
+                        'field': 'status',
+                        'code': 'decision_required',
+                        'message':
+                            "Choose an active status for 'Monday To do'.",
                       },
-                    ],
+                    ]
+                  : <Object?>[],
               'requires_mapping': previewCall == 1,
-              if (previewCall == 2) 'session_token': 'c' * 64,
-              if (previewCall == 2) 'expires_at': '2026-08-28T13:00:00Z',
+              if (previewCall == 3) 'session_token': 'c' * 64,
+              if (previewCall == 3) 'expires_at': '2026-08-28T13:00:00Z',
             },
           });
         }),
       ),
     );
 
+    final boardJson = _board(actions: const <Object?>['import'])
+      ..['statuses'] = <Object?>[
+        <String, Object?>{
+          'id': 'status-1',
+          'name': 'EzBizi To do',
+          'color': '#0B7285',
+          'category': 'not_started',
+          'position': 1,
+          'archived': false,
+          'actions': <Object?>[],
+        },
+      ];
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: TaskTransferFlow(
             api: api,
-            board: TaskBoard.fromJson(
-              _board(actions: const <Object?>['import']),
-            ),
+            board: TaskBoard.fromJson(boardJson),
             activeViewId: 'view-1',
             pickFile: () async =>
                 const PickedBytes('monday.csv', <int>[84, 97, 115, 107]),
@@ -251,18 +319,33 @@ void main() {
     await tester.tap(find.widgetWithText(OutlinedButton, 'Choose CSV or XLSX'));
     await tester.pumpAndSettle();
     expect(find.text('Task'), findsWidgets);
-    expect(find.text('Owner Email'), findsWidgets);
+    expect(find.text('Status'), findsWidgets);
     await tester.tap(find.widgetWithText(FilledButton, 'Preview import'));
     await tester.pumpAndSettle();
 
     expect(
-      find.text('That owner is not eligible for this board.'),
+      find.text("Choose an active status for 'Monday To do'."),
       findsOneWidget,
     );
-    final commit = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Import 0 tasks'),
+    await tester.tap(
+      find.byKey(const ValueKey('task-import-decision-status-Monday To do')),
     );
-    expect(commit.onPressed, isNull);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('EzBizi To do').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Preview import'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text("Choose an active status for 'Monday To do'."),
+      findsNothing,
+    );
+    final commit = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Import 1 tasks'),
+    );
+    expect(commit.onPressed, isNotNull);
+    expect(requests.last.body, contains('status-1'));
+    expect(requests.last.body, contains('Monday To do'));
   });
 }
 

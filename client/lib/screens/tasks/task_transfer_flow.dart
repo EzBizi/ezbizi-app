@@ -45,6 +45,8 @@ class _TaskTransferFlowState extends State<TaskTransferFlow> {
   PickedBytes? _file;
   TaskImportPreview? _preview;
   Map<String, String> _mapping = <String, String>{};
+  Map<String, String> _customMapping = <String, String>{};
+  Map<String, Object?> _decisions = <String, Object?>{};
   bool _busy = false;
   bool _exporting = false;
   String? _message;
@@ -60,6 +62,8 @@ class _TaskTransferFlowState extends State<TaskTransferFlow> {
       _file = file;
       _preview = null;
       _mapping = <String, String>{};
+      _customMapping = <String, String>{};
+      _decisions = <String, Object?>{};
       _busy = true;
       _message = null;
     });
@@ -146,7 +150,8 @@ class _TaskTransferFlowState extends State<TaskTransferFlow> {
       bytes: file.bytes,
       mapping: TaskImportMapping(
         fields: Map<String, String>.unmodifiable(_mapping),
-        decisions: const <String, Object?>{},
+        custom: Map<String, String>.unmodifiable(_customMapping),
+        decisions: _decisionSnapshot(),
       ),
     );
     if (!mounted) return;
@@ -310,6 +315,20 @@ class _TaskTransferFlowState extends State<TaskTransferFlow> {
                     .map((field) => _mappingField(field, preview))
                     .toList(growable: false),
               ),
+            if (widget.board.customColumns.any(
+              (column) => !column.archived,
+            )) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Custom columns',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 8),
+              for (final column in widget.board.customColumns.where(
+                (item) => !item.archived,
+              ))
+                _customMappingField(column, preview),
+            ],
             Align(
               alignment: Alignment.centerRight,
               child: FilledButton(
@@ -323,7 +342,7 @@ class _TaskTransferFlowState extends State<TaskTransferFlow> {
             Text(
               '${preview.counts.rows} rows · ${preview.counts.ready} ready · ${preview.counts.errors} errors',
             ),
-            for (final issue in preview.reconciliation)
+            for (final issue in preview.reconciliation) ...[
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
@@ -339,6 +358,12 @@ class _TaskTransferFlowState extends State<TaskTransferFlow> {
                   ].join(' · '),
                 ),
               ),
+              if (_decisionControl(issue, preview) case final control?)
+                Padding(
+                  padding: const EdgeInsets.only(left: 40, bottom: 10),
+                  child: control,
+                ),
+            ],
             for (final unsupported in preview.unsupportedFields)
               Text('${unsupported.heading}: not mapped'),
             const SizedBox(height: 8),
@@ -444,4 +469,172 @@ class _TaskTransferFlowState extends State<TaskTransferFlow> {
                 }),
         ),
       );
+
+  Widget _customMappingField(
+    TaskColumnDefinition column,
+    TaskImportPreview preview,
+  ) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: DropdownButtonFormField<String>(
+      key: ValueKey('task-import-custom-${column.id}'),
+      initialValue: _customMapping[column.id],
+      decoration: InputDecoration(
+        labelText: column.name,
+        border: const OutlineInputBorder(),
+      ),
+      items: [
+        const DropdownMenuItem<String>(value: '', child: Text('Not mapped')),
+        ...preview.headings.map(
+          (heading) => DropdownMenuItem(value: heading, child: Text(heading)),
+        ),
+      ],
+      onChanged: _busy
+          ? null
+          : (value) => setState(() {
+              if (value == null || value.isEmpty) {
+                _customMapping.remove(column.id);
+              } else {
+                _customMapping[column.id] = value;
+              }
+            }),
+    ),
+  );
+
+  Map<String, Object?> _decisionSnapshot() {
+    Map<String, Object?> copy(Map<String, Object?> source) => {
+      for (final entry in source.entries)
+        entry.key: entry.value is Map
+            ? copy(Map<String, Object?>.from(entry.value as Map))
+            : entry.value,
+    };
+    return copy(_decisions);
+  }
+
+  String? _sourceValue(TaskImportIssue issue, TaskImportPreview preview) {
+    final field = issue.field;
+    if (field == null) return null;
+    final heading = _mapping[field] ?? _customMapping[field];
+    final index = issue.row == null ? null : issue.row! - 2;
+    if (heading != null &&
+        index != null &&
+        index >= 0 &&
+        index < preview.sample.length) {
+      final value = preview.sample[index][heading]?.trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return RegExp("'([^']*)'").firstMatch(issue.message)?.group(1);
+  }
+
+  Object? _selectedDecision(String section, String source, {String? columnId}) {
+    final decisions = _decisions[section];
+    if (decisions is! Map) return null;
+    if (columnId == null) return decisions[source];
+    final column = decisions[columnId];
+    return column is Map ? column[source] : null;
+  }
+
+  void _setDecision(
+    String section,
+    String source,
+    String optionId, {
+    String? columnId,
+  }) {
+    setState(() {
+      final sectionValues = Map<String, Object?>.from(
+        _decisions[section] is Map ? _decisions[section] as Map : const {},
+      );
+      if (columnId == null) {
+        sectionValues[source] = optionId;
+      } else {
+        final columnValues = Map<String, Object?>.from(
+          sectionValues[columnId] is Map
+              ? sectionValues[columnId] as Map
+              : const {},
+        );
+        columnValues[source] = optionId;
+        sectionValues[columnId] = columnValues;
+      }
+      _decisions[section] = sectionValues;
+    });
+  }
+
+  Widget? _decisionControl(TaskImportIssue issue, TaskImportPreview preview) {
+    final field = issue.field;
+    final source = _sourceValue(issue, preview);
+    if (field == 'owner_email' && issue.code == 'unavailable') {
+      return OutlinedButton.icon(
+        onPressed: _busy
+            ? null
+            : () => setState(() => _mapping.remove('owner_email')),
+        icon: const Icon(Icons.person_off_outlined),
+        label: const Text('Do not import owner'),
+      );
+    }
+    if (source == null) return null;
+    String? section;
+    String? columnId;
+    List<(String, String)> options = const [];
+    if (field == 'status' && issue.code == 'decision_required') {
+      section = 'statuses';
+      options = [
+        for (final option in widget.board.statuses.where(
+          (item) => !item.archived,
+        ))
+          (option.id, option.name),
+      ];
+    } else if (field == 'priority' && issue.code == 'decision_required') {
+      section = 'priorities';
+      options = [
+        for (final option in widget.board.priorities.where(
+          (item) => !item.archived,
+        ))
+          (option.id, option.name),
+      ];
+    } else if (field == 'group' && issue.code == 'decision_required') {
+      section = 'groups';
+      options = [
+        for (final option in widget.board.groups.where(
+          (item) => !item.archived,
+        ))
+          (option.id, option.name),
+      ];
+    } else {
+      final column = widget.board.customColumns
+          .where((item) => item.id == field)
+          .firstOrNull;
+      if (column != null && issue.code == 'label_decision_required') {
+        section = 'column_options';
+        columnId = column.id;
+        options = [
+          for (final option in column.options.where((item) => !item.archived))
+            (option.id, option.name),
+        ];
+      }
+    }
+    if (section == null || options.isEmpty) return null;
+    return DropdownButtonFormField<String>(
+      key: ValueKey('task-import-decision-$field-$source'),
+      initialValue:
+          _selectedDecision(section, source, columnId: columnId) as String?,
+      decoration: InputDecoration(
+        labelText: 'Use for “$source”',
+        border: const OutlineInputBorder(),
+      ),
+      items: [
+        for (final option in options)
+          DropdownMenuItem(value: option.$1, child: Text(option.$2)),
+      ],
+      onChanged: _busy
+          ? null
+          : (value) {
+              if (value != null) {
+                _setDecision(section!, source, value, columnId: columnId);
+              }
+            },
+    );
+  }
+}
+
+extension _TaskTransferFirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

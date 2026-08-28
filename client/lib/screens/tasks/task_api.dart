@@ -144,6 +144,24 @@ final class TaskApi {
     });
   }
 
+  Future<TaskApiResult<TaskFolder>> createFolder(String name) async {
+    final response = await _api.post('/tasks/folders', <String, dynamic>{
+      'name': name,
+    });
+    return _decode(response, (data) => TaskFolder.fromJson(_map(data, 'data')));
+  }
+
+  Future<TaskApiResult<TaskFolder>> updateFolder(
+    String folderId, {
+    required String name,
+  }) async {
+    final response = await _api.patch(
+      '/tasks/folders/$folderId',
+      <String, dynamic>{'name': name},
+    );
+    return _decode(response, (data) => TaskFolder.fromJson(_map(data, 'data')));
+  }
+
   Future<TaskApiResult<TaskFolder>> setFolderArchived(
     String folderId, {
     required bool archived,

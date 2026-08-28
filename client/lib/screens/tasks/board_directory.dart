@@ -5,16 +5,20 @@ class BoardDirectory extends StatelessWidget {
   const BoardDirectory({
     super.key,
     required this.boards,
+    this.folders = const <TaskFolder>[],
     required this.selectedBoardId,
     required this.onSelected,
     this.onCreate,
     this.onRecover,
+    this.onManageFolders,
   });
   final List<TaskBoard> boards;
+  final List<TaskFolder> folders;
   final String? selectedBoardId;
   final ValueChanged<TaskBoard> onSelected;
   final VoidCallback? onCreate;
   final VoidCallback? onRecover;
+  final VoidCallback? onManageFolders;
   @override
   Widget build(BuildContext context) {
     final ordered = [...boards]
@@ -47,6 +51,12 @@ class BoardDirectory extends StatelessWidget {
                   onPressed: onRecover,
                   icon: const Icon(Icons.admin_panel_settings_outlined),
                 ),
+              if (onManageFolders != null)
+                IconButton(
+                  tooltip: 'Manage board folders',
+                  onPressed: onManageFolders,
+                  icon: const Icon(Icons.folder_outlined),
+                ),
             ],
           ),
         ),
@@ -59,10 +69,24 @@ class BoardDirectory extends StatelessWidget {
                   : Icons.table_chart_outlined,
             ),
             title: Text(board.name, overflow: TextOverflow.ellipsis),
-            subtitle: board.isFavorite ? const Text('Favorite') : null,
+            subtitle: Text(
+              [
+                if (board.isFavorite) 'Favorite',
+                if (board.folderId != null)
+                  folders
+                          .where((folder) => folder.id == board.folderId)
+                          .map((folder) => folder.name)
+                          .firstOrNull ??
+                      'Folder unavailable',
+              ].join(' · '),
+            ),
             onTap: () => onSelected(board),
           ),
       ],
     );
   }
+}
+
+extension _BoardDirectoryFirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

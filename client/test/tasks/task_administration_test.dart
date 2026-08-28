@@ -5,6 +5,7 @@ import 'package:ezbizi_client/screens/tasks/task_api.dart';
 import 'package:ezbizi_client/screens/tasks/task_board_settings.dart';
 import 'package:ezbizi_client/screens/tasks/task_board_members.dart';
 import 'package:ezbizi_client/screens/tasks/task_models.dart';
+import 'package:ezbizi_client/screens/tasks/task_folder_administration.dart';
 import 'package:ezbizi_client/screens/tasks/task_mobile_list.dart';
 import 'package:ezbizi_client/screens/tasks/task_structure_editor.dart';
 import 'package:flutter/material.dart';
@@ -433,6 +434,73 @@ void main() {
       );
     },
   );
+
+  testWidgets('folder administration follows directory and row actions', (
+    tester,
+  ) async {
+    final requests = <http.Request>[];
+    List<TaskFolder>? changed;
+    final api = TaskApi(
+      ApiClient(
+        client: MockClient((request) async {
+          requests.add(request);
+          if (request.method == 'GET') {
+            final archived = request.url.queryParameters['archived'] == '1';
+            return _json(200, <String, Object?>{
+              'data': <Object?>[
+                <String, Object?>{
+                  'id': archived ? 'folder-2' : 'folder-1',
+                  'name': archived ? 'Old work' : 'Field work',
+                  'company_id': 'company-1',
+                  'franchise_id': null,
+                  'position': archived ? 2 : 1,
+                  'archived': archived,
+                  'actions': archived
+                      ? <Object?>['restore']
+                      : <Object?>['update', 'archive'],
+                },
+              ],
+            });
+          }
+          return _json(200, <String, Object?>{
+            'data': <String, Object?>{
+              'id': 'folder-2',
+              'name': 'Old work',
+              'company_id': 'company-1',
+              'franchise_id': null,
+              'position': 2,
+              'archived': false,
+              'actions': <Object?>['update', 'archive'],
+            },
+          });
+        }),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TaskFolderAdministration(
+            api: api,
+            directoryActions: const <String>['create_folder', 'view_archived'],
+            onChanged: (value) => changed = value,
+            onUnavailable: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('New folder'), findsOneWidget);
+    expect(find.byTooltip('Rename Field work'), findsOneWidget);
+    expect(find.byTooltip('Archive Field work'), findsOneWidget);
+    expect(find.byTooltip('Restore Old work'), findsOneWidget);
+    await tester.tap(find.byTooltip('Restore Old work'));
+    await tester.pumpAndSettle();
+
+    expect(requests.last.url.path, '/api/v1/tasks/folders/folder-2/restore');
+    expect(changed?.map((folder) => folder.name), contains('Old work'));
+  });
 
   testWidgets('board settings save only server-authored actions', (
     tester,

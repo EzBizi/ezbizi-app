@@ -3,6 +3,37 @@ import 'package:flutter/material.dart';
 import 'task_api.dart';
 import 'task_models.dart';
 
+final class TaskDuplicateDraft {
+  const TaskDuplicateDraft({
+    required this.board,
+    required this.name,
+    required this.originScopeKey,
+    required this.includeTasks,
+    required this.actorUserId,
+  });
+
+  final TaskBoard board;
+  final String name;
+  final String originScopeKey;
+  final bool includeTasks;
+  final String actorUserId;
+
+  TaskDuplicateDraft copyWith({String? name, bool? includeTasks}) =>
+      TaskDuplicateDraft(
+        board: board,
+        name: name ?? this.name,
+        originScopeKey: originScopeKey,
+        includeTasks: includeTasks ?? this.includeTasks,
+        actorUserId: actorUserId,
+      );
+}
+
+/// Lives above scope-keyed TasksScreen state so a normal top-bar place change
+/// can remount the module without discarding an explicitly pending duplicate.
+class TaskDuplicateDraftStore {
+  static TaskDuplicateDraft? pending;
+}
+
 class TaskDuplicateFlow extends StatefulWidget {
   const TaskDuplicateFlow({
     super.key,
@@ -11,6 +42,10 @@ class TaskDuplicateFlow extends StatefulWidget {
     required this.destinationLabel,
     required this.onDuplicated,
     required this.onUnavailable,
+    this.samePlace = true,
+    this.initialDraft,
+    this.onDraftChanged,
+    this.onChooseAnotherDestination,
   });
 
   final TaskApi api;
@@ -18,6 +53,10 @@ class TaskDuplicateFlow extends StatefulWidget {
   final String destinationLabel;
   final ValueChanged<TaskBoard> onDuplicated;
   final ValueChanged<String?> onUnavailable;
+  final bool samePlace;
+  final TaskDuplicateDraft? initialDraft;
+  final ValueChanged<TaskDuplicateDraft>? onDraftChanged;
+  final VoidCallback? onChooseAnotherDestination;
 
   @override
   State<TaskDuplicateFlow> createState() => _TaskDuplicateFlowState();
@@ -25,14 +64,34 @@ class TaskDuplicateFlow extends StatefulWidget {
 
 class _TaskDuplicateFlowState extends State<TaskDuplicateFlow> {
   late final TextEditingController _name = TextEditingController(
-    text: '${widget.board.name} copy',
+    text: widget.initialDraft?.name ?? '${widget.board.name} copy',
   );
-  bool _includeTasks = false;
+  late bool _includeTasks =
+      widget.samePlace && (widget.initialDraft?.includeTasks ?? false);
   bool _saving = false;
   String? _message;
 
   @override
+  void initState() {
+    super.initState();
+    _name.addListener(_draftChanged);
+  }
+
+  void _draftChanged() => widget.onDraftChanged?.call(
+    (widget.initialDraft ??
+            TaskDuplicateDraft(
+              board: widget.board,
+              name: _name.text,
+              originScopeKey: '',
+              includeTasks: _includeTasks,
+              actorUserId: '',
+            ))
+        .copyWith(name: _name.text, includeTasks: _includeTasks),
+  );
+
+  @override
   void dispose() {
+    _name.removeListener(_draftChanged);
     _name.dispose();
     super.dispose();
   }
@@ -52,7 +111,12 @@ class _TaskDuplicateFlowState extends State<TaskDuplicateFlow> {
       widget.board.id,
       expectedStructureVersion: widget.board.structureVersion,
       name: name,
-      includeTasks: widget.board.can('duplicate_with_tasks') && _includeTasks,
+      // The server enforces this too; keeping the client explicit prevents a
+      // stale same-place choice from crossing a top-bar scope change.
+      includeTasks:
+          widget.samePlace &&
+          widget.board.can('duplicate_with_tasks') &&
+          _includeTasks,
     );
     if (!mounted) return;
     if (result is TaskApiUnavailable<TaskStructureMutation<TaskBoard>>) {
@@ -85,7 +149,7 @@ class _TaskDuplicateFlowState extends State<TaskDuplicateFlow> {
           ),
           const SizedBox(height: 4),
           Text(
-            'The copy is filed in the exact place currently in view. Change the top-bar view before opening this flow to copy structure into another place.',
+            'The copy is filed in the exact place currently shown below. Your source and draft stay pending if you change place with the top-bar switcher.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 16),
@@ -96,6 +160,22 @@ class _TaskDuplicateFlowState extends State<TaskDuplicateFlow> {
             ),
             child: Text(widget.destinationLabel),
           ),
+          if (widget.onChooseAnotherDestination != null) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _saving
+                    ? null
+                    : () {
+                        _draftChanged();
+                        widget.onChooseAnotherDestination!.call();
+                      },
+                icon: const Icon(Icons.swap_horiz),
+                label: const Text('Change destination in top bar'),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           TextField(
             key: const ValueKey('task-duplicate-name'),
@@ -107,7 +187,7 @@ class _TaskDuplicateFlowState extends State<TaskDuplicateFlow> {
             ),
           ),
           const SizedBox(height: 12),
-          if (widget.board.can('duplicate_with_tasks'))
+          if (widget.samePlace && widget.board.can('duplicate_with_tasks'))
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               title: const Text('Copy tasks too'),
@@ -117,7 +197,10 @@ class _TaskDuplicateFlowState extends State<TaskDuplicateFlow> {
               value: _includeTasks,
               onChanged: _saving
                   ? null
-                  : (value) => setState(() => _includeTasks = value),
+                  : (value) => setState(() {
+                      _includeTasks = value;
+                      _draftChanged();
+                    }),
             )
           else
             const ListTile(

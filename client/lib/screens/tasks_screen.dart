@@ -17,6 +17,7 @@ import 'tasks/task_board_members.dart';
 import 'tasks/task_detail_panel.dart';
 import 'tasks/task_duplicate_flow.dart';
 import 'tasks/task_filters_panel.dart';
+import 'tasks/task_folder_administration.dart';
 import 'tasks/task_mobile_list.dart';
 import 'tasks/task_models.dart';
 import 'tasks/task_quick_search.dart';
@@ -1256,18 +1257,54 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
 
   void _openDuplicate() {
     final board = _board;
-    if (board == null || !board.can('duplicate')) return;
+    final actorId = widget.session.me?.id;
+    if (board == null || actorId == null || !board.can('duplicate')) return;
+    TaskDuplicateDraftStore.pending = TaskDuplicateDraft(
+      board: board,
+      name: '${board.name} copy',
+      originScopeKey: _scopeKey,
+      includeTasks: false,
+      actorUserId: actorId,
+    );
+    _continueDuplicate();
+  }
+
+  String get _scopeKey {
+    final scope = widget.session.me?.scope;
+    return '${scope?.type}:${scope?.id}';
+  }
+
+  TaskDuplicateDraft? get _pendingDuplicate {
+    final draft = TaskDuplicateDraftStore.pending;
+    return draft?.actorUserId == widget.session.me?.id ? draft : null;
+  }
+
+  void _continueDuplicate() {
+    final draft = _pendingDuplicate;
+    if (draft == null) return;
+    final samePlace = draft.originScopeKey == _scopeKey;
     _openTaskSurface(
       'Duplicate board',
       TaskDuplicateFlow(
         api: _tasks,
-        board: board,
+        board: draft.board,
         destinationLabel: widget.session.me?.scope.fullPath ?? 'Current view',
+        samePlace: samePlace,
+        initialDraft: draft,
+        onDraftChanged: (changed) => TaskDuplicateDraftStore.pending = changed,
+        onChooseAnotherDestination: () {
+          Navigator.of(context, rootNavigator: true).maybePop();
+          _announce('Choose the destination with the top-bar switcher.');
+        },
         onDuplicated: (duplicated) {
+          TaskDuplicateDraftStore.pending = null;
           Navigator.of(context, rootNavigator: true).maybePop();
           _loadDirectory();
         },
-        onUnavailable: _surfaceUnavailable,
+        onUnavailable: (message) {
+          TaskDuplicateDraftStore.pending = null;
+          _surfaceUnavailable(message);
+        },
       ),
     );
   }
@@ -1292,6 +1329,20 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     _openTaskSurface(
       'Board recovery',
       TaskBoardRecoveryList(api: _tasks, onUnavailable: _surfaceUnavailable),
+    );
+  }
+
+  void _openFolderAdministration() {
+    _openTaskSurface(
+      'Board folders',
+      TaskFolderAdministration(
+        api: _tasks,
+        directoryActions: _directoryActions,
+        onChanged: (folders) {
+          if (mounted) setState(() => _folders = folders);
+        },
+        onUnavailable: _surfaceUnavailable,
+      ),
     );
   }
 
@@ -1481,6 +1532,12 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
               final actions = Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (_pendingDuplicate != null)
+                    IconButton(
+                      tooltip: 'Continue board duplication',
+                      onPressed: _continueDuplicate,
+                      icon: const Icon(Icons.copy_all_outlined),
+                    ),
                   IconButton(
                     tooltip: 'Refresh tasks',
                     onPressed: _refreshVisible,
@@ -1554,9 +1611,15 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           onRecover: _directoryActions.contains('recover_private_boards')
               ? _openRecovery
               : null,
+          onManageFolders:
+              _directoryActions.contains('create_folder') ||
+                  _directoryActions.contains('view_archived')
+              ? _openFolderAdministration
+              : null,
         )
       : BoardDirectory(
           boards: _boards,
+          folders: _folders,
           selectedBoardId: null,
           onSelected: (board) {
             setState(() => _showDirectory = false);
@@ -1567,6 +1630,11 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
               : null,
           onRecover: _directoryActions.contains('recover_private_boards')
               ? _openRecovery
+              : null,
+          onManageFolders:
+              _directoryActions.contains('create_folder') ||
+                  _directoryActions.contains('view_archived')
+              ? _openFolderAdministration
               : null,
         );
 
@@ -1686,6 +1754,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
               width: 210,
               child: BoardDirectory(
                 boards: _boards,
+                folders: _folders,
                 selectedBoardId: _board!.id,
                 onSelected: (board) {
                   setState(() => _showDirectory = false);
@@ -1696,6 +1765,11 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                     : null,
                 onRecover: _directoryActions.contains('recover_private_boards')
                     ? _openRecovery
+                    : null,
+                onManageFolders:
+                    _directoryActions.contains('create_folder') ||
+                        _directoryActions.contains('view_archived')
+                    ? _openFolderAdministration
                     : null,
               ),
             ),
@@ -1821,9 +1895,10 @@ extension _TasksFirstOrNull<T> on Iterable<T> {
 }
 
 class _EmptyDirectory extends StatelessWidget {
-  const _EmptyDirectory({this.onCreate, this.onRecover});
+  const _EmptyDirectory({this.onCreate, this.onRecover, this.onManageFolders});
   final VoidCallback? onCreate;
   final VoidCallback? onRecover;
+  final VoidCallback? onManageFolders;
   @override
   Widget build(BuildContext context) => Center(
     child: ConstrainedBox(
@@ -1861,6 +1936,14 @@ class _EmptyDirectory extends StatelessWidget {
                 onPressed: onRecover,
                 icon: const Icon(Icons.admin_panel_settings_outlined),
                 label: const Text('Recover private boards'),
+              ),
+            ],
+            if (onManageFolders != null) ...[
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: onManageFolders,
+                icon: const Icon(Icons.folder_outlined),
+                label: const Text('Manage folders'),
               ),
             ],
           ],

@@ -362,13 +362,19 @@ enum TaskImportFormat { csv, xlsx, unknown }
 enum TaskExportFormat { csv, xlsx, json }
 
 final class TaskImportMapping {
-  const TaskImportMapping({required this.fields, required this.decisions});
+  const TaskImportMapping({
+    required this.fields,
+    this.custom = const <String, String>{},
+    required this.decisions,
+  });
 
   final Map<String, String> fields;
+  final Map<String, String> custom;
   final Map<String, Object?> decisions;
 
   Map<String, Object?> toJson() => <String, Object?>{
     ...fields,
+    'custom': custom,
     'decisions': decisions,
   };
 }
