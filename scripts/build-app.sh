@@ -360,10 +360,15 @@ fi
 #
 # Only the registrants, by pathspec, so a real edit elsewhere survives —
 # including under --allow-dirty, where the tree was dirty on purpose.
-REGENERATED=$(git diff --name-only -- "client/*/flutter/generated_plugin_registrant.*" "client/*/flutter/generated_plugins.cmake" "client/*/Flutter/GeneratedPluginRegistrant.*" 2>/dev/null || true)
-if [ -n "$REGENERATED" ]; then
-  # shellcheck disable=SC2086  # deliberate word-splitting: a newline-separated path list
-  git checkout -- $REGENERATED 2>/dev/null || true
-fi
+# Checked out unconditionally rather than after asking `git diff` what changed.
+# The first version of this asked, got told NOTHING had changed, and left the
+# tree dirty — because the dirt is LINE ENDINGS. pub get writes LF, the index
+# holds CRLF, and `git status` says M while `git diff` correctly says there is
+# no content difference. The guard reads status; the detection read diff; they
+# disagreed and the fix silently did nothing. scripts/tree-blockers.sh exists
+# because of exactly that disagreement, and this was written anyway.
+#
+# A checkout of an unchanged path is a no-op, so there is nothing to detect.
+git checkout -- "client/*/flutter/generated_plugin_registrant.*" "client/*/flutter/generated_plugins.cmake" "client/*/Flutter/GeneratedPluginRegistrant.*" 2>/dev/null || true
 
 echo "✓ built v${VERSION} · ${COMMIT}"
