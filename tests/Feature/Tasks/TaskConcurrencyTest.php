@@ -114,6 +114,74 @@ class TaskConcurrencyTest extends TestCase
         ])->assertNotFound();
     }
 
+    public function test_route_access_precedes_validation_for_hidden_and_mismatched_task_resources(): void
+    {
+        $privateId = $this->postJson('/api/v1/tasks/boards', [
+            'name' => 'Malformed private target', 'visibility' => 'private',
+        ])->assertCreated()->json('data.id');
+        $this->enterTenant();
+        $private = TaskBoard::findOrFail($privateId);
+        $privateTask = $this->createTask(
+            'Private validation target',
+            $private->groups()->active()->firstOrFail(),
+            $private,
+        );
+
+        $viewer = $this->userWithRole($this->alpha, 'Malformed outsider', [
+            'tasks.view', 'tasks.create', 'tasks.edit', 'tasks.comment',
+            'tasks.delete', 'tasks.export', 'tasks.manage',
+        ]);
+        $viewer->forceFill([
+            'preferences' => ['navigation.scope' => ViewScope::COMPANY.':'.$this->alpha['company']->id],
+        ])->save();
+        $this->signedInAs($viewer);
+
+        $this->patchJson("/api/v1/tasks/{$privateTask->id}", [
+            'title' => [],
+        ])->assertNotFound()->assertJsonMissingValidationErrors(['expected_version', 'title']);
+        $this->postJson("/api/v1/tasks/boards/{$private->id}/groups", [])
+            ->assertNotFound()->assertJsonMissingValidationErrors(['name', 'expected_structure_version']);
+        $this->postJson("/api/v1/tasks/boards/{$private->id}/members", [
+            'user_id' => 'not-a-uuid', 'role' => 'not-a-role',
+        ])->assertNotFound()->assertJsonMissingValidationErrors(['user_id', 'role']);
+
+        $this->enterTenant();
+        $admin = $this->alpha['admin']->fresh();
+        $admin->forceFill([
+            'preferences' => ['navigation.scope' => ViewScope::FRANCHISE.':'.$this->alpha['franchise']->id],
+        ])->save();
+        $this->signedInAs($admin->fresh());
+        $this->patchJson("/api/v1/tasks/boards/{$this->board->id}", [])
+            ->assertNotFound()->assertJsonMissingValidationErrors(['expected_structure_version']);
+
+        $this->enterTenant();
+        $admin->forceFill([
+            'preferences' => ['navigation.scope' => ViewScope::COMPANY.':'.$this->alpha['company']->id],
+        ])->save();
+        $this->signedInAs($admin->fresh());
+
+        $archivedId = $this->postJson('/api/v1/tasks/boards', [
+            'name' => 'Archived validation target', 'visibility' => 'scope',
+        ])->assertCreated()->json('data.id');
+        $this->enterTenant();
+        $archived = TaskBoard::findOrFail($archivedId);
+        $this->postJson("/api/v1/tasks/boards/{$archived->id}/archive", [
+            'expected_structure_version' => $archived->structure_version,
+        ])->assertOk();
+        $this->patchJson("/api/v1/tasks/boards/{$archived->id}", [])
+            ->assertNotFound()->assertJsonMissingValidationErrors(['expected_structure_version']);
+
+        $otherId = $this->postJson('/api/v1/tasks/boards', [
+            'name' => 'Nested validation source', 'visibility' => 'scope',
+        ])->assertCreated()->json('data.id');
+        $this->enterTenant();
+        $otherGroup = TaskBoard::findOrFail($otherId)->groups()->active()->firstOrFail();
+        $this->patchJson(
+            "/api/v1/tasks/boards/{$this->board->id}/groups/{$otherGroup->id}",
+            [],
+        )->assertNotFound()->assertJsonMissingValidationErrors(['name', 'expected_structure_version']);
+    }
+
     public function test_cross_group_move_is_dense_versions_only_the_moved_task_and_rejects_stale_order(): void
     {
         $groups = $this->taskGroups();
