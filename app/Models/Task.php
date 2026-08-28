@@ -27,6 +27,7 @@ class Task extends Model implements CarriesAutomationScope, HoldsPersonalData
     protected $fillable = [
         'title', 'description', 'description_plain', 'owner_user_id',
         'status_option_id', 'priority_option_id', 'start_on', 'due_on',
+        'start_date', 'recurrence',
         'completed_at', 'completed_by', 'cancelled_at', 'cancelled_by',
         'created_by', 'updated_by', 'archived_at',
     ];
@@ -35,6 +36,7 @@ class Task extends Model implements CarriesAutomationScope, HoldsPersonalData
     {
         return [
             'start_on' => 'date', 'due_on' => 'date', 'due_revision' => 'integer',
+            'start_date' => 'date', 'recurrence' => 'array',
             'completed_at' => 'datetime', 'cancelled_at' => 'datetime',
             'position' => 'integer', 'version' => 'integer', 'detail_version' => 'integer',
             'archived_at' => 'datetime',
@@ -56,7 +58,7 @@ class Task extends Model implements CarriesAutomationScope, HoldsPersonalData
         return [
             new PersonalDataEntry('title, description, description_plain', PersonalDataEntry::CONTENT, 'The tenant-written task title and formatted and plain-text descriptions, which can contain personal details.', Erasure::keep('They are the durable business brief and free text cannot be reliably attributed to one erasure subject.')),
             new PersonalDataEntry('owner_user_id, completed_by, cancelled_by, created_by, updated_by', PersonalDataEntry::ACTIVITY, 'The accountable owner and the people who created, changed, completed, or cancelled the task.', Erasure::keep('The referenced accounts are anonymised at their source while task accountability and history remain intact.')),
-            new PersonalDataEntry('start_on, due_on, completed_at, cancelled_at', PersonalDataEntry::ACTIVITY, 'The planned and actual dates that describe when the assigned work was expected and resolved.', Erasure::keep('These dates are part of the work record and remain tied to already-anonymised account references.')),
+            new PersonalDataEntry('start_on, due_on, start_date, completed_at, cancelled_at', PersonalDataEntry::ACTIVITY, 'The planned and actual dates that describe when the assigned work was expected and resolved.', Erasure::keep('These dates are part of the work record and remain tied to already-anonymised account references.')),
         ];
     }
 
