@@ -214,8 +214,21 @@ has made.
 **There is a form that is safe even on somebody else's paths:** show the staged
 blob is a **strict subset** of `HEAD` — zero added lines. Then clearing it can only
 remove a landmine and cannot lose work, and you do not have to wait for an owner
-who may not exist any more. If the staged copy adds anything at all, it is somebody's
-in-flight work; leave it and tell them. Line counts are usually enough to show staleness; a marker string the
+who may not exist any more.
+
+**But "adds lines" does not mean "is new work".** A stale copy of a file whose
+lines you *changed* appears to add content — its additions are the old versions of
+the lines you replaced. That test raised a false alarm on this very file within an
+hour of being written. When the staged copy adds something, check whether that
+content exists in an **earlier commit** of the same path before concluding somebody
+is mid-edit:
+
+```bash
+git show <earlier-sha>:<path> | grep -F "<the added line>"
+```
+
+A hit means stale. Only genuinely novel content — present nowhere in the file's
+history — is somebody's in-flight work. Leave that, and tell them. Line counts are usually enough to show staleness; a marker string the
 newer version contains and the older does not is better, because it names the
 regression instead of implying one.
 
