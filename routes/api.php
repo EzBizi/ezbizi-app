@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\InventoryStockController;
 use App\Http\Controllers\Api\InventoryTransfersController;
 use App\Http\Controllers\Api\InventoryVendorsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
+use App\Http\Controllers\Api\JobLinesController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\LeadsController;
 use App\Http\Controllers\Api\MailboxesController;
@@ -500,6 +501,12 @@ Route::prefix('v1')
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
 
         Route::apiResource('jobs', JobsController::class);
+
+        // Lines hang off a job and are never addressed without one — a line id
+        // alone would be an id oracle across franchises.
+        Route::post('jobs/{job}/lines', [JobLinesController::class, 'store']);
+        Route::patch('jobs/{job}/lines/{line}', [JobLinesController::class, 'update']);
+        Route::delete('jobs/{job}/lines/{line}', [JobLinesController::class, 'destroy']);
 
         // drivers before {vehicle} so the literal path is not captured as an id
         Route::get('vehicles/drivers', [VehicleAssignmentsController::class, 'drivers']);

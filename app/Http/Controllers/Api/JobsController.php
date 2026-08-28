@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\JobLine;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Numbering\RecordNumberGenerator;
@@ -282,7 +283,7 @@ class JobsController extends Controller
 
     private function present(Job $job, bool $detailed = false): array
     {
-        $job->loadMissing(['franchise:id,name,timezone', 'customer:id,name,number,owning_franchise_id']);
+        $job->loadMissing(['franchise:id,name,timezone', 'customer:id,name,number,owning_franchise_id', 'lines']);
 
         $base = [
             'id'     => $job->id,
@@ -323,6 +324,14 @@ class JobsController extends Controller
             'allowed_statuses' => $job->franchise
                 ? Job::statusEntries($job->franchise)
                 : [],
+            'lines' => $job->lines->map(fn (JobLine $line) => [
+                'id'               => $line->id,
+                'service_id'       => $line->service_id,
+                'name'             => $line->name,
+                'unit_price_minor' => $line->unit_price_minor,
+                'qty'              => $line->qty,
+                'amount_minor'     => $line->amount_minor,
+            ])->all(),
             'created_at' => $job->created_at->toIso8601String(),
         ];
     }

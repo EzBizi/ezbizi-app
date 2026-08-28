@@ -4,6 +4,7 @@ namespace Tests\Feature\Api;
 
 use App\Models\Customer;
 use App\Models\Job;
+use App\Models\Service;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -178,5 +179,184 @@ class JobLinesTest extends TestCase
 
             $this->assertSame(0, $job->fresh()->amount_minor);
         });
+    }
+
+    // ── Task 4: the lines API ───────────────────────────────────────────
+
+    /**
+     * A customer, a job, and a `Service` named "Chimney sweep" at 18900 minor
+     * units — the raw material every lines-API test starts from.
+     *
+     * Customer and job go through the HTTP endpoints, as JobWallTimeTest does,
+     * so this exercises real validation instead of trusting a factory to agree
+     * with it. The service is built directly: there is no catalogue endpoint
+     * under test here, and ServiceFactory's defaults already are exactly
+     * "Chimney sweep" at 18900.
+     *
+     * @param  array{org: \App\Models\Organization, admin: \App\Models\User, franchise: \App\Models\Franchise}  $tenant
+     * @return array{0: string, 1: string} [$jobId, $serviceId]
+     */
+    protected function aJobAndAService(array $tenant): array
+    {
+        $customerId = $this->signedInAs($tenant['admin'])->postJson('/api/v1/customers', [
+            'owning_franchise_id' => $tenant['franchise']->id,
+            'name' => 'Line Item Customer',
+        ])->assertCreated()->json('data.id');
+
+        $jobId = $this->signedInAs($tenant['admin'])->postJson('/api/v1/jobs', [
+            'franchise_id' => $tenant['franchise']->id,
+            'customer_id'  => $customerId,
+            'title'        => 'A job with lines',
+            'status'       => 'scheduled',
+        ])->assertCreated()->json('data.id');
+
+        $serviceId = $this->inTenant($tenant['org'], function () use ($tenant) {
+            return Service::factory()->create([
+                'franchise_id' => $tenant['franchise']->id,
+            ])->id;
+        });
+
+        return [$jobId, $serviceId];
+    }
+
+    public function test_adding_a_service_snapshots_its_name_and_price(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        [$jobId, $serviceId] = $this->aJobAndAService($alpha);
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/jobs/{$jobId}/lines", ['service_id' => $serviceId, 'qty' => 1])
+            ->assertCreated()
+            ->assertJsonPath('data.name', 'Chimney sweep')
+            ->assertJsonPath('data.unit_price_minor', 18900);
+
+        // The catalogue moves on. The job does not.
+        $this->inTenant($alpha['org'], function () use ($serviceId) {
+            Service::findOrFail($serviceId)->forceFill(['price_minor' => 25000])->save();
+        });
+
+        $this->signedInAs($alpha['admin'])
+            ->getJson("/api/v1/jobs/{$jobId}")
+            ->assertOk()
+            ->assertJsonPath('data.lines.0.unit_price_minor', 18900)
+            ->assertJsonPath('data.amount.minor', 18900);
+    }
+
+    public function test_a_service_from_another_organization_is_refused_with_a_sentence(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $beta  = $this->provisionTenant('Beta');
+
+        [$jobId] = $this->aJobAndAService($alpha);
+        [, $foreignService] = $this->aJobAndAService($beta);
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/jobs/{$jobId}/lines", ['service_id' => $foreignService, 'qty' => 1])
+            ->assertStatus(422);
+    }
+
+    public function test_a_quantity_below_one_is_refused(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        [$jobId, $serviceId] = $this->aJobAndAService($alpha);
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/jobs/{$jobId}/lines", ['service_id' => $serviceId, 'qty' => 0])
+            ->assertStatus(422);
+    }
+
+    /**
+     * Task 3 review finding #1 (ORDERING): `Job::lines()` orders by
+     * `position`, then `created_at` — a DATETIME column with no microsecond
+     * precision, so rows created within the same wall-clock second tie on the
+     * secondary key. `store()` is meant to make that moot by computing
+     * `position = (int) $job->lines()->max('position') + 1` fresh on every
+     * request. This adds three lines back-to-back (three separate requests
+     * against the same job, exactly what a technician itemizing a job does)
+     * and checks BOTH that the positions returned are distinct and increasing
+     * AND that the job's own `lines` listing reflects that order — so a
+     * regression that made `max()` return a stale or repeated value inside a
+     * request would show up as scrambled order here, not be silently masked
+     * by insertion order happening to match.
+     */
+    public function test_three_lines_added_back_to_back_come_back_in_the_order_added(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        [$jobId] = $this->aJobAndAService($alpha);
+
+        $serviceIds = $this->inTenant($alpha['org'], function () {
+            return [
+                Service::factory()->create(['name' => 'First service', 'price_minor' => 1000])->id,
+                Service::factory()->create(['name' => 'Second service', 'price_minor' => 2000])->id,
+                Service::factory()->create(['name' => 'Third service', 'price_minor' => 3000])->id,
+            ];
+        });
+
+        $positions = [];
+
+        foreach ($serviceIds as $serviceId) {
+            $positions[] = $this->signedInAs($alpha['admin'])
+                ->postJson("/api/v1/jobs/{$jobId}/lines", ['service_id' => $serviceId, 'qty' => 1])
+                ->assertCreated()
+                ->json('data.position');
+        }
+
+        // Distinct and strictly increasing — the exact property
+        // `max(position) + 1` exists to guarantee.
+        $this->assertSame([1, 2, 3], $positions);
+
+        $names = $this->signedInAs($alpha['admin'])
+            ->getJson("/api/v1/jobs/{$jobId}")
+            ->assertOk()
+            ->json('data.lines.*.name');
+
+        $this->assertSame(['First service', 'Second service', 'Third service'], $names);
+    }
+
+    /**
+     * Task 3 review finding #2 (INVARIANT): `amount_minor` is a stored
+     * product, `unit_price_minor * qty`, and this controller is the only thing
+     * that ever writes it — so it must never be read back out of the request,
+     * on either verb. This sends a deliberately wrong `amount_minor` on both
+     * `store()` and `update()` and asserts the client's number never reaches
+     * the line row, the response, or the job total — only the computed
+     * product does.
+     */
+    public function test_a_spoofed_amount_minor_is_ignored_on_store_and_update(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        [$jobId, $serviceId] = $this->aJobAndAService($alpha);
+
+        $created = $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/jobs/{$jobId}/lines", [
+                'service_id'   => $serviceId,
+                'qty'          => 2,
+                // Spoofed. The real product is 18900 * 2 = 37800.
+                'amount_minor' => 1,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.amount_minor', 37800)
+            ->json('data');
+
+        $this->signedInAs($alpha['admin'])
+            ->getJson("/api/v1/jobs/{$jobId}")
+            ->assertOk()
+            ->assertJsonPath('data.amount.minor', 37800);
+
+        $lineId = $created['id'];
+
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/jobs/{$jobId}/lines/{$lineId}", [
+                'qty' => 3,
+                // Spoofed again. The real product is 18900 * 3 = 56700.
+                'amount_minor' => 999999999,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.amount_minor', 56700);
+
+        $this->signedInAs($alpha['admin'])
+            ->getJson("/api/v1/jobs/{$jobId}")
+            ->assertOk()
+            ->assertJsonPath('data.amount.minor', 56700);
     }
 }
