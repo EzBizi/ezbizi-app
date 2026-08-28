@@ -44,6 +44,7 @@ use App\Http\Controllers\Api\MailboxMessagesController;
 use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
@@ -1537,6 +1538,22 @@ Route::prefix('v1')
                 ],
             ]);
         });
+    });
+
+/*
+ * Monitoring heartbeat — a person reports their own presence. Deliberately
+ * OUTSIDE `idle`: SlideIdleWindow pushes the token's expiry forward on every
+ * authenticated call, so a timer-driven beat would keep a walked-away session
+ * alive forever and silently void security.session_timeout_minutes. Presence is
+ * not user activity for the idle clock; genuine navigation (which hits the
+ * idle-bearing group above) is. No `subscription` or `two-factor` either — a
+ * background beat should not be interrupted by either gate.
+ */
+Route::prefix('v1')
+    ->middleware(['auth:sanctum', 'tenant'])
+    ->group(function () {
+        Route::post('monitoring/heartbeat', [MonitoringHeartbeatController::class, 'store'])
+            ->middleware('throttle:120,1');
     });
 
 /*

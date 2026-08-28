@@ -2081,14 +2081,17 @@ class ModuleServiceProvider extends ServiceProvider
              * `monitoring.*` — the same compound-name case InventoryItem
              * documents itself (it keys as `item`, not `inventoryitem`).
              *
-             * Both triggers are declared `isRaised: false` for now. This task
-             * registers the module only — nothing under app/ emits either
-             * event yet, and ModuleRegistryTest's standing check refuses
-             * `isRaised: true` until something does (its own failure message:
-             * "declared as raised, but nothing in app/ mentions it... declare
-             * isRaised: false until something emits it"). `new_device_seen`
-             * flips to true once the heartbeat endpoint calls
-             * EventEmitter::emit for it; `device_offline` once its scheduled
+             * Both triggers started `isRaised: false` — this module was
+             * registered before anything under app/ emitted either event, and
+             * ModuleRegistryTest's standing check refuses `isRaised: true`
+             * until something does (its own failure message: "declared as
+             * raised, but nothing in app/ mentions it... declare isRaised:
+             * false until something emits it"). `new_device_seen` flipped to
+             * true (the default — the parameter is omitted below) once
+             * HeartbeatController::store() started calling
+             * EventEmitter::emit('monitoring.new_device_seen', ...) on a
+             * newly-created device (2026-08-28-monitoring-pc-specs, task 4).
+             * `device_offline` stays `isRaised: false` until its scheduled
              * check exists.
              */
             new ModuleDefinition(
@@ -2100,7 +2103,6 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'monitoring.new_device_seen',
                         label: 'New device seen',
                         description: 'A person signed in from a device not seen before.',
-                        isRaised: false,
                     ),
                     new TriggerDefinition(
                         key: 'monitoring.device_offline',
