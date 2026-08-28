@@ -297,6 +297,35 @@ else
 fi
 ' || echo "warning: peer watchdog refresh failed; box may be on an older copy" >&2
 
+# Live URLs that no test in this repo can check.
+#
+# On 2026-08-28 /api/v1/web/ezbizi.js returned an nginx 404 for a week while the
+# route was registered, the controller correct and the file in the release.
+# `location /api` was a plain prefix and the static-asset block is a regex, and a
+# regex location outranks a plain prefix one — so every API path ending in an
+# asset extension was answered from the Flutter root. Every in-repo check was
+# green throughout, because they all exercise Laravel router and nginx sits
+# upstream of anything the test framework can reach.
+#
+# CONTENT-TYPE, not just status. A 200 of the Flutter index.html was the other
+# way this fails, and a status-only assertion would have passed it.
+#
+# Not only routes with a literal extension: any route whose last segment is a
+# user-supplied parameter can be pushed into that regex by the caller
+# (/api/v1/web/sites/foo.js). Nothing reaches a controller, but the wrong 404
+# comes back. Add a line here for anything with that shape.
+echo "→ smoke: URLs only the live server can answer"
+while read -r url want; do
+  [ -z "$url" ] && continue
+  got=$(curl -sS -o /dev/null -w "%{http_code} %{content_type}" "$url" || echo "no answer")
+  case "$got" in
+    "$want"*) echo "   ok   $url" ;;
+    *)        echo "   ✗    $url -> $got (wanted $want)" >&2 ;;
+  esac
+done <<SMOKE
+https://app.ezbizi.com/api/v1/web/ezbizi.js 200 application/javascript
+SMOKE
+
 # The marketing site, last, for the same reason the code goes before the UI:
 # www/index.html loads the snippet from app.ezbizi.com, so a site published
 # ahead of the API advertises a URL that is not there yet.
