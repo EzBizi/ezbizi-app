@@ -47,6 +47,10 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
 
   int _request = 0;
   String? _openId;
+
+  /// Which review's Publish is armed. One at a time: an inline confirm that
+  /// could be open on several rows at once is a dialog with extra steps.
+  String? _confirmingPublishId;
   final _draft = TextEditingController();
   bool _busy = false;
 
@@ -141,32 +145,19 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     await _load();
   }
 
-  Future<void> _publish(Map<String, dynamic> review) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Publish this reply?'),
-        // Says what actually happens, in the words that matter: public, under
-        // the business's name, and not easily taken back.
-        content: const Text(
-          'It goes live on Google under your business name, where anybody '
-          'reading the review will see it. Google allows one reply per review, '
-          'so publishing again replaces it.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Publish'),
-          ),
-        ],
-      ),
-    );
+  /// Arm the confirm, rather than open a dialog.
+  ///
+  /// The house rule is no modals, and a confirmation is the case that collapses
+  /// cleanly: it needs nowhere to type, only somewhere to state the consequence
+  /// and offer two answers. An inline row does that AND works at 375px, which
+  /// an AlertDialog does not — it was the wrong control on a phone before it
+  /// was a rule violation.
+  void _armPublish(Map<String, dynamic> review) {
+    setState(() => _confirmingPublishId = review['id'] as String?);
+  }
 
-    if (confirmed != true || !mounted) return;
+  Future<void> _publish(Map<String, dynamic> review) async {
+    setState(() => _confirmingPublishId = null);
 
     setState(() => _busy = true);
     final response =
@@ -297,7 +288,9 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
-            if (!_connected) ...[
+            // §4, same as Leads: do not draw a button whose only outcome
+            // is a 403.
+            if (!_connected && (widget.session.me?.can('reviews.edit') ?? false)) ...[
               const SizedBox(height: 18),
               // Same reasoning as Leads: the module that reads the profile is
               // the one that offers to connect it, gated on `reviews.edit`.
@@ -306,6 +299,13 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 label: 'Business Profile',
                 startPath: '/social/business-profile/start',
                 onConnected: _load,
+              ),
+            ] else if (!_connected) ...[
+              const SizedBox(height: 16),
+              Text(
+                'Somebody who can manage Reviews needs to connect the profile.',
+                style: theme.textTheme.bodySmall,
+                textAlign: TextAlign.center,
               ),
             ],
           ],
@@ -442,11 +442,45 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                   FilledButton(
                     onPressed: _busy || (reply == null)
                         ? null
-                        : () => _publish(review),
+                        : () => _armPublish(review),
                     child: const Text('Publish'),
                   ),
                 ],
               ),
+              if (_confirmingPublishId == review['id'])
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'This goes live on Google under your business name, where '
+                        'anybody reading the review will see it. Google allows one '
+                        'reply per review, so publishing again replaces it.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: _busy
+                                ? null
+                                : () => setState(
+                                    () => _confirmingPublishId = null),
+                            child: const Text('Not yet'),
+                          ),
+                          const Spacer(),
+                          FilledButton(
+                            onPressed: _busy ? null : () => _publish(review),
+                            // Names the act rather than saying "Confirm", so the
+                            // button somebody presses last says what it does.
+                            child: const Text('Publish it'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ],
         ],

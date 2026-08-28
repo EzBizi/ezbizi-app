@@ -247,6 +247,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// Two different nothings, and they must not read the same.
   Widget _empty(ThemeData theme) {
     final connected = _anyGoogleAds;
+    final canConnect = widget.session.me?.can('leads.edit') ?? false;
 
     return Center(
       child: ConstrainedBox(
@@ -278,7 +279,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
               ),
               textAlign: TextAlign.center,
             ),
-            if (!connected) ...[
+            // §4: a control that is offered must be a control that works.
+            // Drawing Connect for somebody holding only `leads.view` offered a
+            // button whose entire outcome was a 403 — the permission check
+            // existed server-side and the screen simply did not ask.
+            if (!connected && canConnect) ...[
               const SizedBox(height: 18),
               // The button lives HERE rather than in Marketing: this is the
               // module that reads the account, and `leads.edit` is what gates
@@ -289,6 +294,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
                 label: 'Google Ads',
                 startPath: '/social/google-ads/start',
                 onConnected: _load,
+              ),
+            ] else if (!connected) ...[
+              const SizedBox(height: 16),
+              // Absent button, present explanation. Silence would read as "this
+              // tab is broken" to the person least able to tell the difference.
+              Text(
+                'Somebody who can manage Leads needs to connect the account.',
+                style: theme.textTheme.bodySmall,
+                textAlign: TextAlign.center,
               ),
             ],
           ],

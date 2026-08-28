@@ -75,12 +75,48 @@ void main() {
 
     expect(find.text('+1 (555) 123-4567'), findsWidgets);
   });
+
+  /// §4: a control that is offered must be a control that works.
+  ///
+  /// This shipped drawing Connect for anybody who could open the tab. Somebody
+  /// holding `leads.view` and not `leads.edit` pressed it and got a 403 — the
+  /// server check was right, the screen simply never asked.
+  testWidgets('Connect is not offered to somebody who cannot connect',
+      (tester) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      permissions: const ['leads.view'],
+    );
+
+    expect(find.text('Connect Google Ads'), findsNothing);
+    expect(
+      find.textContaining('Somebody who can manage Leads'),
+      findsOneWidget,
+      reason:
+          'An absent button with no explanation reads as a broken tab to the '
+          'person least able to tell the difference.',
+    );
+  });
+
+  testWidgets('Connect is offered to somebody who can connect', (tester) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      permissions: const ['leads.view', 'leads.edit'],
+    );
+
+    expect(find.text('Connect Google Ads'), findsOneWidget);
+  });
 }
 
 Future<void> _pump(
   WidgetTester tester, {
   required List<Map<String, dynamic>> leads,
   required List<Map<String, dynamic>> connections,
+  List<String> permissions = const ['leads.view', 'leads.edit'],
 }) async {
   tester.view.physicalSize = const Size(1200, 900);
   tester.view.devicePixelRatio = 1.0;
@@ -88,6 +124,16 @@ Future<void> _pump(
 
   final api = ApiClient(
     client: MockClient((request) async {
+      if (request.url.path.endsWith('/me')) {
+        return http.Response(
+          jsonEncode({
+            'data': {..._me, 'permissions': permissions},
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
       if (request.url.path.endsWith('/leads')) {
         return http.Response(
           jsonEncode({
@@ -110,6 +156,7 @@ Future<void> _pump(
   );
 
   final session = Session(api);
+  await tester.runAsync(() => session.adopt('tok'));
 
   await tester.pumpWidget(
     MaterialApp(
@@ -119,3 +166,33 @@ Future<void> _pump(
   );
   await tester.pumpAndSettle();
 }
+
+const _me = {
+  'id': 'u-1',
+  'name': 'Jose',
+  'email': 'jose@example.com',
+  'role': {'name': 'Manager'},
+  'has_avatar': false,
+  'preferences': <String, dynamic>{},
+  'organization': {
+    'id': 'org-1',
+    'name': 'Everdoors',
+    'franchise_label': 'Franchise',
+    'is_read_only': false,
+  },
+  'scope': {
+    'type': 'organization',
+    'id': 'org-1',
+    'label': 'Everdoors',
+    'path': ['Everdoors'],
+  },
+  'companies': [
+    {'id': 'co-1', 'name': 'Everdoors', 'parent_company_id': null},
+  ],
+  'franchises': [
+    {'id': 'fr-1', 'name': 'Connecticut', 'company_id': 'co-1'},
+  ],
+  'modules': [
+    {'key': 'leads', 'label': 'Leads', 'available': true, 'reachable': true},
+  ],
+};
