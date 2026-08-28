@@ -514,6 +514,15 @@ class NumbersController extends Controller
             'after_hours' => ['sometimes', Rule::in(PhoneNumber::AFTER_HOURS)],
             'after_hours_number' => ['sometimes', 'nullable', 'string', 'max:16'],
 
+            // Spoken before a recorded call connects. Blank means the built-in
+            // sentence — never silence, because this is the wording that
+            // discharges all-party consent.
+            'recording_notice' => ['sometimes', 'nullable', 'string', 'max:500'],
+
+            // Dialled when the steps above reach nobody while the line is
+            // OPEN. Distinct from after_hours_number, which is for CLOSED.
+            'fallback_number' => ['sometimes', 'nullable', 'string', 'max:16'],
+
             // Carrier-side settings. These are pushed to Twilio below, so a
             // save that Twilio refuses must not leave our row disagreeing.
             'emergency_address_sid' => ['sometimes', 'nullable', 'string', 'max:34'],
@@ -703,10 +712,29 @@ class NumbersController extends Controller
             'voicemail_transcribe' => (bool) $number->voicemail_transcribe,
             'capabilities' => $number->capabilities ?? [],
 
-            // A line with nowhere to ring answers every call with voicemail.
-            // The renderer decides this by `ring_group_id === null`, so the
-            // screen must judge it the same way rather than by its own rule.
-            'answers' => $number->ring_group_id !== null || $number->flow_id !== null,
+            'fallback_number' => $number->fallback_number,
+
+            // Null, not the default sentence: the field must come back empty
+            // so the form can show the placeholder rather than presenting the
+            // built-in wording as something this line chose.
+            'recording_notice' => $number->recording_notice,
+
+            // Whether a call reaches anybody.
+            //
+            // This used to be `ring_group_id !== null || flow_id !== null`,
+            // computed right here — a second rule, and a weaker one: it called
+            // a line healthy when its group existed but every member was at
+            // Do Not Disturb, which is the state that answers no calls while
+            // looking perfectly configured. Exactly the drift the Call flow
+            // screen exists to prevent, sitting in the payload that screen's
+            // sibling reads.
+            //
+            // ponytail: describe() runs a few finds per number, so this is
+            // O(n) queries over the visible lines. Fine at five; if an
+            // organization ever holds hundreds, eager-load the groups and
+            // presences rather than reintroducing a separate rule here.
+            'answers' => collect((new TwimlRenderer)->describe($number))
+                ->firstWhere('step', 'answer')['usable'] ?? false,
         ];
     }
 }

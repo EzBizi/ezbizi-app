@@ -34,7 +34,7 @@ final class TwimlRenderer
         }
 
         if ($number->record) {
-            $response->say(RecordingNotice::sentence(), ['language' => $language]);
+            $response->say(RecordingNotice::forNumber($number), ['language' => $language]);
         }
 
         if (! $outbound && $this->closed($number, $context)) {
@@ -214,6 +214,24 @@ final class TwimlRenderer
             'usable' => $reaches,
         ];
 
+        // Only worth a line when it changes the answer — a fallback on a line
+        // that already reaches somebody is never heard, and saying so would
+        // suggest it is doing something.
+        $fallback = trim((string) $number->fallback_number);
+        if ($fallback !== '') {
+            $steps[] = [
+                'step' => 'fallback',
+                'title' => $reaches
+                    ? 'Otherwise falls back to '.$fallback
+                    : 'Falls back to '.$fallback,
+                'detail' => $reaches
+                    ? 'Only if that group does not pick up. Tried once, then voicemail.'
+                    : 'Nobody above answers, so this number is dialled instead. '
+                        .'Tried once, then voicemail.',
+                'usable' => true,
+            ];
+        }
+
         return $steps;
     }
 
@@ -298,6 +316,50 @@ final class TwimlRenderer
     }
 
     /**
+     * The steps above named nobody usable: dial the fallback, else take a message.
+     *
+     * ── Why this can only fire on the first pass ─────────────────
+     *
+     * `dialAttributes` sets an `action`, so when this Dial ends Twilio posts
+     * back to afterDial(), which calls ringOrVoicemail() again — which reaches
+     * here again. Dialling the fallback unconditionally would ring it forever,
+     * billed per attempt, for as long as the caller held on.
+     *
+     * The batch counter already in the context is the guard: the action URL
+     * carries batch+1, so the second pass arrives with batch > 0 and takes a
+     * message instead. One fallback attempt, then voicemail, no loop.
+     *
+     * Distinct from after-hours forwarding, which answers a different question
+     * — that one is "we are closed", this one is "we are open and nobody is
+     * there".
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function noneUsable(
+        VoiceResponse $response,
+        PhoneNumber $number,
+        string $language,
+        array $context,
+    ): void {
+        $fallback = trim((string) $number->fallback_number);
+        $firstPass = (int) ($context['batch'] ?? 0) === 0;
+
+        if ($fallback === '' || ! $firstPass) {
+            $this->voicemail($response, $number, $language, $context);
+
+            return;
+        }
+
+        $dial = $response->dial(null, $this->dialAttributes(
+            $number,
+            timeout: null,
+            sequential: false,
+            context: $context,
+        ));
+        $dial->number($fallback);
+    }
+
+    /**
      * @param  array<string, mixed>  $context
      */
     private function forward(VoiceResponse $response, PhoneNumber $number, array $context): void
@@ -320,7 +382,7 @@ final class TwimlRenderer
                 : PhoneRingGroup::query()->find($number->ring_group_id));
 
         if ($group === null || $connection === null) {
-            $this->voicemail($response, $number, $language, $context);
+            $this->noneUsable($response, $number, $language, $context);
 
             return;
         }
@@ -384,7 +446,7 @@ final class TwimlRenderer
             }
         }
 
-        $this->voicemail($response, $number, $language, $context);
+        $this->noneUsable($response, $number, $language, $context);
     }
 
     /**

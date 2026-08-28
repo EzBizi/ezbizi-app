@@ -551,6 +551,8 @@ class _LineForm extends StatefulWidget {
 class _LineFormState extends State<_LineForm> {
   late final TextEditingController _label;
   late final TextEditingController _forwardTo;
+  late final TextEditingController _fallback;
+  late final TextEditingController _notice;
   late String? _groupId;
   late String? _scheduleId;
   late bool _record;
@@ -565,6 +567,8 @@ class _LineFormState extends State<_LineForm> {
     super.initState();
     _label = TextEditingController(text: widget.line.label);
     _forwardTo = TextEditingController(text: widget.line.afterHoursNumber ?? '');
+    _fallback = TextEditingController(text: widget.line.fallbackNumber ?? '');
+    _notice = TextEditingController(text: widget.line.recordingNotice ?? '');
     _groupId = widget.line.ringGroupId;
     _scheduleId = widget.line.hoursScheduleId;
     _record = widget.line.record;
@@ -576,6 +580,8 @@ class _LineFormState extends State<_LineForm> {
   void dispose() {
     _label.dispose();
     _forwardTo.dispose();
+    _fallback.dispose();
+    _notice.dispose();
     super.dispose();
   }
 
@@ -681,6 +687,21 @@ class _LineFormState extends State<_LineForm> {
           ),
         ],
 
+        const SizedBox(height: 16),
+        TextField(
+          controller: _fallback,
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(
+            labelText: 'Fallback number',
+            hintText: '+17865550123',
+            helperText:
+                'Dialled when the steps above reach nobody. Tried once, then '
+                'voicemail. Leave empty to go straight to voicemail.',
+            helperMaxLines: 3,
+            border: OutlineInputBorder(),
+          ),
+        ),
+
         const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -692,6 +713,27 @@ class _LineFormState extends State<_LineForm> {
             style: theme.textTheme.bodySmall,
           ),
         ),
+        // Only when recording is on: this sentence is what makes the recording
+        // lawful, so it is shown next to the switch that starts it rather than
+        // filed away somewhere the person turning recording on will not look.
+        if (_record) ...[
+          const SizedBox(height: 8),
+          TextField(
+            controller: _notice,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: 'What callers are told',
+              hintText: 'This call may be recorded.',
+              helperText:
+                  'Spoken before the call connects. This wording is what gets '
+                  'the caller’s consent, so it has to be true where you '
+                  'operate. Left empty, callers hear the sentence above.',
+              helperMaxLines: 4,
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _transcribe,
@@ -731,6 +773,12 @@ class _LineFormState extends State<_LineForm> {
                       'after_hours_number': _afterHours == 'forward'
                           ? _forwardTo.text.trim()
                           : null,
+                      'fallback_number': _fallback.text.trim(),
+
+                      // Sent even when recording is off, so the wording a
+                      // business already chose survives switching it off and
+                      // on again.
+                      'recording_notice': _notice.text.trim(),
 
                       // Only what the carrier panel actually reports having
                       // changed — sending an untouched emergency address back
@@ -764,6 +812,8 @@ class _Line {
     this.ringGroupId,
     this.hoursScheduleId,
     this.emergencyAddressSid,
+    this.fallbackNumber,
+    this.recordingNotice,
   });
 
   final String id;
@@ -787,6 +837,10 @@ class _Line {
   final bool voiceCallerIdLookup;
   final bool voicemailTranscribe;
   final String? emergencyAddressSid;
+  final String? fallbackNumber;
+
+  /// Null means the built-in consent sentence, never silence.
+  final String? recordingNotice;
 
   String get heading => label.trim().isEmpty || label == e164
       ? e164
@@ -818,6 +872,8 @@ class _Line {
         voiceCallerIdLookup: row['voice_caller_id_lookup'] == true,
         voicemailTranscribe: row['voicemail_transcribe'] == true,
         emergencyAddressSid: row['emergency_address_sid'] as String?,
+        fallbackNumber: row['fallback_number'] as String?,
+        recordingNotice: row['recording_notice'] as String?,
       );
     }).toList(growable: false);
   }
