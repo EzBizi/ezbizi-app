@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-26
 **Artifact:** `docs/previews/tasks-layouts.html`
-**Status:** Owner selected **A — Dense Grid** on 2026-08-26; no application code has been started
+**Status:** Owner selected **A — Dense Grid** on 2026-08-26; production goldens approved on 2026-08-28
 **Selected direction:** **A — Dense Grid**
 **Prior Codex recommendation:** C — Board + Detail
 
@@ -53,3 +53,17 @@ The HTML was opened through a local web server and checked in a browser at a 144
 - Focus-visible styling, reduced-motion behavior, 40–44px primary controls, truncation, status contrast, and mobile bottom navigation were inspected.
 
 Three issues found during this pass were corrected in the artifact: task rows gained keyboard semantics, a bubbling size-control collision that immediately reclosed mobile detail was isolated, and duplicate/unwired mobile Back controls were replaced with one working control.
+
+## Production golden approval
+
+**Date:** 2026-08-28
+
+**Command:** `cd client && flutter test test/tasks/tasks_golden_test.dart --update-goldens`
+
+**Result:** 11 tests passed; every checked-in PNG was then inspected at its native size against the selected A — Dense Grid direction.
+
+The approved set covers directory, populated board, and task detail at both 1440×900 and 375×812, plus desktop board settings, import reconciliation, concurrent-edit conflict, and empty directory, and the mobile access-refusal state. The desktop board preserves the dense grouped grid, internally scrollable operational columns, side directory, and bounded detail panel. The mobile board converts the same governed rows to touch-first cards and the detail becomes a full-screen route. Settings and import remain bounded right-side work surfaces, and conflict/refusal states keep the governing context without rendering stale content.
+
+Visual inspection found no overflow stripes, clipped primary actions, unintended page-wide scrolling, stale overlays, or mismatched dimensions. Flutter's deterministic test font is intentionally visible in these baselines; layout, color, spacing, grouping, control presence, and responsive behavior—not host font rasterization—are the comparison contract.
+
+**Approved:** all 11 production goldens in `client/test/goldens/tasks/` faithfully represent the accepted A — Dense Grid direction and are approved as the Task 19 responsive baselines.
