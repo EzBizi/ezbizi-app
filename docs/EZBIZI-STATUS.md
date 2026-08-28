@@ -1,6 +1,6 @@
 # EzBizi — where things stand
 
-**2026-08-27.** One page. If something contradicts another document, this one is right —
+**2026-08-28.** One page. If something contradicts another document, this one is right —
 which only works if it is the newest, and on 6 August it was not: it claimed the off-site
 backup was still outstanding some three hours after `EZBIZI-TODO.md` recorded it closed.
 **Update this page in the same pass as the thing it describes, or delete the claim.** The four
@@ -33,19 +33,43 @@ rather than for trying harder.
 | 3 — cross-cutting | **Done.** Automation engine, notifications, staff control plane, subscription enforcement, import/export. |
 | 4 — expansion | **Dashboards done** — the widget picker is replaced by module glances. One box per reachable sidebar tab, chart first, one period, cannot hide. Glances now include stock health, fleet due, customer book, jobs today/line, HR active/inactive, inspections by name. Spec `docs/superpowers/specs/2026-08-24-dashboard-module-boxes-design.md`. A1 Tools modules next, one at a time. **Inspection is live** as release `20260819130615` (2026-08-19). Builder publishes written-once versions; Generated Reports are frozen, searchable and archivable; New Inspection is a personal draft that submits to a report. Named inspections are granted per role the way inboxes are. Spec `docs/superpowers/specs/2026-08-18-inspection-design.md`, plan `docs/superpowers/plans/2026-08-18-inspection.md`. Five tables migrated, five `inspection.*` permissions synced (47 total), health-checked as `www-data` before the symlink swap. Administrator holds the tab implicitly. Other roles see it only after a grant on Roles, and only start a named inspection they have been offered. **Social Media Management** Posts layout is live. Monthly Calendar fills the pane width and height so the whole month is on screen (v0.0.0065). Catalogue rows use each network’s real brand mark (v0.0.0070). Connect for all nine networks: one `social_sign_ins` table, per-network OAuth start/callback/status (Facebook Pages, Instagram Login, Threads, LinkedIn, TikTok, Pinterest, YouTube, X). Bluesky is handle + app password. Catalogue is usable when the matching env is on the box; missing env is a sentence, not a 500. Live Connect still needs each console’s redirect URI and keys on `.env` — never in git. Compose/publish is still later. **TikTok and Pinterest are live** (2026-08-25): keys on the box, redirect URIs registered, one real TikTok connection made end-to-end. Connections can be disconnected (`DELETE /social/connections/{id}`, `marketing.edit`, view-scoped, audited); the catalogue says Connected and the panel offers Reconnect. The OAuth callback popup is EzBizi-styled and personalised — a wired EzBizi tile and the network's own mark, read from `client/assets/social`, animated, red and broken when the sign-in refuses. **Place survives a reload** (v0.0.0064): the address bar holds the current destination, so refreshing Marketing does not dump you on Dashboard. **Inventory is live** (client `v0.0.0081`). Chips Stock · Items · Orders · Locations. Items and locations sit on organization / company / franchise; quantity is (item, location). Adjust, transfer, purchase/receive, and issue (job XOR note). Costs stay hidden without `inventory.financials`. Five `inventory.*` permissions, thirteen tables. Spec `docs/superpowers/specs/2026-08-24-inventory-design.md`. Filing follows the current view (v0.0.0082): looking at A-1 Chimney cannot file on Everdoors. Buying, issuing and transferring are on screen (v0.0.0084). Sales orders are on Orders (v0.0.0091): a Customer or a counter note; stock leaves on fulfill. **Services is live** (client `v0.0.0093`). Catalogue of work the company sells: name, square photo, price, description, one label, one group. Settings chip for labels and groups. Four `services.*` permissions. Spec `docs/superpowers/specs/2026-08-25-services-design.md`. **Fleet Management is live** as release `20260821204600` (client `v0.0.0066`; this build is `v0.0.0067`). Vehicles are a company register: owned and rented periods, insurance, service, who has the keys, photos. Payments stay hidden without financials. Six `fleet_management.*` permissions, six tables. Spec `docs/superpowers/specs/2026-08-21-fleet-management-design.md`. **HR contract catalog:** eleven role templates (A-1 wording, EzBizi grammar). One template per role — hourly or salary is a Pay basis question on onboarding (`shown_when`), not four named variants. Raise is optional. Home address is core; business address is `organization.address`. `php artisan hr:publish-onboarding-catalog "{organization name}" --replace` loads them; they are not auto-installed. An in-progress onboarding can be cancelled (v0.0.0075); the row stays and the invitation is free for a new start. A fully signed agreement cannot. **Email** inbox listing fetches conversation headers together, so opening the tab is one wait rather than one per row (v0.0.0076). **Settings** that are a choice from a known list — timezone, language, paper, fiscal year — are selectors (v0.0.0077). Timezone is hours from UTC, not a city list; every selector uses the same outlined menu (v0.0.0078). Inactivity is minutes/hours/days; job statuses have readable names and rename existing jobs; the business address is street/city/state/ZIP with a lookup (v0.0.0079). **Settings** is one sidebar destination: Organization, the cascade, and Roles live as chips inside it (v0.0.0080). **Phone is live** as release `20260825125038` (2026-08-25, client `v0.0.0086`). Twilio at organization or company; numbers at org/company/franchise; Call / Records / Settings. Spec `docs/superpowers/specs/2026-08-24-phone-design.md`. **Clock in is live** as release `20260825160446` (2026-08-25, client `v0.0.0094`). Organization setting, off by default; role grant for the top-bar button; Human Resources day list in the view timezone. Spec `docs/superpowers/specs/2026-08-25-clock-in-design.md`. |
 
-## Tasks — design and Dense Grid layout accepted
+## Tasks — Phase 1, 2026-08-28
 
-The owner accepted the Codex–Grok consensus and selected **A — Dense Grid** on 2026-08-26. The desktop/375px alternatives and decision record are in `docs/previews/tasks-layouts.html` and `docs/previews/tasks-layouts-review.md`. Tasks is not built; it is ready for explicit implementation authorization. Production-capable file paths remain gated on the Phase 1 plan's Task 10A off-instance restore proof.
+Tasks replaces ordinary Monday board use with the owner-selected **A — Dense Grid** on desktop
+and touch-first cards and full-screen detail on phones. Boards are filed only on the active
+organization, company, or franchise view; scope-visible boards still require assignment reach,
+and private boards narrow access to active members. Board ownership and `tasks.manage` govern
+administration and content-blind private-board recovery. The seven role grants are
+`tasks.view`, `create`, `edit`, `comment`, `delete`, `export`, and `manage`.
 
-## Tasks — production restore gate passed, 2026-08-27
+Phase 1 includes folders and favorites; groups; tasks and one subtask level; accountable owner,
+collaborators, Watch/Mute, updates, mentions, activity and governed files; configurable statuses
+and priorities; Text, Number, Checkbox, Date, People, Label, HTTPS Link, and File custom columns;
+inline and atomic bulk edits; saved personal/shared views, filters, sorting, grouping, search,
+My Tasks, typed task links to authorized EzBizi records, dashboard glance, and responsive board
+administration. Every write is server-authorized and versioned; a lost permission, view, private
+membership, or linked-record grant evicts or redacts cached labels, filenames, notification
+content, and unread counts rather than leaving stale work visible.
 
-Task 10A passed through the normal production release path at
-`2026-08-27T23:08:53+00:00`. The fresh encrypted off-instance copy restored exactly with
-`ok=true`, `stage=restore-check`, `offsite=true`, private-file manifest version 1,
-17 files / 735,248 bytes, and no errors. The restore checker still rejects missing or
-extra rows, mismatches, unsafe paths, links, non-file entries, corrupt encryption or
-archives, and a local-only copy. Production-capable Tasks import staging, update
-attachments, and File-column paths may now open under their normal authorization rules.
+Nine triggers are live: created, owner changed, status changed, due date changed, completed,
+reopened, update added, archived, and overdue. Six actions are live: create a task, assign owner,
+set status, set/clear due date, move group, and add a system update. Notifications are durable
+and open typed in-app routes; email delivery remains a later notification-channel project, not a
+silent Phase 1 promise.
+
+CSV/XLSX import is bounded, previewed, mapped, one-use, formula-safe, and atomic. CSV/XLSX export
+and the owner-only versioned JSON archive manifest are available under `tasks.export`; the JSON
+manifest excludes attachment bytes and is **not restorable** because no archive importer exists.
+FileStore's production gate passed at `2026-08-27T23:08:53+00:00`: a fresh encrypted off-instance
+copy restored exactly (`ok=true`, manifest v1, 17 files / 735,248 bytes, no errors), so authorized
+attachment, File-column, and import-staging paths are open.
+
+Phase 2 remains Kanban, Calendar, Timeline/Gantt, Dependencies, Workload, richer recurrence, and
+optional server-push refresh. Phase 3 remains forms, reusable templates, chart/dashboard views,
+formula/roll-up/connected-board columns, external guests, direct monday.com migration and other
+integrations, advanced reporting, and any controlled public/embed surfaces. The accepted design,
+plan, review record, and approved 1440px/375px goldens live under `docs/superpowers/` and
+`client/test/goldens/tasks/`.
 
 ## EZ Leads — all three modules live, 2026-08-27
 

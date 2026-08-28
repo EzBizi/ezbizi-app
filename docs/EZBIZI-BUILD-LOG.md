@@ -502,3 +502,19 @@ not "Facebook Page" or "Instagram professional". Keys on the wire are
 unchanged.
 
 Client `v0.0.0068`.
+
+---
+
+## 2026-08-28 — Tasks Phase 1
+
+EzBizi now covers ordinary Monday board work without creating a second workspace model. A board
+is filed on the active organization, company, or franchise view; private membership only narrows
+that exact-view access. Dense desktop grids become grouped cards and full-screen detail on phones.
+
+Phase 1 includes groups, one-level subtasks, eight typed custom columns, My Tasks and saved views,
+updates/files/watchers/activity, governed EzBizi record links, durable in-app notifications, nine
+automation triggers, six actions, and bounded CSV/XLSX transfer. File-bearing paths opened only
+after the encrypted off-instance private-file restore proved exact. The JSON archive is a manifest,
+not a restorable backup. Planning views and the broader platform replacement remain Phase 2/3.
+
+Client `v0.0.0111`.

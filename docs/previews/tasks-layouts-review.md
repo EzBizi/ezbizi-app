@@ -34,7 +34,7 @@ The owner selected **A — Dense Grid**. Production UI planning therefore uses A
 
 Before that decision, Codex recommended C because it keeps description and conversation persistently visible while preserving board position. That recommendation is retained for provenance, but it does not override the owner's A selection and does not authorize merging B or C elements into A without a later decision.
 
-The selection closes the screen-design gate; it is not authorization to start Flutter or backend implementation. The Phase 1 plan remains the execution contract, and its Task 10A file-storage proof still gates production-capable file paths.
+The selection closed the screen-design gate. Full Phase 1 implementation was later authorized and the Task 10A file-storage proof passed before production-capable file paths opened; the Phase 1 plan remains the execution record.
 
 ## Verification completed
 

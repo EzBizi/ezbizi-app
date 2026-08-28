@@ -8,6 +8,19 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0111',
+      date: '28 Aug 2026',
+      items: [
+        'Tasks: make boards for the organization, company, or franchise you are '
+            'looking at, then group, assign, follow, and finish the work.',
+        'The dense desktop table becomes touch-friendly cards and full task '
+            'details on a phone. My Tasks, saved views, filters, and search keep '
+            'large boards manageable.',
+        'Updates, files, linked EzBizi records, notifications, automations, and '
+            'safe spreadsheet import and export stay with the task.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0110',
       date: '27 Aug 2026',
       items: [
@@ -662,9 +675,7 @@ class VersionHistory {
     VersionRelease(
       version: '0.0.0038',
       date: '20 Aug 2026',
-      items: [
-        'Fleet Management appears in the sidebar as coming soon.',
-      ],
+      items: ['Fleet Management appears in the sidebar as coming soon.'],
     ),
     VersionRelease(
       version: '0.0.0037',
@@ -738,9 +749,7 @@ class VersionHistory {
     VersionRelease(
       version: '0.0.0028',
       date: '13 Aug 2026',
-      items: [
-        'Automations can fire when a shared inbox receives mail.',
-      ],
+      items: ['Automations can fire when a shared inbox receives mail.'],
     ),
     VersionRelease(
       version: '0.0.0027',
@@ -768,9 +777,7 @@ class VersionHistory {
     VersionRelease(
       version: '0.0.0024',
       date: '13 Aug 2026',
-      items: [
-        'The chip palette on contracts no longer cuts itself in half.',
-      ],
+      items: ['The chip palette on contracts no longer cuts itself in half.'],
     ),
     VersionRelease(
       version: '0.0.0023',
@@ -834,16 +841,12 @@ class VersionHistory {
     VersionRelease(
       version: '0.0.0015',
       date: '11 Aug 2026',
-      items: [
-        'A contract can be written in the app.',
-      ],
+      items: ['A contract can be written in the app.'],
     ),
     VersionRelease(
       version: '0.0.0014',
       date: '11 Aug 2026',
-      items: [
-        'Two critical holes the rules audit found, both closed.',
-      ],
+      items: ['Two critical holes the rules audit found, both closed.'],
     ),
     VersionRelease(
       version: '0.0.0013',
@@ -855,16 +858,12 @@ class VersionHistory {
     VersionRelease(
       version: '0.0.0012',
       date: '11 Aug 2026',
-      items: [
-        'Contracts, attachments, and sensitive values — holes closed.',
-      ],
+      items: ['Contracts, attachments, and sensitive values — holes closed.'],
     ),
     VersionRelease(
       version: '0.0.0011',
       date: '11 Aug 2026',
-      items: [
-        'Human Resources: invite a second person into an organization.',
-      ],
+      items: ['Human Resources: invite a second person into an organization.'],
     ),
     VersionRelease(
       version: '0.0.0010',
@@ -885,9 +884,7 @@ class VersionHistory {
     VersionRelease(
       version: '0.0.0008',
       date: '10 Aug 2026',
-      items: [
-        'Workflows are Automations, and creating one has a screen.',
-      ],
+      items: ['Workflows are Automations, and creating one has a screen.'],
     ),
     VersionRelease(
       version: '0.0.0007',
@@ -899,9 +896,7 @@ class VersionHistory {
     VersionRelease(
       version: '0.0.0006',
       date: '10 Aug 2026',
-      items: [
-        'The app no longer reloads itself for every change.',
-      ],
+      items: ['The app no longer reloads itself for every change.'],
     ),
     VersionRelease(
       version: '0.0.0005',
@@ -927,9 +922,7 @@ class VersionHistory {
     VersionRelease(
       version: '0.0.0002',
       date: '7 Aug 2026',
-      items: [
-        'Settings you can actually set, and companies you can edit.',
-      ],
+      items: ['Settings you can actually set, and companies you can edit.'],
     ),
     VersionRelease(
       version: '0.0.0001',
