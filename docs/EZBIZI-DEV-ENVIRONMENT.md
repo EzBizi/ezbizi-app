@@ -88,7 +88,7 @@ green gate. Three are missing libraries; one was fixed.
 | dompdf | `Class "Dompdf\Dompdf" not found` — PDF tests | **fixed 2026-08-19** — `composer.phar install` pulled `dompdf/dompdf` from the lockfile; it had been missing from `vendor/`. |
 | phpspreadsheet | `Class "PhpOffice\PhpSpreadsheet\Spreadsheet" not found` — six Tasks XLSX transfer tests | **fixed 2026-08-28** — same shape as the dompdf row: in `composer.json` and the lockfile, absent from this machine's `vendor/`. `composer.phar install` pulled it. |
 | Windows paths | `ErrorAuditTest::test_a_file_scope_closure_does_not_carry_the_deploy_root_into_the_trace` — the trace comes back with `tests\Fixtures\…` backslashes and the assertion wants the forward-slash form | **Windows only** |
-| Local TLS | `ImapReplySenderTest::test_a_credential_containing_a_line_break_is_refused` — the connection to the test server on `localhost` fails on the certificate *before* the credential is validated, so the refusal names the certificate rather than the line break | **Windows only** |
+| Local TLS | **Twelve red, not one** — every `ImapTransportTest` and `ImapReplySenderTest` case that opens the fake IMAP/SMTP server. The connection to `localhost` fails on the certificate *before* anything the test is about, so each one reports the certificate instead (e.g. `test_a_credential_containing_a_line_break_is_refused` names the certificate rather than the line break). Confirmed 2026-08-28. | **Windows only** |
 
 **A full local run is no longer the nine-red of 2026-08-19 morning.** GD and Dompdf are on this machine now (`HrOnboardingDocumentPdfTest` 13/13). Two Windows-only rows remain (path separators in a stack trace, localhost TLS). The deploy gate does **not** run here — `scripts/deploy.sh` pipes `git archive main` to `/opt/ezbizi-test` on the box. A green local run is still the weaker signal.
 
@@ -130,6 +130,33 @@ them to a suite that runs once; leave the cleanup alone. And if a filtered subse
 red, run the whole directory before believing it.
 
 Run the full suite with `php -d memory_limit=1G vendor/bin/phpunit`. Plain `php artisan test` dies with a 128M exhaustion partway through — the parent's `-d` does not reach the processes it spawns.
+
+### Never run tests against the shared `ezbizi_testing` database
+
+Every session shares one working tree and one MySQL. `RefreshDatabase` drops and rebuilds the
+whole schema, so two concurrent runs destroy each other mid-run and neither can tell — the
+failures land in suites you never touched.
+
+The tell is an impossible pair: `Table 'ezbizi_testing.migrations' doesn't exist` in one test
+and `Table 'users' already exists` in the next. Also seen as "table definition has changed",
+"prepared statement needs re-prepared", and unknown-column errors for columns that plainly
+exist. It reads exactly like a half-failed `migrate:fresh` — which is what everybody diagnoses
+first, and it is not. Before believing that diagnosis, check whether anyone else is running.
+
+Give yourself your own database and put it in front of phpunit as a real environment variable:
+
+```bash
+DB_DATABASE=ezbizi_testing_<yourmodule> php -d memory_limit=1G vendor/bin/phpunit
+```
+
+`phpunit.xml`'s `<env>` declarations carry no `force="true"`, so a real environment variable
+wins. Create it once with `CREATE DATABASE ezbizi_testing_<yourmodule>`; nothing to commit and
+nothing for anyone else to trip over.
+
+Confirmed independently on six modules, each with its own numbers: Inventory 107 errors →
+112/112. Email 18 errors → 11, and those 11 are the Windows TLS row above rather than anything
+real. Fleet 65 errors → 35/35 and 22/22. Services 43 errors → 11/11. Marketing 10 errors →
+32/32. Phone deadlocks and phantom missing tables → 150/150.
 
 The private customer-file backup has a disposable, database-free proof that uses the same
 archive creator and restore verifier as the nightly scripts:
