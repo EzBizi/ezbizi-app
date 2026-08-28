@@ -32,6 +32,7 @@ final class TaskDetailsController extends TaskApiController
             'updates.author', 'updates.mentions.user', 'updates.versions.editor',
             'updates.attachments.uploadedBy',
             'recordLinks',
+            'blockedByEdges.blocker',
             'watchPreferences' => fn ($query) => $query->where('user_id', $request->user()->id),
             'activities' => fn ($query) => $query->latest('created_at')->limit(200),
             'subtasks' => fn ($query) => $query->active()->orderBy('position'),
@@ -89,6 +90,12 @@ final class TaskDetailsController extends TaskApiController
                 ? ['link_id' => $link->id, 'available' => false, 'type' => $definition->label()]
                 : ['link_id' => $link->id, 'available' => true, ...$definition->present($record)];
         })->values();
+        $data['blocked_by'] = $task->blockedByEdges->map(fn ($edge) => [
+            'id' => $edge->id,
+            'task_id' => $edge->blocker_task_id,
+            'number' => $edge->blocker?->number,
+            'title' => $edge->blocker?->title,
+        ])->values();
         $data['activities'] = $task->activities->map(fn ($activity) => [
             'id' => $activity->id,
             'actor_user_id' => $activity->actor_user_id,
@@ -105,6 +112,7 @@ final class TaskDetailsController extends TaskApiController
             ])->values()->all(),
             $data['actions'],
             $data['record_links']->all(),
+            $data['blocked_by']->all(),
         ], JSON_THROW_ON_ERROR));
 
         $response = response()->json(['data' => $data])->setEtag($etag);

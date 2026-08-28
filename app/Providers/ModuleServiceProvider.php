@@ -169,6 +169,18 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'The scheduled check first observed unfinished late work.',
                         isRaised: true,
                     ),
+                    new TriggerDefinition(
+                        key: 'task.dependency_added',
+                        label: 'Dependency added',
+                        description: 'A "blocks" edge was drawn between two tasks on the same board.',
+                        isRaised: true,
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.dependency_removed',
+                        label: 'Dependency removed',
+                        description: 'A "blocks" edge between two tasks was removed.',
+                        isRaised: true,
+                    ),
                 ],
                 automationActions: [
                     new ActionDefinition(

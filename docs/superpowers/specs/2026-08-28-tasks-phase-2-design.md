@@ -153,20 +153,14 @@ at 23:00 must not appear on the wrong day for a viewer in another timezone.
 
 ---
 
-## 8. Timeline / Gantt, and `start_date`
+## 8. Timeline / Gantt, and `start_on`
 
-`tasks` gains `start_date` — a nullable date beside `due_date`, structural rather
-than a custom column.
-
-The reason it is structural: a per-board Timeline column would make every
-cross-board view handle boards that lack it, add a join and a null branch to
-every query, and make Timeline a configuration people must discover. One nullable
-field on the core table costs one migration and gives every board a Timeline.
-
-It is **additive to the task response**, which matters on 2026-08-28: App Store
-review is live against a frozen client and `docs/ACTIVE-CONSTRAINTS.md` forbids
-changing an existing response shape. A new nullable field is permitted; renaming
-or removing one is not.
+Timeline needs no new column. `tasks.start_on` already exists — Phase 1 shipped
+it beside `due_on` (`2026_08_25_171000_create_task_core_tables.php`) — and it is
+structural rather than a per-board column, which is exactly the shape Timeline
+needs: no cross-board view has to handle boards that lack it, no join, no null
+branch invented for this feature. Phase 2 renders straight off the two dates
+every task already carries.
 
 Rendering degrades by design:
 
@@ -176,8 +170,8 @@ Rendering degrades by design:
 - neither → not drawn, and counted in the omitted total.
 
 Dragging a bar's edge writes that date through the existing writer. Dragging the
-whole bar writes both, in one transaction, at one version. `start_date` after
-`due_date` is refused with a sentence; it is not silently swapped.
+whole bar writes both, in one transaction, at one version. `start_on` after
+`due_on` is refused with a sentence; it is not silently swapped.
 
 Dependency lines are drawn between bars. They are lines. See §9.
 
@@ -349,12 +343,13 @@ New:
 
 Changed:
 
-- `tasks` gains `start_date` (nullable date) and `recurrence` (nullable JSON,
-  validated by a codec, never read by key order).
+- `tasks` gains `recurrence` (nullable JSON, validated by a codec, never read
+  by key order). `start_on` already exists — Phase 1 shipped it — and needs no
+  change.
 - `task_views` configuration moves to `schema:2` with `presentation` and `window`.
 
-Indexes: `(board_id, start_date, due_date)` for timeline and calendar windows;
-`(organization_id, owner_id, due_date)` for workload; `(blocked_task_id)` and
+Indexes: `(board_id, start_on, due_on)` for timeline and calendar windows;
+`(organization_id, owner_id, due_on)` for workload; `(blocked_task_id)` and
 `(blocker_task_id)` for edge lookup in both directions.
 
 MySQL is the truth. JSON key order is never asserted — the `recurrence` codec

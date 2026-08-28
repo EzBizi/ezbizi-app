@@ -27,6 +27,7 @@ class Task extends Model implements CarriesAutomationScope, HoldsPersonalData
     protected $fillable = [
         'title', 'description', 'description_plain', 'owner_user_id',
         'status_option_id', 'priority_option_id', 'start_on', 'due_on',
+        'recurrence',
         'completed_at', 'completed_by', 'cancelled_at', 'cancelled_by',
         'created_by', 'updated_by', 'archived_at',
     ];
@@ -35,6 +36,7 @@ class Task extends Model implements CarriesAutomationScope, HoldsPersonalData
     {
         return [
             'start_on' => 'date', 'due_on' => 'date', 'due_revision' => 'integer',
+            'recurrence' => 'array',
             'completed_at' => 'datetime', 'cancelled_at' => 'datetime',
             'position' => 'integer', 'version' => 'integer', 'detail_version' => 'integer',
             'archived_at' => 'datetime',
@@ -212,5 +214,15 @@ class Task extends Model implements CarriesAutomationScope, HoldsPersonalData
     public function recordLinks(): HasMany
     {
         return $this->hasMany(TaskRecordLink::class);
+    }
+
+    /**
+     * Edges where this task is the one waiting — its blockers (task-4 brief).
+     * Display only: `blocked_by` is drawn from this on task detail and on
+     * Timeline rows, and nothing here refuses a completion.
+     */
+    public function blockedByEdges(): HasMany
+    {
+        return $this->hasMany(TaskDependency::class, 'blocked_task_id');
     }
 }

@@ -96,6 +96,7 @@ use App\Http\Controllers\Api\Tasks\TaskBulkController;
 use App\Http\Controllers\Api\Tasks\TaskCollaboratorsController;
 use App\Http\Controllers\Api\Tasks\TaskColumnsController;
 use App\Http\Controllers\Api\Tasks\TaskColumnValuesController;
+use App\Http\Controllers\Api\Tasks\TaskDependenciesController;
 use App\Http\Controllers\Api\Tasks\TaskDetailsController;
 use App\Http\Controllers\Api\Tasks\TaskDuplicationController;
 use App\Http\Controllers\Api\Tasks\TaskExportsController;
@@ -480,6 +481,8 @@ Route::prefix('v1')
             Route::get('tasks/{task}/record-links/search', [TaskRecordLinksController::class, 'search']);
             Route::post('tasks/{task}/record-links', [TaskRecordLinksController::class, 'store']);
             Route::delete('tasks/{task}/record-links/{link}', [TaskRecordLinksController::class, 'destroy']);
+            Route::post('tasks/{task}/dependencies', [TaskDependenciesController::class, 'store']);
+            Route::delete('tasks/dependencies/{dependency}', [TaskDependenciesController::class, 'destroy']);
             Route::post('tasks/{task}/archive', [TasksController::class, 'archive']);
             Route::post('tasks/{task}/restore', [TasksController::class, 'restore']);
             Route::put('tasks/{task}/columns/{column}', [TaskColumnValuesController::class, 'update']);

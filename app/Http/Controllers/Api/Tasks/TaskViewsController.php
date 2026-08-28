@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\TaskBoardAccess;
 use App\Support\Tasks\TaskStructureConflict;
+use App\Support\Tasks\TaskViewCodec;
 use App\Support\Tasks\TaskViewConflict;
 use App\Support\Tasks\TaskViewWriter;
 use Illuminate\Http\JsonResponse;
@@ -21,6 +22,7 @@ final class TaskViewsController extends TaskApiController
     public function __construct(
         private readonly TaskBoardAccess $access,
         private readonly TaskViewWriter $writer,
+        private readonly TaskViewCodec $codec,
     ) {}
 
     public function index(Request $request, TaskBoard $board): JsonResponse
@@ -197,8 +199,10 @@ final class TaskViewsController extends TaskApiController
 
     private function present(TaskView $view, User $actor, TaskBoard $board, ViewScope $scope): array
     {
-        $configuration = $view->configuration;
-        $configuration['column_widths'] = (object) ($configuration['column_widths'] ?? []);
+        // Upgrade on read: a view stored under schema 1 comes back to every client at
+        // schema 2, with presentation and window added alongside every schema 1 field at
+        // its schema 1 meaning. Nothing here is written back to storage.
+        $configuration = $this->codec->decode($board, $view->configuration, (bool) $view->is_permanent_main);
 
         return [
             'id' => $view->id,
