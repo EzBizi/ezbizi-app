@@ -110,9 +110,26 @@ delete a group a service still names. Deleting a user is already governed by §9
 
 - `assigned_role_id` holds **no personal data** — a role is not somebody's name. Same
   reasoning as `InspectionDefinitionGrant`.
-- `performed_by_user_id` **is** personal data and needs a `StatesRetention` sentence:
-  it is the record of who performed work for a customer, kept as long as the job is,
-  and nulled on erasure while the job survives.
+- `performed_by_user_id` **is** personal data and needs a `StatesRetention` sentence.
+
+> **Corrected 2026-08-28, during implementation.** The first version of this bullet said the
+> key is "nulled on erasure while the job survives". That is **wrong**, and it was wrong
+> about how this codebase works rather than merely imprecise. §9 erasure never deletes a
+> `User` row — `User::retention()` (`app/Models/User.php:60-68`) says erasing a person
+> "means anonymising it rather than removing the row", and `Anonymiser` is explicit that it
+> anonymises in place. So the migration's `nullOnDelete()` never fires under erasure, and a
+> policy promising nulling would be a false statement in the repo's own compliance test —
+> exactly what stating a policy here was meant to prevent.
+>
+> The true sentence: the key is **kept**. The person's identity is erased at its one home,
+> `users`, and `jobs.performed_by_user_id` then points at a record with no name in it. The
+> existing correct precedent is `Attachment::personalDataHeld()`'s `uploaded_by_user_id`,
+> which uses `Erasure::keep(...)` for this exact situation — copy its conclusion, not just
+> its shape.
+>
+> Anyone writing a retention policy in this project should check what erasure ACTUALLY does
+> to the referenced table before describing what happens to a foreign key. A plausible
+> guess produces a policy that is confidently false.
 
 ---
 
