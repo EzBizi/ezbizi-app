@@ -369,6 +369,18 @@ class TaskTransferTest extends TestCase
         $this->assertStringNotContainsString('Due Date', $csv);
     }
 
+    public function test_non_owner_exporter_can_omit_or_disable_archived_rows_but_cannot_enable_them_or_export_json(): void
+    {
+        $viewer = $this->userWithRole($this->tenant, 'Scoped exporter', ['tasks.view', 'tasks.export']);
+        $this->actingAs($viewer);
+        $url = "/api/v1/tasks/boards/{$this->board->id}/exports";
+
+        $this->get("{$url}/csv?active_view_id={$this->viewId}")->assertOk();
+        $this->get("{$url}/csv?active_view_id={$this->viewId}&include_archived=0")->assertOk();
+        $this->get("{$url}/csv?active_view_id={$this->viewId}&include_archived=1")->assertForbidden();
+        $this->get("{$url}/json?active_view_id={$this->viewId}")->assertForbidden();
+    }
+
     public function test_preview_compensates_private_bytes_when_session_creation_fails(): void
     {
         $status = $this->board->statusOptions()->active()->where('category', StatusCategory::NotStarted)->firstOrFail();

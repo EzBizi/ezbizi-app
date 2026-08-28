@@ -16,15 +16,14 @@ final class TaskExportsController extends TaskApiController
     {
         $scope = ViewScope::forUser($request->user());
         $this->transfer->authorizeExport(
-            $request->user(), $board, $scope, (string) $request->input('active_view_id'),
-            $format === 'json' || $request->has('include_archived'),
+            $request->user(), $board, $scope, (string) $request->input('active_view_id'), false,
         );
         $input = $request->validate([
             'active_view_id' => ['required', 'uuid'],
             'include_archived' => ['sometimes', 'boolean'],
         ]);
         $includeArchived = (bool) ($input['include_archived'] ?? false);
-        if ($includeArchived) {
+        if ($includeArchived || $format === 'json') {
             $this->transfer->authorizeExport(
                 $request->user(), $board, $scope, $input['active_view_id'], true,
             );
