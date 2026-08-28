@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Tasks;
 
 use App\Models\TaskBoard;
+use App\Policies\TaskPolicy;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\BoardVisibility;
 use App\Support\Tasks\TaskBoardAccess;
@@ -17,6 +18,7 @@ final class TaskBoardsController extends TaskApiController
     public function __construct(
         private readonly TaskBoardAccess $access,
         private readonly TaskBoardWriter $writer,
+        private readonly TaskPolicy $tasks,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -202,7 +204,7 @@ final class TaskBoardsController extends TaskApiController
             'last_opened_at' => $board->relationLoaded('preferences')
                 ? $board->preferences->first()?->last_opened_at?->toIso8601String()
                 : null,
-            'actions' => $this->access->boardActions($actor, $board, $scope),
+            'actions' => $this->boardActions($actor, $board, $scope),
             'groups' => $board->relationLoaded('groups')
                 ? $board->groups->sortBy([['position', 'asc'], ['id', 'asc']])->map(fn ($group) => [
                     'id' => $group->id, 'name' => $group->name, 'color' => $group->color,
@@ -285,6 +287,17 @@ final class TaskBoardsController extends TaskApiController
             'members',
             'preferences' => fn ($query) => $query->where('user_id', $userId),
         ];
+    }
+
+    /** @return list<string> */
+    private function boardActions($actor, TaskBoard $board, ViewScope $scope): array
+    {
+        $actions = $this->access->boardActions($actor, $board, $scope);
+        if ($this->tasks->create($actor, $board)->allowed()) {
+            $actions[] = 'create_task';
+        }
+
+        return $actions;
     }
 
     /** @return list<string> */

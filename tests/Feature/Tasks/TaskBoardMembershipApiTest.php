@@ -247,6 +247,48 @@ class TaskBoardMembershipApiTest extends TestCase
             ->assertJsonMissing(['name' => 'Archived manager folder']);
     }
 
+    public function test_board_actions_publish_exact_task_creation_authority_for_active_members_only(): void
+    {
+        $board = $this->createBoard('private');
+        $creator = $this->user('Active task creator', ['tasks.view', 'tasks.create']);
+        $viewer = $this->user('Active task viewer', ['tasks.view']);
+        foreach ([$creator, $viewer] as $member) {
+            $this->enterTenant();
+            $member->forceFill([
+                'preferences' => ['navigation.scope' => 'company:'.$this->alpha['company']->id],
+            ])->save();
+            $this->postJson("/api/v1/tasks/boards/{$board->id}/members", [
+                'user_id' => $member->id,
+                'role' => 'member',
+            ])->assertCreated();
+        }
+
+        $this->actingAs($creator->fresh());
+        $actions = $this->getJson("/api/v1/tasks/boards/{$board->id}")
+            ->assertOk()->json('data.actions');
+        $this->assertContains('create_task', $actions);
+        $this->assertNotContains('import', $actions);
+        $this->assertNotContains('manage_structure', $actions);
+
+        $this->actingAs($viewer->fresh());
+        $this->assertNotContains('create_task', $this->getJson("/api/v1/tasks/boards/{$board->id}")
+            ->assertOk()->json('data.actions'));
+
+        $this->enterTenant();
+        $creator->forceFill([
+            'preferences' => ['navigation.scope' => 'franchise:'.$this->alpha['franchise']->id],
+        ])->save();
+        $this->actingAs($creator->fresh());
+        $this->getJson("/api/v1/tasks/boards/{$board->id}")->assertNotFound();
+
+        $this->actingAs($this->alpha['admin']->fresh());
+        $this->postJson("/api/v1/tasks/boards/{$board->id}/archive", [
+            'expected_structure_version' => $board->structure_version,
+        ])->assertOk();
+        $this->assertNotContains('create_task', $this->getJson('/api/v1/tasks/boards?archived=1')
+            ->assertOk()->json('data.0.actions'));
+    }
+
     public function test_folder_directory_refuses_an_organization_fallback_outside_assignment_reach(): void
     {
         $this->postJson('/api/v1/tasks/folders', ['name' => 'Company secrets'])->assertCreated();
