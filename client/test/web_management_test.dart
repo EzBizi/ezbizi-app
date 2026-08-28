@@ -63,6 +63,35 @@ void main() {
     expect(find.textContaining('[ezbizi_phone]'), findsOneWidget);
   });
 
+  /*
+   * The first-run deadlock, from the client's side.
+   *
+   * PHP encodes an empty associative array as `[]`, so a site with no values
+   * answered with `"values":[]` where a populated one answered `{...}`. This
+   * screen cast that field to a Map, the cast threw, and the throw escaped
+   * before the loading flag was cleared — so the panel span forever. You could
+   * not open it until the site had values and could not add values without
+   * opening it. Every newly registered site hit it.
+   *
+   * The fixture above had always returned a POPULATED map, which is why the
+   * suite was green while the feature was unusable. This serves the shape the
+   * old server really sent.
+   */
+  testWidgets('a website with no values yet still opens', (tester) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      emptyValues: true,
+    );
+
+    await tester.tap(find.text('a-1chimney.com'));
+    await tester.pumpAndSettle();
+
+    // The panel is open and usable rather than spinning.
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('Phone number'), findsOneWidget);
+  });
+
   // §6 — no pop-ups, ever. Adding is a form in place, not a dialog.
   testWidgets('adding a website opens a form in place and never a dialog', (
     tester,
@@ -132,13 +161,14 @@ Future<void> _pumpDestination(
   WidgetTester tester, {
   required List<String> permissions,
   bool scopedToCompany = false,
+  bool emptyValues = false,
 }) async {
   tester.view.physicalSize = const Size(1280, 900);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
   final api = ApiClient(
-    client: MockClient(_respond(permissions, scopedToCompany)),
+    client: MockClient(_respond(permissions, scopedToCompany, emptyValues)),
   );
   final session = Session(api);
 
@@ -167,6 +197,7 @@ Future<void> _pumpDestination(
 Future<http.Response> Function(http.Request) _respond(
   List<String> permissions,
   bool scopedToCompany,
+  bool emptyValues,
 ) {
   return (request) async {
     Map<String, Object?>? body;
@@ -194,8 +225,11 @@ Future<http.Response> Function(http.Request) _respond(
               'shortcode': '[ezbizi_phone]',
             },
           ],
-          'values': {'phone': '555-0100'},
-          'pages': <String, Object?>{},
+          // An empty map arrives from PHP as `[]`, not `{}` — the shape that
+          // used to deadlock this panel. Serving the real thing is the only
+          // way this test means anything.
+          'values': emptyValues ? <Object?>[] : {'phone': '555-0100'},
+          'pages': emptyValues ? <Object?>[] : <String, Object?>{},
         },
       };
     }

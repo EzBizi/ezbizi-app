@@ -7,6 +7,7 @@ use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\SeoFields;
+use App\Support\Web\ValuePayload;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -78,11 +79,7 @@ class PublicValuesController extends Controller
 
             return response()->json([
                 'fields' => SeoFields::catalogue(),
-                'values' => $rows->where('path', '')->pluck('value', 'key')->all(),
-                'pages' => $rows->where('path', '!=', '')
-                    ->groupBy('path')
-                    ->map(fn ($group) => $group->pluck('value', 'key')->all())
-                    ->all(),
+                ...ValuePayload::forRows($rows),
             ])->withHeaders($this->browserHeaders());
         });
     }

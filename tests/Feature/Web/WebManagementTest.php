@@ -550,6 +550,96 @@ class WebManagementTest extends TestCase
         $this->pluginRead($site['data']['public_key'], 'a-1chimney.com')->assertUnauthorized();
     }
 
+    // ── 8. an empty site answers with an OBJECT, never an array ─────
+
+    /**
+     * The first-run deadlock, and the test that would have caught it.
+     *
+     * `pluck()->all()` returns a PHP array. Populated, json_encode writes an
+     * object; EMPTY, it writes `[]`. So this endpoint answered with two
+     * different TYPES for `values` depending only on whether anybody had filled
+     * the form in yet, and the Flutter panel — which casts it to a Map — threw
+     * on the empty case. The exception escaped before the loading flag could be
+     * cleared, so the panel span forever: you could not open it until the site
+     * had values, and you could not add values without opening it.
+     *
+     * Every newly registered site hit this. ezbizi.com, the first real one, hit
+     * it immediately. Asserting on the ENCODED JSON rather than the decoded
+     * array is the whole point — PHP cannot tell the two apart after decoding,
+     * which is exactly why it shipped.
+     *
+     * @return list<array{0: string}>
+     */
+    public static function valueEndpoints(): array
+    {
+        return [
+            'the panel' => ['panel'],
+            'the plugin' => ['plugin'],
+            'the browser' => ['public'],
+        ];
+    }
+
+    #[DataProvider('valueEndpoints')]
+    public function test_a_site_with_no_values_still_answers_with_an_object(string $which): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $json = match ($which) {
+            'panel' => $this->signedInAs($editor)
+                ->getJson("/api/v1/web/sites/{$site['data']['id']}/values")
+                ->assertOk()->content(),
+            'plugin' => $this->pluginRead($site['token'], 'a-1chimney.com')
+                ->assertOk()->content(),
+            'public' => $this->getJson(
+                '/api/v1/web/public/values?key='.$site['data']['public_key'],
+            )->assertOk()->content(),
+        };
+
+        $this->assertStringContainsString('"values":{}', $json,
+            'An empty values map encoded as a JSON array, which the client cannot cast to a Map.');
+        $this->assertStringContainsString('"pages":{}', $json,
+            'An empty pages map encoded as a JSON array.');
+        $this->assertStringNotContainsString('"values":[]', $json);
+        $this->assertStringNotContainsString('"pages":[]', $json);
+    }
+
+    public function test_a_populated_site_still_answers_with_the_same_object_shape(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $this->setValues($editor, $site['data']['id'], ['phone' => '555-0100']);
+
+        $json = $this->signedInAs($editor)
+            ->getJson("/api/v1/web/sites/{$site['data']['id']}/values")
+            ->assertOk()->content();
+
+        // Populated was never broken; this holds the fix to not breaking it.
+        $this->assertStringContainsString('"values":{"phone":"555-0100"}', $json);
+        $this->assertStringContainsString('"pages":{}', $json);
+    }
+
+    public function test_saving_the_first_value_returns_an_object_too(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        // The PUT returns the same payload as the GET, and its empty case is
+        // reached by clearing the only value a site has.
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/values", [
+                'values' => ['phone' => ''],
+            ])
+            ->assertOk()
+            ->assertSee('"values":{}', escape: false);
+    }
+
     // ── helpers ─────────────────────────────────────────────────────
 
     /** @param array{org: \App\Models\Organization, franchise: \App\Models\Franchise} $tenant */
