@@ -91,6 +91,43 @@ void main() {
           'request failed — that has to be said.',
     );
   });
+
+  testWidgets('a job row shows the role it is assigned to', (tester) async {
+    await _pump(
+      tester,
+      jobs: [
+        _job(number: 'JOB-1042', title: 'Chimney sweep', role: 'Chimney Technician'),
+      ],
+    );
+
+    expect(find.text('Chimney Technician'), findsOneWidget);
+  });
+
+  testWidgets('a job with no role does not draw an empty tag', (tester) async {
+    await _pump(tester, jobs: [_job(number: 'JOB-1043', title: 'Unassigned call')]);
+
+    expect(find.byKey(const Key('job-role-tag')), findsNothing);
+  });
+
+  testWidgets('several roles at 375px: rows and filter chips both wrap, neither overflows', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      jobs: [
+        _job(
+          number: 'JOB-1044',
+          title: 'Full exterior chimney crown and flashing inspection',
+          role: 'Chimney Sweep Technician',
+        ),
+        _job(number: 'JOB-1045', title: 'Flue liner replacement', role: 'Mason'),
+        _job(number: 'JOB-1046', title: 'Unassigned call'),
+      ],
+      size: const Size(375, 800),
+    );
+
+    expect(tester.takeException(), isNull);
+  });
 }
 
 const _crown = {
@@ -116,6 +153,30 @@ const _crownDetail = {
   'allowed_statuses': ['scheduled', 'completed'],
 };
 
+/// A minimal job row, for the tests that only care about one or two fields.
+/// `role` adds `assigned_role` the way the server does — omitted, not null,
+/// when the job has none, which is the common case at booking time.
+Map<String, dynamic> _job({
+  required String number,
+  required String title,
+  String? role,
+  bool ownedHere = true,
+}) => {
+  'id': number,
+  'number': number,
+  'title': title,
+  'status': 'scheduled',
+  'franchise': {'id': 'fr-1', 'name': 'Connecticut'},
+  'customer': {
+    'id': 'c-1',
+    'name': 'Alice Roofing',
+    'number': 'C-1001',
+    'owned_by_this_franchise': ownedHere,
+  },
+  'amount': {'minor': 0, 'currency': 'USD', 'display': null},
+  if (role != null) 'assigned_role': {'id': 'r-$role', 'name': role},
+};
+
 Future<void> _pump(
   WidgetTester tester, {
   List<String> permissions = const [
@@ -126,8 +187,9 @@ Future<void> _pump(
   ],
   List<Map<String, dynamic>> jobs = const [],
   http.Response? Function(http.Request request)? onRequest,
+  Size size = const Size(1280, 900),
 }) async {
-  tester.view.physicalSize = const Size(1280, 900);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 

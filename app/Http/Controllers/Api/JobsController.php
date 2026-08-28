@@ -67,6 +67,7 @@ class JobsController extends Controller
             ->when($request->query('franchise_id'), fn ($q, $id) => $q->where('franchise_id', $id))
             ->when($request->query('customer_id'), fn ($q, $id) => $q->where('customer_id', $id))
             ->when($request->query('status'), fn ($q, $s) => $q->where('status', $s))
+            ->when($request->query('assigned_role_id'), fn ($q, $id) => $q->where('assigned_role_id', $id))
             ->when(filled($request->query('search')), function ($q) use ($request) {
                 $term = trim((string) $request->query('search'));
                 $like = '%'.$term.'%';

@@ -45,6 +45,13 @@ class _JobsScreenState extends State<JobsScreen> {
   List<JobStatus> _statusChoices = const [];
   List<String> _statuses = const [];
   String? _status;
+  // Discovered from the rows themselves rather than fetched, because every
+  // job already carries its role (Task 5) and a catalogue call would only
+  // duplicate data already on the page. Accumulated across loads: narrowing
+  // to one role must not make the others disappear from the filter that
+  // offered them.
+  final Map<String, String> _roles = {};
+  String? _roleId;
   int _total = 0;
   // Page one only, until asked. The header used to claim a total the list did
   // not render, with no next-page control and nothing saying records were
@@ -136,6 +143,7 @@ class _JobsScreenState extends State<JobsScreen> {
       'page': '$page',
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
       'status': ?_status,
+      'assigned_role_id': ?_roleId,
     });
 
     // Superseded while this was in flight — a newer load owns the screen now,
@@ -160,6 +168,11 @@ class _JobsScreenState extends State<JobsScreen> {
 
       final rows = List<Map<String, dynamic>>.from(response.data as List);
       _jobs = page == 1 ? rows : [..._jobs, ...rows];
+
+      for (final row in rows) {
+        final role = row['assigned_role'] as Map<String, dynamic>?;
+        if (role != null) _roles[role['id'] as String] = role['name'] as String;
+      }
 
       final meta = response.body['meta'] as Map<String, dynamic>?;
       _total = meta?['total'] as int? ?? _jobs.length;
@@ -270,6 +283,32 @@ class _JobsScreenState extends State<JobsScreen> {
                     _load();
                   },
                 ),
+              // The same control as status, for the same reason: it sits in
+              // this Wrap rather than opening over the form, and its choices
+              // are discovered from the rows already on screen rather than
+              // fetched, since every job already carries its role (Task 5).
+              //
+              // Fewer than two roles seen is not a filter — there is nothing
+              // to narrow to yet, only the one role every visible job already
+              // has (or none at all).
+              if (_roles.length > 1)
+                DropdownMenu<String?>(
+                  initialSelection: _roleId,
+                  label: const Text('Role'),
+                  dropdownMenuEntries: [
+                    const DropdownMenuEntry(value: null, label: 'Any role'),
+                    ..._roles.entries.map(
+                      (role) => DropdownMenuEntry(
+                        value: role.key,
+                        label: role.value,
+                      ),
+                    ),
+                  ],
+                  onSelected: (value) {
+                    setState(() => _roleId = value);
+                    _load();
+                  },
+                ),
             ],
           ),
         ),
@@ -336,6 +375,20 @@ class _JobsScreenState extends State<JobsScreen> {
               ),
             ),
             Tag(job['status_label'] as String? ?? job['status'] as String),
+            // Null for the common case at booking time — a job has no
+            // performer yet and often no role either — so this must not draw
+            // an empty tag for the row that names nobody (§12.1).
+            //
+            // Flexible for the reason customers_screen's owner tag is: a Row
+            // hands a non-flex child unbounded width, and a role name is
+            // organization-chosen text with no length limit worth trusting.
+            if ((job['assigned_role']?['name'] as String?)?.isNotEmpty ?? false)
+              Flexible(
+                child: Tag(
+                  job['assigned_role']['name'] as String,
+                  key: const Key('job-role-tag'),
+                ),
+              ),
             // So it is obvious before anyone edits anything that this work is
             // for a customer another franchise is accountable for (§5.2).
             if (!ownedHere) const Tag('Shared customer', warn: true),
@@ -389,7 +442,7 @@ class _JobsScreenState extends State<JobsScreen> {
   String _emptyCopy() {
     final term = _search.text.trim();
 
-    if (term.isEmpty && _status == null) {
+    if (term.isEmpty && _status == null && _roleId == null) {
       return 'No jobs yet.';
     }
 
