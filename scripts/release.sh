@@ -36,7 +36,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DIST="dist"
-TARGETS="web,windows,android"
+
+# Targets that failed. A failing target no longer aborts the release: it is
+# recorded, its own packaging steps are skipped, the remaining targets still
+# build, and every failure is reported together at the end with a non-zero
+# exit. One asleep machine or one broken toolchain should cost that platform,
+# not the other three.
+FAILED=()
+TARGETS="web,windows,android,ios"
 DRY_RUN=0
 
 # The marketing site's box, which is NOT the app box — see AGENTS/DEPLOY. The
@@ -217,7 +224,7 @@ GATES=--skip-gates
 if wants web; then
   echo
   echo "→ web — deploy.sh (tests, build, push, UI swap)"
-  run ./scripts/deploy.sh
+  run ./scripts/deploy.sh || FAILED+=("web")
 else
   # Nothing has tested this commit in this run, so let build-app.sh do it.
   GATES=""
@@ -229,7 +236,7 @@ fi
 if wants windows; then
   echo
   echo "→ windows — building"
-  run ./scripts/build-app.sh windows ${GATES}
+  if run ./scripts/build-app.sh windows ${GATES}; then
   GATES=--skip-gates   # whatever ran above covered this commit
 
   WIN_BUILD="client/build/windows/x64/runner/Release"
@@ -307,13 +314,17 @@ if wants windows; then
   else
     echo "   would upload $WIN_EXE and write windows.json"
   fi
+else
+  FAILED+=("windows")
+  echo "   ✗ windows failed — skipped its packaging, continuing"
+fi
 fi
 
 # ── 3. android ───────────────────────────────────────────────────
 if wants android; then
   echo
   echo "→ android — building signed app bundle"
-  run ./scripts/build-app.sh android ${GATES}
+  if run ./scripts/build-app.sh android ${GATES}; then
 
   AAB="client/build/app/outputs/bundle/release/app-release.aab"
   if [ "$DRY_RUN" -eq 0 ]; then
@@ -323,6 +334,10 @@ if wants android; then
     fi
     cp "$AAB" "$DIST/EzBizi-${VERSION}-${COMMIT}.aab"
   fi
+else
+  FAILED+=("android")
+  echo "   ✗ android failed — skipped its packaging, continuing"
+fi
 fi
 
 # ── 4. ios ───────────────────────────────────────────────────────
@@ -337,18 +352,35 @@ fi
 if wants ios; then
   echo
   echo "→ ios — building signed archive on the Mac relay"
-  run ./scripts/build-app.sh ios ${GATES}
+  if run ./scripts/build-app.sh ios ${GATES}; then
 
   if [ "$DRY_RUN" -eq 0 ] && ! ls "$DIST"/EzBizi-*.ipa >/dev/null 2>&1; then
     echo "✗ build-app.sh finished but left no .ipa in ${DIST}/." >&2
     exit 1
   fi
+else
+  FAILED+=("ios")
+  echo "   ✗ ios failed — skipped its packaging, continuing"
+fi
 fi
 
 echo
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "✓ dry run — nothing was built"
   exit 0
+fi
+
+if [ ${#FAILED[@]} -gt 0 ]; then
+  echo
+  echo "✗ release v${VERSION} · ${COMMIT} — ${#FAILED[@]} target(s) failed:"
+  printf '     %s
+' "${FAILED[@]}"
+  echo "  The rest were built; their artefacts are in ${DIST}/."
+  case " ${FAILED[*]} " in *" web "*)
+    echo "  WEB FAILED, so the API did NOT ship. Anything built in this run is"
+    echo "  newer than what is live — do not distribute it." ;;
+  esac
+  exit 1
 fi
 
 echo "✓ release v${VERSION} · ${COMMIT}"
