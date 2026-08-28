@@ -29,12 +29,13 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@graph":[
   {"@type":"Organization","@id":"https://www.ezbizi.com/#org","name":"EZBIZI LLC","legalName":"EZBIZI LLC","url":"https://www.ezbizi.com/","logo":"https://www.ezbizi.com/logo.png","email":"contact@ezbizi.com","address":{"@type":"PostalAddress","streetAddress":"800 SE 4th Ave Ste 107","addressLocality":"Hallandale Beach","addressRegion":"FL","postalCode":"33009","addressCountry":"US"}},
-  {"@type":"SoftwareApplication","@id":"https://www.ezbizi.com/#app","name":"EzBizi","url":"https://www.ezbizi.com/","applicationCategory":"BusinessApplication","operatingSystem":"Web","description":"Field-service CRM for multi-location operations: customers, jobs, inspections, scheduling and billing on one record.","publisher":{"@id":"https://www.ezbizi.com/#org"}},
+  {"@type":"SoftwareApplication","@id":"https://www.ezbizi.com/#app","name":"EzBizi","url":"https://www.ezbizi.com/","applicationCategory":"BusinessApplication","operatingSystem":"Web, Windows","downloadUrl":"https://www.ezbizi.com/download/","description":"Field-service CRM for multi-location operations: customers, jobs, inspections, scheduling and billing on one record.","publisher":{"@id":"https://www.ezbizi.com/#org"}},
   {"@type":"WebSite","@id":"https://www.ezbizi.com/#site","url":"https://www.ezbizi.com/","name":"EzBizi","publisher":{"@id":"https://www.ezbizi.com/#org"},"inLanguage":"en-US"},
   {"@type":"FAQPage","@id":"https://www.ezbizi.com/#faq","mainEntity":[
     {"@type":"Question","name":"What is EzBizi?","acceptedAnswer":{"@type":"Answer","text":"EzBizi is a field-service CRM for organizations that run work across many locations. Customers, jobs, inspections, scheduling, billing and reporting live in one system, on the same record."}},
     {"@type":"Question","name":"Who is EzBizi for?","acceptedAnswer":{"@type":"Answer","text":"Service businesses with more than one company, franchise or location — field teams, office staff and leadership working from the same records rather than a stack of separate tools."}},
     {"@type":"Question","name":"Does EzBizi support multiple locations?","acceptedAnswer":{"@type":"Answer","text":"Yes. Each location keeps its own teams, work and numbers. Access can cover a few locations or the whole group. A customer served by two locations is still one customer."}},
+    {"@type":"Question","name":"What can I run EzBizi on?","acceptedAnswer":{"@type":"Answer","text":"Any modern browser at app.ezbizi.com, and a Windows desktop app that installs without an administrator and updates itself. Apps for Android and iPhone are built and on their way to the stores."}},
     {"@type":"Question","name":"How do we get started?","acceptedAnswer":{"@type":"Answer","text":"Talk to us at contact@ezbizi.com, or open Work with us if you are already on the team. The product runs at app.ezbizi.com."}}
   ]}
 ]}
@@ -283,6 +284,7 @@ footer p{font-size:.83rem;color:var(--muted-2)}
       <a href="#workspace">Workspace</a>
       <a href="#platform">Platform</a>
       <a href="#flow">How it flows</a>
+      <a href="/download/">Download</a>
       <a href="#faq">FAQ</a>
     </div>
     <div class="navcta">
@@ -534,6 +536,26 @@ footer p{font-size:.83rem;color:var(--muted-2)}
         <p>Connect the accounts each location already owns, write a post once and publish or schedule it where you choose. <a href="https://www.ezbizi.com/social-media/">How it works</a></p>
       </div>
       <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7L12 12l8.7-5M12 22V12"/></svg></div>
+        <h3>Inventory</h3>
+        <p>Stock counted per item and per location, with what was bought, moved and used on a job.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
+        <h3>Fleet</h3>
+        <p>Every vehicle on the register: who has the keys, when insurance lapses, what service is due.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><rect x="3" y="4" width="12" height="17" rx="2"/><path d="M7 9h4M7 13h4M7 17h6"/></svg></div>
+        <h3>Inspections</h3>
+        <p>Build the form once, then every visit produces the same report — findings, photos and all.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="11" rx="1"/></svg></div>
+        <h3>Tasks</h3>
+        <p>Boards for the work that is not a job — with owners, due dates and the columns you need.</p>
+      </div>
+      <div class="card">
         <div class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
         <h3>People</h3>
         <p>Hours, onboarding and records for the team, handled in the same system as the work.</p>
@@ -605,6 +627,10 @@ footer p{font-size:.83rem;color:var(--muted-2)}
         <p>Yes. Each location keeps its own teams, work and numbers. Access can cover a few locations or the whole group. A customer served by two locations is still one customer.</p>
       </details>
       <details>
+        <summary>What can I run EzBizi on?</summary>
+        <p>Any modern browser at <a href="https://app.ezbizi.com">app.ezbizi.com</a>, and a Windows desktop app that installs without an administrator and keeps itself up to date. Apps for Android and iPhone are built and on their way to the stores. <a href="/download/">See the downloads</a>.</p>
+      </details>
+      <details>
         <summary>How do we get started?</summary>
         <p>Talk to us at <a href="mailto:contact@ezbizi.com">contact@ezbizi.com</a>, or open Work with us if you are already on the team. The product runs at <a href="https://app.ezbizi.com">app.ezbizi.com</a>.</p>
       </details>
@@ -630,6 +656,7 @@ footer p{font-size:.83rem;color:var(--muted-2)}
     <div class="flinks">
       <a href="#workspace">Workspace</a>
       <a href="#faq">FAQ</a>
+      <a href="/download/">Download</a>
       <a href="https://app.ezbizi.com">Sign in</a>
       <a href="/privacy/">Privacy</a>
       <a href="/terms/">Terms</a>
@@ -669,6 +696,10 @@ footer p{font-size:.83rem;color:var(--muted-2)}
      crawlable; this only refreshes them when they change in EzBizi, and does
      nothing at all if it cannot reach us. Legal pages and the JSON-LD above
      are deliberately NOT driven by it. -->
+<!-- Commented out until a real pk_ key exists: a placeholder key makes this a
+     request on every page view that can never resolve. Generate the public key in
+     Web Management, paste it over the placeholder, and uncomment the line.
 <script src="https://app.ezbizi.com/api/v1/web/ezbizi.js" data-key="pk_REPLACE_WITH_KEY_FROM_WEB_MANAGEMENT"></script>
+-->
 </body>
 </html>
