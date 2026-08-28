@@ -37,6 +37,9 @@ final class FieldType
     public const PHOTO     = 'photo';
     public const SIGNATURE = 'signature';
 
+    /** Work this finding recommends, priced from the Services catalogue. */
+    public const SERVICES = 'services';
+
     /** Furniture. No key, no answer, never required. */
     public const DIVIDER = 'divider';
 
@@ -55,6 +58,7 @@ final class FieldType
         self::FILE      => 'A file they upload',
         self::PHOTO     => 'A photograph',
         self::SIGNATURE => 'A signature',
+        self::SERVICES  => 'Recommended work',
         self::DIVIDER   => 'A heading between fields',
         self::ALERT     => 'A note to the technician',
     ];

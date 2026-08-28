@@ -127,6 +127,10 @@ final class ReportDocument
         // signature goes, which is the failure the drawn mark exists to fix.
         $type = $field['type'] ?? '';
 
+        if ($type === FieldType::SERVICES) {
+            return $this->work(is_array($value) ? $value : []);
+        }
+
         if ($type === FieldType::CHECKBOX) {
             // A tick box says Yes or No, never "1" or an empty space. An
             // unticked box is a real answer and reads as one — a blank there
@@ -162,6 +166,59 @@ final class ReportDocument
         return $text === ''
             ? '<div class="v none">Not answered</div>'
             : '<div class="v">'.nl2br($this->text($text)).'</div>';
+    }
+
+    /**
+     * The work this finding recommends, priced, with a line total.
+     *
+     * Printed from the SNAPSHOT stored in the answer — the name and price as
+     * they were when the technician recommended it — never a fresh read of the
+     * catalogue. A service renamed or re-priced afterwards must not change what
+     * the customer was quoted, which is the same rule the job line follows.
+     *
+     * @param  list<mixed>  $picks
+     */
+    private function work(array $picks): string
+    {
+        $rows = '';
+        $total = 0;
+
+        foreach ($picks as $pick) {
+            if (! is_array($pick)) {
+                continue;
+            }
+
+            $qty = (int) ($pick['qty'] ?? 1);
+            $unit = (int) ($pick['unit_price_minor'] ?? 0);
+            $amount = $unit * $qty;
+            $total += $amount;
+
+            $rows .= '<tr><td>'.$this->text((string) ($pick['name'] ?? '')).'</td>'
+                .'<td class="q">'.$qty.'</td>'
+                .'<td class="m">'.$this->money($amount).'</td></tr>';
+        }
+
+        if ($rows === '') {
+            return '<div class="v none">No work recommended</div>';
+        }
+
+        return '<table class="w">'.$rows
+            .'<tr class="tot"><td>Total</td><td class="q"></td>'
+            .'<td class="m">'.$this->money($total).'</td></tr>'
+            .'</table>';
+    }
+
+    /**
+     * Minor units as a decimal, with no currency symbol.
+     *
+     * The symbol is deliberately absent: the organization's currency lives on
+     * the job, this document is not the place that decides it, and a hardcoded
+     * dollar sign on a report for a franchise in Manchester is worse than a
+     * bare number.
+     */
+    private function money(int $minor): string
+    {
+        return number_format($minor / 100, 2);
     }
 
     /**
@@ -300,6 +357,11 @@ final class ReportDocument
             .'border-bottom:1px solid #ddd;padding-bottom:2pt}'
             .'hr.d{border:0;border-top:1px solid #ddd;margin:12pt 0 8pt}'
             .'.note{margin:6pt 0;padding:5pt 7pt;background:#f4f4f4;font-size:9pt}'
+            .'table.w{width:100%;border-collapse:collapse;margin:3pt 0;font-size:10pt}'
+            .'table.w td{padding:2pt 4pt;border-bottom:1px solid #eee}'
+            .'table.w td.q{width:40pt;text-align:right}'
+            .'table.w td.m{width:70pt;text-align:right}'
+            .'table.w tr.tot td{font-weight:bold;border-bottom:0;border-top:1px solid #999}'
             .'.intro{margin:0 0 10pt}'
             .'img{max-width:220pt;max-height:220pt;margin:3pt 6pt 0 0}'
             .'</style></head><body>'

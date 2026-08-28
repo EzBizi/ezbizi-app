@@ -9,6 +9,7 @@ import '../../widgets/error_note.dart';
 import 'condition.dart';
 import 'option.dart';
 import 'photo_field.dart';
+import 'services_field.dart';
 import 'signature_field.dart';
 
 /// New Inspection: search a client or job, pick a named inspection, fill, submit.
@@ -46,6 +47,12 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
 
   /// Tick-box answers, which are bools rather than text or lists.
   final Map<String, bool> _checks = {};
+
+  /// Recommended-work answers: a list of priced picks per field.
+  final Map<String, List<Map<String, dynamic>>> _work = {};
+
+  /// The organization's priced services, from the run payload.
+  List<Map<String, dynamic>> _catalogue = const [];
   String? _blocked;
 
   bool get _mayDiscard =>
@@ -191,6 +198,11 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     _fields.clear();
     _photos.clear();
     _checks.clear();
+    _work.clear();
+    _catalogue = [
+      for (final s in (run['services'] as List? ?? const []))
+        if (s is Map) Map<String, dynamic>.from(s),
+    ];
     final answers = run['answers'] is Map
         ? Map<String, dynamic>.from(run['answers'] as Map)
         : const <String, dynamic>{};
@@ -215,6 +227,14 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
         final key = '${field['key']}';
         // Furniture stores nothing, so it needs no controller.
         if (field['type'] == 'divider' || field['type'] == 'alert') {
+          continue;
+        }
+
+        if (field['type'] == 'services') {
+          _work[key] = [
+            for (final p in (answers[key] as List? ?? const []))
+              if (p is Map) Map<String, dynamic>.from(p),
+          ];
           continue;
         }
 
@@ -255,6 +275,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
         for (final e in _fields.entries) e.key: e.value.text,
         for (final e in _photos.entries) e.key: e.value,
         for (final e in _checks.entries) e.key: e.value,
+        for (final e in _work.entries) e.key: e.value,
       };
 
   /// Every screen this version declares, shown or not.
@@ -693,6 +714,24 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
           controller: _fields[key],
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(labelText: label),
+        );
+
+      case 'services':
+        // The catalogue rides along on the run payload — a picker that had to
+        // fetch would be a spinner on a roof with one bar of signal.
+        return InspectionServicesField(
+          key: widgetKey,
+          api: widget.api,
+          label: label,
+          picks: [
+            for (final p in (_work[key] ?? const []))
+              Map<String, dynamic>.from(p),
+          ],
+          catalogue: _catalogue,
+          onChanged: (picks) {
+            setState(() => _work[key] = picks);
+            _save();
+          },
         );
 
       case 'signature':
