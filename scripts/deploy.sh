@@ -30,17 +30,26 @@ cd "$(dirname "$0")/.."
 # --no-dev and have no phpunit, so this sandbox (full vendor, own .env, own
 # test database) is where tests run.
 #
-# `git archive main` — the exact tree about to ship, not the working directory
+# `git archive "$GATED_SHA"` — the exact tree about to ship, not the working directory
 # and not whatever was last left on the box. The old gate ran against a stale
 # sandbox and reported green for code that was never tested, which is worse than
 # no gate at all.
 #
 # Commit before deploying: this tests main, not your uncommitted edits.
-echo "→ testing the tree about to ship"
+#
+# The SHA is pinned here, once, and everything downstream uses it. Thirteen
+# sessions share this working tree, and main moves while the gate runs — the
+# suite takes about sixteen minutes. Gating `main` and then pushing `main`
+# means anything committed in between ships having been tested by nothing,
+# and the announcement protocol that was supposed to prevent it relies on
+# everyone being careful at exactly the moment they are busiest. Asking
+# people to be careful is not a control; pinning the SHA is.
+GATED_SHA=$(git rev-parse main)
+echo "→ testing the tree about to ship ($GATED_SHA)"
 # Captured, not just streamed. STATUS.md's test count was retyped by hand and was
 # wrong three times in one day; the number is right here, in the run that gates
 # the deploy, so it is taken from there rather than remembered.
-BACKEND_OUT=$(git archive main | ssh "$REMOTE" '
+BACKEND_OUT=$(git archive "$GATED_SHA" | ssh "$REMOTE" '
   set -e
   # /opt, not /var/www. The sandbox holds dev dependencies and a full Laravel
   # tree; sitting it beside the production .env is what let `--env=testing` fall
@@ -103,7 +112,8 @@ fi
 # client in front of the old API for however long the push takes — and if the
 # push then fails, permanently.
 echo "→ pushing code"
-git push production main
+# The pinned SHA, not the branch tip: what shipped is what was gated.
+git push production "$GATED_SHA":main
 
 if [ "$CODE_ONLY" != "--code" ]; then
   echo "→ uploading UI to shared directory"
