@@ -66,9 +66,17 @@ void main() {
   testWidgets('a choice field can be given its choices', (tester) async {
     await _pump(tester, size: const Size(1400, 900), list: _choiceList);
 
-    expect(find.byKey(const Key('field-options')), findsOneWidget);
+    // Scrolled into view first. The settings pane grew a "Belongs to" picker,
+    // which pushed this below the fold at this window size. The field is still
+    // built and still works — it is simply no longer above the fold, and
+    // enterText cannot type into a widget that is off screen.
+    final options = find.byKey(const Key('field-options'), skipOffstage: false);
+    await tester.ensureVisible(options);
+    await tester.pumpAndSettle();
 
-    final box = tester.widget<TextField>(find.byKey(const Key('field-options')));
+    expect(options, findsOneWidget);
+
+    final box = tester.widget<TextField>(options);
     expect(box.controller?.text, 'Clay\nMetal',
         reason: 'the options already on the field should be in the box');
 
@@ -117,6 +125,31 @@ void main() {
     );
     expect(find.text('Untitled inspection'), findsNothing);
   });
+
+  /// Where an inspection belongs is chosen here, not in a config file.
+  ///
+  /// The organization is a real option rather than the absence of one:
+  /// "belongs to nobody" and "belongs to everybody" read identically on screen
+  /// otherwise, and the second is what a null scope actually means.
+  testWidgets('the scope picker offers the organization and the places you reach',
+      (tester) async {
+    await _pump(tester, size: const Size(1400, 900));
+
+    expect(find.byKey(const Key('inspection-scope-picker')), findsOneWidget);
+
+    // Opened, because the options are what matter and the closed control shows
+    // only the selection.
+    await tester.tap(find.byKey(const Key('inspection-scope-picker')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Whole organization'), findsWidgets);
+
+    // The company and its franchise are BOTH called "A1Chimney" — the ordinary
+    // case, not a contrived one — which is why the dropdown keys on type:id and
+    // never on the label. Two entries, one name.
+    expect(find.text('A1Chimney'), findsNWidgets(2));
+  });
+
 }
 
 Future<void> _pump(
@@ -245,6 +278,11 @@ const _catalogue = '''
     ],
     "bindable": [
       {"key": "customer.name", "label": "Client name"}
+    ],
+    "scopes": [
+      {"type": null, "id": null, "label": "Whole organization"},
+      {"type": "company", "id": "c-1", "label": "A1Chimney"},
+      {"type": "franchise", "id": "f-1", "label": "A1Chimney"}
     ]
   }
 }
