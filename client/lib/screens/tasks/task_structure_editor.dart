@@ -483,7 +483,7 @@ class _TaskStructureEditorState extends State<TaskStructureEditor> {
           if (_editKey == 'column:new') ...[
             const SizedBox(height: 8),
             DropdownButtonFormField<TaskColumnKind>(
-              value: _newColumnKind,
+              initialValue: _newColumnKind,
               decoration: const InputDecoration(
                 labelText: 'Column type',
                 border: OutlineInputBorder(),
@@ -587,7 +587,7 @@ class _TaskStructureEditorState extends State<TaskStructureEditor> {
     trailing: Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        if (category != null) category,
+        ?category,
         if (onMoveUp != null)
           IconButton(
             tooltip: 'Move $name up',

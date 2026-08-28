@@ -8,6 +8,7 @@ use App\Models\PhoneConnection;
 use App\Models\PhoneServiceRequest;
 use App\Models\User;
 use App\Support\Phone\TwilioGateway;
+use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,7 +39,7 @@ class ConnectionsController extends Controller
         $this->authorize('viewAny', PhoneConnection::class);
 
         $user = $request->user();
-        $rows = $this->connectionsInReach($user)
+        $rows = $this->inView($this->connectionsInReach($user), $user)
             ->sortBy(fn (PhoneConnection $c) => $c->scope_type.'|'.$c->scope_id)
             ->values()
             ->map(fn (PhoneConnection $c) => $this->row($c))
@@ -368,6 +369,47 @@ class ConnectionsController extends Controller
      *
      * @return \Illuminate\Support\Collection<int, PhoneConnection>
      */
+    private function scopeName(PhoneConnection $connection): string
+    {
+        if ($connection->scope_type === PhoneConnection::SCOPE_ORGANIZATION) {
+            return (string) ($this->tenant->get()?->name ?? 'The group');
+        }
+
+        return (string) (Company::query()
+            ->whereKey($connection->scope_id)
+            ->value('name') ?? 'A company');
+    }
+
+    /**
+     * Narrow reach to what the switcher is looking at.
+     *
+     * Reach answers "may this person ever act there"; the switcher answers
+     * "where are they standing now". Standing in A-1 Chimney, this listed
+     * Everdoors and the group as well — three rows all named "company" — which
+     * is the exact thing AGENTS.md says a company view must never do.
+     *
+     * An organization view still sees everything, because that IS the view.
+     */
+    private function inView(\Illuminate\Support\Collection $connections, User $user): \Illuminate\Support\Collection
+    {
+        $view = ViewScope::forUser($user);
+
+        if ($view->isOrganization()) {
+            return $connections;
+        }
+
+        return $connections->filter(function (PhoneConnection $c) use ($view) {
+            // The organization's own connection stays visible from a company
+            // view: a company with no Twilio of its own answers on the group's,
+            // so hiding it would hide the account its numbers actually use.
+            if ($c->scope_type === PhoneConnection::SCOPE_ORGANIZATION) {
+                return true;
+            }
+
+            return $view->coversCompany($c->scope_id);
+        })->values();
+    }
+
     private function connectionsInReach(User $user): \Illuminate\Support\Collection
     {
         if ($user->canActOnOrganization($user->organization)) {
@@ -409,6 +451,11 @@ class ConnectionsController extends Controller
             'organization_id' => $connection->organization_id,
             'scope_type' => $connection->scope_type,
             'scope_id' => $connection->scope_id,
+
+            // What the place is CALLED. Without this every picker fell back to
+            // the scope type, so three connections all read "company" and there
+            // was no way to tell which was which.
+            'scope_name' => $this->scopeName($connection),
             'kind' => $connection->kind,
             'account_sid' => $connection->account_sid,
             'api_key_sid' => $connection->api_key_sid,

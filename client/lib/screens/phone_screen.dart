@@ -5,9 +5,10 @@ import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'phone/call_tab.dart';
 import 'phone/records_tab.dart';
+import 'phone/reports_tab.dart';
 import 'phone/settings_tab.dart';
 
-/// Phone — Call, Records, Settings.
+/// Phone — Call, Records, Reports, Settings.
 ///
 /// One destination with three faces. The sidebar already says Phone, so there
 /// is no heading above the chips repeating it. Unopened tabs do not fetch.
@@ -42,6 +43,11 @@ class _PhoneScreenState extends State<PhoneScreen> {
       'Records',
       Icons.history,
       () => RecordsTab(api: widget.api, session: widget.session),
+    ),
+    (
+      'Reports',
+      Icons.insights_outlined,
+      () => ReportsTab(api: widget.api, session: widget.session),
     ),
     (
       'Settings',

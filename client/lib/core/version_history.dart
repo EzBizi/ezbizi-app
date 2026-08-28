@@ -8,6 +8,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0112',
+      date: '28 Aug 2026',
+      items: [
+        'Reports: how many calls, how many missed, how long, and broken down '
+            'by day, hour, line, who answered, or what it was about.',
+        'Save a report and it keeps the question rather than the dates, so it '
+            'answers itself again next month.',
+        'The phone account picker said "company" three times. It names the '
+            'place now, and only shows the one you are looking at.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0111',
       date: '28 Aug 2026',
       items: [

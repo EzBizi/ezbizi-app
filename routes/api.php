@@ -57,6 +57,7 @@ use App\Http\Controllers\Api\Phone\PortsController as PhonePortsController;
 use App\Http\Controllers\Api\Phone\PortWebhookController as PhonePortWebhookController;
 use App\Http\Controllers\Api\Phone\PresenceController as PhonePresenceController;
 use App\Http\Controllers\Api\Phone\RecordingWebhookController as PhoneRecordingWebhookController;
+use App\Http\Controllers\Api\Phone\ReportsController as PhoneReportsController;
 use App\Http\Controllers\Api\Phone\RingGroupsController as PhoneRingGroupsController;
 use App\Http\Controllers\Api\Phone\ServiceRequestsController as PhoneServiceRequestsController;
 use App\Http\Controllers\Api\Phone\SmsWebhookController as PhoneSmsWebhookController;
@@ -866,6 +867,14 @@ Route::prefix('v1')
         // What a call was about. Editing the list is phone.edit; putting one
         // ON a call is not — the people who answer the phone are usually
         // view-plus-a-line-grant, and they are who does the tagging.
+        // Reports. Literal paths before {report}, or "run" is captured as an id.
+        Route::get('phone/reports/run', [PhoneReportsController::class, 'run']);
+        Route::get('phone/reports', [PhoneReportsController::class, 'index']);
+        Route::post('phone/reports', [PhoneReportsController::class, 'store']);
+        Route::get('phone/reports/{report}/run', [PhoneReportsController::class, 'runSaved']);
+        Route::patch('phone/reports/{report}', [PhoneReportsController::class, 'update']);
+        Route::delete('phone/reports/{report}', [PhoneReportsController::class, 'destroy']);
+
         Route::get('phone/tags', [PhoneCallTagsController::class, 'index']);
         Route::post('phone/tags', [PhoneCallTagsController::class, 'store']);
         Route::patch('phone/tags/{tag}', [PhoneCallTagsController::class, 'update']);

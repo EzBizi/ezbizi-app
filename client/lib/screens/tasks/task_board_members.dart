@@ -72,8 +72,8 @@ class _TaskBoardMembersState extends State<TaskBoardMembers> {
         _candidates = candidates.data
             .where((item) => !existing.contains(item.id))
             .toList(growable: false);
-      } else if (_message == null) {
-        _message = candidates.message ?? 'Eligible people could not be loaded.';
+      } else {
+        _message ??= candidates.message ?? 'Eligible people could not be loaded.';
       }
     });
   }
@@ -244,7 +244,7 @@ class _TaskBoardMembersState extends State<TaskBoardMembers> {
             Text('Add member', style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: _candidateId,
+              initialValue: _candidateId,
               decoration: const InputDecoration(
                 labelText: 'Eligible person',
                 border: OutlineInputBorder(),

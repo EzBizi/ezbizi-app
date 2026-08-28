@@ -180,7 +180,7 @@ final class TaskApi {
   }) async {
     final response = await _api
         .put('/tasks/boards/$boardId/preference', <String, dynamic>{
-          if (isFavorite != null) 'is_favorite': isFavorite,
+          'is_favorite': ?isFavorite,
           if (markOpened) 'mark_opened': true,
         });
     return _decode(
@@ -318,7 +318,7 @@ final class TaskApi {
         .patch('/tasks/boards/$boardId/groups/$groupId', <String, dynamic>{
           'expected_structure_version': expectedStructureVersion,
           'name': name,
-          if (color != null) 'color': color,
+          'color': ?color,
         });
     return _decodeStructure(response, TaskGroup.fromJson);
   }
@@ -377,7 +377,7 @@ final class TaskApi {
           'expected_structure_version': expectedStructureVersion,
           'name': name,
           'category': _statusCategory(category),
-          if (color != null) 'color': color,
+          'color': ?color,
         });
     return _decodeStructure(response, TaskStatusOption.fromJson);
   }
@@ -441,7 +441,7 @@ final class TaskApi {
         'expected_structure_version': expectedStructureVersion,
         'name': name,
         'rank': _priorityRank(rank),
-        if (color != null) 'color': color,
+        'color': ?color,
       },
     );
     return _decodeStructure(response, TaskPriorityOption.fromJson);
@@ -583,7 +583,7 @@ final class TaskApi {
       <String, dynamic>{
         'expected_structure_version': expectedStructureVersion,
         'name': name,
-        if (color != null) 'color': color,
+        'color': ?color,
       },
     );
     return _decodeStructure(response, TaskColumnOption.fromJson);
