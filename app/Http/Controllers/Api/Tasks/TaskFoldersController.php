@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Tasks;
 use App\Models\TaskBoard;
 use App\Models\TaskFolder;
 use App\Support\Scoping\ViewScope;
+use App\Support\Tasks\TaskBoardAccess;
 use App\Support\Tasks\TaskFolders;
 use App\Support\Tasks\TaskPlace;
 use Illuminate\Http\JsonResponse;
@@ -13,7 +14,10 @@ use Symfony\Component\HttpFoundation\Response;
 
 final class TaskFoldersController extends TaskApiController
 {
-    public function __construct(private readonly TaskFolders $folders) {}
+    public function __construct(
+        private readonly TaskFolders $folders,
+        private readonly TaskBoardAccess $access,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -22,6 +26,9 @@ final class TaskFoldersController extends TaskApiController
         $scope = ViewScope::forUser($request->user());
         $place = TaskPlace::fromView($scope);
         $archived = (bool) ($input['archived'] ?? false);
+        if ($archived) {
+            $this->access->createDecision($request->user(), $scope)->authorize();
+        }
         $folders = TaskFolder::query()
             ->when($archived, fn ($query) => $query->archived(), fn ($query) => $query->active())
             ->where('company_id', $place['company_id'])

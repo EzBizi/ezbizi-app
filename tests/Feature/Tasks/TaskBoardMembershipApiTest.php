@@ -89,6 +89,33 @@ class TaskBoardMembershipApiTest extends TestCase
         $this->assertStringNotContainsString('Confidential acquisition plan', $response->getContent());
     }
 
+    public function test_recovery_candidate_feed_is_exact_place_admin_only_and_content_blind(): void
+    {
+        $oldOwner = $this->user('Orphaned owner', ['tasks.view']);
+        $replacement = $this->user('Eligible recovery owner', ['tasks.view']);
+        $board = $this->directPrivateBoard($oldOwner, 'Never expose recovery board content');
+        $oldOwner->forceFill(['is_active' => false])->save();
+
+        $candidates = $this->getJson(
+            "/api/v1/tasks/boards/{$board->id}/participants?purpose=membership&search=Eligible",
+        )->assertOk()->assertJsonPath('data.0.id', $replacement->id);
+        $this->assertStringNotContainsString('Never expose recovery board content', $candidates->getContent());
+        $this->assertNotContains($this->alpha['admin']->id, collect($candidates->json('data'))->pluck('id'));
+
+        $viewer = $this->user('Ordinary recovery viewer', ['tasks.view']);
+        $viewer->forceFill([
+            'preferences' => ['navigation.scope' => 'company:'.$this->alpha['company']->id],
+        ])->save();
+        $this->actingAs($viewer);
+        $this->getJson("/api/v1/tasks/boards/{$board->id}/participants?purpose=membership")
+            ->assertForbidden()->assertJsonMissing(['id' => $replacement->id]);
+
+        $this->lookAt(ViewScope::FRANCHISE, $this->alpha['franchise']->id);
+        $this->actingAs($this->alpha['admin']->fresh());
+        $this->getJson("/api/v1/tasks/boards/{$board->id}/participants?purpose=membership")
+            ->assertNotFound()->assertJsonMissing(['id' => $replacement->id]);
+    }
+
     public function test_directory_actions_and_archived_and_recoverable_feeds_are_authoritative_and_private(): void
     {
         $active = $this->createBoard('private');
@@ -183,6 +210,30 @@ class TaskBoardMembershipApiTest extends TestCase
             ['change_role', 'revoke'],
             $members->firstWhere('user_id', $this->alpha['admin']->id)['actions'],
         );
+    }
+
+    public function test_archived_directories_require_current_management_authority(): void
+    {
+        $folder = $this->postJson('/api/v1/tasks/folders', ['name' => 'Archived manager folder'])
+            ->assertCreated();
+        $this->postJson('/api/v1/tasks/folders/'.$folder->json('data.id').'/archive')->assertOk();
+
+        $board = $this->createBoard('scope');
+        $this->postJson("/api/v1/tasks/boards/{$board->id}/archive", [
+            'expected_structure_version' => $board->structure_version,
+        ])->assertOk();
+
+        $viewer = $this->user('Archived directory viewer', ['tasks.view']);
+        $viewer->forceFill([
+            'preferences' => ['navigation.scope' => 'company:'.$this->alpha['company']->id],
+        ])->save();
+        $this->actingAs($viewer);
+        $directory = $this->getJson('/api/v1/tasks/boards')->assertOk();
+        $this->assertNotContains('view_archived', $directory->json('meta.capabilities.actions'));
+        $this->getJson('/api/v1/tasks/boards?archived=1')->assertOk()
+            ->assertJsonPath('data', []);
+        $this->getJson('/api/v1/tasks/folders?archived=1')->assertForbidden()
+            ->assertJsonMissing(['name' => 'Archived manager folder']);
     }
 
     public function test_folder_directory_refuses_an_organization_fallback_outside_assignment_reach(): void

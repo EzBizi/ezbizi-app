@@ -54,6 +54,12 @@ final class TaskBoardsController extends TaskApiController
             'preferences' => fn ($q) => $q->where('user_id', $request->user()->id),
         ]);
         $boards = $query->orderBy('position')->get();
+        if ($archived) {
+            $boards = $boards
+                ->filter(fn (TaskBoard $board) => $this->access
+                    ->manageArchivedDecision($request->user(), $board, $scope)->allowed())
+                ->values();
+        }
 
         return response()->json([
             'data' => $boards->map(fn (TaskBoard $board) => $this->present(
@@ -92,6 +98,9 @@ final class TaskBoardsController extends TaskApiController
         $includeArchived = (bool) ($input['include_archived_structure'] ?? false);
 
         $scope = ViewScope::forUser($request->user());
+        if ($includeArchived) {
+            $this->access->manageDecision($request->user(), $board, $scope)->authorize();
+        }
 
         return response()->json(['data' => $this->present(
             $board->load($this->relations($request->user()->id, $includeArchived)),

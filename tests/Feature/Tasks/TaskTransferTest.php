@@ -199,6 +199,27 @@ class TaskTransferTest extends TestCase
         $this->assertSame(0, TaskImportSession::count());
     }
 
+    public function test_preflight_rejects_unmappable_or_invalid_utf8_headings(): void
+    {
+        $oversized = str_repeat('é', 96);
+        $url = '/api/v1/tasks/boards/'.$this->board->id.'/imports/preview';
+
+        $this->post($url, [
+            'active_view_id' => $this->viewId,
+            'file' => UploadedFile::fake()->createWithContent('long.csv', "{$oversized}\nvalue\n"),
+        ])->assertUnprocessable()->assertJsonValidationErrors('file');
+
+        $this->post($url, [
+            'active_view_id' => $this->viewId,
+            'file' => $this->xlsxUpload([[$oversized], ['value']]),
+        ])->assertUnprocessable()->assertJsonValidationErrors('file');
+
+        $this->post($url, [
+            'active_view_id' => $this->viewId,
+            'file' => UploadedFile::fake()->createWithContent('invalid.csv', "Task\xC3\x28\nvalue\n"),
+        ])->assertUnprocessable()->assertJsonValidationErrors('file');
+    }
+
     public function test_xlsx_relationships_find_nonstandard_sheets_and_namespace_prefixed_formulas(): void
     {
         $status = $this->board->statusOptions()->active()->where('category', StatusCategory::NotStarted)->firstOrFail();

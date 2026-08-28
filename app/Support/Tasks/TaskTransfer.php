@@ -40,6 +40,8 @@ final class TaskTransfer
 
     private const PREFLIGHT_SAMPLE_CELL_BYTES = 200;
 
+    private const MAX_HEADING_BYTES = 191;
+
     private const MAX_BYTES = 10 * 1024 * 1024;
 
     private const MAX_ROWS = 5000;
@@ -560,9 +562,14 @@ final class TaskTransfer
             throw ValidationException::withMessages(['file' => 'CSV must have one header row and no more than 100 columns.']);
         }
         $headings = array_map(fn ($value) => trim((string) $value), $headings);
-        if (in_array('', $headings, true) || count(array_unique($headings)) !== count($headings)) {
+        if (in_array('', $headings, true)
+            || count(array_unique($headings)) !== count($headings)
+            || collect($headings)->contains(fn (string $heading) =>
+                ! mb_check_encoding($heading, 'UTF-8') || strlen($heading) > self::MAX_HEADING_BYTES)) {
             fclose($stream);
-            throw ValidationException::withMessages(['file' => 'CSV headings must be non-empty and unique.']);
+            throw ValidationException::withMessages([
+                'file' => 'CSV headings must be UTF-8, non-empty, unique, and no longer than 191 bytes.',
+            ]);
         }
         $rows = [];
         while (($values = fgetcsv($stream, self::MAX_CELL_BYTES + 1, ',', '"', '')) !== false) {
@@ -705,8 +712,13 @@ final class TaskTransfer
             }
             $spreadsheet->disconnectWorksheets();
             $headings = array_map('trim', array_shift($matrix) ?? []);
-            if ($headings === [] || in_array('', $headings, true) || count(array_unique($headings)) !== count($headings)) {
-                throw ValidationException::withMessages(['file' => 'Workbook headings must be non-empty and unique.']);
+            if ($headings === [] || in_array('', $headings, true)
+                || count(array_unique($headings)) !== count($headings)
+                || collect($headings)->contains(fn (string $heading) =>
+                    ! mb_check_encoding($heading, 'UTF-8') || strlen($heading) > self::MAX_HEADING_BYTES)) {
+                throw ValidationException::withMessages([
+                    'file' => 'Workbook headings must be UTF-8, non-empty, unique, and no longer than 191 bytes.',
+                ]);
             }
 
             return collect($matrix)->reject(fn ($row) => collect($row)->every(fn ($value) => trim($value) === ''))

@@ -301,6 +301,20 @@ class TaskBoardConfigurationApiTest extends TestCase
         $this->assertContains('update', $response->json('data.core_columns.0.actions'));
     }
 
+    public function test_archived_structure_requires_active_owner_management(): void
+    {
+        $board = $this->createBoard('Private administration history');
+        $this->enterTenant();
+        $group = $board->groups()->firstOrFail();
+        $group->forceFill(['name' => 'Archived confidential group', 'archived_at' => now()])->save();
+        $viewer = $this->userWithRole($this->alpha, 'Ordinary board viewer', ['tasks.view']);
+
+        $this->actingAs($viewer);
+        $this->getJson("/api/v1/tasks/boards/{$board->id}?include_archived_structure=1")
+            ->assertForbidden()
+            ->assertJsonMissing(['name' => 'Archived confidential group']);
+    }
+
     private function createBoard(string $name = 'Operations'): TaskBoard
     {
         $id = $this->postJson('/api/v1/tasks/boards', [

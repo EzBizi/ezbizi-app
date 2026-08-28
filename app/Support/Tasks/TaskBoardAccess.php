@@ -87,7 +87,7 @@ final class TaskBoardAccess
         return array_values(array_filter([
             $canCreate ? 'create_board' : null,
             $canCreate ? 'create_folder' : null,
-            $this->directoryDecision($user, $scope)->allowed() ? 'view_archived' : null,
+            $canCreate ? 'view_archived' : null,
             $this->canBrowseRecoverable($user, $scope) ? 'recover_private_boards' : null,
         ]));
     }
@@ -181,6 +181,25 @@ final class TaskBoardAccess
         return $eligibleOwnerExists
             ? Response::deny('This board still has an eligible owner and does not need recovery.')
             : Response::allow();
+    }
+
+    public function recoveryAtCurrentViewDecision(
+        User $administrator,
+        TaskBoard $board,
+        ViewScope $scope,
+    ): Response {
+        if (! $this->canBrowseRecoverable($administrator, $scope)) {
+            return Response::deny('Only an active organization Administrator can recover orphaned private boards.');
+        }
+        $place = TaskPlace::fromView($scope);
+        if ($board->archived_at !== null
+            || $board->organization_id !== $place['organization_id']
+            || $board->company_id !== $place['company_id']
+            || $board->franchise_id !== $place['franchise_id']) {
+            return Response::denyAsNotFound();
+        }
+
+        return $this->recoveryDecision($administrator, $board);
     }
 
     public function viewDecision(User $user, TaskBoard $board, ViewScope $scope): Response

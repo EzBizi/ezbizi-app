@@ -34,8 +34,15 @@ final class TaskParticipantsController extends TaskApiController
             'search' => ['sometimes', 'nullable', 'string', 'max:100'],
         ]);
         $scope = ViewScope::forUser($request->user());
+        $recovery = false;
         if ($input['purpose'] === 'membership') {
-            $this->access->manageDecision($request->user(), $board, $scope)->authorize();
+            $manage = $this->access->manageDecision($request->user(), $board, $scope);
+            if ($manage->denied()) {
+                $this->access->recoveryAtCurrentViewDecision(
+                    $request->user(), $board, $scope,
+                )->authorize();
+                $recovery = true;
+            }
         } else {
             $this->access->viewDecision($request->user(), $board, $scope)->authorize();
             $permission = self::PURPOSE_PERMISSIONS[$input['purpose']];
@@ -49,6 +56,7 @@ final class TaskParticipantsController extends TaskApiController
             ? $this->participants->constrainForMembership(User::query(), $board)
             : $this->participants->constrainForTaskParticipation(User::query(), $board);
         $candidates = $query
+            ->when($recovery, fn ($query) => $query->whereKeyNot($request->user()->id))
             ->when($search !== '', fn ($query) => $query->where(fn ($names) => $names
                 ->where('name', 'like', "%{$search}%")
                 ->orWhere('email', 'like', "%{$search}%")))
