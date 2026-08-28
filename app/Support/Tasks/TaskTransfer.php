@@ -42,6 +42,8 @@ final class TaskTransfer
 
     private const MAX_HEADING_BYTES = 191;
 
+    private const MAX_DECISION_SOURCE_BYTES = 191;
+
     private const MAX_BYTES = 10 * 1024 * 1024;
 
     private const MAX_ROWS = 5000;
@@ -957,17 +959,26 @@ final class TaskTransfer
             $statusLabel = trim($row[$mapping['status'] ?? ''] ?? '');
             $statusId = $statusIds[$statusLabel] ?? null;
             if ($statusId === null) {
-                $errors[] = ['row' => $number, 'field' => 'status', 'code' => 'decision_required', 'message' => "Choose an active status for '{$statusLabel}'."];
+                $this->decisionReconciliationError(
+                    $errors, $number, 'status', 'decision_required', $statusLabel,
+                    "Choose an active status for '{$statusLabel}'.",
+                );
             }
             $groupLabel = trim($row[$mapping['group'] ?? ''] ?? '');
             $groupId = $parent === null ? ($groupIds[$groupLabel] ?? null) : null;
             if ($parent === null && $groupId === null) {
-                $errors[] = ['row' => $number, 'field' => 'group', 'code' => 'decision_required', 'message' => "Choose an active group for '{$groupLabel}'."];
+                $this->decisionReconciliationError(
+                    $errors, $number, 'group', 'decision_required', $groupLabel,
+                    "Choose an active group for '{$groupLabel}'.",
+                );
             }
             $priorityLabel = trim($row[$mapping['priority'] ?? ''] ?? '');
             $priorityId = $priorityLabel === '' ? null : ($priorityIds[$priorityLabel] ?? null);
             if ($priorityLabel !== '' && $priorityId === null) {
-                $errors[] = ['row' => $number, 'field' => 'priority', 'code' => 'decision_required', 'message' => "Choose an active priority for '{$priorityLabel}'."];
+                $this->decisionReconciliationError(
+                    $errors, $number, 'priority', 'decision_required', $priorityLabel,
+                    "Choose an active priority for '{$priorityLabel}'.",
+                );
             }
             $start = $this->dateValue($row[$mapping['start_on'] ?? ''] ?? '', $number, 'start_on', $errors);
             $due = $this->dateValue($row[$mapping['due_on'] ?? ''] ?? '', $number, 'due_on', $errors);
@@ -1109,7 +1120,10 @@ final class TaskTransfer
             $id = $choices[$label] ?? null;
             $valid = is_string($id) && $definition->options()->active()->whereKey($id)->exists();
             if (! $valid) {
-                $this->reconciliationError($errors, $row, $definition->id, 'label_decision_required', "Choose an active option for '{$label}'.");
+                $this->decisionReconciliationError(
+                    $errors, $row, $definition->id, 'label_decision_required', $label,
+                    "Choose an active option for '{$label}'.",
+                );
 
                 continue;
             }
@@ -1161,6 +1175,30 @@ final class TaskTransfer
     private function reconciliationError(array &$errors, int $row, string $field, string $code, string $message): null
     {
         $errors[] = compact('row', 'field', 'code', 'message');
+
+        return null;
+    }
+
+    private function decisionReconciliationError(
+        array &$errors,
+        int $row,
+        string $field,
+        string $code,
+        string $sourceValue,
+        string $message,
+    ): null {
+        if (! mb_check_encoding($sourceValue, 'UTF-8')
+            || strlen($sourceValue) > self::MAX_DECISION_SOURCE_BYTES) {
+            $errors[] = [
+                'row' => $row,
+                'field' => $field,
+                'code' => 'source_value_too_long',
+                'message' => 'A decision source value must be valid UTF-8 and no longer than 191 bytes.',
+            ];
+
+            return null;
+        }
+        $errors[] = compact('row', 'field', 'code', 'message') + ['source_value' => $sourceValue];
 
         return null;
     }

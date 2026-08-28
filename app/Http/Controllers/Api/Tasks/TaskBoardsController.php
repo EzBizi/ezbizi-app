@@ -8,6 +8,7 @@ use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\BoardVisibility;
 use App\Support\Tasks\TaskBoardAccess;
 use App\Support\Tasks\TaskBoardWriter;
+use App\Support\Tasks\TaskPlace;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -168,6 +169,32 @@ final class TaskBoardsController extends TaskApiController
             ),
             Response::HTTP_CREATED,
         );
+    }
+
+    public function duplicateSource(Request $request, TaskBoard $board): JsonResponse
+    {
+        $actor = $request->user();
+        $this->access->manageAtFiledPlaceDecision($actor, $board)->authorize();
+        $scope = ViewScope::forUser($actor);
+        $destination = TaskPlace::fromView($scope);
+        $samePlace = $board->organization_id === $destination['organization_id']
+            && $board->company_id === $destination['company_id']
+            && $board->franchise_id === $destination['franchise_id'];
+        $actions = [];
+        if ($this->access->createDecision($actor, $scope)->allowed()) {
+            $actions[] = 'duplicate';
+            if ($samePlace) {
+                $actions[] = 'duplicate_with_tasks';
+            }
+        }
+
+        return response()->json(['data' => [
+            'id' => $board->id,
+            'name' => $board->name,
+            'structure_version' => (int) $board->structure_version,
+            'same_place' => $samePlace,
+            'actions' => $actions,
+        ]]);
     }
 
     private function archiveState(Request $request, TaskBoard $board, bool $archived): JsonResponse

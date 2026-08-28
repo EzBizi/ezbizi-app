@@ -363,6 +363,7 @@ Route::prefix('v1')
         Route::post('tasks/boards/{board}/archive', [TaskBoardsController::class, 'archive']);
         Route::post('tasks/boards/{board}/restore', [TaskBoardsController::class, 'restore']);
         Route::post('tasks/boards/{board}/duplicate', [TaskBoardsController::class, 'duplicate']);
+        Route::get('tasks/boards/{board}/duplicate-source', [TaskBoardsController::class, 'duplicateSource']);
         Route::post('tasks/boards/{board}/imports/preview', [TaskImportsController::class, 'preview']);
         Route::post('tasks/boards/{board}/imports/commit', [TaskImportsController::class, 'commit']);
         Route::get('tasks/boards/{board}/exports/{format}', [TaskExportsController::class, 'show']);

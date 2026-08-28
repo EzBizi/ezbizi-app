@@ -3,6 +3,7 @@
 namespace Tests\Feature\Tasks;
 
 use App\Models\AuditEvent;
+use App\Models\Assignment;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Task;
@@ -244,9 +245,27 @@ class TaskDuplicationTest extends TestCase
             'name' => 'Sibling destination branch',
             'is_active' => true,
         ]);
+        $losingSourceAccess = $this->userWithRole(
+            $this->alpha,
+            'Source owner losing access',
+            ['tasks.view', 'tasks.manage'],
+        );
+        $this->postJson("/api/v1/tasks/boards/{$this->source->id}/members", [
+            'user_id' => $losingSourceAccess->id,
+            'role' => 'owner',
+        ])->assertCreated();
+        $this->enterTenant();
         $this->lookAt(ViewScope::COMPANY, $destinationCompany->id);
         $this->actingAs($this->alpha['admin']->fresh());
         $this->app->forgetScopedInstances();
+
+        $this->getJson("/api/v1/tasks/boards/{$this->source->id}/duplicate-source")
+            ->assertOk()
+            ->assertJsonPath('data.id', $this->source->id)
+            ->assertJsonPath('data.name', 'Source')
+            ->assertJsonPath('data.structure_version', $this->source->structure_version)
+            ->assertJsonPath('data.same_place', false)
+            ->assertJsonPath('data.actions', ['duplicate']);
 
         $copyId = $this->postJson("/api/v1/tasks/boards/{$this->source->id}/duplicate", [
             'name' => 'Cross-place structure copy',
@@ -268,6 +287,19 @@ class TaskDuplicationTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('include_tasks');
         $this->enterTenant();
         $this->assertSame($before, TaskBoard::count());
+
+        $losingSourceAccess->assignments()->delete();
+        Assignment::create([
+            'user_id' => $losingSourceAccess->id,
+            'assigned_company_id' => $destinationCompany->id,
+        ]);
+        $losingSourceAccess->forceFill(['preferences' => [
+            'navigation.scope' => ViewScope::COMPANY.':'.$destinationCompany->id,
+        ]])->save();
+        $this->signedInAs($losingSourceAccess);
+        $this->app->forgetScopedInstances();
+        $this->getJson("/api/v1/tasks/boards/{$this->source->id}/duplicate-source")
+            ->assertNotFound()->assertJsonMissing(['name' => 'Source']);
 
         $sibling = $this->userWithRole(
             $this->alpha,

@@ -220,6 +220,54 @@ class TaskTransferTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('file');
     }
 
+    public function test_csv_and_xlsx_reconciliation_expose_bounded_decision_source_values_beyond_the_sample(): void
+    {
+        $status = $this->board->statusOptions()->active()->where('category', StatusCategory::NotStarted)->firstOrFail();
+        $group = $this->board->groups()->active()->firstOrFail();
+        $mapping = json_encode([
+            'title' => 'Task', 'status' => 'Status', 'group' => 'Group',
+            'decisions' => [
+                'statuses' => ['To do' => $status->id],
+                'groups' => ['To do' => $group->id],
+            ],
+        ], JSON_THROW_ON_ERROR);
+        $decision = "Director's Review";
+        $rows = [['Task', 'Status', 'Group']];
+        for ($index = 1; $index <= 5; $index++) {
+            $rows[] = ["Known {$index}", 'To do', 'To do'];
+        }
+        $rows[] = ['Needs decision', $decision, 'To do'];
+        $csv = collect($rows)->map(fn (array $row) => implode(',', $row))->implode("\n")."\n";
+
+        foreach ([
+            'csv' => UploadedFile::fake()->createWithContent('decisions.csv', $csv),
+            'xlsx' => $this->xlsxUpload($rows),
+        ] as $format => $file) {
+            $response = $this->post('/api/v1/tasks/boards/'.$this->board->id.'/imports/preview', [
+                'active_view_id' => $this->viewId,
+                'mapping' => $mapping,
+                'file' => $file,
+            ])->assertOk()->assertJsonPath('data.format', $format);
+            $entry = collect($response->json('data.reconciliation'))
+                ->firstWhere(fn (array $row) => $row['code'] === 'decision_required' && $row['field'] === 'status');
+            $this->assertSame(7, $entry['row']);
+            $this->assertSame($decision, $entry['source_value']);
+            $this->assertLessThanOrEqual(191, strlen($entry['source_value']));
+            $this->assertStringNotContainsString($decision, json_encode($response->json('data.sample'), JSON_THROW_ON_ERROR));
+        }
+
+        $overlong = str_repeat('é', 96);
+        $response = $this->post('/api/v1/tasks/boards/'.$this->board->id.'/imports/preview', [
+            'active_view_id' => $this->viewId,
+            'mapping' => $mapping,
+            'file' => UploadedFile::fake()->createWithContent(
+                'overlong-decision.csv', "Task,Status,Group\nToo long,{$overlong},To do\n",
+            ),
+        ])->assertOk()->assertJsonPath('data.reconciliation.0.code', 'source_value_too_long');
+        $this->assertArrayNotHasKey('source_value', $response->json('data.reconciliation.0'));
+        $this->assertStringNotContainsString($overlong, $response->getContent());
+    }
+
     public function test_xlsx_relationships_find_nonstandard_sheets_and_namespace_prefixed_formulas(): void
     {
         $status = $this->board->statusOptions()->active()->where('category', StatusCategory::NotStarted)->firstOrFail();
