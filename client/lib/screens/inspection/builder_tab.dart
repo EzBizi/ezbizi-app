@@ -49,6 +49,8 @@ class _BuilderTabState extends State<BuilderTab> {
   final _name = TextEditingController();
   final _intro = TextEditingController();
   final _label = TextEditingController();
+  final _alertTitle = TextEditingController();
+  final _alertBody = TextEditingController();
 
   /// The choices on a `choice` field, one per line.
   ///
@@ -90,6 +92,8 @@ class _BuilderTabState extends State<BuilderTab> {
 
   @override
   void dispose() {
+    _alertTitle.dispose();
+    _alertBody.dispose();
     _name.dispose();
     _intro.dispose();
     _label.dispose();
@@ -110,6 +114,8 @@ class _BuilderTabState extends State<BuilderTab> {
         ? null
         : fields[_fieldIndex.clamp(0, fields.length - 1)];
     _label.text = '${field?['label'] ?? ''}';
+    _alertTitle.text = '${field?['title'] ?? ''}';
+    _alertBody.text = '${field?['body'] ?? ''}';
     _options.text = [
       for (final option in InspectionOption.allOf(field?['options'])) option.value,
     ].join('\n');
@@ -169,6 +175,46 @@ class _BuilderTabState extends State<BuilderTab> {
         .toList();
 
     return offered.contains(value) ? value : (offered.isEmpty ? null : offered.first);
+  }
+
+  /// Every OTHER field's key, for a condition to point at.
+  ///
+  /// Across all screens, because a condition reaches across them — that is the
+  /// whole point of it, and a picker limited to this screen would make the
+  /// branching the A1 port needs impossible to author.
+  ///
+  /// The field being edited is excluded: a condition on itself can never be
+  /// true before it is answered, and offering it invites exactly that.
+  List<String> _otherFieldKeys() {
+    final current = _selected;
+    if (current == null) return const [];
+
+    final me = _fieldAt(_screenIndex, _fieldIndex)?['key'];
+    final keys = <String>[];
+
+    for (final screen in (current['screens'] as List? ?? const [])) {
+      if (screen is! Map) continue;
+      for (final f in (screen['fields'] as List? ?? const [])) {
+        if (f is! Map) continue;
+        final key = '${f['key'] ?? ''}';
+        if (key.isEmpty || key == '$me' || keys.contains(key)) continue;
+        keys.add(key);
+      }
+    }
+
+    return keys;
+  }
+
+  Map<String, dynamic>? _fieldAt(int screen, int field) {
+    final screens = (_selected?['screens'] as List? ?? const []);
+    if (screen >= screens.length) return null;
+    final s = screens[screen];
+    if (s is! Map) return null;
+    final fields = (s['fields'] as List? ?? const []);
+    if (field >= fields.length) return null;
+    final f = fields[field];
+
+    return f is Map ? Map<String, dynamic>.from(f) : null;
   }
 
   /// The dropdown value for this field's citation.
@@ -728,6 +774,68 @@ class _BuilderTabState extends State<BuilderTab> {
               }),
             ),
           ],
+          // An alert says its piece instead of asking a question, so it has
+          // words rather than a label.
+          if (field['type'] == 'alert') ...[
+            const SizedBox(height: 12),
+            TextField(
+              key: Key('alert-title-$_selectedId-$_screenIndex-$_fieldIndex'),
+              controller: _alertTitle,
+              decoration: const InputDecoration(labelText: 'Heading'),
+              onChanged: (value) => _updateField((row) => row['title'] = value),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: Key('alert-body-$_selectedId-$_screenIndex-$_fieldIndex'),
+              controller: _alertBody,
+              minLines: 2,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                labelText: 'What it says',
+                alignLabelWithHint: true,
+              ),
+              onChanged: (value) => _updateField((row) => row['body'] = value),
+            ),
+          ],
+
+          // How this field appears on the report. Text unless told otherwise,
+          // which is why "A plain line" is first and the default.
+          if (field['type'] != 'divider' && field['type'] != 'alert') ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: Key('field-print-$_selectedId-$_screenIndex-$_fieldIndex'),
+              initialValue: '${field['print'] ?? 'text'}',
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'On the report',
+                helperText: 'A finding gets its own heading, with its photo, '
+                    'code and recommended work grouped under it.',
+              ),
+              items: const [
+                DropdownMenuItem(value: 'text', child: Text('A plain line')),
+                DropdownMenuItem(value: 'root', child: Text('A finding')),
+                DropdownMenuItem(value: 'ignore', child: Text('Do not print it')),
+              ],
+              onChanged: (value) => _updateField((row) => row['print'] = value),
+            ),
+          ],
+
+          // When this field is asked at all.
+          const SizedBox(height: 12),
+          _ConditionEditor(
+            key: Key('cond-$_selectedId-$_screenIndex-$_fieldIndex'),
+            label: 'Only ask this when',
+            condition: field['visible_if'],
+            fieldKeys: _otherFieldKeys(),
+            onChanged: (value) => _updateField((row) {
+              if (value == null) {
+                row.remove('visible_if');
+              } else {
+                row['visible_if'] = value;
+              }
+            }),
+          ),
+
           if (_codes.isNotEmpty) ...[
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
@@ -1016,4 +1124,154 @@ dynamic _keptOrPlain(InspectionOption? kept, String line) {
     'variant': kept.variant,
     'fields': kept.fields,
   };
+}
+
+/// A single `visible_if` condition, edited without writing JSON.
+///
+/// ── One clause, deliberately ─────────────────────────────────────
+///
+/// The engine takes nested and/or trees five deep. This edits ONE comparison,
+/// because that is what A1's inspection actually uses for all but a handful of
+/// its hundred and twenty fields, and a general tree editor is a screen nobody
+/// can use on a phone. A definition carrying a nested condition is shown as
+/// read-only rather than flattened — losing somebody's and/or because the
+/// editor could not draw it would be the worst outcome of the three.
+class _ConditionEditor extends StatelessWidget {
+  const _ConditionEditor({
+    super.key,
+    required this.label,
+    required this.condition,
+    required this.fieldKeys,
+    required this.onChanged,
+  });
+
+  final String label;
+  final dynamic condition;
+  final List<String> fieldKeys;
+  final ValueChanged<Map<String, dynamic>?> onChanged;
+
+  bool get _isNested {
+    final op = condition is Map ? '${(condition as Map)['op'] ?? ''}' : '';
+
+    return op == 'and' || op == 'or';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (_isNested) {
+      return InputDecorator(
+        decoration: InputDecoration(labelText: label),
+        child: Text(
+          'This field has a combined condition with several parts. It still '
+          'works; it cannot be edited here yet.',
+          style: theme.textTheme.bodySmall,
+        ),
+      );
+    }
+
+    final map = condition is Map
+        ? Map<String, dynamic>.from(condition as Map)
+        : <String, dynamic>{};
+    final field = '${map['field'] ?? ''}';
+    final op = '${map['op'] ?? 'eq'}';
+    final value = op == 'in' || op == 'not_in'
+        ? (map['values'] as List? ?? const []).join(', ')
+        : '${map['value'] ?? ''}';
+
+    if (fieldKeys.isEmpty) {
+      return InputDecorator(
+        decoration: InputDecoration(labelText: label),
+        child: Text('Add another field first.', style: theme.textTheme.bodySmall),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: theme.textTheme.labelLarge),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: DropdownButtonFormField<String>(
+                key: const Key('cond-field'),
+                initialValue: fieldKeys.contains(field) ? field : null,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Field'),
+                items: [
+                  const DropdownMenuItem(value: '', child: Text('Always ask it')),
+                  for (final key in fieldKeys)
+                    DropdownMenuItem(value: key, child: Text(key)),
+                ],
+                onChanged: (chosen) {
+                  if (chosen == null || chosen.isEmpty) {
+                    onChanged(null);
+                    return;
+                  }
+                  onChanged({'field': chosen, 'op': op, 'value': value});
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 2,
+              child: DropdownButtonFormField<String>(
+                key: const Key('cond-op'),
+                initialValue: op,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Is'),
+                items: const [
+                  DropdownMenuItem(value: 'eq', child: Text('equal to')),
+                  DropdownMenuItem(value: 'ne', child: Text('not equal to')),
+                  DropdownMenuItem(value: 'in', child: Text('one of')),
+                  DropdownMenuItem(value: 'not_in', child: Text('none of')),
+                ],
+                onChanged: (chosen) {
+                  if (chosen == null || field.isEmpty) return;
+                  onChanged(_build(field, chosen, value));
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          key: Key('cond-value-$field-$op'),
+          initialValue: value,
+          decoration: InputDecoration(
+            labelText: 'Answer',
+            helperText: op == 'in' || op == 'not_in'
+                ? 'Separate several answers with commas.'
+                : null,
+          ),
+          enabled: field.isNotEmpty,
+          onChanged: (typed) {
+            if (field.isEmpty) return;
+            onChanged(_build(field, op, typed));
+          },
+        ),
+      ],
+    );
+  }
+
+  /// `in`/`not_in` take a list; `eq`/`ne` take one value. Switching between
+  /// them has to rewrite the shape, or the engine reads a `value` that is not
+  /// there and the condition silently never matches.
+  Map<String, dynamic> _build(String field, String op, String raw) {
+    if (op == 'in' || op == 'not_in') {
+      return {
+        'field': field,
+        'op': op,
+        'values': [
+          for (final part in raw.split(','))
+            if (part.trim().isNotEmpty) part.trim(),
+        ],
+      };
+    }
+
+    return {'field': field, 'op': op, 'value': raw.trim()};
+  }
 }
