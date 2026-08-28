@@ -92,6 +92,18 @@ void main() {
     );
   });
 
+  testWidgets('the create form has no typed price field', (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.text('Add job'));
+    await tester.pumpAndSettle();
+
+    // Task 8: price comes from service lines, always — a job is created
+    // bare and priced afterwards by adding lines in the detail panel, not by
+    // typing a number here. Only a "Notes" field is left after "Status".
+    expect(find.text('Price'), findsNothing);
+  });
+
   testWidgets('a job row shows the role it is assigned to', (tester) async {
     await _pump(
       tester,
