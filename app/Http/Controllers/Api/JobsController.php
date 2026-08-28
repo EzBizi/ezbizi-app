@@ -8,6 +8,7 @@ use App\Models\Job;
 use App\Models\JobLine;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Jobs\EarnedStatuses;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -176,6 +177,15 @@ class JobsController extends Controller
         DB::transaction(function () use ($job, $input) {
             $job->fill($input);
 
+            // The money is earned once, at the first transition into an earned
+            // status. Not re-stamped on a later correction: a closed month has
+            // to stay closed (§8.1).
+            if (array_key_exists('status', $job->getDirty())
+                && $job->earned_at === null
+                && EarnedStatuses::isEarned($job->status, $job->franchise)) {
+                $job->earned_at = now();
+            }
+
             $changed = $job->getDirty();
             $before  = array_intersect_key($job->getOriginal(), $changed);
 
@@ -203,6 +213,25 @@ class JobsController extends Controller
                 $this->events->emit('job.scheduled', $job, [
                     'before' => ['scheduled_for' => $before['scheduled_for'] ?? null],
                     'after'  => ['scheduled_for' => $changed['scheduled_for']],
+                ]);
+            }
+
+            if (array_key_exists('assigned_role_id', $changed)) {
+                $this->events->emit('job.assigned', $job, [
+                    'before' => ['assigned_role_id' => $before['assigned_role_id'] ?? null],
+                    'after'  => ['assigned_role_id' => $changed['assigned_role_id']],
+                ]);
+            }
+
+            // Distinct from status_changed because "when the work is done" is
+            // the rule people actually write, and making them hand-pick
+            // statuses in every rule duplicates a setting already made once.
+            if (array_key_exists('status', $changed)
+                && EarnedStatuses::isEarned($job->status, $job->franchise)
+                && ! EarnedStatuses::isEarned((string) ($before['status'] ?? ''), $job->franchise)) {
+                $this->events->emit('job.completed', $job, [
+                    'before' => ['status' => $before['status'] ?? null],
+                    'after'  => ['status' => $job->status],
                 ]);
             }
         });
@@ -278,12 +307,23 @@ class JobsController extends Controller
             // NULL column turned an explicit null into a 500 rather than a 422.
             // It comes from the franchise below instead.
             'currency'         => ['missing'],
+
+            // Whose trade this is. Roles are organization-global (§4), so this
+            // is scoped to the tenant, not the franchise.
+            'assigned_role_id' => ['nullable', 'uuid', $this->existsInTenant('roles')],
+
+            // Who did it. Scoped the same way; whether they can REACH this
+            // franchise is checked below, because `exists` cannot express it.
+            'performed_by_user_id' => ['nullable', 'uuid', $this->existsInTenant('users')],
         ];
     }
 
     private function present(Job $job, bool $detailed = false): array
     {
-        $job->loadMissing(['franchise:id,name,timezone', 'customer:id,name,number,owning_franchise_id', 'lines']);
+        $job->loadMissing([
+            'franchise:id,name,timezone', 'customer:id,name,number,owning_franchise_id', 'lines',
+            'assignedRole:id,name', 'performedBy:id,name',
+        ]);
 
         $base = [
             'id'     => $job->id,
@@ -312,6 +352,11 @@ class JobsController extends Controller
                 'currency' => $job->currency,
                 'display'  => $job->amountForDisplay(),
             ],
+            // In the base payload too, not just detailed — the list needs it
+            // for its own column.
+            'assigned_role' => $job->assignedRole
+                ? ['id' => $job->assigned_role_id, 'name' => $job->assignedRole->name]
+                : null,
         ];
 
         if (! $detailed) {
@@ -332,6 +377,10 @@ class JobsController extends Controller
                 'qty'              => $line->qty,
                 'amount_minor'     => $line->amount_minor,
             ])->all(),
+            'performed_by' => $job->performedBy
+                ? ['id' => $job->performed_by_user_id, 'name' => $job->performedBy->name]
+                : null,
+            'earned_at'  => $job->earned_at?->toIso8601String(),
             'created_at' => $job->created_at->toIso8601String(),
         ];
     }

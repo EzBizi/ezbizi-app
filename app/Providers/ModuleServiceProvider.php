@@ -913,6 +913,20 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A job’s date was set, moved, or cleared. Clearing it counts '
                             .'— the event fires with an empty new date.',
                     ),
+                    new TriggerDefinition(
+                        key: 'job.assigned',
+                        label: 'Assigned to a role',
+                        description: 'A job’s role was set, changed or cleared. It carries the '
+                            .'old role as well as the new one. Naming a role says whose trade '
+                            .'the work is — it does not decide who may open the job.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'job.completed',
+                        label: 'Completed',
+                        description: 'A job reached one of the statuses your organization counts '
+                            .'as earned. Set that list in Settings. This fires only on the way '
+                            .'IN, so a job corrected back and forth does not fire twice.',
+                    ),
                 ],
                 automationActions: [
                     new ActionDefinition(

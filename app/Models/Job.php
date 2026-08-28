@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use App\Models\Concerns\HasAttachments;
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Time\FranchiseWallTime;
 use Database\Factories\JobFactory;
@@ -31,8 +33,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable([
     'franchise_id', 'customer_id', 'number', 'title', 'description',
     'status', 'scheduled_for', 'duration_minutes', 'amount_minor', 'currency',
+    'assigned_role_id', 'performed_by_user_id',
 ])]
-class Job extends Model
+class Job extends Model implements StatesRetention
 {
     /** @use HasFactory<JobFactory> */
     use HasFactory;
@@ -50,6 +53,36 @@ class Job extends Model
      */
     use HasAttachments;
 
+    /**
+     * The row is kept on the same terms as the customer it was done for — see
+     * Customer::retention(), which this mirrors on purpose: there is no age at
+     * which last year's job stops being what an invoice refers to, and tax law
+     * wants the invoices this table is found through.
+     *
+     * `performed_by_user_id` is the one column on this row that is personal
+     * data, and it is why `jobs` states a policy at all rather than leaning on
+     * that shared reasoning the way `organizations`/`companies`/`franchises` do
+     * (see RetentionTest::test_every_table_in_the_schema_has_been_decided_about).
+     * It is not anonymised the way `customers` is — the job survives whatever
+     * happens to the person who did the work, and the FK
+     * (`performed_by_user_id` → `users`, `nullOnDelete`) is what makes that
+     * literally true: if that account is ever removed the constraint nulls this
+     * column and leaves the rest of the row exactly as it was, rather than
+     * taking the job down with it.
+     */
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::forever(
+            'The work itself (§5.2), kept on the same terms as the customer it was done for '
+            .'— there is no age at which last year\'s job stops being what an invoice refers '
+            .'to. `performed_by_user_id` is personal data: who performed the work, kept for '
+            .'as long as the job is. It is nulled — not anonymised — if that person\'s '
+            .'account is ever removed, and the job survives that untouched. The customer, in '
+            .'`customers`, and any photographs, in `attachments`, each decide about '
+            .'themselves the same way.'
+        );
+    }
+
     protected function casts(): array
     {
         return [
@@ -58,6 +91,11 @@ class Job extends Model
             // Integer minor units (§7). Casting it keeps a string '1999' from a
             // JSON body out of arithmetic that would silently concatenate.
             'amount_minor'     => 'integer',
+            // When the money was earned (§8.1). Cast so present() can call
+            // ?->toIso8601String() and so a bare assignment of now() in
+            // JobsController::update() serialises correctly on save — see
+            // AutomationEvent::casts() for the same reasoning on delivered_at.
+            'earned_at'        => 'datetime',
         ];
     }
 
