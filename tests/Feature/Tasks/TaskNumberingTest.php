@@ -17,14 +17,14 @@ class TaskNumberingTest extends TestCase
 
     public function test_task_numbers_use_the_board_place_prefix_and_an_organization_wide_committed_two_process_sequence(): void
     {
-        $migration = require database_path('migrations/2026_08_25_171000_create_task_core_tables.php');
-        $migration->down();
-
-        try {
-            $this->assertFalse($this->hasIndex('task_column_options', 'tasks_options_definition_lookup_index'));
-        } finally {
-            $migration->up();
-        }
+        // Later Tasks migrations now depend on the core tables and attachment
+        // candidate key, so rolling this historical migration down in isolation
+        // is no longer a valid schema operation. Prove the current prerequisite
+        // instead; migrate:fresh covers ordered down/up construction.
+        $this->assertTrue($this->hasIndex(
+            'task_column_options',
+            'tasks_options_definition_lookup_index',
+        ));
 
         $tenant = null;
         $organizationId = null;
@@ -49,6 +49,10 @@ class TaskNumberingTest extends TestCase
                 $this->assertSame('ALPHA-00001', $number);
             });
 
+            // Child processes need the tenant, board, setting, and first
+            // sequence allocation committed. Cleanup below removes this
+            // deliberately committed fixture before the test returns.
+            DB::commit();
             $worker = <<<'PHP'
 require 'vendor/autoload.php';
 $app = require 'bootstrap/app.php';
