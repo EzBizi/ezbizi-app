@@ -12,6 +12,30 @@ reassigned mid-conversation, several sessions have shared a name at once, and on
 session has appeared under two names. Treat it as a hint about who to ask, never as
 a fact. The durable columns are the module and its files.
 
+**So prefer SHAs in that column where they exist.** A SHA is checkable by anyone at
+any time; a name is checkable by nobody. Where a row lists commits instead of a
+session, that is the stronger form, not a gap.
+
+**Never write a row from a relay. Ask the session to confirm it against its own
+commits** — `git show <their SHAs> --name-only` — before you record it. An
+assignment arriving as settled fact, with authority behind it, is exactly what gets
+accepted without checking: one session nearly accepted ownership of every
+third-party integration this way and refuted it in one command, finding not a
+single matching file across four of their commits.
+
+**A blank is better than a wrong name.** An honest blank routes a Meta outage to
+nobody, which is recoverable. A wrong name routes it to somebody who is not
+watching, which is not. The integrations row is blank on purpose: two distinct
+message pipes are both presenting as `ezbizi-3d`, and the real owner is not yet
+known.
+
+**Do not reconstruct this file from `git log --name-only`.** Web Management's
+history contains Phone and Services files — `AddressesController`,
+`NumbersController`, `TwilioGateway`, `ServicesController`,
+`ServiceEventAtomicityTest`. That is not authorship; it is collateral from a stale
+tree reverting them, plus the repairs. Deriving ownership from touched files would
+misassign three modules at once.
+
 **When attribution matters, cite the commit SHA.** Every commit in this repo carries
 the same `%an` — one machine, one git config — so authorship cannot separate
 sessions either. The SHA is the only handle that survives a rename.
@@ -21,7 +45,8 @@ sessions either. The SHA is the only handle that survives a rename.
 | **Customers** | `Api/CustomersController.php` · `Models/Customer.php` · `Policies/CustomerPolicy.php` · `Services/Customers/DuplicateCustomerFinder.php` · `Dashboard/Glances/CustomersGlance.php` · `Dashboard/Widgets/CustomersAdded.php` · `Tasks/RecordLinks/CustomerTaskLink.php` · `Middleware/RefuseStaffAuthOnCustomerHost.php` · `screens/customers_screen.dart` · `screens/customers/` · `test/customers_screen_test.dart` · `factories/CustomerFactory.php` | `ezbizi-0a` |
 | **Jobs** | `Models/Job.php` · `Api/JobsController.php` · `Policies/JobPolicy.php` · `factories/JobFactory.php` · `Dashboard/Glances/JobsGlance.php` · `Dashboard/Widgets/Revenue.php` · `screens/jobs_screen.dart` · `screens/jobs/` · `core/job_status.dart` | `ezbizi-85` |
 | **Phone** | `Api/Phone/` · `Support/Phone/` (incl. `PhoneLineHealth`, `TwimlRenderer`) · `Models/PhoneNumber.php` · `screens/phone/` · `test/phone_*.dart` · `tests/Feature/Phone/` | `ezbizi-0b` |
-| **Web Management** | `Api/Web/` · `Models/WebSite.php` · `Models/WebValue.php` · `Support/Web/` · `Policies/WebSitePolicy.php` · `Dashboard/Glances/WebManagementGlance.php` · `screens/web/` · `wordpress-plugin/ezbizi/` · `tests/Feature/Web/` | `ezbizi-3d` |
+| **Web Management** | `Api/Web/` · `Models/WebSite.php` · `Models/WebValue.php` · `Support/Web/` · `Policies/WebSitePolicy.php` · `Dashboard/Glances/WebManagementGlance.php` · `screens/web/` · `wordpress-plugin/ezbizi/` · `tests/Feature/Web/` | `358b3db` `e1f4d9a` `4b1a087` `5ce9285` |
+| **Third-party integrations** — OAuth drivers, Meta, `config/services.php` provider blocks, the 2026-10-26 Meta cutoff | — | **deliberately blank, see below** |
 | **Tasks** | `screens/tasks/` · `screens/tasks_screen.dart` · `Models/Task*.php` · `Policies/Task*.php` · `Support/Tasks/` · `Providers/TaskServiceProvider.php` · `Jobs/DeliverTaskNotificationIntent.php` · `Middleware/EnsureTaskRouteAccess.php` · `tests/Feature/Tasks/` | `ezbizi-13` |
 | **Android · Play** | `client/android/` · the android path of `scripts/build-app.sh` · `build-web.sh` · `release.sh` · `windows-installer.iss` · `assets/logo` · `assets/installer` · `client/integration_test/store_screenshots_test.dart` · `client/test_driver/screenshots.dart` · the **Play** Console | `ezbizi-16` |
 | **iOS · Apple** | `client/ios/` · the ios path of `scripts/build-app.sh` · the Mac relay · App Store Connect, TestFlight, the Apple Developer consoles | `ezbizi-71` |

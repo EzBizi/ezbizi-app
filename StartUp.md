@@ -196,7 +196,13 @@ Clearing a stale entry is safe when you can show it is stale: `git reset HEAD --
 `git show HEAD:<path>` and the file on disk should still agree. Do that only for
 paths you own, and only after proving the staged copy is older than `HEAD` —
 otherwise you are discarding somebody's in-flight work to prevent a commit nobody
-has made. Line counts are usually enough to show staleness; a marker string the
+has made.
+
+**There is a form that is safe even on somebody else's paths:** show the staged
+blob is a **strict subset** of `HEAD` — zero added lines. Then clearing it can only
+remove a landmine and cannot lose work, and you do not have to wait for an owner
+who may not exist any more. If the staged copy adds anything at all, it is somebody's
+in-flight work; leave it and tell them. Line counts are usually enough to show staleness; a marker string the
 newer version contains and the older does not is better, because it names the
 regression instead of implying one.
 
