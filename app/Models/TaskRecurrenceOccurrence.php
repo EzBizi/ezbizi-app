@@ -37,10 +37,7 @@ class TaskRecurrenceOccurrence extends Model implements HoldsPersonalData
 
     public static function retention(): RetentionPolicy
     {
-        return RetentionPolicy::elsewhere(
-            'the hourly ezbizi:expire-task-recurrence-occurrences locked cleaner',
-            'The row exists only to keep the recurrence worker idempotent for one retried or overlapping run against one occurrence date; once the series has moved well past that date the row has no further use.',
-        );
+        return RetentionPolicy::forever('The occurrence key remains as durable idempotency evidence for the task history.');
     }
 
     public static function personalDataPurpose(): string

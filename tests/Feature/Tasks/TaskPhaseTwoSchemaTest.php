@@ -19,13 +19,15 @@ class TaskPhaseTwoSchemaTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
-    public function test_tasks_gains_nullable_start_date_and_recurrence_columns(): void
+    public function test_tasks_gains_a_nullable_recurrence_column(): void
     {
         $migration = require database_path('migrations/2026_08_29_100000_add_task_phase_two_storage.php');
         $migration->down();
 
         try {
-            $this->assertFalse(Schema::hasColumn('tasks', 'start_date'));
+            // start_on already exists — Phase 1 created it. This migration
+            // does not touch it, so it survives the rollback.
+            $this->assertTrue(Schema::hasColumn('tasks', 'start_on'));
             $this->assertFalse(Schema::hasColumn('tasks', 'recurrence'));
             $this->assertFalse(Schema::hasTable('task_dependencies'));
             $this->assertFalse(Schema::hasTable('task_recurrence_occurrences'));
@@ -33,11 +35,8 @@ class TaskPhaseTwoSchemaTest extends TestCase
             $migration->up();
         }
 
-        $this->assertTrue(Schema::hasColumn('tasks', 'start_date'));
         $this->assertTrue(Schema::hasColumn('tasks', 'recurrence'));
-        $this->assertTrue($this->isNullable('tasks', 'start_date'));
         $this->assertTrue($this->isNullable('tasks', 'recurrence'));
-        $this->assertSame('date', $this->columnType('tasks', 'start_date'));
         $this->assertSame('json', $this->columnType('tasks', 'recurrence'));
 
         $tenant = $this->provisionTenant('Alpha');
@@ -46,10 +45,9 @@ class TaskPhaseTwoSchemaTest extends TestCase
         $taskId = $this->insertTask($tenant, $boardId, $groupId, $statusId, $now);
 
         $task = DB::table('tasks')->find($taskId);
-        $this->assertNull($task->start_date);
         $this->assertNull($task->recurrence);
 
-        $this->assertTrue($this->hasIndex('tasks', 'board_id,start_date,due_on'));
+        $this->assertTrue($this->hasIndex('tasks', 'board_id,start_on,due_on'));
     }
 
     public function test_task_dependencies_rejects_cross_tenant_cross_board_self_and_duplicate_pairs(): void
@@ -164,15 +162,15 @@ class TaskPhaseTwoSchemaTest extends TestCase
         $this->assertNotEmpty(TaskDependency::personalDataHeld());
 
         $occurrencePolicy = TaskRecurrenceOccurrence::retention();
-        $this->assertSame(RetentionPolicy::ELSEWHERE, $occurrencePolicy->kind);
-        // elsewhere($by, $because): the mechanism belongs in enforcedBy, never in
-        // because — a test in this repo already failed once for getting that
-        // backwards, so both are checked explicitly rather than just "not empty".
-        $this->assertNotNull($occurrencePolicy->enforcedBy);
-        $this->assertNotSame('', trim($occurrencePolicy->enforcedBy));
-        $this->assertStringContainsString('cleaner', $occurrencePolicy->enforcedBy);
-        $this->assertStringStartsWith('Removed by', $occurrencePolicy->sentence());
+        // forever(), mirroring TaskOverdueOccurrence: the key stays as durable
+        // idempotency evidence. Phase 2 builds no cleaner for this table — Task
+        // 6 only ever writes occurrences, so elsewhere() would name a mechanism
+        // that does not exist, which is the false-retention defect this repo's
+        // design exists to prevent.
+        $this->assertSame(RetentionPolicy::FOREVER, $occurrencePolicy->kind);
+        $this->assertNull($occurrencePolicy->enforcedBy);
         $this->assertNotSame('', trim($occurrencePolicy->because));
+        $this->assertStringStartsWith('Kept indefinitely.', $occurrencePolicy->sentence());
         $this->assertNotSame('', trim(TaskRecurrenceOccurrence::personalDataPurpose()));
         $this->assertNotEmpty(TaskRecurrenceOccurrence::personalDataHeld());
     }
@@ -212,7 +210,7 @@ class TaskPhaseTwoSchemaTest extends TestCase
             'group_id' => $groupId, 'parent_task_id' => null, 'number' => 'T-'.Str::random(16), 'title' => $title ?? 'Task',
             'description' => null, 'description_plain' => null, 'owner_user_id' => $tenant['admin']->id,
             'status_option_id' => $statusId, 'priority_option_id' => null, 'start_on' => null, 'due_on' => null,
-            'start_date' => null, 'recurrence' => null,
+            'recurrence' => null,
             'due_revision' => 0, 'completed_at' => null, 'completed_by' => null, 'cancelled_at' => null,
             'cancelled_by' => null, 'created_by' => $tenant['admin']->id, 'updated_by' => $tenant['admin']->id,
             'position' => random_int(1, 999999), 'version' => 1, 'detail_version' => 1, 'archived_with_parent_id' => null,

@@ -6,15 +6,20 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Phase 2 storage, additive only (ACTIVE-CONSTRAINTS.md): `tasks` gains two
- * nullable columns, and two new tables are created. Nothing existing is
+ * Phase 2 storage, additive only (ACTIVE-CONSTRAINTS.md): `tasks` gains one
+ * nullable column, and two new tables are created. Nothing existing is
  * renamed, retyped, or made non-nullable (Tasks Phase 2 design §16).
+ *
+ * `tasks.start_on` already exists — Phase 1 created it
+ * (2026_08_25_171000_create_task_core_tables.php) beside `due_on`. Phase 2
+ * needs no new start-date column; only `recurrence` and the new
+ * `(board_id, start_on, due_on)` index are added here.
  *
  * `task_dependencies` repeats the compound organization/board identity every
  * other board child uses, so a cross-tenant or cross-board edge is rejected by
- * MySQL rather than by whoever wrote the query (design §9). It has no board_id
- * of its own to spare — it names organization_id, board_id, blocker_task_id,
- * blocked_task_id, created_by explicitly (task-1 brief).
+ * MySQL rather than by whoever wrote the query (design §9). It names
+ * organization_id, board_id, blocker_task_id, blocked_task_id, created_by
+ * explicitly (task-1 brief).
  *
  * `task_recurrence_occurrences` is a marker table shaped like
  * `task_overdue_occurrences`: unique (task_id, occurrence_date) is its entire
@@ -28,12 +33,11 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('tasks', function (Blueprint $table) {
-            $table->date('start_date')->nullable()->after('due_on');
-            $table->json('recurrence')->nullable()->after('start_date');
+            $table->json('recurrence')->nullable()->after('due_on');
         });
 
         Schema::table('tasks', function (Blueprint $table) {
-            $table->index(['board_id', 'start_date', 'due_on'], 'tasks_board_start_due_index');
+            $table->index(['board_id', 'start_on', 'due_on'], 'tasks_board_start_due_index');
         });
 
         Schema::create('task_dependencies', function (Blueprint $table) {
@@ -89,7 +93,7 @@ return new class extends Migration
         });
 
         Schema::table('tasks', function (Blueprint $table) {
-            $table->dropColumn(['start_date', 'recurrence']);
+            $table->dropColumn('recurrence');
         });
     }
 };
