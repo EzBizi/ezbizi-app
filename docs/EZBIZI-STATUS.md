@@ -1,6 +1,6 @@
 # EzBizi — where things stand
 
-**2026-08-26.** One page. If something contradicts another document, this one is right —
+**2026-08-27.** One page. If something contradicts another document, this one is right —
 which only works if it is the newest, and on 6 August it was not: it claimed the off-site
 backup was still outstanding some three hours after `EZBIZI-TODO.md` recorded it closed.
 **Update this page in the same pass as the thing it describes, or delete the claim.** The four
@@ -47,13 +47,13 @@ extra rows, mismatches, unsafe paths, links, non-file entries, corrupt encryptio
 archives, and a local-only copy. Production-capable Tasks import staging, update
 attachments, and File-column paths may now open under their normal authorization rules.
 
-## EZ Leads — `leads` is live, 2026-08-25
+## EZ Leads — all three modules live, 2026-08-27
 
 The first expansion work that depends on an outside party's approval rather than on us. Rodrigo's
 A1 Leads — a local Node/SQLite system on his own PC — becomes native EzBizi modules. Read as
 specification, re-expressed here; nothing is ported.
 
-**Shipped in this release:** the `leads` module. One table, five permissions, a sidebar tab, a
+**`leads` shipped 2026-08-25.** One table, five permissions, a sidebar tab, a
 dashboard glance, and the Google Ads connection behind it. The list searches a name or a phone
 number in one box — digits are stored normalised so `5551234567` finds `+1 (555) 123-4567` — and
 `Fetch new` pulls from the connected account on demand. Status is EzBizi's column and the sync
@@ -66,9 +66,49 @@ same empty list and mean opposite things, so `meta.connections` travels with eve
 screen says different sentences for each — the same rule as Email's stale-source behaviour, and
 the failure the whole module exists to avoid.
 
-**Not built yet:** `reviews` and `business_profile`, scheduled sync (fetching is on demand),
-classification and transcription (`lead.classified` is declared and marked not raised), and
-conversion to a customer and job (`lead.converted`, likewise).
+**`business_profile` shipped 2026-08-27**, and with it EZ Leads is built. The listings the
+public sees on Maps — name, address, category, hours — and the number the screen leads with:
+how many Google is **not** showing. A suspended listing looks perfectly healthy in a database
+and is invisible on Maps, and today the way anybody finds out is a customer saying they could
+not find the business.
+
+Read-only except one field: which franchise answers for a listing. A listing is **not** a
+franchise — a company may hold thirty listings and no franchise records, and a franchise may
+cover several — so the link is optional, set by a person, and nothing derives one from the
+other. No automation actions at all: the API can write hours, descriptions and categories, and
+none of it is offered to a rule, because changing what the public is told about a real business
+should not happen because a condition matched at three in the morning.
+
+**Nothing further can be built for EZ Leads without Google.** Both remaining gates are theirs,
+and neither is on the critical path we control: the Ads developer token is at Test level pending
+Basic Access review, `adwords` scope verification needs a demo video of the working module, and
+Business Profile quota cannot even be applied for before 2026-10-24. The nearer blocker is
+smaller and ours — the two OAuth clients do not exist yet and no keys are on the box, confirmed
+2026-08-26, so Connect cannot start a sign-in at all (TODO #33).
+
+**`reviews` shipped 2026-08-26.** Reviews on a connected Business Profile, and the replies to
+them. Two tables — a review is what a member of the public wrote, a reply is a public statement
+the organization is about to make in its own name, and when one goes wrong the first question is
+who approved it, which a column cannot answer.
+
+**Drafting and publishing are deliberately separate**, with their own permissions
+(`reviews.edit` and the fifth action, `reviews.publish`). A draft is private; publishing puts
+words on Google under the business's name, in public, permanently. Those are routinely different
+people — whoever writes the answer to an angry review is very often not whoever should decide it
+goes out — and one grant covering both could not express that on Roles. Same split as
+`inventory.financials`. The list opens on Unanswered, because an unanswered one-star sits at the
+top of a listing being the first thing a stranger reads.
+
+No automation can publish. `review.draft_reply` is offered and `review.publish_reply` is
+deliberately absent: the reply most worth automating is the one to a furious customer, and that is
+exactly the one a person must see first.
+
+Everything touching the legacy v4 host lives in one class, `BusinessProfileReviews`, so the day it
+is retired there is one place to start.
+
+**Not built yet:** `business_profile` (locations, hours, posts, media), scheduled sync for both
+modules (fetching is on demand), classification and transcription (`lead.classified` is declared
+and marked not raised), and conversion to a customer and job (`lead.converted`, likewise).
 
 **Three modules, not one.** `ModuleDefinition` holds one `AutomationSubject` and
 `assertKeysMatchSubject` refuses a trigger key whose prefix disagrees with it, so leads, reviews

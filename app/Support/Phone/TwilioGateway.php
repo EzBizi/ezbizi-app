@@ -24,6 +24,36 @@ interface TwilioGateway
     public function createSubaccount(string $friendlyName): array;
 
     /**
+     * Subaccounts already under the platform account, for adopting rather than
+     * duplicating.
+     *
+     * @return list<array{account_sid: string, friendly_name: string, status: string}>
+     */
+    public function listSubaccounts(): array;
+
+    /**
+     * Take over a subaccount that already exists.
+     *
+     * ── Why the caller must supply the auth token ────────────────
+     *
+     * Twilio returns a subaccount's auth token EXACTLY ONCE, in the response to
+     * creating it. Fetching the account again — even as the parent, even with a
+     * Main key — returns the field empty. Verified against the live account on
+     * 2026-08-27: three existing subaccounts, all empty.
+     *
+     * §5 validates every webhook against THIS connection's token, because a
+     * global one is a tenant-boundary break. So a connection without the token
+     * is not a connection we can safely answer webhooks for, and there is no
+     * API that can recover it. Somebody reads it off the Console once.
+     *
+     * The API key is NOT asked for: the parent can mint one on a subaccount it
+     * owns, which is the one thing this path can do that BYO cannot.
+     *
+     * @return array{account_sid: string, api_key_sid: string, api_secret: string, auth_token: string}
+     */
+    public function adoptSubaccount(string $accountSid, string $authToken): array;
+
+    /**
      * @return array{sid: string, secret: string}
      */
     public function createApiKey(string $accountSid, string $friendlyName = 'EzBizi'): array;
@@ -53,6 +83,17 @@ interface TwilioGateway
      * @param  array<string, mixed>  $params
      * @return array{sid: string, phone_number: string}
      */
+    /**
+     * Numbers this Twilio account already holds.
+     *
+     * Adopting an account means adopting what is on it. A company that has
+     * been answering five lines for a year does not want to buy them again,
+     * and a Numbers screen that showed none of them would read as broken.
+     *
+     * @return list<array{sid: string, phone_number: string, friendly_name: string, voice_url: string, sms_url: string}>
+     */
+    public function listIncoming(PhoneConnection $connection): array;
+
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array;
 
     /**

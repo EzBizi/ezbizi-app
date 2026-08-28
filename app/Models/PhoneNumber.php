@@ -28,6 +28,27 @@ class PhoneNumber extends Model implements StatesRetention
     public const SCOPE_COMPANY = 'company';
     public const SCOPE_FRANCHISE = 'franchise';
 
+    /**
+     * What a line does once the schedule says it is closed (spec 14).
+     *
+     * These exact strings are what TwimlRenderer branches on when it builds the
+     * closed-hours document, so a validator that accepted a fourth spelling
+     * would save a line that answers with silence.
+     *
+     * @see \App\Support\Phone\TwimlRenderer
+     */
+    public const AFTER_HOURS_VOICEMAIL = 'voicemail';
+
+    public const AFTER_HOURS_FORWARD = 'forward';
+
+    public const AFTER_HOURS_CLOSED = 'closed';
+
+    public const AFTER_HOURS = [
+        self::AFTER_HOURS_VOICEMAIL,
+        self::AFTER_HOURS_FORWARD,
+        self::AFTER_HOURS_CLOSED,
+    ];
+
     public static function retention(): RetentionPolicy
     {
         return RetentionPolicy::forever(

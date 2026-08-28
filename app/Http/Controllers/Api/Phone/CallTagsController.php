@@ -1,0 +1,170 @@
+<?php
+
+namespace App\Http\Controllers\Api\Phone;
+
+use App\Http\Controllers\Api\Controller;
+use App\Models\PhoneCall;
+use App\Models\PhoneCallTag;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\Response;
+
+/**
+ * The labels this organization counts its calls by (Settings > Tags).
+ *
+ * Editing the list is `phone.edit`. Putting a tag ON a call is not: whoever
+ * answered the phone has to be able to say what it was about, and they will
+ * usually be the person with `phone.view` and a line grant and nothing else.
+ * Requiring edit here would mean the people doing the tagging cannot tag.
+ */
+class CallTagsController extends Controller
+{
+    /** GET /api/v1/phone/tags */
+    public function index(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', PhoneCallTag::class);
+
+        $rows = PhoneCallTag::query()
+            ->orderBy('position')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (PhoneCallTag $tag) => [
+                'id' => $tag->id,
+                'name' => $tag->name,
+                'is_active' => $tag->is_active,
+                'position' => $tag->position,
+
+                // So Settings can say what retiring one would affect.
+                'call_count' => $tag->calls()->count(),
+            ])
+            ->all();
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /** POST /api/v1/phone/tags */
+    public function store(Request $request): JsonResponse
+    {
+        $this->authorize('create', PhoneCallTag::class);
+
+        $input = $request->validate([
+            'name' => [
+                'required', 'string', 'max:64',
+                Rule::unique('phone_call_tags', 'name')
+                    ->where('organization_id', $request->user()->organization_id),
+            ],
+            'position' => ['sometimes', 'integer', 'min:0', 'max:999'],
+        ]);
+
+        $tag = PhoneCallTag::query()->create([
+            'name' => trim((string) $input['name']),
+            'is_active' => true,
+            'position' => (int) ($input['position'] ?? 0),
+        ]);
+
+        return response()->json(['data' => $this->row($tag)], Response::HTTP_CREATED);
+    }
+
+    /** PATCH /api/v1/phone/tags/{tag} */
+    public function update(Request $request, PhoneCallTag $tag): JsonResponse
+    {
+        $this->authorize('create', PhoneCallTag::class);
+
+        $input = $request->validate([
+            'name' => [
+                'sometimes', 'string', 'max:64',
+                Rule::unique('phone_call_tags', 'name')
+                    ->where('organization_id', $request->user()->organization_id)
+                    ->ignore($tag->id),
+            ],
+            'is_active' => ['sometimes', 'boolean'],
+            'position' => ['sometimes', 'integer', 'min:0', 'max:999'],
+        ]);
+
+        $tag->fill($input)->save();
+
+        return response()->json(['data' => $this->row($tag->fresh())]);
+    }
+
+    /**
+     * DELETE /api/v1/phone/tags/{tag}
+     *
+     * Refused once it has been used. Deleting would blank the label on every
+     * call it described and silently change last month's totals; retiring it
+     * keeps the history and takes it off the picker, which is what "delete"
+     * almost always means here.
+     */
+    public function destroy(Request $request, PhoneCallTag $tag): JsonResponse
+    {
+        $this->authorize('create', PhoneCallTag::class);
+
+        $used = $tag->calls()->count();
+
+        if ($used > 0) {
+            $tag->is_active = false;
+            $tag->save();
+
+            return response()->json([
+                'data' => $this->row($tag->fresh()),
+                'message' => 'That tag has been used on '.$used.' call(s), so it was '
+                    .'retired instead of deleted. It stays on those calls and is no '
+                    .'longer offered.',
+            ]);
+        }
+
+        $tag->delete();
+
+        return response()->json(['message' => 'That tag is gone.']);
+    }
+
+    /**
+     * PATCH /api/v1/phone/calls/{call}/tag
+     *
+     * Only an ACTIVE tag may be put on a call. A retired one is history, not a
+     * choice, and allowing it would make retiring meaningless.
+     */
+    public function tagCall(Request $request, PhoneCall $call): JsonResponse
+    {
+        $this->authorize('tag', PhoneCallTag::class);
+
+        $input = $request->validate([
+            'tag_id' => ['present', 'nullable', 'uuid'],
+        ]);
+
+        $tagId = $input['tag_id'];
+
+        if ($tagId !== null) {
+            $tag = PhoneCallTag::query()->where('is_active', true)->find($tagId);
+
+            if ($tag === null) {
+                return response()->json([
+                    'message' => 'That tag is not one this organization offers any more.',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+        }
+
+        $call->tag_id = $tagId;
+        $call->tagged_by = $tagId === null ? null : $request->user()->id;
+        $call->tagged_at = $tagId === null ? null : now();
+        $call->save();
+
+        return response()->json(['data' => [
+            'id' => $call->id,
+            'tag_id' => $call->tag_id,
+            'tagged_at' => $call->tagged_at?->toIso8601String(),
+        ]]);
+    }
+
+    /** @return array<string, mixed> */
+    private function row(PhoneCallTag $tag): array
+    {
+        return [
+            'id' => $tag->id,
+            'name' => $tag->name,
+            'is_active' => $tag->is_active,
+            'position' => $tag->position,
+            'call_count' => $tag->calls()->count(),
+        ];
+    }
+}

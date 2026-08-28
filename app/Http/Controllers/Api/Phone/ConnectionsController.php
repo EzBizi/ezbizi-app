@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Phone;
 use App\Http\Controllers\Api\Controller;
 use App\Models\Company;
 use App\Models\PhoneConnection;
+use App\Models\PhoneServiceRequest;
 use App\Models\User;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Tenancy\TenantContext;
@@ -46,16 +47,126 @@ class ConnectionsController extends Controller
         return response()->json(['data' => $rows]);
     }
 
+    /**
+     * GET /api/v1/phone/connections/subaccounts
+     *
+     * Phone accounts already under EzBizi's platform Twilio, so Settings can
+     * offer "use the one that already exists" instead of silently making a
+     * second one with the same name.
+     *
+     * Already-connected accounts are marked rather than hidden: an account
+     * missing from the list with no explanation reads as a loading failure,
+     * and "this one is already in use by another place" is the answer somebody
+     * is actually looking for.
+     *
+     * ── Why this list is filtered to names this tenant owns ──────
+     *
+     * Twilio lists EVERY subaccount under the platform account. On a platform
+     * with more than one customer that is every other customer's phone account
+     * name — who else buys EzBizi phone service, and what they are called.
+     * Answering that to any tenant administrator is a tenant-boundary break of
+     * exactly the kind §5 refuses for webhook tokens.
+     *
+     * Adoption itself is gated by the auth token, which only the real owner
+     * has, so this filter is not what makes adoption safe. It is what stops the
+     * LIST being an answer to a question nobody was entitled to ask.
+     *
+     * The match is by name against this organization and the companies in
+     * reach, because a hand-made subaccount has no other tie to a tenant. It is
+     * deliberately narrow: an account this filter hides can still be adopted by
+     * pasting its SID, where the token remains the gate.
+     */
+    public function subaccounts(Request $request): JsonResponse
+    {
+        $this->authorize('create', [PhoneConnection::class, 'organization', null]);
+
+        if (! $this->platformTwilioReady()) {
+            return response()->json(['data' => [], 'message' => self::PLATFORM_GAP]);
+        }
+
+        try {
+            $available = $this->twilio->listSubaccounts();
+        } catch (Throwable) {
+            // Twilio being unreachable must not take the Settings screen down;
+            // the connect form still works without this list.
+            return response()->json(['data' => [], 'message' => 'EzBizi could not reach Twilio to list phone accounts.']);
+        }
+
+        $taken = PhoneConnection::query()
+            ->where('organization_id', $this->tenant->idOrFail())
+            ->pluck('account_sid')
+            ->all();
+
+        $mine = $this->namesInReach($request->user());
+
+        $rows = [];
+        foreach ($available as $sub) {
+            if (! in_array($this->normalise($sub['friendly_name']), $mine, true)) {
+                continue;
+            }
+
+            $rows[] = $sub + ['in_use' => in_array($sub['account_sid'], $taken, true)];
+        }
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * Lowercased, punctuation-stripped names of this organization and the
+     * companies this person can reach.
+     *
+     * "A1 Chimney - Tools" and "A-1 Chimney Tools" are the same business typed
+     * by two people on two different days, and a match that insisted on the
+     * punctuation would hide the account somebody is looking straight at.
+     *
+     * @return list<string>
+     */
+    private function namesInReach(User $user): array
+    {
+        $names = [$user->organization?->name];
+
+        foreach ($user->reachableCompanies() as $company) {
+            $names[] = $company->name;
+        }
+
+        $out = [];
+        foreach ($names as $name) {
+            if (is_string($name) && $name !== '') {
+                $out[] = $this->normalise($name);
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    private function normalise(string $name): string
+    {
+        return trim((string) preg_replace('/[^a-z0-9]+/', ' ', mb_strtolower($name)));
+    }
+
     /** POST /api/v1/phone/connections */
     public function store(Request $request): JsonResponse
     {
         $input = $request->validate([
             'scope_type' => ['required', 'in:organization,company'],
             'scope_id' => ['required', 'uuid'],
-            'kind' => ['required', Rule::in([PhoneConnection::KIND_BYO, PhoneConnection::KIND_SUBACCOUNT])],
-            'account_sid' => ['required_if:kind,byo', 'nullable', 'string', 'size:34'],
-            'api_key_sid' => ['required_if:kind,byo', 'nullable', 'string', 'size:34'],
-            'api_secret' => ['required_if:kind,byo', 'nullable', 'string', 'min:1'],
+            // Subaccount only. Phone service is something EzBizi provides on
+            // its own Twilio — a customer bringing their own account is not a
+            // product on offer, and while it WAS accepted here it was also a
+            // way round gate 2: BYO spent no EzBizi money, so it was allowed
+            // without approval, which made "kind=byo" a bypass for anyone who
+            // could post to this endpoint.
+            'kind' => ['required', Rule::in([PhoneConnection::KIND_SUBACCOUNT])],
+            'account_sid' => ['nullable', 'string', 'size:34'],
+
+            // Adoption: `kind=subaccount` WITH an account_sid means "take over
+            // this existing phone account" rather than "create a new one".
+            //
+            // Not `required_if:kind,subaccount` — that would demand a token for
+            // CREATING one too, where Twilio hands it back and nobody has it to
+            // type. Required in the adopt branch below, where it is the one
+            // thing that cannot be recovered.
+            'auth_token' => ['nullable', 'string', 'min:1'],
         ]);
 
         $company = null;
@@ -68,8 +179,29 @@ class ConnectionsController extends Controller
 
         $this->authorize('create', [PhoneConnection::class, $input['scope_type'], $company]);
 
-        if ($input['kind'] === PhoneConnection::KIND_SUBACCOUNT && ! $this->platformTwilioReady()) {
+        if (! $this->platformTwilioReady()) {
             return response()->json(['message' => self::PLATFORM_GAP], Response::HTTP_NOT_IMPLEMENTED);
+        }
+
+        // §4 gate 2. The Twilio usage bills EzBizi (spec §5), so activation is
+        // not something an organization may do to itself — a company has phone
+        // service because somebody at EzBizi said yes to that company by name.
+        //
+        // There is no unguarded path past this. Bringing your own Twilio used
+        // to be one, on the reasoning that a customer spending their own money
+        // needs no permission from us; since it is not a product EzBizi offers,
+        // all it did was answer "how do I skip the approval".
+        if ($company === null) {
+            throw ValidationException::withMessages([
+                'scope_id' => 'Phone service is set up per company.',
+            ]);
+        }
+
+        if (! PhoneServiceRequest::approvedFor($company->getKey())) {
+            return response()->json([
+                'message' => 'EzBizi has not switched phone service on for '
+                    .$company->name.' yet. Ask for it on the Phone tab.',
+            ], Response::HTTP_FORBIDDEN);
         }
 
         $existing = PhoneConnection::query()
@@ -87,17 +219,29 @@ class ConnectionsController extends Controller
         // row would orphan a real subaccount / TwiML App with nothing to disconnect.
         // Provision first, persist a disconnectable row, then attach the App.
         try {
-            if ($input['kind'] === PhoneConnection::KIND_BYO) {
-                $verified = $this->twilio->verifyAccount(
-                    $input['account_sid'],
-                    $input['api_key_sid'],
-                    $input['api_secret'],
+            if (filled($input['account_sid'] ?? null)) {
+                // Adopting a phone account that already exists.
+                //
+                // Without this branch, connecting a company whose Twilio
+                // subaccount was made by hand creates a SECOND account with the
+                // same name and strands the first — numbers, campaigns and all.
+                // Three such accounts already existed when this was written.
+                if (! filled($input['auth_token'] ?? null)) {
+                    throw ValidationException::withMessages([
+                        'auth_token' => 'Paste the auth token for that phone account. '
+                            .'Twilio only shows it on the account itself, and EzBizi cannot read it back.',
+                    ]);
+                }
+
+                $adopted = $this->twilio->adoptSubaccount(
+                    (string) $input['account_sid'],
+                    (string) $input['auth_token'],
                 );
 
-                $accountSid = $input['account_sid'];
-                $apiKeySid = $input['api_key_sid'];
-                $apiSecret = $input['api_secret'];
-                $authToken = $verified['auth_token'] ?? null;
+                $accountSid = $adopted['account_sid'];
+                $apiKeySid = $adopted['api_key_sid'];
+                $apiSecret = $adopted['api_secret'];
+                $authToken = $adopted['auth_token'];
             } else {
                 $friendly = $company?->name ?? (string) $this->tenant->get()?->name;
                 $sub = $this->twilio->createSubaccount($friendly);

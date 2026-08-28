@@ -399,13 +399,15 @@ class HrInvitationsController extends Controller
      * invitation that is perfectly good and whose link is about to be handed
      * back in the response.
      *
-     * The try/catch is not defensive habit. InvitationLink is ShouldQueue, but
-     * `QUEUE_CONNECTION=sync` runs it inline — so on an installation with a real
-     * mail transport and a bad credential, the exception would surface here, as
-     * a 500, AFTER the row had committed. The inviter would be told the server
-     * broke while a working link existed that they were never shown. Logged and
-     * swallowed instead: MailStatus and the Development health screen are where
-     * a broken transport is meant to be noticed, and they already look.
+     * The try/catch is not defensive habit. InvitationLink is deliberately NOT
+     * ShouldQueue — the class says why — so it sends inline on every installation,
+     * not only on one where `QUEUE_CONNECTION=sync` happens to collapse the queue.
+     * On a box with a real mail transport and a bad credential, the exception
+     * surfaces here, as a 500, AFTER the row has committed. The inviter would
+     * be told the server broke while a working link existed that they were never
+     * shown. Logged and swallowed instead: MailStatus and the Development health
+     * screen are where a broken transport is meant to be noticed, and they
+     * already look.
      */
     private function deliver(Invitation $invitation, string $token): void
     {

@@ -36,6 +36,10 @@ class SocialNetworkOAuthTest extends TestCase
             'services.meta.facebook_redirect'    => 'https://app.ezbizi.test'.FacebookOAuth::CALLBACK_PATH,
             'services.meta.instagram_redirect'   => 'https://app.ezbizi.test'.InstagramOAuth::CALLBACK_PATH,
             'services.meta.threads_redirect'     => 'https://app.ezbizi.test'.ThreadsOAuth::CALLBACK_PATH,
+            'services.meta.instagram_id'         => 'an-instagram-app-id',
+            'services.meta.instagram_secret'     => 'an-instagram-app-secret',
+            'services.meta.threads_id'           => 'a-threads-app-id',
+            'services.meta.threads_secret'       => 'a-threads-app-secret',
             'services.linkedin.client_id'        => 'a-linkedin-id',
             'services.linkedin.client_secret'    => 'a-linkedin-secret',
             'services.linkedin.redirect'         => 'https://app.ezbizi.test'.LinkedInOAuth::CALLBACK_PATH,
@@ -98,6 +102,13 @@ class SocialNetworkOAuthTest extends TestCase
 
             if (str_contains($url, 'oauth/access_token')) {
                 return Http::response(['access_token' => 'a-long-lived-user-token', 'expires_in' => 5184000]);
+            }
+
+            // Asked before /me/accounts, so the more specific match goes first.
+            // This is the app-scoped id Meta's deauthorize and data-deletion
+            // callbacks arrive carrying.
+            if (str_contains($url, '/me?') || str_ends_with(parse_url($url, PHP_URL_PATH) ?: '', '/me')) {
+                return Http::response(['id' => 'meta-user-abc']);
             }
 
             if (str_contains($url, '/me/accounts')) {

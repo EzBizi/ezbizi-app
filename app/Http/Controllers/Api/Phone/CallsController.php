@@ -30,10 +30,23 @@ class CallsController extends Controller
 
         $numberIds = $this->access->readable($request->user())->pluck('id')->all();
 
-        $calls = PhoneCall::query()
+        $query = PhoneCall::query()
             ->whereIn('number_id', $numberIds)
-            ->orderByDesc('created_at')
-            ->get();
+            ->orderByDesc('created_at');
+
+        // The desk asks for this the moment a call ends, to know which row to
+        // ask about. Only THIS person's calls: two people hang up at once and
+        // otherwise each could be handed the other's.
+        if ($request->boolean('untagged')) {
+            $query->whereNull('tag_id')->where('user_id', $request->user()->id);
+        }
+
+        $perPage = (int) $request->query('per_page', 0);
+        if ($perPage > 0) {
+            $query->limit(min($perPage, 200));
+        }
+
+        $calls = $query->get();
 
         $customerIds = $this->customerIdsByPhone($calls);
 
@@ -107,6 +120,8 @@ class CallsController extends Controller
         $outside = $this->outsideNumber($call);
 
         return [
+            'tag_id' => $call->tag_id,
+            'tag' => $call->tag?->name,
             'id' => $call->id,
             'number_id' => $call->number_id,
             'connection_id' => $call->connection_id,

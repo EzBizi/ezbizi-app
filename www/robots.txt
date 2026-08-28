@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# App and staff consoles are other hosts; they already send their own robots.txt.
+Sitemap: https://www.ezbizi.com/sitemap.xml

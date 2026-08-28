@@ -201,6 +201,11 @@ class VoiceWebhookController extends Controller
             'outbound' => $outbound,
             'batch' => $batch,
             'skip_menu' => $request->request->has('Digits'),
+
+            // WHICH key, not merely that one was pressed. Without this a menu
+            // reads its prompt, accepts a digit, and then does exactly what it
+            // would have done for every other digit — which is not a menu.
+            'digits' => (string) $request->input('Digits', ''),
             'dial_action' => $this->voiceAction($connection, $batch + 1),
             'recording_status_callback' => $this->webhookUrl($connection, 'recording'),
             'transcription_status_callback' => $this->webhookUrl($connection, 'transcription'),

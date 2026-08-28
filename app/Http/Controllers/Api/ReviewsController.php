@@ -1,0 +1,347 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Models\Review;
+use App\Models\ReviewReply;
+use App\Models\SocialConnection;
+use App\Services\Reviews\BusinessProfileReviews;
+use App\Support\Audit\AuditLogger;
+use App\Support\Automations\EventEmitter;
+use App\Support\Social\SocialProvider;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
+use Symfony\Component\HttpFoundation\Response;
+
+/**
+ * Reviews on a connected Business Profile, and the replies to them.
+ *
+ * Read and answer. Nothing here writes a review — every row is a member of the
+ * public's own words, fetched from Google, and an endpoint that could edit them
+ * would turn a cached public record into something the business can quietly
+ * revise.
+ *
+ * ── Drafting and publishing are different endpoints on purpose ──
+ *
+ * `PUT .../reply` writes text nobody outside the building can see.
+ * `POST .../reply/publish` puts it on Google under the organization's name, in
+ * public, permanently. They carry different permissions (`reviews.edit` and
+ * `reviews.publish`) because they are routinely different people: whoever
+ * composes the answer to an angry review is very often not whoever should
+ * decide it goes out.
+ */
+class ReviewsController extends Controller
+{
+    public function __construct(
+        private readonly BusinessProfileReviews $google,
+        private readonly AuditLogger $audit,
+        private readonly EventEmitter $events,
+    ) {}
+
+    /** GET /api/v1/reviews */
+    public function index(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Review::class);
+
+        $user = $request->user();
+
+        $query = Review::query()
+            ->with(['reply', 'company:id,name', 'franchise:id,name'])
+            ->orderByDesc('reviewed_at')
+            ->orderByDesc('created_at');
+
+        if (! $user->canActOnOrganization($user->organization)) {
+            $companyIds   = $user->reachableCompanies()->pluck('id')->all();
+            $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
+
+            $query->where(function ($q) use ($companyIds, $franchiseIds) {
+                $q->whereIn('company_id', $companyIds)
+                    ->orWhereIn('franchise_id', $franchiseIds);
+            });
+        }
+
+        // The filter the work actually uses. Somebody opening this tab is
+        // usually looking for the ones nobody has answered, not browsing.
+        if ($request->query('answered') === 'no') {
+            $query->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED));
+        }
+
+        if (is_numeric($rating = $request->query('rating'))) {
+            $query->where('rating', (int) $rating);
+        }
+
+        $reviews = $query->paginate(min((int) $request->query('per_page', 50), 200));
+
+        return response()->json([
+            'data' => array_map(fn (Review $r) => $this->present($r), $reviews->items()),
+            'meta' => [
+                'total'        => $reviews->total(),
+                'per_page'     => $reviews->perPage(),
+                'current_page' => $reviews->currentPage(),
+                'last_page'    => $reviews->lastPage(),
+                'unanswered'   => $this->unansweredCount($user),
+                'connections'  => $this->connectionState(),
+            ],
+        ]);
+    }
+
+    /** GET /api/v1/reviews/{review} */
+    public function show(Review $review): JsonResponse
+    {
+        $this->authorize('view', $review);
+
+        return response()->json([
+            'data' => $this->present($review->load(['reply', 'company:id,name', 'franchise:id,name'])),
+        ]);
+    }
+
+    /**
+     * PUT /api/v1/reviews/{review}/reply
+     *
+     * Write or replace the draft. Never publishes — a person still has to say
+     * so, in a separate request, holding a different permission.
+     */
+    public function draftReply(Request $request, Review $review): JsonResponse
+    {
+        $this->authorize('update', $review);
+
+        $input = $request->validate([
+            // Google's own ceiling. Refusing here with a sentence beats letting
+            // somebody write four hundred words and learn it was too long from
+            // a 400 at publish time.
+            'body' => ['required', 'string', 'min:1', 'max:4096'],
+        ]);
+
+        $reply = $review->reply;
+
+        if ($reply !== null && ! $reply->isEditable()) {
+            return response()->json([
+                'message' => 'This reply is already published on Google. Publishing a new one '
+                    .'replaces it — Google allows a business one reply per review.',
+            ], Response::HTTP_CONFLICT);
+        }
+
+        $reply = DB::transaction(function () use ($review, $reply, $input) {
+            $reply ??= new ReviewReply([
+                'organization_id' => $review->organization_id,
+                'review_id'       => $review->getKey(),
+                'drafted_by'      => ReviewReply::BY_PERSON,
+            ]);
+
+            $reply->fill([
+                'body'   => $input['body'],
+                'status' => ReviewReply::STATUS_DRAFT,
+                // A previous failure is not carried forward onto a new attempt;
+                // leaving it would have the screen explain a refusal of text
+                // that is no longer there.
+                'failure_reason' => null,
+            ]);
+
+            $reply->save();
+
+            $this->audit->log('review.reply_drafted', $review, metadata: [
+                'length' => strlen($input['body']),
+            ]);
+
+            return $reply;
+        });
+
+        return response()->json(['data' => $this->present($review->fresh()->load('reply'))]);
+    }
+
+    /** DELETE /api/v1/reviews/{review}/reply — discard a draft. */
+    public function discardReply(Review $review): JsonResponse
+    {
+        $this->authorize('update', $review);
+
+        $reply = $review->reply;
+
+        if ($reply === null) {
+            return response()->json(['data' => $this->present($review)]);
+        }
+
+        if (! $reply->isEditable()) {
+            return response()->json([
+                'message' => 'This reply is published on Google and cannot be discarded from here. '
+                    .'Removing it is done on the Business Profile itself.',
+            ], Response::HTTP_CONFLICT);
+        }
+
+        $reply->delete();
+        $this->audit->log('review.reply_discarded', $review);
+
+        return response()->json(['data' => $this->present($review->fresh()->load('reply'))]);
+    }
+
+    /**
+     * POST /api/v1/reviews/{review}/reply/publish
+     *
+     * The one that speaks in public. Its own permission, its own audit entry,
+     * and the name of whoever pressed it stored on the row.
+     */
+    public function publishReply(Request $request, Review $review): JsonResponse
+    {
+        $this->authorize('publish', $review);
+
+        $reply = $review->reply;
+
+        if ($reply === null) {
+            return response()->json([
+                'message' => 'There is nothing drafted to publish for this review.',
+            ], Response::HTTP_CONFLICT);
+        }
+
+        if ($reply->isPublished()) {
+            return response()->json(['data' => $this->present($review->load('reply'))]);
+        }
+
+        try {
+            $this->google->publish($reply);
+        } catch (RuntimeException $e) {
+            // The text is kept. A refusal usually means quota or a expired
+            // connection, and losing what somebody wrote because Google was
+            // briefly unavailable would be its own small betrayal.
+            $reply->forceFill([
+                'status'         => ReviewReply::STATUS_FAILED,
+                'failure_reason' => $e->getMessage(),
+            ])->save();
+
+            $this->events->emit('review.reply_failed', $review, [
+                'after' => ['reason' => $e->getMessage()],
+            ]);
+
+            return response()->json(['message' => $e->getMessage()], Response::HTTP_BAD_GATEWAY);
+        }
+
+        DB::transaction(function () use ($reply, $review, $request) {
+            $reply->forceFill([
+                'status'               => ReviewReply::STATUS_PUBLISHED,
+                'published_by_user_id' => $request->user()->getKey(),
+                'published_at'         => now(),
+                'failure_reason'       => null,
+            ])->save();
+
+            $this->audit->log('review.reply_published', $review, metadata: [
+                'length' => strlen($reply->body),
+            ]);
+
+            $this->events->emit('review.reply_published', $review, [
+                'after' => ['published_at' => $reply->published_at?->toIso8601String()],
+            ]);
+        });
+
+        return response()->json(['data' => $this->present($review->fresh()->load('reply'))]);
+    }
+
+    /** POST /api/v1/reviews/sync */
+    public function sync(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Review::class);
+
+        $connections = SocialConnection::query()
+            ->where('provider', SocialProvider::GoogleBusinessProfile->value)
+            ->where('status', SocialConnection::STATUS_CONNECTED)
+            ->get();
+
+        if ($connections->isEmpty()) {
+            return response()->json([
+                'message' => 'No Business Profile is connected yet, so there is nothing to fetch. '
+                    .'Connect one on Marketing to start seeing reviews here.',
+            ], Response::HTTP_CONFLICT);
+        }
+
+        $totals = ['fetched' => 0, 'created' => 0, 'updated' => 0];
+        $failures = [];
+
+        foreach ($connections as $connection) {
+            try {
+                $result = $this->google->sync($connection);
+
+                foreach ($totals as $key => $value) {
+                    $totals[$key] = $value + $result[$key];
+                }
+            } catch (RuntimeException $e) {
+                $failures[] = [
+                    'connection' => $connection->display_name,
+                    'because'    => $e->getMessage(),
+                ];
+            }
+        }
+
+        $this->audit->log('review.synced', $request->user()->organization, metadata: $totals);
+
+        return response()->json(
+            ['data' => [...$totals, 'failures' => $failures]],
+            $failures !== [] && $totals['fetched'] === 0
+                ? Response::HTTP_BAD_GATEWAY
+                : Response::HTTP_OK,
+        );
+    }
+
+    private function unansweredCount($user): int
+    {
+        $query = Review::query()->whereDoesntHave(
+            'reply',
+            fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED),
+        );
+
+        if (! $user->canActOnOrganization($user->organization)) {
+            $companyIds   = $user->reachableCompanies()->pluck('id')->all();
+            $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
+
+            $query->where(function ($q) use ($companyIds, $franchiseIds) {
+                $q->whereIn('company_id', $companyIds)
+                    ->orWhereIn('franchise_id', $franchiseIds);
+            });
+        }
+
+        return (int) $query->count();
+    }
+
+    /**
+     * @return array<int, array{provider: string, display_name: string, status: string}>
+     */
+    private function connectionState(): array
+    {
+        return SocialConnection::query()
+            ->where('provider', SocialProvider::GoogleBusinessProfile->value)
+            ->get()
+            ->map(fn (SocialConnection $c) => [
+                'provider'     => $c->provider,
+                'display_name' => $c->display_name,
+                'status'       => $c->status,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /** @return array<string, mixed> */
+    private function present(Review $review): array
+    {
+        $reply = $review->reply;
+
+        return [
+            'id'            => $review->id,
+            'reviewer_name' => $review->reviewer_name,
+            'reviewer_photo_url' => $review->reviewer_photo_url,
+            'rating'        => $review->rating,
+            'comment'       => $review->comment,
+            'reviewed_at'   => $review->reviewed_at?->toIso8601String(),
+            'edited_at'     => $review->edited_at?->toIso8601String(),
+            'was_edited'    => $review->wasEdited(),
+            'company'       => $review->company?->only(['id', 'name']),
+            'franchise'     => $review->franchise?->only(['id', 'name']),
+            'reply'         => $reply === null ? null : [
+                'id'             => $reply->id,
+                'body'           => $reply->body,
+                'status'         => $reply->status,
+                'drafted_by'     => $reply->drafted_by,
+                'published_at'   => $reply->published_at?->toIso8601String(),
+                'failure_reason' => $reply->failure_reason,
+                'editable'       => $reply->isEditable(),
+            ],
+        ];
+    }
+}

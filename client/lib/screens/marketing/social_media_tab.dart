@@ -808,36 +808,63 @@ class _AccountsPane extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        DashboardCard(
-          title: 'Catalogue',
-          icon: Icons.public_outlined,
-          child: Column(
-            children: [
+        Builder(
+          builder: (context) {
+            /*
+             * The catalogue is what is NOT connected yet.
+             *
+             * A network with an account already listed above was saying the same
+             * thing twice — once as the account itself, once as a row repeating
+             * its name. The card is here to answer "what else could I connect,
+             * and why can I not connect it", so a connected network has no
+             * answer to give and leaves.
+             *
+             * This does not close the door on a second account of the same
+             * network: Connect opens the panel, and the panel lists every
+             * network whatever is connected here.
+             */
+            final unconnected = [
               for (final network in providers)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: SocialNetworkMark(network: network.value),
-                  title: Text(network.label),
-                  subtitle: Text(
-                    connected[network.value] != null
-                        ? 'Connected as ${connected[network.value]!.displayName}'
-                        : network.usable
+                if (connected[network.value] == null) network,
+            ];
+
+            if (unconnected.isEmpty) {
+              return const DashboardCard(
+                title: 'Catalogue',
+                icon: Icons.public_outlined,
+                child: DashboardNote(
+                  'Every network EzBizi can post to is connected in this view. '
+                  'Connect adds another account on any of them.',
+                ),
+              );
+            }
+
+            return DashboardCard(
+              title: 'Catalogue',
+              icon: Icons.public_outlined,
+              child: Column(
+                children: [
+                  for (final network in unconnected)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: SocialNetworkMark(network: network.value),
+                      title: Text(network.label),
+                      subtitle: Text(
+                        network.usable
                             ? 'Ready to connect'
                             : network.unusableBecause ?? 'Not ready',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: Text(
-                    connected[network.value] != null
-                        ? 'Connected'
-                        : network.usable
-                            ? 'Ready'
-                            : 'Not ready',
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                ),
-            ],
-          ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Text(
+                        network.usable ? 'Ready' : 'Not ready',
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
         ),
       ],
     );

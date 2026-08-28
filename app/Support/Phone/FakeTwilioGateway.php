@@ -46,9 +46,93 @@ final class FakeTwilioGateway implements TwilioGateway
     {
         $this->record(__FUNCTION__, func_get_args());
 
-        return [
+        // Mirrors the live gateway: an existing account of the same name is
+        // reused, never duplicated. Two "A-1 Chimney" subaccounts appeared in
+        // production because a failure downstream left the created account
+        // behind and the customer pressed the button again.
+        foreach ($this->subaccounts as $existing) {
+            // Live only — a closed account keeps its name and refuses writes.
+            if (($existing['status'] ?? 'active') !== 'active') {
+                continue;
+            }
+
+            if (strcasecmp(trim($existing['friendly_name']), trim($friendlyName)) === 0) {
+                return [
+                    'account_sid' => $existing['account_sid'],
+                    'auth_token' => $this->adoptableAuthToken,
+                ];
+            }
+        }
+
+        $created = [
             'account_sid' => 'AC'.bin2hex(random_bytes(16)),
-            'auth_token' => bin2hex(random_bytes(16)),
+            'friendly_name' => $friendlyName,
+            'status' => 'active',
+        ];
+        $this->subaccounts[] = $created;
+
+        return [
+            'account_sid' => $created['account_sid'],
+            'auth_token' => $this->subaccountReturnsNoAuthToken
+                ? ''
+                : bin2hex(random_bytes(16)),
+        ];
+    }
+
+    /**
+     * Subaccounts a test can pretend already exist. Empty by default, so a test
+     * that never sets them sees the state a fresh platform account is in.
+     *
+     * @var list<array{account_sid: string, friendly_name: string, status: string}>
+     */
+    public array $subaccounts = [];
+
+    /** Auth token [adoptSubaccount] will accept. Anything else is refused. */
+    public string $adoptableAuthToken = 'the-real-auth-token';
+
+    /**
+     * Reproduce the production failure: Twilio creates the subaccount but
+     * returns no auth token, which is what key auth does. The controller then
+     * refuses AFTER a real account exists.
+     */
+    public bool $subaccountReturnsNoAuthToken = false;
+
+    public function listSubaccounts(): array
+    {
+        $this->record(__FUNCTION__, func_get_args());
+
+        return $this->subaccounts;
+    }
+
+    public function adoptSubaccount(string $accountSid, string $authToken): array
+    {
+        $this->record(__FUNCTION__, func_get_args());
+
+        $owned = false;
+        foreach ($this->subaccounts as $sub) {
+            if ($sub['account_sid'] === $accountSid) {
+                $owned = true;
+                break;
+            }
+        }
+
+        if (! $owned) {
+            throw new RuntimeException(
+                'That phone account is not one EzBizi manages. Connect it as your own Twilio instead.'
+            );
+        }
+
+        if ($authToken !== $this->adoptableAuthToken) {
+            throw new RuntimeException(
+                'That auth token does not match this phone account. Copy it from the account it belongs to.'
+            );
+        }
+
+        return [
+            'account_sid' => $accountSid,
+            'api_key_sid' => 'SK'.bin2hex(random_bytes(16)),
+            'api_secret' => bin2hex(random_bytes(16)),
+            'auth_token' => $authToken,
         ];
     }
 
@@ -92,6 +176,20 @@ final class FakeTwilioGateway implements TwilioGateway
             'locality' => 'Testville',
             'region' => 'TS',
         ]];
+    }
+
+    /**
+     * Numbers a test can pretend the adopted account already holds.
+     *
+     * @var list<array{sid: string, phone_number: string, friendly_name: string, voice_url: string, sms_url: string}>
+     */
+    public array $incoming = [];
+
+    public function listIncoming(PhoneConnection $connection): array
+    {
+        $this->record(__FUNCTION__, [$connection->id]);
+
+        return $this->incoming;
     }
 
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array

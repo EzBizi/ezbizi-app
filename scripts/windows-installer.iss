@@ -25,6 +25,9 @@
 #ifndef OutputDir
   #error OutputDir must be passed with /DOutputDir=
 #endif
+#ifndef AssetDir
+  #error AssetDir must be passed with /DAssetDir= (assets/installer)
+#endif
 
 [Setup]
 ; Never reuse this GUID for another product — it is how Windows recognises an
@@ -53,11 +56,72 @@ PrivilegesRequiredOverridesAllowed=dialog
 PrivilegesRequired=lowest
 UninstallDisplayName=EzBizi
 
+; ── Running the installer while EzBizi is open ───────────────────
+;
+; This is the normal case, not the edge case: the in-app updater runs this
+; installer FROM the app it is about to replace, and a person double-clicking a
+; downloaded installer usually has the app open too.
+;
+; force, not yes. With `yes` Inno shows a "the following applications are using
+; files that need to be updated" page and waits for a click — which nobody sees
+; during a /SILENT update, so the update appears to do nothing. `force` closes
+; the app itself, and RestartApplications starts it again at the end, so it
+; reads as the app restarting rather than as an install.
+CloseApplications=force
+RestartApplications=yes
+
+; Only one installer at a time. Two copies racing to replace the same files is
+; how a half-written install happens, and the updater can fire while somebody is
+; already running one by hand.
+SetupMutex=EzBiziSetup,Global\EzBiziSetup
+
+; A log in %TEMP% every run. An installer that fails silently gives you nothing
+; to go on, and the ones that fail are exactly the ones nobody can reproduce.
+SetupLogging=yes
+
+; ── Looking like real software ───────────────────────────────────
+;
+; The icon on the installer's own .exe, the icon Windows shows in Apps &
+; features, and the artwork on the wizard pages. Several sizes of each image,
+; comma-separated, so Inno picks per display DPI instead of scaling one up —
+; a blurry banner is the tell that gives away a hand-rolled installer.
+SetupIconFile={#AssetDir}\ezbizi.ico
+UninstallDisplayIcon={app}\ezbizi.exe
+WizardImageFile={#AssetDir}\wizard-large-1x.bmp,{#AssetDir}\wizard-large-2x.bmp,{#AssetDir}\wizard-large-3x.bmp
+WizardSmallImageFile={#AssetDir}\wizard-small-1x.bmp,{#AssetDir}\wizard-small-2x.bmp,{#AssetDir}\wizard-small-3x.bmp
+
+; The welcome page is off by default in the modern style. On, because this is
+; the first thing a new person sees of EzBizi and a wizard that opens straight
+; into a directory picker feels like a zip file with ambitions.
+DisableWelcomePage=no
+
+; What Windows shows in the file's Properties > Details, and what SmartScreen
+; quotes. Blank fields there read as unsigned freeware.
+VersionInfoVersion={#AppVersion}
+VersionInfoCompany=EZBIZI LLC
+VersionInfoDescription=EzBizi Setup
+VersionInfoProductName=EzBizi
+VersionInfoCopyright=EZBIZI LLC
+
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"
+
+; Start with Windows, offered as a checkbox rather than done silently.
+;
+; A shortcut in the Startup folder, not a Run key in the registry. Both start
+; the app; only this one appears in Task Manager's Startup tab where a person
+; can see it and turn it off, and only this one is removed by uninstalling.
+; Something that launches itself every morning and cannot be found is the
+; behaviour people install cleanup tools to stop.
+;
+; Checked by default because this is a work tool people open every day anyway.
+; UsePreviousTasks is on by default in Inno, so somebody who unchecks it stays
+; unchecked through every later update — including the silent ones the in-app
+; updater runs, which would otherwise quietly switch it back on.
+Name: "startupicon"; Description: "Start EzBizi when I sign in to Windows"; GroupDescription: "Startup:"
 
 [Files]
 ; The whole build folder. Flutter's data\ directory holds the compiled Dart and
@@ -69,6 +133,7 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 Name: "{group}\EzBizi"; Filename: "{app}\ezbizi.exe"
 Name: "{group}\Uninstall EzBizi"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\EzBizi"; Filename: "{app}\ezbizi.exe"; Tasks: desktopicon
+Name: "{userstartup}\EzBizi"; Filename: "{app}\ezbizi.exe"; Tasks: startupicon
 
 [Run]
 Filename: "{app}\ezbizi.exe"; Description: "Start EzBizi"; Flags: nowait postinstall skipifsilent

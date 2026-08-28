@@ -402,6 +402,82 @@ void main() {
   /// Everything about these rows is tenant data — the addresses exist because
   /// somebody connected them — so they arrive on the same answer as the modules
   /// and this end knows nothing about them beyond where to nest them.
+  group('modules drawn inside another module', () {
+    /// Leads, Reviews and Business Profile are tabs inside Marketing, and the
+    /// editor lays the grants out the same way — so an administrator reads the
+    /// tree in the shape of the app they are granting it for.
+    testWidgets('a child is listed under its parent, not as a tab of its own', (
+      tester,
+    ) async {
+      _wide(tester);
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-2', 'Manager', permissions: const [])],
+        catalogue: [
+          _catalogueModule('customers', 'Customers'),
+          _catalogueModule('marketing', 'Marketing'),
+          _catalogueModule('leads', 'Leads', parent: 'marketing'),
+        ],
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      // Present and grantable — nesting hides nothing.
+      expect(find.byKey(const ValueKey('module:leads')), findsOneWidget);
+
+      // Indented, which is the only thing on this screen that says where it is
+      // drawn. Measured rather than asserted on a widget type, because the
+      // indent is the whole statement.
+      final parent = tester.getTopLeft(find.byKey(const ValueKey('module:marketing'))).dx;
+      final child = tester.getTopLeft(find.byKey(const ValueKey('module:leads'))).dx;
+
+      expect(child, greaterThan(parent));
+
+      // And it is under Marketing rather than somewhere else in the list.
+      final marketingY = tester.getTopLeft(find.byKey(const ValueKey('module:marketing'))).dy;
+      final leadsY = tester.getTopLeft(find.byKey(const ValueKey('module:leads'))).dy;
+
+      expect(leadsY, greaterThan(marketingY));
+    });
+
+    /// The rule the nesting must not quietly break (§4): a switch grants its
+    /// own module and nothing else.
+    testWidgets('ticking the parent does not grant the child', (tester) async {
+      _wide(tester);
+
+      Map<String, dynamic>? sent;
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-2', 'Manager', permissions: const [])],
+        catalogue: [
+          _catalogueModule('marketing', 'Marketing'),
+          _catalogueModule('leads', 'Leads', parent: 'marketing'),
+        ],
+        onPatch: (body) => sent = body,
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(_tabCheckbox('marketing'));
+      await tester.pumpAndSettle();
+
+      expect(_tabState('leads'), isFalse);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(
+        (sent!['permissions'] as List).where((k) => '$k'.startsWith('leads.')),
+        isEmpty,
+        reason: 'Drawing Leads inside Marketing is a layout fact, not a grant.',
+      );
+    });
+  });
+
   group('inboxes nested under their module', () {
     testWidgets('the tree carries this organization\'s own addresses', (
       tester,
@@ -799,6 +875,66 @@ void main() {
       expect(sent!.containsKey('inboxes'), isFalse);
     });
 
+    /// Phone spec §6/§12: which line a role may answer is a grant, not a
+    /// permission. Without this the tab could be ticked and every number stayed
+    /// unreachable, which is a Phone module that draws and never rings.
+    ///
+    /// The line the server sends is `e164`, not `address` or `name` — a phone
+    /// number has no address. That one word is why this asserts on the number
+    /// itself rather than only on the label.
+    testWidgets('phone lines nest under Phone and save as phone_numbers', (
+      tester,
+    ) async {
+      _wide(tester);
+
+      Map<String, dynamic>? sent;
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-3', 'Dispatcher', permissions: const [])],
+        catalogue: [
+          _catalogueModule('customers', 'Customers'),
+          _catalogueModule(
+            'phone',
+            'Phone',
+            actions: const [('view', 'View'), ('edit', 'Edit')],
+            phoneNumbers: [
+              {
+                'id': 'num-1',
+                'e164': '+12035550123',
+                'label': 'Front desk',
+                'grantable': true,
+              },
+            ],
+          ),
+        ],
+        onPatch: (body) => sent = body,
+      );
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Phone'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Phone lines'), findsOneWidget);
+      expect(find.text('Front desk'), findsOneWidget);
+      expect(find.text('+12035550123'), findsOneWidget);
+
+      await tester.tap(_tabCheckbox('phone'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('inbox:num-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(sent!['phone_numbers'], ['num-1']);
+
+      // Nothing was drawn for mail, so nothing is asserted about it. Sending
+      // `inboxes: []` here would revoke every inbox on this role from a screen
+      // that never showed one.
+      expect(sent!.containsKey('inboxes'), isFalse);
+    });
+
     /// R7: the tree is already dense and this adds a level to it.
     testWidgets('it fits a 375px screen', (tester) async {
       tester.view.physicalSize = const Size(375, 800);
@@ -1060,14 +1196,17 @@ Map<String, dynamic> _catalogueModule(
   /// none.
   List<Map<String, dynamic>>? inboxes,
   List<Map<String, dynamic>>? inspections,
+  List<Map<String, dynamic>>? phoneNumbers,
   String groupKey = 'tab',
   String groupLabel = '',
   String? groupHint,
+  String? parent,
 }) => {
   'key': key,
   'label': label,
   'available': available,
   'unavailable_reason': reason,
+  'parent': parent,
   'group': {
     'key': groupKey,
     'label': groupLabel.isEmpty ? label : groupLabel,
@@ -1084,6 +1223,7 @@ Map<String, dynamic> _catalogueModule(
   ],
   'inboxes': ?inboxes,
   'inspections': ?inspections,
+  'phone_numbers': ?phoneNumbers,
 };
 
 /// An administrator, holding the whole catalogue as a LIST rather than a

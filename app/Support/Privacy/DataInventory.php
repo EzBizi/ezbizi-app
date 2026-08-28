@@ -129,7 +129,7 @@ class DataInventory
                 .'restore has to re-apply any erasure made since.',
             'Web server access logs record IP addresses and request lines, and are outside '
                 .'this application.',
-            'Anything exported by a person to their own machine has left this system, and '
+            'Anything exported by a person to their own computer has left this system, and '
                 .'nothing here can enumerate or erase it. Exports of sensitive values are '
                 .'refused by default for that reason.',
             'Sign-in sessions record the IP address and browser of each device. They hang off '

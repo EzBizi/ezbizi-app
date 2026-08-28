@@ -254,12 +254,18 @@ class CatalogueModule {
     required this.triggers,
     required this.actions,
     this.subject,
+    this.parent,
   });
 
   final String key;
   final String label;
   final List<CatalogueTrigger> triggers;
   final List<CatalogueAction> actions;
+
+  /// The module this one is drawn inside, in the app somebody just came from.
+  /// Null for a module that stands on its own, and on a server that predates
+  /// the field — which reads as "top level", the shape everything had before.
+  final String? parent;
 
   /// The record this module's events carry, and what may be set on it.
   ///
@@ -280,6 +286,7 @@ class CatalogueModule {
       key: key,
       label: json['label'] as String? ?? key,
       subject: CatalogueSubject.tryFrom(json['subject']),
+      parent: json['parent'] as String?,
       triggers: _list(json['triggers'], CatalogueTrigger.tryFrom),
       actions: _list(json['declared_actions'], CatalogueAction.tryFrom),
     );
@@ -330,6 +337,29 @@ class AutomationCatalogue {
   /// it sets off, before the engine stops the cascade. Worth saying on the form
   /// — it is the number that decides whether a rule fires or is cut off.
   final int? actionBudget;
+
+  /// What to call a module in a picker, given where the app draws it.
+  ///
+  /// "Marketing › Leads" for a module drawn inside another, its own label
+  /// otherwise. Composed here rather than sent composed, because the parent's
+  /// wording is already on this list and a second copy built on the server is a
+  /// second chance for the two to disagree about one module's name.
+  ///
+  /// Falls back to the bare label when the parent is not in the catalogue at
+  /// all — which is not hypothetical: the catalogue only carries modules this
+  /// person can reach, so somebody holding `leads.view` without
+  /// `marketing.view` gets Leads with no Marketing to hang it under. "Leads" is
+  /// the right answer for them; "Marketing › Leads" would name a tab they
+  /// cannot open.
+  String pathLabelOf(CatalogueModule module) {
+    if (module.parent case final key?) {
+      for (final candidate in modules) {
+        if (candidate.key == key) return '${candidate.label} › ${module.label}';
+      }
+    }
+
+    return module.label;
+  }
 
   /// Which module a trigger belongs to, and what it is called there.
   (CatalogueModule, CatalogueTrigger)? locate(String triggerKey) {

@@ -106,6 +106,63 @@ enum SocialProvider: string
         return [self::GoogleBusinessProfile, self::GoogleAds];
     }
 
+    /**
+     * Which permission lets somebody connect this account.
+     *
+     * Not one answer for all eleven, and the reason is what the connection is
+     * FOR. Connecting a Facebook page is a Marketing act — it is a place the
+     * tenant will publish. Connecting a Google Ads account is not: nobody
+     * posts as it, and the only screen that reads it is Leads. Gating it on
+     * `marketing.edit` would mean somebody holding every `leads.*` permission
+     * could not connect the account the module runs on, while somebody with
+     * Marketing and no access to Leads at all could.
+     *
+     * The rule is that the permission follows the module that USES the
+     * connection, because that is who can tell whether it is the right account.
+     */
+    public function connectPermission(): string
+    {
+        return match ($this) {
+            self::GoogleAds => 'leads.edit',
+            self::GoogleBusinessProfile => 'reviews.edit',
+            default => 'marketing.edit',
+        };
+    }
+
+    /**
+     * The route constraint for `/social/{network}/…`, built from the enum.
+     *
+     * It used to be eight names typed into `routes/api.php` three times over.
+     * Adding a provider then meant remembering all three, and forgetting was
+     * silent in the worst way: the driver loads, `notReadyBecause()` answers
+     * READY, the config resolves — and every request 404s, because the route
+     * that would reach it does not exist. That is exactly what happened to
+     * Google Ads and Business Profile.
+     *
+     * Derived here so the list cannot drift from the providers again. Bluesky
+     * is absent because it connects with a handle and an app password rather
+     * than a consent window, and has its own route.
+     */
+    public static function oauthRoutePattern(): string
+    {
+        $keys = array_map(
+            fn (self $p) => preg_quote($p->routeKey(), '/'),
+            array_filter(self::cases(), fn (self $p) => $p !== self::Bluesky),
+        );
+
+        return implode('|', $keys);
+    }
+
+    /** What the refusal calls the act, when somebody may not do it. */
+    public function connectAct(): string
+    {
+        return match ($this) {
+            self::GoogleAds => 'connect a Google Ads account',
+            self::GoogleBusinessProfile => 'connect a Business Profile',
+            default => 'connect a social account',
+        };
+    }
+
     public function startPath(): string
     {
         return $this === self::Bluesky
@@ -128,5 +185,78 @@ enum SocialProvider: string
             self::cases(),
             fn (self $p) => $p->isPublishingNetwork(),
         ));
+    }
+
+    /**
+     * The kinds of post this network will take at all.
+     *
+     * The network's own rule, not what EzBizi has built yet — those are two
+     * different facts and conflating them would have the composer say "Pinterest
+     * cannot take a video", which is false. A publisher that has not implemented
+     * a kind refuses it in its own words; this says what would be possible.
+     *
+     * @return SocialMediaKind[]
+     */
+    public function accepts(): array
+    {
+        return match ($this) {
+            // Words, a picture or a video — the permissive ones.
+            self::FacebookPage, self::Threads, self::LinkedIn, self::X => [
+                SocialMediaKind::Text, SocialMediaKind::Image, SocialMediaKind::Video,
+            ],
+
+            // No video. Bluesky posts pictures and words.
+            self::Bluesky => [SocialMediaKind::Text, SocialMediaKind::Image],
+
+            // Media is the post. A caption with nothing attached is not a thing
+            // these will accept, so Text is absent rather than optional.
+            self::InstagramProfessional, self::Pinterest, self::TikTok => [
+                SocialMediaKind::Image, SocialMediaKind::Video,
+            ],
+
+            // Video, and only video.
+            self::YouTube => [SocialMediaKind::Video],
+        };
+    }
+
+    public function takes(SocialMediaKind $kind): bool
+    {
+        return in_array($kind, $this->accepts(), strict: true);
+    }
+
+    /** True when words alone are not a post here. */
+    public function requiresMedia(): bool
+    {
+        return ! $this->takes(SocialMediaKind::Text);
+    }
+
+    /**
+     * Why this network will not take that kind, in a sentence.
+     *
+     * Written for the person composing, not for a log: it names the network and
+     * what would fix it, because the fix is usually "attach a video" rather than
+     * anything technical.
+     */
+    public function refuses(SocialMediaKind $kind): ?string
+    {
+        if ($this->takes($kind)) {
+            return null;
+        }
+
+        return match (true) {
+            $kind === SocialMediaKind::Text => sprintf(
+                '%s does not post words on their own. Attach %s.',
+                $this->label(),
+                $this->takes(SocialMediaKind::Image) ? 'a picture or a video' : 'a video',
+            ),
+            $kind === SocialMediaKind::Video => sprintf(
+                '%s does not take video.',
+                $this->label(),
+            ),
+            default => sprintf(
+                '%s takes video, not pictures.',
+                $this->label(),
+            ),
+        };
     }
 }

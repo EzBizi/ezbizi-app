@@ -7,6 +7,13 @@ import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/tag.dart';
+import 'flows_pane.dart';
+import 'hours_pane.dart';
+import 'numbers_pane.dart';
+import 'ring_groups_pane.dart';
+import 'tags_pane.dart';
+import 'trust_pane.dart';
+import 'service_request_pane.dart';
 
 /// Phone › Settings — layout 6: a rail of sections, and the form beside it.
 ///
@@ -32,6 +39,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     ('Call flows', Icons.account_tree_outlined),
     ('Hours', Icons.schedule_outlined),
     ('Ring groups', Icons.groups_outlined),
+    ('Tags', Icons.sell_outlined),
     ('Trust', Icons.verified_outlined),
     ('Messaging', Icons.sms_outlined),
   ];
@@ -43,15 +51,13 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   String? _error;
   List<_Connection> _connections = const [];
 
-  String? _formScopeType;
-  String? _formScopeId;
-  final _accountSid = TextEditingController();
-  final _apiKeySid = TextEditingController();
-  final _apiSecret = TextEditingController();
   bool _saving = false;
-  String? _formError;
   String? _noticeScope;
   String? _notice;
+
+  /// Companies EzBizi has switched phone service on for (§4 gate 2). Reported
+  /// by the request pane above; nothing here activates without it.
+  List<String> _approved = const [];
 
   @override
   void initState() {
@@ -61,9 +67,6 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
 
   @override
   void dispose() {
-    _accountSid.dispose();
-    _apiKeySid.dispose();
-    _apiSecret.dispose();
     super.dispose();
   }
 
@@ -121,32 +124,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     });
   }
 
-  void _openForm(_Place place) {
-    setState(() {
-      _formScopeType = place.type;
-      _formScopeId = place.id;
-      _formError = null;
-      _notice = null;
-      _noticeScope = null;
-      _accountSid.clear();
-      _apiKeySid.clear();
-      _apiSecret.clear();
-    });
-  }
 
-  void _closeForm() {
-    setState(() {
-      _formScopeType = null;
-      _formScopeId = null;
-      _formError = null;
-      _accountSid.clear();
-      _apiKeySid.clear();
-      _apiSecret.clear();
-    });
-  }
-
-  bool _formOpenFor(_Place place) =>
-      _formScopeType == place.type && _formScopeId == place.id;
 
   _Connection? _connectionFor(_Place place) {
     for (final row in _connections) {
@@ -162,7 +140,6 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       _saving = true;
       _notice = null;
       _noticeScope = '${place.type}:${place.id}';
-      _formError = null;
     });
 
     final response = await widget.api.post('/phone/connections', {
@@ -180,42 +157,9 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       return;
     }
 
-    _closeForm();
     await _load();
   }
 
-  Future<void> _saveByo(_Place place) async {
-    if (!_canEdit || _saving) return;
-
-    setState(() {
-      _saving = true;
-      _formError = null;
-      _notice = null;
-    });
-
-    // POST only. Do not DELETE first — that would drop numbers, history and
-    // routing. Store returns 409 when a row already exists; show that sentence.
-    final response = await widget.api.post('/phone/connections', {
-      'scope_type': place.type,
-      'scope_id': place.id,
-      'kind': 'byo',
-      'account_sid': _accountSid.text.trim(),
-      'api_key_sid': _apiKeySid.text.trim(),
-      'api_secret': _apiSecret.text,
-    });
-
-    if (!mounted) return;
-
-    setState(() => _saving = false);
-
-    if (!response.ok) {
-      setState(() => _formError = response.message);
-      return;
-    }
-
-    _closeForm();
-    await _load();
-  }
 
   void _selectSection(int index) => setState(() {
     _section = index;
@@ -338,13 +282,12 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   Widget _sectionBody() {
     return switch (_section) {
       0 => _connectionBody(),
-      1 => _unbuilt(
-        'Buy and grant numbers here. None are listed on this screen yet.',
-      ),
-      2 => _unbuilt('Call flows will be written here.'),
-      3 => _unbuilt('Opening hours will be set here.'),
-      4 => _unbuilt('Ring groups will be named here.'),
-      5 => _unbuilt('Caller ID trust will be set here.'),
+      1 => NumbersPane(api: widget.api, session: widget.session),
+      2 => FlowsPane(api: widget.api, session: widget.session),
+      3 => HoursPane(api: widget.api, session: widget.session),
+      4 => RingGroupsPane(api: widget.api, session: widget.session),
+      5 => TagsPane(api: widget.api, session: widget.session),
+      6 => TrustPane(api: widget.api, session: widget.session),
       _ => _unbuilt('Messaging campaigns will be set here.'),
     };
   }
@@ -377,7 +320,21 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
-          for (final place in _places) ...[
+          // Gate 2 first: until EzBizi has said yes to a company by name there
+          // is nothing here to connect, and the only useful control is asking.
+          PhoneServiceRequestPane(
+            api: widget.api,
+            session: widget.session,
+            onApproved: (ids) {
+              if (!mounted) return;
+              setState(() => _approved = ids);
+            },
+          ),
+
+          // Companies only. Phone service is bought and switched on per
+          // company — each gets its own Twilio subaccount, because A2P brand
+          // registration and caller-ID trust are per business, not per group.
+          for (final place in _places.where((p) => p.type == 'company')) ...[
             _connectionCard(place),
             const SizedBox(height: 12),
           ],
@@ -389,7 +346,6 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   Widget _connectionCard(_Place place) {
     final theme = Theme.of(context);
     final row = _connectionFor(place);
-    final open = _formOpenFor(place);
     final noticeHere = _noticeScope == '${place.type}:${place.id}';
 
     return Material(
@@ -444,101 +400,29 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
               const SizedBox(height: 12),
               ErrorNote(_notice!),
             ],
-            if (open && _canModifyPlace(place)) ...[
+            if (_canModifyPlace(place) && row == null) ...[
               const SizedBox(height: 12),
-              TextField(
-                controller: _accountSid,
-                decoration: const InputDecoration(labelText: 'Account SID'),
-                enabled: !_saving,
-                onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _apiKeySid,
-                decoration: const InputDecoration(labelText: 'API key SID'),
-                enabled: !_saving,
-                onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _apiSecret,
-                decoration: const InputDecoration(labelText: 'API secret'),
-                obscureText: true,
-                enabled: !_saving,
-                onChanged: (_) => setState(() {}),
-              ),
-              if (_formError != null) ...[
-                const SizedBox(height: 12),
-                ErrorNote(_formError!),
-              ],
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  Refused(
-                    reason: _canEdit ? null : _editRefusal,
-                    child: FilledButton(
-                      onPressed: _canEdit && !_saving && _byoReady
-                          ? () => _saveByo(place)
-                          : null,
-                      child: const Text('Save'),
-                    ),
+
+              // One control, and only once EzBizi has said yes to this company.
+              // Bringing your own Twilio is not on offer: phone service is
+              // something EzBizi runs on its own account, so a customer never
+              // sees a credential field and never has an unapproved way in.
+              if (_approved.contains(place.id))
+                Refused(
+                  reason: _canEdit ? null : _editRefusal,
+                  child: FilledButton(
+                    onPressed: _canEdit && !_saving
+                        ? () => _createSubaccount(place)
+                        : null,
+                    child: const Text('Activate phone service'),
                   ),
-                  TextButton(
-                    onPressed: _saving ? null : _closeForm,
-                    child: const Text('Cancel'),
-                  ),
-                ],
-              ),
-            ] else if (_canModifyPlace(place)) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (row == null) ...[
-                    Refused(
-                      reason: _canEdit ? null : _editRefusal,
-                      child: FilledButton(
-                        onPressed: _canEdit && !_saving
-                            ? () => _openForm(place)
-                            : null,
-                        child: const Text('Connect your Twilio'),
-                      ),
-                    ),
-                    Refused(
-                      reason: _canEdit ? null : _editRefusal,
-                      child: OutlinedButton(
-                        onPressed: _canEdit && !_saving
-                            ? () => _createSubaccount(place)
-                            : null,
-                        child: const Text('EzBizi will create a phone account'),
-                      ),
-                    ),
-                  ] else if (row.kind == 'byo')
-                    Refused(
-                      reason: _canEdit ? null : _editRefusal,
-                      child: OutlinedButton(
-                        onPressed: _canEdit && !_saving
-                            ? () => _openForm(place)
-                            : null,
-                        child: const Text('Replace the key'),
-                      ),
-                    ),
-                ],
-              ),
+                ),
             ],
           ],
         ),
       ),
     );
   }
-
-  bool get _byoReady =>
-      _accountSid.text.trim().isNotEmpty &&
-      _apiKeySid.text.trim().isNotEmpty &&
-      _apiSecret.text.isNotEmpty;
 
   String _blurb(_Place place, _Connection? row) {
     if (place.type == 'organization') {

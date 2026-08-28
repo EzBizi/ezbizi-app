@@ -128,8 +128,23 @@ return [
         'client_secret' => env('META_APP_SECRET'),
         'facebook_redirect' => env('META_FACEBOOK_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/facebook/callback',
+        /*
+        | Instagram is its own app inside the same Meta app too - the console
+        | calls it EzBizi-IG and gives it an Instagram app id and secret
+        | separate from the Facebook ones. Same story as Threads below.
+        */
+        'instagram_id'     => env('META_INSTAGRAM_APP_ID'),
+        'instagram_secret' => env('META_INSTAGRAM_APP_SECRET'),
         'instagram_redirect' => env('META_INSTAGRAM_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/instagram/callback',
+        /*
+        | Threads is its OWN app inside the same Meta app, with its own id and
+        | its own secret - the console shows both side by side. Signing a
+        | Threads request with the Facebook pair is rejected, so these are
+        | separate keys rather than a reuse of the two above.
+        */
+        'threads_id'     => env('META_THREADS_APP_ID'),
+        'threads_secret' => env('META_THREADS_APP_SECRET'),
         'threads_redirect' => env('META_THREADS_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/threads/callback',
     ],
@@ -234,6 +249,16 @@ return [
         'platform_account_sid' => env('TWILIO_PLATFORM_ACCOUNT_SID'),
         'platform_api_key_sid' => env('TWILIO_PLATFORM_API_KEY_SID'),
         'platform_api_secret'  => env('TWILIO_PLATFORM_API_SECRET'),
+
+        // The parent account's own auth token.
+        //
+        // An API key — even a Main one — is not enough to PROVISION with.
+        // Twilio withholds `auth_token` from an account resource fetched or
+        // created with key auth, so creating a subaccount that way returns a
+        // real account with no token, and §5 needs that token to validate the
+        // connection's webhooks. The same restriction is why key auth cannot
+        // read into a subaccount, delete a key in one, or move a number out.
+        'platform_auth_token'  => env('TWILIO_PLATFORM_AUTH_TOKEN'),
     ],
 
 ];

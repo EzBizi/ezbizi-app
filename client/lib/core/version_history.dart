@@ -8,6 +8,150 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0110',
+      date: '27 Aug 2026',
+      items: [
+        'Tags: say what a call was about when you put the phone down, so calls '
+            'can be counted by what they were.',
+        'Settings keeps the list. A tag that has been used is retired rather '
+            'than deleted, so last month still adds up.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0109',
+      date: '27 Aug 2026',
+      items: [
+        'Call menus: write what a caller hears and say what each key does — '
+            'ring a group, take a message, forward, or say something and stop.',
+        'Pressing a key now does what the key says. It used to play the menu '
+            'and then ring the line whatever was pressed.',
+        'Opening hours, per line, on the clock where the phone actually is.',
+        'Trust says where each carrier registration has got to, and what can '
+            'be done about it — usually nothing, which it now says.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0108',
+      date: '27 Aug 2026',
+      items: [
+        'Numbers: the lines a phone account already holds can be brought into '
+            'EzBizi, which points them here so their calls arrive.',
+        'A line says who it rings, its hours, whether it records, and what '
+            'happens when it is closed.',
+        'Looking at one company no longer lists the others on Phone settings.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0107',
+      date: '27 Aug 2026',
+      items: [
+        'Switching a company on no longer picks up a phone account that was '
+            'closed. It kept its name, so it looked like the right one and '
+            'every attempt failed with a bare Server Error.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0106',
+      date: '27 Aug 2026',
+      items: [
+        'Switching a company on no longer leaves a half-made phone account '
+            'behind when it fails, and trying again takes over the one that '
+            'exists instead of making a second.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0105',
+      date: '27 Aug 2026',
+      items: [
+        'Phone service is EzBizi’s to switch on. Connecting your own '
+            'Twilio has been removed — it was never a service EzBizi '
+            'offered, and it was also a way past the approval.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0104',
+      date: '27 Aug 2026',
+      items: [
+        'Phone service is asked for and granted. The Phone tab explains the '
+            'service and takes a request naming the companies that need it, '
+            'how busy the lines will be, and whether texting is needed. EzBizi '
+            'answers each company, and only an approved company can be '
+            'switched on.',
+        'Ring groups: name who a line rings, all at once or one at a time, and '
+            'where unanswered calls go. Until now a call reached voicemail '
+            'however the account was set up.',
+        'Roles can grant phone lines, the way they already grant inboxes.',
+        'The dial pad no longer runs off the bottom of a short screen.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0103',
+      date: '26 Aug 2026',
+      items: [
+        'The Windows app keeps itself up to date. It looks for a newer build '
+            'when it starts and once an hour after that, and installs what it '
+            'finds — after a minute of warning you can put off, so an update '
+            'never arrives in the middle of something you were typing.',
+        'The version number at the foot of the sidebar, and on the sign-in '
+            'screen, has a button beside it: check now, or install the build '
+            'that is waiting.',
+        'The installer no longer fails when EzBizi is already open. It closes '
+            'the app, replaces it, and starts it again.',
+        'The installer looks like software now — its own icon, artwork that '
+            'stays sharp on any screen, and a proper welcome page.',
+        'The app icon lost the dark edges around its corners.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0102',
+      date: '26 Aug 2026',
+      items: [
+        'Closing the Windows app puts it in the notification area instead of '
+            'quitting it, the way Teams and Slack do. Click the icon to bring '
+            'it back, or right-click it to quit properly. Signing out of '
+            'Windows, and the updater, still close it for real.',
+        'There is a download page at ezbizi.com/download, which always shows '
+            'the version it is actually offering.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0101',
+      date: '26 Aug 2026',
+      items: [
+        'The Windows app carries the EzBizi icon. It was still Flutter\'s — in '
+            'the taskbar, in Alt-Tab, and on the installer itself.',
+        'The installer offers to start EzBizi when you sign in to Windows. It '
+            'is a checkbox, it shows up in Task Manager\'s Startup tab like '
+            'anything else, and turning it off survives later updates.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0100',
+      date: '26 Aug 2026',
+      items: [
+        'On a phone, the sidebar is a drawer. It was a bar across the bottom '
+            'holding all fifteen destinations, which left twenty-four pixels '
+            'each and broke every label mid-word. The drawer shows them at '
+            'full width, grouped the way the sidebar groups them.',
+        'The app no longer draws underneath the status bar or the gesture bar '
+            'on Android 15.',
+        'The Windows app updates itself. It checks for a newer build on '
+            'launch, offers it in a strip you can dismiss, and on Update '
+            'downloads the installer and restarts into it.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0099',
+      date: '26 Aug 2026',
+      items: [
+        'Nothing changed in the app. This build exists so Google Play has a '
+            'bundle made after the store artwork and the new icon, and so its '
+            '"upload your bundle again" notice clears. Said plainly rather '
+            'than dressed up: a version whose note invents a feature is worse '
+            'than one that admits it is a rebuild.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0098',
       date: '26 Aug 2026',
       items: [

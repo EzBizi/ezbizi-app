@@ -53,7 +53,6 @@ The HTML was opened through a local web server and checked in a browser at a 144
 - Focus-visible styling, reduced-motion behavior, 40–44px primary controls, truncation, status contrast, and mobile bottom navigation were inspected.
 
 Three issues found during this pass were corrected in the artifact: task rows gained keyboard semantics, a bubbling size-control collision that immediately reclosed mobile detail was isolated, and duplicate/unwired mobile Back controls were replaced with one working control.
-
 ## Production golden approval
 
 **Date:** 2026-08-28

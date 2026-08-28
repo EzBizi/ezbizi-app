@@ -2,10 +2,10 @@
 
 namespace App\Policies;
 
-use App\Models\Company;
 use App\Models\PhoneConnection;
 use App\Models\PhoneHoursSchedule;
 use App\Models\User;
+use App\Policies\Concerns\ScopedToPhoneConnection;
 use App\Support\Access\Refusal;
 use Illuminate\Auth\Access\Response;
 
@@ -17,6 +17,8 @@ use Illuminate\Auth\Access\Response;
  */
 class PhoneHoursSchedulePolicy
 {
+    use ScopedToPhoneConnection;
+
     public function viewAny(User $user): Response
     {
         return $user->hasPermission('phone.view')
@@ -74,32 +76,5 @@ class PhoneHoursSchedulePolicy
         }
 
         return $this->connectionReach($user, $schedule->connection, 'delete hours for');
-    }
-
-    private function connectionReach(User $user, ?PhoneConnection $connection, string $actFor): Response
-    {
-        if ($connection === null || $connection->organization_id !== $user->organization_id) {
-            return Response::denyAsNotFound();
-        }
-
-        if ($connection->scope_type === PhoneConnection::SCOPE_ORGANIZATION) {
-            return $user->canActOnOrganization($user->organization)
-                ? Response::allow()
-                : Refusal::abovePosition($actFor.' the organization');
-        }
-
-        $company = Company::find($connection->scope_id);
-        if ($company === null || $company->organization_id !== $user->organization_id) {
-            return Response::denyAsNotFound();
-        }
-
-        return $user->canActOnCompany($company)
-            ? Response::allow()
-            : Refusal::noReach(
-                $user,
-                Refusal::AT_COMPANY,
-                $actFor.' this company',
-                $company->name,
-            );
     }
 }

@@ -5,8 +5,10 @@ import 'core/address.dart';
 import 'core/api_client.dart';
 import 'core/contracts.dart';
 import 'core/deployment.dart';
+import 'core/desktop_updater.dart';
 import 'core/files.dart';
 import 'core/module_screens.dart';
+import 'core/permissions.dart';
 import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
@@ -61,11 +63,40 @@ class _EzBiziAppState extends State<EzBiziApp> {
   /// stale build must both be told — see core/version_gate.dart.
   final VersionGate _versionGate = VersionGate();
 
+  /// An update that closes the app has something to interrupt only once
+  /// somebody is signed in. On the sign-in screen it goes straight ahead.
+  void _tellUpdaterWhoIsHere() {
+    DesktopUpdater.instance.signedIn =
+        _session.me != null || _staffSession.me != null;
+  }
+
+  @override
+  void dispose() {
+    // The window is closing, so stop looking for updates. Without this the
+    // hourly timer outlives the widget tree, which in a running app is a leak
+    // and in a widget test is a hard failure on every test in the file.
+    DesktopUpdater.instance.stop();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
     _session.addListener(() => setState(() {}));
     _staffSession.addListener(() => setState(() {}));
+
+    /*
+     * Kept current from here, not from the shell inside it.
+     *
+     * The check has to run whether anybody is signed in or not — a desktop left
+     * sitting on the sign-in screen is exactly the one that goes a month behind
+     * — so it starts at the root and keeps going for as long as the window is
+     * open. See core/desktop_updater.dart for the hourly sweep and for why a
+     * found update waits a minute before it closes the app.
+     */
+    DesktopUpdater.instance.start();
+    _session.addListener(_tellUpdaterWhoIsHere);
+    _staffSession.addListener(_tellUpdaterWhoIsHere);
 
     _versionGate
       ..addListener(() => setState(() {}))
@@ -369,8 +400,16 @@ class _HomeShellState extends State<HomeShell> {
       return;
     }
 
+    // A module drawn inside another one has no destination of its own, so its
+    // old URL names nothing: /leads, /reviews and /business_profile were three
+    // sidebar rows until they became tabs inside Marketing. Opening one selects
+    // the tab it is drawn in rather than falling through to the first module.
+    //
+    // Which CHIP of Marketing it lands on is not restored, exactly as
+    // /organization above does not restore a chip inside Settings. The address
+    // holds a destination; the strip inside one is not one.
     _rail = _Rail.modules;
-    _selected = id;
+    _selected = widget.session.me?.module(id)?.parent ?? id;
     _pendingTaskIntent = id == 'tasks' ? Address.taskIntent(path ?? '') : null;
   }
 
@@ -440,8 +479,7 @@ class _HomeShellState extends State<HomeShell> {
   });
 
   /// Task notifications cross the shell boundary as an opaque typed intent.
-  /// Only Tasks resolves these IDs, through its access-checked board/detail
-  /// reads; the shell merely selects the module and writes its canonical URL.
+  /// Only Tasks resolves these IDs through authorized board/detail reads.
   void _openTaskIntent(TaskAddressIntent intent) => setState(() {
     _rail = _Rail.modules;
     _selected = 'tasks';
@@ -570,22 +608,23 @@ class _HomeShellState extends State<HomeShell> {
           // for a destination the module registry knows nothing about.
           id: 'my-onboarding',
         ),
-      for (final module in me.reachableModules)
-        if (moduleScreens[module.key] case final screen?)
-          Destination(
-            module.label,
-            screen.icon,
-            module.key == 'tasks'
-                ? TasksScreen(
-                    api: widget.api,
-                    session: widget.session,
-                    pendingIntent: _pendingTaskIntent,
-                    onIntentConsumed: _consumeTaskIntent,
-                    onOpenRecordRoute: _openAuthorizedRecordRoute,
-                  )
-                : screen.build(widget.api, widget.session),
-            id: module.key,
-          ),
+      for (final module in me.modules ?? const <ModuleAccess>[])
+        if (_hasDestination(me, module))
+          if (moduleScreens[module.key] case final screen?)
+            Destination(
+              module.label,
+              screen.icon,
+              module.key == 'tasks'
+                  ? TasksScreen(
+                      api: widget.api,
+                      session: widget.session,
+                      pendingIntent: _pendingTaskIntent,
+                      onIntentConsumed: _consumeTaskIntent,
+                      onOpenRecordRoute: _openAuthorizedRecordRoute,
+                    )
+                  : screen.build(widget.api, widget.session),
+              id: module.key,
+            ),
     ];
 
     // Pinned to the bottom, under a rule and the empty space.
@@ -772,7 +811,12 @@ class _HomeShellState extends State<HomeShell> {
               },
             ),
             actions: [
-              if (me.timeClock.showButton) _clockButton(context, me),
+              if (me.timeClock.showButton)
+                _ClockButton(
+                  open: me.timeClock.open != null,
+                  busy: _punching,
+                  onPressed: _punch,
+                ),
               // Light / dark, one tap, from anywhere.
               //
               // It is the same preference the account screen holds (§2.1 category
@@ -902,159 +946,373 @@ class _HomeShellState extends State<HomeShell> {
           ),
         ),
       ),
-      body: Column(
-        children: [
-          if (_timeClockNotice != null)
-            Material(
-              color: Theme.of(
-                context,
-              ).colorScheme.errorContainer.withValues(alpha: 0.4),
-              child: SizedBox(
-                width: double.infinity,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: Text(
-                    _timeClockNotice!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-            ),
-          Expanded(
-            child: Row(
-              children: [
-                if (wide)
-                  // Two shapes, and the default is the list.
-                  //
-                  // A list reads faster: the eye scans labels down a column, and the
-                  // icons are a secondary cue rather than the thing being read.
-                  // Blocks fit more in less width and some people prefer them, so
-                  // they stay available — as the user's own preference, not an
-                  // opinion imposed by whoever wrote this.
-                  _maybeThemed(
-                    // In a mixed mode the sidebar runs on the opposite theme to the
-                    // page. Wrapping only the sidebar — rather than building two
-                    // MaterialApps or threading colours by hand — means every widget
-                    // inside it, including NavigationRail's own indicator and hover
-                    // colours, resolves against the right scheme without knowing that
-                    // anything unusual is happening.
-                    //
-                    // The top bar takes this same override, so the chrome is one
-                    // theme and the page is the other.
-                    EzBiziTheme.navigationOverride(me.theme),
-                    builder: (context) => NavigationSidebar(
-                      expanded: expanded,
-                      width: me.navigationWidth,
-                      destinations: destinations,
-                      pinned: pinned,
-                      staffOnly: staffOnly,
-                      selectedIndex: railIndex,
-                      pinnedIndex: pinnedIndex,
-                      staffIndex: staffIndex,
-                      onSelected: (i) =>
-                          _show(_Rail.modules, destinations[i].id),
-                      onPinnedSelected: (i) =>
-                          _show(_Rail.pinned, pinned[i].id),
-                      onStaffSelected: (i) =>
-                          _show(_Rail.staff, staffOnly[i].id),
-                      // Written through the same path as every other preference, once
-                      // the drag settles.
-                      onResized: (w) => widget.session.setPreference(
-                        'navigation.width',
-                        w.round(),
-                      ),
+      /*
+       * Edge to edge, handled rather than hoped for.
+       *
+       * The app targets SDK 36, and from Android 15 that means the system draws
+       * the app under the status bar and under the gesture bar unless the app
+       * says where its content may go. Play flagged this on release 97, and the
+       * whole client had exactly one SafeArea in it — on the screen that tells
+       * you to update, of all places.
+       *
+       * `top: false` because the AppBar above already consumes the status bar
+       * inset; taking it twice would leave a band of empty chrome. The sides
+       * matter in landscape, where a display cutout eats into the row.
+       */
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            /*
+             * A newer build, offered rather than imposed.
+             *
+             * A strip above the work, dismissed by acting on it, and never a
+             * modal: somebody halfway through writing up a job should not have
+             * the app taken away because a release happened. The wall is
+             * VersionGate's job, and only once the server actually refuses this
+             * build — see core/desktop_update.dart for why both exist.
+             */
+            /*
+             * A newer build, announced rather than sprung.
+             *
+             * The updater installs this by itself after a minute — see
+             * core/desktop_updater.dart — so this strip is the warning, not the
+             * offer. It says how long is left and gives a way out, because the
+             * install closes the app and somebody halfway through writing up a
+             * job should be able to say "not now". Postponing does not cancel
+             * anything permanently: the next hourly sweep finds it again.
+             *
+             * A strip above the work, never a modal. The wall is VersionGate's
+             * job, and only once the server actually refuses this build — see
+             * core/desktop_update.dart for why both exist.
+             */
+            AnimatedBuilder(
+              animation: DesktopUpdater.instance,
+              builder: (context, _) {
+                final u = DesktopUpdater.instance;
+                final left = u.secondsLeft;
+
+                if (u.available == null && u.error == null) {
+                  return const SizedBox.shrink();
+                }
+
+                return Material(
+                  color: u.error != null
+                      ? Theme.of(context).colorScheme.errorContainer
+                      : Theme.of(context).colorScheme.primaryContainer,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          u.error != null
+                              ? Icons.error_outline
+                              : Icons.system_update_alt,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            u.error ??
+                                (left != null
+                                    ? 'EzBizi ${u.available!.version} installs in '
+                                          '$left seconds. The app closes and reopens.'
+                                    : 'EzBizi ${u.available!.version} is ready to '
+                                          'install. The app closes and reopens.'),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (u.busy)
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        else ...[
+                          if (left != null)
+                            TextButton(
+                              onPressed: u.postpone,
+                              child: const Text('Not now'),
+                            ),
+                          FilledButton(
+                            onPressed: u.install,
+                            child: Text(
+                              u.error == null ? 'Update now' : 'Try again',
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                Expanded(
-                  // Keyed by the current view, so changing it REMOUNTS the screen and
-                  // its initState fetches again.
-                  //
-                  // Every screen loads once in initState — the ordinary Flutter
-                  // shape — so without this the switcher changed the label and left
-                  // Connecticut's jobs on the page while claiming to be in Texas.
-                  // Making the scope part of the screen's identity is the fix that
-                  // needs no screen to know the switcher exists.
-                  child: KeyedSubtree(
-                    key: ValueKey('${me.scope.type}:${me.scope.id}'),
-                    // Their own account is the last fallback, and the only honest
-                    // one: it is the single screen that is theirs by definition and
-                    // cannot answer 403. It is what somebody whose role reaches no
-                    // module at all lands on, rather than an empty frame.
-                    child: pinnedIndex != null
-                        ? pinned[pinnedIndex].screen
-                        : staffIndex != null
-                        ? staffOnly[staffIndex].screen
-                        : (showingProfile || railIndex == null)
-                        ? ProfileScreen(
-                            api: widget.api,
-                            session: widget.session,
-                          )
-                        : destinations[railIndex].screen,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      /*
-       * Narrow layout. Everything gets an ordinary tab, in the same order.
-       *
-       * The grouping the sidebar draws with rules cannot be expressed here —
-       * NavigationBar has no separators — and hiding the tail would make
-       * Settings, and Development for staff, unreachable on a phone. Order is
-       * the only signal available, so order is what carries it.
-       *
-       * One flat list here, so the tab index is a position in it and nothing
-       * else. NavigationBar demands a selected index in range and at least two
-       * destinations; the pinned pair guarantees both, whatever the modules
-       * above them come to.
-       *
-       * The profile has no tab — it is reached from the avatar, on this layout
-       * as on the wide one — so while it is showing, the first tab carries the
-       * highlight. A bar cannot say "none of these".
-       */
-      bottomNavigationBar: wide
-          ? null
-          : Builder(
-              builder: (context) {
-                final tabs = [...destinations, ...pinned, ...staffOnly];
-
-                return NavigationBar(
-                  selectedIndex: pinnedIndex != null
-                      ? destinations.length + pinnedIndex
-                      : staffIndex != null
-                      ? destinations.length + pinned.length + staffIndex
-                      : railIndex ?? 0,
-                  onDestinationSelected: (i) {
-                    if (i < destinations.length) {
-                      _show(_Rail.modules, tabs[i].id);
-                    } else if (i < destinations.length + pinned.length) {
-                      _show(_Rail.pinned, tabs[i].id);
-                    } else {
-                      _show(_Rail.staff, tabs[i].id);
-                    }
-                  },
-                  destinations: [
-                    for (final d in tabs)
-                      NavigationDestination(icon: Icon(d.icon), label: d.label),
-                  ],
                 );
               },
             ),
+            if (_timeClockNotice != null)
+              Material(
+                color: Theme.of(
+                  context,
+                ).colorScheme.errorContainer.withValues(alpha: 0.4),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      _timeClockNotice!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ),
+            Expanded(
+              child: Row(
+                children: [
+                  if (wide)
+                    // Two shapes, and the default is the list.
+                    //
+                    // A list reads faster: the eye scans labels down a column, and the
+                    // icons are a secondary cue rather than the thing being read.
+                    // Blocks fit more in less width and some people prefer them, so
+                    // they stay available — as the user's own preference, not an
+                    // opinion imposed by whoever wrote this.
+                    _maybeThemed(
+                      // In a mixed mode the sidebar runs on the opposite theme to the
+                      // page. Wrapping only the sidebar — rather than building two
+                      // MaterialApps or threading colours by hand — means every widget
+                      // inside it, including NavigationRail's own indicator and hover
+                      // colours, resolves against the right scheme without knowing that
+                      // anything unusual is happening.
+                      //
+                      // The top bar takes this same override, so the chrome is one
+                      // theme and the page is the other.
+                      EzBiziTheme.navigationOverride(me.theme),
+                      builder: (context) => NavigationSidebar(
+                        expanded: expanded,
+                        width: me.navigationWidth,
+                        destinations: destinations,
+                        pinned: pinned,
+                        staffOnly: staffOnly,
+                        selectedIndex: railIndex,
+                        pinnedIndex: pinnedIndex,
+                        staffIndex: staffIndex,
+                        onSelected: (i) =>
+                            _show(_Rail.modules, destinations[i].id),
+                        onPinnedSelected: (i) =>
+                            _show(_Rail.pinned, pinned[i].id),
+                        onStaffSelected: (i) =>
+                            _show(_Rail.staff, staffOnly[i].id),
+                        // Written through the same path as every other preference, once
+                        // the drag settles.
+                        onResized: (w) => widget.session.setPreference(
+                          'navigation.width',
+                          w.round(),
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    // Keyed by the current view, so changing it REMOUNTS the screen and
+                    // its initState fetches again.
+                    //
+                    // Every screen loads once in initState — the ordinary Flutter
+                    // shape — so without this the switcher changed the label and left
+                    // Connecticut's jobs on the page while claiming to be in Texas.
+                    // Making the scope part of the screen's identity is the fix that
+                    // needs no screen to know the switcher exists.
+                    child: KeyedSubtree(
+                      key: ValueKey('${me.scope.type}:${me.scope.id}'),
+                      // Their own account is the last fallback, and the only honest
+                      // one: it is the single screen that is theirs by definition and
+                      // cannot answer 403. It is what somebody whose role reaches no
+                      // module at all lands on, rather than an empty frame.
+                      child: pinnedIndex != null
+                          ? pinned[pinnedIndex].screen
+                          : staffIndex != null
+                          ? staffOnly[staffIndex].screen
+                          : (showingProfile || railIndex == null)
+                          ? ProfileScreen(
+                              api: widget.api,
+                              session: widget.session,
+                            )
+                          : destinations[railIndex].screen,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      /*
+       * Narrow layout: a drawer, not a bar along the bottom.
+       *
+       * It was a NavigationBar holding every destination flat, and that could
+       * not work. NavigationBar divides its width evenly between destinations,
+       * and this app has fifteen — on a 360px phone that is twenty-four pixels
+       * each, which is the icon with nothing left over. Every label broke
+       * mid-word: "Huma n Res ources", "Fleet Mana geme nt", "Auto matio ns".
+       * It was visible in all six Play store screenshots.
+       *
+       * The old comment reasoned that hiding the tail would make Settings, and
+       * Development for staff, unreachable on a phone — which is true, and is
+       * the argument against a bar, not against showing everything. A drawer
+       * shows everything, at full width, and scrolls when there is more.
+       *
+       * It also restores the grouping the bar had to throw away: the sidebar
+       * separates modules from pinned from staff with rules, and a drawer can
+       * draw exactly the same rules. Order stops having to carry meaning on its
+       * own.
+       *
+       * No `leading` is set on this layout, so Scaffold supplies the button
+       * that opens it.
+       */
+      drawer: wide ? null : _navigationDrawer(destinations, pinned, staffOnly),
     );
   }
 
-  Widget _clockButton(BuildContext context, Me me) {
-    final open = me.timeClock.open != null;
-    final label = UiStrings.t(
-      open ? 'time_clock.clock_out' : 'time_clock.clock_in',
+  /// Every destination, grouped as the sidebar groups them.
+  Widget _navigationDrawer(
+    List<Destination> destinations,
+    List<Destination> pinned,
+    List<Destination> staffOnly,
+  ) {
+    return Drawer(
+      child: Builder(
+        builder: (context) {
+          Widget tile(Destination d, _Rail rail) => ListTile(
+            leading: Icon(d.icon),
+            title: Text(d.label),
+            selected: _rail == rail && _selected == d.id,
+            onTap: () {
+              Navigator.of(context).pop();
+              _show(rail, d.id);
+            },
+          );
+
+          return ListView(
+            // SafeArea rather than a bare ListView: from Android 15 an app
+            // targeting SDK 35+ draws edge to edge by default, so without this
+            // the first tile sits under the status bar and the last under the
+            // gesture bar.
+            padding: EdgeInsets.zero,
+            children: [
+              SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: EzBiziTheme.wordmark(context, size: 20),
+                ),
+              ),
+              const Divider(height: 1),
+              for (final d in destinations) tile(d, _Rail.modules),
+              if (pinned.isNotEmpty) const Divider(),
+              for (final d in pinned) tile(d, _Rail.pinned),
+              if (staffOnly.isNotEmpty) const Divider(),
+              for (final d in staffOnly) tile(d, _Rail.staff),
+              SizedBox(height: MediaQuery.paddingOf(context).bottom + 8),
+            ],
+          );
+        },
+      ),
     );
-    final color = open
+  }
+}
+
+/// The punch control in the top bar.
+///
+/// ── Why only one of the two states breathes ──────────────────────
+///
+/// A pulse is a statement that something is happening NOW. While a shift is
+/// open that is true, and it is the one thing this bar can usefully keep
+/// saying: the clock is running, on every screen, until somebody stops it.
+///
+/// On "Clock In" there is nothing happening to report, and the same animation
+/// would be a control tugging at the corner of every page all day. That half
+/// is deliberately still — which is also what makes the moving half mean
+/// something. Two states that both pulse are one state.
+///
+/// The test worth applying to anything perpetual added to this bar: it has to
+/// END, and by being acted on rather than by timing out.
+class _ClockButton extends StatefulWidget {
+  const _ClockButton({
+    required this.open,
+    required this.busy,
+    required this.onPressed,
+  });
+
+  /// A shift is open — the button says Clock Out, and the chip breathes.
+  final bool open;
+
+  /// A punch is in flight. The control goes dead rather than disappearing: a
+  /// second tap posts the same punch twice.
+  final bool busy;
+
+  final VoidCallback onPressed;
+
+  @override
+  State<_ClockButton> createState() => _ClockButtonState();
+}
+
+class _ClockButtonState extends State<_ClockButton>
+    with SingleTickerProviderStateMixin {
+  /// Slow on purpose. At a heartbeat's pace this is a control demanding to be
+  /// dealt with; at a breath's it is the bar holding a fact.
+  late final _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_ClockButton old) {
+    super.didUpdateWidget(old);
+    _sync();
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  /// Running only while there is a shift to report, and never for somebody who
+  /// has asked their device for less motion — this animation repeats for as
+  /// long as the app is open, which is precisely what that setting is about.
+  /// Same call as the structure canvas makes before it animates a layout.
+  ///
+  /// In `didChangeDependencies` as well as `didUpdateWidget` because the
+  /// MediaQuery is a dependency: the answer can change without this widget's
+  /// own arguments changing.
+  void _sync() {
+    final wanted = widget.open && !MediaQuery.disableAnimationsOf(context);
+
+    if (wanted == _pulse.isAnimating) return;
+
+    if (wanted) {
+      _pulse.repeat(reverse: true);
+    } else {
+      // reset rather than stop: stopping leaves the chip at whatever alpha the
+      // last frame happened to land on, so clocking out could finish on a
+      // half-lit button.
+      _pulse.reset();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = UiStrings.t(
+      widget.open ? 'time_clock.clock_out' : 'time_clock.clock_in',
+    );
+    final color = widget.open
         ? EzBiziTheme.clockOut(context)
         : EzBiziTheme.clockIn(context);
 
@@ -1062,25 +1320,84 @@ class _HomeShellState extends State<HomeShell> {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Tooltip(
         message: label,
-        child: OutlinedButton.icon(
-          onPressed: _punching ? null : _punch,
-          icon: Icon(open ? Icons.logout : Icons.login, size: 18),
-          label: Text(label),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: color,
-            disabledForegroundColor: color.withValues(alpha: 0.55),
-            side: BorderSide(color: color),
-            backgroundColor: Colors.transparent,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            minimumSize: const Size(0, 32),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            visualDensity: VisualDensity.compact,
-            shape: const StadiumBorder(),
+        child: AnimatedBuilder(
+          animation: _pulse,
+          // Handed through rather than rebuilt: only the fill and the halo
+          // change per frame, so a 60fps breath does not rebuild an Icon and a
+          // Text sixty times a second.
+          child: OutlinedButton.icon(
+            onPressed: widget.busy ? null : widget.onPressed,
+            icon: Icon(widget.open ? Icons.logout : Icons.login, size: 18),
+            label: Text(label),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: color,
+              disabledForegroundColor: color.withValues(alpha: 0.55),
+              side: BorderSide(color: color),
+              // Transparent so the animated fill behind it shows through
+              // instead of the two stacking into a flat block.
+              backgroundColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+              shape: const StadiumBorder(),
+            ),
           ),
+          builder: (context, child) {
+            // Eased, not linear: a breath swells and eases off, and a straight
+            // ramp turning round at each end reads as a blink.
+            final t = widget.open
+                ? Curves.easeInOut.transform(_pulse.value)
+                : 0.0;
+
+            return DecoratedBox(
+              key: const Key('clock-pulse'),
+              decoration: BoxDecoration(
+                // The button is a StadiumBorder; anything past half its height
+                // is the same shape.
+                borderRadius: BorderRadius.circular(999),
+                // Never falls to nothing while a shift is open, so the chip
+                // still reads as live in a still frame — a screenshot, or
+                // somebody running with animations switched off.
+                color: color.withValues(
+                  alpha: widget.open ? 0.08 + 0.14 * t : 0.0,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.28 * t),
+                    blurRadius: 12 * t,
+                    spreadRadius: 1.5 * t,
+                  ),
+                ],
+              ),
+              child: child,
+            );
+          },
         ),
       ),
     );
   }
+}
+
+/// Does this module get a row of its own in the sidebar?
+///
+/// Three answers, and the third is the one worth writing down.
+///
+///   - A module drawn INSIDE another does not. It is a chip in that module's
+///     strip, and a row here as well would be the same screen in two places
+///     disagreeing about which one you are on.
+///   - An ordinary module does, when this person can reach it. Unchanged.
+///   - A module this person CANNOT reach still does, when something drawn
+///     inside it is reachable. Marketing's permission and Leads' are
+///     independent — nesting is a layout fact, not a grant — so a role holding
+///     `leads.view` and not `marketing.view` would otherwise have lost Leads
+///     the moment it moved: the permission untouched, the screen simply gone.
+///     They land on Marketing holding one chip, which is the honest answer.
+bool _hasDestination(Me me, ModuleAccess module) {
+  if (module.parent != null) return false;
+  if (module.reachable) return true;
+
+  return me.reachableModules.any((m) => m.parent == module.key);
 }
 
 /// Wrap in a different theme, or do not wrap at all.

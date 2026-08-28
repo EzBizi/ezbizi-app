@@ -6,7 +6,7 @@ use App\Models\Lead;
 use App\Models\SocialConnection;
 use App\Support\Automations\EventEmitter;
 use App\Support\Social\GoogleAdsOAuth;
-use App\Support\Social\SocialOAuthGrant;
+use App\Support\Social\GoogleToken;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -64,7 +64,7 @@ class LocalServicesLeads
      */
     public function sync(SocialConnection $connection): array
     {
-        $token = $this->accessToken($connection);
+        $token = GoogleToken::forConnection($connection, 'google_ads');
         $since = $this->since($connection);
 
         $fetched = 0;
@@ -242,61 +242,5 @@ class LocalServicesLeads
         });
     }
 
-    /**
-     * A fresh access token from the stored refresh token.
-     *
-     * Access tokens last an hour and a sync may run at any time, so there is no
-     * useful case where the stored one is still good. Refreshing every run is
-     * one extra call and removes a whole class of "worked this morning".
-     */
-    private function accessToken(SocialConnection $connection): string
-    {
-        $refresh = (string) (($connection->credentials['refresh_token'] ?? '') ?: '');
 
-        if ($refresh === '') {
-            throw new RuntimeException(
-                'This Google Ads connection has no lasting permission stored, so it cannot be '
-                .'refreshed. It needs connecting again.'
-            );
-        }
-
-        try {
-            $response = Http::asForm()->timeout(self::TIMEOUT)->post(
-                'https://oauth2.googleapis.com/token',
-                [
-                    'client_id'     => (string) config('services.google_ads.client_id'),
-                    'client_secret' => (string) config('services.google_ads.client_secret'),
-                    'refresh_token' => $refresh,
-                    'grant_type'    => 'refresh_token',
-                ],
-            );
-        } catch (ConnectionException) {
-            throw new RuntimeException('Google did not answer while renewing the connection.');
-        }
-
-        $access = $response->json('access_token');
-
-        if ($response->failed() || ! is_string($access) || $access === '') {
-            // Google says a refresh token is dead the same way whether the
-            // customer revoked it or the grant simply expired, so the row is
-            // marked broken and the screen says "connect it again" rather than
-            // guessing which happened.
-            $connection->forceFill([
-                'status'        => SocialConnection::STATUS_BROKEN,
-                'status_reason' => 'Google would not renew this connection. It needs connecting again.',
-            ])->save();
-
-            throw new RuntimeException(
-                'Google would not renew this connection. It needs connecting again.'
-            );
-        }
-
-        return $access;
-    }
-
-    /** Kept so a caller can hand in a grant it already has, in tests. */
-    public function tokenFromGrant(SocialOAuthGrant $grant): string
-    {
-        return $grant->accessToken;
-    }
 }

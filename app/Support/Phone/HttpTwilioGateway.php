@@ -4,6 +4,7 @@ namespace App\Support\Phone;
 
 use App\Models\PhoneConnection;
 use RuntimeException;
+use Throwable;
 use Twilio\Jwt\AccessToken;
 use Twilio\Jwt\Grants\VoiceGrant;
 use Twilio\Rest\Client;
@@ -28,15 +29,127 @@ final class HttpTwilioGateway implements TwilioGateway
         ];
     }
 
+    /**
+     * A subaccount for this business, reusing one of the same name if it is
+     * already there.
+     *
+     * Reuse rather than create, because this is retried. The token check
+     * downstream used to fail AFTER the account existed, so every retry left
+     * another identically-named subaccount behind — two "A-1 Chimney" accounts
+     * appeared exactly that way. Creating is the fallback, not the default.
+     */
     public function createSubaccount(string $friendlyName): array
     {
-        $account = $this->platformClient()->api->v2010->accounts->create([
+        $client = $this->platformClient();
+
+        foreach ($this->listSubaccounts() as $existing) {
+            if (strcasecmp(trim($existing['friendly_name']), trim($friendlyName)) !== 0) {
+                continue;
+            }
+
+            // Live ones only. A closed account keeps its name, so closing a
+            // duplicate leaves two rows answering to it — and Twilio refuses
+            // every write to the dead one with "Account does not exist",
+            // which reads as a server error rather than as what it is.
+            if ($existing['status'] !== 'active') {
+                continue;
+            }
+
+            $account = $client->api->v2010->accounts($existing['account_sid'])->fetch();
+
+            return [
+                'account_sid' => $account->sid,
+                'auth_token' => $account->authToken,
+            ];
+        }
+
+        $account = $client->api->v2010->accounts->create([
             'friendlyName' => $friendlyName,
         ]);
 
         return [
             'account_sid' => $account->sid,
             'auth_token' => $account->authToken,
+        ];
+    }
+
+    public function listSubaccounts(): array
+    {
+        [$platformSid] = $this->platformCredentials();
+
+        $out = [];
+
+        foreach ($this->platformClient()->api->v2010->accounts->read([], 200) as $account) {
+            // The platform account itself comes back in its own list. It is not
+            // adoptable: connecting a tenant to the account that provisions
+            // every other tenant would put one customer's Settings in charge of
+            // everybody's phone service.
+            if ($account->sid === $platformSid) {
+                continue;
+            }
+
+            // Closed and suspended accounts are not offerable either: they
+            // cannot be written to, so adopting one would fail at the first
+            // API call after the customer had already chosen it.
+            if ((string) $account->status !== 'active') {
+                continue;
+            }
+
+            $out[] = [
+                'account_sid' => (string) $account->sid,
+                'friendly_name' => (string) $account->friendlyName,
+                'status' => (string) $account->status,
+            ];
+        }
+
+        return $out;
+    }
+
+    public function adoptSubaccount(string $accountSid, string $authToken): array
+    {
+        [$platformSid] = $this->platformCredentials();
+
+        if ($accountSid === $platformSid) {
+            throw new RuntimeException(
+                'That is the EzBizi platform account itself, not one of its phone accounts.'
+            );
+        }
+
+        $owned = false;
+        foreach ($this->listSubaccounts() as $sub) {
+            if ($sub['account_sid'] === $accountSid) {
+                $owned = true;
+                break;
+            }
+        }
+
+        // Checked before the token is tried, so a SID belonging to a stranger's
+        // Twilio is refused as "not ours" rather than as "wrong token" — which
+        // would otherwise read as an invitation to keep guessing.
+        if (! $owned) {
+            throw new RuntimeException(
+                'That phone account is not one EzBizi manages. Connect it as your own Twilio instead.'
+            );
+        }
+
+        // Account SID + auth token is the one credential pair that proves the
+        // token is right; an API key cannot verify it, because Twilio signs
+        // webhooks with the token and nothing else.
+        try {
+            (new Client($accountSid, $authToken))->api->v2010->accounts($accountSid)->fetch();
+        } catch (Throwable) {
+            throw new RuntimeException(
+                'That auth token does not match this phone account. Copy it from the account it belongs to.'
+            );
+        }
+
+        $key = $this->createApiKey($accountSid, 'EzBizi');
+
+        return [
+            'account_sid' => $accountSid,
+            'api_key_sid' => $key['sid'],
+            'api_secret' => $key['secret'],
+            'auth_token' => $authToken,
         ];
     }
 
@@ -133,6 +246,23 @@ final class HttpTwilioGateway implements TwilioGateway
         $out = [];
         foreach ($criteria as $key => $value) {
             $out[$map[$key] ?? $key] = $value;
+        }
+
+        return $out;
+    }
+
+    public function listIncoming(PhoneConnection $connection): array
+    {
+        $out = [];
+
+        foreach ($this->connectionClient($connection)->incomingPhoneNumbers->read([], 200) as $number) {
+            $out[] = [
+                'sid' => (string) $number->sid,
+                'phone_number' => (string) $number->phoneNumber,
+                'friendly_name' => (string) $number->friendlyName,
+                'voice_url' => (string) $number->voiceUrl,
+                'sms_url' => (string) $number->smsUrl,
+            ];
         }
 
         return $out;
@@ -422,9 +552,23 @@ final class HttpTwilioGateway implements TwilioGateway
         return new Client($apiKeySid, $apiSecret, $accountSid);
     }
 
+    /**
+     * The parent account, authenticated the strongest way available.
+     *
+     * Account SID + auth token when we have it, API key otherwise. The
+     * difference is not cosmetic: Twilio withholds `auth_token` from an
+     * account resource under key auth, so creating a subaccount with a key
+     * yields an account we cannot validate webhooks for — and §5 refuses a
+     * global token, so there is nothing to fall back on.
+     */
     private function platformClient(): Client
     {
         [$accountSid, $apiKeySid, $apiSecret] = $this->platformCredentials();
+        $authToken = config('services.twilio.platform_auth_token');
+
+        if (is_string($authToken) && $authToken !== '') {
+            return new Client($accountSid, $authToken);
+        }
 
         return new Client($apiKeySid, $apiSecret, $accountSid);
     }
@@ -434,7 +578,15 @@ final class HttpTwilioGateway implements TwilioGateway
      */
     private function platformClientForAccount(string $accountSid): Client
     {
-        [, $apiKeySid, $apiSecret] = $this->platformCredentials();
+        [$platformSid, $apiKeySid, $apiSecret] = $this->platformCredentials();
+        $authToken = config('services.twilio.platform_auth_token');
+
+        // Acting AS the subaccount, authenticated as the parent. Key auth can
+        // create here but cannot read or delete, which is why the token is
+        // preferred wherever it exists.
+        if (is_string($authToken) && $authToken !== '') {
+            return new Client($platformSid, $authToken, $accountSid);
+        }
 
         return new Client($apiKeySid, $apiSecret, $accountSid);
     }

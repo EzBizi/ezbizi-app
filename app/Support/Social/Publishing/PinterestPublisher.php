@@ -1,0 +1,115 @@
+<?php
+
+namespace App\Support\Social\Publishing;
+
+use App\Models\SocialConnection;
+use App\Support\Social\SocialMediaKind;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
+
+/**
+ * A Pin, on a board belonging to the connected account.
+ *
+ * ── Why it goes looking for a board ─────────────────────────────
+ *
+ * Pinterest has no "post to my profile": every Pin lives on a board, and the
+ * board id is required. EzBizi does not ask the person to pick one yet — the
+ * composer has no board picker — so this takes the account's first board and
+ * says which one it used. When the composer grows a picker, this method takes
+ * the id instead of finding it, and nothing else changes.
+ *
+ * An account with no boards at all is refused with the reason, because the fix
+ * is on Pinterest's side and nothing EzBizi does will help.
+ */
+final class PinterestPublisher implements SocialPublisher
+{
+    private const API = 'https://api.pinterest.com/v5';
+    private const TIMEOUT = 30;
+
+    public function publish(SocialConnection $connection, SocialPost $post): string
+    {
+        $kind = $post->kind();
+
+        if ($kind !== SocialMediaKind::Image) {
+            throw SocialPublishFailed::notImplemented('Pinterest', $kind->label());
+        }
+
+        $token = $this->token($connection);
+        $board = $this->firstBoard($token);
+
+        // Base64 in the body, not a URL. pull_by_url would mean publishing the
+        // tenant's media to an unauthenticated public address first, which is a
+        // privacy change nobody asked for to save one request.
+        $response = $this->call('post', '/pins', $token, [
+            'board_id'    => $board,
+            'title'       => $post->title !== null ? mb_substr($post->title, 0, 100) : null,
+            'description' => mb_substr($post->body, 0, 800),
+            'media_source' => [
+                'source_type' => 'image_base64',
+                'content_type' => $post->mime(),
+                'data'         => base64_encode($post->bytes()),
+            ],
+        ]);
+
+        $id = $response['id'] ?? null;
+
+        if (! is_string($id) || $id === '') {
+            throw SocialPublishFailed::network('Pinterest', 'it created nothing and said nothing.');
+        }
+
+        return $id;
+    }
+
+    private function firstBoard(string $token): string
+    {
+        $boards = $this->call('get', '/boards', $token, ['page_size' => 25]);
+        $first  = $boards['items'][0]['id'] ?? null;
+
+        if (! is_string($first) || $first === '') {
+            throw SocialPublishFailed::network(
+                'Pinterest',
+                'that account has no boards, and a Pin has to live on one. Create a board on '
+                .'Pinterest first.',
+            );
+        }
+
+        return $first;
+    }
+
+    /** @return array<string, mixed> */
+    private function call(string $method, string $path, string $token, array $payload): array
+    {
+        try {
+            $request = Http::withToken($token)->timeout(self::TIMEOUT)->acceptJson();
+
+            $response = $method === 'get'
+                ? $request->get(self::API.$path, $payload)
+                : $request->post(self::API.$path, array_filter($payload, fn ($v) => $v !== null));
+        } catch (ConnectionException) {
+            throw SocialPublishFailed::network('Pinterest', 'EzBizi could not reach it.');
+        }
+
+        if ($response->failed()) {
+            // Pinterest puts a readable sentence in `message`. Passing it through
+            // beats "HTTP 400" by a distance when somebody has to fix the post.
+            throw SocialPublishFailed::network(
+                'Pinterest',
+                (string) ($response->json('message') ?? 'HTTP '.$response->status()),
+            );
+        }
+
+        return (array) $response->json();
+    }
+
+    private function token(SocialConnection $connection): string
+    {
+        $credentials = $connection->getAttribute('credentials');
+        $token = is_array($credentials) ? ($credentials['access_token'] ?? null) : null;
+
+        if (! is_string($token) || $token === '') {
+            throw SocialPublishFailed::network('Pinterest', 'that connection has no usable token. Reconnect it.');
+        }
+
+        return $token;
+    }
+}

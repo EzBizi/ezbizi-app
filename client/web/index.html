@@ -33,7 +33,21 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <script src="https://unpkg.com/@twilio/voice-sdk@2.15.0/dist/twilio.min.js"></script>
+  <!--
+    Twilio Voice SDK, served by us rather than from unpkg.
+
+    This was a CDN <script> until 2026-08-27. Two problems with that, and the
+    softphone is not a decorative feature: a network that blocks unpkg — or an
+    unpkg outage — takes Phone down with no fallback and no signal, and a CDN
+    fetch is whatever that host chooses to answer with at request time. Pinning
+    the file into the build makes the bytes we ship the bytes we reviewed.
+
+    Upgrading is a deliberate act: fetch the new dist, replace this file, bump
+    the name so a stale cache cannot serve the old one, and re-check that it
+    still exports the `Twilio` global our JS interop binds to
+    (client/lib/screens/phone/voice_device_web.dart).
+  -->
+  <script src="vendor/twilio-voice-2.15.0.min.js"></script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

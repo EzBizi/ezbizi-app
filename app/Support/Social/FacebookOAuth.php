@@ -105,9 +105,24 @@ final class FacebookOAuth implements SocialOAuth
 
         $access = is_string($long['access_token'] ?? null) ? $long['access_token'] : $shortToken;
 
+        // Who authorised this, as Facebook scopes it to this app.
+        //
+        // Unlike Instagram and Threads, the Facebook token response does not
+        // carry it, so it costs one more call. Worth it: Meta's deauthorize
+        // and data-deletion callbacks arrive carrying nothing else, and
+        // without it there is no way to tell which connections belong to the
+        // person who removed the app.
+        $me = $this->get('https://graph.facebook.com/'.self::GRAPH_VERSION.'/me', [
+            'fields'       => 'id',
+            'access_token' => $access,
+        ], 'Facebook');
+
+        $metaUser = isset($me['id']) && is_scalar($me['id']) ? (string) $me['id'] : null;
+
         return new SocialOAuthGrant(
             accessToken: $access,
             expiresIn: is_numeric($long['expires_in'] ?? null) ? (int) $long['expires_in'] : null,
+            extra: $metaUser === null ? [] : ['meta_user_id' => $metaUser],
         );
     }
 

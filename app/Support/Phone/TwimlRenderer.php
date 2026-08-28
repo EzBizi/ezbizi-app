@@ -43,11 +43,37 @@ final class TwimlRenderer
             return (string) $response;
         }
 
+        $digits = (string) ($context['digits'] ?? '');
+
+        // A caller who has pressed something is answering the menu, so route on
+        // it before anything else. An unrecognised key falls through to the
+        // line's ring group rather than hanging up: the commonest reason for a
+        // stray digit is a caller mashing a key to reach a person.
+        if (! $outbound && $digits !== '') {
+            $option = $this->menuOption($number, $digits);
+
+            if ($option !== null) {
+                $this->takeMenuOption($response, $number, $option, $language, $context);
+
+                return (string) $response;
+            }
+        }
+
         $skipMenu = $outbound || (bool) ($context['skip_menu'] ?? false);
         $prompt = $skipMenu ? null : $this->menuPrompt($number);
         if ($prompt !== null) {
-            $gather = $response->gather(['language' => $language]);
+            // One digit, and Twilio posts back to this same URL — which is why
+            // no action is set. numDigits keeps it from waiting out the timeout
+            // after a single press.
+            $gather = $response->gather([
+                'language' => $language,
+                'numDigits' => 1,
+            ]);
             $gather->say($prompt, ['language' => $language]);
+
+            // Nothing pressed: Gather falls through to here on timeout, and the
+            // call must still reach somebody rather than ending in silence.
+            $this->ringOrVoicemail($response, $number, $context);
 
             return (string) $response;
         }
@@ -325,6 +351,100 @@ final class TwimlRenderer
         }
 
         $response->record($attributes);
+    }
+
+    /**
+     * The option a caller chose, or null if this line has no menu or the key
+     * is not on it.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function menuOption(PhoneNumber $number, string $digits): ?array
+    {
+        if ($number->flow_id === null) {
+            return null;
+        }
+
+        $flow = PhoneFlow::query()->find($number->flow_id);
+        if ($flow === null || ! is_array($flow->nodes)) {
+            return null;
+        }
+
+        $menu = $this->findMenu($flow->nodes);
+        if ($menu === null || ! is_array($menu['options'] ?? null)) {
+            return null;
+        }
+
+        foreach ($menu['options'] as $option) {
+            if (is_array($option) && (string) ($option['digit'] ?? '') === $digits) {
+                return $option;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $option
+     * @param  array<string, mixed>  $context
+     */
+    private function takeMenuOption(
+        VoiceResponse $response,
+        PhoneNumber $number,
+        array $option,
+        string $language,
+        array $context,
+    ): void {
+        $action = (string) ($option['action'] ?? 'ring_group');
+
+        if ($action === 'hangup') {
+            $say = (string) ($option['say'] ?? '');
+            if ($say !== '') {
+                $response->say($say, ['language' => $language]);
+            }
+            $response->hangup();
+
+            return;
+        }
+
+        if ($action === 'voicemail') {
+            $this->voicemail($response, $language, $context);
+
+            return;
+        }
+
+        if ($action === 'forward') {
+            $to = (string) ($option['number'] ?? '');
+
+            if ($to === '') {
+                // Configured to forward with nowhere to forward to. Voicemail
+                // rather than a dead line — the caller did nothing wrong.
+                $this->voicemail($response, $language, $context);
+
+                return;
+            }
+
+            $dial = $response->dial(null, $this->dialAttributes(
+                $number,
+                timeout: 30,
+                sequential: false,
+                context: $context,
+            ));
+            $dial->number($to);
+
+            return;
+        }
+
+        $groupId = (string) ($option['ring_group_id'] ?? '');
+        $group = $groupId === '' ? null : PhoneRingGroup::query()->find($groupId);
+
+        if ($group === null) {
+            $this->ringOrVoicemail($response, $number, $context);
+
+            return;
+        }
+
+        $this->ringOrVoicemail($response, $number, $context + ['overflow_group' => $group]);
     }
 
     private function menuPrompt(PhoneNumber $number): ?string

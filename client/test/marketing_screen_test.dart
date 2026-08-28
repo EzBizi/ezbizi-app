@@ -147,6 +147,138 @@ void main() {
       expect(find.textContaining('EzBizi has no Pinterest'), findsOneWidget);
     });
 
+    testWidgets('a network with a page connected is left out of the '
+        'Catalogue, because the account above already answers for it', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler(connections: const [_facebookPage]));
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.pumpAndSettle();
+
+      // The page itself, in the card that owns it.
+      expect(
+        find.descendant(
+          of: find.widgetWithText(DashboardCard, 'Accounts in Everdoors'),
+          matching: find.text('Everdoors Doors'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Facebook · @everdoors'), findsOneWidget);
+
+      // And the catalogue does not repeat the network underneath it.
+      expect(
+        find.descendant(
+          of: find.widgetWithText(DashboardCard, 'Catalogue'),
+          matching: find.text('Facebook'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.textContaining('EzBizi has no Meta app'),
+        findsNothing,
+        reason: 'A network with a page connected cannot also be a network '
+            'nothing can be connected on, and the catalogue was saying both '
+            'about the same one.',
+      );
+    });
+
+    testWidgets('a network with nothing connected keeps its Catalogue row and '
+        'the sentence that goes with it', (tester) async {
+      await _pumpScreen(
+        tester,
+        _handler(pinterestUsable: true, connections: const [_facebookPage]),
+      );
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.pumpAndSettle();
+
+      final catalogue = find.widgetWithText(DashboardCard, 'Catalogue');
+
+      // One that could be connected right now, and says so.
+      expect(
+        find.descendant(of: catalogue, matching: find.text('Pinterest')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: catalogue, matching: find.text('Ready to connect')),
+        findsOneWidget,
+      );
+
+      // And one that could not, still carrying the reason rather than
+      // disappearing along with the connected network.
+      expect(
+        find.descendant(of: catalogue, matching: find.text('X')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: catalogue,
+          matching: find.textContaining('no X app'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('with every network connected the Catalogue says so instead '
+        'of drawing an empty list', (tester) async {
+      await _pumpScreen(
+        tester,
+        _handler(
+          connections: const [_facebookPage, _pinterestBoard, _xAccount],
+        ),
+      );
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.pumpAndSettle();
+
+      final catalogue = find.widgetWithText(DashboardCard, 'Catalogue');
+
+      expect(
+        find.textContaining('Every network EzBizi can post to is connected'),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: catalogue, matching: find.byType(ListTile)),
+        findsNothing,
+        reason: 'An empty catalogue is a card that has stopped saying '
+            'anything; the sentence is what it says instead.',
+      );
+
+      // The three pages are still accounted for, one card up.
+      final accounts = find.widgetWithText(
+        DashboardCard,
+        'Accounts in Everdoors',
+      );
+      for (final page in [
+        'Everdoors Doors',
+        'Everdoors Boards',
+        'Everdoors HQ',
+      ]) {
+        expect(
+          find.descendant(of: accounts, matching: find.text(page)),
+          findsOneWidget,
+        );
+      }
+
+      // Nothing became unreachable: a second account on any of them is still
+      // one Connect away, and the panel lists every network regardless.
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'Connect a page to Everdoors'),
+      );
+      await tester.pumpAndSettle();
+
+      for (final network in ['Facebook', 'Pinterest', 'X']) {
+        expect(find.widgetWithText(ListTile, network), findsOneWidget);
+      }
+    });
+
     testWidgets('Pinterest Connect stays off until the installation is ready', (
       tester,
     ) async {
@@ -541,6 +673,7 @@ MockClientHandler _handler({
   String message = 'Marketing is unavailable.',
   bool sentIsRaised = false,
   bool pinterestUsable = false,
+  List<Map<String, Object?>>? connections,
   List<Map<String, Object?>>? triggers,
   List<Map<String, Object?>>? actions,
 }) {
@@ -632,7 +765,7 @@ MockClientHandler _handler({
     }
 
     if (path.endsWith('/social/connections')) {
-      return _json({'data': <Map<String, Object?>>[]});
+      return _json({'data': connections ?? <Map<String, Object?>>[]});
     }
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);
@@ -675,6 +808,33 @@ const _me = {
   },
   'companies': <Map<String, Object?>>[],
   'franchises': <Map<String, Object?>>[],
+};
+
+/// Pages already connected in this view, so the catalogue has something to
+/// leave out. One per network the provider stub declares, which is what makes
+/// the "everything is connected" case reachable at all.
+const _facebookPage = {
+  'id': 'conn-1',
+  'display_name': 'Everdoors Doors',
+  'provider': 'facebook_page',
+  'provider_label': 'Facebook',
+  'handle': 'everdoors',
+};
+
+const _pinterestBoard = {
+  'id': 'conn-2',
+  'display_name': 'Everdoors Boards',
+  'provider': 'pinterest',
+  'provider_label': 'Pinterest',
+  'handle': 'everdoors_pins',
+};
+
+const _xAccount = {
+  'id': 'conn-3',
+  'display_name': 'Everdoors HQ',
+  'provider': 'x',
+  'provider_label': 'X',
+  'handle': 'everdoors_hq',
 };
 
 const _monthNames = [

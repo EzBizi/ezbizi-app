@@ -35,20 +35,28 @@ use App\Http\Controllers\Api\InventoryTransfersController;
 use App\Http\Controllers\Api\InventoryVendorsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobsController;
+use App\Http\Controllers\Api\BusinessProfileController;
 use App\Http\Controllers\Api\LeadsController;
 use App\Http\Controllers\Api\MailboxesController;
 use App\Http\Controllers\Api\MailboxMessagesController;
 use App\Http\Controllers\Api\MarketingController;
+use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\Phone\CallsController as PhoneCallsController;
 use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
+use App\Http\Controllers\Api\Phone\CallTagsController as PhoneCallTagsController;
+use App\Http\Controllers\Api\Phone\FlowsController as PhoneFlowsController;
 use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
 use App\Http\Controllers\Api\Phone\MessagesController as PhoneMessagesController;
 use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
+use App\Http\Controllers\Api\Phone\RingGroupsController as PhoneRingGroupsController;
+use App\Http\Controllers\Api\Phone\ServiceRequestsController as PhoneServiceRequestsController;
+use App\Http\Controllers\Api\StaffPhoneRequestsController;
 use App\Http\Controllers\Api\Phone\PortsController as PhonePortsController;
 use App\Http\Controllers\Api\Phone\PortWebhookController as PhonePortWebhookController;
 use App\Http\Controllers\Api\Phone\PresenceController as PhonePresenceController;
@@ -117,6 +125,7 @@ use App\Support\Modules\PermissionCatalogue;
 use App\Support\Preferences\PreferenceRegistry;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\DisplaySettings;
+use App\Support\Social\SocialProvider;
 use App\Support\TimeClock\TimeClock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -273,9 +282,25 @@ Route::get('v1/email/microsoft/callback', [MicrosoftMailAuthController::class, '
     ->middleware('throttle:30,1')
     ->name('email.microsoft.callback');
 
+/*
+| The two callbacks Meta requires. Unauthenticated by necessity - Meta calls
+| them, so there is no session and no token. The signed_request's HMAC is the
+| authentication; see MetaCallbacksController.
+|
+| Throttled harder than the OAuth routes because these are public, take no
+| credential, and delete things when they verify.
+*/
+Route::post('v1/social/meta/deauthorize', [MetaCallbacksController::class, 'deauthorize'])
+    ->middleware('throttle:60,1')
+    ->name('social.meta.deauthorize');
+
+Route::post('v1/social/meta/data-deletion', [MetaCallbacksController::class, 'dataDeletion'])
+    ->middleware('throttle:60,1')
+    ->name('social.meta.data-deletion');
+
 Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callback'])
     ->middleware('throttle:30,1')
-    ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x')
+    ->where('network', SocialProvider::oauthRoutePattern())
     ->name('social.callback');
 
 /*
@@ -464,6 +489,28 @@ Route::prefix('v1')
         // No `store`. Every lead arrives from a connected account; one somebody
         // typed in would be indistinguishable from one a member of the public
         // actually sent, and the record is only worth holding because it is not.
+        // Reviews — what the public said on a connected Business Profile.
+        //
+        // Drafting and publishing are separate routes carrying separate
+        // permissions: one writes text nobody outside can see, the other speaks
+        // in public under the organization's name. No `store` — every review is
+        // fetched from Google, and one somebody typed in would be a fake.
+        Route::post('reviews/sync', [ReviewsController::class, 'sync']);
+        Route::get('reviews', [ReviewsController::class, 'index']);
+        Route::get('reviews/{review}', [ReviewsController::class, 'show']);
+        Route::put('reviews/{review}/reply', [ReviewsController::class, 'draftReply']);
+        Route::delete('reviews/{review}/reply', [ReviewsController::class, 'discardReply']);
+        Route::post('reviews/{review}/reply/publish', [ReviewsController::class, 'publishReply']);
+        // Business Profile — the listings the public sees on Maps.
+        //
+        // `sync` before `{location}` so the literal is not captured as an id.
+        // No store, no destroy: a listing is created on Google, and deleting
+        // one here would say nothing to Google while hiding a shop front from
+        // whoever answers for it. Disconnecting the profile is what removes them.
+        Route::post('business-profile/sync', [BusinessProfileController::class, 'sync']);
+        Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
+        Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);
+        Route::patch('business-profile/locations/{location}', [BusinessProfileController::class, 'update']);
         Route::post('leads/sync', [LeadsController::class, 'sync']);
         Route::get('leads', [LeadsController::class, 'index']);
         Route::get('leads/{lead}', [LeadsController::class, 'show']);
@@ -752,9 +799,9 @@ Route::prefix('v1')
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
         Route::post('social/bluesky/connect', [BlueskyConnectController::class, 'store']);
         Route::post('social/{network}/start', [SocialAuthController::class, 'start'])
-            ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x');
+            ->where('network', SocialProvider::oauthRoutePattern());
         Route::get('social/{network}/status', [SocialAuthController::class, 'status'])
-            ->where('network', 'facebook|instagram|threads|linkedin|tiktok|pinterest|youtube|x');
+            ->where('network', SocialProvider::oauthRoutePattern());
 
         // ── Phone: Twilio connections (org / company) ────────────
         //
@@ -762,6 +809,13 @@ Route::prefix('v1')
         // this Sanctum group. Connect is phone.edit + §4 reach; list is phone.view
         // narrowed to connections in reach.
         Route::get('phone/connections', [PhoneConnectionsController::class, 'index']);
+
+        // Literal before any {connection} pattern, same reason as vehicles/drivers.
+        // Phone accounts already under EzBizi's platform Twilio, so connecting a
+        // company adopts the one that exists instead of minting a second with
+        // the same name. Filtered to names this tenant owns.
+        Route::get('phone/connections/subaccounts', [PhoneConnectionsController::class, 'subaccounts']);
+
         Route::post('phone/connections', [PhoneConnectionsController::class, 'store']);
         Route::delete('phone/connections/{connection}', [PhoneConnectionsController::class, 'destroy']);
         Route::get('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustShow']);
@@ -769,15 +823,57 @@ Route::prefix('v1')
 
         // Numbers hang on org / company / franchise. List is grant ∩ reach ∩
         // view-scope; buy/release need phone.edit and a resolved Twilio connection.
+        // Literal paths before {number}, or "importable" is captured as an id.
+        Route::get('phone/numbers/importable', [PhoneNumbersController::class, 'importable']);
+        Route::post('phone/numbers/import', [PhoneNumbersController::class, 'import']);
         Route::get('phone/numbers', [PhoneNumbersController::class, 'index']);
         Route::post('phone/numbers', [PhoneNumbersController::class, 'store']);
+
+        // How a line behaves — above all which group answers it. Without this
+        // `ring_group_id` could never be set and every inbound call fell
+        // through to voicemail.
+        Route::patch('phone/numbers/{number}', [PhoneNumbersController::class, 'update']);
         Route::delete('phone/numbers/{number}', [PhoneNumbersController::class, 'destroy']);
+
+        // §4 gate 2 — asking EzBizi for phone service, and what it answered.
+        // Read by anyone who can open Phone; asking needs authority over the
+        // organization, because it commits them to a paid extra.
+        Route::get('phone/service-request', [PhoneServiceRequestsController::class, 'show']);
+        Route::get('phone/service-request/companies', [PhoneServiceRequestsController::class, 'companies']);
+        Route::post('phone/service-request', [PhoneServiceRequestsController::class, 'store']);
+
+        // Who can be put in a ring group. Literal path, and NOT under
+        // ring-groups/ so it cannot be captured as {group}.
+        Route::get('phone/members', [PhoneRingGroupsController::class, 'members']);
+
+        // Ring groups: who a line rings, and where unanswered calls go.
+        Route::get('phone/ring-groups', [PhoneRingGroupsController::class, 'index']);
+        Route::post('phone/ring-groups', [PhoneRingGroupsController::class, 'store']);
+        Route::get('phone/ring-groups/{group}', [PhoneRingGroupsController::class, 'show']);
+        Route::patch('phone/ring-groups/{group}', [PhoneRingGroupsController::class, 'update']);
+        Route::delete('phone/ring-groups/{group}', [PhoneRingGroupsController::class, 'destroy']);
 
         // Port-in: start via gateway; status webhooks update phone_port_requests.
         Route::post('phone/ports', [PhonePortsController::class, 'store']);
 
         // Named open-hours schedules on a connection. Create may take a number
         // so franchise lines default timezone from franchises.timezone.
+        // Call menus. One menu per flow — TwimlRenderer reads the first it
+        // finds, so an editor that drew a tree would draw one that never runs.
+        // What a call was about. Editing the list is phone.edit; putting one
+        // ON a call is not — the people who answer the phone are usually
+        // view-plus-a-line-grant, and they are who does the tagging.
+        Route::get('phone/tags', [PhoneCallTagsController::class, 'index']);
+        Route::post('phone/tags', [PhoneCallTagsController::class, 'store']);
+        Route::patch('phone/tags/{tag}', [PhoneCallTagsController::class, 'update']);
+        Route::delete('phone/tags/{tag}', [PhoneCallTagsController::class, 'destroy']);
+        Route::patch('phone/calls/{call}/tag', [PhoneCallTagsController::class, 'tagCall']);
+
+        Route::get('phone/flows', [PhoneFlowsController::class, 'index']);
+        Route::post('phone/flows', [PhoneFlowsController::class, 'store']);
+        Route::patch('phone/flows/{flow}', [PhoneFlowsController::class, 'update']);
+        Route::delete('phone/flows/{flow}', [PhoneFlowsController::class, 'destroy']);
+
         Route::get('phone/hours', [PhoneHoursController::class, 'index']);
         Route::post('phone/hours', [PhoneHoursController::class, 'store']);
         Route::get('phone/hours/{schedule}', [PhoneHoursController::class, 'show']);
@@ -1381,6 +1477,11 @@ Route::prefix('v1/staff')
          * would otherwise refuse the request that lowers it again, and the only
          * remaining fix would be a shell on the production box.
          */
+        // The phone service queue. Reads across every tenant on purpose —
+        // control plane, behind the `staff` middleware, not `tenant`.
+        Route::get('phone-requests', [StaffPhoneRequestsController::class, 'index']);
+        Route::post('phone-requests/{request}/decide', [StaffPhoneRequestsController::class, 'decide']);
+
         Route::get('client-versions', [StaffClientVersionsController::class, 'index']);
         Route::put('client-versions/{platform}', [StaffClientVersionsController::class, 'update']);
 

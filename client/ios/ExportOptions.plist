@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  How xcodebuild turns the archive into an .ipa.
+
+  `flutter build ipa` archives first and then exports, and the export half is
+  driven entirely by this file. Without it Flutter writes a default one and the
+  method it picks is not the one we want.
+
+  ── teamID ───────────────────────────────────────────────────────
+
+  2CMZQR34RL is EZBIZI LLC. It is stated here, not left to be inferred, because
+  the Mac relay also holds certificates for two OTHER teams — a personal
+  Developer ID and an Apple Development identity under different accounts. With
+  no team named, xcodebuild picks whichever identity it likes and the archive is
+  signed by the wrong entity, which App Store Connect rejects at upload with a
+  message about the bundle identifier not matching the team.
+
+  ── method ───────────────────────────────────────────────────────
+
+  app-store-connect: an archive destined for TestFlight and the App Store. The
+  alternatives are for other jobs entirely — `development` installs on
+  registered devices, `ad-hoc` on a fixed UDID list, `enterprise` needs a
+  programme EzBizi is not in.
+
+  ── uploadSymbols ────────────────────────────────────────────────
+
+  On. dSYMs go up with the build, so a crash report from a tester reads as a
+  stack trace rather than as hexadecimal. Flutter's engine symbols are large and
+  this makes the upload slower; a crash nobody can read is slower still.
+
+  ── manageAppVersionAndBuildNumber ───────────────────────────────
+
+  Off, deliberately. Left on, Xcode helpfully increments the build number during
+  export — and then the number in the .ipa is not the number build-app.sh
+  stamped, so the version the app reports on screen and the version App Store
+  Connect lists disagree. One number governs every platform (client/VERSION);
+  nothing downstream is allowed a second opinion.
+-->
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store-connect</string>
+
+    <key>teamID</key>
+    <string>2CMZQR34RL</string>
+
+    <!--
+      manual, not automatic.
+
+      Automatic means xcodebuild fetches or creates the profile itself, which
+      needs credentials this machine does not have: there is no Xcode signed in
+      to an Apple account on the relay, and no one to answer a 2FA prompt on a
+      headless Mac. An App Store Connect API key would supply them, but that
+      needs an organisation to accept Apple's API terms first.
+
+      Manual needs neither. The profile below was generated in the portal and
+      installed on the relay, so signing is a local lookup. Name it exactly as
+      the portal does, or the export fails with 'no profile matching'.
+    -->
+    <key>signingStyle</key>
+    <string>manual</string>
+
+    <key>signingCertificate</key>
+    <string>Apple Distribution</string>
+
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.ezbizi.app</key>
+        <string>EzBizi App Store</string>
+    </dict>
+
+    <key>uploadSymbols</key>
+    <true/>
+
+    <key>manageAppVersionAndBuildNumber</key>
+    <false/>
+
+    <key>destination</key>
+    <string>export</string>
+</dict>
+</plist>
