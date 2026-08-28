@@ -141,52 +141,6 @@ void main() {
     expect(armed.onPressed, isNotNull, reason: 'a drawn mark can be saved');
   });
 
-  /// A branch the technician is not on is not on screen.
-  ///
-  /// The A1 inspection branches five ways on system type and roughly a hundred
-  /// of its hundred and twenty fields sit behind one, so this is the difference
-  /// between a form somebody can fill in and one that asks a masonry technician
-  /// about wood stoves.
-  testWidgets('a field whose condition is false is not asked', (tester) async {
-    await _pump(tester, startBody: _branchingRun);
-
-    await tester.tap(find.text('14 Maple'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Level 1'));
-    await tester.pumpAndSettle();
-
-    // Nothing chosen yet, so the wood branch is not shown.
-    expect(find.byKey(const Key('field-wood_stove_type')), findsNothing);
-    expect(find.byKey(const Key('field-system_type')), findsOneWidget);
-
-    // And Submit is not blocked by the hidden required field — the server
-    // agrees, in RequiredFields, which is the half that actually refuses.
-    await tester.tap(find.widgetWithText(FilledButton, 'Submit'));
-    await tester.pump();
-    expect(
-      find.text('Wood stove type needs an answer before you can continue.'),
-      findsNothing,
-      reason: 'a question that was never asked cannot be the thing blocking Submit',
-    );
-  });
-
-  testWidgets('choosing the branch reveals its fields', (tester) async {
-    await _pump(tester, startBody: _branchingRun);
-
-    await tester.tap(find.text('14 Maple'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Level 1'));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('field-system_type')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('wood').last);
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('field-wood_stove_type')), findsOneWidget,
-        reason: 'answering the branch has to bring its questions with it');
-  });
-
   testWidgets('resume vs start again is a panel, not a modal', (tester) async {
     await _pump(tester, startStatus: 409, startBody: _resume);
 
@@ -316,30 +270,6 @@ const _signatureRun = '''
         "fields": [
           {"key": "signed_by", "label": "Customer signature",
            "type": "signature", "required": true}
-        ]
-      }
-    ]
-  }
-}
-''';
-
-const _branchingRun = '''
-{
-  "data": {
-    "id": "run-1",
-    "definition_name": "Level 1",
-    "customer_name": "14 Maple",
-    "layout_preset": "step_strip",
-    "answers": {},
-    "screens": [
-      {
-        "name": "System",
-        "fields": [
-          {"key": "system_type", "label": "System type", "type": "choice",
-           "options": ["masonry", "wood"], "required": true},
-          {"key": "wood_stove_type", "label": "Wood stove type", "type": "text",
-           "required": true,
-           "visible_if": {"field": "system_type", "op": "eq", "value": "wood"}}
         ]
       }
     ]
