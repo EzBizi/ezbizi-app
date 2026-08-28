@@ -1113,25 +1113,34 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
-             * Web Management, Inventory and Services — declared so they can be
-             * granted, and not built. Same shape as Marketing on the day it
-             * arrived: a tab permission, a screen that says what is coming, and
-             * no action that would show up on Roles as a switch for work the
-             * software cannot do.
+             * Web Management — the business facts a company's websites publish,
+             * and the WordPress plugin that reads them.
              *
-             * Exempt from automation until there is a record an event could
-             * be about. Inventing `website.published` before the editor exists
-             * would put a trigger in the builder that saves, switches on and
-             * never runs — the failure Marketing avoided by declaring
-             * newsletter events as not raised, which we cannot do here because
-             * there is not even a name for the record yet.
+             * It stopped being a placeholder on 2026-08-28. What it is NOT is
+             * the website editor the old comment here was waiting for: EzBizi
+             * holds the facts, the company's own WordPress renders them. A
+             * company registers each host it owns — a-1chimney.com and
+             * nj.a-1chimney.com are two sites with two tokens — sets name,
+             * phone, address, licence and hours per site, and the plugin turns
+             * each into a shortcode. The New Jersey site answering a different
+             * number is the entire point.
+             *
+             * Reaching the tab is `view`. Registering a site, rotating its
+             * token and changing a value is `edit`, the same split Phone uses
+             * for looking at numbers versus connecting Twilio. There is no
+             * `delete`: removing a site IS an edit to the set of sites, and a
+             * separate switch would let an organization grant somebody the
+             * right to add a host but not to take it back — which is the wrong
+             * half to withhold.
              */
             new ModuleDefinition(
                 key: 'web_management',
                 label: 'Web Management',
-                actions: ['view'],
-                automationExemptBecause: 'The website editor does not exist yet, so there is no event '
-                    .'a rule could fire on and nothing a rule could change.',
+                actions: ['view', 'edit'],
+                automationExemptBecause: 'Nothing here happens on its own. A value changes because '
+                    .'somebody typed it, and a plugin reading it is a machine polling on a timer — '
+                    .'neither is an event a rule could usefully act on. The one real candidate is '
+                    .'a site going silent, and that waits for the health check that would notice.',
             ),
 
             /*
