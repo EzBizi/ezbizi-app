@@ -147,6 +147,28 @@ class TaskUpdateAttachmentsTest extends TestCase
             ->assertOk()->assertJsonPath('data.updates.0.attachments.0.id', $attachmentId);
     }
 
+    public function test_generic_delete_cannot_remove_staged_or_committed_task_attachments(): void
+    {
+        $author = $this->userWithRole($this->tenant, 'Immutable attachment author', ['tasks.view', 'tasks.comment']);
+        $manager = $this->userWithRole($this->tenant, 'Immutable attachment manager', ['tasks.view', 'tasks.edit', 'tasks.manage']);
+        $this->scope($author);
+        $this->scope($manager);
+        $attachmentId = $this->uploadCandidate($author, 'immutable.txt', 'keep me')->json('data.id');
+
+        $this->signedInAs($author)->deleteJson("/api/v1/attachments/{$attachmentId}")->assertNotFound();
+        $this->signedInAs($manager)->deleteJson("/api/v1/attachments/{$attachmentId}")->assertNotFound();
+        $this->signedInAs($author)->postJson("/api/v1/tasks/{$this->task->id}/updates", [
+            'attachment_candidate_ids' => [$attachmentId], 'idempotency_key' => 'immutable-file',
+        ])->assertCreated();
+
+        $this->signedInAs($author)->deleteJson("/api/v1/attachments/{$attachmentId}")->assertNotFound();
+        $this->signedInAs($manager)->deleteJson("/api/v1/attachments/{$attachmentId}")->assertNotFound();
+        $this->enterTenant();
+        $attachment = Attachment::findOrFail($attachmentId);
+        $this->assertSame('task_updates', $attachment->attachable_type);
+        $this->assertTrue(Storage::disk('local')->exists($attachment->path));
+    }
+
     public function test_invalid_claim_rolls_back_every_update_side_effect_and_keeps_candidates_private(): void
     {
         $commenter = $this->userWithRole($this->tenant, 'Rollback commenter', ['tasks.view', 'tasks.comment']);

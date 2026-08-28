@@ -212,7 +212,7 @@ class AttachmentsController extends Controller
     public function destroy(Attachment $attachment): JsonResponse
     {
         abort_if(
-            TaskUpdateAttachmentCandidate::query()->where('attachment_id', $attachment->id)->exists(),
+            in_array($attachment->attachable_type, ['tasks', 'task_updates'], true),
             Response::HTTP_NOT_FOUND,
         );
 
