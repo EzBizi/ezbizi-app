@@ -187,15 +187,22 @@ looking at the box, not by re-reading this list — which is the only way a haza
 worth having. The numbers point at `EZBIZI-TODO.md`, which was renumbered from 1 on
 2026-08-06; the references here still said #21, #22, #24 and #26 and pointed at nothing.
 
-1. **Mail does not send.** Everything is wired except the provider credential — AWS blocks
-   outbound port 25 on both instances, and SES SMTP on 587 needs credentials nobody has
-   issued. **Checked 18 Aug 18:05 UTC:** the box still has `MAIL_MAILER=ses` with
-   `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` present-and-empty. The intended path is
-   SMTP on 587 (TODO #1), not the `ses` SDK. The app says so on Development → Health rather
-   than failing silently. Password resets reach nobody; the working path is a Lead Developer
-   generating a reset link from the control plane. Console steps: TODO #1 (SES), #28
-   (Workspace), #29 (Azure / Outlook). Do not ship signup verification (#22) until a
-   Health-screen test message has arrived.
+1. **Mail sends, but only to verified addresses — the SES sandbox.** ~~Mail does not send.~~
+   Closed 2026-08-28. The box is on `MAIL_MAILER=smtp`, SES on 587 from `noreply@ezbizi.com`,
+   and Google's DMARC aggregate report for 27 Aug shows **8 messages, 100% pass** under
+   `p=reject` — DKIM aligned on `ezbizi.com`, SPF passing on `mail.ezbizi.com`. That is
+   delivery evidence from a third party, not a green tick on our own Health screen, which is
+   the difference that mattered: this row claimed the opposite for ten days while the transport
+   was already working.
+
+   What remains is the **sandbox**: SES will only deliver to addresses verified by hand, so a
+   password reset to a stranger still goes nowhere. Production access was refused once (case
+   178717006200996) for having no sending history. There is now a history, and it authenticates
+   perfectly — it is just eight messages long. Let it build before appealing again. Signup
+   verification (#22) stays out until the sandbox does.
+
+   AWS still blocks outbound port 25 on both instances; 587 is the path, and the Laravel `ses`
+   SDK is still not it.
 
 2. **The off-site backup is off-instance, not off-account.** Encrypted, copied nightly to the
    websites box, and restore-verified by pulling the file back *down* first — so a copy that
