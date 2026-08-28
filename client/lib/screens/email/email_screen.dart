@@ -9,6 +9,7 @@ import '../../widgets/async_body.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
+import 'compose_panel.dart';
 import 'mail_data.dart';
 import 'mailbox_rail.dart';
 import 'message_body.dart';
@@ -703,6 +704,32 @@ class _EmailScreenState extends State<EmailScreen> {
     _loadMessages();
   }
 
+  /// Starting a conversation rather than answering one.
+  ///
+  /// Gated on the same `canReply` the reply path uses, because the server gates
+  /// both on being able to READ the inbox: somebody who may not open it may
+  /// certainly not write from it, and there is deliberately no separate "may
+  /// send" permission to consult. Drawing a button here that the server would
+  /// refuse is the shape the house rule forbids.
+  Future<void> _compose(Mailbox mailbox) async {
+    final sent = await showSidePanel<String>(
+      context,
+      builder: (_) => ComposePanel(
+        api: widget.api,
+        mailboxId: mailbox.id,
+        sendAs: mailbox.address,
+      ),
+    );
+
+    if (sent == null || !mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Sent as $sent.')),
+    );
+
+    _loadMessages();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -908,7 +935,28 @@ class _EmailScreenState extends State<EmailScreen> {
           child: _checked.isEmpty
               ? Wrap(
                   spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
+                    // ── NOT offered on the combined list ──────────
+                    //
+                    // In All inboxes there is no selected mailbox, and the
+                    // list column falls back to `_mailboxes.first` so it has
+                    // something to draw. Sending on that fallback would pick
+                    // an inbox the reader never chose — the exact failure this
+                    // screen is arranged against, and unrecoverable once the
+                    // message has left. So the button waits until somebody is
+                    // standing in ONE inbox.
+                    //
+                    // Also gated on canReply, because the server gates sending
+                    // on being able to read the inbox: a button it would
+                    // refuse is the shape the house rule forbids.
+                    if (_selected != null && mailbox.canReply)
+                      FilledButton.tonalIcon(
+                        onPressed: () => _compose(mailbox),
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        label: const Text('New message'),
+                      ),
                     FilterChip(
                       label: const Text('Unread'),
                       selected: _unreadOnly,

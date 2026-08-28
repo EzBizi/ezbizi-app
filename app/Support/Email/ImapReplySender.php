@@ -42,6 +42,8 @@ final class ImapReplySender
     private const MAX_MESSAGE_BYTES = 1_048_576;
 
     /**
+     * @param  list<string>  $to  envelope recipients — one RCPT TO each. A reply
+     *                              passes one; a composed message may pass several.
      * @param  string  $message  the finished RFC 5322 message from {@see ReplyComposer}
      *
      * @throws ImapFailure
@@ -52,7 +54,7 @@ final class ImapReplySender
         string $username,
         string $password,
         string $from,
-        string $to,
+        array $to,
         string $message,
     ): void {
         if (strlen($message) > self::MAX_MESSAGE_BYTES) {
@@ -110,8 +112,19 @@ final class ImapReplySender
             $this->say($socket, 'MAIL FROM:<'.$this->addressOnly($from).'>');
             $this->expect($socket, 250, 'accepting the sender');
 
-            $this->say($socket, 'RCPT TO:<'.$this->addressOnly($to).'>');
-            $this->expect($socket, 250, 'accepting the recipient');
+            /*
+             * One RCPT TO per recipient, and every one of them checked.
+             *
+             * The envelope is not the To: header — the header is display, this
+             * is delivery. Sending the header with three addresses on it and
+             * issuing one RCPT delivers to one person while showing the reader
+             * three, which is the silent half-send that looks like success on
+             * both ends.
+             */
+            foreach ($to as $recipient) {
+                $this->say($socket, 'RCPT TO:<'.$this->addressOnly($recipient).'>');
+                $this->expect($socket, 250, 'accepting the recipient');
+            }
 
             $this->say($socket, 'DATA');
             $this->expect($socket, 354, 'asking for the message');

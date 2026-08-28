@@ -60,6 +60,7 @@ class MailboxMessagesApiTest extends TestCase
         parent::setUp();
 
         FakeMailboxReader::$replies   = [];
+        FakeMailboxReader::$sent      = [];
         FakeMailboxReader::$trashed   = [];
         FakeMailboxReader::$downloads = [];
         FakeMailboxReader::$page      = null;
@@ -687,8 +688,11 @@ class MailboxMessagesApiTest extends TestCase
     {
         foreach ([
             [MailboxReader::class, 'reply'],
+            [MailboxReader::class, 'send'],
             [ReplyComposer::class, 'compose'],
             [ReplyComposer::class, 'composeForGmail'],
+            [ReplyComposer::class, 'composeNew'],
+            [ReplyComposer::class, 'composeNewForGmail'],
         ] as [$class, $method]) {
             foreach ((new ReflectionMethod($class, $method))->getParameters() as $parameter) {
                 $this->assertNotSame(
@@ -890,6 +894,168 @@ class MailboxMessagesApiTest extends TestCase
             ->assertForbidden();
 
         $this->assertSame([], FakeMailboxReader::$replies);
+    }
+
+    // ══ 4b. STARTING A CONVERSATION ══════════════════════════════
+
+    public function test_a_composed_message_reaches_the_provider_whole(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+
+        $mailbox = $this->inbox($t);
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+
+        $this->grant($t, $mailbox, 'Front desk');
+
+        $this->signedInAs($jenny)
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages", [
+                'to'      => ['bob@example.com', 'jan@example.com'],
+                'subject' => 'Your annual sweep',
+                'body'    => 'Morning both',
+            ])
+            ->assertOk()
+            ->assertJsonPath('message', fn (string $m) => str_contains($m, 'info@a-1chimney.com'));
+
+        $this->assertCount(1, FakeMailboxReader::$sent);
+
+        // Both recipients, not just the first. A To field that quietly
+        // delivered to one address would look like success on both ends.
+        $this->assertSame(['bob@example.com', 'jan@example.com'], FakeMailboxReader::$sent[0]['to']);
+        $this->assertSame('Your annual sweep', FakeMailboxReader::$sent[0]['subject']);
+        $this->assertSame('Morning both', FakeMailboxReader::$sent[0]['body']);
+    }
+
+    public function test_composing_is_audited_without_the_words(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+
+        $mailbox = $this->inbox($t);
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+
+        $this->grant($t, $mailbox, 'Front desk');
+
+        $body = 'We can do Tuesday at 180.';
+
+        $this->signedInAs($jenny)
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages", [
+                'to'      => ['bob@example.com'],
+                'subject' => 'Quote',
+                'body'    => $body,
+            ])
+            ->assertOk();
+
+        $event = AuditEvent::where('action', 'mailbox.sent')->firstOrFail();
+
+        $this->assertStringContainsString('jenny@a1.test', $event->actor_label);
+        $this->assertStringNotContainsString('180', json_encode($event->changes));
+        $this->assertSame(strlen($body), $event->changes['characters']);
+        $this->assertSame(1, $event->changes['recipients']);
+    }
+
+    /**
+     * The recipient ADDRESSES stay out of the automation payload.
+     *
+     * Rules are tenant-authored and read this table, so carrying the addresses
+     * here would quietly make every rule author a reader of the mailing list.
+     * The count is what a rule can act on without that.
+     */
+    public function test_composing_raises_the_automation_event_without_the_addresses(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+
+        $mailbox = $this->inbox($t);
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+
+        $this->grant($t, $mailbox, 'Front desk');
+
+        $this->signedInAs($jenny)
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages", [
+                'to'      => ['bob@example.com'],
+                'subject' => 'Quote',
+                'body'    => 'On our way.',
+            ])
+            ->assertOk();
+
+        $this->inTenant($t['org'], function () {
+            $event = AutomationEvent::where('event_key', 'email.sent')->firstOrFail();
+
+            $this->assertSame('info@a-1chimney.com', $event->payload['address']);
+            $this->assertSame(1, $event->payload['recipients']);
+            $this->assertStringNotContainsString('bob@example.com', json_encode($event->payload));
+            $this->assertStringContainsString('jenny@a1.test', $event->actor_label);
+        });
+    }
+
+    public function test_somebody_who_cannot_open_an_inbox_cannot_send_from_it(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+
+        $mailbox = $this->inbox($t);
+        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view']);
+
+        $this->signedInAs($clerk)
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages", [
+                'to'      => ['bob@example.com'],
+                'subject' => 'Hello',
+                'body'    => 'Hello',
+            ])
+            ->assertForbidden();
+
+        $this->assertSame([], FakeMailboxReader::$sent);
+    }
+
+    public function test_a_recipient_that_is_not_an_address_is_refused_before_anything_is_sent(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+
+        $mailbox = $this->inbox($t);
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+
+        $this->grant($t, $mailbox, 'Front desk');
+
+        $this->signedInAs($jenny)
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages", [
+                'to'      => ["bob@example.com\r\nBcc: everyone@competitor.example"],
+                'subject' => 'Quote',
+                'body'    => 'Hello',
+            ])
+            ->assertStatus(422);
+
+        // Nothing left the building. The composer would have neutralised it
+        // anyway — this is the outer of the two, and both are wanted.
+        $this->assertSame([], FakeMailboxReader::$sent);
+    }
+
+    public function test_a_message_with_no_recipient_is_refused(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+
+        $mailbox = $this->inbox($t);
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+
+        $this->grant($t, $mailbox, 'Front desk');
+
+        $this->signedInAs($jenny)
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages", [
+                'to'      => [],
+                'subject' => 'Quote',
+                'body'    => 'Hello',
+            ])
+            ->assertStatus(422);
+
+        $this->assertSame([], FakeMailboxReader::$sent);
     }
 
     // ══ 5. THE BODY IS BLOCKS ════════════════════════════════════
@@ -1238,6 +1404,14 @@ class FakeMailboxReader implements MailboxReader
     public function reply(Mailbox $mailbox, string $messageId, string $body): void
     {
         self::$replies[] = ['message' => $messageId, 'body' => $body];
+    }
+
+    /** @var array<int, array{to: list<string>, subject: string, body: string}> */
+    public static array $sent = [];
+
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void
+    {
+        self::$sent[] = ['to' => $to, 'subject' => $subject, 'body' => $body];
     }
 
     /** @var string[] */

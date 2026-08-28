@@ -92,6 +92,77 @@ final class ReplyComposer
     }
 
     /**
+     * A NEW message — same rules, no original to answer.
+     *
+     * ── Why this lives in a class called ReplyComposer ───────────
+     *
+     * Because everything that makes composing dangerous is identical, and
+     * splitting it would mean two copies of {@see headerValue}. The From rule is
+     * the same rule ("info sends as info", and there is still no User
+     * parameter), the injection guard is the same guard, and the blank line that
+     * separates headers from body is the same line. What differs is only that
+     * there is no {@see MessageSummary}: the recipient and the subject are typed
+     * by a person instead of read off the message being answered.
+     *
+     * ── The recipient is now OUR input, which is worse, not better ─
+     *
+     * On the reply path the subject arrives from whoever sent the original, and
+     * the docblock on {@see headerValue} says plainly that this is
+     * attacker-controlled by construction. It is tempting to relax here on the
+     * grounds that a signed-in colleague typed these. Do not. A colleague typing
+     *
+     *     someone@example.com<CR><LF>Bcc: everyone@competitor.com
+     *
+     * into a To field is the same hole with a friendlier face, and "our own
+     * staff would not" is not an access control. Every value goes through the
+     * guard, recipients individually so that one bad address cannot smuggle a
+     * header past the join.
+     *
+     * @param  list<string>  $to  one or more recipient addresses
+     */
+    public function composeNew(Mailbox $mailbox, array $to, string $subject, string $body): string
+    {
+        $recipients = array_values(array_filter(array_map(
+            fn (string $address) => $this->headerValue($address),
+            $to,
+        ), fn (string $address) => $address !== ''));
+
+        $lines = [
+            'From: '.$this->headerValue(sprintf('%s <%s>', $mailbox->display_name, $mailbox->address)),
+            'To: '.implode(', ', $recipients),
+            'Subject: '.$this->headerValue($this->subjectForNew($subject)),
+            'MIME-Version: 1.0',
+            'Content-Type: text/plain; charset=utf-8',
+        ];
+
+        // No In-Reply-To and no References, deliberately. This message is not
+        // under anything, and inventing threading headers for it would file it
+        // beneath an unrelated conversation in the recipient's mail program.
+
+        return implode("\r\n", $lines)."\r\n\r\n".str_replace("\r\n", "\n", $body);
+    }
+
+    /** The same new message, base64url and unpadded, as Gmail's `messages.send` wants it. */
+    public function composeNewForGmail(Mailbox $mailbox, array $to, string $subject, string $body): string
+    {
+        return rtrim(strtr(base64_encode($this->composeNew($mailbox, $to, $subject, $body)), '+/', '-_'), '=');
+    }
+
+    /**
+     * A new message's Subject — never `Re:`, and never empty.
+     *
+     * The empty case is the same defence as the reply path's: some servers
+     * treat a subjectless message as suspicious, and a business's mail landing
+     * in spam because somebody left the field blank is a support call.
+     */
+    private function subjectForNew(string $subject): string
+    {
+        $subject = trim($subject);
+
+        return $subject === '' ? '(no subject)' : $subject;
+    }
+
+    /**
      * The Subject a reply will carry, as the open-message payload tells the client.
      *
      * Public because the screen must print the same subject the composer will

@@ -75,7 +75,7 @@ class ImapReplySenderTest extends TestCase
             username: 'info@ezbizi.test',
             password: 'a-secret',
             from: 'Info <info@ezbizi.test>',
-            to: 'Ada Lovelace <ada@example.com>',
+            to: ['Ada Lovelace <ada@example.com>'],
             message: $message,
         );
     }
@@ -100,6 +100,48 @@ class ImapReplySenderTest extends TestCase
         // AUTH happened, and the password went base64 — inside TLS, which
         // ImapSocket::assertEncrypted enforced before this point.
         $this->assertStringContainsString(base64_encode('a-secret'), $received);
+    }
+
+    /**
+     * EVERY recipient gets its own RCPT TO, and every one of them is checked.
+     *
+     * ═══════════════════════════════════════════════════════════════
+     *  THE ENVELOPE IS NOT THE To: HEADER.
+     *
+     *  The header is what the reader SEES; the envelope is where the
+     *  message actually GOES. Composing a To: line with three
+     *  addresses on it and issuing one RCPT delivers to one person
+     *  while showing the reader three — and both ends report success,
+     *  which is what makes it worth a test rather than a comment.
+     *
+     *  Reply passes one recipient and always did. This exists because
+     *  compose passes several, and the single-RCPT version of this
+     *  method would have silently dropped all but the first.
+     * ═══════════════════════════════════════════════════════════════
+     */
+    public function test_every_recipient_gets_its_own_envelope_line(): void
+    {
+        $approved = $this->serve();
+
+        (new ImapReplySender)->send(
+            approved: $approved,
+            encryption: 'starttls',
+            username: 'info@ezbizi.test',
+            password: 'a-secret',
+            from: 'Info <info@ezbizi.test>',
+            to: ['Ada Lovelace <ada@example.com>', 'bob@example.com', 'jan@example.com'],
+            message: "From: Info <info@ezbizi.test>\r\nSubject: Sweep\r\n\r\nMorning all.",
+        );
+
+        $received = $this->server->received();
+
+        $this->assertStringContainsString('RCPT TO:<ada@example.com>', $received);
+        $this->assertStringContainsString('RCPT TO:<bob@example.com>', $received);
+        $this->assertStringContainsString('RCPT TO:<jan@example.com>', $received);
+
+        // Three, not one — the control that makes the three assertions above
+        // mean "each was sent" rather than "the string appears somewhere".
+        $this->assertSame(3, substr_count($received, 'RCPT TO:<'));
     }
 
     /**
@@ -209,7 +251,7 @@ class ImapReplySenderTest extends TestCase
                 username: 'info@ezbizi.test',
                 password: "a-secret\r\nRCPT TO:<evil@example.com>",
                 from: 'info@ezbizi.test',
-                to: 'ada@example.com',
+                to: ['ada@example.com'],
                 message: "Subject: x\r\n\r\nhello",
             );
 

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/email/compose_panel.dart';
 import 'package:ezbizi_client/screens/email/email_screen.dart';
 import 'package:ezbizi_client/screens/email/mailbox_rail.dart';
 import 'package:ezbizi_client/screens/email/message_body.dart';
@@ -313,6 +314,126 @@ void main() {
     expect(find.text('Sent as bookings@a-1chimney.com.'), findsOneWidget);
   });
 
+  // ── starting a conversation ──────────────────────────────────────
+
+  /// The same failure as the reply path, on the path that has no message to
+  /// take its address from: sending from the wrong inbox, unrecoverably.
+  testWidgets('a new message names the inbox chosen and posts to THAT inbox',
+      (tester) async {
+    final posted = <String, Map<String, dynamic>>{};
+
+    await _pump(tester, _handler(onSend: (path, body) => posted[path] = body));
+
+    // The RAIL entry specifically. `find.text(...).first` can land on a row
+    // label in the combined list, which leaves the screen in All inboxes and
+    // makes this test pass for the wrong reason.
+    await _tap(
+      tester,
+      find.descendant(
+        of: find.byType(MailboxRail),
+        matching: find.text('bookings@a-1chimney.com'),
+      ),
+    );
+    await _tap(tester, find.text('New message'));
+
+    expect(find.byType(ComposePanel), findsOneWidget);
+    expect(find.text('Sending as bookings@a-1chimney.com'), findsOneWidget);
+    expect(
+      find.text('Sending as info@a-1chimney.com'),
+      findsNothing,
+      reason: 'The composer is naming the inbox the screen opened on rather '
+          'than the one the reader moved to.',
+    );
+
+    // The reader's own identity is nowhere in it — `/me` says Jose Silva.
+    expect(find.textContaining('Jose Silva'), findsNothing);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'To'),
+      'bob@example.com, jan@example.com',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Subject'),
+      'Your annual sweep',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Message'),
+      'Morning both.',
+    );
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.textContaining('Send as'));
+
+    expect(
+      posted.keys.single,
+      '/api/v1/email/mailboxes/mb-2/messages',
+      reason: 'The message was posted to a different inbox from the one the '
+          'screen said it would go out as.',
+    );
+
+    // BOTH recipients. A comma-separated field that sent to the first address
+    // only would look identical on this screen and deliver to one person.
+    expect(posted.values.single['to'], ['bob@example.com', 'jan@example.com']);
+    expect(posted.values.single['subject'], 'Your annual sweep');
+    expect(posted.values.single['body'], 'Morning both.');
+
+    expect(find.text('Sent as bookings@a-1chimney.com.'), findsOneWidget);
+  });
+
+  /// The combined list has no sending identity, so it offers no way to send.
+  ///
+  /// This is pinned because the first version of the button got it wrong. In
+  /// All inboxes `_selected` is null and the list column falls back to
+  /// `_mailboxes.first` purely so it has something to draw — sending on that
+  /// fallback would have gone out as info@ while the reader was looking at
+  /// everything at once, having chosen nothing. It is the same wrong-inbox
+  /// failure as the reply path's, arriving through a screen state rather than
+  /// through a mis-click, and it cannot be undone once the message has left.
+  testWidgets('All inboxes offers no New message button, because it has no '
+      'inbox to send as', (tester) async {
+    await _pump(tester, _handler(), size: const Size(1400, 900));
+
+    // The control: this IS the combined list, and it is working.
+    expect(find.text('All inboxes'), findsOneWidget);
+    expect(find.text('Chimney sweep quote'), findsOneWidget);
+    expect(find.text('Booking for Friday'), findsOneWidget);
+
+    expect(
+      find.text('New message'),
+      findsNothing,
+      reason: 'The combined list is offering to send, and the only address it '
+          'could pick is one the reader never chose.',
+    );
+
+    // Standing in one inbox, it appears.
+    await _tap(
+      tester,
+      find.descendant(
+        of: find.byType(MailboxRail),
+        matching: find.text('bookings@a-1chimney.com'),
+      ),
+    );
+
+    expect(find.text('New message'), findsOneWidget);
+  });
+
+  /// Gate four of four: if the answer would be 403, the button is not drawn.
+  testWidgets('an inbox somebody may read and not answer offers no New '
+      'message button', (tester) async {
+    await _pump(tester, _handler(canReply: false, replyRefusal: 'Not yours.'));
+
+    expect(
+      find.text('New message'),
+      findsNothing,
+      reason: 'A button the server would refuse is drawn, which is the shape '
+          'the house rule forbids.',
+    );
+
+    // The control: the inbox itself is on screen, so this is "the button is
+    // absent" rather than "the screen failed to load".
+    expect(find.text('Chimney sweep quote'), findsWidgets);
+  });
+
   /// R8: a refusal is a sentence saying what to do. The server writes it,
   /// because only the server holds both halves of the answer — the role's
   /// permission and this organization's grant on this inbox.
@@ -620,6 +741,7 @@ MockClientHandler _handler({
   String listMessage = 'Unavailable.',
   List<Map<String, Object?>>? mailboxes,
   void Function(String path, Map<String, dynamic> body)? onReply,
+  void Function(String path, Map<String, dynamic> body)? onSend,
   void Function(String url)? onFile,
 }) {
   return (request) async {
@@ -679,6 +801,14 @@ MockClientHandler _handler({
 
     if (request.method == 'DELETE' && parts.contains('messages')) {
       return _json({'data': {'id': parts.last}});
+    }
+
+    // .../mailboxes/{mailbox}/messages — POST is a NEW message, not the list.
+    // Checked before the GET branch below, which matches the same path.
+    if (path.endsWith('/messages') && request.method == 'POST') {
+      onSend?.call(path, jsonDecode(request.body) as Map<String, dynamic>);
+
+      return _json({'data': {'sent_at': '2026-08-12T10:00:00Z'}});
     }
 
     // .../mailboxes/{mailbox}/messages

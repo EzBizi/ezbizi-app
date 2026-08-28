@@ -1862,6 +1862,30 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
 
                     /*
+                     * Starting a conversation, as against answering one.
+                     *
+                     * Separate from `email.replied` rather than folded into it
+                     * with a flag, because the two mean different things to
+                     * somebody writing a rule: "we answered a customer" is
+                     * follow-up, "we contacted a customer first" is outreach,
+                     * and a rule that fired on both would be useless for either.
+                     *
+                     * The payload carries a recipient COUNT and not the
+                     * addresses. Rules are tenant-authored and this table is
+                     * read by them, so putting customer addresses here would
+                     * make every rule author a reader of the mailing list —
+                     * same reasoning as keeping the words out of the audit log.
+                     */
+                    new TriggerDefinition(
+                        key: 'email.sent',
+                        label: 'A new message was sent',
+                        description: 'Somebody started a new conversation from a shared inbox, '
+                            .'rather than answering one. It carries which inbox it went out '
+                            .'from, how many recipients it went to, and who typed it — the '
+                            .'message goes out as the inbox itself, never as the individual.',
+                    ),
+
+                    /*
                      * AN INBOX STOPPING IS A BUSINESS EVENT, not a technical
                      * one.
                      *

@@ -695,6 +695,19 @@ final class GmailMailboxReader implements MailboxReader
     }
 
     /**
+     * A new message — the same endpoint as a reply, without the thread.
+     *
+     * No `threadId`, so Gmail files it as a new conversation rather than under
+     * whatever was last opened. That omission is the whole difference.
+     */
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void
+    {
+        $this->post($mailbox, self::API.'/messages/send', [
+            'raw' => $this->composer->composeNewForGmail($mailbox, $to, $subject, $body),
+        ]);
+    }
+
+    /**
      * Move the thread to Trash — Gmail's own bin, not a local hide.
      *
      * The whole conversation goes, because the list is threads. Binning one
@@ -1072,7 +1085,7 @@ final class GmailMailboxReader implements MailboxReader
     /** @param array<string, mixed> $query */
     private function get(Mailbox $mailbox, string $url, array $query): array
     {
-        return $this->send($mailbox, fn (string $token) => Http::withToken($token)
+        return $this->json($mailbox, fn (string $token) => Http::withToken($token)
             ->timeout(self::TIMEOUT)
             ->get($url, $query));
     }
@@ -1080,7 +1093,7 @@ final class GmailMailboxReader implements MailboxReader
     /** @param array<string, mixed> $payload */
     private function post(Mailbox $mailbox, string $url, array $payload): array
     {
-        return $this->send($mailbox, fn (string $token) => Http::withToken($token)
+        return $this->json($mailbox, fn (string $token) => Http::withToken($token)
             ->timeout(self::TIMEOUT)
             ->post($url, $payload));
     }
@@ -1146,7 +1159,7 @@ final class GmailMailboxReader implements MailboxReader
      * @param  callable(string): \Illuminate\Http\Client\Response  $call
      * @return array<string, mixed>
      */
-    private function send(Mailbox $mailbox, callable $call): array
+    private function json(Mailbox $mailbox, callable $call): array
     {
         return $this->body($mailbox, $this->sendRaw($mailbox, $call));
     }

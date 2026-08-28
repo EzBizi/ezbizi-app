@@ -564,8 +564,42 @@ final class ImapMailboxReader implements MailboxReader
             username: $settings['smtp_username'] !== '' ? $settings['smtp_username'] : $mailbox->address,
             password: (string) $mailbox->credential(),
             from: $mailbox->address,
-            to: $summary->fromAddress,
+            to: [$summary->fromAddress],
             message: $this->composer->compose($mailbox, $summary, $headers, $body),
+        ));
+    }
+
+    /**
+     * A new message over the same submission path a reply uses.
+     *
+     * No mailbox round trip at all: a reply has to fetch the original for its
+     * threading headers, and there is nothing here to fetch. So this is the
+     * SMTP half on its own — guard, then compose, then send.
+     */
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void
+    {
+        $smtp = $mailbox->smtpHost();
+
+        if ($smtp === null) {
+            throw CannotReadMailbox::notConnected($mailbox->address, MailboxProvider::Imap);
+        }
+
+        if (! $mailbox->hasCredential()) {
+            throw CannotReadMailbox::notConnected($mailbox->address, MailboxProvider::Imap);
+        }
+
+        $approved = $this->guard->approve($smtp['host'], $smtp['port'], RemoteHostGuard::SMTP_PORTS);
+
+        $settings = $this->settings($mailbox);
+
+        $this->translate($mailbox, fn () => $this->sender->send(
+            approved: $approved,
+            encryption: $smtp['encryption'],
+            username: $settings['smtp_username'] !== '' ? $settings['smtp_username'] : $mailbox->address,
+            password: (string) $mailbox->credential(),
+            from: $mailbox->address,
+            to: $to,
+            message: $this->composer->composeNew($mailbox, $to, $subject, $body),
         ));
     }
 

@@ -297,6 +297,78 @@ class MailboxMessagesController extends Controller
     }
 
     /**
+     * POST /api/v1/email/mailboxes/{mailbox}/messages
+     *
+     * A new message, not an answer to one.
+     *
+     * ═══════════════════════════════════════════════════════════════
+     *  THE SAME "info sends as info" RULE AS reply(), AND THE SAME
+     *  READ GATE.
+     *
+     *  There is deliberately no `email.send` permission. Replying
+     *  already decided this: an inbox somebody can read and not
+     *  answer is not a shared inbox, and the same reasoning covers
+     *  starting a thread. Adding a fourth verb here would mean a role
+     *  that can answer a customer but not write to one first, which
+     *  is not a distinction any business has asked for and is a
+     *  permission migration across every role in every org to undo.
+     * ═══════════════════════════════════════════════════════════════
+     */
+    public function store(Request $request, Mailbox $mailbox): JsonResponse
+    {
+        $user = $request->user();
+
+        $this->assertMayRead($user, $mailbox, 'send from this inbox');
+
+        $input = $request->validate([
+            // A list, because the envelope takes one RCPT per recipient and a
+            // To field that quietly delivered to the first address only would
+            // look like success on both ends.
+            'to'      => ['required', 'array', 'min:1', 'max:25'],
+            'to.*'    => ['required', 'string', 'email', 'max:254'],
+            'subject' => ['nullable', 'string', 'max:255'],
+            'body'    => ['required', 'string', 'max:50000'],
+        ]);
+
+        try {
+            $this->readers->for($mailbox)->send(
+                $mailbox,
+                array_values($input['to']),
+                (string) ($input['subject'] ?? ''),
+                $input['body'],
+            );
+        } catch (CannotReadMailbox $e) {
+            return $this->refused($e);
+        } catch (CannotReachHost $e) {
+            return response()->json(['message' => $e->getMessage()], $e->status());
+        }
+
+        $this->cache->forget($mailbox);
+
+        $this->audit->log('mailbox.sent', $mailbox, [
+            'address'    => $mailbox->address,
+            // Recipients are recorded; the words are NOT. Same rule as the
+            // reply path — an audit log holding the text of every message is a
+            // second copy of the correspondence, arriving through a side door.
+            'recipients' => count($input['to']),
+            'characters' => strlen($input['body']),
+        ]);
+
+        $this->events->emit('email.sent', $mailbox, [
+            'address'    => $mailbox->address,
+            'recipients' => count($input['to']),
+        ]);
+
+        return response()->json([
+            'message' => sprintf(
+                'Sent, from %s. The reply comes back here where everybody can see it, '
+                .'rather than to you.',
+                $mailbox->address,
+            ),
+        ]);
+    }
+
+    /**
      * GET /api/v1/email/mailboxes/{mailbox}/messages/{message}/picture
      *
      * The original URL is an encrypted token on the block. This origin fetches

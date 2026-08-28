@@ -87,6 +87,25 @@ interface MailboxReader
     public function reply(Mailbox $mailbox, string $messageId, string $body): void;
 
     /**
+     * Send a NEW message AS THE MAILBOX — not an answer to anything.
+     *
+     * The same "info sends as info" rule as {@see reply}, for the same reason,
+     * and with the same absence of a User parameter to enforce it. What changes
+     * is only where the recipient comes from: a person typed it, rather than it
+     * being read off a message that arrived.
+     *
+     * Every implementation composes through {@see ReplyComposer::composeNew} or
+     * hands the parts to a provider API that builds the message itself. Neither
+     * path may interpolate a recipient into a header by hand.
+     *
+     * @param  list<string>  $to  one or more recipient addresses
+     *
+     * @throws CannotReadMailbox when the mailbox cannot be opened at all
+     * @throws CannotReachHost   when the SMTP host fails the same guard the IMAP host does
+     */
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void;
+
+    /**
      * Move this message (and its thread, where the provider groups) to Trash.
      *
      * @throws CannotReadMailbox  when the mailbox cannot be opened at all

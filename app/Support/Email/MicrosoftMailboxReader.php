@@ -241,6 +241,34 @@ final class MicrosoftMailboxReader implements MailboxReader
         );
     }
 
+    /**
+     * A new message through Graph's own sender.
+     *
+     * Graph builds the MIME from these parts, which is why nothing here goes
+     * near {@see ReplyComposer}: there is no header string to inject into. The
+     * recipients travel as a structured list rather than as a joined header
+     * line, so the guard that matters on the IMAP path has no equivalent hole
+     * to guard here.
+     *
+     * `saveToSentItems` on purpose. A shared inbox where sent mail vanishes
+     * leaves the next colleague unable to see that the customer was already
+     * answered.
+     */
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void
+    {
+        $this->post($mailbox, self::GRAPH.'/me/sendMail', [
+            'message' => [
+                'subject'      => $subject,
+                'body'         => ['contentType' => 'Text', 'content' => $body],
+                'toRecipients' => array_values(array_map(
+                    fn (string $address) => ['emailAddress' => ['address' => $address]],
+                    $to,
+                )),
+            ],
+            'saveToSentItems' => true,
+        ]);
+    }
+
     public function trash(Mailbox $mailbox, string $messageId): void
     {
         throw new CannotChangeMail(
@@ -279,7 +307,7 @@ final class MicrosoftMailboxReader implements MailboxReader
      */
     private function get(Mailbox $mailbox, string $url, array $query, array $headers = []): array
     {
-        return $this->send($mailbox, fn (string $token) => Http::withToken($token)
+        return $this->json($mailbox, fn (string $token) => Http::withToken($token)
             ->withHeaders($headers)
             ->timeout(self::TIMEOUT)
             ->get($url, $query));
@@ -291,7 +319,7 @@ final class MicrosoftMailboxReader implements MailboxReader
      */
     private function post(Mailbox $mailbox, string $url, array $payload): array
     {
-        return $this->send($mailbox, fn (string $token) => Http::withToken($token)
+        return $this->json($mailbox, fn (string $token) => Http::withToken($token)
             ->timeout(self::TIMEOUT)
             ->post($url, $payload));
     }
@@ -401,7 +429,7 @@ final class MicrosoftMailboxReader implements MailboxReader
      * @param  callable(string): \Illuminate\Http\Client\Response  $call
      * @return array<string, mixed>
      */
-    private function send(Mailbox $mailbox, callable $call): array
+    private function json(Mailbox $mailbox, callable $call): array
     {
         return $this->body($mailbox, $this->sendRaw($mailbox, $call));
     }
