@@ -300,6 +300,57 @@ void main() {
     expect(find.text('General'), findsWidgets);
     expect(find.text('Company pool'), findsNothing);
   });
+  // A sibling company is really in /me here, so findsNothing proves the picker
+  // filters by view rather than proving the fixture was empty. Scope is a
+  // parent company so `offersCompanyChoice` is true and the field is drawn:
+  // a hidden field would pass this test without filtering anything.
+  testWidgets('a company view does not offer a sibling company on Add', (
+    tester,
+  ) async {
+    await _pumpScreen(tester, me: _companyView);
+
+    await tester.tap(find.text('Add vehicle'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Everdoors'), findsWidgets);
+    expect(find.text('Premier Garage Repair'), findsWidgets);
+    expect(find.text('A-1 Chimney'), findsNothing);
+    expect(find.text('A-1 Group'), findsNothing);
+  });
+
+  testWidgets('a company view does not offer a sibling company on Identity', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      permissions: const [
+        'fleet_management.view',
+        'fleet_management.edit',
+      ],
+      vehicles: const [_subtreeVan],
+      me: _companyView,
+    );
+
+    await tester.tap(find.text(_subtreeVan['label']! as String).first);
+    await tester.pumpAndSettle();
+
+    // Open it: a closed dropdown only builds its selected item, so asserting
+    // on the collapsed field would pass against the very leak it claims.
+    final picker = find.byKey(const ValueKey('company-co-ever'));
+    await tester.ensureVisible(picker);
+    await tester.pumpAndSettle();
+    await tester.tap(picker);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Everdoors'), findsWidgets);
+    expect(find.text('Premier Garage Repair'), findsWidgets);
+    expect(find.text('A-1 Chimney'), findsNothing);
+    expect(find.text('A-1 Group'), findsNothing);
+  });
+
 }
 
 const _van = {
@@ -483,4 +534,56 @@ const _me = {
       'reachable': true,
     },
   ],
+};
+
+/// A company view of Everdoors, which has two Sub Companies, while A-1 Chimney
+/// sits beside it in reach. The subtree is what may be filed on; the sibling is
+/// the thing that must never appear.
+const _companyView = {
+  'organization': {
+    'id': 'org-1',
+    'name': 'A-1 Group',
+    'franchise_label': 'Franchise',
+    'is_read_only': false,
+  },
+  'scope': {
+    'type': 'company',
+    'id': 'co-ever',
+    'label': 'Everdoors',
+    'path': ['A-1 Group', 'Everdoors'],
+  },
+  'companies': [
+    {'id': 'co-ever', 'name': 'Everdoors', 'parent_company_id': null},
+    {
+      'id': 'co-premier',
+      'name': 'Premier Garage Repair',
+      'parent_company_id': 'co-ever',
+    },
+    {
+      'id': 'co-speedy',
+      'name': 'Speedy Garage Doors',
+      'parent_company_id': 'co-ever',
+    },
+    {'id': 'co-a1', 'name': 'A-1 Chimney', 'parent_company_id': null},
+  ],
+  'franchises': [
+    {'id': 'fr-ever', 'name': 'Ohio', 'company_id': 'co-ever'},
+    {'id': 'fr-a1', 'name': 'Connecticut', 'company_id': 'co-a1'},
+  ],
+};
+
+const _subtreeVan = {
+  'id': 'v-2',
+  'number': 'V-00002',
+  'label': '2021 Ram ProMaster · XYZ-9876',
+  'year': 2021,
+  'make': 'Ram',
+  'model': 'ProMaster',
+  'plate': 'XYZ-9876',
+  'vin': '3C6TRVAG1ME512345',
+  'status': 'active',
+  'company': {'id': 'co-ever', 'name': 'Everdoors'},
+  'franchise': {'id': 'fr-ever', 'name': 'Ohio'},
+  'ownership': {'kind': 'owned'},
+  'assignment': null,
 };
