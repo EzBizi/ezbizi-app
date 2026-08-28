@@ -51,9 +51,25 @@ use RuntimeException;
  *  INSIDE the document. That is the same property stated more precisely
  *  rather than a weakening of it — the bytes travel with the file, so a
  *  copy opened in twenty years still has its cover and still fetches
- *  nothing. The converter's protocol rules permit exactly that one
- *  prefix and refuse every other scheme; see `options()` for why an
- *  inert container of bytes is not the hazard the other schemes are.
+ *  nothing. The converter's protocol rules permit that prefix and refuse
+ *  every other scheme.
+ *
+ *  WHERE THOSE RULES LIVE CHANGED, and this is the pointer for whoever
+ *  comes looking. The four locks, the `data:` exception and the
+ *  fail-closed self-checks are in App\Support\Files\HardenedPdf, not in
+ *  this file, because Inspection needed a PDF of its own and a second
+ *  hardening implementation is how one of them silently falls behind on
+ *  a security fix. Nothing about them changed in the move; the argument
+ *  for them is stated there in full.
+ *
+ *  One thing DID change and it is stated here rather than left to be
+ *  discovered: the allowlist now permits `data:image/jpeg;base64,` as
+ *  well as PNG, because an inspection photograph comes off a camera and
+ *  a camera does not emit PNG. It does not widen anything for a
+ *  CONTRACT — DocumentRenderer still embeds a PNG cover and nothing
+ *  else — and the schemes that carry a document rather than bytes,
+ *  `svg+xml` and `text/html`, are still refused, with a test that runs
+ *  the rules in both directions rather than counting them.
  *
  *  POINT 4 IS THE ONE THAT CHANGED, and it is rewritten in that class
  *  rather than contradicted here: the dependency is now installed and
