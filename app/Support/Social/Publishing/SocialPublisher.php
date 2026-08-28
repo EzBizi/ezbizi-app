@@ -15,5 +15,5 @@ use App\Models\SocialConnection;
 interface SocialPublisher
 {
     /** @return string the remote id of what was created */
-    public function publish(SocialConnection $connection, SocialPost $post): string;
+    public function publish(SocialConnection $connection, PostPayload $post): string;
 }

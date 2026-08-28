@@ -4,7 +4,7 @@ namespace Tests\Feature\Social;
 
 use App\Models\SocialConnection;
 use App\Support\Social\Publishing\PinterestPublisher;
-use App\Support\Social\Publishing\SocialPost;
+use App\Support\Social\Publishing\PostPayload;
 use App\Support\Social\Publishing\SocialPublishFailed;
 use App\Support\Social\Publishing\TikTokPublisher;
 use App\Support\Social\SocialMediaKind;
@@ -46,9 +46,9 @@ class SocialPublishingTest extends TestCase
 
     public function test_a_file_decides_the_kind_by_extension(): void
     {
-        $this->assertSame(SocialMediaKind::Image, (new SocialPost(filePath: '/tmp/a.PNG'))->kind());
-        $this->assertSame(SocialMediaKind::Video, (new SocialPost(filePath: '/tmp/a.mp4'))->kind());
-        $this->assertSame(SocialMediaKind::Text, (new SocialPost(body: 'hello'))->kind());
+        $this->assertSame(SocialMediaKind::Image, (new PostPayload(filePath: '/tmp/a.PNG'))->kind());
+        $this->assertSame(SocialMediaKind::Video, (new PostPayload(filePath: '/tmp/a.mp4'))->kind());
+        $this->assertSame(SocialMediaKind::Text, (new PostPayload(body: 'hello'))->kind());
     }
 
     public function test_pinterest_puts_the_image_on_the_first_board_as_base64(): void
@@ -62,7 +62,7 @@ class SocialPublishingTest extends TestCase
 
         $id = (new PinterestPublisher)->publish(
             $this->connection(SocialProvider::Pinterest),
-            new SocialPost(body: 'Hello', filePath: $file, title: 'EzBizi'),
+            new PostPayload(body: 'Hello', filePath: $file, title: 'EzBizi'),
         );
 
         $this->assertSame('pin-9', $id);
@@ -91,7 +91,7 @@ class SocialPublishingTest extends TestCase
 
         (new PinterestPublisher)->publish(
             $this->connection(SocialProvider::Pinterest),
-            new SocialPost(filePath: $file),
+            new PostPayload(filePath: $file),
         );
     }
 
@@ -113,7 +113,7 @@ class SocialPublishingTest extends TestCase
 
         $id = (new TikTokPublisher)->publish(
             $this->connection(SocialProvider::TikTok),
-            new SocialPost(body: 'Hello', filePath: $file),
+            new PostPayload(body: 'Hello', filePath: $file),
         );
 
         $this->assertSame('pub-7', $id);
@@ -153,7 +153,7 @@ class SocialPublishingTest extends TestCase
 
         (new TikTokPublisher)->publish(
             $this->connection(SocialProvider::TikTok),
-            new SocialPost(filePath: $file),
+            new PostPayload(filePath: $file),
         );
     }
 
@@ -168,7 +168,7 @@ class SocialPublishingTest extends TestCase
 
         (new PinterestPublisher)->publish(
             $this->connection(SocialProvider::Pinterest),
-            new SocialPost(filePath: $file),
+            new PostPayload(filePath: $file),
         );
     }
 

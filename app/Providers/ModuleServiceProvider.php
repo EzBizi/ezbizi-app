@@ -1050,6 +1050,36 @@ class ModuleServiceProvider extends ServiceProvider
                             .'is a decision the person made rather than a list being tidied.',
                         isRaised: false,
                     ),
+
+                    /*
+                     * These two are raised, unlike the newsletter pair above:
+                     * `PublishSocialTarget` emits one or the other every time it
+                     * runs.
+                     *
+                     * One event per ACCOUNT rather than one per post, because
+                     * that is the grain a rule can act on. A post to three
+                     * networks where TikTok refused is not a failure and not a
+                     * success, so a per-post event would have to pick one and be
+                     * wrong about the others — and "tell me when a post fails"
+                     * is a rule somebody writes precisely to hear about the one
+                     * account that did.
+                     */
+                    new TriggerDefinition(
+                        key: 'social.published',
+                        label: 'A post went out',
+                        description: 'A post reached one connected social account. It carries '
+                            .'which account and which network, and the id the network gave '
+                            .'back — one of these per account a post was sent to, as each '
+                            .'one lands.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'social.publish_failed',
+                        label: 'A post could not go out',
+                        description: 'One account refused a post, or could not be reached. It '
+                            .'carries which account and the reason in the words shown on the '
+                            .'screen. The other accounts the same post went to are unaffected '
+                            .'and raise their own events.',
+                    ),
                 ],
                 /*
                  * The engine runs none of these, and the catalogue already says so

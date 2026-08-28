@@ -12,7 +12,7 @@ use App\Support\Social\SocialMediaKind;
  * Instagram carousel — each do it differently enough that pretending otherwise
  * now would mean unpicking it later. One asset, honestly.
  */
-final readonly class SocialPost
+final readonly class PostPayload
 {
     public function __construct(
         public string $body = '',

@@ -76,6 +76,7 @@ use App\Http\Controllers\Api\ServicesController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\SocialConnectionsController;
+use App\Http\Controllers\Api\SocialPostsController;
 use App\Http\Controllers\Api\SocialProvidersController;
 use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
@@ -800,6 +801,19 @@ Route::prefix('v1')
 
         Route::get('social/providers', [SocialProvidersController::class, 'index']);
         Route::get('social/connections', [SocialConnectionsController::class, 'index']);
+
+        // Compose and publish. `marketing.view` to see what went out,
+        // `marketing.edit` to send — the same split Connect uses, because
+        // posting as an account is not a lesser act than connecting it.
+        //
+        // Multipart on the way in: one post carries at most one picture or
+        // video, and it is not an `attachments` record — nothing else on the
+        // platform hangs files off it, and it leaves when the post does.
+        //
+        // The send itself is a job per account, so a 201 here means queued and
+        // never means posted. The targets it answers say which.
+        Route::get('social/posts', [SocialPostsController::class, 'index']);
+        Route::post('social/posts', [SocialPostsController::class, 'store']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
         Route::post('social/bluesky/connect', [BlueskyConnectController::class, 'store']);
         Route::post('social/{network}/start', [SocialAuthController::class, 'start'])

@@ -26,7 +26,7 @@ final class PinterestPublisher implements SocialPublisher
     private const API = 'https://api.pinterest.com/v5';
     private const TIMEOUT = 30;
 
-    public function publish(SocialConnection $connection, SocialPost $post): string
+    public function publish(SocialConnection $connection, PostPayload $post): string
     {
         $kind = $post->kind();
 

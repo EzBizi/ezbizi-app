@@ -4,12 +4,10 @@ namespace App\Console\Commands;
 
 use App\Models\Organization;
 use App\Models\SocialConnection;
-use App\Support\Social\Publishing\PinterestPublisher;
-use App\Support\Social\Publishing\SocialPost;
+use App\Support\Social\Publishing\PostPayload;
+use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\Publishing\SocialPublishFailed;
-use App\Support\Social\Publishing\SocialPublisher;
 use App\Support\Social\Publishing\TikTokPublisher;
-use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 
@@ -59,7 +57,7 @@ class SocialPostTest extends Command
             return self::FAILURE;
         }
 
-        $post = new SocialPost(
+        $post = new PostPayload(
             body: (string) ($this->option('body') ?? ''),
             filePath: $file,
             title: $this->option('title'),
@@ -84,7 +82,7 @@ class SocialPostTest extends Command
             return self::FAILURE;
         }
 
-        $publisher = $this->publisherFor($provider);
+        $publisher = Publishers::for($provider, toDrafts: (bool) $this->option('draft'));
 
         if ($publisher === null) {
             $this->error('No publisher for '.$connection->providerLabel().' yet.');
@@ -114,15 +112,6 @@ class SocialPostTest extends Command
         }
 
         return self::SUCCESS;
-    }
-
-    private function publisherFor(?SocialProvider $provider): ?SocialPublisher
-    {
-        return match ($provider) {
-            SocialProvider::Pinterest => new PinterestPublisher,
-            SocialProvider::TikTok    => new TikTokPublisher(toDrafts: (bool) $this->option('draft')),
-            default                   => null,
-        };
     }
 
     /** @return array{0: Organization, 1: SocialConnection}|null */

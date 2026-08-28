@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\SocialConnection;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
+use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\SocialConnectionAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -45,6 +46,17 @@ class SocialConnectionsController extends Controller
                 'status'          => $c->status,
                 'status_reason'   => $c->status_reason,
                 'last_reached_at' => $c->last_reached_at?->toIso8601String(),
+
+                /*
+                 * Connected is not the same as postable: four of the nine
+                 * networks a tenant can connect have no publisher yet. §4 says a
+                 * control that is offered must work, so the composer needs to
+                 * know which accounts it may offer — and it must not decide that
+                 * from the provider key, which would be a second copy of the
+                 * publisher map that goes stale the day one is added.
+                 */
+                'can_publish'            => Publishers::refusalFor($c->providerEnum()) === null,
+                'cannot_publish_because' => Publishers::refusalFor($c->providerEnum()),
             ])->all(),
         ]);
     }

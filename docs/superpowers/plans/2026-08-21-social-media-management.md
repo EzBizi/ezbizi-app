@@ -59,6 +59,12 @@ Create post + targets. Schedule wall-clock. Queue lists targets. Publish now enq
 
 **Verify:** tests for per-target rows; over-length on one target does not drop the others.
 
+**Publish now done 28 Aug. Scheduling is not.** `social_posts` + `social_post_targets`, `POST/GET /api/v1/social/posts`, and `PublishSocialTarget` — one job per target, `tries = 1`. The composer is live: words, one picture or video, a tickbox per account, and a Sent list underneath showing each target's outcome in the server's own sentence.
+
+The stub worker in the paragraph above was never needed. Pinterest and TikTok publishers already existed (27 Aug, reachable only from `social:post-test`), so Publish now sends for real on those two and refuses **before writing a row** for the rest — `Publishers::refusalFor()` is the one map, and `GET /social/connections` carries `can_publish` so the composer greys the account rather than queueing something that cannot go.
+
+Still open from this task: **scheduling** (`scheduled_for` in the view's wall clock — the calendar beside the composer has nothing to draw until it lands) and **per-network body limits** (one 5,000-character cap for now; Bluesky's 300 and X's 280 belong on `SocialProvider` when either gets a publisher).
+
 ### Task 6 — Facebook Page publish (sandbox)
 
 Worker calls Graph `/{page-id}/feed` (and photo when FileStore has an image). Store remote id. Failure sentence on the target. Idempotent.
@@ -76,6 +82,10 @@ Same as 7 against those consoles. TikTok may stay sandbox until their review; Co
 ### Task 9 — Grants + automations declare
 
 `social_connection_grants`. Administrator implicit. Events `social.published` / `social.publish_failed` declared `isRaised: true` when Task 6 lands.
+
+**Events done 28 Aug**, earlier than this planned for: they landed with Publish now rather than with Facebook, because Pinterest and TikTok already publish and a raised event that nothing declares is the same lie as a declared event nothing raises. Both are `isRaised: true` on the `marketing` module and emitted per TARGET, not per post — a post to three accounts where one refused is neither a success nor a failure, so a per-post event would have to pick one and be wrong about the others.
+
+`social_connection_grants` is still open. Reach today is `SocialConnectionAccess` alone.
 
 ---
 

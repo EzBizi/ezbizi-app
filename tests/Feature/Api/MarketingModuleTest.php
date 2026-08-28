@@ -292,30 +292,60 @@ class MarketingModuleTest extends TestCase
     /**
      * The honesty half, and the reason `isRaised` exists.
      *
-     * Nothing sends a newsletter, so every event here must say so — a trigger
-     * listed without that mark is one somebody builds a rule on, switches on and
-     * never hears from again. `ModuleRegistryTest` holds the flag to the source
-     * in the other direction; this holds it to the truth today.
+     * Nothing sends a newsletter, so those events must say so — a trigger listed
+     * without that mark is one somebody builds a rule on, switches on and never
+     * hears from again. `ModuleRegistryTest` holds the flag to the source in the
+     * other direction; this holds it to the truth today.
+     *
+     * ── Why this is two lists and no longer one ──────────────────
+     *
+     * It used to assert that EVERY trigger Marketing declares is unraised, which
+     * was true while Newsletter was all the module had and stopped being true
+     * the day publishing landed. Asserting both sides is the better test anyway:
+     * "they are all false" would pass just as happily against a flag that was
+     * hardcoded false and could never say otherwise.
      */
-    public function test_every_event_newsletter_declares_is_marked_as_not_raised_yet(): void
+    public function test_the_newsletter_events_say_nothing_raises_them_and_the_publishing_ones_do_not(): void
     {
         $module = app(ModuleRegistry::class)->get(self::MODULE);
 
-        // The control. Every assertion below is inside the loop, so a module
-        // that declared nothing at all would pass this while proving nothing.
-        $this->assertNotEmpty($module->triggers);
+        $waiting = ['newsletter.sent', 'newsletter.unsubscribed'];
+        $firing  = ['social.published', 'social.publish_failed'];
+
+        // The control. Every assertion below is inside a loop, so a module that
+        // declared nothing at all would pass this while proving nothing.
+        $this->assertSame(
+            [...$waiting, ...$firing],
+            array_map(fn (TriggerDefinition $t) => $t->key, $module->triggers),
+        );
 
         foreach ($module->triggers as $trigger) {
-            $this->assertFalse(
+            if (in_array($trigger->key, $waiting, true)) {
+                $this->assertFalse(
+                    $trigger->isRaised,
+                    "'{$trigger->key}' claims something raises it. If that is now true it is "
+                    .'very welcome, and the wording has to stop saying otherwise.',
+                );
+
+                $this->assertStringContainsString(
+                    TriggerDefinition::NOT_RAISED_YET,
+                    $trigger->description,
+                    "'{$trigger->key}' is flagged unraised but the tenant is not told.",
+                );
+
+                continue;
+            }
+
+            $this->assertTrue(
                 $trigger->isRaised,
-                "'{$trigger->key}' claims something raises it. If that is now true it is very "
-                .'welcome, and the wording below has to stop saying otherwise.',
+                "'{$trigger->key}' is declared unraised, but publishing emits it — a tenant "
+                .'would be told a working rule cannot run.',
             );
 
-            $this->assertStringContainsString(
+            $this->assertStringNotContainsString(
                 TriggerDefinition::NOT_RAISED_YET,
                 $trigger->description,
-                "'{$trigger->key}' is flagged unraised but the tenant is not told.",
+                "'{$trigger->key}' fires, and the description still warns that it does not.",
             );
         }
     }
@@ -344,10 +374,23 @@ class MarketingModuleTest extends TestCase
         $this->assertNotEmpty($marketing['triggers']);
 
         foreach ($marketing['triggers'] as $trigger) {
-            $this->assertStringContainsString(
+            // Only the ones nothing raises carry the warning. The publishing
+            // pair reaches the builder as ordinary working triggers, which is
+            // the difference the sentence exists to draw.
+            if (str_starts_with($trigger['key'], 'newsletter.')) {
+                $this->assertStringContainsString(
+                    TriggerDefinition::NOT_RAISED_YET,
+                    $trigger['description'],
+                    'The builder would offer this without saying a rule on it cannot run.',
+                );
+
+                continue;
+            }
+
+            $this->assertStringNotContainsString(
                 TriggerDefinition::NOT_RAISED_YET,
                 $trigger['description'],
-                'The builder would offer this without saying a rule on it cannot run.',
+                $trigger['key'].' fires, and the builder still warns that it does not.',
             );
         }
 
@@ -381,10 +424,10 @@ class MarketingModuleTest extends TestCase
                 'key'         => $t->key,
                 'label'       => $t->label,
                 'description' => $t->description,
-                'raised'      => false,
+                'raised'      => $t->isRaised,
             ], $module->triggers),
             $body['triggers'],
-            'The endpoint and the registry disagree about what Newsletter raises.',
+            'The endpoint and the registry disagree about what Marketing raises.',
         );
 
         $this->assertSame(
@@ -418,8 +461,14 @@ class MarketingModuleTest extends TestCase
 
         $this->assertNotEmpty($triggers);
 
-        foreach ($triggers as $trigger) {
-            $this->assertFalse($trigger['raised'], "{$trigger['key']} is published as firing.");
-        }
+        // Both values, keyed by trigger. A payload that answered false for
+        // everything would satisfy a loop of assertFalse and tell the screen
+        // nothing — the flag is only worth publishing if it can say either.
+        $this->assertSame([
+            'newsletter.sent'        => false,
+            'newsletter.unsubscribed' => false,
+            'social.published'       => true,
+            'social.publish_failed'  => true,
+        ], collect($triggers)->pluck('raised', 'key')->all());
     }
 }

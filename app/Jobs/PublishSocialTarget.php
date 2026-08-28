@@ -1,0 +1,138 @@
+<?php
+
+namespace App\Jobs;
+
+use App\Models\Organization;
+use App\Models\SocialPostTarget;
+use App\Support\Automations\EventEmitter;
+use App\Support\Social\Publishing\Publishers;
+use App\Support\Social\Publishing\SocialPublishFailed;
+use App\Support\Tenancy\TenantContext;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
+use Throwable;
+
+/**
+ * Send one post to one account.
+ *
+ * ── One job per target, and why it must stay that way ────────────
+ *
+ * A job that looped over the targets would make a partial failure
+ * unrepresentable: the third network refusing would either roll back the two
+ * that already posted — it cannot, they are on somebody else's servers — or be
+ * swallowed. One job per target means each send owns exactly the row it can
+ * honestly report on.
+ *
+ * ── `tries = 1`, deliberately ────────────────────────────────────
+ *
+ * There is no idempotency key on any of these APIs. A retry after a timeout
+ * cannot tell "the post did not land" from "the post landed and the answer did
+ * not come back", so the safe reading of an unknown outcome is to stop and say
+ * so, rather than to risk publishing the same thing twice to a customer's real
+ * audience. The worker already runs `--tries=1`; this states it here so the
+ * property survives somebody changing the worker's flags.
+ *
+ * A failed target keeps its sentence and the composer shows it. Sending it
+ * again is a person's decision, not a queue's.
+ */
+final class PublishSocialTarget implements ShouldQueue
+{
+    use Queueable;
+
+    public int $tries = 1;
+
+    public function __construct(public readonly string $targetId) {}
+
+    public function handle(TenantContext $tenant, EventEmitter $events): void
+    {
+        /*
+         * Read outside the tenant scope, because a queued job has no tenant yet
+         * — the global scope would filter this row to nothing and the send would
+         * quietly never happen. Everything after `run()` below is scoped
+         * normally.
+         */
+        $target = SocialPostTarget::query()->withoutGlobalScopes()->find($this->targetId);
+
+        if ($target === null) {
+            return; // The post or the account was deleted while this waited.
+        }
+
+        $organization = Organization::query()->withoutGlobalScopes()->find($target->organization_id);
+
+        if ($organization === null) {
+            return;
+        }
+
+        $tenant->run($organization, fn () => $this->send($target, $events));
+    }
+
+    private function send(SocialPostTarget $target, EventEmitter $events): void
+    {
+        $connection = $target->connection;
+        $post       = $target->post;
+
+        if ($connection === null || $post === null) {
+            return;
+        }
+
+        $publisher = Publishers::for($connection->providerEnum());
+
+        if ($publisher === null) {
+            // The controller refuses these before a row is written, so reaching
+            // here means a publisher was removed after something was queued.
+            $this->failed($target, $events, (string) Publishers::refusalFor($connection->providerEnum()));
+
+            return;
+        }
+
+        [$payload, $temp] = $post->payload();
+
+        try {
+            $remoteId = $publisher->publish($connection, $payload);
+        } catch (SocialPublishFailed $e) {
+            $this->failed($target, $events, $e->getMessage());
+
+            return;
+        } catch (Throwable $e) {
+            /*
+             * Anything the publisher did not turn into a sentence — a DNS
+             * failure, a malformed response, a bug in here. The tenant is told
+             * the network could not be reached rather than shown a stack frame
+             * (§R8), and the real message goes to the log where it belongs.
+             */
+            report($e);
+            $this->failed(
+                $target,
+                $events,
+                'EzBizi could not reach '.$connection->providerLabel().'. Nothing was posted. '
+                .'Try again, and if it keeps happening the account may need reconnecting.',
+            );
+
+            return;
+        } finally {
+            if ($temp !== null && is_file($temp)) {
+                unlink($temp);
+            }
+        }
+
+        $target->markSent($remoteId);
+
+        $events->emit('social.published', $target, [
+            'provider'     => $connection->provider,
+            'account'      => $connection->display_name,
+            'remote_id'    => $remoteId,
+            'has_media'    => $post->media_path !== null,
+        ]);
+    }
+
+    private function failed(SocialPostTarget $target, EventEmitter $events, string $because): void
+    {
+        $target->markFailed($because);
+
+        $events->emit('social.publish_failed', $target, [
+            'provider' => $target->connection?->provider,
+            'account'  => $target->connection?->display_name,
+            'because'  => $because,
+        ]);
+    }
+}

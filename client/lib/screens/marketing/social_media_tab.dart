@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/social_network_mark.dart';
@@ -35,6 +36,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   int _tab = 0;
   List<_SocialNetwork> _providers = const [];
   List<_SocialConnection> _connections = const [];
+  List<_SentPost> _posts = const [];
   String? _loadError;
 
   String get _viewName =>
@@ -51,6 +53,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   Future<void> _load() async {
     final providers = await widget.api.get('/social/providers');
     final connections = await widget.api.get('/social/connections');
+    final posts = await widget.api.get('/social/posts');
     if (!mounted) return;
 
     setState(() {
@@ -71,6 +74,17 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
           .whereType<Map<String, dynamic>>()
           .map(_SocialConnection.fromJson)
           .toList();
+
+      // Deliberately not an error when this one fails. The history of what went
+      // out is the least important thing on the tab, and losing the whole
+      // screen — Connect included — because a list could not be read would be
+      // the wrong trade.
+      _posts = !posts.ok
+          ? const []
+          : ((posts.body['data'] as List<dynamic>?) ?? const [])
+              .whereType<Map<String, dynamic>>()
+              .map(_SentPost.fromJson)
+              .toList();
     });
   }
 
@@ -91,8 +105,12 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
         Expanded(
           child: _tab == 0
               ? _PostsPane(
+                  api: widget.api,
+                  session: widget.session,
                   viewName: _viewName,
                   connections: _connections,
+                  posts: _posts,
+                  onSent: _load,
                   onConnect: () => _openConnect(context),
                 )
               : _AccountsPane(
@@ -122,27 +140,36 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
     );
   }
 
+  /// Confirm before forgetting an account.
+  ///
+  /// A panel and not an `AlertDialog`. The house rule is "no modals, ever", and
+  /// confirm-before-destructive is exactly the case it means — this was a real
+  /// dialog until the coherency audit found it, and "but it is only a
+  /// confirmation" is the argument every one of the five in the app was
+  /// shipped on.
   Future<void> _disconnect(_SocialConnection page) async {
-    final go = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Disconnect ${page.displayName}?'),
-        content: Text(
-          'EzBizi forgets this ${page.providerLabel} account and its tokens. '
-          'Anything scheduled to it stops. To revoke EzBizi at '
-          '${page.providerLabel}’s end as well, use that network’s own '
-          'settings.',
-        ),
+    final go = await showSidePanel<bool>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Disconnect ${page.displayName}?',
+        subtitle: page.providerLabel,
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('Keep it'),
           ),
+          const SizedBox(width: 8),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Disconnect'),
           ),
         ],
+        child: Text(
+          'EzBizi forgets this ${page.providerLabel} account and its tokens. '
+          'Anything scheduled to it stops. To revoke EzBizi at '
+          '${page.providerLabel}’s end as well, use that network’s own '
+          'settings.',
+        ),
       ),
     );
 
@@ -162,13 +189,21 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
 
 class _PostsPane extends StatelessWidget {
   const _PostsPane({
+    required this.api,
+    required this.session,
     required this.viewName,
     required this.connections,
+    required this.posts,
+    required this.onSent,
     required this.onConnect,
   });
 
+  final ApiClient api;
+  final Session session;
   final String viewName;
   final List<_SocialConnection> connections;
+  final List<_SentPost> posts;
+  final Future<void> Function() onSent;
   final VoidCallback onConnect;
 
   static const double _stackBelow = 900;
@@ -184,8 +219,12 @@ class _PostsPane extends StatelessWidget {
           onConnect: onConnect,
         );
         final compose = _ComposeColumn(
+          api: api,
+          session: session,
           viewName: viewName,
           connections: connections,
+          posts: posts,
+          onSent: onSent,
         );
 
         if (stack) {
@@ -275,21 +314,147 @@ class _PagesColumn extends StatelessWidget {
   }
 }
 
-class _ComposeColumn extends StatelessWidget {
-  const _ComposeColumn({required this.viewName, required this.connections});
+/// Write once, tick the accounts, send.
+///
+/// ── Why the accounts are ticked here and not in the Pages column ─
+///
+/// Pages answers "what may this view post as". This answers "where is THIS post
+/// going", which changes per post — the same three accounts are the right
+/// answer today and the wrong one tomorrow. Putting the ticks in the other
+/// column would make a per-post choice look like a property of the account.
+///
+/// Scheduling is not here yet: the button would be a control that does not
+/// work, so it is not drawn. The calendar beside this says what it is waiting
+/// for.
+class _ComposeColumn extends StatefulWidget {
+  const _ComposeColumn({
+    required this.api,
+    required this.session,
+    required this.viewName,
+    required this.connections,
+    required this.posts,
+    required this.onSent,
+  });
 
+  final ApiClient api;
+  final Session session;
   final String viewName;
   final List<_SocialConnection> connections;
+  final List<_SentPost> posts;
+  final Future<void> Function() onSent;
+
+  @override
+  State<_ComposeColumn> createState() => _ComposeColumnState();
+}
+
+class _ComposeColumnState extends State<_ComposeColumn> {
+  final TextEditingController _body = TextEditingController();
+  final Set<String> _picked = <String>{};
+  PickedBytes? _media;
+  bool _sending = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _body.dispose();
+    super.dispose();
+  }
+
+  /// Why Publish cannot be pressed, or null when it can.
+  ///
+  /// One sentence at a time and in the order somebody hits them, rather than a
+  /// list of everything wrong at once: told three things, a person fixes the
+  /// first and is told the other two anyway.
+  ///
+  /// The permission comes first because it is the one nothing on this screen
+  /// can fix — ticking accounts and attaching a picture would all still end in
+  /// a 403, and offering a control that always refuses is the §4 failure.
+  String? get _refusal {
+    final unpermitted = widget.session.me?.refusal(
+      'marketing.edit',
+      'publish to a social account',
+    );
+
+    if (unpermitted != null) return unpermitted;
+
+    if (widget.connections.isEmpty) {
+      return 'No account is connected in ${widget.viewName}, so there is '
+          'nowhere to publish.';
+    }
+    if (!widget.connections.any((c) => c.canPublish)) {
+      return 'None of the accounts connected in ${widget.viewName} can be '
+          'posted to from EzBizi yet.';
+    }
+    if (_picked.isEmpty) return 'Tick at least one account to post to.';
+    if (_body.text.trim().isEmpty && _media == null) {
+      return 'Write something, or attach a picture or a video.';
+    }
+    if (_sending) return 'Sending.';
+
+    return null;
+  }
+
+  Future<void> _attach() async {
+    final picked = await Files.pickBytes(accept: 'image/*,video/*');
+    if (picked == null || !mounted) return;
+
+    setState(() => _media = picked);
+  }
+
+  Future<void> _publish() async {
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+
+    final fields = <String, String>{
+      'body': _body.text.trim(),
+      // Indexed rather than repeated: a multipart body carries flat name/value
+      // pairs, so `connections[]` three times would arrive as one value.
+      for (final (index, id) in _picked.indexed) 'connections[$index]': id,
+    };
+
+    final media = _media;
+
+    final response = media == null
+        ? await widget.api.post('/social/posts', {
+            'body': fields['body'],
+            'connections': _picked.toList(),
+          })
+        : await widget.api.postFile(
+            '/social/posts',
+            'media',
+            media.name,
+            media.bytes,
+            fields: fields,
+          );
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _sending = false;
+        _error = response.reason;
+      });
+      return;
+    }
+
+    // Cleared only on success. A refusal leaves the words and the picture
+    // exactly where they were, because the fix is usually one tick or one
+    // attachment away and retyping the post is not part of it.
+    setState(() {
+      _sending = false;
+      _body.clear();
+      _media = null;
+      _picked.clear();
+    });
+
+    await widget.onSent();
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Two different reasons Publish is dead, and they are owed different
-    // sentences. Saying "nothing is connected" to somebody looking at a
-    // connected page in the next column is simply a lie.
-    final nowhere = connections.isEmpty
-        ? 'No page is connected in $viewName, so there is nowhere to publish.'
-        : 'Composing is not built yet. Connecting works; writing and sending '
-              'a post is the next piece.';
+    final refusal = _refusal;
 
     return DashboardCard(
       title: 'Compose',
@@ -297,43 +462,171 @@ class _ComposeColumn extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const DashboardNote(
-            'One post, every checked page. Schedule uses this view’s wall clock.',
-          ),
+          const DashboardNote('One post, every ticked account.'),
           const SizedBox(height: 12),
-          const TextField(
-            enabled: false,
-            minLines: 6,
+          TextField(
+            controller: _body,
+            enabled: !_sending,
+            minLines: 5,
             maxLines: 10,
-            decoration: InputDecoration(
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
               hintText: 'What should go out?',
               alignLabelWithHint: true,
             ),
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
+          _attachment(context),
+          const SizedBox(height: 12),
+          if (widget.connections.isNotEmpty) ...[
+            for (final account in widget.connections)
               Refused(
-                reason: nowhere,
-                child: const FilledButton(
-                  onPressed: null,
-                  child: Text('Publish now'),
+                reason: account.cannotPublishBecause,
+                child: CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: _picked.contains(account.id),
+                  onChanged: !account.canPublish || _sending
+                      ? null
+                      : (on) => setState(() {
+                          on == true
+                              ? _picked.add(account.id)
+                              : _picked.remove(account.id);
+                        }),
+                  secondary: SocialNetworkMark(
+                    network: account.provider,
+                    size: 22,
+                  ),
+                  title: Text(
+                    account.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(account.providerLabel),
                 ),
               ),
-              const OutlinedButton(
-                onPressed: null,
-                child: Text('Schedule'),
+            const SizedBox(height: 8),
+          ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Refused(
+              reason: refusal,
+              child: FilledButton(
+                onPressed: refusal == null ? _publish : null,
+                child: Text(_sending ? 'Sending…' : 'Publish now'),
               ),
-            ],
+            ),
           ),
-          const SizedBox(height: 10),
-          DashboardNote(nowhere),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            DashboardNote(_error!),
+          ],
+          if (widget.posts.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            _RecentPosts(posts: widget.posts),
+          ],
         ],
       ),
     );
   }
+
+  Widget _attachment(BuildContext context) {
+    final media = _media;
+
+    if (media == null) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          onPressed: _sending ? null : _attach,
+          icon: const Icon(Icons.image_outlined, size: 18),
+          label: const Text('Attach a picture or video'),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        const Icon(Icons.attachment_outlined, size: 18),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            media.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        TextButton(
+          onPressed: _sending ? null : () => setState(() => _media = null),
+          child: const Text('Remove'),
+        ),
+      ],
+    );
+  }
+}
+
+/// What went out, and what each account said back.
+///
+/// Under the composer rather than on a screen of its own, because the question
+/// this answers is "did the thing I just pressed work" and the answer is worth
+/// nothing three clicks away. A real queue with paging and filters is a later
+/// piece; this is the receipt.
+class _RecentPosts extends StatelessWidget {
+  const _RecentPosts({required this.posts});
+
+  final List<_SentPost> posts;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Sent', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
+        for (final post in posts)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  post.body.isEmpty
+                      ? (post.hasMedia ? 'A picture or video' : 'A post')
+                      : post.body,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 4),
+                for (final target in post.targets)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      // The failure sentence is the server's, shown whole. A
+                      // status word on its own ("failed") tells somebody that
+                      // something is wrong and nothing about what to do.
+                      target.failure != null
+                          ? '${target.account} · ${target.failure}'
+                          : '${target.account} · ${_statusWord(target.status)}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  static String _statusWord(String status) => switch (status) {
+    'sent' => 'sent',
+    'failed' => 'did not send',
+    _ => 'waiting to send',
+  };
 }
 
 class _CalendarsColumn extends StatefulWidget {
@@ -907,6 +1200,8 @@ class _SocialConnection {
     required this.provider,
     required this.providerLabel,
     this.handle,
+    this.canPublish = false,
+    this.cannotPublishBecause,
   });
 
   final String id;
@@ -915,6 +1210,13 @@ class _SocialConnection {
   final String providerLabel;
   final String? handle;
 
+  /// Connected is not the same as postable — four of the nine networks have no
+  /// publisher yet. The server decides which, and says why; this screen must
+  /// never work it out from [provider], or it becomes a second copy of that
+  /// list which goes stale the day one is added.
+  final bool canPublish;
+  final String? cannotPublishBecause;
+
   factory _SocialConnection.fromJson(Map<String, dynamic> json) {
     return _SocialConnection(
       id: json['id'] as String? ?? '',
@@ -922,6 +1224,61 @@ class _SocialConnection {
       provider: json['provider'] as String? ?? '',
       providerLabel: json['provider_label'] as String? ?? '',
       handle: json['handle'] as String?,
+      canPublish: json['can_publish'] as bool? ?? false,
+      cannotPublishBecause: json['cannot_publish_because'] as String?,
+    );
+  }
+}
+
+/// One post that was sent, and how it landed at each account.
+class _SentPost {
+  const _SentPost({
+    required this.id,
+    required this.body,
+    required this.hasMedia,
+    required this.targets,
+    this.author,
+  });
+
+  final String id;
+  final String body;
+  final bool hasMedia;
+  final String? author;
+  final List<_SentTarget> targets;
+
+  factory _SentPost.fromJson(Map<String, dynamic> json) {
+    return _SentPost(
+      id: json['id'] as String? ?? '',
+      body: json['body'] as String? ?? '',
+      hasMedia: json['has_media'] as bool? ?? false,
+      author: json['author'] as String?,
+      targets: ((json['targets'] as List<dynamic>?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(_SentTarget.fromJson)
+          .toList(),
+    );
+  }
+}
+
+class _SentTarget {
+  const _SentTarget({
+    required this.account,
+    required this.providerLabel,
+    required this.status,
+    this.failure,
+  });
+
+  final String account;
+  final String providerLabel;
+  final String status;
+  final String? failure;
+
+  factory _SentTarget.fromJson(Map<String, dynamic> json) {
+    return _SentTarget(
+      account: json['account'] as String? ?? '',
+      providerLabel: json['provider_label'] as String? ?? '',
+      status: json['status'] as String? ?? 'queued',
+      failure: json['failure'] as String?,
     );
   }
 }

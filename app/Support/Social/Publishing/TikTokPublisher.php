@@ -37,7 +37,7 @@ final class TikTokPublisher implements SocialPublisher
         private readonly bool $toDrafts = false,
     ) {}
 
-    public function publish(SocialConnection $connection, SocialPost $post): string
+    public function publish(SocialConnection $connection, PostPayload $post): string
     {
         $kind = $post->kind();
 
@@ -77,7 +77,7 @@ final class TikTokPublisher implements SocialPublisher
      *
      * @return array<string, mixed>
      */
-    private function initDirect(string $token, SocialPost $post, int $size): array
+    private function initDirect(string $token, PostPayload $post, int $size): array
     {
         $creator = $this->creatorInfo($token);
 

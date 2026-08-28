@@ -6,6 +6,8 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/marketing_screen.dart';
 import 'package:ezbizi_client/widgets/dashboard_card.dart';
+import 'package:ezbizi_client/widgets/refused.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:ezbizi_client/widgets/social_network_mark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -113,7 +115,9 @@ void main() {
     testWidgets('Publish now is disabled until this view has a page', (
       tester,
     ) async {
-      await _pumpScreen(tester, _handler());
+      // `canEdit` so the reason under test is the one this names. Without it
+      // the first refusal is the missing permission, which is a different test.
+      await _pumpScreen(tester, _handler(canEdit: true));
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
@@ -122,10 +126,12 @@ void main() {
         find.widgetWithText(FilledButton, 'Publish now'),
       );
       expect(publish.onPressed, isNull);
-      expect(
-        find.textContaining('nowhere to publish'),
-        findsOneWidget,
-      );
+
+      // The sentence is on the Refused wrapper rather than printed under the
+      // button. It used to be both, and the duplicate went when compose became
+      // real: a screen that repeats a refusal in two places is the drift
+      // Refused's docblock is about.
+      expect(_publishRefusal(tester), contains('nowhere to publish'));
     });
 
     testWidgets('Accounts lists the catalogue without hiding unreadiness', (
@@ -478,6 +484,233 @@ void main() {
     });
   });
 
+  /// Composing and publishing.
+  ///
+  /// The rule these are about is §4's: a control that is offered must be a
+  /// control that works. Publish has four different reasons it cannot be
+  /// pressed — no permission, nothing connected, nothing connected that EzBizi
+  /// can post to, nothing ticked — with four different remedies, so one greyed
+  /// button and no sentence would leave somebody guessing which they are in.
+  group('compose', () {
+    testWidgets('Publish says the permission is missing before anything else', (
+      tester,
+    ) async {
+      // The default role here holds marketing.view and nothing else.
+      await _pumpScreen(tester, _handler(connections: const [_pinterestBoard]));
+      await _openPosts(tester);
+
+      expect(
+        _publishRefusal(tester),
+        contains('do not have permission to publish to a social account'),
+      );
+    });
+
+    testWidgets('a network with no publisher is ticked off, with its reason', (
+      tester,
+    ) async {
+      await _pumpScreen(
+        tester,
+        _handler(canEdit: true, connections: const [_facebookPage]),
+      );
+      await _openPosts(tester);
+
+      // The tickbox is present and dead rather than absent: somebody looking
+      // for the Facebook page they just connected finds it, and finds out why.
+      final box = tester.widget<CheckboxListTile>(
+        find.widgetWithText(CheckboxListTile, 'Everdoors Doors'),
+      );
+      expect(box.onChanged, isNull);
+
+      expect(
+        tester
+            .widget<Refused>(
+              find.ancestor(
+                of: find.widgetWithText(CheckboxListTile, 'Everdoors Doors'),
+                matching: find.byType(Refused),
+              ),
+            )
+            .reason,
+        contains('not built yet'),
+      );
+
+      expect(
+        _publishRefusal(tester),
+        contains('can be posted to from EzBizi yet'),
+      );
+    });
+
+    testWidgets('an account ticked and nothing written is still refused', (
+      tester,
+    ) async {
+      await _pumpScreen(
+        tester,
+        _handler(canEdit: true, connections: const [_pinterestBoard]),
+      );
+      await _openPosts(tester);
+
+      expect(_publishRefusal(tester), contains('Tick at least one account'));
+
+      await tester.tap(
+        find.widgetWithText(CheckboxListTile, 'Everdoors Boards'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        _publishRefusal(tester),
+        contains('Write something, or attach a picture'),
+      );
+    });
+
+    testWidgets('words plus a ticked account sends the post', (tester) async {
+      http.Request? sent;
+
+      await _pumpScreen(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          onPublish: (request) => sent = request,
+        ),
+      );
+      await _openPosts(tester);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'What should go out?'),
+        'New flue liner, same day.',
+      );
+      await tester.tap(
+        find.widgetWithText(CheckboxListTile, 'Everdoors Boards'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(_publishRefusal(tester), isNull);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Publish now'));
+      await tester.pumpAndSettle();
+
+      expect(sent, isNotNull, reason: 'Publish sent nothing.');
+
+      final body = jsonDecode(sent!.body) as Map<String, dynamic>;
+      expect(body['body'], 'New flue liner, same day.');
+      expect(body['connections'], ['conn-2']);
+
+      // Emptied only because the send worked.
+      expect(
+        tester
+            .widget<TextField>(
+              find.widgetWithText(TextField, 'What should go out?'),
+            )
+            .controller
+            ?.text,
+        isEmpty,
+      );
+    });
+
+    testWidgets('a refused send keeps the words and shows the server sentence', (
+      tester,
+    ) async {
+      await _pumpScreen(
+        tester,
+        _refusingHandler(
+          'Pinterest needs a picture or a video. Attach one and try again.',
+        ),
+      );
+      await _openPosts(tester);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'What should go out?'),
+        'Just words',
+      );
+      await tester.tap(
+        find.widgetWithText(CheckboxListTile, 'Everdoors Boards'),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Publish now'));
+      await tester.pumpAndSettle();
+
+      // The server's sentence, not one this screen wrote.
+      expect(find.textContaining('Pinterest needs a picture'), findsOneWidget);
+
+      // And the post is still in the box, because the fix is one attachment
+      // away and retyping it is not part of the remedy.
+      expect(
+        tester
+            .widget<TextField>(
+              find.widgetWithText(TextField, 'What should go out?'),
+            )
+            .controller
+            ?.text,
+        'Just words',
+      );
+    });
+
+    testWidgets('what went out is listed, and a failure shows its reason', (
+      tester,
+    ) async {
+      await _pumpScreen(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          posts: const [
+            {
+              'id': 'post-1',
+              'body': 'Chimney sweeping season is here.',
+              'has_media': true,
+              'author': 'Jose Silva',
+              'targets': [
+                {
+                  'account': 'Everdoors Boards',
+                  'provider_label': 'Pinterest',
+                  'status': 'failed',
+                  'failure':
+                      'That account has no boards, and a Pin has to live on '
+                      'one.',
+                },
+              ],
+            },
+          ],
+        ),
+      );
+      await _openPosts(tester);
+
+      expect(find.text('Sent'), findsOneWidget);
+      expect(find.text('Chimney sweeping season is here.'), findsOneWidget);
+
+      // The whole sentence, not the word "failed".
+      expect(find.textContaining('has no boards'), findsOneWidget);
+    });
+  });
+
+  /// "No modals, ever" — and a confirmation is not an exception to it.
+  ///
+  /// This was an AlertDialog until a coherency audit found it. The regression
+  /// is invisible to every other assertion on this screen, because a dialog and
+  /// a panel both show the same words and both return the same answer; only the
+  /// type tells them apart, so only a test on the type holds the rule.
+  testWidgets('disconnect confirms in a panel, never a dialog', (tester) async {
+    await _pumpScreen(
+      tester,
+      _handler(canEdit: true, connections: const [_pinterestBoard]),
+    );
+
+    await tester.tap(
+      find.widgetWithText(ChoiceChip, 'Social Media Management'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Disconnect'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(SidePanel), findsOneWidget);
+    expect(find.text('Disconnect Everdoors Boards?'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Keep it'), findsOneWidget);
+  });
+
   group('the automation surface it has already declared', () {
     testWidgets('the declared events are listed in the module’s own words', (
       tester,
@@ -735,6 +968,40 @@ Future<void> _pump(
 /// is what holds the real endpoint to the real registry. What must NOT happen
 /// is the client keeping its own copy, which is why nothing under `lib/` names
 /// a trigger.
+/// Marketing → Social Media Management → Posts, which is where compose lives.
+Future<void> _openPosts(WidgetTester tester) async {
+  await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+  await tester.pumpAndSettle();
+}
+
+/// The sentence on the Publish button, or null when it may be pressed.
+String? _publishRefusal(WidgetTester tester) => tester
+    .widget<Refused>(
+      find.ancestor(
+        of: find.widgetWithText(FilledButton, 'Publish now'),
+        matching: find.byType(Refused),
+      ),
+    )
+    .reason;
+
+/// A server that takes the post and refuses it in a sentence.
+MockClientHandler _refusingHandler(String because) {
+  final ok = _handler(canEdit: true, connections: const [_pinterestBoard]);
+
+  return (request) async {
+    if (request.method == 'POST' && request.url.path.endsWith('/social/posts')) {
+      return _json({
+        'message': 'The given data was invalid.',
+        'errors': {
+          'connections': [because],
+        },
+      }, 422);
+    }
+
+    return ok(request);
+  };
+}
+
 /// Social Media Management → Accounts → the Connect panel.
 Future<void> _openConnectPanel(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
@@ -752,6 +1019,11 @@ MockClientHandler _handler({
   String message = 'Marketing is unavailable.',
   bool sentIsRaised = false,
   bool pinterestUsable = false,
+  /// Publishing needs `marketing.edit`; the default role here holds only
+  /// `marketing.view`, so a test about composing has to ask for it.
+  bool canEdit = false,
+  List<Map<String, Object?>>? posts,
+  void Function(http.Request)? onPublish,
   /// Bluesky is off by default so the tests written before it stay about what
   /// they were about. It is the only network here that connects by password,
   /// which is the whole reason its tile behaves differently.
@@ -803,7 +1075,17 @@ MockClientHandler _handler({
   return (request) async {
     final path = request.url.path;
 
-    if (path.endsWith('/me')) return _json({'data': _me});
+    if (path.endsWith('/me')) {
+      return _json({
+        'data': {
+          ..._me,
+          'permissions': [
+            'marketing.view',
+            if (canEdit) 'marketing.edit',
+          ],
+        },
+      });
+    }
 
     if (path.endsWith('/marketing/newsletter')) {
       return status == 200
@@ -860,6 +1142,28 @@ MockClientHandler _handler({
       return _json({'data': connections ?? <Map<String, Object?>>[]});
     }
 
+    if (path.endsWith('/social/posts')) {
+      if (request.method == 'POST') {
+        onPublish?.call(request);
+
+        return _json({
+          'data': {
+            'id': 'post-1',
+            'targets': [
+              {
+                'id': 'target-1',
+                'status': 'queued',
+                'account': 'Everdoors Boards',
+                'provider_label': 'Pinterest',
+              },
+            ],
+          },
+        }, 201);
+      }
+
+      return _json({'data': posts ?? <Map<String, Object?>>[]});
+    }
+
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);
   };
 }
@@ -911,6 +1215,10 @@ const _facebookPage = {
   'provider': 'facebook_page',
   'provider_label': 'Facebook',
   'handle': 'everdoors',
+  'can_publish': false,
+  'cannot_publish_because':
+      'Publishing to Facebook Pages is not built yet. The account is '
+      'connected, and posting to it will work without reconnecting.',
 };
 
 const _pinterestBoard = {
@@ -919,6 +1227,8 @@ const _pinterestBoard = {
   'provider': 'pinterest',
   'provider_label': 'Pinterest',
   'handle': 'everdoors_pins',
+  'can_publish': true,
+  'cannot_publish_because': null,
 };
 
 const _blueskyAccount = {
@@ -927,6 +1237,9 @@ const _blueskyAccount = {
   'provider': 'bluesky',
   'provider_label': 'Bluesky',
   'handle': 'ezbizi.bsky.social',
+  'can_publish': false,
+  'cannot_publish_because':
+      'Publishing to that network is not built yet.',
 };
 
 const _xAccount = {
@@ -935,6 +1248,9 @@ const _xAccount = {
   'provider': 'x',
   'provider_label': 'X',
   'handle': 'everdoors_hq',
+  'can_publish': false,
+  'cannot_publish_because':
+      'Publishing to that network is not built yet.',
 };
 
 const _monthNames = [
