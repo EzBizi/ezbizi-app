@@ -121,6 +121,20 @@ pressure demands a shorter or day-precise window, add a dedicated
 ezbizi:prune-screenshots command (declare RetentionPolicy::elsewhere) — do not lower
 window() below 1.`
 
+**Migration constraints (from the deployment session, learned the hard way today):**
+
+- **Every new table declares a `RetentionPolicy` or is added to `RetentionTest`'s
+  exception list _with a reason_.** This rule refused two deploys in one day; the
+  second blocked thirty commits. All three tables here have a policy (above), so this
+  is satisfied — but the model must actually implement `StatesRetention`, or the test
+  fails the build. `monitoring_activity` holds a person's tab history, so its window
+  is not optional.
+- **No `DB::unprepared` / `CREATE TRIGGER` in a migration.** MySQL refuses those
+  without `SUPER` while binary logging is on (error 1419), and the sandbox gate runs
+  on production's MySQL, so the gate itself hits it. `device_offline` detection is a
+  scheduled command scanning `last_seen_at` (below), **not** a DB trigger — keep it
+  that way.
+
 Disk is the real constraint, not a design flourish: 5-min shots ≈ 23 MB/employee/day
 compressed; 50 employees × 30 d ≈ 34 GB. Three knobs stay tunable per org — capture
 interval, JPEG quality/resolution, and retention — so the default can be dialled down
@@ -134,13 +148,24 @@ Delivers value with **zero native code**: the in-app half needs nothing installe
 
 ### What it shows
 
-A `Monitoring` tab, PC Specs sub-tab: a list of people in view (§3 subtree), each
-expandable to their devices. Per device: label, capability set, OS/browser (from
-`user_agent`), IP at last beat, last seen, current module + dwell. Hardware fields
-(RAM, disk free, wifi SSID/signal, open apps) render as "not available — web session"
-until an agent device reports them.
+Layout chosen by the owner 2026-08-28 (preview: `docs/previews/monitoring-layouts.html`):
+**a people-first roster as the working surface, with an at-a-glance panel docked on
+the right.**
 
-Works at 375px, no modal, palette from `theme.dart`, refuses with a sentence (§4).
+- **Roster (main pane):** the people in view (§3 subtree), each row showing status,
+  role/franchise, and current module + dwell; expandable to that person's devices.
+  Per device: label, capability set, OS/browser (from `user_agent`), IP at last beat,
+  last seen. Hardware fields (RAM, disk free, wifi SSID/signal, open apps) render as
+  "not available — web session" until an agent device reports them. Expansion is
+  inline (no modal).
+- **Glance panel (right, ~320px):** people-online count, a disk-low alert (which is
+  the surfacing of the `monitoring.disk_low` trigger), and the list of agent devices
+  with their status. It is a **read-out of the same data**, not a second source —
+  every number is derived from the device rows, so the two cannot disagree.
+- Filter chips over the roster: All / Online / Has agent / Web only.
+
+The panel stacks **below** the roster at 375px (primary content first). Works at
+375px, no modal, palette from `theme.dart`, refuses with a sentence (§4).
 
 ### Schema (migrations)
 
