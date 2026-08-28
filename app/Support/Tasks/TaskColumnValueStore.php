@@ -262,15 +262,19 @@ final class TaskColumnValueStore
 
         $updateIds = $attachments->where('attachable_type', 'task_updates')
             ->pluck('attachable_id')->unique()->values()->all();
-        $validUpdateIds = TaskUpdate::query()->where('task_id', $task->id)
-            ->whereIn('id', $updateIds)->pluck('id')->all();
+        $validTaskIds = Task::query()->where('board_id', $task->board_id)
+            ->whereIn('id', $attachments->where('attachable_type', 'tasks')->pluck('attachable_id')->all())
+            ->pluck('id')->all();
+        $validUpdateIds = TaskUpdate::query()->whereIn('id', $updateIds)
+            ->whereHas('task', fn ($query) => $query->where('board_id', $task->board_id))
+            ->pluck('id')->all();
         foreach ($attachments as $attachment) {
             $taskBound = $attachment->attachable_type === 'tasks'
-                && $attachment->attachable_id === $task->id;
+                && in_array($attachment->attachable_id, $validTaskIds, true);
             $updateBound = $attachment->attachable_type === 'task_updates'
                 && in_array($attachment->attachable_id, $validUpdateIds, true);
             if (! $taskBound && ! $updateBound) {
-                return $this->invalid('value', 'One or more File values are not committed to this task.');
+                return $this->invalid('value', 'One or more File values are not committed to this board.');
             }
         }
         sort($ids);

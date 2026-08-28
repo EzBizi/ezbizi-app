@@ -65,6 +65,7 @@ Schedule::command('ezbizi:dispatch-task-overdue')->hourly()->withoutOverlapping(
 Schedule::command('ezbizi:dispatch-task-due-reminders')->hourly()->withoutOverlapping(10);
 Schedule::command('ezbizi:dispatch-task-notification-intents')->everyMinute()->withoutOverlapping(5);
 Schedule::command('ezbizi:expire-task-update-attachment-candidates')->hourly()->withoutOverlapping(10);
+Schedule::command('ezbizi:expire-task-import-sessions')->hourly()->withoutOverlapping(10);
 
 // Backup health (§18 Phase 0 item 5). At 05:00, well after the 03:17 timer, so a
 // slow night is not reported as a missing one.

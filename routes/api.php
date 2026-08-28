@@ -79,6 +79,8 @@ use App\Http\Controllers\Api\Tasks\TaskBoardPreferencesController;
 use App\Http\Controllers\Api\Tasks\TaskBoardRecoveryController;
 use App\Http\Controllers\Api\Tasks\TaskBoardRowsController;
 use App\Http\Controllers\Api\Tasks\TaskBoardsController;
+use App\Http\Controllers\Api\Tasks\TaskExportsController;
+use App\Http\Controllers\Api\Tasks\TaskImportsController;
 use App\Http\Controllers\Api\Tasks\TaskBulkController;
 use App\Http\Controllers\Api\Tasks\TaskCollaboratorsController;
 use App\Http\Controllers\Api\Tasks\TaskColumnsController;
@@ -361,6 +363,9 @@ Route::prefix('v1')
         Route::post('tasks/boards/{board}/archive', [TaskBoardsController::class, 'archive']);
         Route::post('tasks/boards/{board}/restore', [TaskBoardsController::class, 'restore']);
         Route::post('tasks/boards/{board}/duplicate', [TaskBoardsController::class, 'duplicate']);
+        Route::post('tasks/boards/{board}/imports/preview', [TaskImportsController::class, 'preview']);
+        Route::post('tasks/boards/{board}/imports/commit', [TaskImportsController::class, 'commit']);
+        Route::get('tasks/boards/{board}/exports/{format}', [TaskExportsController::class, 'show']);
         Route::get('tasks/boards/{board}/rows', [TaskBoardRowsController::class, 'index']);
         Route::get('tasks/boards/{board}/tasks/{taskId}', [TaskDetailsController::class, 'show']);
         Route::get('tasks/boards/{board}/views', [TaskViewsController::class, 'index']);

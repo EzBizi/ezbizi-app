@@ -123,6 +123,19 @@ restarting. Verify with `php -r 'var_dump(openssl_pkey_new([]) !== false);'`.
 A sqlite `:memory:` run is still not the gate (StartUp.md §8). This machine now has MySQL;
 use `php artisan test` with no sqlite overrides. GD and Dompdf are present as of 2026-08-19.
 
+## Task spreadsheet transfer
+
+Task-board CSV and XLSX import uses `phpoffice/phpspreadsheet` 5.9 after a bounded ZIP/workbook
+preflight; formulas, macros, encryption, external links/connections and embedded objects are
+refused before the library loads the workbook. The local and deploy PHP runtimes therefore need
+`ctype`, `dom`, `fileinfo`, `filter`, `gd`, `iconv`, `libxml`, `mbstring`, `simplexml`, `xml`,
+`xmlreader`, `xmlwriter`, `zip`, and `zlib`. Verify them with `php -m` before changing the lockfile.
+
+Monday data enters EzBizi through Monday's CSV/XLSX export and this normal board importer. Phase 1
+does not store Monday API credentials or promise a direct Monday connection. JSON output is a
+versioned archive manifest, not a backup or restore format, and deliberately excludes attachment
+bytes; authorized file entries contain only identifier, name, size, and SHA-256.
+
 ## Permissions model
 
 ```

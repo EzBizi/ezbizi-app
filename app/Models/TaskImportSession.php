@@ -25,7 +25,10 @@ class TaskImportSession extends Model implements HoldsPersonalData
 
     public static function retention(): RetentionPolicy
     {
-        return RetentionPolicy::forever('No expiry cleanup is active yet, so import sessions are truthfully retained until the locked cleaner ships; consumed sessions will then be removed after commit cleanup.');
+        return RetentionPolicy::elsewhere(
+            'the hourly ezbizi:expire-task-import-sessions locked cleaner after the 30-minute expiry',
+            'The session row is removed before its private staging bytes, so a live row never points at bytes the cleaner already removed.',
+        );
     }
 
     public static function personalDataPurpose(): string
