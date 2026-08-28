@@ -44,6 +44,7 @@ use App\Http\Controllers\Api\MailboxMessagesController;
 use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
 use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
@@ -1271,6 +1272,15 @@ Route::prefix('v1')
         Route::apiResource('automations', AutomationsController::class)->except(['store'])
             ->parameters(['automations' => 'automation']);
         Route::post('automations', [AutomationsController::class, 'store']);
+
+        // ── Monitoring: the devices roster (2026-08-28-monitoring-pc-specs) ──
+        //
+        // Deliberately in THIS group rather than the heartbeat's idle-less one
+        // above (routes/api.php ~line 1552): an admin reading this tab IS
+        // navigation, and SlideIdleWindow should treat it as such. The
+        // heartbeat is a background beat with no screen behind it, which is
+        // the one case idle must NOT extend on.
+        Route::get('monitoring/devices', [MonitoringDevicesController::class, 'index']);
 
         // Changing it while signed in. Needs the current password: a session
         // proves somebody sat down at an unlocked laptop, not that they are the
