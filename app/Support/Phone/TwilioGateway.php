@@ -85,6 +85,21 @@ interface TwilioGateway
     public function searchAvailable(PhoneConnection $connection, array $criteria): array;
 
     /**
+     * Daily usage for this connection's subaccount.
+     *
+     * Every subaccount reports its own usage, which is the only way to tell
+     * what one company's phone service cost when EzBizi pays one bill for all
+     * of them. Twilio does not keep these forever, so this is collected
+     * nightly rather than asked for when somebody wants a number.
+     *
+     * Dates are Y-m-d in the account's own timezone, which is Twilio's rule,
+     * not ours.
+     *
+     * @return list<array{category: string, description: ?string, start_date: ?string, usage: string, usage_unit: ?string, count: string, count_unit: ?string, price: string, price_unit: ?string}>
+     */
+    public function usageDaily(PhoneConnection $connection, string $startDate, string $endDate): array;
+
+    /**
      * The countries this account may buy numbers in.
      *
      * Read from Twilio rather than hard-coded: the list changes, and a stale

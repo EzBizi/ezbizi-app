@@ -74,3 +74,14 @@ Schedule::command('ezbizi:expire-task-import-sessions')->hourly()->withoutOverla
 // about a subsystem that stopped, not about an incident in progress. What makes
 // it useful is that a MISSING verdict counts as a failure — see the command.
 Schedule::command('ezbizi:check-backups --quiet-when-healthy')->dailyAt('05:00');
+
+// Per-company Twilio cost (§5). At 04:20 — after midnight in every US zone the
+// platform serves, so "yesterday" is a day Twilio has finished totting up, and
+// clear of the 03:17 backup timer and the 05:00 health check.
+//
+// Daily, and deliberately not more often: the figure only changes once a day.
+// The reason to run it at all is that Twilio PRUNES usage records, so a night
+// missed is a night nobody can ever get back — which is also why the command
+// exits 0 when only some accounts fail. A nightly page over one suspended
+// tenant gets muted, and a muted alarm is worse than none.
+Schedule::command('ezbizi:phone-usage')->dailyAt('04:20')->withoutOverlapping(30);

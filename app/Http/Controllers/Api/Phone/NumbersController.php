@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\PhoneNumber;
 use App\Models\PhoneRingGroup;
+use App\Models\PhoneUsageDaily;
 use App\Support\Phone\ConnectionResolver;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\TwilioGateway;
@@ -161,6 +162,87 @@ class NumbersController extends Controller
             ->all();
 
         return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * GET /api/v1/phone/usage
+     *
+     * What this place's phone service has cost, by day and category.
+     *
+     * Gated on `phone.edit`, not `phone.view`. Not because edit is the natural
+     * home for a read, but because it is the same authority that BUYS a line
+     * and thereby incurs the cost — whoever can spend the money can see what
+     * was spent, and whoever answers the phone need not.
+     *
+     * A dedicated `phone.financials` would be the better gate, and Fleet and
+     * Inventory both have one. It is not added here: a new action changes what
+     * PermissionCatalogue answers for the whole registry, and App Store review
+     * is running a frozen 0.0.0112 binary against live production. This is a
+     * tighter gate than phone.view in the meantime, not a looser one, so
+     * moving to phone.financials later can only narrow access further.
+     */
+    public function usage(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'scope_type' => ['required', Rule::in([
+                PhoneNumber::SCOPE_ORGANIZATION,
+                PhoneNumber::SCOPE_COMPANY,
+                PhoneNumber::SCOPE_FRANCHISE,
+            ])],
+            'scope_id' => ['required', 'uuid'],
+            'from' => ['sometimes', 'date_format:Y-m-d'],
+            'to' => ['sometimes', 'date_format:Y-m-d'],
+        ]);
+
+        $this->assertScopeExists($input['scope_type'], $input['scope_id']);
+        $this->authorize('create', [PhoneNumber::class, $input['scope_type'], $input['scope_id']]);
+
+        $connection = $this->resolver->forScope(
+            $this->tenant->idOrFail(),
+            $input['scope_type'],
+            $input['scope_id'],
+        );
+
+        if ($connection === null) {
+            return response()->json(['data' => [], 'totals' => [], 'message' => self::NO_CONNECTION]);
+        }
+
+        // Thirty days, because that is the window somebody actually asks about
+        // and an unbounded default would read every row a tenant ever had.
+        $to = $input['to'] ?? now()->toDateString();
+        $from = $input['from'] ?? now()->subDays(30)->toDateString();
+
+        $rows = PhoneUsageDaily::query()
+            ->where('connection_id', $connection->id)
+            ->whereBetween('day', [$from, $to])
+            ->orderBy('day')
+            ->orderBy('category')
+            ->get();
+
+        // Summed with bcmath, not floats. These are the figures somebody may
+        // one day invoice from, and 0.1 + 0.2 is not 0.3 in binary.
+        $totals = [];
+        foreach ($rows as $row) {
+            $unit = $row->price_unit ?: 'USD';
+            $totals[$unit] = bcadd($totals[$unit] ?? '0', (string) $row->price, 6);
+        }
+
+        return response()->json([
+            'data' => $rows->map(fn (PhoneUsageDaily $row) => [
+                'day' => $row->day?->toDateString(),
+                'category' => $row->category,
+                'description' => $row->description,
+                'usage' => (string) $row->usage,
+                'usage_unit' => $row->usage_unit,
+                'count' => (int) $row->count,
+                'count_unit' => $row->count_unit,
+                'price' => (string) $row->price,
+                'price_unit' => $row->price_unit,
+            ])->all(),
+            'totals' => $totals,
+            'from' => $from,
+            'to' => $to,
+        ]);
     }
 
     /**

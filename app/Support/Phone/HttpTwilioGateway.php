@@ -324,6 +324,36 @@ final class HttpTwilioGateway implements TwilioGateway
         ];
     }
 
+    public function usageDaily(PhoneConnection $connection, string $startDate, string $endDate): array
+    {
+        $out = [];
+
+        $records = $this->connectionClient($connection)
+            ->usage
+            ->records
+            ->daily
+            ->read(['startDate' => $startDate, 'endDate' => $endDate], 1000);
+
+        foreach ($records as $record) {
+            // Everything stays a string here. These are money and minutes, and
+            // casting to float in the gateway would round before the caller
+            // ever sees the value Twilio actually sent.
+            $out[] = [
+                'category' => (string) $record->category,
+                'description' => $record->description,
+                'start_date' => $record->startDate?->format('Y-m-d'),
+                'usage' => (string) $record->usage,
+                'usage_unit' => $record->usageUnit,
+                'count' => (string) $record->count,
+                'count_unit' => $record->countUnit,
+                'price' => (string) $record->price,
+                'price_unit' => $record->priceUnit,
+            ];
+        }
+
+        return $out;
+    }
+
     public function availableCountries(PhoneConnection $connection): array
     {
         $out = [];

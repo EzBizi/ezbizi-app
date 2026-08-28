@@ -899,6 +899,10 @@ Route::prefix('v1')
         // the renderer evaluates. phone.view: it is a read of our own rows.
         Route::get('phone/call-flow', [PhoneNumbersController::class, 'callFlow']);
 
+        // What this company's phone service cost. phone.edit, because that is
+        // the authority that spends the money in the first place.
+        Route::get('phone/usage', [PhoneNumbersController::class, 'usage']);
+
         Route::get('phone/numbers/available', [PhoneNumbersController::class, 'available']);
         Route::get('phone/numbers/countries', [PhoneNumbersController::class, 'countries']);
 
