@@ -204,7 +204,27 @@ regression instead of implying one.
 path where the working tree differs from the index **repo-wide**, not what the
 command touched — so it will name other sessions' files and read exactly like you
 have just clobbered their staging. A path-limited reset cannot touch anything
-outside its pathspec. Do not try to "fix" what that output appears to show.
+outside its pathspec. Do not try to "fix" what that output appears to show. If you
+want to prove you touched nothing else, capture the staged paths outside your own
+before and after and diff the two lists.
+
+**Clean up after yourself: a right commit does not mean a safe index.** After you
+commit, run the pre-commit checks *again* against the new `HEAD` and look at your
+own paths in the **shared** index:
+
+```bash
+BASE=$(git rev-parse HEAD)
+git diff-index --cached --stat "$BASE"
+git diff-index --cached --diff-filter=D --name-only "$BASE"
+```
+
+A private index protects the commit you build. It cannot protect the shared one,
+and it never touches it — so a snapshot of your files taken while your work was
+half-written can sit there after your commit has moved past it, waiting for the
+next person who types `git commit`. That is exactly how a finished feature ended
+up staged for deletion minutes after it landed: 540 lines removed, the inverse of
+the commit that added them, under a message about something else. This is a hazard
+of the shared index existing at all, not of how you commit.
 
 `git add` has its own hazard: `.git/index` is *one file* for every session, and
 `git add <path>` adds to whatever another session left staged rather than staging
@@ -214,6 +234,18 @@ work-in-progress, so prefer a private index, which never touches it.
 **A check chained onto the command it guards is decoration.** The stat must be a
 separate call with a human decision after it. Piped into the commit, the file
 count scrolls past above output nobody reads until afterwards.
+
+### A clean check is a photograph, not a guarantee
+
+Every failure this section describes is one shape: **a reading whose scope was
+wider than the thing measured.** An exit code read as a suite result. A working
+tree read as `HEAD`. A file list read as content. A moving ref read as a fixed
+fact. One index, read once, reported as the repository ongoing.
+
+So say what you measured and when. "The index was clean at `<sha>` when I looked"
+is true and useful; "the index is clean" is a claim about a shared file that
+another session can invalidate in the time it takes to send the message. It was
+invalidated within minutes, repeatedly, on the day this was written.
 
 ### Reachability, ref safety, and content are three different properties
 
