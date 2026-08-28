@@ -154,6 +154,21 @@ git update-ref refs/heads/main "$COMMIT" "$BASE"     # fails if main moved
 `$BASE` appears four times and must be the same SHA every time. Resolving `HEAD`
 twice is how the drift gets in, and it looks careful while doing it.
 
+**The checks need a pinned base too, not just the commit.** `git diff --cached`
+resolves `HEAD` at the instant it runs, so on a tree many sessions commit to it
+diffs a moving ref and reports the answer as a fact about a fixed thing. Two
+readings minutes apart were both correct and disagreed, because a commit landed
+in the gap. Use the pinned forms:
+
+```bash
+git diff-index --cached --stat "$BASE"
+git diff-index --cached --diff-filter=D --name-only "$BASE"   # staged deletions
+```
+
+The second one is the only thing that reveals a staged deletion. `git status`
+prints the reassuring `??` for a file that exists on disk directly beneath the
+staged `D` for that same path, one line apart.
+
 **If you are an agent, each tool call is a fresh shell and `$BASE` does not
 survive between them.** Write it to a file and read it back; never re-resolve
 `HEAD` in the later call. One revert happened exactly here — `read-tree HEAD` in
