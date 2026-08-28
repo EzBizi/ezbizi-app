@@ -71,6 +71,23 @@ integrations, advanced reporting, and any controlled public/embed surfaces. The 
 plan, review record, and approved 1440px/375px goldens live under `docs/superpowers/` and
 `client/test/goldens/tasks/`.
 
+**Release gates, 2026-08-28.** `git diff --check` clean, `composer audit` no advisories,
+`flutter analyze` no issues, `flutter test` 1023/1023, and the 72-commit Tasks diff plus the
+untracked file list read by hand for credential values and private keys — nothing found. The
+full local PHPUnit run is 2186 tests, and closing it needed two things that had been sitting
+red: `phpoffice/phpspreadsheet` was in `composer.json` and the lockfile but missing from this
+machine's `vendor/`, which errored six XLSX transfer tests, and `RetentionTest` asserted
+`FOREVER` for the two tables that are deliberately cleaned by the hourly workers. The remaining
+local reds are the documented Windows-only rows — stack-trace path separators, and the IMAP
+tests that cannot complete a trusted TLS handshake to `localhost`. The deploy gate on the box is
+the release verdict; a green local run is the weaker signal.
+
+**Owner-accepted exception.** The plan's Task 20 asks for one independent review of the whole
+implementation against the spec. The owner waived it on 2026-08-28: every task from 2 to 19
+already carried its own scoped independent review, each recorded on the `tasks-module` board
+card with the findings closed, and a second pass over the same 72 commits was judged to buy
+nothing. No Critical or Important finding is outstanding.
+
 ## EZ Leads — all three modules live, 2026-08-27
 
 The first expansion work that depends on an outside party's approval rather than on us. Rodrigo's

@@ -86,6 +86,7 @@ green gate. Three are missing libraries; one was fixed.
 | OpenSSL | `openssl_pkey_export(): Cannot get key from parameter 1` | **fixed 2026-08-17** — see below |
 | GD | `GD extension is not installed` — image tests | **fixed 2026-08-19** — `extension=gd` in this machine's `php.ini`. Not a repo file. |
 | dompdf | `Class "Dompdf\Dompdf" not found` — PDF tests | **fixed 2026-08-19** — `composer.phar install` pulled `dompdf/dompdf` from the lockfile; it had been missing from `vendor/`. |
+| phpspreadsheet | `Class "PhpOffice\PhpSpreadsheet\Spreadsheet" not found` — six Tasks XLSX transfer tests | **fixed 2026-08-28** — same shape as the dompdf row: in `composer.json` and the lockfile, absent from this machine's `vendor/`. `composer.phar install` pulled it. |
 | Windows paths | `ErrorAuditTest::test_a_file_scope_closure_does_not_carry_the_deploy_root_into_the_trace` — the trace comes back with `tests\Fixtures\…` backslashes and the assertion wants the forward-slash form | **Windows only** |
 | Local TLS | `ImapReplySenderTest::test_a_credential_containing_a_line_break_is_refused` — the connection to the test server on `localhost` fails on the certificate *before* the credential is validated, so the refusal names the certificate rather than the line break | **Windows only** |
 
