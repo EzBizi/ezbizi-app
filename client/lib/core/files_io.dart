@@ -10,3 +10,7 @@ void clearQuery() {}
 Future<PickedBytes?> pickImage() async => null;
 
 Future<PickedBytes?> pickBytes({String accept = ''}) async => null;
+
+String? previewUrl(List<int> bytes, String mime) => null;
+
+void releasePreviewUrl(String url) {}

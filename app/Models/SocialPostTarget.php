@@ -23,6 +23,13 @@ class SocialPostTarget extends Model implements StatesRetention
     use BelongsToTenant;
     use HasUuids;
 
+    /**
+     * Waiting for its time. Distinct from `queued`, which means the job is on
+     * its way — a screen that showed "waiting to send" for a post due next
+     * Tuesday would be the same lie in a slower form.
+     */
+    public const STATUS_SCHEDULED = 'scheduled';
+
     public const STATUS_QUEUED = 'queued';
     public const STATUS_SENT   = 'sent';
     public const STATUS_FAILED = 'failed';

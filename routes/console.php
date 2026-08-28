@@ -36,6 +36,17 @@ Schedule::command('ezbizi:expire-impersonations')->everyFiveMinutes()->withoutOv
 // header warns about. Five minutes means a stale lock costs one skipped sweep.
 Schedule::command('ezbizi:dispatch-automation-events')->everyMinute()->withoutOverlapping(5);
 
+// Scheduled social posts. The composer writes a wall time and leaves the
+// targets `scheduled`; this is the only thing that turns them into `queued`.
+//
+// Every minute, because a minute is the resolution the composer offers — a
+// slower sweep would make "9:00" mean "some time after 9:00" and the person
+// would have no way to know which. `withoutOverlapping` for the reason above
+// it: two sweeps meeting on the same row would publish twice, and the claim
+// update inside the command is the second line of defence rather than the
+// first.
+Schedule::command('ezbizi:publish-due-social-posts')->everyMinute()->withoutOverlapping(5);
+
 // Watching the shared inboxes, so `email.received` can fire (§5.5).
 //
 // Every minute, and that is NOT the cadence. A mailbox is looked at every five

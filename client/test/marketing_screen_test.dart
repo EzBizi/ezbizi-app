@@ -878,6 +878,127 @@ void main() {
     });
   });
 
+  /// Scheduling. The promise is a wall clock in THIS view's timezone, and the
+  /// screen must not imply anything else — no timezone is sent, and the button
+  /// has to stop saying "Publish now" the moment it would not.
+  group('a post can be sent later', () {
+    testWidgets('the composer offers a time, and says whose clock it is', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(canEdit: true, connections: const [_pinterestBoard]),
+      );
+
+      // Hidden until asked for: most posts go now, and a date field on every
+      // one of them is a question nobody asked.
+      expect(find.text('Send at'), findsNothing);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Send it later'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Send at'), findsOneWidget);
+      expect(find.textContaining('This view’s clock — Everdoors'), findsOneWidget);
+    });
+
+    testWidgets('the button stops saying "now" once a time is set', (
+      tester,
+    ) async {
+      http.Request? sent;
+
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          onPublish: (request) => sent = request,
+        ),
+      );
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'What should go out?'),
+        'Autumn sweeps, booking now.',
+      );
+      await tester.tap(
+        find.widgetWithText(CheckboxListTile, 'Everdoors Boards'),
+      );
+      await tester.pumpAndSettle();
+
+      // Before scheduling it is an immediate send, and says so.
+      expect(find.widgetWithText(FilledButton, 'Publish now'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Send it later'));
+      await tester.pumpAndSettle();
+
+      // CalendarDayField is deliberately four number boxes, not one field a
+      // reader has to invent a format for — so the test types what a person
+      // types, box by box.
+      final when = DateTime.now().add(const Duration(days: 3));
+      await _typeWhen(tester, when, hour: '09', minute: '00');
+
+      // "Publish now" on a post that will sit until Thursday is the same class
+      // of lie as a spinner over a failed send.
+      expect(find.widgetWithText(FilledButton, 'Schedule'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Publish now'), findsNothing);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Schedule'));
+      await tester.pumpAndSettle();
+
+      final body = jsonDecode(sent!.body) as Map<String, dynamic>;
+      expect(body['scheduled_for'], contains('09:00'));
+
+      // No timezone on the wire. The server decides which clock the view is on,
+      // because a client that sent one could send a different one than the
+      // screen was showing.
+      expect(body.containsKey('timezone'), isFalse);
+      expect(body.containsKey('scheduled_timezone'), isFalse);
+    });
+
+    testWidgets('a scheduled post reads as scheduled, not as waiting', (
+      tester,
+    ) async {
+      var reads = 0;
+
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          postsFor: () {
+            reads++;
+            return [
+              {
+                'id': 'post-1',
+                'body': 'Autumn sweeps.',
+                'has_media': true,
+                'scheduled_for': '2099-03-04 09:00',
+                'targets': [
+                  {
+                    'account': 'Everdoors Boards',
+                    'provider_label': 'Pinterest',
+                    'status': 'scheduled',
+                    'failure': null,
+                  },
+                ],
+              },
+            ];
+          },
+        ),
+      );
+
+      expect(find.textContaining('scheduled'), findsWidgets);
+      expect(find.textContaining('waiting to send'), findsNothing);
+      expect(find.textContaining('Goes out 2099-03-04 09:00'), findsOneWidget);
+
+      // And it does NOT start the poll: a post waiting for a clock is not
+      // waiting for the worker, so polling would spend twenty requests to
+      // learn nothing and then wrongly announce the queue had stopped.
+      final after = reads;
+      await _tick(tester, times: 3);
+      expect(reads, after, reason: 'A scheduled post should not be polled.');
+    });
+  });
+
   group('the automation surface it has already declared', () {
     testWidgets('the declared events are listed in the module’s own words', (
       tester,
@@ -1377,6 +1498,28 @@ final _onePixelPng = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmM'
   'IQAAAABJRU5ErkJggg==',
 );
+
+String _two(int n) => n.toString().padLeft(2, '0');
+
+/// Fill the Send-at boxes the way somebody would: month, day, year, then time.
+Future<void> _typeWhen(
+  WidgetTester tester,
+  DateTime day, {
+  required String hour,
+  required String minute,
+}) async {
+  Future<void> box(String name, String value) async {
+    await tester.enterText(find.byKey(Key('calendar-day-$name')), value);
+    await tester.pump();
+  }
+
+  await box('month', _two(day.month));
+  await box('day', _two(day.day));
+  await box('year', day.year.toString());
+  await box('hour', hour);
+  await box('minute', minute);
+  await tester.pumpAndSettle();
+}
 
 http.Response _json(Object body, [int status = 200]) => http.Response(
       jsonEncode(body),

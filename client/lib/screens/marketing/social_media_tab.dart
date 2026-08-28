@@ -2,10 +2,13 @@ import 'dart:typed_data';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../core/api_client.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
+import '../../core/timestamps.dart';
+import '../../widgets/calendar_day_field.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/social_network_mark.dart';
 import '../../widgets/refused.dart';
@@ -127,6 +130,9 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
     });
   }
 
+  /// Only `queued` starts the poll. A `scheduled` target is waiting for a
+  /// clock, not for the worker — polling it would spend twenty requests to
+  /// learn nothing and then announce that the queue had stopped answering.
   bool get _anyQueued =>
       _posts.any((p) => p.targets.any((t) => t.status == 'queued'));
 
@@ -453,10 +459,34 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   bool _sending = false;
   String? _error;
 
+  /// Object URL for the picked video, and the player over it. Both live only
+  /// as long as the attachment does — see `_clearMedia`.
+  String? _mediaUrl;
+  VideoPlayerController? _player;
+
+  /// Wall clock in this view's timezone, `YYYY-MM-DD HH:MM`, empty for "now".
+  final TextEditingController _when = TextEditingController();
+  bool _scheduling = false;
+
   @override
   void dispose() {
     _body.dispose();
+    _when.dispose();
+    _releaseMedia();
     super.dispose();
+  }
+
+  /// Let go of the player and the object URL behind it.
+  ///
+  /// A blob is held until revoked, so picking three videos while deciding
+  /// would otherwise keep all three in memory for the life of the page.
+  void _releaseMedia() {
+    _player?.dispose();
+    _player = null;
+
+    final url = _mediaUrl;
+    if (url != null) Files.releasePreviewUrl(url);
+    _mediaUrl = null;
   }
 
   /// Why Publish cannot be pressed, or null when it can.
@@ -493,11 +523,100 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     return null;
   }
 
+  /// What the button will do, said on the button.
+  ///
+  /// "Publish now" on a post that will sit until Tuesday is the same class of
+  /// lie as a spinner over a failed send — it is read once, believed, and not
+  /// checked again.
+  String get _sendLabel {
+    if (_sending) return 'Sending…';
+
+    return _scheduling && _when.text.trim().isNotEmpty ? 'Schedule' : 'Publish now';
+  }
+
+  Widget _scheduleRow(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _sending
+                ? null
+                : () => setState(() {
+                    _scheduling = !_scheduling;
+                    if (!_scheduling) _when.clear();
+                  }),
+            icon: Icon(
+              _scheduling ? Icons.schedule : Icons.schedule_outlined,
+              size: 18,
+            ),
+            label: Text(_scheduling ? 'Send it now instead' : 'Send it later'),
+          ),
+        ),
+        if (_scheduling) ...[
+          const SizedBox(height: 8),
+          // CalendarDayField and not showDatePicker: those are modal dialogs,
+          // and this app has none. Its calendar opens under the boxes the way a
+          // menu does, and it already speaks the `YYYY-MM-DD HH:MM` the server
+          // wants — so the wall time the person reads is the wall time sent.
+          CalendarDayField(
+            controller: _when,
+            formats: widget.session.me?.display ?? DisplayFormats.fallback,
+            label: 'Send at',
+            withTime: true,
+            enabled: !_sending,
+            firstDate: DateTime.now(),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 6),
+          DashboardNote(
+            'This view’s clock — ${widget.viewName}. No timezone is sent; '
+            'the time you pick is the time it goes out there.',
+          ),
+        ],
+      ],
+    );
+  }
+
   Future<void> _attach() async {
     final picked = await widget.pickMedia();
     if (picked == null || !mounted) return;
 
+    _releaseMedia();
+
     setState(() => _media = picked);
+
+    if (_looksLikeImage(picked.name)) return;
+
+    // Video: hand the bytes to the browser as a blob and play them from there.
+    // Nothing is uploaded — the file is being looked at precisely because
+    // nobody is sure yet that it is the right one.
+    final url = Files.previewUrl(picked.bytes, _mimeFor(picked.name));
+    if (url == null || !mounted) return;
+
+    final player = VideoPlayerController.networkUrl(Uri.parse(url));
+
+    try {
+      await player.initialize();
+    } catch (_) {
+      // A container the browser will not decode. The placeholder below says
+      // what the file is; claiming a broken player is worse than saying less.
+      player.dispose();
+      if (mounted) Files.releasePreviewUrl(url);
+      return;
+    }
+
+    if (!mounted) {
+      player.dispose();
+      Files.releasePreviewUrl(url);
+      return;
+    }
+
+    setState(() {
+      _mediaUrl = url;
+      _player = player;
+    });
   }
 
   Future<void> _publish() async {
@@ -506,8 +625,11 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       _error = null;
     });
 
+    final when = _scheduling ? _when.text.trim() : '';
+
     final fields = <String, String>{
       'body': _body.text.trim(),
+      if (when.isNotEmpty) 'scheduled_for': when,
       // Indexed rather than repeated: a multipart body carries flat name/value
       // pairs, so `connections[]` three times would arrive as one value.
       for (final (index, id) in _picked.indexed) 'connections[$index]': id,
@@ -519,6 +641,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
         ? await widget.api.post('/social/posts', {
             'body': fields['body'],
             'connections': _picked.toList(),
+            if (when.isNotEmpty) 'scheduled_for': when,
           })
         : await widget.api.postFile(
             '/social/posts',
@@ -544,8 +667,11 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     setState(() {
       _sending = false;
       _body.clear();
+      _releaseMedia();
       _media = null;
       _picked.clear();
+      _when.clear();
+      _scheduling = false;
     });
 
     await widget.onSent();
@@ -615,13 +741,15 @@ class _ComposeColumnState extends State<_ComposeColumn> {
               ),
             const SizedBox(height: 8),
           ],
+          _scheduleRow(context),
+          const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerLeft,
             child: Refused(
               reason: refusal,
               child: FilledButton(
                 onPressed: refusal == null ? _publish : null,
-                child: Text(_sending ? 'Sending…' : 'Publish now'),
+                child: Text(_sendLabel),
               ),
             ),
           ),
@@ -693,11 +821,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
                       'That file could not be read as an image.',
                     ),
                   )
-                : _mediaFallback(
-                    context,
-                    Icons.movie_outlined,
-                    '${media.name} · ${_sizeOf(media.bytes.length)}',
-                  ),
+                : _videoPreview(context, media),
           ),
         ),
         const SizedBox(height: 8),
@@ -712,13 +836,68 @@ class _ComposeColumnState extends State<_ComposeColumn> {
               ),
             ),
             TextButton(
-              onPressed: _sending ? null : () => setState(() => _media = null),
+              onPressed: _sending
+                  ? null
+                  : () => setState(() {
+                      _releaseMedia();
+                      _media = null;
+                    }),
               child: const Text('Remove'),
             ),
           ],
         ),
       ],
     );
+  }
+
+  /// The video, playing, or an honest label when it cannot be.
+  ///
+  /// Off the web there is no object URL and no player, and a container the
+  /// browser will not decode fails the same way. Both land on the label, which
+  /// still tells somebody which file they attached and how big it is — less
+  /// than Jose asked for, and not a pretence that it is something else.
+  Widget _videoPreview(BuildContext context, PickedBytes media) {
+    final player = _player;
+
+    if (player == null || !player.value.isInitialized) {
+      return _mediaFallback(
+        context,
+        Icons.movie_outlined,
+        '${media.name} · ${_sizeOf(media.bytes.length)}',
+      );
+    }
+
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Center(
+          child: AspectRatio(
+            aspectRatio: player.value.aspectRatio,
+            child: VideoPlayer(player),
+          ),
+        ),
+        // Play and pause, and nothing else. Reviewing a clip before it goes out
+        // needs to start and stop it; a scrubber, volume and fullscreen are a
+        // media player, which is not what this is.
+        IconButton.filled(
+          onPressed: () => setState(() {
+            player.value.isPlaying ? player.pause() : player.play();
+          }),
+          icon: Icon(
+            player.value.isPlaying ? Icons.pause : Icons.play_arrow,
+          ),
+          tooltip: player.value.isPlaying ? 'Pause' : 'Play',
+        ),
+      ],
+    );
+  }
+
+  static String _mimeFor(String name) {
+    return switch (name.toLowerCase().split('.').last) {
+      'mov' => 'video/quicktime',
+      'webm' => 'video/webm',
+      _ => 'video/mp4',
+    };
   }
 
   Widget _mediaFallback(BuildContext context, IconData icon, String label) {
@@ -803,6 +982,13 @@ class _RecentPosts extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium,
                 ),
+                if (post.scheduledFor != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Goes out ${post.scheduledFor}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
                 const SizedBox(height: 4),
                 for (final target in post.targets)
                   Padding(
@@ -827,6 +1013,9 @@ class _RecentPosts extends StatelessWidget {
   static String _statusWord(String status) => switch (status) {
     'sent' => 'sent',
     'failed' => 'did not send',
+    // Distinct from "waiting to send", which means the queue has it now. A
+    // post due next Tuesday is not waiting on anything that could go wrong.
+    'scheduled' => 'scheduled',
     _ => 'waiting to send',
   };
 }
@@ -1447,12 +1636,18 @@ class _SentPost {
     required this.hasMedia,
     required this.targets,
     this.author,
+    this.scheduledFor,
   });
 
   final String id;
   final String body;
   final bool hasMedia;
   final String? author;
+
+  /// Wall clock, in the view's timezone, exactly as it was promised. Null for
+  /// a post that went out immediately.
+  final String? scheduledFor;
+
   final List<_SentTarget> targets;
 
   factory _SentPost.fromJson(Map<String, dynamic> json) {
@@ -1461,6 +1656,7 @@ class _SentPost {
       body: json['body'] as String? ?? '',
       hasMedia: json['has_media'] as bool? ?? false,
       author: json['author'] as String?,
+      scheduledFor: json['scheduled_for'] as String?,
       targets: ((json['targets'] as List<dynamic>?) ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(_SentTarget.fromJson)
