@@ -160,6 +160,9 @@ final class TaskColumnValueStore
 
     private function number(mixed $value): string
     {
+        if ($value instanceof ImportedTaskDecimal) {
+            return $value->value;
+        }
         if ((! is_int($value) && ! is_float($value)) || ! is_finite((float) $value)) {
             return $this->invalid('value', 'A Number value must be a finite JSON number.');
         }
@@ -244,6 +247,10 @@ final class TaskColumnValueStore
 
     private function files(Task $task, mixed $value): array
     {
+        $imported = $value instanceof ImportedTaskFiles;
+        if ($imported) {
+            $value = $value->ids;
+        }
         $ids = $this->idList($value, 'File');
         if ($ids === []) {
             return [];
@@ -262,19 +269,21 @@ final class TaskColumnValueStore
 
         $updateIds = $attachments->where('attachable_type', 'task_updates')
             ->pluck('attachable_id')->unique()->values()->all();
-        $validTaskIds = Task::query()->where('board_id', $task->board_id)
+        $validUpdateIds = TaskUpdate::query()
+            ->when($imported,
+                fn ($query) => $query->whereHas('task', fn ($taskQuery) => $taskQuery->where('board_id', $task->board_id)),
+                fn ($query) => $query->where('task_id', $task->id))
+            ->whereIn('id', $updateIds)->pluck('id')->all();
+        $validTaskIds = $imported ? Task::query()->where('board_id', $task->board_id)
             ->whereIn('id', $attachments->where('attachable_type', 'tasks')->pluck('attachable_id')->all())
-            ->pluck('id')->all();
-        $validUpdateIds = TaskUpdate::query()->whereIn('id', $updateIds)
-            ->whereHas('task', fn ($query) => $query->where('board_id', $task->board_id))
-            ->pluck('id')->all();
+            ->pluck('id')->all() : [];
         foreach ($attachments as $attachment) {
             $taskBound = $attachment->attachable_type === 'tasks'
-                && in_array($attachment->attachable_id, $validTaskIds, true);
+                && ($attachment->attachable_id === $task->id || ($imported && in_array($attachment->attachable_id, $validTaskIds, true)));
             $updateBound = $attachment->attachable_type === 'task_updates'
                 && in_array($attachment->attachable_id, $validUpdateIds, true);
             if (! $taskBound && ! $updateBound) {
-                return $this->invalid('value', 'One or more File values are not committed to this board.');
+                return $this->invalid('value', 'One or more File values are not committed to this task.');
             }
         }
         sort($ids);

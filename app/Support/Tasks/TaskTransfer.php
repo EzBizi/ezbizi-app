@@ -27,6 +27,7 @@ use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
 use PhpOffice\PhpSpreadsheet\Shared\Date as SpreadsheetDate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -52,6 +53,9 @@ final class TaskTransfer
         private readonly TaskWriter $tasks,
         private readonly TaskColumnValueStore $values,
         private readonly AuditLogger $audit,
+        private readonly TaskViewCodec $viewCodec,
+        private readonly TaskListQuery $listQuery,
+        private readonly TaskRecordLinkRegistry $recordLinks,
     ) {}
 
     public function preview(
@@ -79,20 +83,26 @@ final class TaskTransfer
             'csv',
             $disk,
         );
-        TaskImportSession::create([
-            'board_id' => $board->id,
-            'active_view_id' => $activeViewId,
-            'actor_user_id' => $actor->id,
-            'token_hash' => hash('sha256', $token),
-            'nonce' => (string) Str::uuid7(),
-            'disk' => $disk,
-            'path' => $path,
-            'bytes' => strlen($bytes),
-            'sha256' => hash('sha256', $bytes),
-            'normalized_mapping' => [...$normalizedMapping, '_format' => $format],
-            'structure_version' => (int) $board->fresh()->structure_version,
-            'expires_at' => now()->addMinutes(30),
-        ]);
+        try {
+            TaskImportSession::create([
+                'board_id' => $board->id,
+                'active_view_id' => $activeViewId,
+                'actor_user_id' => $actor->id,
+                'token_hash' => hash('sha256', $token),
+                'nonce' => (string) Str::uuid7(),
+                'disk' => $disk,
+                'path' => $path,
+                'bytes' => strlen($bytes),
+                'sha256' => hash('sha256', $bytes),
+                'normalized_mapping' => [...$normalizedMapping, '_format' => $format],
+                'structure_version' => (int) $board->fresh()->structure_version,
+                'expires_at' => now()->addMinutes(30),
+            ]);
+        } catch (\Throwable $exception) {
+            $this->files->delete($path, $disk);
+
+            throw $exception;
+        }
 
         return [
             'session_token' => $token,
@@ -107,18 +117,19 @@ final class TaskTransfer
         ];
     }
 
-    public function commit(User $actor, TaskBoard $board, ViewScope $scope, string $token): array
+    public function commit(User $actor, TaskBoard $board, ViewScope $scope, string $activeViewId, string $token): array
     {
         $path = null;
         $disk = null;
-        $result = DB::transaction(function () use ($actor, $board, $scope, $token, &$path, &$disk): array {
+        $result = DB::transaction(function () use ($actor, $board, $scope, $activeViewId, $token, &$path, &$disk): array {
             $session = TaskImportSession::query()->where('token_hash', hash('sha256', $token))
                 ->lockForUpdate()->first();
             if ($session === null || $session->board_id !== $board->id || $session->actor_user_id !== $actor->id
                 || $session->consumed_at !== null || $session->expires_at->isPast()) {
                 throw ValidationException::withMessages(['session_token' => 'This import preview is unavailable, expired, or already used.']);
             }
-            $this->authorizeImport($actor, $board, $scope, $session->active_view_id);
+            abort_unless(hash_equals($session->active_view_id, $activeViewId), 404);
+            $this->authorizeImport($actor, $board, $scope, $activeViewId);
             $lockedBoard = TaskBoard::query()->whereKey($board->id)->lockForUpdate()->firstOrFail();
             if ((int) $lockedBoard->structure_version !== (int) $session->structure_version) {
                 abort(409, 'The board structure changed. Preview this import again.');
@@ -176,19 +187,22 @@ final class TaskTransfer
         return $result;
     }
 
-    public function export(User $actor, TaskBoard $board, ViewScope $scope, string $format, bool $includeArchived): StreamedResponse
+    public function export(User $actor, TaskBoard $board, ViewScope $scope, string $activeViewId, string $format, bool $includeArchived): StreamedResponse
     {
         if (! in_array($format, ['csv', 'xlsx', 'json'], true)) {
             abort(404);
         }
-        if (! $actor->hasPermission('tasks.export')) {
-            Refusal::permission('export tasks')->authorize();
+        $view = $this->authorizeExport($actor, $board, $scope, $activeViewId, $includeArchived || $format === 'json');
+        $configuration = $this->viewCodec->decode($board, $view->configuration);
+        $taskIds = null;
+        if ($format !== 'json') {
+            $viewRows = $this->listQuery->boardRows($actor, $scope, $board, $configuration, 1, self::MAX_ROWS);
+            if ($viewRows['total'] > self::MAX_ROWS) {
+                throw ValidationException::withMessages(['active_view_id' => 'This view contains more than 5,000 parent tasks and cannot be exported.']);
+            }
+            $taskIds = $this->flattenViewTaskIds($viewRows['data']);
         }
-        $this->access->viewDecision($actor, $board, $scope)->authorize();
-        if ($includeArchived) {
-            $this->access->manageDecision($actor, $board, $scope)->authorize();
-        }
-        $snapshot = $this->exportSnapshot($board, $includeArchived);
+        $snapshot = $this->exportSnapshot($actor, $board, $scope, $activeViewId, $includeArchived, $taskIds, $configuration);
         $organization = $actor->organization;
         $filename = Str::slug($board->name ?: 'tasks').($format === 'json' ? '-archive-manifest.json' : ".{$format}");
         $mime = match ($format) {
@@ -228,6 +242,7 @@ final class TaskTransfer
                     'format' => 'ezbizi.tasks.archive-manifest.v1',
                     'includes_attachment_bytes' => false,
                     'attachment_note' => 'Attachment bytes are not included. Authorized file entries contain identifier, name, size, and SHA-256 only.',
+                    'active_view_id' => $snapshot['active_view_id'],
                     'board' => $snapshot['board'],
                     'tasks' => $snapshot['manifest_rows'],
                 ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
@@ -237,23 +252,49 @@ final class TaskTransfer
             'Cache-Control' => 'private, no-store',
             'Pragma' => 'no-cache',
             'X-Content-Type-Options' => 'nosniff',
+            'X-EzBizi-Task-View-Id' => $view->id,
         ]);
     }
 
-    private function exportSnapshot(TaskBoard $board, bool $includeArchived): array
+    private function exportSnapshot(User $actor, TaskBoard $board, ViewScope $scope, string $activeViewId, bool $includeArchived, ?array $taskIds, array $configuration): array
     {
         $columns = $board->columnDefinitions()->with('options')->orderBy('position')->get();
         $tasks = Task::query()->where('board_id', $board->id)
             ->when(! $includeArchived, fn ($query) => $query->active())
+            ->when($taskIds !== null, fn ($query) => $query->whereIn('id', $taskIds))
             ->with(['group', 'parent', 'owner', 'statusOption', 'priorityOption', 'collaborators.user',
-                'columnValues', 'columnPeople.user', 'columnLabels.option', 'columnFiles.attachment'])
-            ->orderBy('parent_task_id')->orderBy('position')->get();
+                'columnValues', 'columnPeople.user', 'columnLabels.option', 'columnFiles.attachment',
+                'updates.versions', 'updates.attachments.uploadedBy', 'recordLinks'])
+            ->get();
+        if ($taskIds !== null) {
+            $positions = array_flip($taskIds);
+            $tasks = $tasks->sortBy(fn (Task $task) => $positions[$task->id] ?? PHP_INT_MAX)->values();
+        }
         $headings = array_fill_keys([
             'Source Row', 'Parent Source Row', 'Task', 'Description', 'Owner Email', 'Collaborator Emails',
             'Status', 'Status Category', 'Priority', 'Group', 'Start Date', 'Due Date', 'Archived',
         ], '');
         foreach ($columns as $column) {
             $headings["Custom [{$column->id}] {$column->name}"] = '';
+        }
+        if ($taskIds !== null) {
+            $visible = array_fill_keys(array_diff($configuration['column_order'], $configuration['hidden_columns']), true);
+            $coreHeadings = [
+                'owner' => ['Owner Email', 'Collaborator Emails'], 'status' => ['Status', 'Status Category'],
+                'priority' => ['Priority'], 'start_on' => ['Start Date'], 'due_on' => ['Due Date'],
+            ];
+            foreach ($coreHeadings as $reference => $names) {
+                if (! isset($visible[$reference])) {
+                    foreach ($names as $name) {
+                        unset($headings[$name]);
+                    }
+                }
+            }
+            foreach ($columns as $column) {
+                if (! isset($visible['custom:'.$column->id])) {
+                    unset($headings["Custom [{$column->id}] {$column->name}"]);
+                }
+            }
         }
         $rows = [];
         $manifest = [];
@@ -278,21 +319,15 @@ final class TaskTransfer
                 $value = $this->values->value($task, $column);
                 if ($column->type === ColumnType::File) {
                     $attachments = $task->columnFiles->where('column_definition_id', $column->id)
-                        ->pluck('attachment')->filter()->map(fn ($attachment) => [
-                            'id' => $attachment->id,
-                            'name' => $attachment->original_name,
-                            'size' => (int) $attachment->size_bytes,
-                            'sha256' => $attachment->checksum,
-                        ])->values()->all();
+                        ->pluck('attachment')->filter()->map(fn ($attachment) => $this->archiveFile($attachment))->values()->all();
                     $row["Custom [{$column->id}] {$column->name}"] = collect($attachments)->pluck('id')->implode(';');
                     $customManifest[$column->id] = $attachments;
                 } else {
                     $customManifest[$column->id] = $value;
-                    $row["Custom [{$column->id}] {$column->name}"] = is_array($value)
-                        ? json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) : ($value ?? '');
+                    $row["Custom [{$column->id}] {$column->name}"] = $this->canonicalCustomCell($task, $column, $value);
                 }
             }
-            $rows[] = $row;
+            $rows[] = array_intersect_key($row, $headings);
             $manifest[] = [
                 'source_row' => $task->number, 'parent_source_row' => $task->parent?->number,
                 'title' => $task->title, 'description' => $task->description_plain,
@@ -301,13 +336,62 @@ final class TaskTransfer
                 'priority' => $task->priorityOption?->name, 'group' => $task->group?->name ?? $task->parent?->group?->name,
                 'start_on' => $task->start_on?->format('Y-m-d'), 'due_on' => $task->due_on?->format('Y-m-d'),
                 'archived' => $task->archived_at !== null, 'custom_values' => $customManifest,
+                'updates' => $task->updates->map(fn (TaskUpdate $update) => [
+                    'id' => $update->id,
+                    'version' => (int) $update->version,
+                    'body_plain' => $update->body_plain,
+                    'author_user_id' => $update->author_user_id,
+                    'archived_at' => $update->archived_at?->toIso8601String(),
+                    'revisions' => $update->versions->sortBy('version')->map(fn ($revision) => [
+                        'version' => (int) $revision->version,
+                        'body_plain' => $revision->body_plain,
+                        'edited_by' => $revision->edited_by,
+                        'created_at' => $revision->created_at?->toIso8601String(),
+                    ])->values()->all(),
+                    'files' => $update->attachments->map(fn (Attachment $attachment) => $this->archiveFile($attachment))->values()->all(),
+                ])->values()->all(),
+                'record_links' => $task->recordLinks->map(function ($link) use ($actor, $board, $scope): ?array {
+                    try {
+                        $definition = $this->recordLinks->get($link->record_type);
+                        $record = $definition->resolve($actor, $board, $scope, $link->record_id);
+
+                        return $record === null ? null : ['link_id' => $link->id, ...$definition->present($record)];
+                    } catch (\InvalidArgumentException) {
+                        return null;
+                    }
+                })->filter()->values()->all(),
             ];
         }
 
         return [
             'headings' => $headings, 'rows' => $rows, 'manifest_rows' => $manifest,
             'board' => ['id' => $board->id, 'name' => $board->name, 'structure_version' => (int) $board->structure_version],
+            'active_view_id' => $activeViewId,
         ];
+    }
+
+    private function archiveFile(Attachment $attachment): array
+    {
+        return [
+            'id' => $attachment->id,
+            'name' => $attachment->original_name,
+            'size' => (int) $attachment->size_bytes,
+            'sha256' => $attachment->checksum,
+        ];
+    }
+
+    /** @return list<string> */
+    private function flattenViewTaskIds(array $rows): array
+    {
+        $ids = [];
+        foreach ($rows as $row) {
+            $ids[] = $row['id'];
+            foreach ($row['subtasks'] ?? [] as $subtask) {
+                $ids[] = $subtask['id'];
+            }
+        }
+
+        return $ids;
     }
 
     private function csvCell(string $value): string
@@ -315,7 +399,26 @@ final class TaskTransfer
         return preg_match('/^[=+\-@\t\r]/', $value) ? "'".$value : $value;
     }
 
-    private function authorizeImport(User $actor, TaskBoard $board, ViewScope $scope, string $activeViewId): void
+    private function canonicalCustomCell(Task $task, TaskColumnDefinition $column, mixed $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        return match ($column->type) {
+            ColumnType::Text, ColumnType::Number, ColumnType::Date => (string) $value,
+            ColumnType::Checkbox => $value ? 'true' : 'false',
+            ColumnType::People => $task->columnPeople->where('column_definition_id', $column->id)
+                ->pluck('user.email')->filter()->map(fn (string $email) => strtolower($email))->sort()->implode(';'),
+            ColumnType::Label => $task->columnLabels->where('column_definition_id', $column->id)
+                ->pluck('option.name')->filter()->sort()->implode(';'),
+            ColumnType::Link => $value['url'].(($value['label'] ?? null) === null ? '' : '|'.$value['label']),
+            ColumnType::File => $task->columnFiles->where('column_definition_id', $column->id)
+                ->pluck('attachment_id')->sort()->implode(';'),
+        };
+    }
+
+    public function authorizeImport(User $actor, TaskBoard $board, ViewScope $scope, string $activeViewId): void
     {
         $this->access->manageDecision($actor, $board, $scope)->authorize();
         if (! $actor->hasPermission('tasks.create')) {
@@ -325,6 +428,26 @@ final class TaskTransfer
             ->where(fn ($query) => $query->where('visibility', 'shared')->orWhere('owner_user_id', $actor->id))
             ->exists();
         abort_unless($visible, 404);
+    }
+
+    public function authorizeExport(
+        User $actor,
+        TaskBoard $board,
+        ViewScope $scope,
+        string $activeViewId,
+        bool $includeArchived,
+    ): TaskView {
+        if (! $actor->hasPermission('tasks.export')) {
+            Refusal::permission('export tasks')->authorize();
+        }
+        $this->access->viewDecision($actor, $board, $scope)->authorize();
+        if ($includeArchived) {
+            $this->access->manageDecision($actor, $board, $scope)->authorize();
+        }
+
+        return TaskView::query()->where('board_id', $board->id)->whereKey($activeViewId)
+            ->where(fn ($query) => $query->where('visibility', 'shared')->orWhere('owner_user_id', $actor->id))
+            ->firstOrFail();
     }
 
     private function normalizeMapping(array $mapping): array
@@ -416,7 +539,6 @@ final class TaskTransfer
                 throw ValidationException::withMessages(['file' => 'The XLSX ZIP is invalid or contains more than 256 entries.']);
             }
             $expanded = 0;
-            $sheets = 0;
             for ($index = 0; $index < $zip->numFiles; $index++) {
                 $stat = $zip->statIndex($index);
                 $name = str_replace('\\', '/', (string) ($stat['name'] ?? ''));
@@ -442,41 +564,53 @@ final class TaskTransfer
                     $zip->close();
                     throw ValidationException::withMessages(['file' => 'Workbook shared strings exceed the 8 MiB safety limit.']);
                 }
-                if (preg_match('#^xl/worksheets/sheet\d+\.xml$#i', $name)) {
-                    $sheets++;
-                    if ($sheets > 10) {
-                        $zip->close();
-                        throw ValidationException::withMessages(['file' => 'Workbooks are limited to 10 sheets.']);
-                    }
-                    $xml = $zip->getFromIndex($index);
-                    if (! is_string($xml) || preg_match('/<f(?:\s|>)/i', $xml)) {
-                        $zip->close();
-                        throw ValidationException::withMessages(['file' => 'Workbook formulas are not allowed and are never evaluated.']);
-                    }
-                    if (preg_match('/<dimension\s+ref="(?:[^":]+:)?([A-Z]+)(\d+)"/i', $xml, $dimension)) {
-                        $columns = Coordinate::columnIndexFromString(strtoupper($dimension[1]));
-                        $rows = (int) $dimension[2];
-                        if ($columns > self::MAX_COLUMNS || $rows - 1 > self::MAX_ROWS || ($columns * $rows) > self::MAX_CELLS) {
-                            $zip->close();
-                            throw ValidationException::withMessages(['file' => 'Workbook dimensions exceed 5,000 rows, 100 columns, or 500,000 cells.']);
-                        }
-                    }
-                }
-                if ((hrtime(true) - $started) > 10_000_000_000) {
-                    $zip->close();
-                    throw ValidationException::withMessages(['file' => 'Workbook inspection exceeded the 10-second safety limit.']);
-                }
+                $this->assertXlsxDeadline($started);
             }
-            $zip->close();
-            if ($sheets < 1) {
+
+            $sheetPaths = $this->xlsxWorksheetPaths($zip);
+            if ($sheetPaths === [] || count($sheetPaths) > 10) {
                 throw ValidationException::withMessages(['file' => 'The workbook contains no readable worksheet.']);
             }
+            $cellCount = 0;
+            foreach ($sheetPaths as $sheetPath) {
+                $xml = $zip->getFromName($sheetPath);
+                if (! is_string($xml)) {
+                    throw ValidationException::withMessages(['file' => 'The workbook references a missing worksheet.']);
+                }
+                $this->inspectWorksheetXml($xml, $cellCount, $started);
+            }
+            $this->inspectSharedStrings($zip, $started);
+            $zip->close();
+
             $reader = IOFactory::createReader('Xlsx');
             $reader->setReadDataOnly(true);
             $reader->setReadEmptyCells(false);
+            $reader->setReadFilter(new class implements IReadFilter
+            {
+                public function readCell(string $columnAddress, int $row, string $worksheetName = ''): bool
+                {
+                    return $row <= 5001 && Coordinate::columnIndexFromString($columnAddress) <= 100;
+                }
+            });
             $spreadsheet = $reader->load($path);
+            $this->assertXlsxDeadline($started);
             if ($spreadsheet->getSheetCount() > 10) {
                 throw ValidationException::withMessages(['file' => 'Workbooks are limited to 10 sheets.']);
+            }
+            $loadedCells = 0;
+            foreach ($spreadsheet->getAllSheets() as $loadedSheet) {
+                foreach ($loadedSheet->getCoordinates() as $coordinate) {
+                    [$column, $row] = Coordinate::coordinateFromString($coordinate);
+                    $loadedCells++;
+                    if ($row > self::MAX_ROWS + 1 || Coordinate::columnIndexFromString($column) > self::MAX_COLUMNS || $loadedCells > self::MAX_CELLS) {
+                        throw ValidationException::withMessages(['file' => 'Workbook contents exceed 5,000 rows, 100 columns, or 500,000 cells.']);
+                    }
+                    $loadedCell = $loadedSheet->getCell($coordinate);
+                    if ($loadedCell->getDataType() === DataType::TYPE_FORMULA || strlen((string) ($loadedCell->getValue() ?? '')) > self::MAX_CELL_BYTES) {
+                        throw ValidationException::withMessages(['file' => 'Workbook formulas are not allowed and cells are limited to 65,535 bytes.']);
+                    }
+                }
+                $this->assertXlsxDeadline($started);
             }
             $sheet = $spreadsheet->getSheet(0);
             $maxRow = $sheet->getHighestDataRow();
@@ -512,6 +646,181 @@ final class TaskTransfer
                 ->map(fn ($row) => array_combine($headings, $row))->values()->all();
         } finally {
             @unlink($path);
+        }
+    }
+
+    /** @return list<string> */
+    private function xlsxWorksheetPaths(ZipArchive $zip): array
+    {
+        foreach (['xl/_rels/workbook.xml.rels', '[Content_Types].xml'] as $required) {
+            if ($zip->locateName($required, ZipArchive::FL_NOCASE) === false) {
+                throw ValidationException::withMessages(['file' => 'The workbook package is missing required relationship metadata.']);
+            }
+        }
+        $types = $this->xmlDocument((string) $zip->getFromName('[Content_Types].xml'));
+        $allowed = [];
+        foreach ((new \DOMXPath($types))->query('//*[local-name()="Override"]') ?: [] as $node) {
+            $part = ltrim(str_replace('\\', '/', $node->getAttribute('PartName')), '/');
+            $contentType = strtolower($node->getAttribute('ContentType'));
+            if (str_contains($contentType, 'macroenabled') || str_contains($contentType, 'external')
+                || str_contains($contentType, 'connection') || str_contains($contentType, 'oleobject')) {
+                throw ValidationException::withMessages(['file' => 'The workbook contains unsupported active or external content.']);
+            }
+            if (str_ends_with($contentType, 'worksheet+xml')) {
+                $allowed[$part] = true;
+            }
+        }
+
+        for ($index = 0; $index < $zip->numFiles; $index++) {
+            $name = (string) $zip->getNameIndex($index);
+            if (! str_ends_with(strtolower($name), '.rels')) {
+                continue;
+            }
+            $relations = $this->xmlDocument((string) $zip->getFromIndex($index));
+            foreach ((new \DOMXPath($relations))->query('//*[local-name()="Relationship"]') ?: [] as $relation) {
+                if (strcasecmp($relation->getAttribute('TargetMode'), 'External') === 0) {
+                    throw ValidationException::withMessages(['file' => 'External workbook relationships are not allowed.']);
+                }
+            }
+        }
+
+        $relationships = $this->xmlDocument((string) $zip->getFromName('xl/_rels/workbook.xml.rels'));
+        $paths = [];
+        foreach ((new \DOMXPath($relationships))->query('//*[local-name()="Relationship"]') ?: [] as $relation) {
+            $type = strtolower($relation->getAttribute('Type'));
+            if (! str_ends_with($type, '/worksheet')) {
+                continue;
+            }
+            $path = $this->normalizeXlsxTarget('xl', $relation->getAttribute('Target'));
+            if (! isset($allowed[$path]) || $zip->locateName($path) === false) {
+                throw ValidationException::withMessages(['file' => 'The workbook references an invalid worksheet target.']);
+            }
+            $paths[] = $path;
+        }
+
+        return array_values(array_unique($paths));
+    }
+
+    private function normalizeXlsxTarget(string $base, string $target): string
+    {
+        $target = str_replace('\\', '/', trim($target));
+        if ($target === '' || str_starts_with($target, '/') || preg_match('#^[a-z][a-z0-9+.-]*:#i', $target)) {
+            throw ValidationException::withMessages(['file' => 'The workbook contains an unsafe relationship target.']);
+        }
+        if (in_array('..', explode('/', $target), true)) {
+            throw ValidationException::withMessages(['file' => 'The workbook contains an unsafe relationship target.']);
+        }
+        $parts = explode('/', $base.'/'.$target);
+        $normalized = [];
+        foreach ($parts as $part) {
+            if ($part === '' || $part === '.') {
+                continue;
+            }
+            if ($part === '..') {
+                if ($normalized === []) {
+                    throw ValidationException::withMessages(['file' => 'The workbook contains an unsafe relationship target.']);
+                }
+                array_pop($normalized);
+            } else {
+                $normalized[] = $part;
+            }
+        }
+
+        return implode('/', $normalized);
+    }
+
+    private function xmlDocument(string $xml): \DOMDocument
+    {
+        if ($xml === '' || stripos($xml, '<!DOCTYPE') !== false) {
+            throw ValidationException::withMessages(['file' => 'The workbook contains invalid XML metadata.']);
+        }
+        $document = new \DOMDocument;
+        $previous = libxml_use_internal_errors(true);
+        $loaded = $document->loadXML($xml, LIBXML_NONET | LIBXML_NOBLANKS);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        if (! $loaded) {
+            throw ValidationException::withMessages(['file' => 'The workbook contains invalid XML metadata.']);
+        }
+
+        return $document;
+    }
+
+    private function inspectWorksheetXml(string $xml, int &$cellCount, int $started): void
+    {
+        if (stripos($xml, '<!DOCTYPE') !== false) {
+            throw ValidationException::withMessages(['file' => 'The workbook contains invalid worksheet XML.']);
+        }
+        $reader = new \XMLReader;
+        if (! $reader->XML($xml, null, LIBXML_NONET | LIBXML_COMPACT)) {
+            throw ValidationException::withMessages(['file' => 'The workbook contains invalid worksheet XML.']);
+        }
+        while ($reader->read()) {
+            if ($reader->nodeType !== \XMLReader::ELEMENT) {
+                continue;
+            }
+            if ($reader->localName === 'f') {
+                $reader->close();
+                throw ValidationException::withMessages(['file' => 'Workbook formulas are not allowed and are never evaluated.']);
+            }
+            if ($reader->localName === 'c') {
+                $cellCount++;
+                $coordinate = strtoupper($reader->getAttribute('r') ?? '');
+                if (! preg_match('/^([A-Z]+)([1-9][0-9]*)$/', $coordinate, $match)
+                    || Coordinate::columnIndexFromString($match[1]) > self::MAX_COLUMNS
+                    || (int) $match[2] > self::MAX_ROWS + 1 || $cellCount > self::MAX_CELLS) {
+                    $reader->close();
+                    throw ValidationException::withMessages(['file' => 'Workbook contents exceed 5,000 rows, 100 columns, or 500,000 cells.']);
+                }
+            }
+            if (($reader->localName === 'v' || $reader->localName === 't') && strlen($reader->readString()) > self::MAX_CELL_BYTES) {
+                $reader->close();
+                throw ValidationException::withMessages(['file' => 'Workbook cells are limited to 65,535 bytes.']);
+            }
+            $this->assertXlsxDeadline($started);
+        }
+        $reader->close();
+    }
+
+    private function inspectSharedStrings(ZipArchive $zip, int $started): void
+    {
+        $xml = $zip->getFromName('xl/sharedStrings.xml');
+        if ($xml === false) {
+            return;
+        }
+        if (stripos($xml, '<!DOCTYPE') !== false) {
+            throw ValidationException::withMessages(['file' => 'The workbook contains invalid shared-string XML.']);
+        }
+        $reader = new \XMLReader;
+        if (! $reader->XML($xml, null, LIBXML_NONET | LIBXML_COMPACT)) {
+            throw ValidationException::withMessages(['file' => 'The workbook contains invalid shared-string XML.']);
+        }
+        $strings = 0;
+        $bytes = 0;
+        while ($reader->read()) {
+            if ($reader->nodeType === \XMLReader::ELEMENT && $reader->localName === 'si') {
+                $strings++;
+                $bytes = 0;
+                if ($strings > self::MAX_CELLS) {
+                    $reader->close();
+                    throw ValidationException::withMessages(['file' => 'Workbook shared strings exceed the safety limit.']);
+                }
+            } elseif ($reader->nodeType === \XMLReader::ELEMENT && $reader->localName === 't') {
+                $bytes += strlen($reader->readString());
+                if ($bytes > self::MAX_CELL_BYTES) {
+                    $reader->close();
+                    throw ValidationException::withMessages(['file' => 'Workbook cells are limited to 65,535 bytes.']);
+                }
+            }
+            $this->assertXlsxDeadline($started);
+        }
+        $reader->close();
+    }
+
+    private function assertXlsxDeadline(int $started): void
+    {
+        if ((hrtime(true) - $started) > 10_000_000_000) {
+            throw ValidationException::withMessages(['file' => 'Workbook inspection exceeded the 10-second safety limit.']);
         }
     }
 
@@ -666,8 +975,9 @@ final class TaskTransfer
         return match ($definition->type) {
             ColumnType::Text => strlen($raw) <= self::MAX_CELL_BYTES ? $raw
                 : $this->reconciliationError($errors, $row, $definition->id, 'invalid_text', 'Text values are limited to 65,535 bytes.'),
-            ColumnType::Number => is_numeric($value) && is_finite((float) $value) ? (float) $value
-                : $this->reconciliationError($errors, $row, $definition->id, 'invalid_number', 'Number values must be finite numbers.'),
+            ColumnType::Number => ($decimal = $this->canonicalDecimal($value)) === null
+                ? $this->reconciliationError($errors, $row, $definition->id, 'invalid_number', 'Number values must contain at most 14 integer and 6 decimal digits.')
+                : new ImportedTaskDecimal($decimal),
             ColumnType::Checkbox => match (strtolower($value)) {
                 'true', 'yes', '1' => true, 'false', 'no', '0' => false,
                 default => $this->reconciliationError($errors, $row, $definition->id, 'invalid_checkbox', 'Checkbox values must be true/false, yes/no, or 1/0.'),
@@ -676,8 +986,22 @@ final class TaskTransfer
             ColumnType::People => $this->customPeople($board, $value, $row, $definition->id, $errors),
             ColumnType::Label => $this->customLabels($definition, $value, $row, $decisions, $errors),
             ColumnType::Link => $this->customLink($value, $row, $definition->id, $errors),
-            ColumnType::File => $this->customFiles($board, $value, $row, $definition->id, $errors),
+            ColumnType::File => ($files = $this->customFiles($board, $value, $row, $definition->id, $errors)) === []
+                ? [] : new ImportedTaskFiles($files),
         };
+    }
+
+    private function canonicalDecimal(string $value): ?string
+    {
+        if (! preg_match('/^([+-]?)(\d{1,14})(?:\.(\d{1,6}))?$/', $value, $matches)) {
+            return null;
+        }
+        $integer = ltrim($matches[2], '0');
+        $integer = $integer === '' ? '0' : $integer;
+        $fraction = str_pad($matches[3] ?? '', 6, '0');
+        $sign = $matches[1] === '-' && ($integer !== '0' || trim($fraction, '0') !== '') ? '-' : '';
+
+        return $sign.$integer.'.'.$fraction;
     }
 
     private function customPeople(TaskBoard $board, string $value, int $row, string $field, array &$errors): array
@@ -737,8 +1061,8 @@ final class TaskTransfer
             return [];
         }
         $attachments = Attachment::query()->whereIn('id', $ids)->get();
-        $taskIds = $attachments->where('attachable_type', 'tasks')->pluck('attachable_id')->all();
-        $updateIds = $attachments->where('attachable_type', 'task_updates')->pluck('attachable_id')->all();
+        $taskIds = $attachments->where('attachable_type', (new Task)->getMorphClass())->pluck('attachable_id')->all();
+        $updateIds = $attachments->where('attachable_type', (new TaskUpdate)->getMorphClass())->pluck('attachable_id')->all();
         $valid = Task::query()->where('board_id', $board->id)->whereIn('id', $taskIds)->count()
             + TaskUpdate::query()->whereIn('id', $updateIds)->whereHas('task', fn ($query) => $query->where('board_id', $board->id))->count();
         if ($attachments->count() !== count($ids) || $valid !== count($ids)) {

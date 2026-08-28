@@ -16,6 +16,10 @@ final class TaskImportsController extends TaskApiController
 
     public function preview(Request $request, TaskBoard $board): JsonResponse
     {
+        $scope = ViewScope::forUser($request->user());
+        $this->transfer->authorizeImport(
+            $request->user(), $board, $scope, (string) $request->input('active_view_id'),
+        );
         $input = $request->validate([
             'active_view_id' => ['required', 'uuid'],
             'mapping' => ['required', 'string', 'max:262144'],
@@ -31,17 +35,24 @@ final class TaskImportsController extends TaskApiController
         }
 
         return response()->json(['data' => $this->transfer->preview(
-            $request->user(), $board, ViewScope::forUser($request->user()),
+            $request->user(), $board, $scope,
             $input['active_view_id'], $input['file'], $mapping,
         )]);
     }
 
     public function commit(Request $request, TaskBoard $board): JsonResponse
     {
-        $input = $request->validate(['session_token' => ['required', 'string', 'size:64']]);
+        $scope = ViewScope::forUser($request->user());
+        $this->transfer->authorizeImport(
+            $request->user(), $board, $scope, (string) $request->input('active_view_id'),
+        );
+        $input = $request->validate([
+            'active_view_id' => ['required', 'uuid'],
+            'session_token' => ['required', 'string', 'size:64'],
+        ]);
 
         return response()->json(['data' => $this->transfer->commit(
-            $request->user(), $board, ViewScope::forUser($request->user()), $input['session_token'],
+            $request->user(), $board, $scope, $input['active_view_id'], $input['session_token'],
         )], Response::HTTP_CREATED);
     }
 }

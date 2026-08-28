@@ -14,11 +14,24 @@ final class TaskExportsController extends TaskApiController
 
     public function show(Request $request, TaskBoard $board, string $format): StreamedResponse
     {
-        $input = $request->validate(['include_archived' => ['sometimes', 'boolean']]);
+        $scope = ViewScope::forUser($request->user());
+        $this->transfer->authorizeExport(
+            $request->user(), $board, $scope, (string) $request->input('active_view_id'),
+            $format === 'json' || $request->has('include_archived'),
+        );
+        $input = $request->validate([
+            'active_view_id' => ['required', 'uuid'],
+            'include_archived' => ['sometimes', 'boolean'],
+        ]);
+        $includeArchived = (bool) ($input['include_archived'] ?? false);
+        if ($includeArchived) {
+            $this->transfer->authorizeExport(
+                $request->user(), $board, $scope, $input['active_view_id'], true,
+            );
+        }
 
         return $this->transfer->export(
-            $request->user(), $board, ViewScope::forUser($request->user()), $format,
-            (bool) ($input['include_archived'] ?? false),
+            $request->user(), $board, $scope, $input['active_view_id'], $format, $includeArchived,
         );
     }
 }
