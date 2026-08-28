@@ -9,6 +9,7 @@ import '../../widgets/error_note.dart';
 import 'condition.dart';
 import 'option.dart';
 import 'photo_field.dart';
+import 'services_field.dart';
 import 'signature_field.dart';
 
 /// New Inspection: search a client or job, pick a named inspection, fill, submit.
@@ -43,6 +44,15 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   /// a String, and a comma-joined list of uuids in a text box is the kind of
   /// thing that works until somebody's answer contains a comma.
   final Map<String, List<String>> _photos = {};
+
+  /// Tick-box answers, which are bools rather than text or lists.
+  final Map<String, bool> _checks = {};
+
+  /// Recommended-work answers: a list of priced picks per field.
+  final Map<String, List<Map<String, dynamic>>> _work = {};
+
+  /// The organization's priced services, from the run payload.
+  List<Map<String, dynamic>> _catalogue = const [];
   String? _blocked;
 
   bool get _mayDiscard =>
@@ -187,6 +197,12 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     }
     _fields.clear();
     _photos.clear();
+    _checks.clear();
+    _work.clear();
+    _catalogue = [
+      for (final s in (run['services'] as List? ?? const []))
+        if (s is Map) Map<String, dynamic>.from(s),
+    ];
     final answers = run['answers'] is Map
         ? Map<String, dynamic>.from(run['answers'] as Map)
         : const <String, dynamic>{};
@@ -209,6 +225,24 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     for (final screen in _allScreensOf(run)) {
       for (final field in withNested(screen)) {
         final key = '${field['key']}';
+        // Furniture stores nothing, so it needs no controller.
+        if (field['type'] == 'divider' || field['type'] == 'alert') {
+          continue;
+        }
+
+        if (field['type'] == 'services') {
+          _work[key] = [
+            for (final p in (answers[key] as List? ?? const []))
+              if (p is Map) Map<String, dynamic>.from(p),
+          ];
+          continue;
+        }
+
+        if (field['type'] == 'checkbox') {
+          _checks[key] = answers[key] == true;
+          continue;
+        }
+
         if (field['type'] == 'photo' || field['type'] == 'signature') {
           _photos[key] = [
             for (final id in (answers[key] as List? ?? const [])) '$id',
@@ -240,6 +274,8 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   Map<String, dynamic> _answers() => {
         for (final e in _fields.entries) e.key: e.value.text,
         for (final e in _photos.entries) e.key: e.value,
+        for (final e in _checks.entries) e.key: e.value,
+        for (final e in _work.entries) e.key: e.value,
       };
 
   /// Every screen this version declares, shown or not.
@@ -581,12 +617,121 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
           },
         );
 
+      case 'divider':
+        // A heading between fields. Not a control, so it takes no key and
+        // answers nothing — see FieldType::FURNITURE.
+        return Padding(
+          key: widgetKey,
+          padding: const EdgeInsets.only(top: 8, bottom: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (label.isNotEmpty)
+                Text(label, style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 6),
+              Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
+            ],
+          ),
+        );
+
+      case 'alert':
+        final title = '${field['title'] ?? ''}'.trim();
+        final body = '${field['body'] ?? ''}'.trim();
+
+        return Container(
+          key: widgetKey,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.secondaryContainer,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (title.isNotEmpty)
+                Text(title,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.onSecondaryContainer,
+                        )),
+              if (body.isNotEmpty) ...[
+                if (title.isNotEmpty) const SizedBox(height: 4),
+                Text(body,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSecondaryContainer,
+                        )),
+              ],
+            ],
+          ),
+        );
+
+      case 'checkbox':
+        // The answer is a bool, not text, so it does not use a controller.
+        // `_photos` already holds the non-text answers; a third map would be a
+        // third place to remember.
+        final ticked = _checks[key] ?? false;
+
+        return CheckboxListTile(
+          key: widgetKey,
+          value: ticked,
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          title: Text(label),
+          onChanged: (value) {
+            setState(() => _checks[key] = value ?? false);
+            _save();
+          },
+        );
+
+      case 'textarea':
+        return TextField(
+          key: widgetKey,
+          controller: _fields[key],
+          minLines: 3,
+          maxLines: 6,
+          decoration: InputDecoration(labelText: label, alignLabelWithHint: true),
+        );
+
+      case 'email':
+        return TextField(
+          key: widgetKey,
+          controller: _fields[key],
+          keyboardType: TextInputType.emailAddress,
+          autocorrect: false,
+          decoration: InputDecoration(labelText: label),
+        );
+
+      case 'phone':
+        return TextField(
+          key: widgetKey,
+          controller: _fields[key],
+          keyboardType: TextInputType.phone,
+          decoration: InputDecoration(labelText: label),
+        );
+
       case 'number':
         return TextField(
           key: widgetKey,
           controller: _fields[key],
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(labelText: label),
+        );
+
+      case 'services':
+        // The catalogue rides along on the run payload — a picker that had to
+        // fetch would be a spinner on a roof with one bar of signal.
+        return InspectionServicesField(
+          key: widgetKey,
+          api: widget.api,
+          label: label,
+          picks: [
+            for (final p in (_work[key] ?? const []))
+              Map<String, dynamic>.from(p),
+          ],
+          catalogue: _catalogue,
+          onChanged: (picks) {
+            setState(() => _work[key] = picks);
+            _save();
+          },
         );
 
       case 'signature':

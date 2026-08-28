@@ -95,6 +95,50 @@ void main() {
     expect(find.text('  Brick  '), findsNothing);
   });
 
+  /// Every part of a ported inspection has to be editable here.
+  ///
+  /// The A1 form is 2,818 lines of TypeScript precisely because nobody could
+  /// edit it. If the Builder cannot express a condition, a print mode or an
+  /// alert, the port is a second hardcoded form in a different language.
+  /// Every part of a ported inspection has to be editable here.
+  ///
+  /// The A1 form is 2,818 lines of TypeScript precisely because nobody could
+  /// edit it. If the Builder cannot express a condition or a print mode, the
+  /// port is a second hardcoded form in a different language.
+  testWidgets('a field can be given a condition and a print mode', (tester) async {
+    await _pump(tester, size: const Size(1400, 2400), list: _twoFieldList);
+
+    // The condition points at the OTHER field. Reaching across is the whole
+    // point — answering on screen one is what removes questions from screen
+    // four — so the picker is not limited to this screen.
+    final condField = find.byKey(const Key('cond-field'));
+    await tester.ensureVisible(condField);
+    await tester.pumpAndSettle();
+
+    final picker = tester.widget<DropdownButtonFormField<String>>(condField);
+    expect(picker.initialValue, isNull, reason: 'no condition yet');
+
+    // And how it prints, which defaults to a plain line so no existing report
+    // is restyled.
+    final print = find.byKey(const Key('field-print-insp-1-0-0'));
+    await tester.ensureVisible(print);
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<DropdownButtonFormField<String>>(print).initialValue,
+      'text',
+    );
+  });
+
+  /// With nothing else to point at, the editor says so rather than offering an
+  /// empty dropdown that writes a condition naming no field.
+  testWidgets('a lone field is told there is nothing to condition on', (tester) async {
+    await _pump(tester, size: const Size(1400, 2400), list: _choiceList);
+
+    expect(find.text('Add another field first.'), findsOneWidget);
+    expect(find.byKey(const Key('cond-field')), findsNothing);
+  });
+
   testWidgets('a never-published draft can be deleted', (tester) async {
     final methods = <String>[];
 
@@ -213,6 +257,26 @@ const _list = '''
             }
           ]
         }
+      ]
+    }
+  ]
+}
+''';
+
+const _twoFieldList = '''
+{
+  "data": [
+    {
+      "id": "insp-1",
+      "name": "Level 1",
+      "scope": {"type": null, "id": null},
+      "layout_preset": "step_strip",
+      "published": false,
+      "screens": [
+        {"name": "System", "fields": [
+          {"key": "flue", "label": "Flue", "type": "choice", "options": ["Clay", "Metal"]},
+          {"key": "notes", "label": "Notes", "type": "text"}
+        ]}
       ]
     }
   ]

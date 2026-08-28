@@ -39,6 +39,11 @@ final class RequiredFields
                     continue;
                 }
 
+                // Furniture stores nothing, so nothing can be missing from it.
+                if (! FieldType::carriesAnswer((string) ($field['type'] ?? ''))) {
+                    continue;
+                }
+
                 if (self::isRequired($field, $answers) && ! self::isFilled($field, $answers)) {
                     return (string) ($field['label'] ?? $field['key'] ?? 'This field');
                 }
@@ -99,6 +104,22 @@ final class RequiredFields
     private static function isFilled(array $field, array $answers): bool
     {
         $value = $answers[$field['key'] ?? ''] ?? null;
+
+        /*
+         * A REQUIRED tick box means "you must tick this" — an acceptance — so
+         * `false` does not satisfy it, even though false is a perfectly real
+         * answer to "is the customer on site".
+         *
+         * The two readings are not interchangeable and getting them the wrong
+         * way round fails in opposite directions: treat false as filled and a
+         * customer acceptance is waved through unaccepted; treat an OPTIONAL
+         * unticked box as missing and the form cannot be finished at all. The
+         * requiredness is what decides which question is being asked.
+         */
+        if (($field['type'] ?? '') === FieldType::CHECKBOX) {
+            return $value === true || $value === 1 || $value === '1';
+        }
+
         if ($value === null || $value === '') {
             return false;
         }

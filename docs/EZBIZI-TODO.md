@@ -215,6 +215,29 @@ base UI, so they are recorded here rather than fixed piecemeal.
 
 ## Done
 
+- ✅ **The inspection engine, and A1's form ported onto it** — *2026-08-29.* Nine phases.
+  An inspection now belongs to the organization, a company or a franchise (`scope_type`/
+  `scope_id`, Automation's pair). Fields and whole screens carry `visible_if` —
+  eq/ne/in/not_in with nested and/or — and the two consequences are the ones to know:
+  **a hidden field is not a missing answer** (or a masonry inspection is blocked at Submit
+  by a wood-stove question nobody was shown) and **its answer is dropped at submit** (or the
+  report freezes evidence of a question it never asked). Options carry a pass/fail variant
+  and their own nested fields, so **failing a finding structurally demands its photograph,
+  its explanation and its priced work** — the one idea worth stealing wholesale from A1's
+  tool. Building codes live in a per-organization library, cited by id as a draft and frozen
+  as WORDS into the version at publish, so correcting a typo never rewrites what a report
+  already told a customer. Recommended work is picked from Services and becomes `job_lines`
+  on submit — no estimate model, because `JobLine` already snapshots name and price for
+  exactly the same reason. Six new field types, chosen by counting what A1's form actually
+  uses: its type union declares `address` and the real form uses it zero times. And three
+  print modes, so a report reads as findings rather than 120 undifferentiated rows, with
+  "1 of 3 items did not meet standards" at the top.
+  **The port is a seed, not a code path** — `inspection:import-a1` writes it through
+  `FieldSet`, the Builder's own validator, so anything the engine could not express would
+  fail there. It lands as a DRAFT: publishing is A1's call after reading it.
+  Spec `docs/superpowers/specs/2026-08-28-inspection-engine-design.md`,
+  plan `docs/superpowers/plans/2026-08-28-inspection-scope-owner.md` (phase 1).
+
 - ✅ **An inspection belongs to a place** — *2026-08-29.* A named inspection is the
   organization's, a company's, or a franchise's, using the same `scope_type`/`scope_id`
   pair Automation and Mailbox carry. Scope decides where a definition EXISTS; the
