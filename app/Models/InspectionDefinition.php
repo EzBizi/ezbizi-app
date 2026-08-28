@@ -37,9 +37,20 @@ class InspectionDefinition extends Model implements StatesRetention
         );
     }
 
+    /**
+     * Where this inspection exists. A NULL `scope_type` is the organization.
+     *
+     * Scope is not a permission — `InspectionDefinitionGrant` still decides who
+     * may RUN a definition. Scope decides which places it exists in at all, and
+     * both have to pass. See App\Support\Inspection\InspectionScope for why
+     * visibility is not the same question as reach.
+     */
+    public const SCOPE_COMPANY   = 'company';
+    public const SCOPE_FRANCHISE = 'franchise';
+
     protected $fillable = [
         'organization_id', 'name', 'intro', 'cover_path', 'cover_disk',
-        'layout_preset', 'screens',
+        'layout_preset', 'screens', 'scope_type', 'scope_id',
         'current_version_id', 'published_at', 'created_by',
     ];
 
