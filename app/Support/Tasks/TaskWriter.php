@@ -40,6 +40,7 @@ final class TaskWriter
         private readonly RecordNumberGenerator $numbers,
         private readonly AuditLogger $audit,
         private readonly EventEmitter $events,
+        private readonly TaskRecurrenceWorker $recurrence,
     ) {}
 
     public function create(User $actor, TaskBoard $board, ViewScope $scope, array $attributes, ?AutomationEvent $causedBy = null): Task
@@ -109,6 +110,9 @@ final class TaskWriter
             );
             $this->notify($task, $audit, $actor, $owner === null ? [] : [$owner->id => 'task.assigned']);
             $this->notifyCollaborators($task, $audit, $actor, $collaborators->modelKeys());
+            if (in_array('task.completed', $eventKeys, true)) {
+                $this->recordRecurrenceOnCompletion($task);
+            }
 
             return $task->fresh($this->relations());
         });
@@ -550,8 +554,34 @@ final class TaskWriter
         if ($collaborators !== null) {
             $this->notifyCollaborators($task, $audit, $actor, array_values(array_diff($collaborators->modelKeys(), $collaboratorsBefore)));
         }
+        if (in_array('task.completed', $eventKeys, true)) {
+            $this->recordRecurrenceOnCompletion($task);
+        }
 
         return $task->fresh($this->relations());
+    }
+
+    /**
+     * Completing a recurring (`after_completion`) task records its next
+     * occurrence date (task-6 brief). TaskRecurrenceWorker does the actual
+     * work — computing the date, checking until/count, creating the next
+     * instance or closing the series out — and this is the ONLY place that
+     * calls it outside the worker's own hourly `on_schedule` sweep.
+     *
+     * Caught and swallowed, not rethrown: a failing recurrence rule must
+     * never be able to fail the completion that triggered it. If this ever
+     * throws, the completion itself has already been saved above.
+     */
+    private function recordRecurrenceOnCompletion(Task $task): void
+    {
+        if ($task->recurrence === null) {
+            return;
+        }
+        try {
+            $this->recurrence->afterCompletion($task);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     private function lockBoardFor(User $actor, TaskBoard $board, ViewScope $scope, string $permission, string $act): TaskBoard

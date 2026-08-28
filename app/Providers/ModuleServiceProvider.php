@@ -181,6 +181,12 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A "blocks" edge between two tasks was removed.',
                         isRaised: true,
                     ),
+                    new TriggerDefinition(
+                        key: 'task.recurrence_completed',
+                        label: 'Recurrence completed',
+                        description: 'A recurring task series reached its "until" date or "count" and stopped.',
+                        isRaised: true,
+                    ),
                 ],
                 automationActions: [
                     new ActionDefinition(
