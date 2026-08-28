@@ -6,11 +6,9 @@ use App\Models\InspectionDefinition;
 use App\Models\InspectionDefinitionVersion;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\FileStore;
-use App\Support\Access\ScopeReach;
 use App\Support\Inspection\BindableFields;
 use App\Support\Inspection\FieldSet;
 use App\Support\Inspection\FieldType;
-use App\Support\Inspection\InspectionScope;
 use App\Support\Inspection\LayoutPreset;
 use App\Support\Inspection\WorkingTitle;
 use App\Support\Tenancy\TenantContext;
@@ -38,8 +36,6 @@ class InspectionDefinitionsController extends Controller
         private readonly AuditLogger $audit,
         private readonly TenantContext $tenant,
         private readonly FileStore $files,
-        private readonly InspectionScope $scope,
-        private readonly ScopeReach $reach,
     ) {}
 
     public function catalogue(): JsonResponse
@@ -65,7 +61,6 @@ class InspectionDefinitionsController extends Controller
             'field_types' => $types,
             'layout_presets' => $presets,
             'bindable' => BindableFields::catalogue(),
-            'scopes' => $this->scopeOptions(),
         ]]);
     }
 
@@ -73,16 +68,10 @@ class InspectionDefinitionsController extends Controller
     {
         $this->authorize('viewAny', InspectionDefinition::class);
 
-        $query = InspectionDefinition::query()
+        $rows = InspectionDefinition::query()
             ->with('currentVersion')
-            ->orderBy('name');
-
-        // The Builder lists what exists HERE, the same as the picker does.
-        // Without this a franchise manager browses every company's inspections
-        // and can open one they may not run - a disclosure, not an annoyance.
-        $this->scope->constrain($query, request()->user());
-
-        $rows = $query->get()
+            ->orderBy('name')
+            ->get()
             ->map(fn (InspectionDefinition $d) => $this->present($d))
             ->values();
 
@@ -136,8 +125,6 @@ class InspectionDefinitionsController extends Controller
             $validated['screens'] = FieldSet::fromInput($validated['screens'])->toArray();
         }
 
-        $validated = [...$validated, ...$this->scopeFrom($request, $inspectionDefinition)];
-
         $inspectionDefinition->fill($validated)->save();
 
         $this->audit->log('inspection.updated', $inspectionDefinition);
@@ -145,126 +132,6 @@ class InspectionDefinitionsController extends Controller
         return response()->json([
             'data' => $this->present($inspectionDefinition->fresh()->load('currentVersion'), detailed: true),
         ]);
-    }
-
-    /**
-     * The place this inspection belongs to, checked before it is written.
-     *
-     * TWO separate checks, because they refuse for different reasons and
-     * collapsing them into one would lose the second:
-     *
-     *   1. The place must be THIS organization's. `scope_id` has no foreign key
-     *      - it names a row in one of two tables depending on `scope_type` - so
-     *      nothing else would catch an id from elsewhere on the platform. It
-     *      would never match anything, but a tenant boundary that is stated and
-     *      not enforced is one that stops being true later.
-     *      AutomationsController makes the same check on the same column.
-     *
-     *   2. The author must REACH the place. The first check PASSES for a
-     *      sibling franchise - it is this organization's - so without this a
-     *      franchise manager could scope the group's inspection to a franchise
-     *      they have nothing to do with and take it from everybody else.
-     *
-     * Reach here, and deliberately NOT InspectionScope: authoring asks "may I
-     * act on that place", which is what ScopeReach answers. Visibility asks a
-     * different question and gets a different answer - see InspectionScope.
-     *
-     * @return array{scope_type: ?string, scope_id: ?string}
-     */
-    private function scopeFrom(Request $request, ?InspectionDefinition $existing): array
-    {
-        $input = $request->validate([
-            'scope_type' => ['sometimes', 'nullable', Rule::in([
-                InspectionDefinition::SCOPE_COMPANY,
-                InspectionDefinition::SCOPE_FRANCHISE,
-            ])],
-            'scope_id' => ['sometimes', 'nullable', 'uuid'],
-        ]);
-
-        $type = array_key_exists('scope_type', $input)
-            ? $input['scope_type']
-            : $existing?->scope_type;
-        $id = array_key_exists('scope_id', $input)
-            ? $input['scope_id']
-            : $existing?->scope_id;
-
-        // Clearing the type clears the id with it, or the row keeps a franchise
-        // id under a null type and the next reader has to guess which one won.
-        if (array_key_exists('scope_type', $input) && $input['scope_type'] === null) {
-            $id = null;
-        }
-
-        if ($type === null && $id !== null) {
-            throw ValidationException::withMessages([
-                'scope_id' => 'Choose a company or a franchise before choosing which one.',
-            ]);
-        }
-
-        if ($type !== null && $id === null) {
-            throw ValidationException::withMessages([
-                'scope_id' => "Choose which {$type} this inspection belongs to.",
-            ]);
-        }
-
-        if ($type !== null) {
-            $table = $type === InspectionDefinition::SCOPE_COMPANY ? 'companies' : 'franchises';
-
-            $exists = DB::table($table)
-                ->where('id', $id)
-                ->where('organization_id', $this->tenant->idOrFail())
-                ->exists();
-
-            if (! $exists) {
-                throw ValidationException::withMessages([
-                    'scope_id' => "That is not one of this organization's {$table}.",
-                ]);
-            }
-
-            $this->reach->assertCovers($request->user(), $type, $id, 'scope_id');
-        }
-
-        return ['scope_type' => $type, 'scope_id' => $id];
-    }
-
-    /**
-     * The places this author may give an inspection to, flat and ordered.
-     *
-     * `ScopeReach::optionsFor` returns three separate lists; a dropdown wants
-     * one. The organization comes first and ONLY when this person may act on it
-     * - `optionsFor` answers null otherwise, and offering "Whole organization"
-     * to somebody the save would then refuse is worse than not offering it.
-     *
-     * A company and its only franchise are very often called the same thing, so
-     * the label is not unique and the client keys on type:id rather than on it.
-     *
-     * @return list<array{type: ?string, id: ?string, label: string}>
-     */
-    private function scopeOptions(): array
-    {
-        $options = $this->reach->optionsFor(request()->user());
-        $scopes = [];
-
-        if ($options['organization'] !== null) {
-            $scopes[] = ['type' => null, 'id' => null, 'label' => 'Whole organization'];
-        }
-
-        foreach ($options['companies'] as $company) {
-            $scopes[] = [
-                'type' => InspectionDefinition::SCOPE_COMPANY,
-                'id' => $company['id'],
-                'label' => $company['name'],
-            ];
-        }
-
-        foreach ($options['franchises'] as $franchise) {
-            $scopes[] = [
-                'type' => InspectionDefinition::SCOPE_FRANCHISE,
-                'id' => $franchise['id'],
-                'label' => $franchise['name'],
-            ];
-        }
-
-        return $scopes;
     }
 
     public function publish(InspectionDefinition $inspectionDefinition): JsonResponse
@@ -474,12 +341,6 @@ class InspectionDefinitionsController extends Controller
         $row = [
             'id' => $definition->id,
             'name' => $definition->name,
-            // Always present, both keys, nulls and all. A client made to tell
-            // "the organization" from "the server did not say" would guess.
-            'scope' => [
-                'type' => $definition->scope_type,
-                'id'   => $definition->scope_id,
-            ],
             'intro' => $definition->intro,
             'layout_preset' => $definition->layout_preset ?: LayoutPreset::DEFAULT,
             'screens' => $definition->screens ?? [],

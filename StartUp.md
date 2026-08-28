@@ -267,29 +267,6 @@ work-in-progress, so prefer a private index, which never touches it.
 separate call with a human decision after it. Piped into the commit, the file
 count scrolls past above output nobody reads until afterwards.
 
-### Isolation and durability are different properties
-
-Per-session worktrees (`./scripts/session-worktree.sh <module>`) give each session
-its own working tree and its own index, and they genuinely remove a whole class of
-failure: two sessions sharing one index, one carrying another's staging, a stale
-blob overwriting a good one before it is committed. All of that goes.
-
-**They do not remove the revert class.** Once merged, your content sits on `main`
-like everyone else's, and a later commit built from a stale base reverts it there
-exactly as before. Every revert on the day this was written hit content that was
-**already committed** — not content anyone was holding in a working tree — so
-worktrees would not have prevented a single one.
-
-The dangerous reading is "the revert problem is solved", followed by the content
-check being dropped at precisely the point it becomes the only thing left standing.
-`git show <sha>:<path>` against the deploy pin stays mandatory.
-
-This is the day's shape once more, and it caught the person announcing the fix in
-the message announcing it: **a control that removes *some* failure modes gets
-described as removing *the* failure, and the description is what people act on.**
-The same shape as an exit code that "means pass", a private index that "was
-immune", and a branch-protection rule sitting in settings enforcing nothing.
-
 ### A clean check is a photograph, not a guarantee
 
 Every failure this section describes is one shape: **a reading whose scope was

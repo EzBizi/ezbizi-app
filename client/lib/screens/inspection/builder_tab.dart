@@ -29,13 +29,6 @@ class _BuilderTabState extends State<BuilderTab> {
   List<Map<String, dynamic>> _definitions = const [];
   List<Map<String, dynamic>> _fieldTypes = const [];
   List<Map<String, dynamic>> _presets = const [];
-
-  /// The places this author may give an inspection to, from the catalogue.
-  ///
-  /// Server-built, because who may act on what is the server's answer. An
-  /// empty list means the catalogue has not loaded yet, not that there is
-  /// nowhere to put it.
-  List<Map<String, dynamic>> _scopes = const [];
   List<Map<String, dynamic>> _bindable = const [];
 
   String? _selectedId;
@@ -141,29 +134,10 @@ class _BuilderTabState extends State<BuilderTab> {
         final data = Map<String, dynamic>.from(catalogue.data as Map);
         _fieldTypes = _maps(data['field_types']);
         _presets = _maps(data['layout_presets']);
-        _scopes = _maps(data['scopes']);
         _bindable = _maps(data['bindable']);
       }
     });
     _adoptControllers();
-  }
-
-  /// The dropdown value for whatever this definition currently says.
-  ///
-  /// The organization is a real selectable value rather than a null, because
-  /// "belongs to nobody" and "belongs to everybody" read identically on screen
-  /// otherwise. Falls back to the first offered scope when the stored one is
-  /// not among them — which happens when a definition scoped to a place this
-  /// author cannot reach is opened by somebody who can still edit it.
-  String? _scopeValue(Map<String, dynamic> current) {
-    final scope = current['scope'] as Map?;
-    final value = '${scope?['type'] ?? 'organization'}:${scope?['id'] ?? ''}';
-
-    final offered = _scopes
-        .map((s) => '${s['type'] ?? 'organization'}:${s['id'] ?? ''}')
-        .toList();
-
-    return offered.contains(value) ? value : (offered.isEmpty ? null : offered.first);
   }
 
   Future<void> _create() async {
@@ -196,11 +170,6 @@ class _BuilderTabState extends State<BuilderTab> {
         'intro': current['intro'],
         'layout_preset': current['layout_preset'],
         'screens': current['screens'],
-        // Flat keys, not the nested `scope` object the server SENDS. It reads
-        // `scope_type`/`scope_id` on the way in and answers `scope` on the way
-        // out; posting the nested object silently changes nothing.
-        'scope_type': (current['scope'] as Map?)?['type'],
-        'scope_id': (current['scope'] as Map?)?['id'],
       },
     );
     if (!mounted) return;
@@ -542,38 +511,6 @@ class _BuilderTabState extends State<BuilderTab> {
           ],
         ),
         const SizedBox(height: 16),
-        if (_scopes.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: DropdownButtonFormField<String>(
-              key: const Key('inspection-scope-picker'),
-              initialValue: _scopeValue(current),
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Belongs to',
-                helperText: 'Who this inspection exists for. Roles still gate who may run it.',
-              ),
-              items: [
-                for (final scope in _scopes)
-                  DropdownMenuItem(
-                    // Keyed on type:id, never on the label — a company and its
-                    // only franchise are very often called the same thing.
-                    value: '${scope['type'] ?? 'organization'}:${scope['id'] ?? ''}',
-                    child: Text('${scope['label'] ?? ''}'),
-                  ),
-              ],
-              onChanged: (value) {
-                if (value == null) return;
-                final split = value.indexOf(':');
-                final type = value.substring(0, split);
-                final id = value.substring(split + 1);
-                _mutate((row) => row['scope'] = {
-                      'type': type == 'organization' ? null : type,
-                      'id': id.isEmpty ? null : id,
-                    });
-              },
-            ),
-          ),
         TextField(
           controller: _intro,
           decoration: const InputDecoration(

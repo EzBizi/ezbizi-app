@@ -49,25 +49,12 @@ sessions either. The SHA is the only handle that survives a rename.
 | **Third-party integrations** — OAuth drivers, Meta, `config/services.php` provider blocks, the 2026-10-26 Meta cutoff | — | **deliberately blank, see below** |
 | **Tasks** | `screens/tasks/` · `screens/tasks_screen.dart` · `Models/Task*.php` · `Policies/Task*.php` · `Support/Tasks/` · `Providers/TaskServiceProvider.php` · `Jobs/DeliverTaskNotificationIntent.php` · `Middleware/EnsureTaskRouteAccess.php` · `tests/Feature/Tasks/` | `ezbizi-13` |
 | **Android · Play** | `client/android/` · the android path of `scripts/build-app.sh` · `build-web.sh` · `release.sh` · `windows-installer.iss` · `assets/logo` · `assets/installer` · `client/integration_test/store_screenshots_test.dart` · `client/test_driver/screenshots.dart` · the **Play** Console | `ezbizi-16` |
-| **iOS · Apple** | `client/ios/` · the ios path of `scripts/build-app.sh` · the Mac relay · App Store Connect, TestFlight, the Apple Developer consoles | **blank — and it is mid-review** |
+| **iOS · Apple** | `client/ios/` · the ios path of `scripts/build-app.sh` · the Mac relay · App Store Connect, TestFlight, the Apple Developer consoles | `ezbizi-71` |
 
-> **iOS is unowned and it is not idle — it is mid-App-Store-review.** The session
-> that held it is gone. What the next owner inherits: App Store Connect status
-> *Waiting for Review* on build `0.0.0112`; `./scripts/build-app.sh ios --upload`
-> ships a new one, signing and validation already wired; signing material lives on
-> the Mac relay and in `H:/Development/Credentials/` (see below — it has no backup);
-> and **EU trader status needs the Account Holder and blocks submission outright**.
-> Fuller detail is on the board under `ios-build-and-testflight`.
-> **Do not delete `docs/ACTIVE-CONSTRAINTS.md` while that review is open** — it is
-> the only durable record of the freeze.
->
 > **These two were split from one session and neither could see the other.** Each
-> reported the other's half as orphaned within minutes — and at that moment both
-> were in fact owned. This row was `ezbizi-71` until that session ended, which is
-> the failure this file warns about: a name that has stopped being true reads
-> exactly like one that is. `scripts/build-app.sh` and `release.sh` cover every
-> platform in one file, so both sessions had lines in them — neither owns it
-> outright.
+> reported the other's half as orphaned within minutes; both halves are in fact
+> owned. `scripts/build-app.sh` and `release.sh` cover every platform in one file,
+> so both sessions have lines in them — neither owns it outright.
 >
 > **All three of these bump `client/VERSION`.** `build.gradle.kts` derives Android's
 > `versionCode` from it (`0.0.0112` → `112`) and `build-app.sh` derives Apple's
