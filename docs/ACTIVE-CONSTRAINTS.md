@@ -42,11 +42,21 @@ minutes. It has already overturned three confident guesses — including one of 
 - **`owning_franchise` is cast hard, non-nullable**, at `customers_screen.dart:287`
   and `:360` and `jobs_screen.dart:693`. Adding a nested key is safe. Making it null
   or absent **throws** on three screens across two modules.
-- **A new automation action must start with `task.`.** `automation_builder.dart:142`
-  handles a `task.`-prefixed action generically; `:167` throws `StateError` on
-  anything else. The catalogue is tolerant, so a newly registered action **is offered
-  in the picker**, is selectable, and then crashes on save. New *triggers* are safe —
-  `CatalogueTrigger.tryFrom` is tolerant, verified twice.
+- **Registering a new automation action is safe.** It is *inert* for the frozen
+  client, not dangerous. `client/lib/screens/automation_builder.dart:177` enumerates
+  `knownTypes` explicitly — by key, including the six `task.*` ones, not by prefix.
+  `:527` returns any key outside that set as `enabled: false` with the badge "Needs a
+  newer version of the app", and `:638` returns null for it, so the `StateError` at
+  `:167` is unreachable. The docblock says so in as many words: *"an unknown type is
+  never offered and the throw above is unreachable rather than merely unlikely."*
+  New **triggers** render as their own raw key — `automation_catalogue.dart:118`,
+  `CatalogueTrigger.tryFrom` falls back to `label: json['label'] ?? key`.
+
+  *An earlier version of this file claimed a non-`task.` action would be offered and
+  then crash on save. That was wrong in both directions: nothing crashes, and a new
+  `task.`-prefixed action is no safer than any other, because the set is enumerated
+  rather than prefixed. It was corrected by checking the frozen tree instead of
+  reasoning about it — which is what the paragraph above tells you to do.*
 - **A registry addition changes an existing response by construction.**
   `GlanceRegistry`, `WidgetRegistry`, `SettingRegistry`, `PermissionCatalogue` and the
   automation catalogue answer for the whole registry, not for your module. Safe only
