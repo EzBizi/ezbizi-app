@@ -266,6 +266,12 @@ class SitesController extends Controller
             'id' => $site->id,
             'host' => $site->host,
             'label' => $site->label,
+            /*
+             * Safe to return on every read, unlike the token. This one is meant
+             * to be pasted into a public page, so hiding it here would only stop
+             * the person who needs it from finding it.
+             */
+            'public_key' => $site->public_key,
             'company' => [
                 'id' => $site->company_id,
                 'name' => $site->company?->name,

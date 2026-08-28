@@ -394,20 +394,44 @@ class _SiteCardState extends State<_SiteCard> {
       return;
     }
 
-    final data = response.body['data'] as Map<String, dynamic>;
-    final values = (data['values'] as Map<String, dynamic>?) ?? {};
+    /*
+     * `_loading` is cleared in a finally, and that is the important half.
+     *
+     * It used to be set inside the success path, so ANY throw between the await
+     * and that line left the spinner turning for as long as somebody was
+     * willing to watch it. The first version of this method threw on exactly
+     * that path — see the map decoding below — and the failure a person saw was
+     * not an error message but a panel that never opened. An exception here
+     * should show as a broken panel, never as a busy one.
+     */
+    try {
+      final data = response.body['data'] as Map<String, dynamic>;
+      final values = _asMap(data['values']);
 
-    setState(() {
-      _loading = false;
-      _fields = (data['fields'] as List<dynamic>).cast<Map<String, dynamic>>();
+      _fields = (data['fields'] as List<dynamic>? ?? const [])
+          .cast<Map<String, dynamic>>();
 
       for (final field in _fields) {
         final key = field['key'] as String;
         _controllers.putIfAbsent(key, TextEditingController.new).text =
             (values[key] as String?) ?? '';
       }
-    });
+    } catch (_) {
+      _error = 'This site\'s details could not be read.';
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
+
+  /// A JSON map that might arrive as a list, because an empty one used to.
+  ///
+  /// PHP encodes an empty associative array as `[]` rather than `{}`, so this
+  /// field was an object on a site with details and an array on a site without.
+  /// The server now always sends an object; this stays because a client that
+  /// hard-casts a wire type it does not control is one deploy away from the
+  /// same deadlock, and an older client will meet the old shape forever.
+  Map<String, dynamic> _asMap(Object? raw) =>
+      raw is Map<String, dynamic> ? raw : <String, dynamic>{};
 
   Future<void> _save() async {
     setState(() {

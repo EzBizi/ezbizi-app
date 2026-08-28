@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 /**
  * One website — or one subdomain, which is the same thing here.
@@ -69,6 +70,35 @@ class WebSite extends Model implements StatesRetention
         $host = rtrim(strtolower(trim($host)), '.');
 
         return preg_replace('/^www\./', '', $host) ?? $host;
+    }
+
+    /**
+     * The key a browser is allowed to see.
+     *
+     * `pk_` so it is recognisable in a page of markup and cannot be confused
+     * with the `ezb_` secret when somebody is pasting one of them into a
+     * support ticket. Random rather than derived from the host: a key that can
+     * be computed from a domain name is not a key, it is a formula, and it
+     * could not be rotated without changing the domain.
+     */
+    public static function newPublicKey(): string
+    {
+        return 'pk_'.Str::random(32);
+    }
+
+    /**
+     * Every site gets one. Generated here rather than in the controller so a
+     * site made by a seeder, a test or a console command cannot exist without
+     * one; sites registered before the column existed are backfilled by the
+     * migration that added it.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (self $site): void {
+            if ($site->public_key === null) {
+                $site->public_key = self::newPublicKey();
+            }
+        });
     }
 
     public function company(): BelongsTo

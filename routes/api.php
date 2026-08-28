@@ -123,6 +123,7 @@ use App\Http\Controllers\Api\VehiclePaymentsController;
 use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\PluginController as WebPluginController;
+use App\Http\Controllers\Api\Web\PublicValuesController as WebPublicValuesController;
 use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Http\Middleware\EnsureTaskRouteAccess;
@@ -332,6 +333,30 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
 Route::get('v1/web/plugin/values', [WebPluginController::class, 'values'])
     ->middleware('throttle:web-plugin')
     ->name('web.plugin.values');
+
+/*
+|--------------------------------------------------------------------------
+| What a BROWSER may read — for sites with nowhere to keep a secret
+|--------------------------------------------------------------------------
+|
+| The route above is for a plugin on a server, holding a secret token. This one
+| is for a `<script>` on a static page, where nothing is secret: it takes the
+| site's PUBLIC key instead, and returns only values and the field list — never
+| the host, label or company name the authenticated route includes.
+|
+| Throttled per IP, and that is the opposite choice from the route above for the
+| opposite reason. A plugin is one server making one request for a whole site,
+| so its IP is a shared host and the token is the only fair key. This one is
+| called by every VISITOR's browser, so the IP is one person and per-IP is
+| exactly right — a key-based limit here would let one popular site exhaust its
+| own visitors' allowance.
+|
+| Takes no custom header, deliberately: a request with an Authorization header
+| would trip a CORS preflight and double the traffic for no benefit.
+*/
+Route::get('v1/web/public/values', [WebPublicValuesController::class, 'show'])
+    ->middleware('throttle:60,1')
+    ->name('web.public.values');
 
 /*
 |--------------------------------------------------------------------------
