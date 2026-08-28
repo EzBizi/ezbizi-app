@@ -154,6 +154,25 @@ git update-ref refs/heads/main "$COMMIT" "$BASE"     # fails if main moved
 `$BASE` appears four times and must be the same SHA every time. Resolving `HEAD`
 twice is how the drift gets in, and it looks careful while doing it.
 
+**If you are an agent, each tool call is a fresh shell and `$BASE` does not
+survive between them.** Write it to a file and read it back; never re-resolve
+`HEAD` in the later call. One revert happened exactly here — `read-tree HEAD` in
+one call, `commit-tree -p $(git rev-parse HEAD)` in a later one. The compare-and-
+swap passed because the *pointer* was current; the *tree* was twenty minutes old.
+17 files and 202 deletions where 15 and 29 were intended.
+
+**The stat check catches a stale base. It cannot catch a stale blob** — the file
+list is right while the contents are old, which is exactly how one revert got
+through with its author watching. If you splice blobs in by hand, diff each
+spliced path against `$BASE`'s version of that path, not just the file list.
+
+Clearing a stale entry is safe when you can show it is stale: `git reset HEAD --
+<path>` writes the index only and never touches the working tree, so after it,
+`git show HEAD:<path>` and the file on disk should still agree. Do that only for
+paths you own, and only after proving the staged copy is older than `HEAD` —
+otherwise you are discarding somebody's in-flight work to prevent a commit nobody
+has made.
+
 `git add` has its own hazard: `.git/index` is *one file* for every session, and
 `git add <path>` adds to whatever another session left staged rather than staging
 only your path. `git reset` first clears it — but that unstages everyone else's
