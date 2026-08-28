@@ -18,13 +18,18 @@ final class TaskFoldersController extends TaskApiController
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', TaskBoard::class);
-        $place = TaskPlace::fromView(ViewScope::forUser($request->user()));
-        $folders = TaskFolder::query()->active()
+        $input = $request->validate(['archived' => ['sometimes', 'boolean']]);
+        $scope = ViewScope::forUser($request->user());
+        $place = TaskPlace::fromView($scope);
+        $archived = (bool) ($input['archived'] ?? false);
+        $folders = TaskFolder::query()
+            ->when($archived, fn ($query) => $query->archived(), fn ($query) => $query->active())
             ->where('company_id', $place['company_id'])
             ->where('franchise_id', $place['franchise_id'])
             ->orderBy('position')->get();
 
-        return response()->json(['data' => $folders->map(fn (TaskFolder $folder) => $this->present($folder))]);
+        return response()->json(['data' => $folders->map(fn (TaskFolder $folder) =>
+            $this->present($folder, $request, $scope))]);
     }
 
     public function store(Request $request): JsonResponse
@@ -37,7 +42,9 @@ final class TaskFoldersController extends TaskApiController
         ]);
         $folder = $this->folders->create($request->user(), ViewScope::forUser($request->user()), $input['name']);
 
-        return response()->json(['data' => $this->present($folder)], Response::HTTP_CREATED);
+        return response()->json(['data' => $this->present(
+            $folder, $request, ViewScope::forUser($request->user()),
+        )], Response::HTTP_CREATED);
     }
 
     public function update(Request $request, TaskFolder $folder): JsonResponse
@@ -52,7 +59,9 @@ final class TaskFoldersController extends TaskApiController
             $request->user(), $folder, ViewScope::forUser($request->user()), $input['name'],
         );
 
-        return response()->json(['data' => $this->present($result)]);
+        return response()->json(['data' => $this->present(
+            $result, $request, ViewScope::forUser($request->user()),
+        )]);
     }
 
     public function archive(Request $request, TaskFolder $folder): JsonResponse
@@ -71,11 +80,15 @@ final class TaskFoldersController extends TaskApiController
             $request->user(), $folder, ViewScope::forUser($request->user()), $archived,
         );
 
-        return response()->json(['data' => $this->present($result)]);
+        return response()->json(['data' => $this->present(
+            $result, $request, ViewScope::forUser($request->user()),
+        )]);
     }
 
-    private function present(TaskFolder $folder): array
+    private function present(TaskFolder $folder, Request $request, ViewScope $scope): array
     {
+        $canManage = $this->folders->canManage($request->user(), $folder, $scope);
+
         return [
             'id' => $folder->id,
             'name' => $folder->name,
@@ -83,6 +96,9 @@ final class TaskFoldersController extends TaskApiController
             'franchise_id' => $folder->franchise_id,
             'position' => (int) $folder->position,
             'archived' => $folder->archived_at !== null,
+            'actions' => $canManage
+                ? ($folder->archived_at === null ? ['update', 'archive'] : ['restore'])
+                : [],
         ];
     }
 }

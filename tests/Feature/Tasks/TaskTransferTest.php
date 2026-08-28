@@ -169,6 +169,36 @@ class TaskTransferTest extends TestCase
         ])->assertOk()->assertJsonPath('data.counts.ready', 1);
     }
 
+    public function test_mappingless_xlsx_preflight_exposes_only_bounded_source_metadata_without_staging(): void
+    {
+        $long = str_repeat('x', 300);
+        $rows = [['Task', 'Monday only'], [$long, 'discard me']];
+        for ($index = 0; $index < 6; $index++) {
+            $rows[] = ["Task {$index}", "extra {$index}"];
+        }
+
+        $response = $this->post('/api/v1/tasks/boards/'.$this->board->id.'/imports/preview', [
+            'active_view_id' => $this->viewId,
+            'file' => $this->xlsxUpload($rows),
+        ])->assertOk()
+            ->assertJsonPath('data.format', 'xlsx')
+            ->assertJsonPath('data.headings', ['Task', 'Monday only'])
+            ->assertJsonPath('data.requires_mapping', true)
+            ->assertJsonPath('data.counts.rows', 7)
+            ->assertJsonPath('data.counts.ready', 0)
+            ->assertJsonPath('data.counts.errors', 0)
+            ->assertJsonPath('data.reconciliation', [])
+            ->assertJsonCount(5, 'data.sample')
+            ->assertJsonPath('data.unsupported_fields.0', [
+                'heading' => 'Task', 'reason' => 'not_mapped',
+            ]);
+
+        $this->assertLessThanOrEqual(200, strlen($response->json('data.sample.0.Task')));
+        $this->assertArrayNotHasKey('session_token', $response->json('data'));
+        $this->enterTenant();
+        $this->assertSame(0, TaskImportSession::count());
+    }
+
     public function test_xlsx_relationships_find_nonstandard_sheets_and_namespace_prefixed_formulas(): void
     {
         $status = $this->board->statusOptions()->active()->where('category', StatusCategory::NotStarted)->firstOrFail();

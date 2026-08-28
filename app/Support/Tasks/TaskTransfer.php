@@ -36,6 +36,10 @@ use ZipArchive;
 
 final class TaskTransfer
 {
+    private const PREFLIGHT_SAMPLE_ROWS = 5;
+
+    private const PREFLIGHT_SAMPLE_CELL_BYTES = 200;
+
     private const MAX_BYTES = 10 * 1024 * 1024;
 
     private const MAX_ROWS = 5000;
@@ -68,11 +72,7 @@ final class TaskTransfer
     ): array {
         $this->authorizeImport($actor, $board, $scope, $activeViewId);
         $normalizedMapping = $this->normalizeMapping($mapping);
-        $bytes = $file->get();
-        if (! is_string($bytes) || $bytes === '' || strlen($bytes) > self::MAX_BYTES) {
-            throw ValidationException::withMessages(['file' => 'Choose a non-empty CSV or XLSX file no larger than 10 MiB.']);
-        }
-        [$format, $rows] = $this->parseUpload($bytes);
+        [$bytes, $format, $rows] = $this->uploadedRows($file);
         $prepared = $this->prepareRows($board, $rows, $normalizedMapping);
         $reconciliation = $prepared['errors'];
         $token = bin2hex(random_bytes(32));
@@ -107,6 +107,7 @@ final class TaskTransfer
         return [
             'session_token' => $token,
             'expires_at' => now()->addMinutes(30)->toIso8601String(),
+            ...$this->sourceMetadata($format, $rows, $normalizedMapping),
             'counts' => [
                 'rows' => count($rows),
                 'ready' => collect($rows)->keys()->reject(fn ($offset) => collect($reconciliation)
@@ -114,6 +115,23 @@ final class TaskTransfer
                 'errors' => count($reconciliation),
             ],
             'reconciliation' => $reconciliation,
+        ];
+    }
+
+    public function preflight(
+        User $actor,
+        TaskBoard $board,
+        ViewScope $scope,
+        string $activeViewId,
+        UploadedFile $file,
+    ): array {
+        $this->authorizeImport($actor, $board, $scope, $activeViewId);
+        [, $format, $rows] = $this->uploadedRows($file);
+
+        return [
+            ...$this->sourceMetadata($format, $rows, null),
+            'counts' => ['rows' => count($rows), 'ready' => 0, 'errors' => 0],
+            'reconciliation' => [],
         ];
     }
 
@@ -476,6 +494,55 @@ final class TaskTransfer
         $mapping['decisions'] ??= [];
 
         return $mapping;
+    }
+
+    /** @return array{0:string,1:string,2:list<array<string,string>>} */
+    private function uploadedRows(UploadedFile $file): array
+    {
+        $bytes = $file->get();
+        if (! is_string($bytes) || $bytes === '' || strlen($bytes) > self::MAX_BYTES) {
+            throw ValidationException::withMessages(['file' => 'Choose a non-empty CSV or XLSX file no larger than 10 MiB.']);
+        }
+        [$format, $rows] = $this->parseUpload($bytes);
+
+        return [$bytes, $format, $rows];
+    }
+
+    private function sourceMetadata(string $format, array $rows, ?array $mapping): array
+    {
+        $headings = $rows === [] ? [] : array_keys($rows[0]);
+        $mapped = [];
+        if ($mapping !== null) {
+            foreach ($mapping as $key => $value) {
+                if (is_string($value) && ! in_array($key, ['decisions'], true)) {
+                    $mapped[] = $value;
+                }
+            }
+            foreach (($mapping['custom'] ?? []) as $heading) {
+                if (is_string($heading)) {
+                    $mapped[] = $heading;
+                }
+            }
+        }
+        $mapped = array_unique($mapped);
+        $sample = array_map(
+            fn (array $row): array => array_map(
+                fn ($value): string => mb_strcut((string) $value, 0, self::PREFLIGHT_SAMPLE_CELL_BYTES, 'UTF-8'),
+                $row,
+            ),
+            array_slice($rows, 0, self::PREFLIGHT_SAMPLE_ROWS),
+        );
+
+        return [
+            'format' => $format,
+            'headings' => $headings,
+            'sample' => $sample,
+            'unsupported_fields' => collect($headings)
+                ->reject(fn (string $heading) => in_array($heading, $mapped, true))
+                ->map(fn (string $heading) => ['heading' => $heading, 'reason' => 'not_mapped'])
+                ->values()->all(),
+            'requires_mapping' => $mapping === null,
+        ];
     }
 
     /** @return list<array<string,string>> */

@@ -24,9 +24,11 @@ final class TaskBoardMembersController extends TaskApiController
     public function index(Request $request, TaskBoard $board): JsonResponse
     {
         $this->access->manageDecision($request->user(), $board, ViewScope::forUser($request->user()))->authorize();
-        $members = $board->members()->with('user')->orderBy('created_at')->get();
+        $members = $board->members()->with(['user.role.permissions', 'user.assignments'])
+            ->orderBy('created_at')->get();
 
-        return response()->json(['data' => $members->map(fn (TaskBoardMember $member) => $this->present($member))]);
+        return response()->json(['data' => $members->map(fn (TaskBoardMember $member) =>
+            $this->present($board, $member, $members))]);
     }
 
     public function store(Request $request, TaskBoard $board): JsonResponse
@@ -41,7 +43,11 @@ final class TaskBoardMembersController extends TaskApiController
             BoardMemberRole::from($input['role']),
         );
 
-        return response()->json(['data' => $this->present($membership)], Response::HTTP_CREATED);
+        $members = $board->members()->with(['user.role.permissions', 'user.assignments'])->get();
+
+        return response()->json(['data' => $this->present(
+            $board, $members->firstWhere('id', $membership->id), $members,
+        )], Response::HTTP_CREATED);
     }
 
     public function update(Request $request, TaskBoard $board, TaskBoardMember $membership): JsonResponse
@@ -52,7 +58,11 @@ final class TaskBoardMembersController extends TaskApiController
             BoardMemberRole::from($input['role']),
         );
 
-        return response()->json(['data' => $this->present($result)]);
+        $members = $board->members()->with(['user.role.permissions', 'user.assignments'])->get();
+
+        return response()->json(['data' => $this->present(
+            $board, $members->firstWhere('id', $result->id), $members,
+        )]);
     }
 
     public function destroy(Request $request, TaskBoard $board, TaskBoardMember $membership): JsonResponse
@@ -61,10 +71,14 @@ final class TaskBoardMembersController extends TaskApiController
             $request->user(), $board, $membership, ViewScope::forUser($request->user()),
         );
 
-        return response()->json(['data' => $this->present($result)]);
+        $members = $board->members()->with(['user.role.permissions', 'user.assignments'])->get();
+
+        return response()->json(['data' => $this->present(
+            $board, $members->firstWhere('id', $result->id), $members,
+        )]);
     }
 
-    private function present(TaskBoardMember $membership): array
+    private function present(TaskBoard $board, TaskBoardMember $membership, $memberships): array
     {
         return [
             'id' => $membership->id,
@@ -73,6 +87,7 @@ final class TaskBoardMembersController extends TaskApiController
             'email' => $membership->user?->email,
             'role' => $membership->role->value,
             'active' => $membership->is_active && $membership->archived_at === null,
+            'actions' => $this->memberships->actionsFor($board, $membership, $memberships),
         ];
     }
 }

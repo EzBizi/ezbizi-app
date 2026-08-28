@@ -22,9 +22,14 @@ final class TaskImportsController extends TaskApiController
         );
         $input = $request->validate([
             'active_view_id' => ['required', 'uuid'],
-            'mapping' => ['required', 'string', 'max:262144'],
+            'mapping' => ['sometimes', 'string', 'max:262144'],
             'file' => ['required', 'file', 'max:10240'],
         ]);
+        if (! array_key_exists('mapping', $input)) {
+            return response()->json(['data' => $this->transfer->preflight(
+                $request->user(), $board, $scope, $input['active_view_id'], $input['file'],
+            )]);
+        }
         try {
             $mapping = json_decode($input['mapping'], true, 64, JSON_THROW_ON_ERROR);
         } catch (\JsonException) {

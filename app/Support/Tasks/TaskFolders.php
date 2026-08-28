@@ -90,6 +90,18 @@ final class TaskFolders
         });
     }
 
+    public function canManage(User $actor, TaskFolder $folder, ViewScope $scope): bool
+    {
+        if ($this->access->createDecision($actor, $scope)->denied()) {
+            return false;
+        }
+        $place = TaskPlace::fromView($scope);
+
+        return $folder->organization_id === $place['organization_id']
+            && $folder->company_id === $place['company_id']
+            && $folder->franchise_id === $place['franchise_id'];
+    }
+
     /** @return array{organization_id:string,company_id:?string,franchise_id:?string} */
     private function authorizeAtCurrentPlace(User $actor, TaskFolder $folder, ViewScope $scope): array
     {

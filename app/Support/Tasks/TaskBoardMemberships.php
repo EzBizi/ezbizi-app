@@ -124,6 +124,22 @@ final class TaskBoardMemberships
         });
     }
 
+    /** @param Collection<int, TaskBoardMember> $memberships
+     *  @return list<string>
+     */
+    public function actionsFor(TaskBoard $board, TaskBoardMember $membership, Collection $memberships): array
+    {
+        if (! $membership->is_active || $membership->archived_at !== null) {
+            return [];
+        }
+        if ($membership->role === BoardMemberRole::Owner
+            && ! $this->anotherEligibleOwnerExists($board, $memberships, $membership->id)) {
+            return [];
+        }
+
+        return ['change_role', 'revoke'];
+    }
+
     /** @return array{TaskBoard, Collection<int, TaskBoardMember>} */
     private function lockManagedBoard(User $actor, TaskBoard $board, ViewScope $scope): array
     {
@@ -140,20 +156,26 @@ final class TaskBoardMemberships
     /** @param Collection<int, TaskBoardMember> $memberships */
     private function assertAnotherEligibleOwner(TaskBoard $board, Collection $memberships, string $excludedId): void
     {
-        $eligibleOwnerExists = $memberships
-            ->where('is_active', true)
-            ->where('role', BoardMemberRole::Owner)
-            ->where('id', '!==', $excludedId)
-            ->contains(function (TaskBoardMember $membership) use ($board): bool {
-                $owner = User::query()->find($membership->user_id);
-
-                return $owner !== null && $this->participants->forMembership($owner, $board)->allowed();
-            });
-
-        if (! $eligibleOwnerExists) {
+        if (! $this->anotherEligibleOwnerExists($board, $memberships, $excludedId)) {
             throw ValidationException::withMessages([
                 'membership' => 'Promote another eligible board owner before removing or demoting this owner.',
             ]);
         }
+    }
+
+    /** @param Collection<int, TaskBoardMember> $memberships */
+    private function anotherEligibleOwnerExists(TaskBoard $board, Collection $memberships, string $excludedId): bool
+    {
+        return $memberships
+            ->where('is_active', true)
+            ->where('role', BoardMemberRole::Owner)
+            ->where('id', '!==', $excludedId)
+            ->contains(function (TaskBoardMember $membership) use ($board): bool {
+                $owner = $membership->relationLoaded('user')
+                    ? $membership->user
+                    : User::query()->find($membership->user_id);
+
+                return $owner !== null && $this->participants->forMembership($owner, $board)->allowed();
+            });
     }
 }

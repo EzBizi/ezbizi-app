@@ -89,6 +89,39 @@ class TaskBoardMembershipApiTest extends TestCase
         $this->assertStringNotContainsString('Confidential acquisition plan', $response->getContent());
     }
 
+    public function test_directory_actions_and_archived_and_recoverable_feeds_are_authoritative_and_private(): void
+    {
+        $active = $this->createBoard('private');
+
+        $directory = $this->getJson('/api/v1/tasks/boards')->assertOk();
+        $this->assertContains('create_board', $directory->json('meta.capabilities.actions'));
+        $this->assertContains('archive', $directory->json('data.0.actions'));
+        $this->assertContains('manage_members', $directory->json('data.0.actions'));
+
+        $this->postJson("/api/v1/tasks/boards/{$active->id}/archive", [
+            'expected_structure_version' => $active->structure_version,
+        ])->assertOk();
+        $archived = $this->getJson('/api/v1/tasks/boards?archived=1')->assertOk();
+        $this->assertSame($active->id, $archived->json('data.0.id'));
+        $this->assertSame(['restore'], $archived->json('data.0.actions'));
+
+        $formerOwner = $this->user('Former recovery owner', ['tasks.view']);
+        $replacement = $this->user('Recovery replacement', ['tasks.view']);
+        $orphan = $this->directPrivateBoard($formerOwner, 'Never reveal this board name');
+        $formerOwner->forceFill(['is_active' => false])->save();
+
+        $recoverable = $this->getJson('/api/v1/tasks/boards?recoverable=1')->assertOk();
+        $this->assertSame($orphan->id, $recoverable->json('data.0.id'));
+        $this->assertSame(['recover_owner'], $recoverable->json('data.0.actions'));
+        $this->assertStringNotContainsString('Never reveal this board name', $recoverable->getContent());
+        $this->assertStringNotContainsString($replacement->email, $recoverable->getContent());
+
+        $viewer = $this->user('Recovery viewer', ['tasks.view']);
+        $this->actingAs($viewer);
+        $this->getJson('/api/v1/tasks/boards?recoverable=1')->assertForbidden()
+            ->assertJsonMissing(['id' => $orphan->id]);
+    }
+
     public function test_folders_favorites_and_participant_search_stay_at_the_current_place(): void
     {
         $candidate = $this->user('Available person', ['tasks.view']);
@@ -114,6 +147,42 @@ class TaskBoardMembershipApiTest extends TestCase
             'visibility' => 'scope',
             'folder_id' => $folderId,
         ])->assertUnprocessable();
+    }
+
+    public function test_folder_and_membership_actions_match_the_writes_that_are_currently_safe(): void
+    {
+        $folder = $this->postJson('/api/v1/tasks/folders', ['name' => 'Administration'])
+            ->assertCreated();
+        $this->assertSame(['update', 'archive'], $folder->json('data.actions'));
+        $folderId = $folder->json('data.id');
+        $this->postJson("/api/v1/tasks/folders/{$folderId}/archive")->assertOk();
+        $this->getJson('/api/v1/tasks/folders?archived=1')->assertOk()
+            ->assertJsonPath('data.0.id', $folderId)
+            ->assertJsonPath('data.0.actions', ['restore']);
+
+        $board = $this->createBoard('private');
+        $candidate = $this->user('Member actions candidate', ['tasks.view']);
+        $candidateMembership = $this->postJson("/api/v1/tasks/boards/{$board->id}/members", [
+            'user_id' => $candidate->id, 'role' => 'member',
+        ])->assertCreated()->json('data.id');
+
+        $members = collect($this->getJson("/api/v1/tasks/boards/{$board->id}/members")
+            ->assertOk()->json('data'));
+        $this->assertSame([], $members->firstWhere('user_id', $this->alpha['admin']->id)['actions']);
+        $this->assertSame(
+            ['change_role', 'revoke'],
+            $members->firstWhere('id', $candidateMembership)['actions'],
+        );
+
+        $this->patchJson("/api/v1/tasks/boards/{$board->id}/members/{$candidateMembership}", [
+            'role' => 'owner',
+        ])->assertOk();
+        $members = collect($this->getJson("/api/v1/tasks/boards/{$board->id}/members")
+            ->assertOk()->json('data'));
+        $this->assertSame(
+            ['change_role', 'revoke'],
+            $members->firstWhere('user_id', $this->alpha['admin']->id)['actions'],
+        );
     }
 
     public function test_folder_directory_refuses_an_organization_fallback_outside_assignment_reach(): void

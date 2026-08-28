@@ -22,10 +22,33 @@ final class TaskBoardsController extends TaskApiController
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', TaskBoard::class);
+        $input = $request->validate([
+            'archived' => ['sometimes', 'boolean'],
+            'recoverable' => ['sometimes', 'boolean'],
+        ]);
+        $scope = ViewScope::forUser($request->user());
+        if ((bool) ($input['recoverable'] ?? false)) {
+            $boards = $this->access->recoverableAtCurrentView($request->user(), $scope);
+
+            return response()->json([
+                'data' => $boards->map(fn (TaskBoard $board) => [
+                    'id' => $board->id,
+                    'company_id' => $board->company_id,
+                    'franchise_id' => $board->franchise_id,
+                    'actions' => ['recover_owner'],
+                ]),
+                'meta' => ['total' => $boards->count(), 'capabilities' => [
+                    'actions' => $this->access->directoryActions($request->user(), $scope),
+                ]],
+            ]);
+        }
+        $archived = (bool) ($input['archived'] ?? false);
         $query = $this->access->constrainVisible(
-            TaskBoard::query()->active(),
+            TaskBoard::query()->when($archived,
+                fn ($query) => $query->archived(),
+                fn ($query) => $query->active()),
             $request->user(),
-            ViewScope::forUser($request->user()),
+            $scope,
         )->with([
             'groups' => fn ($q) => $q->active()->orderBy('position'),
             'preferences' => fn ($q) => $q->where('user_id', $request->user()->id),
@@ -33,8 +56,12 @@ final class TaskBoardsController extends TaskApiController
         $boards = $query->orderBy('position')->get();
 
         return response()->json([
-            'data' => $boards->map(fn (TaskBoard $board) => $this->present($board)),
-            'meta' => ['total' => $boards->count()],
+            'data' => $boards->map(fn (TaskBoard $board) => $this->present(
+                $board, $request->user(), $scope,
+            )),
+            'meta' => ['total' => $boards->count(), 'capabilities' => [
+                'actions' => $this->access->directoryActions($request->user(), $scope),
+            ]],
         ]);
     }
 
@@ -51,14 +78,25 @@ final class TaskBoardsController extends TaskApiController
         ]);
         $board = $this->writer->create($request->user(), ViewScope::forUser($request->user()), $input);
 
-        return response()->json(['data' => $this->present($board)], Response::HTTP_CREATED);
+        return response()->json(['data' => $this->present(
+            $board, $request->user(), ViewScope::forUser($request->user()),
+        )], Response::HTTP_CREATED);
     }
 
     public function show(Request $request, TaskBoard $board): JsonResponse
     {
         $this->authorize('view', $board);
+        $input = $request->validate([
+            'include_archived_structure' => ['sometimes', 'boolean'],
+        ]);
+        $includeArchived = (bool) ($input['include_archived_structure'] ?? false);
 
-        return response()->json(['data' => $this->present($board->load($this->relations($request->user()->id)))]);
+        $scope = ViewScope::forUser($request->user());
+
+        return response()->json(['data' => $this->present(
+            $board->load($this->relations($request->user()->id, $includeArchived)),
+            $request->user(), $scope,
+        )]);
     }
 
     public function update(Request $request, TaskBoard $board): JsonResponse
@@ -80,7 +118,9 @@ final class TaskBoardsController extends TaskApiController
                 $request->user(), $board, ViewScope::forUser($request->user()),
                 (int) $input['expected_structure_version'], $input,
             ),
-            fn (TaskBoard $result) => $this->present($result),
+            fn (TaskBoard $result) => $this->present(
+                $result, $request->user(), ViewScope::forUser($request->user()),
+            ),
         );
     }
 
@@ -112,7 +152,9 @@ final class TaskBoardsController extends TaskApiController
                 (int) $input['expected_structure_version'], $input['name'],
                 (bool) ($input['include_tasks'] ?? false),
             ),
-            fn (TaskBoard $result) => $this->present($result),
+            fn (TaskBoard $result) => $this->present(
+                $result, $request->user(), ViewScope::forUser($request->user()),
+            ),
             Response::HTTP_CREATED,
         );
     }
@@ -127,11 +169,13 @@ final class TaskBoardsController extends TaskApiController
                 $request->user(), $board, ViewScope::forUser($request->user()),
                 (int) $input['expected_structure_version'], $archived,
             ),
-            fn (TaskBoard $result) => $this->present($result),
+            fn (TaskBoard $result) => $this->present(
+                $result, $request->user(), ViewScope::forUser($request->user()),
+            ),
         );
     }
 
-    private function present(TaskBoard $board): array
+    private function present(TaskBoard $board, $actor, ViewScope $scope): array
     {
         return [
             'id' => $board->id,
@@ -149,33 +193,51 @@ final class TaskBoardsController extends TaskApiController
             'last_opened_at' => $board->relationLoaded('preferences')
                 ? $board->preferences->first()?->last_opened_at?->toIso8601String()
                 : null,
+            'actions' => $this->access->boardActions($actor, $board, $scope),
             'groups' => $board->relationLoaded('groups')
-                ? $board->groups->map(fn ($group) => ['id' => $group->id, 'name' => $group->name, 'color' => $group->color])->values()
+                ? $board->groups->sortBy([['position', 'asc'], ['id', 'asc']])->map(fn ($group) => [
+                    'id' => $group->id, 'name' => $group->name, 'color' => $group->color,
+                    'position' => (int) $group->position,
+                    'order_version' => (int) $group->order_version,
+                    'archived' => $group->archived_at !== null,
+                    'actions' => $this->structureActions($actor, $board, $scope, $group->archived_at !== null),
+                ])->values()
                 : [],
             'statuses' => $board->relationLoaded('statusOptions')
-                ? $board->statusOptions->map(fn ($status) => [
+                ? $board->statusOptions->sortBy([['position', 'asc'], ['id', 'asc']])->map(fn ($status) => [
                     'id' => $status->id, 'name' => $status->name, 'color' => $status->color,
                     'category' => $status->category->value, 'archived' => $status->archived_at !== null,
+                    'position' => (int) $status->position,
+                    'actions' => $this->structureActions($actor, $board, $scope, $status->archived_at !== null),
                 ])->values()
                 : [],
             'priorities' => $board->relationLoaded('priorityOptions')
-                ? $board->priorityOptions->map(fn ($priority) => [
+                ? $board->priorityOptions->sortBy([['position', 'asc'], ['id', 'asc']])->map(fn ($priority) => [
                     'id' => $priority->id, 'name' => $priority->name, 'color' => $priority->color,
                     'rank' => $priority->rank->value, 'archived' => $priority->archived_at !== null,
+                    'position' => (int) $priority->position,
+                    'actions' => $this->structureActions($actor, $board, $scope, $priority->archived_at !== null),
                 ])->values()
                 : [],
             'core_columns' => $board->relationLoaded('coreColumnSettings')
-                ? $board->coreColumnSettings->map(fn ($column) => [
+                ? $board->coreColumnSettings->sortBy('core_key')->map(fn ($column) => [
                     'core_key' => $column->core_key, 'display_label' => $column->display_label,
+                    'actions' => $this->access->boardActions($actor, $board, $scope) !== []
+                        && in_array('manage_structure', $this->access->boardActions($actor, $board, $scope), true)
+                            ? ['update'] : [],
                 ])->values()
                 : [],
             'custom_columns' => $board->relationLoaded('columnDefinitions')
-                ? $board->columnDefinitions->map(fn ($column) => [
+                ? $board->columnDefinitions->sortBy([['position', 'asc'], ['id', 'asc']])->map(fn ($column) => [
                     'id' => $column->id, 'name' => $column->name, 'type' => $column->type->value,
                     'number_suffix' => $column->number_suffix, 'archived' => $column->archived_at !== null,
-                    'options' => $column->options->map(fn ($option) => [
+                    'position' => (int) $column->position,
+                    'actions' => $this->structureActions($actor, $board, $scope, $column->archived_at !== null),
+                    'options' => $column->options->sortBy([['position', 'asc'], ['id', 'asc']])->map(fn ($option) => [
                         'id' => $option->id, 'name' => $option->name, 'color' => $option->color,
                         'archived' => $option->archived_at !== null,
+                        'position' => (int) $option->position,
+                        'actions' => $this->structureActions($actor, $board, $scope, $option->archived_at !== null),
                     ])->values(),
                 ])->values()
                 : [],
@@ -189,17 +251,40 @@ final class TaskBoardsController extends TaskApiController
         ];
     }
 
-    private function relations(string $userId): array
+    private function relations(string $userId, bool $includeArchived = false): array
     {
         return [
-            'groups' => fn ($query) => $query->active()->orderBy('position'),
-            'statusOptions', 'priorityOptions', 'coreColumnSettings',
-            'columnDefinitions.options',
+            'groups' => fn ($query) => $query
+                ->when(! $includeArchived, fn ($query) => $query->active())
+                ->orderBy('position')->orderBy('id'),
+            'statusOptions' => fn ($query) => $query
+                ->when(! $includeArchived, fn ($query) => $query->active())
+                ->orderBy('position')->orderBy('id'),
+            'priorityOptions' => fn ($query) => $query
+                ->when(! $includeArchived, fn ($query) => $query->active())
+                ->orderBy('position')->orderBy('id'),
+            'coreColumnSettings' => fn ($query) => $query->orderBy('core_key'),
+            'columnDefinitions' => fn ($query) => $query
+                ->when(! $includeArchived, fn ($query) => $query->active())
+                ->orderBy('position')->orderBy('id'),
+            'columnDefinitions.options' => fn ($query) => $query
+                ->when(! $includeArchived, fn ($query) => $query->active())
+                ->orderBy('position')->orderBy('id'),
             'views' => fn ($query) => $query->where(fn ($visible) => $visible
                 ->where('visibility', 'shared')
                 ->orWhere('owner_user_id', $userId)),
             'members',
             'preferences' => fn ($query) => $query->where('user_id', $userId),
         ];
+    }
+
+    /** @return list<string> */
+    private function structureActions($actor, TaskBoard $board, ViewScope $scope, bool $archived): array
+    {
+        if (! in_array('manage_structure', $this->access->boardActions($actor, $board, $scope), true)) {
+            return [];
+        }
+
+        return $archived ? ['restore'] : ['update', 'archive'];
     }
 }

@@ -13,6 +13,7 @@ use App\Support\Scoping\ViewScope;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 final class TaskBoardAccess
@@ -76,6 +77,110 @@ final class TaskBoardAccess
                     ->active()
                     ->where('user_id', $user->getKey()));
         });
+    }
+
+    /** @return list<string> */
+    public function directoryActions(User $user, ViewScope $scope): array
+    {
+        $canCreate = $this->createDecision($user, $scope)->allowed();
+
+        return array_values(array_filter([
+            $canCreate ? 'create_board' : null,
+            $canCreate ? 'create_folder' : null,
+            $this->directoryDecision($user, $scope)->allowed() ? 'view_archived' : null,
+            $this->canBrowseRecoverable($user, $scope) ? 'recover_private_boards' : null,
+        ]));
+    }
+
+    /** @return list<string> */
+    public function boardActions(User $user, TaskBoard $board, ViewScope $scope): array
+    {
+        if ($board->archived_at !== null) {
+            return $this->manageArchivedDecision($user, $board, $scope)->allowed()
+                ? ['restore']
+                : [];
+        }
+
+        if ($this->viewDecision($user, $board, $scope)->denied()) {
+            return [];
+        }
+
+        $manage = $this->manageDecision($user, $board, $scope)->allowed();
+        $canCreateHere = $this->createDecision($user, $scope)->allowed();
+        $place = TaskPlace::fromView($scope);
+        $samePlace = $board->company_id === $place['company_id']
+            && $board->franchise_id === $place['franchise_id'];
+        $canExport = $user->hasPermission('tasks.export');
+
+        return array_values(array_filter([
+            $manage ? 'update' : null,
+            $manage ? 'archive' : null,
+            $manage && $canCreateHere ? 'duplicate' : null,
+            $manage && $canCreateHere && $samePlace ? 'duplicate_with_tasks' : null,
+            $manage ? 'manage_members' : null,
+            $manage ? 'manage_structure' : null,
+            $manage && $user->hasPermission('tasks.create') ? 'import' : null,
+            $canExport ? 'export' : null,
+            $manage && $canExport ? 'archive_manifest' : null,
+        ]));
+    }
+
+    public function canBrowseRecoverable(User $user, ViewScope $scope): bool
+    {
+        return $user->is_active
+            && $user->isAdministrator()
+            && ! $user->organization?->isReadOnly()
+            && $this->directoryDecision($user, $scope)->allowed();
+    }
+
+    /** @return Collection<int,TaskBoard> */
+    public function recoverableAtCurrentView(User $user, ViewScope $scope): Collection
+    {
+        abort_unless($this->canBrowseRecoverable($user, $scope), 403,
+            'Only an active organization Administrator can recover orphaned private boards.');
+
+        $place = TaskPlace::fromView($scope);
+
+        return TaskBoard::query()->active()
+            ->where('visibility', BoardVisibility::Private->value)
+            ->where('company_id', $place['company_id'])
+            ->where('franchise_id', $place['franchise_id'])
+            ->with(['members.user.role.permissions', 'members.user.assignments'])
+            ->orderBy('position')->get()
+            ->filter(fn (TaskBoard $board) => $this->recoveryDecision($user, $board)->allowed())
+            ->values();
+    }
+
+    public function recoveryDecision(User $administrator, TaskBoard $board): Response
+    {
+        if (! $administrator->is_active
+            || ! $administrator->isAdministrator()
+            || $administrator->organization_id !== $board->organization_id) {
+            return Response::deny('Only an active organization Administrator can recover an orphaned private board.');
+        }
+
+        if ($board->visibility !== BoardVisibility::Private) {
+            return Response::deny('Owner recovery is only for an orphaned private board.');
+        }
+
+        if (! $this->availability->isAvailable('tasks', $administrator->organization)
+            || $administrator->organization?->isReadOnly()) {
+            return Response::deny('Tasks owner recovery is unavailable while the module or subscription is inactive.');
+        }
+
+        $memberships = $board->relationLoaded('members')
+            ? $board->members
+            : $board->members()->with('user.role.permissions', 'user.assignments')->get();
+        $eligibleOwnerExists = $memberships
+            ->where('is_active', true)
+            ->where('role', BoardMemberRole::Owner)
+            ->contains(fn (TaskBoardMember $membership): bool =>
+                $membership->user !== null
+                && $this->participants->forMembership($membership->user, $board)->allowed());
+
+        return $eligibleOwnerExists
+            ? Response::deny('This board still has an eligible owner and does not need recovery.')
+            : Response::allow();
     }
 
     public function viewDecision(User $user, TaskBoard $board, ViewScope $scope): Response

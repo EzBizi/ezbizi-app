@@ -261,6 +261,46 @@ class TaskBoardConfigurationApiTest extends TestCase
         $this->assertNotContains('Private plan', collect($response->json('data.views'))->pluck('name')->all());
     }
 
+    public function test_administration_snapshot_is_ordered_complete_and_action_authoritative(): void
+    {
+        $board = $this->createBoard('Editable structure');
+        $this->postJson("/api/v1/tasks/boards/{$board->id}/columns", [
+            'name' => 'Estimate', 'type' => 'number', 'number_suffix' => 'hours',
+            'expected_structure_version' => 1,
+        ])->assertCreated()->assertJsonPath('meta.structure_version', 2);
+        $this->enterTenant();
+        $group = $board->groups()->active()->orderBy('position')->firstOrFail();
+        $this->postJson("/api/v1/tasks/boards/{$board->id}/groups/{$group->id}/archive", [
+            'expected_structure_version' => 2,
+        ])->assertOk()->assertJsonPath('meta.structure_version', 3);
+
+        $response = $this->getJson(
+            "/api/v1/tasks/boards/{$board->id}?include_archived_structure=1",
+        )->assertOk()->assertJsonPath('data.structure_version', 3);
+
+        $groups = collect($response->json('data.groups'));
+        $archived = $groups->firstWhere('id', $group->id);
+        $this->assertTrue($archived['archived']);
+        $this->assertSame(['restore'], $archived['actions']);
+        $this->assertIsInt($archived['position']);
+        $this->assertIsInt($archived['order_version']);
+        $this->assertSame(
+            $groups->pluck('position')->sort()->values()->all(),
+            $groups->pluck('position')->values()->all(),
+        );
+
+        foreach (['statuses', 'priorities', 'custom_columns'] as $key) {
+            $rows = collect($response->json("data.{$key}"));
+            $this->assertNotEmpty($rows);
+            $this->assertSame(
+                $rows->pluck('position')->sort()->values()->all(),
+                $rows->pluck('position')->values()->all(),
+            );
+            $this->assertContains('update', $rows->first()['actions']);
+        }
+        $this->assertContains('update', $response->json('data.core_columns.0.actions'));
+    }
+
     private function createBoard(string $name = 'Operations'): TaskBoard
     {
         $id = $this->postJson('/api/v1/tasks/boards', [
