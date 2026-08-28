@@ -116,6 +116,17 @@ class TaskBoardMembershipApiTest extends TestCase
             ->assertNotFound()->assertJsonMissing(['id' => $replacement->id]);
     }
 
+    public function test_recovery_candidate_feed_hides_a_healthy_private_board_from_a_same_view_administrator(): void
+    {
+        $owner = $this->user('Healthy private owner', ['tasks.view']);
+        $candidate = $this->user('Healthy private candidate', ['tasks.view']);
+        $board = $this->directPrivateBoard($owner, 'Healthy private board');
+
+        $this->getJson("/api/v1/tasks/boards/{$board->id}/participants?purpose=membership")
+            ->assertNotFound()
+            ->assertJsonMissing(['id' => $candidate->id]);
+    }
+
     public function test_directory_actions_and_archived_and_recoverable_feeds_are_authoritative_and_private(): void
     {
         $active = $this->createBoard('private');

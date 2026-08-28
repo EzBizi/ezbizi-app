@@ -199,7 +199,9 @@ final class TaskBoardAccess
             return Response::denyAsNotFound();
         }
 
-        return $this->recoveryDecision($administrator, $board);
+        $recovery = $this->recoveryDecision($administrator, $board);
+
+        return $recovery->allowed() ? $recovery : Response::denyAsNotFound();
     }
 
     public function viewDecision(User $user, TaskBoard $board, ViewScope $scope): Response
