@@ -618,7 +618,7 @@ footer p{font-size:.83rem;color:var(--muted-2)}
     <p>On the team? Open the control plane. Otherwise, talk to us.</p>
     <div class="herocta">
       <a href="https://dev.ezbizi.com" class="btn btn-primary btn-lg">Work with us</a>
-      <a href="mailto:contact@ezbizi.com?subject=EzBizi%20question" class="btn btn-ghost btn-lg">Talk to us</a>
+      <a href="mailto:contact@ezbizi.com?subject=EzBizi%20question" data-ezbizi-href="email" class="btn btn-ghost btn-lg">Talk to us</a>
     </div>
   </div>
 </section>
@@ -633,7 +633,7 @@ footer p{font-size:.83rem;color:var(--muted-2)}
       <a href="https://app.ezbizi.com">Sign in</a>
       <a href="/privacy/">Privacy</a>
       <a href="/terms/">Terms</a>
-      <a href="mailto:contact@ezbizi.com">Contact</a>
+      <a href="mailto:contact@ezbizi.com" data-ezbizi-href="email">Contact</a>
     </div>
   </div>
 </footer>
@@ -665,5 +665,10 @@ footer p{font-size:.83rem;color:var(--muted-2)}
 })();
 </script>
 
+<!-- Business details from EzBizi Web Management. The values above are real and
+     crawlable; this only refreshes them when they change in EzBizi, and does
+     nothing at all if it cannot reach us. Legal pages and the JSON-LD above
+     are deliberately NOT driven by it. -->
+<script src="https://app.ezbizi.com/ezbizi.js" data-key="pk_REPLACE_WITH_KEY_FROM_WEB_MANAGEMENT"></script>
 </body>
 </html>
