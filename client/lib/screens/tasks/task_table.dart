@@ -24,6 +24,7 @@ class TaskTable extends StatefulWidget {
     this.configuration = TaskViewConfiguration.empty,
     this.groupCounts = const <TaskGroupCount>[],
     this.onDraftChanged,
+    this.onAddTask,
   });
   final TaskBoard board;
   final List<TaskRow> rows;
@@ -44,6 +45,7 @@ class TaskTable extends StatefulWidget {
   final TaskViewConfiguration configuration;
   final List<TaskGroupCount> groupCounts;
   final TaskDraftChanged? onDraftChanged;
+  final ValueChanged<String?>? onAddTask;
   @override
   State<TaskTable> createState() => _TaskTableState();
 }
@@ -207,6 +209,9 @@ class _TaskTableState extends State<TaskTable> {
                                   ? _collapsed.remove(id)
                                   : _collapsed.add(id),
                             ),
+                            widget.configuration.groupBy == null
+                                ? () => widget.onAddTask?.call(id as String?)
+                                : null,
                           ),
                           if (!_collapsed.contains(id))
                             for (final row in groups[id] ?? const <TaskRow>[])
@@ -386,6 +391,7 @@ Widget _group(
   String name,
   bool collapsed,
   VoidCallback toggle,
+  VoidCallback? addTask,
 ) => Container(
   height: 44,
   decoration: BoxDecoration(
@@ -405,7 +411,15 @@ Widget _group(
         icon: Icon(collapsed ? Icons.chevron_right : Icons.expand_more),
         onPressed: toggle,
       ),
-      Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
+      Expanded(
+        child: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
+      ),
+      if (addTask != null)
+        IconButton(
+          tooltip: 'Add task to $name',
+          icon: const Icon(Icons.add, size: 19),
+          onPressed: addTask,
+        ),
     ],
   ),
 );

@@ -94,6 +94,598 @@ final class TaskApi {
     });
   }
 
+  Future<TaskApiResult<TaskBoardDirectory>> boardDirectorySnapshot({
+    bool archived = false,
+  }) async {
+    final cacheEpoch = _cacheEpoch;
+    final response = await _api.get('/tasks/boards', <String, String>{
+      if (archived) 'archived': '1',
+    });
+    return _decode(response, (data) {
+      if (data is! List) throw const FormatException('data must be a list.');
+      final boards = data
+          .map((entry) => TaskBoard.fromJson(_map(entry, 'data[]')))
+          .toList(growable: false);
+      final meta = _map(response.body['meta'], 'meta');
+      final capabilities = _map(meta['capabilities'], 'meta.capabilities');
+      final actions = _stringList(capabilities, 'actions');
+      if (cacheEpoch == _cacheEpoch) {
+        for (final board in boards) {
+          _boards[board.id] = board;
+        }
+      }
+      return TaskBoardDirectory(boards: boards, actions: actions);
+    });
+  }
+
+  Future<TaskApiResult<List<TaskRecoverableBoard>>> recoverableBoards() async {
+    final response = await _api.get('/tasks/boards', const <String, String>{
+      'recoverable': '1',
+    });
+    return _decode(response, (data) {
+      if (data is! List) throw const FormatException('data must be a list.');
+      return data
+          .map((entry) => TaskRecoverableBoard.fromJson(_map(entry, 'data[]')))
+          .toList(growable: false);
+    });
+  }
+
+  Future<TaskApiResult<List<TaskFolder>>> folders({
+    bool archived = false,
+  }) async {
+    final response = await _api.get('/tasks/folders', <String, String>{
+      if (archived) 'archived': '1',
+    });
+    return _decode(response, (data) {
+      if (data is! List) throw const FormatException('data must be a list.');
+      return data
+          .map((entry) => TaskFolder.fromJson(_map(entry, 'data[]')))
+          .toList(growable: false);
+    });
+  }
+
+  Future<TaskApiResult<TaskFolder>> setFolderArchived(
+    String folderId, {
+    required bool archived,
+  }) async {
+    final response = await _api.post(
+      '/tasks/folders/$folderId/${archived ? 'archive' : 'restore'}',
+      const <String, dynamic>{},
+    );
+    return _decode(response, (data) => TaskFolder.fromJson(_map(data, 'data')));
+  }
+
+  Future<TaskApiResult<TaskBoardPreference>> saveBoardPreference(
+    String boardId, {
+    bool? isFavorite,
+    bool markOpened = false,
+  }) async {
+    final response = await _api
+        .put('/tasks/boards/$boardId/preference', <String, dynamic>{
+          if (isFavorite != null) 'is_favorite': isFavorite,
+          if (markOpened) 'mark_opened': true,
+        });
+    return _decode(
+      response,
+      (data) => TaskBoardPreference.fromJson(_map(data, 'data')),
+    );
+  }
+
+  Future<TaskApiResult<List<TaskBoardMember>>> boardMembers(
+    String boardId,
+  ) async {
+    final response = await _api.get('/tasks/boards/$boardId/members');
+    return _decode(response, (data) {
+      if (data is! List) throw const FormatException('data must be a list.');
+      return data
+          .map((entry) => TaskBoardMember.fromJson(_map(entry, 'data[]')))
+          .toList(growable: false);
+    });
+  }
+
+  Future<TaskApiResult<TaskBoardMember>> addBoardMember(
+    String boardId, {
+    required String userId,
+    required TaskBoardMemberRole role,
+  }) async {
+    final response = await _api.post('/tasks/boards/$boardId/members', {
+      'user_id': userId,
+      'role': _boardMemberRole(role),
+    });
+    return _decode(
+      response,
+      (data) => TaskBoardMember.fromJson(_map(data, 'data')),
+    );
+  }
+
+  Future<TaskApiResult<TaskBoardMember>> changeBoardMemberRole(
+    String boardId,
+    String membershipId, {
+    required TaskBoardMemberRole role,
+  }) async {
+    final response = await _api.patch(
+      '/tasks/boards/$boardId/members/$membershipId',
+      <String, dynamic>{'role': _boardMemberRole(role)},
+    );
+    return _decode(
+      response,
+      (data) => TaskBoardMember.fromJson(_map(data, 'data')),
+    );
+  }
+
+  Future<TaskApiResult<TaskBoardMember>> revokeBoardMember(
+    String boardId,
+    String membershipId,
+  ) async {
+    final response = await _api.delete(
+      '/tasks/boards/$boardId/members/$membershipId',
+    );
+    return _decode(
+      response,
+      (data) => TaskBoardMember.fromJson(_map(data, 'data')),
+    );
+  }
+
+  Future<TaskApiResult<TaskBoardRecovery>> recoverBoardOwner(
+    String boardId,
+    String newOwnerUserId,
+  ) async {
+    final response = await _api.post('/tasks/boards/$boardId/recovery', {
+      'new_owner_user_id': newOwnerUserId,
+    });
+    return _decode(
+      response,
+      (data) => TaskBoardRecovery.fromJson(_map(data, 'data')),
+    );
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskBoard>>> setBoardArchived(
+    String boardId, {
+    required int expectedStructureVersion,
+    required bool archived,
+  }) async {
+    final response = await _api.post(
+      '/tasks/boards/$boardId/${archived ? 'archive' : 'restore'}',
+      <String, dynamic>{'expected_structure_version': expectedStructureVersion},
+    );
+    return _decodeStructure(response, TaskBoard.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskBoard>>> duplicateBoard(
+    String boardId, {
+    required int expectedStructureVersion,
+    required String name,
+    required bool includeTasks,
+  }) async {
+    final response = await _api.post('/tasks/boards/$boardId/duplicate', {
+      'expected_structure_version': expectedStructureVersion,
+      'name': name,
+      'include_tasks': includeTasks,
+    });
+    return _decodeStructure(response, TaskBoard.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskGroup>>> createGroup(
+    String boardId, {
+    required int expectedStructureVersion,
+    required String name,
+    String? color,
+  }) async {
+    final response = await _api.post('/tasks/boards/$boardId/groups', {
+      'expected_structure_version': expectedStructureVersion,
+      'name': name,
+      'color': ?color,
+    });
+    return _decodeStructure(response, TaskGroup.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskGroup>>> updateGroup(
+    String boardId,
+    String groupId, {
+    required int expectedStructureVersion,
+    required String name,
+    String? color,
+  }) async {
+    final response = await _api
+        .patch('/tasks/boards/$boardId/groups/$groupId', <String, dynamic>{
+          'expected_structure_version': expectedStructureVersion,
+          'name': name,
+          if (color != null) 'color': color,
+        });
+    return _decodeStructure(response, TaskGroup.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskGroup>>> setGroupArchived(
+    String boardId,
+    String groupId, {
+    required int expectedStructureVersion,
+    required bool archived,
+  }) async {
+    final response = await _api.post(
+      '/tasks/boards/$boardId/groups/$groupId/${archived ? 'archive' : 'restore'}',
+      <String, dynamic>{'expected_structure_version': expectedStructureVersion},
+    );
+    return _decodeStructure(response, TaskGroup.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<List<String>>>> reorderGroups(
+    String boardId, {
+    required int expectedStructureVersion,
+    required List<String> orderedIds,
+  }) async {
+    final response = await _api.post('/tasks/boards/$boardId/groups/reorder', {
+      'expected_structure_version': expectedStructureVersion,
+      'ordered_ids': orderedIds,
+    });
+    return _decodeStructure(response, _orderedIds);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskStatusOption>>> createStatus(
+    String boardId, {
+    required int expectedStructureVersion,
+    required String name,
+    required TaskStatusCategory category,
+    String? color,
+  }) async {
+    final response = await _api.post('/tasks/boards/$boardId/statuses', {
+      'expected_structure_version': expectedStructureVersion,
+      'name': name,
+      'category': _statusCategory(category),
+      'color': ?color,
+    });
+    return _decodeStructure(response, TaskStatusOption.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskStatusOption>>> updateStatus(
+    String boardId,
+    String statusId, {
+    required int expectedStructureVersion,
+    required String name,
+    required TaskStatusCategory category,
+    String? color,
+  }) async {
+    final response = await _api
+        .patch('/tasks/boards/$boardId/statuses/$statusId', <String, dynamic>{
+          'expected_structure_version': expectedStructureVersion,
+          'name': name,
+          'category': _statusCategory(category),
+          if (color != null) 'color': color,
+        });
+    return _decodeStructure(response, TaskStatusOption.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskStatusOption>>>
+  setStatusArchived(
+    String boardId,
+    String statusId, {
+    required int expectedStructureVersion,
+    required bool archived,
+  }) async {
+    final response = await _api.post(
+      '/tasks/boards/$boardId/statuses/$statusId/${archived ? 'archive' : 'restore'}',
+      <String, dynamic>{'expected_structure_version': expectedStructureVersion},
+    );
+    return _decodeStructure(response, TaskStatusOption.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<List<String>>>> reorderStatuses(
+    String boardId, {
+    required int expectedStructureVersion,
+    required List<String> orderedIds,
+  }) async {
+    final response = await _api
+        .post('/tasks/boards/$boardId/statuses/reorder', {
+          'expected_structure_version': expectedStructureVersion,
+          'ordered_ids': orderedIds,
+        });
+    return _decodeStructure(response, _orderedIds);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskPriorityOption>>>
+  createPriority(
+    String boardId, {
+    required int expectedStructureVersion,
+    required String name,
+    required TaskPriorityRank rank,
+    String? color,
+  }) async {
+    final response = await _api.post('/tasks/boards/$boardId/priorities', {
+      'expected_structure_version': expectedStructureVersion,
+      'name': name,
+      'rank': _priorityRank(rank),
+      'color': ?color,
+    });
+    return _decodeStructure(response, TaskPriorityOption.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskPriorityOption>>>
+  updatePriority(
+    String boardId,
+    String priorityId, {
+    required int expectedStructureVersion,
+    required String name,
+    required TaskPriorityRank rank,
+    String? color,
+  }) async {
+    final response = await _api.patch(
+      '/tasks/boards/$boardId/priorities/$priorityId',
+      <String, dynamic>{
+        'expected_structure_version': expectedStructureVersion,
+        'name': name,
+        'rank': _priorityRank(rank),
+        if (color != null) 'color': color,
+      },
+    );
+    return _decodeStructure(response, TaskPriorityOption.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskPriorityOption>>>
+  setPriorityArchived(
+    String boardId,
+    String priorityId, {
+    required int expectedStructureVersion,
+    required bool archived,
+  }) async {
+    final response = await _api.post(
+      '/tasks/boards/$boardId/priorities/$priorityId/${archived ? 'archive' : 'restore'}',
+      <String, dynamic>{'expected_structure_version': expectedStructureVersion},
+    );
+    return _decodeStructure(response, TaskPriorityOption.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<List<String>>>> reorderPriorities(
+    String boardId, {
+    required int expectedStructureVersion,
+    required List<String> orderedIds,
+  }) async {
+    final response = await _api
+        .post('/tasks/boards/$boardId/priorities/reorder', <String, dynamic>{
+          'expected_structure_version': expectedStructureVersion,
+          'ordered_ids': orderedIds,
+        });
+    return _decodeStructure(response, _orderedIds);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskColumnDefinition>>>
+  createColumn(
+    String boardId, {
+    required int expectedStructureVersion,
+    required String name,
+    required TaskColumnKind type,
+    String? numberSuffix,
+  }) async {
+    final response = await _api.post('/tasks/boards/$boardId/columns', {
+      'expected_structure_version': expectedStructureVersion,
+      'name': name,
+      'type': _columnType(type),
+      'number_suffix': ?numberSuffix,
+    });
+    return _decodeStructure(response, TaskColumnDefinition.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskCoreColumn>>> updateCoreLabel(
+    String boardId,
+    String coreKey, {
+    required int expectedStructureVersion,
+    required String displayLabel,
+  }) async {
+    final response = await _api.patch(
+      '/tasks/boards/$boardId/columns/core/$coreKey',
+      <String, dynamic>{
+        'expected_structure_version': expectedStructureVersion,
+        'display_label': displayLabel,
+      },
+    );
+    return _decodeStructure(response, TaskCoreColumn.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskColumnDefinition>>>
+  updateColumn(
+    String boardId,
+    String columnId, {
+    required int expectedStructureVersion,
+    required String name,
+    String? numberSuffix,
+  }) async {
+    final response = await _api
+        .patch('/tasks/boards/$boardId/columns/$columnId', <String, dynamic>{
+          'expected_structure_version': expectedStructureVersion,
+          'name': name,
+          'number_suffix': numberSuffix,
+        });
+    return _decodeStructure(response, TaskColumnDefinition.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskColumnDefinition>>>
+  setColumnArchived(
+    String boardId,
+    String columnId, {
+    required int expectedStructureVersion,
+    required bool archived,
+  }) async {
+    final response = await _api.post(
+      '/tasks/boards/$boardId/columns/$columnId/${archived ? 'archive' : 'restore'}',
+      <String, dynamic>{'expected_structure_version': expectedStructureVersion},
+    );
+    return _decodeStructure(response, TaskColumnDefinition.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<List<String>>>> reorderColumns(
+    String boardId, {
+    required int expectedStructureVersion,
+    required List<String> orderedIds,
+  }) async {
+    final response = await _api.post('/tasks/boards/$boardId/columns/reorder', {
+      'expected_structure_version': expectedStructureVersion,
+      'ordered_ids': orderedIds,
+    });
+    return _decodeStructure(response, _orderedIds);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskColumnOption>>>
+  createColumnOption(
+    String boardId,
+    String columnId, {
+    required int expectedStructureVersion,
+    required String name,
+    String? color,
+  }) async {
+    final response = await _api.post(
+      '/tasks/boards/$boardId/columns/$columnId/options',
+      <String, dynamic>{
+        'expected_structure_version': expectedStructureVersion,
+        'name': name,
+        'color': ?color,
+      },
+    );
+    return _decodeStructure(response, TaskColumnOption.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskColumnOption>>>
+  updateColumnOption(
+    String boardId,
+    String columnId,
+    String optionId, {
+    required int expectedStructureVersion,
+    required String name,
+    String? color,
+  }) async {
+    final response = await _api.patch(
+      '/tasks/boards/$boardId/columns/$columnId/options/$optionId',
+      <String, dynamic>{
+        'expected_structure_version': expectedStructureVersion,
+        'name': name,
+        if (color != null) 'color': color,
+      },
+    );
+    return _decodeStructure(response, TaskColumnOption.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<TaskColumnOption>>>
+  setColumnOptionArchived(
+    String boardId,
+    String columnId,
+    String optionId, {
+    required int expectedStructureVersion,
+    required bool archived,
+  }) async {
+    final response = await _api.post(
+      '/tasks/boards/$boardId/columns/$columnId/options/$optionId/${archived ? 'archive' : 'restore'}',
+      <String, dynamic>{'expected_structure_version': expectedStructureVersion},
+    );
+    return _decodeStructure(response, TaskColumnOption.fromJson);
+  }
+
+  Future<TaskApiResult<TaskStructureMutation<List<String>>>>
+  reorderColumnOptions(
+    String boardId,
+    String columnId, {
+    required int expectedStructureVersion,
+    required List<String> orderedIds,
+  }) async {
+    final response = await _api.post(
+      '/tasks/boards/$boardId/columns/$columnId/options/reorder',
+      <String, dynamic>{
+        'expected_structure_version': expectedStructureVersion,
+        'ordered_ids': orderedIds,
+      },
+    );
+    return _decodeStructure(response, _orderedIds);
+  }
+
+  Future<TaskApiResult<TaskImportPreview>> previewImport(
+    String boardId, {
+    required String activeViewId,
+    required String filename,
+    required List<int> bytes,
+    TaskImportMapping? mapping,
+  }) async {
+    final response = await _api.postFile(
+      '/tasks/boards/$boardId/imports/preview',
+      'file',
+      filename,
+      bytes,
+      fields: <String, String>{
+        'active_view_id': activeViewId,
+        if (mapping != null) 'mapping': jsonEncode(mapping.toJson()),
+      },
+    );
+    return _decode(
+      response,
+      (data) => TaskImportPreview.fromJson(_map(data, 'data')),
+    );
+  }
+
+  Future<TaskApiResult<TaskImportCommit>> commitImport(
+    String boardId, {
+    required String activeViewId,
+    required String sessionToken,
+  }) async {
+    final response = await _api.post(
+      '/tasks/boards/$boardId/imports/commit',
+      <String, dynamic>{
+        'active_view_id': activeViewId,
+        'session_token': sessionToken,
+      },
+    );
+    return _decode(
+      response,
+      (data) => TaskImportCommit.fromJson(_map(data, 'data')),
+    );
+  }
+
+  Future<TaskApiResult<List<int>>> exportBoard(
+    String boardId, {
+    required TaskExportFormat format,
+    required String activeViewId,
+    bool includeArchived = false,
+    TaskTransferCancelToken? cancelToken,
+  }) async {
+    if (cancelToken?.isCancelled ?? false) {
+      return const TaskApiFailure<List<int>>(
+        statusCode: 0,
+        message: 'Export cancelled.',
+      );
+    }
+    final request = _api.getBytesResponse(
+      '/tasks/boards/$boardId/exports/${format.name}',
+      <String, String>{
+        'active_view_id': activeViewId,
+        if (includeArchived) 'include_archived': '1',
+      },
+    );
+    final Object outcome = cancelToken == null
+        ? await request
+        : await Future.any<Object>(<Future<Object>>[
+            request,
+            cancelToken.whenCancelled.then<Object>((_) => _taskExportCancelled),
+          ]);
+    if (identical(outcome, _taskExportCancelled)) {
+      return const TaskApiFailure<List<int>>(
+        statusCode: 0,
+        message: 'Export cancelled.',
+      );
+    }
+    final response = outcome as ApiBytesResponse;
+    if (response.statusCode == 403 || response.statusCode == 404) {
+      return TaskApiUnavailable<List<int>>(
+        message: response.message,
+        correlationId: response.correlationId,
+      );
+    }
+    if (!response.ok || response.bytes == null) {
+      return TaskApiFailure<List<int>>(
+        statusCode: response.statusCode,
+        message: response.message,
+        correlationId: response.correlationId,
+      );
+    }
+    return TaskApiSuccess<List<int>>(
+      response.bytes!,
+      correlationId: response.correlationId,
+    );
+  }
+
   Future<TaskApiResult<TaskBoard>> board(String boardId) async {
     final cacheEpoch = _cacheEpoch;
     final response = await _api.get('/tasks/boards/$boardId');
@@ -316,6 +908,23 @@ final class TaskApi {
       ),
     );
     return _decode(response, (data) => TaskRow.fromJson(_map(data, 'data')));
+  }
+
+  Future<TaskApiResult<TaskRow>> createTask(
+    String boardId, {
+    required String title,
+    required String statusOptionId,
+    String? groupId,
+  }) async {
+    final response = await _api.post('/tasks/boards/$boardId/tasks', {
+      'title': title,
+      'status_option_id': statusOptionId,
+      'group_id': groupId,
+    });
+    return _decode(
+      response,
+      (data) => TaskRow.fromJson(_map(data, 'data'), board: _boards[boardId]),
+    );
   }
 
   /// Candidate eligibility is intentionally server-scoped. The client never
@@ -718,6 +1327,17 @@ final class TaskApi {
       );
     }
   }
+
+  TaskApiResult<TaskStructureMutation<T>> _decodeStructure<T>(
+    ApiResponse response,
+    T Function(Map<String, Object?> json) parse,
+  ) => _decode(
+    response,
+    (data) => TaskStructureMutation<T>(
+      data: parse(_map(data, 'data')),
+      structureVersion: _requiredMetaInteger(response, 'structure_version'),
+    ),
+  );
 }
 
 String _participantPurpose(TaskParticipantPurpose purpose) => switch (purpose) {
@@ -726,6 +1346,44 @@ String _participantPurpose(TaskParticipantPurpose purpose) => switch (purpose) {
   TaskParticipantPurpose.people => 'people',
   TaskParticipantPurpose.collaborator => 'collaborator',
   TaskParticipantPurpose.mention => 'mention',
+  TaskParticipantPurpose.membership => 'membership',
+};
+
+String _statusCategory(TaskStatusCategory category) => switch (category) {
+  TaskStatusCategory.notStarted => 'not_started',
+  TaskStatusCategory.active => 'active',
+  TaskStatusCategory.blocked => 'blocked',
+  TaskStatusCategory.completed => 'completed',
+  TaskStatusCategory.cancelled => 'cancelled',
+  TaskStatusCategory.unknown => throw ArgumentError(
+    'Unsupported status category.',
+  ),
+};
+
+String _priorityRank(TaskPriorityRank rank) => switch (rank) {
+  TaskPriorityRank.low => 'low',
+  TaskPriorityRank.normal => 'normal',
+  TaskPriorityRank.high => 'high',
+  TaskPriorityRank.urgent => 'urgent',
+  TaskPriorityRank.unknown => throw ArgumentError('Unsupported priority rank.'),
+};
+
+String _columnType(TaskColumnKind type) => switch (type) {
+  TaskColumnKind.text => 'text',
+  TaskColumnKind.number => 'number',
+  TaskColumnKind.checkbox => 'checkbox',
+  TaskColumnKind.date => 'date',
+  TaskColumnKind.people => 'people',
+  TaskColumnKind.label => 'label',
+  TaskColumnKind.link => 'link',
+  TaskColumnKind.file => 'file',
+  TaskColumnKind.unknown => throw ArgumentError('Unsupported column type.'),
+};
+
+String _boardMemberRole(TaskBoardMemberRole role) => switch (role) {
+  TaskBoardMemberRole.owner => 'owner',
+  TaskBoardMemberRole.member => 'member',
+  TaskBoardMemberRole.unknown => throw ArgumentError('Unsupported board role.'),
 };
 
 Map<String, String>? _etagHeader(String? etag) =>
@@ -736,6 +1394,13 @@ int? _optionalMetaInteger(ApiResponse response, String key) {
   if (meta is! Map) return null;
   final value = meta[key];
   return value is int ? value : null;
+}
+
+int _requiredMetaInteger(ApiResponse response, String key) {
+  final meta = _map(response.body['meta'], 'meta');
+  final value = meta[key];
+  if (value is int) return value;
+  throw FormatException('meta.$key must be an int.');
 }
 
 bool _requiredBoolean(Map<String, Object?> value, String key) {
@@ -774,3 +1439,16 @@ Map<String, Object?> _map(Object? value, String path) {
     throw FormatException('$path must use string keys.');
   }
 }
+
+List<String> _stringList(Map<String, Object?> value, String key) {
+  final list = value[key];
+  if (list is! List || list.any((item) => item is! String)) {
+    throw FormatException('$key must be a string list.');
+  }
+  return List<String>.unmodifiable(list.cast<String>());
+}
+
+List<String> _orderedIds(Map<String, Object?> data) =>
+    _stringList(data, 'ordered_ids');
+
+const Object _taskExportCancelled = Object();

@@ -287,18 +287,21 @@ class ApiClient {
   /// Separate from get() because a CSV body would fail jsonDecode, and because
   /// a download has to carry the bearer token: a plain link cannot send a
   /// header, which is what makes "just open the URL" not an option here.
-  Future<List<int>?> getBytes(String path) async {
-    final response = await getBytesResponse(path);
+  Future<List<int>?> getBytes(String path, [Map<String, String>? query]) async {
+    final response = await getBytesResponse(path, query);
     return response.bytes;
   }
 
   /// A binary response that preserves refusal status and words for callers
   /// whose privacy boundary depends on distinguishing access loss from an
   /// ordinary network failure.
-  Future<ApiBytesResponse> getBytesResponse(String path) async {
+  Future<ApiBytesResponse> getBytesResponse(
+    String path, [
+    Map<String, String>? query,
+  ]) async {
     try {
       final response = await _http.get(
-        Uri.parse('$_root/api/v1$path'),
+        Uri.parse('$_root/api/v1$path').replace(queryParameters: query),
         headers: {
           if (_token != null) 'Authorization': 'Bearer $_token',
           // A download is a request like any other and can be refused like any

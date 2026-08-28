@@ -1,3 +1,5 @@
+import 'dart:async';
+
 enum TaskBoardVisibility { scope, private, unknown }
 
 enum TaskStatusCategory {
@@ -23,7 +25,14 @@ enum TaskColumnKind {
   unknown,
 }
 
-enum TaskParticipantPurpose { taskCreate, owner, people, collaborator, mention }
+enum TaskParticipantPurpose {
+  taskCreate,
+  owner,
+  people,
+  collaborator,
+  mention,
+  membership,
+}
 
 final class TaskParticipant {
   const TaskParticipant({
@@ -119,6 +128,7 @@ final class TaskBoard {
     required this.coreColumns,
     required this.customColumns,
     required this.views,
+    this.actions = const <String>[],
   });
 
   factory TaskBoard.fromJson(Map<String, Object?> json) {
@@ -160,6 +170,7 @@ final class TaskBoard {
         json,
         'views',
       ).map(TaskViewSummary.fromJson).toList(growable: false),
+      actions: _optionalStrings(json, 'actions'),
     );
   }
 
@@ -181,12 +192,330 @@ final class TaskBoard {
   final List<TaskCoreColumn> coreColumns;
   final List<TaskColumnDefinition> customColumns;
   final List<TaskViewSummary> views;
+  final List<String> actions;
+
+  bool can(String action) => actions.contains(action);
 
   TaskColumnDefinition? column(String id) {
     for (final column in customColumns) {
       if (column.id == id) return column;
     }
     return null;
+  }
+}
+
+final class TaskBoardDirectory {
+  const TaskBoardDirectory({required this.boards, required this.actions});
+
+  final List<TaskBoard> boards;
+  final List<String> actions;
+
+  bool can(String action) => actions.contains(action);
+}
+
+final class TaskFolder {
+  const TaskFolder({
+    required this.id,
+    required this.name,
+    required this.companyId,
+    required this.franchiseId,
+    required this.position,
+    required this.archived,
+    required this.actions,
+  });
+
+  factory TaskFolder.fromJson(Map<String, Object?> json) => TaskFolder(
+    id: _string(json, 'id'),
+    name: _string(json, 'name'),
+    companyId: _nullableString(json, 'company_id'),
+    franchiseId: _nullableString(json, 'franchise_id'),
+    position: _integer(json, 'position'),
+    archived: _boolean(json, 'archived'),
+    actions: _optionalStrings(json, 'actions'),
+  );
+
+  final String id;
+  final String name;
+  final String? companyId;
+  final String? franchiseId;
+  final int position;
+  final bool archived;
+  final List<String> actions;
+
+  bool can(String action) => actions.contains(action);
+}
+
+final class TaskBoardPreference {
+  const TaskBoardPreference({
+    required this.boardId,
+    required this.isFavorite,
+    required this.lastOpenedAt,
+  });
+
+  factory TaskBoardPreference.fromJson(Map<String, Object?> json) =>
+      TaskBoardPreference(
+        boardId: _string(json, 'board_id'),
+        isFavorite: _boolean(json, 'is_favorite'),
+        lastOpenedAt: _nullableDateTime(json, 'last_opened_at'),
+      );
+
+  final String boardId;
+  final bool isFavorite;
+  final DateTime? lastOpenedAt;
+}
+
+enum TaskBoardMemberRole { owner, member, unknown }
+
+final class TaskBoardMember {
+  const TaskBoardMember({
+    required this.id,
+    required this.userId,
+    required this.name,
+    required this.email,
+    required this.role,
+    required this.rawRole,
+    required this.active,
+    required this.actions,
+  });
+
+  factory TaskBoardMember.fromJson(Map<String, Object?> json) {
+    final rawRole = _string(json, 'role');
+    return TaskBoardMember(
+      id: _string(json, 'id'),
+      userId: _string(json, 'user_id'),
+      name: _nullableString(json, 'name') ?? '',
+      email: _nullableString(json, 'email') ?? '',
+      role: switch (rawRole) {
+        'owner' => TaskBoardMemberRole.owner,
+        'member' => TaskBoardMemberRole.member,
+        _ => TaskBoardMemberRole.unknown,
+      },
+      rawRole: rawRole,
+      active: _boolean(json, 'active'),
+      actions: _optionalStrings(json, 'actions'),
+    );
+  }
+
+  final String id;
+  final String userId;
+  final String name;
+  final String email;
+  final TaskBoardMemberRole role;
+  final String rawRole;
+  final bool active;
+  final List<String> actions;
+
+  bool can(String action) => actions.contains(action);
+}
+
+final class TaskBoardRecovery {
+  const TaskBoardRecovery({required this.boardId, required this.ownerUserId});
+
+  factory TaskBoardRecovery.fromJson(Map<String, Object?> json) =>
+      TaskBoardRecovery(
+        boardId: _string(json, 'board_id'),
+        ownerUserId: _string(json, 'owner_user_id'),
+      );
+
+  final String boardId;
+  final String ownerUserId;
+}
+
+/// The deliberately content-blind shape used to recover an orphaned private
+/// board. Names and board content must never be added to this presentation.
+final class TaskRecoverableBoard {
+  const TaskRecoverableBoard({
+    required this.id,
+    required this.companyId,
+    required this.franchiseId,
+    required this.actions,
+  });
+
+  factory TaskRecoverableBoard.fromJson(Map<String, Object?> json) =>
+      TaskRecoverableBoard(
+        id: _string(json, 'id'),
+        companyId: _nullableString(json, 'company_id'),
+        franchiseId: _nullableString(json, 'franchise_id'),
+        actions: _optionalStrings(json, 'actions'),
+      );
+
+  final String id;
+  final String? companyId;
+  final String? franchiseId;
+  final List<String> actions;
+
+  bool can(String action) => actions.contains(action);
+}
+
+final class TaskStructureMutation<T> {
+  const TaskStructureMutation({
+    required this.data,
+    required this.structureVersion,
+  });
+
+  final T data;
+  final int structureVersion;
+}
+
+enum TaskImportFormat { csv, xlsx, unknown }
+
+enum TaskExportFormat { csv, xlsx, json }
+
+final class TaskImportMapping {
+  const TaskImportMapping({required this.fields, required this.decisions});
+
+  final Map<String, String> fields;
+  final Map<String, Object?> decisions;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    ...fields,
+    'decisions': decisions,
+  };
+}
+
+final class TaskImportCounts {
+  const TaskImportCounts({
+    required this.rows,
+    required this.ready,
+    required this.errors,
+  });
+
+  factory TaskImportCounts.fromJson(Map<String, Object?> json) =>
+      TaskImportCounts(
+        rows: _integer(json, 'rows'),
+        ready: _integer(json, 'ready'),
+        errors: _integer(json, 'errors'),
+      );
+
+  final int rows;
+  final int ready;
+  final int errors;
+}
+
+final class TaskImportUnsupportedField {
+  const TaskImportUnsupportedField({
+    required this.heading,
+    required this.reason,
+  });
+
+  factory TaskImportUnsupportedField.fromJson(Map<String, Object?> json) =>
+      TaskImportUnsupportedField(
+        heading: _string(json, 'heading'),
+        reason: _string(json, 'reason'),
+      );
+
+  final String heading;
+  final String reason;
+}
+
+final class TaskImportIssue {
+  const TaskImportIssue({
+    required this.row,
+    required this.field,
+    required this.code,
+    required this.message,
+  });
+
+  factory TaskImportIssue.fromJson(Map<String, Object?> json) =>
+      TaskImportIssue(
+        row: _optionalInteger(json, 'row'),
+        field: json['field'] is String ? json['field'] as String : null,
+        code: json['code'] is String ? json['code'] as String : null,
+        message: _string(json, 'message'),
+      );
+
+  final int? row;
+  final String? field;
+  final String? code;
+  final String message;
+}
+
+final class TaskImportPreview {
+  const TaskImportPreview({
+    required this.format,
+    required this.rawFormat,
+    required this.headings,
+    required this.sample,
+    required this.unsupportedFields,
+    required this.counts,
+    required this.reconciliation,
+    required this.requiresMapping,
+    required this.sessionToken,
+    required this.expiresAt,
+  });
+
+  factory TaskImportPreview.fromJson(Map<String, Object?> json) {
+    final rawFormat = _string(json, 'format');
+    return TaskImportPreview(
+      format: switch (rawFormat) {
+        'csv' => TaskImportFormat.csv,
+        'xlsx' => TaskImportFormat.xlsx,
+        _ => TaskImportFormat.unknown,
+      },
+      rawFormat: rawFormat,
+      headings: _strings(json, 'headings'),
+      sample: _objects(json, 'sample')
+          .map((row) {
+            if (row.values.any((value) => value is! String)) {
+              throw const FormatException('sample values must be strings.');
+            }
+            return Map<String, String>.unmodifiable(row.cast<String, String>());
+          })
+          .toList(growable: false),
+      unsupportedFields: _objects(
+        json,
+        'unsupported_fields',
+      ).map(TaskImportUnsupportedField.fromJson).toList(growable: false),
+      counts: TaskImportCounts.fromJson(_object(json, 'counts')),
+      reconciliation: _objects(
+        json,
+        'reconciliation',
+      ).map(TaskImportIssue.fromJson).toList(growable: false),
+      requiresMapping: _boolean(json, 'requires_mapping'),
+      sessionToken: json['session_token'] is String
+          ? json['session_token'] as String
+          : null,
+      expiresAt: json['expires_at'] is String
+          ? _parseDateTimeValue(json['expires_at'], 'expires_at')
+          : null,
+    );
+  }
+
+  final TaskImportFormat format;
+  final String rawFormat;
+  final List<String> headings;
+  final List<Map<String, String>> sample;
+  final List<TaskImportUnsupportedField> unsupportedFields;
+  final TaskImportCounts counts;
+  final List<TaskImportIssue> reconciliation;
+  final bool requiresMapping;
+  final String? sessionToken;
+  final DateTime? expiresAt;
+
+  bool get hasBlockingErrors => counts.errors > 0 || reconciliation.isNotEmpty;
+}
+
+final class TaskImportCommit {
+  const TaskImportCommit({required this.created, required this.taskIds});
+
+  factory TaskImportCommit.fromJson(Map<String, Object?> json) =>
+      TaskImportCommit(
+        created: _integer(json, 'created'),
+        taskIds: _strings(json, 'task_ids'),
+      );
+
+  final int created;
+  final List<String> taskIds;
+}
+
+final class TaskTransferCancelToken {
+  final Completer<void> _cancelled = Completer<void>();
+
+  bool get isCancelled => _cancelled.isCompleted;
+  Future<void> get whenCancelled => _cancelled.future;
+
+  void cancel() {
+    if (!_cancelled.isCompleted) _cancelled.complete();
   }
 }
 
@@ -198,6 +527,7 @@ final class TaskGroup {
     required this.position,
     required this.orderVersion,
     required this.archived,
+    this.actions = const <String>[],
   });
 
   factory TaskGroup.fromJson(Map<String, Object?> json) => TaskGroup(
@@ -207,6 +537,7 @@ final class TaskGroup {
     position: _optionalInteger(json, 'position') ?? 0,
     orderVersion: _optionalInteger(json, 'order_version') ?? 1,
     archived: _optionalBoolean(json, 'archived') ?? false,
+    actions: _optionalStrings(json, 'actions'),
   );
 
   final String id;
@@ -215,6 +546,9 @@ final class TaskGroup {
   final int position;
   final int orderVersion;
   final bool archived;
+  final List<String> actions;
+
+  bool can(String action) => actions.contains(action);
 }
 
 final class TaskStatusOption {
@@ -225,6 +559,8 @@ final class TaskStatusOption {
     required this.category,
     required this.rawCategory,
     required this.archived,
+    this.position = 0,
+    this.actions = const <String>[],
   });
 
   factory TaskStatusOption.fromJson(Map<String, Object?> json) {
@@ -235,7 +571,9 @@ final class TaskStatusOption {
       color: _nullableString(json, 'color'),
       category: _statusCategory(rawCategory),
       rawCategory: rawCategory,
-      archived: _boolean(json, 'archived'),
+      archived: _optionalBoolean(json, 'archived') ?? false,
+      position: _optionalInteger(json, 'position') ?? 0,
+      actions: _optionalStrings(json, 'actions'),
     );
   }
 
@@ -245,6 +583,10 @@ final class TaskStatusOption {
   final TaskStatusCategory category;
   final String rawCategory;
   final bool archived;
+  final int position;
+  final List<String> actions;
+
+  bool can(String action) => actions.contains(action);
 }
 
 final class TaskPriorityOption {
@@ -255,6 +597,8 @@ final class TaskPriorityOption {
     required this.rank,
     required this.rawRank,
     required this.archived,
+    this.position = 0,
+    this.actions = const <String>[],
   });
 
   factory TaskPriorityOption.fromJson(Map<String, Object?> json) {
@@ -265,7 +609,9 @@ final class TaskPriorityOption {
       color: _nullableString(json, 'color'),
       rank: _priorityRank(rawRank),
       rawRank: rawRank,
-      archived: _boolean(json, 'archived'),
+      archived: _optionalBoolean(json, 'archived') ?? false,
+      position: _optionalInteger(json, 'position') ?? 0,
+      actions: _optionalStrings(json, 'actions'),
     );
   }
 
@@ -275,18 +621,30 @@ final class TaskPriorityOption {
   final TaskPriorityRank rank;
   final String rawRank;
   final bool archived;
+  final int position;
+  final List<String> actions;
+
+  bool can(String action) => actions.contains(action);
 }
 
 final class TaskCoreColumn {
-  const TaskCoreColumn({required this.key, required this.displayLabel});
+  const TaskCoreColumn({
+    required this.key,
+    required this.displayLabel,
+    this.actions = const <String>[],
+  });
 
   factory TaskCoreColumn.fromJson(Map<String, Object?> json) => TaskCoreColumn(
     key: _string(json, 'core_key'),
     displayLabel: _string(json, 'display_label'),
+    actions: _optionalStrings(json, 'actions'),
   );
 
   final String key;
   final String displayLabel;
+  final List<String> actions;
+
+  bool can(String action) => actions.contains(action);
 }
 
 final class TaskColumnDefinition {
@@ -299,6 +657,7 @@ final class TaskColumnDefinition {
     required this.position,
     required this.archived,
     required this.options,
+    this.actions = const <String>[],
   });
 
   factory TaskColumnDefinition.fromJson(Map<String, Object?> json) {
@@ -310,11 +669,11 @@ final class TaskColumnDefinition {
       rawType: rawType,
       numberSuffix: _nullableString(json, 'number_suffix'),
       position: _optionalInteger(json, 'position') ?? 0,
-      archived: _boolean(json, 'archived'),
-      options: _objects(
-        json,
-        'options',
-      ).map(TaskColumnOption.fromJson).toList(growable: false),
+      archived: _optionalBoolean(json, 'archived') ?? false,
+      options: (_optionalObjects(json, 'options') ?? const [])
+          .map(TaskColumnOption.fromJson)
+          .toList(growable: false),
+      actions: _optionalStrings(json, 'actions'),
     );
   }
 
@@ -326,8 +685,10 @@ final class TaskColumnDefinition {
   final int position;
   final bool archived;
   final List<TaskColumnOption> options;
+  final List<String> actions;
 
   bool get isReadOnly => kind == TaskColumnKind.unknown;
+  bool can(String action) => actions.contains(action);
 }
 
 final class TaskColumnOption {
@@ -337,6 +698,7 @@ final class TaskColumnOption {
     required this.color,
     required this.position,
     required this.archived,
+    this.actions = const <String>[],
   });
 
   factory TaskColumnOption.fromJson(Map<String, Object?> json) =>
@@ -345,7 +707,8 @@ final class TaskColumnOption {
         name: _string(json, 'name'),
         color: _nullableString(json, 'color'),
         position: _optionalInteger(json, 'position') ?? 0,
-        archived: _boolean(json, 'archived'),
+        archived: _optionalBoolean(json, 'archived') ?? false,
+        actions: _optionalStrings(json, 'actions'),
       );
 
   final String id;
@@ -353,6 +716,9 @@ final class TaskColumnOption {
   final String? color;
   final int position;
   final bool archived;
+  final List<String> actions;
+
+  bool can(String action) => actions.contains(action);
 }
 
 final class TaskViewSummary {

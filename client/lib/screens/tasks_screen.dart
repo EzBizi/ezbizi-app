@@ -7,16 +7,21 @@ import '../core/address.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
+import '../widgets/side_panel.dart';
 import '../widgets/tab_bar_like.dart';
 import 'tasks/board_directory.dart';
 import 'tasks/my_tasks_view.dart';
 import 'tasks/task_api.dart';
+import 'tasks/task_board_administration.dart';
+import 'tasks/task_board_members.dart';
 import 'tasks/task_detail_panel.dart';
+import 'tasks/task_duplicate_flow.dart';
 import 'tasks/task_filters_panel.dart';
 import 'tasks/task_mobile_list.dart';
 import 'tasks/task_models.dart';
 import 'tasks/task_quick_search.dart';
 import 'tasks/task_table.dart';
+import 'tasks/task_transfer_flow.dart';
 import 'tasks/task_views_bar.dart';
 
 /// Dense Grid Tasks shell. Address IDs are held as opaque intents until their
@@ -46,6 +51,8 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   bool _loading = true;
   String? _error;
   List<TaskBoard> _boards = const [];
+  List<String> _directoryActions = const [];
+  List<TaskFolder> _folders = const [];
   TaskBoard? _board;
   List<TaskRow> _rows = const [];
   TaskDetailSnapshot? _detail;
@@ -138,17 +145,27 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _conflict = false;
     });
     final privacy = _privacyGeneration;
-    final result = await _tasks.boardDirectory();
+    final result = await _tasks.boardDirectorySnapshot();
     if (!_isCurrentPrivacy(privacy)) return;
-    if (result is TaskApiSuccess<List<TaskBoard>>) {
+    if (result is TaskApiSuccess<TaskBoardDirectory>) {
+      final folders = await _tasks.folders();
+      if (!_isCurrentPrivacy(privacy)) return;
+      if (folders is TaskApiUnavailable<List<TaskFolder>>) {
+        _evict(folders.message);
+        return;
+      }
       setState(() {
         _loading = false;
-        _boards = result.data;
+        _boards = result.data.boards;
+        _directoryActions = result.data.actions;
+        if (folders is TaskApiSuccess<List<TaskFolder>>) {
+          _folders = folders.data;
+        }
       });
       if (widget.pendingIntent case final intent?) {
         await _consumeIntent(intent, _intentGeneration);
       }
-    } else if (result is TaskApiUnavailable<List<TaskBoard>>) {
+    } else if (result is TaskApiUnavailable<TaskBoardDirectory>) {
       _evict(result.message);
     } else {
       setState(() {
@@ -251,6 +268,9 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _configuration = result.data.configuration;
       _boardEtag = result.data.etag;
     });
+    // A board becomes "last opened" only after its authorized rows completed.
+    // Rendering a directory entry is not an open.
+    unawaited(_tasks.saveBoardPreference(board.id, markOpened: true));
     _loadViews(board.id);
     _loadParticipants(board.id);
     if (selectedTaskId != null) {
@@ -1091,6 +1111,73 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _addTaskToGroup(String? groupId) async {
+    final board = _board;
+    if (board == null || !board.can('import')) return;
+    final status =
+        board.statuses
+            .where((item) => !item.archived)
+            .where((item) => item.category == TaskStatusCategory.notStarted)
+            .firstOrNull ??
+        board.statuses.where((item) => !item.archived).firstOrNull;
+    if (status == null) {
+      _announce('Add a status before creating a task.');
+      return;
+    }
+    final controller = TextEditingController();
+    final title = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Add task'),
+        content: TextField(
+          key: const ValueKey('task-create-title'),
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Task title'),
+          onSubmitted: (value) {
+            if (value.trim().isNotEmpty) {
+              Navigator.of(dialogContext).pop(value.trim());
+            }
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) Navigator.of(dialogContext).pop(value);
+            },
+            child: const Text('Add task'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (title == null || !mounted || _board?.id != board.id) return;
+    final privacy = _privacyGeneration;
+    final result = await _tasks.createTask(
+      board.id,
+      title: title,
+      groupId: groupId,
+      statusOptionId: status.id,
+    );
+    if (!_isCurrentPrivacy(privacy) || _board?.id != board.id) return;
+    if (result is TaskApiUnavailable<TaskRow>) {
+      _evict(result.message);
+    } else if (result is TaskApiSuccess<TaskRow>) {
+      setState(() {
+        _rows = [..._rows, result.data];
+        _total++;
+      });
+      _announce('$title added.');
+    } else {
+      _announce(result.message ?? 'The task could not be added.');
+    }
+  }
+
   Future<void> _reloadBoardDefinition() async {
     final boardId = _board?.id;
     if (boardId == null) return;
@@ -1107,12 +1194,115 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _openTaskSurface(String title, Widget child) async {
+    if (MediaQuery.sizeOf(context).width < 700) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => Scaffold(
+            appBar: AppBar(title: Text(title)),
+            body: SafeArea(
+              child: Padding(padding: const EdgeInsets.all(20), child: child),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+    await showSidePanel<void>(
+      context,
+      builder: (_) =>
+          SidePanel(title: title, width: 620, scrollable: false, child: child),
+    );
+  }
+
+  void _surfaceUnavailable(String? message) {
+    Navigator.of(context, rootNavigator: true).maybePop();
+    _evict(message);
+  }
+
+  void _replaceBoardDefinition(TaskBoard changed) {
+    if (!mounted || _board?.id != changed.id) return;
+    setState(() {
+      _board = changed;
+      _boards = [
+        for (final board in _boards)
+          if (board.id == changed.id) changed else board,
+      ];
+    });
+    if (changed.archived) {
+      Navigator.of(context, rootNavigator: true).maybePop();
+      setState(() {
+        _board = null;
+        _showDirectory = true;
+      });
+      _loadDirectory();
+    }
+  }
+
+  void _openAdministration() {
+    final board = _board;
+    if (board == null) return;
+    _openTaskSurface(
+      'Board administration',
+      TaskBoardAdministration(
+        api: _tasks,
+        board: board,
+        folders: _folders,
+        onBoardChanged: _replaceBoardDefinition,
+        onUnavailable: _surfaceUnavailable,
+      ),
+    );
+  }
+
+  void _openDuplicate() {
+    final board = _board;
+    if (board == null || !board.can('duplicate')) return;
+    _openTaskSurface(
+      'Duplicate board',
+      TaskDuplicateFlow(
+        api: _tasks,
+        board: board,
+        destinationLabel: widget.session.me?.scope.fullPath ?? 'Current view',
+        onDuplicated: (duplicated) {
+          Navigator.of(context, rootNavigator: true).maybePop();
+          _loadDirectory();
+        },
+        onUnavailable: _surfaceUnavailable,
+      ),
+    );
+  }
+
+  void _openTransfer() {
+    final board = _board;
+    final viewId = _activeViewId;
+    if (board == null || viewId == null) return;
+    _openTaskSurface(
+      'Import and export',
+      TaskTransferFlow(
+        api: _tasks,
+        board: board,
+        activeViewId: viewId,
+        onUnavailable: _surfaceUnavailable,
+        onImported: () => _refreshBoardRows(board),
+      ),
+    );
+  }
+
+  void _openRecovery() {
+    _openTaskSurface(
+      'Board recovery',
+      TaskBoardRecoveryList(api: _tasks, onUnavailable: _surfaceUnavailable),
+    );
+  }
+
   void _evict(String? message) {
     _tasks.clearCache();
     if (!mounted) return;
     setState(() {
       _loading = false;
       _boards = const [];
+      _directoryActions = const [];
+      _folders = const [];
       _board = null;
       _rows = const [];
       _detail = null;
@@ -1227,6 +1417,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                 board: _board!,
                 rows: _rows,
                 onSelected: _selectTask,
+                onAddTask: _board!.can('import') ? _addTaskToGroup : null,
               ),
             ),
             _pagination(),
@@ -1356,7 +1547,14 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   );
 
   Widget _directoryOnly() => _boards.isEmpty
-      ? _EmptyDirectory(onCreate: () => setState(() => _creating = true))
+      ? _EmptyDirectory(
+          onCreate: _directoryActions.contains('create_board')
+              ? () => setState(() => _creating = true)
+              : null,
+          onRecover: _directoryActions.contains('recover_private_boards')
+              ? _openRecovery
+              : null,
+        )
       : BoardDirectory(
           boards: _boards,
           selectedBoardId: null,
@@ -1364,7 +1562,12 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
             setState(() => _showDirectory = false);
             _loadBoard(board);
           },
-          onCreate: () => setState(() => _creating = true),
+          onCreate: _directoryActions.contains('create_board')
+              ? () => setState(() => _creating = true)
+              : null,
+          onRecover: _directoryActions.contains('recover_private_boards')
+              ? _openRecovery
+              : null,
         );
 
   Widget _boardControls() {
@@ -1413,6 +1616,39 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                     icon: const Icon(Icons.filter_list),
                     label: const Text('Filters'),
                   ),
+                  if (_board case final board?) ...[
+                    if (board.can('update') ||
+                        board.can('archive') ||
+                        board.can('restore') ||
+                        board.can('manage_structure') ||
+                        board.can('manage_members')) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: _openAdministration,
+                        icon: const Icon(Icons.settings_outlined),
+                        label: const Text('Admin'),
+                      ),
+                    ],
+                    if (board.can('duplicate')) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: _openDuplicate,
+                        icon: const Icon(Icons.copy_all_outlined),
+                        label: const Text('Duplicate'),
+                      ),
+                    ],
+                    if (_activeViewId != null &&
+                        (board.can('import') ||
+                            board.can('export') ||
+                            board.can('archive_manifest'))) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: _openTransfer,
+                        icon: const Icon(Icons.import_export),
+                        label: const Text('Transfer'),
+                      ),
+                    ],
+                  ],
                   if (_viewDirty) ...[
                     const SizedBox(width: 8),
                     const Text('Unsaved view changes'),
@@ -1455,7 +1691,12 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                   setState(() => _showDirectory = false);
                   _loadBoard(board);
                 },
-                onCreate: () => setState(() => _creating = true),
+                onCreate: _directoryActions.contains('create_board')
+                    ? () => setState(() => _creating = true)
+                    : null,
+                onRecover: _directoryActions.contains('recover_private_boards')
+                    ? _openRecovery
+                    : null,
               ),
             ),
             const VerticalDivider(width: 1),
@@ -1492,6 +1733,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                     configuration: _configuration,
                     groupCounts: _groupCounts,
                     onDraftChanged: _draftChanged,
+                    onAddTask: _board!.can('import') ? _addTaskToGroup : null,
                     onSelectionChanged: (count) => _announce(
                       count == 0
                           ? 'Selection cleared.'
@@ -1577,8 +1819,9 @@ extension _TasksFirstOrNull<T> on Iterable<T> {
 }
 
 class _EmptyDirectory extends StatelessWidget {
-  const _EmptyDirectory({required this.onCreate});
-  final VoidCallback onCreate;
+  const _EmptyDirectory({this.onCreate, this.onRecover});
+  final VoidCallback? onCreate;
+  final VoidCallback? onRecover;
   @override
   Widget build(BuildContext context) => Center(
     child: ConstrainedBox(
@@ -1604,11 +1847,20 @@ class _EmptyDirectory extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: onCreate,
-              icon: const Icon(Icons.add),
-              label: const Text('New board'),
-            ),
+            if (onCreate != null)
+              FilledButton.icon(
+                onPressed: onCreate,
+                icon: const Icon(Icons.add),
+                label: const Text('New board'),
+              ),
+            if (onRecover != null) ...[
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: onRecover,
+                icon: const Icon(Icons.admin_panel_settings_outlined),
+                label: const Text('Recover private boards'),
+              ),
+            ],
           ],
         ),
       ),

@@ -7,10 +7,12 @@ class TaskMobileList extends StatelessWidget {
     required this.board,
     required this.rows,
     required this.onSelected,
+    this.onAddTask,
   });
   final TaskBoard board;
   final List<TaskRow> rows;
   final ValueChanged<TaskRow> onSelected;
+  final ValueChanged<String?>? onAddTask;
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.all(12),
@@ -18,9 +20,21 @@ class TaskMobileList extends StatelessWidget {
       for (final group in board.groups) ...[
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
-          child: Text(
-            group.name,
-            style: const TextStyle(fontWeight: FontWeight.w700),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  group.name,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              if (onAddTask != null)
+                IconButton(
+                  tooltip: 'Add task to ${group.name}',
+                  onPressed: () => onAddTask!(group.id),
+                  icon: const Icon(Icons.add),
+                ),
+            ],
           ),
         ),
         for (final row in rows.where((row) => row.groupId == group.id))
