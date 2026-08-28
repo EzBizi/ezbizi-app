@@ -6,6 +6,7 @@ import '../../core/session.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/error_note.dart';
+import 'condition.dart';
 import 'photo_field.dart';
 import 'signature_field.dart';
 
@@ -188,8 +189,12 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     final answers = run['answers'] is Map
         ? Map<String, dynamic>.from(run['answers'] as Map)
         : const <String, dynamic>{};
-    for (final screen in _screensOf(run)) {
-      for (final field in _fieldsOf(screen)) {
+    // Every field, not only the visible ones: a technician who answers the wood
+    // branch, switches to masonry and switches back must find their answer
+    // still there. The server drops what the report will not ask, once, at
+    // submit — this end never throws an answer away mid-run.
+    for (final screen in _allScreensOf(run)) {
+      for (final field in _allFieldsOf(screen)) {
         final key = '${field['key']}';
         if (field['type'] == 'photo' || field['type'] == 'signature') {
           _photos[key] = [
@@ -224,15 +229,48 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
         for (final e in _photos.entries) e.key: e.value,
       };
 
-  List<Map<String, dynamic>> _screensOf(Map<String, dynamic> run) => [
+  /// Every screen this version declares, shown or not.
+  ///
+  /// Kept separate from [_screensOf] because saving and freezing reason about
+  /// all of them while the step strip only walks the visible ones.
+  List<Map<String, dynamic>> _allScreensOf(Map<String, dynamic> run) => [
         for (final s in (run['screens'] as List? ?? const []))
           if (s is Map) Map<String, dynamic>.from(s),
       ];
 
-  List<Map<String, dynamic>> _fieldsOf(Map<String, dynamic> screen) => [
+  /// The screens actually asked, given what has been answered so far.
+  ///
+  /// A screen with a false condition is not skipped over on Next — it is not in
+  /// the list at all, so the step strip counts what the technician will really
+  /// be asked rather than showing "3 of 9" and then jumping.
+  List<Map<String, dynamic>> _screensOf(Map<String, dynamic> run) {
+    final answers = _answers();
+
+    return [
+      for (final screen in _allScreensOf(run))
+        if (conditionPasses(screen['visible_if'], answers)) screen,
+    ];
+  }
+
+  /// Every field this screen declares, shown or not.
+  List<Map<String, dynamic>> _allFieldsOf(Map<String, dynamic> screen) => [
         for (final f in (screen['fields'] as List? ?? const []))
           if (f is Map) Map<String, dynamic>.from(f),
       ];
+
+  /// The fields actually asked on this screen.
+  ///
+  /// The server holds the same rule twice over — RequiredFields skips hidden
+  /// fields, and BoundAnswers drops their answers at submit — so a client that
+  /// disagreed here would show a question the report then throws away.
+  List<Map<String, dynamic>> _fieldsOf(Map<String, dynamic> screen) {
+    final answers = _answers();
+
+    return [
+      for (final field in _allFieldsOf(screen))
+        if (conditionPasses(field['visible_if'], answers)) field,
+    ];
+  }
 
   String? _missingOn(Map<String, dynamic> screen) {
     final answers = _answers();
