@@ -65,8 +65,6 @@ class PhoneNumber extends Model implements StatesRetention
         'record', 'transcribe',
         'after_hours', 'after_hours_number', 'language',
         'messaging_service_sid', 'sms_outbound_allowed', 'emergency_address_set',
-        'emergency_address_sid', 'voice_caller_id_lookup', 'voicemail_transcribe',
-        'capabilities',
     ];
 
     protected function casts(): array
@@ -76,12 +74,6 @@ class PhoneNumber extends Model implements StatesRetention
             'transcribe' => 'boolean',
             'sms_outbound_allowed' => 'boolean',
             'emergency_address_set' => 'boolean',
-            'voice_caller_id_lookup' => 'boolean',
-            'voicemail_transcribe' => 'boolean',
-
-            // Twilio owns this; we keep the last answer so the list can draw
-            // without asking. See the migration for why.
-            'capabilities' => 'array',
         ];
     }
 

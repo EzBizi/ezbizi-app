@@ -261,6 +261,41 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('invitation', fn (Request $request) => Limit::perHour(30)
             ->by($request->ip())
             ->response($this->throttledWith('Too many attempts from this address.')));
+
+        /*
+         * WordPress plugin reads: keyed on the TOKEN, with an IP ceiling behind it.
+         *
+         * WHY NOT PER IP ALONE, which is what every other public limiter here
+         * does: these callers are shared web hosts. One IP is a hosting company
+         * serving hundreds of unrelated businesses, so an IP bucket makes each
+         * customer's website a rate-limiting neighbour of every other customer
+         * on that box — and the site that gets throttled is not the site that
+         * caused it. A token is one website, which is the unit that should be
+         * answerable for its own traffic.
+         *
+         * SIXTY AN HOUR PER TOKEN: the plugin caches for five minutes, so a
+         * healthy site asks twelve times an hour. Sixty is five times that,
+         * which absorbs a cache flush, a settings save and somebody clicking
+         * "Refresh now" repeatedly, and still caps one token.
+         *
+         * THE IP CEILING IS NOT THE SAME QUESTION. It is there for the case the
+         * token key cannot see: somebody generating tokens, or hammering with
+         * none at all, where every request lands in a different bucket or the
+         * same empty one. Six hundred an hour is far above any real host's
+         * legitimate total and far below a useful flood.
+         *
+         * WHAT NEITHER PROTECTS AGAINST: a distributed read with a VALID token.
+         * That is a customer's own token being abused, and the answer to it is
+         * rotation in the SEO tab rather than a limiter.
+         */
+        RateLimiter::for('web-plugin', fn (Request $request) => [
+            Limit::perHour(60)
+                ->by('token:'.hash('sha256', (string) $request->bearerToken()))
+                ->response($this->throttledWith('This website is asking too often. It will catch up shortly.')),
+            Limit::perHour(600)
+                ->by('host:'.$request->ip())
+                ->response($this->throttledWith('Too many requests from this address.')),
+        ]);
     }
 
     /**

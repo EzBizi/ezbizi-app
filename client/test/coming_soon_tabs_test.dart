@@ -1,52 +1,18 @@
-import 'dart:convert';
-
-import 'package:ezbizi_client/core/api_client.dart';
-import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
-import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/widgets/coming_soon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
-/// Coming-soon sidebar tabs: granted, named, not blank.
+
+/// The placeholder a granted-but-unbuilt module draws.
+///
+/// Web Management was the last module using it and stopped on 2026-08-28; its
+/// tab tests moved to web_management_test.dart. The widget stays, and so does
+/// this test, because the next module granted before it is built needs the same
+/// answer — and the reason ComingSoonScreen exists is written on it: a blank
+/// frame reads as a broken app or as a lost permission, and both guesses are
+/// worse than the truth.
 void main() {
-  testWidgets('Web Management names itself and is not a blank page', (
-    tester,
-  ) async {
-    await _pumpDestination(tester, 'web_management', 'Web Management');
-
-    expect(find.text('Coming soon'), findsOneWidget);
-    expect(find.textContaining('public website'), findsOneWidget);
-  });
-
-  testWidgets('a granted Web Management tab is in the sidebar and opens', (
-    tester,
-  ) async {
-    await _pumpShell(tester, 'web_management', 'Web Management');
-
-    final inSidebar = find.descendant(
-      of: find.byType(NavigationSidebar),
-      matching: find.text('Web Management'),
-    );
-
-    expect(inSidebar, findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byType(NavigationSidebar),
-        matching: find.byIcon(Icons.language_outlined),
-      ),
-      findsOneWidget,
-    );
-
-    await tester.tap(inSidebar);
-    await tester.pumpAndSettle();
-
-    expect(find.byType(ComingSoonScreen), findsOneWidget);
-    expect(find.text('Coming soon'), findsOneWidget);
-  });
-
   testWidgets(
     'Coming soon lays out on a 375-point window without overflowing',
     (tester) async {
@@ -74,90 +40,3 @@ void main() {
     },
   );
 }
-
-Future<void> _pumpDestination(
-  WidgetTester tester,
-  String key,
-  String label,
-) async {
-  tester.view.physicalSize = const Size(1280, 900);
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(tester.view.reset);
-
-  await _pumpShell(tester, key, label);
-
-  final inSidebar = find.descendant(
-    of: find.byType(NavigationSidebar),
-    matching: find.text(label),
-  );
-
-  await tester.tap(inSidebar);
-  await tester.pumpAndSettle();
-}
-
-Future<void> _pumpShell(WidgetTester tester, String key, String label) async {
-  tester.view.physicalSize = const Size(1280, 900);
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(tester.view.reset);
-
-  final api = ApiClient(
-    client: MockClient((request) async {
-      if (request.url.path.endsWith('/me')) {
-        return http.Response(
-          jsonEncode({'data': _me(key, label)}),
-          200,
-          headers: {'content-type': 'application/json'},
-        );
-      }
-
-      return http.Response(
-        jsonEncode({
-          'message': 'Unexpected ${request.method} ${request.url.path}',
-        }),
-        500,
-        headers: {'content-type': 'application/json'},
-      );
-    }),
-  );
-  final session = Session(api);
-
-  await tester.runAsync(() => session.adopt('tok'));
-
-  await tester.pumpWidget(
-    MaterialApp(
-      theme: EzBiziTheme.light(),
-      home: ListenableBuilder(
-        listenable: session,
-        builder: (_, _) => HomeShell(api: api, session: session),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-}
-
-Map<String, Object?> _me(String key, String label) => {
-  'id': 'u-1',
-  'name': 'Jose Silva',
-  'email': 'jose@example.com',
-  'has_avatar': false,
-  'role': {'id': 'role-1', 'name': 'Administrator'},
-  'permissions': ['$key.view'],
-  'modules': [
-    {'key': key, 'label': label, 'available': true, 'reachable': true},
-  ],
-  'preferences': <String, dynamic>{},
-  'organization': {
-    'id': 'org-1',
-    'name': 'Everdoors',
-    'franchise_label': 'Franchise',
-    'is_read_only': false,
-  },
-  'scope': {
-    'type': 'organization',
-    'id': 'org-1',
-    'label': 'Everdoors',
-    'path': ['Everdoors'],
-  },
-  'companies': <Map<String, Object?>>[],
-  'franchises': <Map<String, Object?>>[],
-};

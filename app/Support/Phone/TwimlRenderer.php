@@ -184,7 +184,7 @@ final class TwimlRenderer
             return;
         }
 
-        $this->voicemail($response, $number, $language, $context);
+        $this->voicemail($response, $language, $context);
     }
 
     /**
@@ -210,7 +210,7 @@ final class TwimlRenderer
                 : PhoneRingGroup::query()->find($number->ring_group_id));
 
         if ($group === null || $connection === null) {
-            $this->voicemail($response, $number, $language, $context);
+            $this->voicemail($response, $language, $context);
 
             return;
         }
@@ -274,7 +274,7 @@ final class TwimlRenderer
             }
         }
 
-        $this->voicemail($response, $number, $language, $context);
+        $this->voicemail($response, $language, $context);
     }
 
     /**
@@ -340,31 +340,14 @@ final class TwimlRenderer
     /**
      * @param  array<string, mixed>  $context
      */
-    private function voicemail(
-        VoiceResponse $response,
-        PhoneNumber $number,
-        string $language,
-        array $context = [],
-    ): void {
+    private function voicemail(VoiceResponse $response, string $language, array $context = []): void
+    {
         $response->say('Please leave a message after the tone.', ['language' => $language]);
 
         $attributes = ['playBeep' => true];
         if (is_string($context['recording_status_callback'] ?? null)
             && $context['recording_status_callback'] !== '') {
             $attributes['recordingStatusCallback'] = $context['recording_status_callback'];
-        }
-
-        // Writing down a voicemail is a different Twilio charge from writing
-        // down a live call, and a different switch on the line — `transcribe`
-        // starts a real-time stream on the conversation and never touches the
-        // recording somebody leaves after everyone has hung up.
-        if ($number->voicemail_transcribe) {
-            $attributes['transcribe'] = true;
-
-            if (is_string($context['transcription_status_callback'] ?? null)
-                && $context['transcription_status_callback'] !== '') {
-                $attributes['transcribeCallback'] = $context['transcription_status_callback'];
-            }
         }
 
         $response->record($attributes);
@@ -425,7 +408,7 @@ final class TwimlRenderer
         }
 
         if ($action === 'voicemail') {
-            $this->voicemail($response, $number, $language, $context);
+            $this->voicemail($response, $language, $context);
 
             return;
         }
@@ -436,7 +419,7 @@ final class TwimlRenderer
             if ($to === '') {
                 // Configured to forward with nowhere to forward to. Voicemail
                 // rather than a dead line — the caller did nothing wrong.
-                $this->voicemail($response, $number, $language, $context);
+                $this->voicemail($response, $language, $context);
 
                 return;
             }

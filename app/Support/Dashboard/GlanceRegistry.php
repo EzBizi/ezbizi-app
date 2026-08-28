@@ -16,6 +16,7 @@ use App\Support\Dashboard\Glances\LeadsGlance;
 use App\Support\Dashboard\Glances\ReviewsGlance;
 use App\Support\Dashboard\Glances\ServicesGlance;
 use App\Support\Dashboard\Glances\TasksGlance;
+use App\Support\Dashboard\Glances\WebManagementGlance;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Tenancy\TenantContext;
 
@@ -49,10 +50,6 @@ class GlanceRegistry
             'label' => 'Marketing',
             'sentence' => 'Marketing will show scheduled and published posts here once compose is live.',
         ],
-        'web_management' => [
-            'label' => 'Web Management',
-            'sentence' => 'Web Management is where a company will edit and publish its public website from EzBizi — the same place it already runs the rest of the business. The editor is not here yet.',
-        ],
         'phone' => [
             'label' => 'Phone',
             'sentence' => 'Phone is where the team places and receives calls, and sends texts. Open the Phone tab for the desk.',
@@ -75,6 +72,7 @@ class GlanceRegistry
         InspectionGlance::class,
         FleetGlance::class,
         InventoryGlance::class,
+        WebManagementGlance::class,
         ServicesGlance::class,
         LeadsGlance::class,
         BusinessProfileGlance::class,

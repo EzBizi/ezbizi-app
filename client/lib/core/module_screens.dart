@@ -16,7 +16,7 @@ import '../screens/marketing_screen.dart';
 import '../screens/phone_screen.dart';
 import '../screens/services_screen.dart';
 import '../screens/tasks_screen.dart';
-import '../widgets/coming_soon.dart';
+import '../screens/web_screen.dart';
 import 'api_client.dart';
 import 'session.dart';
 
@@ -90,14 +90,7 @@ final Map<String, ModuleScreen> moduleScreens = {
   ),
   'web_management': ModuleScreen(
     Icons.language_outlined,
-    (_, _) => const ComingSoonScreen(
-      title: 'Web Management',
-      icon: Icons.language_outlined,
-      what:
-          'Web Management is where a company will edit and publish its public '
-          'website from EzBizi — the same place it already runs the rest of '
-          'the business. The editor is not here yet.',
-    ),
+    (api, session) => WebScreen(api: api, session: session),
   ),
   'phone': ModuleScreen(
     Icons.phone_outlined,

@@ -14,7 +14,6 @@ use App\Support\Phone\TwilioGateway;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -31,14 +30,6 @@ class NumbersController extends Controller
     use ResolvesPhoneConnections;
 
     private const NO_CONNECTION = 'Connect Twilio for this place first.';
-
-    /** Search toggles, which arrive as query-string text rather than as JSON booleans. */
-    private const SEARCH_FLAGS = [
-        'voice', 'sms', 'mms', 'beta',
-        'exclude_all_address_required',
-        'exclude_local_address_required',
-        'exclude_foreign_address_required',
-    ];
 
     public function __construct(
         private readonly TwilioGateway $twilio,
@@ -96,19 +87,14 @@ class NumbersController extends Controller
         $orgId = $connection->organization_id;
         $connectionId = $connection->id;
 
-        $purchased = $this->twilio->purchaseIncoming($connection, $phoneNumber, array_filter([
+        $purchased = $this->twilio->purchaseIncoming($connection, $phoneNumber, [
             'voiceUrl' => $base.'/voice/'.$orgId.'/'.$connectionId,
             'voiceMethod' => 'POST',
             'smsUrl' => $base.'/sms/'.$orgId.'/'.$connectionId,
             'smsMethod' => 'POST',
             'statusCallback' => $base.'/status/'.$orgId.'/'.$connectionId,
             'statusCallbackMethod' => 'POST',
-
-            // So the Twilio Console shows what EzBizi calls this line. A
-            // console full of bare E.164s is how somebody releases the wrong
-            // number.
-            'friendlyName' => filled($input['label'] ?? null) ? (string) $input['label'] : null,
-        ], static fn ($value) => $value !== null));
+        ]);
 
         $number = PhoneNumber::query()->create([
             'organization_id' => $this->tenant->idOrFail(),
@@ -122,161 +108,6 @@ class NumbersController extends Controller
         ]);
 
         return response()->json(['data' => $this->row($number)], Response::HTTP_CREATED);
-    }
-
-    /**
-     * GET /api/v1/phone/numbers/available
-     *
-     * What Twilio has for sale, for the place in view.
-     *
-     * Buying used to be an area code and nothing else, and it took
-     * `available[0]` — whatever Twilio happened to list first. That is fine
-     * for a test and wrong for a business, which wants a number in its own
-     * town, or one ending in something a customer can remember.
-     *
-     * Read-only. Nothing is bought and no row is written until somebody picks
-     * one and POSTs it to [store].
-     *
-     * Gated on `create`, not `view`: the only reason to search is to buy, and
-     * every search spends the tenant's own Twilio quota.
-     */
-    public function available(Request $request): JsonResponse
-    {
-        // This is a GET, so every flag arrives as text. Laravel's `boolean`
-        // rule refuses the string "true", which is precisely what a query
-        // string carries — so the toggles are read before they are validated.
-        foreach (self::SEARCH_FLAGS as $flag) {
-            if ($request->has($flag)) {
-                $request->merge([
-                    $flag => filter_var($request->query($flag), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE),
-                ]);
-            }
-        }
-
-        $input = $request->validate([
-            'scope_type' => ['required', Rule::in([
-                PhoneNumber::SCOPE_ORGANIZATION,
-                PhoneNumber::SCOPE_COMPANY,
-                PhoneNumber::SCOPE_FRANCHISE,
-            ])],
-            'scope_id' => ['required', 'uuid'],
-
-            'type' => ['sometimes', Rule::in(['local', 'toll_free', 'mobile'])],
-            'country' => ['sometimes', 'string', 'size:2', 'alpha'],
-
-            // Twilio caps `contains` at 2–16 and allows the meta-characters
-            // * % + $ alongside digits and latin letters.
-            'area_code' => ['sometimes', 'nullable', 'string', 'max:8'],
-            'contains' => ['sometimes', 'nullable', 'string', 'min:2', 'max:16'],
-
-            'voice' => ['sometimes', 'boolean'],
-            'sms' => ['sometimes', 'boolean'],
-            'mms' => ['sometimes', 'boolean'],
-
-            'near_number' => ['sometimes', 'nullable', 'string', 'max:16'],
-            'near_lat_long' => ['sometimes', 'nullable', 'string', 'max:64'],
-            'distance' => ['sometimes', 'integer', 'min:1', 'max:500'],
-
-            'in_postal_code' => ['sometimes', 'nullable', 'string', 'max:16'],
-            'in_region' => ['sometimes', 'nullable', 'string', 'max:8'],
-            'in_locality' => ['sometimes', 'nullable', 'string', 'max:64'],
-            'in_rate_center' => ['sometimes', 'nullable', 'string', 'max:64'],
-            'in_lata' => ['sometimes', 'nullable', 'string', 'max:16'],
-
-            'exclude_all_address_required' => ['sometimes', 'boolean'],
-            'exclude_local_address_required' => ['sometimes', 'boolean'],
-            'exclude_foreign_address_required' => ['sometimes', 'boolean'],
-
-            'beta' => ['sometimes', 'boolean'],
-            'limit' => ['sometimes', 'integer', 'min:1', 'max:50'],
-        ]);
-
-        $this->assertScopeExists($input['scope_type'], $input['scope_id']);
-        $this->authorize('create', [PhoneNumber::class, $input['scope_type'], $input['scope_id']]);
-
-        // Twilio's own constraint, enforced here so the answer is a field
-        // error rather than a 400 from the carrier.
-        if (filled($input['in_rate_center'] ?? null) && blank($input['in_lata'] ?? null)) {
-            throw ValidationException::withMessages([
-                'in_lata' => 'Searching a rate center needs its LATA as well.',
-            ]);
-        }
-
-        $connection = $this->resolver->forScope(
-            $this->tenant->idOrFail(),
-            $input['scope_type'],
-            $input['scope_id'],
-        );
-
-        if ($connection === null) {
-            return response()->json(['data' => [], 'message' => self::NO_CONNECTION]);
-        }
-
-        $criteria = array_filter(
-            Arr::except($input, ['scope_type', 'scope_id']),
-            static fn ($value) => $value !== null && $value !== '',
-        );
-
-        // `integer` validates but does not cast, and a query string carries
-        // text. Twilio wants a number for the search radius.
-        foreach (['distance', 'limit'] as $number) {
-            if (isset($criteria[$number])) {
-                $criteria[$number] = (int) $criteria[$number];
-            }
-        }
-
-        try {
-            $found = $this->twilio->searchAvailable($connection, $criteria);
-        } catch (Throwable) {
-            // A search that cannot reach Twilio must not take the Numbers
-            // screen down with it — the lines already set up still list.
-            return response()->json([
-                'data' => [],
-                'message' => 'EzBizi could not reach Twilio to search for numbers.',
-            ]);
-        }
-
-        return response()->json(['data' => $found]);
-    }
-
-    /**
-     * GET /api/v1/phone/numbers/countries
-     *
-     * Where this account may buy. Asked of Twilio rather than kept as a list
-     * of our own, which would go stale in one direction or the other.
-     */
-    public function countries(Request $request): JsonResponse
-    {
-        $input = $request->validate([
-            'scope_type' => ['required', Rule::in([
-                PhoneNumber::SCOPE_ORGANIZATION,
-                PhoneNumber::SCOPE_COMPANY,
-                PhoneNumber::SCOPE_FRANCHISE,
-            ])],
-            'scope_id' => ['required', 'uuid'],
-        ]);
-
-        $this->assertScopeExists($input['scope_type'], $input['scope_id']);
-        $this->authorize('create', [PhoneNumber::class, $input['scope_type'], $input['scope_id']]);
-
-        $connection = $this->resolver->forScope(
-            $this->tenant->idOrFail(),
-            $input['scope_type'],
-            $input['scope_id'],
-        );
-
-        if ($connection === null) {
-            return response()->json(['data' => [], 'message' => self::NO_CONNECTION]);
-        }
-
-        try {
-            return response()->json(['data' => $this->twilio->availableCountries($connection)]);
-        } catch (Throwable) {
-            // US is the floor, not a guess: every EzBizi account today is US.
-            return response()->json([
-                'data' => [['country_code' => 'US', 'country' => 'United States']],
-            ]);
-        }
     }
 
     /**
@@ -474,12 +305,6 @@ class NumbersController extends Controller
             'transcribe' => ['sometimes', 'boolean'],
             'after_hours' => ['sometimes', Rule::in(PhoneNumber::AFTER_HOURS)],
             'after_hours_number' => ['sometimes', 'nullable', 'string', 'max:16'],
-
-            // Carrier-side settings. These are pushed to Twilio below, so a
-            // save that Twilio refuses must not leave our row disagreeing.
-            'emergency_address_sid' => ['sometimes', 'nullable', 'string', 'max:34'],
-            'voice_caller_id_lookup' => ['sometimes', 'boolean'],
-            'voicemail_transcribe' => ['sometimes', 'boolean'],
         ]);
 
         // A group on another Twilio account expands to Client identities this
@@ -501,87 +326,9 @@ class NumbersController extends Controller
             ]);
         }
 
-        // Carrier first, then our row. The other order leaves EzBizi claiming
-        // an emergency address Twilio never accepted — which is the exact
-        // failure this setting exists to prevent.
-        $carrier = array_filter([
-            'emergencyAddressSid' => array_key_exists('emergency_address_sid', $input)
-                ? ($input['emergency_address_sid'] ?? '')
-                : null,
-            'voiceCallerIdLookup' => array_key_exists('voice_caller_id_lookup', $input)
-                ? (bool) $input['voice_caller_id_lookup']
-                : null,
-        ], static fn ($value) => $value !== null);
-
-        if ($carrier !== []) {
-            $connection = $this->resolver->forNumber($number) ?? $number->connection;
-
-            if ($connection === null || blank($number->twilio_sid)) {
-                throw ValidationException::withMessages([
-                    'emergency_address_sid' => self::NO_CONNECTION,
-                ]);
-            }
-
-            try {
-                $this->twilio->updateIncoming($connection, (string) $number->twilio_sid, $carrier);
-            } catch (Throwable $e) {
-                throw ValidationException::withMessages([
-                    'emergency_address_sid' => 'Twilio refused that change: '.$e->getMessage(),
-                ]);
-            }
-
-            if (array_key_exists('emergency_address_sid', $input)) {
-                $input['emergency_address_set'] = filled($input['emergency_address_sid']);
-            }
-        }
-
         $number->fill($input)->save();
 
         return response()->json(['data' => $this->row($number->fresh())]);
-    }
-
-    /**
-     * GET /api/v1/phone/numbers/{number}/carrier
-     *
-     * What Twilio says about this line right now: what it can actually do,
-     * and whether 911 works.
-     *
-     * Read live rather than from our row, because Twilio changes
-     * `emergency_status` on its own — an address that stops validating
-     * deactivates 911 silently, and a stored copy would go on saying it was
-     * fine. That is the one field where being a few minutes stale is not a
-     * cosmetic problem.
-     *
-     * The capabilities snapshot on the row is refreshed here as a side
-     * effect; this is the only place it is written.
-     */
-    public function carrier(Request $request, PhoneNumber $number): JsonResponse
-    {
-        $this->authorize('view', $number);
-
-        $connection = $this->resolver->forNumber($number) ?? $number->connection;
-
-        if ($connection === null || blank($number->twilio_sid)) {
-            return response()->json(['data' => null, 'message' => self::NO_CONNECTION]);
-        }
-
-        try {
-            $live = $this->twilio->fetchIncoming($connection, (string) $number->twilio_sid);
-        } catch (Throwable) {
-            return response()->json([
-                'data' => null,
-                'message' => 'EzBizi could not reach Twilio for this line.',
-            ]);
-        }
-
-        $number->forceFill([
-            'capabilities' => $live['capabilities'],
-            'emergency_address_sid' => $live['emergency_address_sid'],
-            'emergency_address_set' => filled($live['emergency_address_sid']),
-            'voice_caller_id_lookup' => $live['voice_caller_id_lookup'],
-        ])->save();
-
-        return response()->json(['data' => $live]);
     }
 
     /** DELETE /api/v1/phone/numbers/{number} */
@@ -657,17 +404,6 @@ class NumbersController extends Controller
             'hours_schedule_id' => $number->hours_schedule_id,
             'language' => $number->language,
             'sms_outbound_allowed' => (bool) $number->sms_outbound_allowed,
-
-            'emergency_address_sid' => $number->emergency_address_sid,
-            'emergency_address_set' => (bool) $number->emergency_address_set,
-            'voice_caller_id_lookup' => (bool) $number->voice_caller_id_lookup,
-            'voicemail_transcribe' => (bool) $number->voicemail_transcribe,
-            'capabilities' => $number->capabilities ?? [],
-
-            // A line with nowhere to ring answers every call with voicemail.
-            // The renderer decides this by `ring_group_id === null`, so the
-            // screen must judge it the same way rather than by its own rule.
-            'answers' => $number->ring_group_id !== null || $number->flow_id !== null,
         ];
     }
 }

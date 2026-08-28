@@ -107,14 +107,32 @@ class GlanceRegistryTest extends TestCase
 
     public function test_a_coming_soon_glance_has_no_chart_presentations(): void
     {
-        $user = $this->userWithPermissions(['web_management.view']);
-        $payload = app(GlanceRegistry::class)->find('web_management', $user)
+        $user = $this->userWithPermissions(['marketing.view']);
+        $payload = app(GlanceRegistry::class)->find('marketing', $user)
             ->resolve($user, DashboardPeriod::for($user), []);
         $array = $payload->toArray();
         $this->assertTrue($array['coming_soon']);
         $this->assertSame([], $array['allowed_presentations']);
         $this->assertSame('text', $array['presentation']);
-        $this->assertStringContainsString('editor is not here yet', $array['data']['sentence']);
+        $this->assertStringContainsString('compose is live', $array['data']['sentence']);
+    }
+
+    /**
+     * Web Management held the coming-soon example above until 2026-08-28, and
+     * its placeholder sentence promised a website editor. What shipped reads a
+     * company's registered hosts instead, so the box counts them — and the
+     * assertion that matters is that it no longer claims to be coming.
+     */
+    public function test_web_management_is_a_real_glance_now(): void
+    {
+        $user = $this->userWithPermissions(['web_management.view']);
+        $array = app(GlanceRegistry::class)->find('web_management', $user)
+            ->resolve($user, DashboardPeriod::for($user), [])
+            ->toArray();
+
+        $this->assertFalse($array['coming_soon']);
+        $this->assertTrue($array['data']['empty']);
+        $this->assertStringContainsString('No websites', $array['data']['sentence']);
     }
 
     public function test_dashboard_is_not_a_glance(): void

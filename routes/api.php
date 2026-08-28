@@ -52,7 +52,6 @@ use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsCont
 use App\Http\Controllers\Api\Phone\FlowsController as PhoneFlowsController;
 use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
 use App\Http\Controllers\Api\Phone\MessagesController as PhoneMessagesController;
-use App\Http\Controllers\Api\Phone\AddressesController as PhoneAddressesController;
 use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
 use App\Http\Controllers\Api\Phone\PortsController as PhonePortsController;
 use App\Http\Controllers\Api\Phone\PortWebhookController as PhonePortWebhookController;
@@ -120,6 +119,9 @@ use App\Http\Controllers\Api\VehicleOwnershipController;
 use App\Http\Controllers\Api\VehiclePaymentsController;
 use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\VehicleServiceController;
+use App\Http\Controllers\Api\Web\PluginController as WebPluginController;
+use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
+use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Http\Middleware\EnsureTaskRouteAccess;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
@@ -306,6 +308,27 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
     ->middleware('throttle:30,1')
     ->where('network', SocialProvider::oauthRoutePattern())
     ->name('social.callback');
+
+/*
+|--------------------------------------------------------------------------
+| What a customer's WordPress plugin reads — public, and token-authenticated
+|--------------------------------------------------------------------------
+|
+| No Sanctum: the caller is a plugin on somebody else's web host, with no user
+| and no session. Its bearer token is a credential for ONE site, and the
+| controller checks the host it reports against the one that token belongs to.
+| No `tenant` middleware either, for the same reason as the invitation routes —
+| the token row is what names the organization, so it cannot be known before
+| the lookup. PluginController enters it with TenantContext::run.
+|
+| Throttled on the TOKEN rather than the IP, which is why this one is a named
+| limiter and the OAuth callbacks above are not: these callers sit on shared web
+| hosts, so one IP is a hosting company serving hundreds of unrelated
+| businesses. AppServiceProvider carries the numbers and the reasoning.
+*/
+Route::get('v1/web/plugin/values', [WebPluginController::class, 'values'])
+    ->middleware('throttle:web-plugin')
+    ->name('web.plugin.values');
 
 /*
 |--------------------------------------------------------------------------
@@ -525,6 +548,21 @@ Route::prefix('v1')
         Route::apiResource('inventory/items', InventoryItemsController::class);
         Route::apiResource('inventory/locations', InventoryLocationsController::class);
         Route::apiResource('inventory/vendors', InventoryVendorsController::class);
+
+        // Web Management. Sites are the hosts a company owns — a subdomain is
+        // its own site with its own token and its own phone number. The token
+        // route re-issues that credential and is the only way back from a lost
+        // one, because only the hash is stored.
+        //
+        // `web/plugin` is the plugin itself, zipped on request — authenticated,
+        // unlike the public `web/plugin/values` further up this file, because
+        // it hands over code rather than a company's data.
+        Route::get('web/plugin', [WebSitesController::class, 'downloadPlugin']);
+        Route::apiResource('web/sites', WebSitesController::class)
+            ->parameters(['sites' => 'site']);
+        Route::post('web/sites/{site}/token', [WebSitesController::class, 'rotateToken']);
+        Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
+        Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
         Route::post('inventory/purchase-orders/{purchase_order}/open', [InventoryPurchaseOrdersController::class, 'open']);
         Route::post('inventory/purchase-orders/{purchase_order}/cancel', [InventoryPurchaseOrdersController::class, 'cancel']);
         Route::post('inventory/purchase-orders/{purchase_order}/receives', [InventoryPurchaseOrdersController::class, 'receive']);
@@ -845,21 +883,6 @@ Route::prefix('v1')
         // Literal paths before {number}, or "importable" is captured as an id.
         Route::get('phone/numbers/importable', [PhoneNumbersController::class, 'importable']);
         Route::post('phone/numbers/import', [PhoneNumbersController::class, 'import']);
-
-        // Shopping for a new line: what Twilio has, and where it can sell.
-        // Both are phone.edit — the only reason to look is to buy.
-        Route::get('phone/numbers/available', [PhoneNumbersController::class, 'available']);
-        Route::get('phone/numbers/countries', [PhoneNumbersController::class, 'countries']);
-
-        // What Twilio itself says about one line right now — capabilities and
-        // above all whether 911 works. Read live; a stored copy goes stale
-        // without anybody being told.
-        Route::get('phone/numbers/{number}/carrier', [PhoneNumbersController::class, 'carrier']);
-
-        // Emergency addresses (spec §6). Account-level on Twilio, because one
-        // premises answers for every line in the building.
-        Route::get('phone/addresses', [PhoneAddressesController::class, 'index']);
-        Route::post('phone/addresses', [PhoneAddressesController::class, 'store']);
         Route::get('phone/numbers', [PhoneNumbersController::class, 'index']);
         Route::post('phone/numbers', [PhoneNumbersController::class, 'store']);
 

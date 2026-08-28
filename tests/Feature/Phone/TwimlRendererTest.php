@@ -59,43 +59,6 @@ class TwimlRendererTest extends TestCase
         $this->assertStringNotContainsString('record-from-answer', $xml);
     }
 
-    /**
-     * Writing down a voicemail is a different Twilio charge and a different
-     * switch from writing down the live call. The setting existed on the row
-     * and in the API before the renderer read it, which is the worst shape a
-     * setting can be in: it saves, it shows as on, and it does nothing.
-     */
-    public function test_voicemail_is_transcribed_only_when_the_line_asks_for_it(): void
-    {
-        $t = $this->provisionTenant();
-
-        [$off, $on] = $this->inTenant($t['org'], function () use ($t) {
-            [$number] = $this->lineWithAvailableDesk($t, record: false);
-
-            // No group, so the renderer goes to voicemail rather than Dial.
-            $number->forceFill(['ring_group_id' => null])->save();
-
-            $context = ['transcription_status_callback' => 'https://ezbizi.test/hook'];
-            $renderer = new TwimlRenderer;
-
-            $before = $renderer->inbound($number->fresh(), $context);
-
-            $number->forceFill(['voicemail_transcribe' => true])->save();
-
-            return [$before, $renderer->inbound($number->fresh(), $context)];
-        });
-
-        $this->assertStringContainsString('<Record', $off);
-        $this->assertStringNotContainsString('transcribe="true"', $off);
-        $this->assertStringNotContainsString('transcribeCallback', $off);
-
-        $this->assertStringContainsString('transcribe="true"', $on);
-        $this->assertStringContainsString('transcribeCallback="https://ezbizi.test/hook"', $on);
-
-        // The live-call stream is a separate switch and must stay off.
-        $this->assertStringNotContainsString('<Start>', $on);
-    }
-
     public function test_hours_closed_goes_to_voicemail_without_dialing(): void
     {
         $t = $this->provisionTenant();
