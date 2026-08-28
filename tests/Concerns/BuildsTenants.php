@@ -130,6 +130,22 @@ trait BuildsTenants
         return $this;
     }
 
+    /**
+     * A SECOND franchise under the same company.
+     *
+     * For the tests that are about one franchise not seeing another's work —
+     * the sideways case, which a single-franchise tenant cannot express at all.
+     * Strictly additive: it does not touch what `provisionTenant` returns, and
+     * every module's tests read that array.
+     */
+    protected function extraFranchise(array $tenant, string $name): Franchise
+    {
+        return $this->inTenant($tenant['org'], fn () => Franchise::create([
+            'company_id' => $tenant['company']->id,
+            'name'       => $name,
+        ]));
+    }
+
     /** Roles and permissions are tenant data, so they cannot be read with no tenant set. */
     protected function inTenant(Organization $organization, callable $fn): mixed
     {

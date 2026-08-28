@@ -3,6 +3,7 @@
 namespace Tests\Feature\Inspection;
 
 use App\Models\InspectionDefinition;
+use App\Support\Inspection\InspectionScope;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\BuildsTenants;
@@ -58,5 +59,96 @@ class InspectionScopeTest extends TestCase
 
         $this->assertSame('franchise', $fresh->scope_type);
         $this->assertSame($tenant['franchise']->id, $fresh->scope_id);
+    }
+
+    // ── visibility, which is not reach ───────────────────────────
+
+    /**
+     * The case the whole class exists for.
+     *
+     * A technician assigned to one franchise does NOT reach the company above
+     * them — `ScopeReach::covers` says false, correctly, because they may not
+     * administer it. They must still see the inspection that company owns, or a
+     * company-scoped definition is invisible to every person who would run it
+     * and the feature is worse than useless.
+     */
+    public function test_a_franchise_technician_sees_the_inspection_their_company_owns(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->userWithRole(
+            $tenant, 'Rodrigo', ['inspection.view', 'inspection.create'],
+            // Pinned to ONE franchise. userWithRole assigns at organization
+            // level by default, which reaches every franchise — and would make
+            // the sideways test pass for the wrong reason, then keep passing
+            // if scope were deleted entirely.
+            onlyAt: $tenant['franchise'],
+        );
+
+        $owned = $this->inTenant($tenant['org'], fn () => InspectionDefinition::create([
+            'name' => 'Company wide',
+            'created_by' => $tenant['admin']->id,
+            'screens' => [],
+            'scope_type' => InspectionDefinition::SCOPE_COMPANY,
+            'scope_id' => $tenant['company']->id,
+        ]));
+
+        $this->assertContains($owned->id, $this->visibleTo($tenant, $tech));
+    }
+
+    public function test_a_sibling_franchises_inspection_is_not_visible(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->userWithRole(
+            $tenant, 'Rodrigo', ['inspection.view', 'inspection.create'],
+            // Pinned to ONE franchise. userWithRole assigns at organization
+            // level by default, which reaches every franchise — and would make
+            // the sideways test pass for the wrong reason, then keep passing
+            // if scope were deleted entirely.
+            onlyAt: $tenant['franchise'],
+        );
+        $other = $this->extraFranchise($tenant, 'Second');
+
+        $theirs = $this->inTenant($tenant['org'], fn () => InspectionDefinition::create([
+            'name' => 'Not yours',
+            'created_by' => $tenant['admin']->id,
+            'screens' => [],
+            'scope_type' => InspectionDefinition::SCOPE_FRANCHISE,
+            'scope_id' => $other->id,
+        ]));
+
+        $this->assertNotContains($theirs->id, $this->visibleTo($tenant, $tech),
+            'a franchise-scoped inspection must not leak sideways to a sibling');
+    }
+
+    public function test_an_organization_wide_inspection_is_visible_to_everybody(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->userWithRole(
+            $tenant, 'Rodrigo', ['inspection.view', 'inspection.create'],
+            // Pinned to ONE franchise. userWithRole assigns at organization
+            // level by default, which reaches every franchise — and would make
+            // the sideways test pass for the wrong reason, then keep passing
+            // if scope were deleted entirely.
+            onlyAt: $tenant['franchise'],
+        );
+
+        $all = $this->inTenant($tenant['org'], fn () => InspectionDefinition::create([
+            'name' => 'Everyone',
+            'created_by' => $tenant['admin']->id,
+            'screens' => [],
+        ]));
+
+        $this->assertContains($all->id, $this->visibleTo($tenant, $tech));
+    }
+
+    /** @return string[] */
+    private function visibleTo(array $tenant, $user): array
+    {
+        return $this->inTenant($tenant['org'], function () use ($user) {
+            $query = InspectionDefinition::query();
+            app(InspectionScope::class)->constrain($query, $user->fresh());
+
+            return $query->pluck('id')->all();
+        });
     }
 }
