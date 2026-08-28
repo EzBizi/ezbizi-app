@@ -54,7 +54,7 @@
 | `app/Http/Controllers/Api/Tasks/TaskBoardRowsController.php` | Accept and validate `window`; window-sensitive ETag |
 | `app/Support/Tasks/TaskWriter.php` | `start_date` write, recurrence declaration, recurrence-aware completion |
 | `app/Providers/TaskServiceProvider.php` | Register three triggers and the recurrence command |
-| `app/Models/Task.php` | `start_date`, `recurrence` casts and relations |
+| `app/Models/Task.php` | `recurrence` cast and relations |
 
 **Client — new**
 
@@ -83,7 +83,7 @@
 - [ ] Create `task_dependencies`: UUIDv7 id, `organization_id`, `board_id`, `blocker_task_id`, `blocked_task_id`, `created_by`, timestamps. Unique `(blocker_task_id, blocked_task_id)`. Compound foreign keys carrying `(organization_id, board_id, id)` for both task references so a mismatched tenant or board is rejected below the HTTP layer — the same pattern Phase 1 used for every board child. `CHECK (blocker_task_id <> blocked_task_id)`. Cascade on task removal. Index `(blocked_task_id)` and `(blocker_task_id)` separately; the graph is walked in both directions.
 - [ ] Create `task_recurrence_occurrences`: UUIDv7 id, `organization_id`, `task_id` (the series task), `occurrence_date`, `created_task_id` nullable, `created_at`. Unique `(task_id, occurrence_date)` — this uniqueness is the entire idempotency story for a retried or overlapping worker run, exactly as `task_overdue_occurrences` is for overdue.
 - [ ] Add indexes `(board_id, start_on, due_on)` for timeline and calendar windows and `(organization_id, owner_id, due_on)` for workload.
-- [ ] Declare `retention()` and `personalDataPurpose()` on both new models. `TaskDependency` is `RetentionPolicy::forever(...)` — it is board structure. `TaskRecurrenceOccurrence` is `RetentionPolicy::elsewhere(...)` naming the cleaner, matching Phase 1's marker tables. Read `app/Support/Privacy/RetentionPolicy.php` first: `elsewhere($by, $because)` puts the mechanism in `enforcedBy`, not `because`.
+- [ ] Declare `retention()` and `personalDataPurpose()` on both new models. `TaskDependency` is `RetentionPolicy::forever(...)` — it is board structure. `TaskRecurrenceOccurrence` is also `RetentionPolicy::forever(...)`, mirroring `TaskOverdueOccurrence`: the occurrence key stays as durable idempotency evidence. Phase 2 builds no cleaner for this table, so `RetentionPolicy::elsewhere(...)` would name a mechanism that does not exist — a false declaration.
 - [ ] Rerun the focused test, then break one assertion on purpose (drop the `CHECK`) and confirm it fails before restoring.
 - [ ] Commit via the §4 private-index recipe: `database/migrations/2026_08_29_100000_add_task_phase_two_storage.php`, both new models, `app/Models/Task.php`, `tests/Feature/Tasks/TaskPhaseTwoSchemaTest.php`. Message: `feat(tasks): add phase 2 storage`.
 
@@ -344,7 +344,7 @@
 - [ ] **State which commit every result belongs to.** `flutter analyze` and `flutter test` read the working tree, always — in a tree many sessions share, their output is a claim about other people's unsaved edits unless run in a worktree at that SHA. Three sessions reported a phantom red on 2026-08-28 this way.
 - [ ] Ask an independent reviewer to check the implementation against the spec and this plan. Resolve every P0/P1/P2 or record an owner-accepted exception in `docs/EZBIZI-STATUS.md`.
 - [ ] Tick the board card and set `tasks-module-phase-2` to done **only after a gate has actually gone green and you have seen it**. Phase 1's Task 20 sat blocked for two days on a gate that could never pass; a green nobody watched is not a green.
-- [ ] Hand the SHAs to the `ezbizi-a1` session with one line of what changed and what to watch, flagging the `start_date` column, the `schema:2` view configuration and the three new triggers explicitly. **Do not deploy.**
+- [ ] Hand the SHAs to the `ezbizi-a1` session with one line of what changed and what to watch, flagging that Timeline reuses the existing `start_on` column rather than adding one, the `schema:2` view configuration and the three new triggers explicitly. **Do not deploy.**
 - [ ] Use `superpowers:verification-before-completion`, then `superpowers:finishing-a-development-branch`.
 - [ ] Final commit via §4. Message: `docs: record Tasks phase 2`.
 
