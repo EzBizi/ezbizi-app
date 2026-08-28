@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'dart:typed_data';
+
 import '../../core/api_client.dart';
+import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -37,8 +40,63 @@ class _ReportsTabState extends State<ReportsTab> {
   Map<String, dynamic>? _open;
   String? _busy;
 
+  /// Photograph bytes, by attachment id, for the report on screen.
+  ///
+  /// Cleared with the report rather than kept: a technician scrolling a day's
+  /// work would otherwise accumulate every picture they had glanced at.
+  final Map<String, Uint8List> _photos = {};
+
   bool get _mayArchive =>
       widget.session.me?.permissions.contains('inspection.archive') ?? false;
+
+  /// The PDF is the report. `inspection.view` is what opens this screen, so
+  /// anybody reading a report may take a copy of the one they are reading —
+  /// the server says the same thing, and one answer is better than two.
+  Future<void> _download() async {
+    final report = _open;
+    if (report == null) return;
+
+    setState(() => _busy = 'pdf');
+
+    final response = await widget.api.getBytesResponse(
+      '/inspections/reports/${report['id']}/pdf',
+    );
+
+    if (!mounted) return;
+    setState(() => _busy = null);
+
+    final bytes = response.bytes;
+    if (bytes == null) {
+      setState(() => _error = response.message ?? 'The report could not be downloaded.');
+      return;
+    }
+
+    final name = [
+      '${report['definition_name'] ?? 'inspection'}',
+      if (report['customer_name'] != null) '${report['customer_name']}',
+    ].join(' - ');
+
+    Files.download('$name.pdf', bytes);
+  }
+
+  Future<void> _loadPhotos(Map<String, dynamic> report) async {
+    final answers = report['answers'];
+    if (answers is! Map) return;
+
+    for (final screen in (report['screens'] as List? ?? const [])) {
+      if (screen is! Map) continue;
+      for (final field in (screen['fields'] as List? ?? const [])) {
+        if (field is! Map || field['type'] != 'photo') continue;
+        for (final id in (answers['${field['key']}'] as List? ?? const [])) {
+          final key = '$id';
+          if (_photos.containsKey(key)) continue;
+          final bytes = await widget.api.getBytes('/attachments/$key');
+          if (!mounted || bytes == null) continue;
+          setState(() => _photos[key] = Uint8List.fromList(bytes));
+        }
+      }
+    }
+  }
 
   DisplayFormats get _formats =>
       widget.session.me?.display ?? DisplayFormats.fallback;
@@ -109,10 +167,90 @@ class _ReportsTabState extends State<ReportsTab> {
       setState(() => _error = response.reason);
       return;
     }
+    final report = Map<String, dynamic>.from(response.data as Map);
     setState(() {
       _selectedId = id;
-      _open = Map<String, dynamic>.from(response.data as Map);
+      _open = report;
+      _photos.clear();
     });
+    await _loadPhotos(report);
+  }
+
+  /// One answer, shown the way its type was answered.
+  ///
+  /// The list used to be `Text('$value')` for everything, which printed a photo
+  /// answer as a row of uuids and a date as whatever string was saved. The
+  /// report is the artefact somebody reads months later; it should not be the
+  /// rawest possible view of the column.
+  Widget _answer(Map<String, dynamic> field, dynamic value) {
+    final type = '${field['type'] ?? 'text'}';
+
+    if (type == 'photo') return _photoRow(value);
+
+    final text = value == null ? '' : '$value';
+
+    if (text.trim().isEmpty) {
+      return Text(
+        // Not blank. "Nothing to report" and "nobody looked" are different
+        // findings, and the second one is why the field was on the form.
+        'Not answered',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          fontStyle: FontStyle.italic,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+
+    if (type == 'date') {
+      return Text(formatStamp(text, text, formats: _formats));
+    }
+
+    return Text(text);
+  }
+
+  /// The photographs on one answer, read-only.
+  ///
+  /// No remove control: a submitted report is frozen, and the server refuses a
+  /// delete against one. A button that always failed would be a lie on screen.
+  Widget _photoRow(dynamic value) {
+    final ids = [for (final id in (value as List? ?? const [])) '$id'];
+
+    if (ids.isEmpty) {
+      return Text(
+        'No photograph',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          fontStyle: FontStyle.italic,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final id in ids)
+          SizedBox(
+            width: 96,
+            height: 96,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: _photos[id] == null
+                  ? ColoredBox(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      child: const Center(
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    )
+                  : Image.memory(_photos[id]!, fit: BoxFit.cover),
+            ),
+          ),
+      ],
+    );
   }
 
   Future<void> _archive(bool hide) async {
@@ -306,24 +444,32 @@ class _ReportsTabState extends State<ReportsTab> {
                   style: Theme.of(context).textTheme.labelMedium,
                 ),
                 const SizedBox(height: 4),
-                Text('${answers[field['key']] ?? ''}'),
+                _answer(field, answers['${field['key']}']),
                 const SizedBox(height: 12),
               ],
             ],
-          if (_mayArchive) ...[
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton(
-                onPressed: _busy != null
-                    ? null
-                    : () => _archive(report['archived'] != true),
-                child: Text(
-                  report['archived'] == true ? 'Unarchive' : 'Archive',
-                ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                key: const Key('inspection-report-pdf'),
+                onPressed: _busy != null ? null : _download,
+                icon: const Icon(Icons.download_outlined),
+                label: Text(_busy == 'pdf' ? 'Preparing…' : 'Download PDF'),
               ),
-            ),
-          ],
+              if (_mayArchive)
+                OutlinedButton(
+                  onPressed: _busy != null
+                      ? null
+                      : () => _archive(report['archived'] != true),
+                  child: Text(
+                    report['archived'] == true ? 'Unarchive' : 'Archive',
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
     );

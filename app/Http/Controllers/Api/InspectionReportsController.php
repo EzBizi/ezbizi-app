@@ -7,10 +7,16 @@ use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Files\HardenedPdf;
 use App\Support\Inspection\LooksLikeJobNumber;
+use App\Support\Inspection\ReportDocument;
 use App\Support\Scoping\ViewScope;
+use App\Support\Settings\SettingRegistry;
+use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -25,6 +31,10 @@ class InspectionReportsController extends Controller
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly EventEmitter $events,
+        private readonly ReportDocument $document,
+        private readonly TenantContext $tenant,
+        private readonly SettingsResolver $settings,
+        private readonly SettingRegistry $registry,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -117,6 +127,79 @@ class InspectionReportsController extends Controller
         throw ValidationException::withMessages([
             'answers' => 'A submitted inspection cannot be edited. Archive hides it; a new run is how a correction is made.',
         ]);
+    }
+
+    /**
+     * GET .../reports/{id}/pdf — the report as a file somebody can send on.
+     *
+     * `view` and nothing more. A PDF of a report is the report: it contains
+     * exactly what the screen already shows to anybody holding
+     * `inspection.view`, so a second permission here would be a second answer to
+     * a question InspectionReportPolicy already answers, and the two would
+     * drift. `assertReach` is the same franchise rule `show` applies, for the
+     * same reason — a report whose job is out of reach is "no such report".
+     *
+     * Not stored. See ReportDocument: nothing signs this page and no fingerprint
+     * covers it, so there is no stored representation a fresh render could
+     * disagree with, and keeping a copy would only be a second thing to purge.
+     */
+    public function pdf(Request $request, InspectionReport $inspectionReport): Response
+    {
+        $this->authorize('view', $inspectionReport);
+        $this->assertReach($request, $inspectionReport);
+
+        $pdf = HardenedPdf::render(
+            $this->document->html($inspectionReport),
+            $this->paper(),
+        );
+
+        $this->audit->log('inspection.downloaded', $inspectionReport);
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="'.$this->filename($inspectionReport).'"',
+            // The bytes are a customer's photographs and findings. Same two
+            // locks the attachment endpoint uses, for the same reason.
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, no-store',
+        ]);
+    }
+
+    /**
+     * ASCII, and short. A filename crosses an HTTP header, a Windows filesystem
+     * and whatever mail client it is forwarded through, and a customer called
+     * `O'Brien / 14 Maple` breaks at least one of those.
+     */
+    private function filename(InspectionReport $report): string
+    {
+        $stem = trim(preg_replace(
+            '/[^A-Za-z0-9]+/', '-',
+            $report->definition_name.' '.($report->customer?->name ?? ''),
+        ) ?? '', '-');
+
+        $date = $report->submitted_at?->format('Y-m-d') ?? 'report';
+
+        return substr($stem === '' ? 'inspection' : $stem, 0, 60).'-'.$date.'.pdf';
+    }
+
+    /**
+     * What sheet this organization prints on.
+     *
+     * ponytail: reads `contract_pdf_paper`, which is named for the first module
+     * that needed it. "Which paper does this organization use" is ONE fact — a
+     * franchise in Ohio prints its contracts and its inspections on the same
+     * letter-sized sheet — so a second setting would be a second place to
+     * change it and a chance for the two to disagree. Rename the key to
+     * `pdf_paper` in a settings migration when someone is next in that file;
+     * until then the honest thing is to read the one that exists and say so.
+     */
+    private function paper(): string
+    {
+        $organization = $this->tenant->get();
+
+        return (string) ($organization === null
+            ? $this->registry->getOrFail('contract_pdf_paper')->default
+            : $this->settings->get('contract_pdf_paper', $organization));
     }
 
     public function archive(Request $request, InspectionReport $inspectionReport): JsonResponse

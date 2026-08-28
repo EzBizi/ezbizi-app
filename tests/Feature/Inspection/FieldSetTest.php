@@ -46,6 +46,43 @@ class FieldSetTest extends TestCase
         $this->assertSame(1, $set->toArray()[0]['fields'][0]['max_count']);
     }
 
+    /**
+     * A choice with no list is refused.
+     *
+     * It used to be accepted, and nothing looked wrong because the run screen
+     * drew every field as a text box. A dropdown makes the same definition a
+     * control with nothing in it — a required question nobody can answer.
+     */
+    public function test_a_choice_with_no_options_is_refused(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        FieldSet::fromInput([[
+            'fields' => [[
+                'key' => 'flue',
+                'label' => 'Flue',
+                'type' => 'choice',
+            ]],
+        ]]);
+    }
+
+    public function test_choice_options_are_trimmed_and_blanks_dropped(): void
+    {
+        $set = FieldSet::fromInput([[
+            'fields' => [[
+                'key' => 'flue',
+                'label' => 'Flue',
+                'type' => 'choice',
+                'options' => ['  Clay  ', '', 'Metal', '   '],
+            ]],
+        ]]);
+
+        $this->assertSame(
+            ['Clay', 'Metal'],
+            $set->toArray()[0]['fields'][0]['options'],
+        );
+    }
+
     public function test_choice_multiple_is_a_bool(): void
     {
         $set = FieldSet::fromInput([[

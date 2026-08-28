@@ -39,6 +39,13 @@ class _BuilderTabState extends State<BuilderTab> {
   final _intro = TextEditingController();
   final _label = TextEditingController();
 
+  /// The choices on a `choice` field, one per line.
+  ///
+  /// One box rather than a list of rows with add and remove buttons: the same
+  /// answer with a fraction of the widgets, and it is how somebody with a list
+  /// already written actually enters one — paste it.
+  final _options = TextEditingController();
+
   Map<String, dynamic>? get _selected {
     for (final row in _definitions) {
       if (row['id'] == _selectedId) return row;
@@ -75,6 +82,7 @@ class _BuilderTabState extends State<BuilderTab> {
     _name.dispose();
     _intro.dispose();
     _label.dispose();
+    _options.dispose();
     super.dispose();
   }
 
@@ -91,6 +99,9 @@ class _BuilderTabState extends State<BuilderTab> {
         ? null
         : fields[_fieldIndex.clamp(0, fields.length - 1)];
     _label.text = '${field?['label'] ?? ''}';
+    _options.text = [
+      for (final option in (field?['options'] as List? ?? const [])) '$option',
+    ].join('\n');
   }
 
   Future<void> _load() async {
@@ -604,6 +615,42 @@ class _BuilderTabState extends State<BuilderTab> {
               _updateField((row) => row['type'] = value);
             },
           ),
+          // The list a `choice` offers. Without this the type was pickable and
+          // its options were not, so a company could ask "one of a list" and
+          // never say which list — an empty dropdown on the technician's phone.
+          if (field['type'] == 'choice') ...[
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('field-options'),
+              controller: _options,
+              minLines: 3,
+              maxLines: 6,
+              decoration: const InputDecoration(
+                labelText: 'Choices',
+                helperText: 'One per line. Blank lines are ignored.',
+                alignLabelWithHint: true,
+              ),
+              onChanged: (value) => _updateField((row) => row['options'] = [
+                    for (final line in value.split('\n'))
+                      if (line.trim().isNotEmpty) line.trim(),
+                  ]),
+            ),
+          ],
+          if (field['type'] == 'photo') ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<int>(
+              key: ValueKey('max-$_selectedId-$_screenIndex-$_fieldIndex'),
+              initialValue: (field['max_count'] as num?)?.toInt() ?? 1,
+              decoration: const InputDecoration(labelText: 'How many photos'),
+              items: [
+                for (final n in [1, 2, 3, 4, 6, 8, 12])
+                  DropdownMenuItem(value: n, child: Text('$n')),
+              ],
+              onChanged: (value) => _updateField(
+                (row) => row['max_count'] = value ?? 1,
+              ),
+            ),
+          ],
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Required'),

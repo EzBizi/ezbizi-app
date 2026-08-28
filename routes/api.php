@@ -919,6 +919,9 @@ Route::prefix('v1')
         Route::get('inspections', [InspectionDefinitionsController::class, 'index']);
         Route::post('inspections', [InspectionDefinitionsController::class, 'store']);
         Route::get('inspections/reports', [InspectionReportsController::class, 'index']);
+        // Before `{inspection_report}` would otherwise be happy to bind `pdf`,
+        // the same way `catalogue` sits ahead of `{inspection_definition}`.
+        Route::get('inspections/reports/{inspection_report}/pdf', [InspectionReportsController::class, 'pdf']);
         Route::get('inspections/reports/{inspection_report}', [InspectionReportsController::class, 'show']);
         Route::patch('inspections/reports/{inspection_report}', [InspectionReportsController::class, 'update']);
         Route::post('inspections/reports/{inspection_report}/archive', [InspectionReportsController::class, 'archive']);

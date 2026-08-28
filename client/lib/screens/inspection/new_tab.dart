@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/timestamps.dart';
 import '../../core/session.dart';
+import '../../widgets/calendar_day_field.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/error_note.dart';
+import 'photo_field.dart';
 
 /// New Inspection: search a client or job, pick a named inspection, fill, submit.
 ///
@@ -30,10 +33,20 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   Map<String, dynamic>? _run;
   int _screen = 0;
   final Map<String, TextEditingController> _fields = {};
+
+  /// Photo answers, which are lists of attachment ids rather than text.
+  ///
+  /// A second map instead of squeezing them into `_fields`: a controller holds
+  /// a String, and a comma-joined list of uuids in a text box is the kind of
+  /// thing that works until somebody's answer contains a comma.
+  final Map<String, List<String>> _photos = {};
   String? _blocked;
 
   bool get _mayDiscard =>
       widget.session.me?.permissions.contains('inspection.delete') ?? false;
+
+  DisplayFormats get _formats =>
+      widget.session.me?.display ?? DisplayFormats.fallback;
 
   @override
   void dispose() {
@@ -170,12 +183,19 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
       c.dispose();
     }
     _fields.clear();
+    _photos.clear();
     final answers = run['answers'] is Map
         ? Map<String, dynamic>.from(run['answers'] as Map)
         : const <String, dynamic>{};
     for (final screen in _screensOf(run)) {
       for (final field in _fieldsOf(screen)) {
         final key = '${field['key']}';
+        if (field['type'] == 'photo') {
+          _photos[key] = [
+            for (final id in (answers[key] as List? ?? const [])) '$id',
+          ];
+          continue;
+        }
         _fields[key] = TextEditingController(text: '${answers[key] ?? ''}');
       }
     }
@@ -193,11 +213,15 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     final run = _run;
     if (run == null) return;
     await widget.api.patch('/inspections/runs/${run['id']}', {
-      'answers': {
-        for (final e in _fields.entries) e.key: e.value.text,
-      },
+      'answers': _answers(),
     });
   }
+
+  /// What gets sent. Text fields and photo fields, in one map.
+  Map<String, dynamic> _answers() => {
+        for (final e in _fields.entries) e.key: e.value.text,
+        for (final e in _photos.entries) e.key: e.value,
+      };
 
   List<Map<String, dynamic>> _screensOf(Map<String, dynamic> run) => [
         for (final s in (run['screens'] as List? ?? const []))
@@ -210,9 +234,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
       ];
 
   String? _missingOn(Map<String, dynamic> screen) {
-    final answers = {
-      for (final e in _fields.entries) e.key: e.value.text,
-    };
+    final answers = _answers();
     for (final field in _fieldsOf(screen)) {
       final required = field['required'] == true;
       final rule = field['required_if'];
@@ -224,7 +246,11 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
       }
       if (!needs) continue;
       final value = answers['${field['key']}'] ?? '';
-      if (value.toString().trim().isEmpty) {
+      // A photo answer is a list, and an empty one is the missing case. `''`
+      // would never match it and a required photo would wave everybody through.
+      final empty =
+          value is List ? value.isEmpty : value.toString().trim().isEmpty;
+      if (empty) {
         return '${field['label'] ?? field['key']}';
       }
     }
@@ -362,6 +388,108 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     );
   }
 
+  /// The control for one field, chosen by its declared type.
+  ///
+  /// Which widget draws a kind of question is CODE — a server cannot send a
+  /// widget — and the same argument onboarding_form.dart makes applies here: a
+  /// type this build has never met gets a plain box and says so, rather than
+  /// vanishing from a form somebody is being asked to complete.
+  ///
+  /// Everything used to be a TextField. That shipped, and it meant a date was
+  /// typed by hand on a phone in the rain and a one-of-a-list was typed from
+  /// memory — the two ways a form produces answers nobody can report on later.
+  Widget _control(Map<String, dynamic> field, Map<String, dynamic> run) {
+    final key = '${field['key']}';
+    final label = '${field['label'] ?? key}';
+    final widgetKey = Key('field-$key');
+
+    switch ('${field['type'] ?? 'text'}') {
+      case 'photo':
+        return InspectionPhotoField(
+          key: widgetKey,
+          api: widget.api,
+          runId: '${run['id']}',
+          label: label,
+          maxCount: (field['max_count'] as num?)?.toInt() ?? 1,
+          ids: _photos[key] ?? const [],
+          onChanged: (ids) {
+            setState(() => _photos[key] = ids);
+            _save();
+          },
+        );
+
+      case 'date':
+        return CalendarDayField(
+          key: widgetKey,
+          controller: _fields[key]!,
+          formats: _formats,
+          label: label,
+          onChanged: (_) => _save(),
+        );
+
+      case 'choice':
+        final options = [
+          for (final o in (field['options'] as List? ?? const [])) '$o',
+        ];
+        final current = _fields[key]?.text ?? '';
+
+        return DropdownButtonFormField<String>(
+          key: widgetKey,
+          initialValue: options.contains(current) && current != '' ? current : null,
+          isExpanded: true,
+          decoration: InputDecoration(labelText: label),
+          items: [
+            for (final option in options)
+              DropdownMenuItem(value: option, child: Text(option)),
+            // An answer already given against an option since removed. Dropping
+            // it silently would change a saved answer by redrawing the screen.
+            if (current != '' && !options.contains(current))
+              DropdownMenuItem(
+                value: current,
+                child: Text('$current — no longer offered'),
+              ),
+          ],
+          onChanged: (value) {
+            _fields[key]?.text = value ?? '';
+            setState(() {});
+            _save();
+          },
+        );
+
+      case 'number':
+        return TextField(
+          key: widgetKey,
+          controller: _fields[key],
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(labelText: label),
+        );
+
+      case 'signature':
+        // ponytail: honest placeholder, not a text box.
+        //
+        // A signature is somebody drawing on the glass, and this app has no pad
+        // to draw on — HR's signing is a document ceremony, not a canvas, so
+        // there is nothing to reuse. A TextField here would collect a typed name
+        // and present it on a report as if somebody had signed, which is worse
+        // than not offering it. Build the pad, then replace this branch.
+        return InputDecorator(
+          key: widgetKey,
+          decoration: InputDecoration(labelText: label),
+          child: Text(
+            'Signatures cannot be captured in this build yet.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        );
+
+      default:
+        return TextField(
+          key: widgetKey,
+          controller: _fields[key],
+          decoration: InputDecoration(labelText: label),
+        );
+    }
+  }
+
   Widget _fill(BuildContext context, Map<String, dynamic> run) {
     final screens = _screensOf(run);
     final screen = screens.isEmpty
@@ -398,13 +526,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
                   ),
                   const SizedBox(height: 12),
                   for (final field in _fieldsOf(screen)) ...[
-                    TextField(
-                      key: Key('field-${field['key']}'),
-                      controller: _fields['${field['key']}'],
-                      decoration: InputDecoration(
-                        labelText: '${field['label'] ?? field['key']}',
-                      ),
-                    ),
+                    _control(field, run),
                     const SizedBox(height: 12),
                   ],
                 ],

@@ -2,6 +2,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/inspection/new_tab.dart';
+import 'package:ezbizi_client/widgets/calendar_day_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -32,6 +33,65 @@ void main() {
 
     expect(
       find.text('Crown needs an answer before you can continue.'),
+      findsOneWidget,
+    );
+  });
+
+  /// A photo answer is a LIST, and an empty list is the missing case.
+  ///
+  /// The check this pins used to ask `value.toString().trim().isEmpty`, which
+  /// is `'[]'` for an empty list — never empty, so a required photograph waved
+  /// every technician straight through to Submit with no picture taken.
+  testWidgets('a required photo with nothing taken blocks Next', (tester) async {
+    await _pump(tester, startBody: _photoRun);
+
+    await tester.tap(find.text('14 Maple'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Level 1'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('field-damage')), findsOneWidget,
+        reason: 'a photo field is a camera control, not a text box');
+    expect(find.byKey(const Key('add-photo-Damage')), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Submit'));
+    await tester.pump();
+
+    expect(
+      find.text('Damage needs an answer before you can continue.'),
+      findsOneWidget,
+    );
+  });
+
+  /// The type on the field decides the control.
+  ///
+  /// Every field used to be a TextField, which meant a one-of-a-list was typed
+  /// from memory and a date was typed by hand on a phone — the two ways a form
+  /// produces answers nobody can report on afterwards.
+  testWidgets('a choice is a dropdown and a date is a picker', (tester) async {
+    await _pump(tester, startBody: _typedRun);
+
+    await tester.tap(find.text('14 Maple'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Level 1'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DropdownButtonFormField<String>), findsOneWidget,
+        reason: 'a one-of-a-list must offer the list');
+    expect(find.byKey(const Key('field-flue')), findsOneWidget);
+
+    // The date field is a calendar control. Counting TextFields would be wrong:
+    // CalendarDayField is three of them inside (day, month, year), so the count
+    // proves nothing about which field is which. The keys do.
+    expect(find.byKey(const Key('field-seen')), findsOneWidget);
+    expect(find.byType(CalendarDayField), findsOneWidget);
+
+    // And only the genuinely free-text field is a plain box.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('field-notes')),
+        matching: find.byType(EditableText),
+      ),
       findsOneWidget,
     );
   });
@@ -121,6 +181,50 @@ const _run = '''
         "name": "Roof",
         "fields": [
           {"key": "crown", "label": "Crown", "type": "text", "required": true}
+        ]
+      }
+    ]
+  }
+}
+''';
+
+const _typedRun = '''
+{
+  "data": {
+    "id": "run-1",
+    "definition_name": "Level 1",
+    "customer_name": "14 Maple",
+    "layout_preset": "step_strip",
+    "answers": {},
+    "screens": [
+      {
+        "name": "Roof",
+        "fields": [
+          {"key": "flue", "label": "Flue", "type": "choice",
+           "options": ["Clay", "Metal"]},
+          {"key": "seen", "label": "Seen on", "type": "date"},
+          {"key": "notes", "label": "Notes", "type": "text"}
+        ]
+      }
+    ]
+  }
+}
+''';
+
+const _photoRun = '''
+{
+  "data": {
+    "id": "run-1",
+    "definition_name": "Level 1",
+    "customer_name": "14 Maple",
+    "layout_preset": "step_strip",
+    "answers": {},
+    "screens": [
+      {
+        "name": "Roof",
+        "fields": [
+          {"key": "damage", "label": "Damage", "type": "photo",
+           "max_count": 4, "required": true}
         ]
       }
     ]

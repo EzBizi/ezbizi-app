@@ -58,6 +58,35 @@ void main() {
     expect(find.text('Delete draft'), findsNothing);
   });
 
+  /// The list a `choice` offers has to be enterable somewhere.
+  ///
+  /// It was not. The type was pickable and its options were not, so a company
+  /// could ask "one of a list" and never say which list — which stayed invisible
+  /// only because the technician's screen drew every field as a text box.
+  testWidgets('a choice field can be given its choices', (tester) async {
+    await _pump(tester, size: const Size(1400, 900), list: _choiceList);
+
+    expect(find.byKey(const Key('field-options')), findsOneWidget);
+
+    final box = tester.widget<TextField>(find.byKey(const Key('field-options')));
+    expect(box.controller?.text, 'Clay\nMetal',
+        reason: 'the options already on the field should be in the box');
+
+    // Read back through the phone preview, which samples `options.first`.
+    // That is the only place the parsed list is observable from here, and it
+    // proves the two things worth proving: the box writes to the field, and a
+    // pasted list arrives trimmed rather than with its whitespace intact.
+    await tester.enterText(
+      find.byKey(const Key('field-options')),
+      '  Brick  \n\nClay\n',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Brick'), findsWidgets,
+        reason: 'the first choice, trimmed, should be the sample answer');
+    expect(find.text('  Brick  '), findsNothing);
+  });
+
   testWidgets('a never-published draft can be deleted', (tester) async {
     final methods = <String>[];
 
@@ -157,6 +186,34 @@ const _list = '''
 }
 ''';
 
+const _choiceList = '''
+{
+  "data": [
+    {
+      "id": "insp-1",
+      "name": "Level 1",
+      "intro": null,
+      "layout_preset": "step_strip",
+      "published": false,
+      "current_version": null,
+      "screens": [
+        {
+          "name": "Crown",
+          "fields": [
+            {
+              "key": "flue",
+              "label": "Flue",
+              "type": "choice",
+              "options": ["Clay", "Metal"]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+''';
+
 const _draftList = '''
 {
   "data": [
@@ -177,7 +234,9 @@ const _catalogue = '''
 {
   "data": {
     "field_types": [
-      {"key": "text", "label": "Text", "takes_options": false, "allows_multiple": false}
+      {"key": "text", "label": "Text", "takes_options": false, "allows_multiple": false},
+      {"key": "choice", "label": "One of a list", "takes_options": true, "allows_multiple": true},
+      {"key": "photo", "label": "A photograph", "takes_options": false, "allows_multiple": false}
     ],
     "layout_presets": [
       {"key": "step_strip", "label": "One screen at a time"},

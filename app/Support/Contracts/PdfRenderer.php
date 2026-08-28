@@ -2,6 +2,7 @@
 
 namespace App\Support\Contracts;
 
+use App\Support\Files\HardenedPdf;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
@@ -140,16 +141,6 @@ final class PdfRenderer
     public const EXTENSION = 'pdf';
 
     /**
-     * What every protocol rule answers, and the only answer any of them gives.
-     *
-     * dompdf puts this in the warning it records when a document points at
-     * something, so the sentence is written for whoever is reading those warnings
-     * wondering why an image did not appear.
-     */
-    private const FETCHES_NOTHING = 'This converter does not fetch anything. A contract '
-        .'document is self-contained by design, and its text is written by a customer.';
-
-    /**
      * Convert one stored contract document into a PDF copy of itself.
      *
      * @param  string  $storedDocument  the bytes as they are on the disk — read back
@@ -207,156 +198,23 @@ final class PdfRenderer
     }
 
     /**
-     * THE CONVERTER FETCHES NOTHING. THIS METHOD IS THAT SENTENCE IN CODE.
+     * THE CONVERTER FETCHES NOTHING, and the argument now lives elsewhere.
      *
-     * The document body is TENANT INPUT. Somebody writing a contract template
-     * decides what is in it, and a converter that resolves references in it is a
-     * request-forger standing inside the network: `<img src="http://169.254.169.254/">`
-     * against the instance metadata service, `file:///etc/passwd` against the disk,
-     * a stylesheet fetched from a host that logs who asked. None of it needs to be
-     * possible, because the document is self-contained by design — no image, no
-     * font, no external stylesheet, nothing to resolve — so the safe setting costs
-     * the copy nothing at all.
+     * The four locks, the `data:` exception and the fail-closed self-checks
+     * moved to Support\Files\HardenedPdf when Inspection wanted a PDF of its
+     * own. Nothing about them changed and nothing about them is contract-
+     * specific: the reason they exist is that the document body is TENANT
+     * INPUT, which is as true of an inspection answered on a roof as it is of
+     * a contract template somebody wrote. A second copy of that configuration
+     * would have been a second chance to get one of the locks wrong, and the
+     * second copy is always the weaker one.
      *
-     * Four locks, and each one is set EXPLICITLY even where it is already the
-     * library's default:
-     *
-     *   isRemoteEnabled(false)     no http/https. Default, and written anyway,
-     *                              because the day somebody sets it from config
-     *                              every contract body becomes an SSRF against
-     *                              this network and the diff that did it would
-     *                              otherwise show no line here to argue with.
-     *   isPhpEnabled(false)        dompdf will EXECUTE `<script type="text/php">`
-     *                              with the process's own privileges when this is
-     *                              on. Default off, written anyway, same reason.
-     *   isJavascriptEnabled(false) NOT a default — dompdf ships this ON. It copies
-     *                              `<script type="text/javascript">` into the PDF
-     *                              as PDF-level JavaScript, which then runs in
-     *                              whatever reader opens the file. This document
-     *                              has no script and the copy must not be able to
-     *                              carry one to somebody else's machine.
-     *   allowedProtocols(refusing)  the belt to those braces. Every scheme dompdf
-     *                              can produce is listed with ONE rule, and the
-     *                              rule always says no — so file://, http://,
-     *                              https://, data:// and phar:// are each refused
-     *                              by a check dompdf makes before it opens
-     *                              anything, and a scheme not on the list is
-     *                              refused for not being on it.
-     *
-     *                              An EMPTY list is the obvious way to write that
-     *                              and it is wrong here: dompdf's own CSS
-     *                              url() resolver warns about the unknown scheme
-     *                              and then indexes the list anyway
-     *                              (Css/Stylesheet::_image), so an empty array
-     *                              turns a refusal into an undefined-key error and
-     *                              a 500. Refusing rules produce the same "fetch
-     *                              nothing" with a failure mode that is a blank
-     *                              image rather than a broken download.
-     *
-     * ── And then it is CHECKED, which is not the same as set ────
-     *
-     * The check below is not decoration and it is not unreachable. `dompdf/dompdf`
-     * is required as `^3.1`, so a minor upgrade installs on a deploy without
-     * anybody reading its changelog — and every one of the four locks above is a
-     * value this application reads back out of a library it does not control.
-     *
-     * The protocol half of it RUNS THE RULES rather than counting them, because
-     * "there is a rule" and "the rule refuses" are different facts and only the
-     * second one is the guarantee. A release that re-armed a default, or that
-     * quietly kept its own rule alongside this one, would otherwise turn a
-     * contract download into an outbound request with nothing failing and nothing
-     * said. This fails closed instead.
+     * What stays here is what is genuinely this class's: the paper size, which
+     * is resolved from the CONTRACT setting below.
      */
     private function options(): Options
     {
-        $refuse = static fn (string $uri): array => [false, self::FETCHES_NOTHING];
-
-        /*
-         * The one exception, and it is narrow on purpose.
-         *
-         * `data:` refused everything, which was right until the document grew a
-         * cover: DocumentRenderer embeds the cover PNG as
-         * `data:image/png;base64,…`, so the copy came out with the cover PAGE
-         * and no cover IMAGE. Measured, not inferred — two pages, no image
-         * XObject.
-         *
-         * Permitting this is not a hole in the argument the rest of these rules
-         * make. Every other scheme is refused because it makes the converter GO
-         * SOMEWHERE — the network, the disk, a phar archive — on the strength of
-         * text a customer wrote. A `data:` URI goes nowhere: it carries its own
-         * bytes, already inside the document being converted, and resolving it
-         * reaches nothing this server can see.
-         *
-         * The prefix is matched exactly rather than by scheme, because `data:`
-         * is a container for anything. `data:text/html` and `data:image/svg+xml`
-         * are the ones that matter — SVG is a document format with scripts and
-         * external references of its own, and admitting it would hand back the
-         * whole surface this class exists to close. The cover is PNG-only at
-         * every other layer, so nothing legitimate needs more than this.
-         *
-         * The fail-closed self-check below still holds: its probe is
-         * `data://ezbizi.invalid/probe`, which is not this prefix and is still
-         * refused, so `data://` is still proved to reject something.
-         */
-        $inlinePng = static fn (string $uri): array => str_starts_with($uri, 'data:image/png;base64,')
-            ? [true, null]
-            : [false, self::FETCHES_NOTHING];
-
-        $options = new Options();
-
-        $options->setIsRemoteEnabled(false);
-        $options->setIsPhpEnabled(false);
-        $options->setIsJavascriptEnabled(false);
-        $options->setAllowedProtocols([
-            'file://'  => ['rules' => [$refuse]],
-            'http://'  => ['rules' => [$refuse]],
-            'https://' => ['rules' => [$refuse]],
-            'data://'  => ['rules' => [$inlinePng]],
-            'phar://'  => ['rules' => [$refuse]],
-        ]);
-
-        // Pinned rather than left to whatever extensions the box has, because the
-        // canvas is asked for its CPDF backend below — and which renderer produces
-        // a contract copy is not something a deploy should be able to change.
-        $options->setPdfBackend('CPDF');
-        $options->setDefaultPaperSize($this->paper());
-
-        if ($options->getIsRemoteEnabled()
-            || $options->getIsPhpEnabled()
-            || $options->getIsJavascriptEnabled()) {
-            throw new RuntimeException(
-                'The PDF converter would not stay locked down: after being told to fetch '
-                .'nothing and execute nothing, it still reports one of those as available. '
-                .'Refusing to convert a contract document, because the document is written '
-                .'by a customer and a converter that resolves references in it can be aimed '
-                .'at this network. Check what changed in dompdf.'
-            );
-        }
-
-        foreach ($options->getAllowedProtocols() as $protocol => $config) {
-            $refused = false;
-
-            foreach ($config['rules'] ?? [] as $rule) {
-                [$permitted] = $rule($protocol.'ezbizi.invalid/probe');
-
-                if ($permitted !== true) {
-                    $refused = true;
-                    break;
-                }
-            }
-
-            if (! $refused) {
-                throw new RuntimeException(sprintf(
-                    'The PDF converter would fetch "%s" from a contract document. Every scheme '
-                    .'it knows is supposed to be refused outright, because the document is '
-                    .'written by a customer and this server is inside the network. Refusing to '
-                    .'convert anything until that is true again.',
-                    $protocol,
-                ));
-            }
-        }
-
-        return $options;
+        return HardenedPdf::options($this->paper());
     }
 
     /**
