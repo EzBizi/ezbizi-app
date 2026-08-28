@@ -72,6 +72,29 @@ final class ReportDocument
                     continue;
                 }
 
+                $type = (string) ($field['type'] ?? '');
+
+                // Furniture is printed as furniture: a heading is a heading and
+                // a note to the technician is a note. Neither has an answer, so
+                // neither gets a label-and-value row.
+                if ($type === FieldType::DIVIDER) {
+                    $heading = trim((string) ($field['label'] ?? ''));
+                    $body .= $heading === ''
+                        ? '<hr class="d">'
+                        : '<div class="dv">'.$this->text($heading).'</div>';
+
+                    continue;
+                }
+
+                if ($type === FieldType::ALERT) {
+                    $body .= $this->note(
+                        (string) ($field['title'] ?? ''),
+                        (string) ($field['body'] ?? ''),
+                    );
+
+                    continue;
+                }
+
                 $key = (string) ($field['key'] ?? '');
                 $label = (string) ($field['label'] ?? $key);
 
@@ -104,6 +127,13 @@ final class ReportDocument
         // signature goes, which is the failure the drawn mark exists to fix.
         $type = $field['type'] ?? '';
 
+        if ($type === FieldType::CHECKBOX) {
+            // A tick box says Yes or No, never "1" or an empty space. An
+            // unticked box is a real answer and reads as one — a blank there
+            // would read as a question nobody reached.
+            return '<div class="v">'.($value === true ? 'Yes' : 'No').'</div>';
+        }
+
         if ($type === FieldType::PHOTO || $type === FieldType::SIGNATURE) {
             $ids = is_array($value) ? $value : [];
             $shown = '';
@@ -132,6 +162,29 @@ final class ReportDocument
         return $text === ''
             ? '<div class="v none">Not answered</div>'
             : '<div class="v">'.nl2br($this->text($text)).'</div>';
+    }
+
+    /**
+     * A note the form showed the technician, printed where they saw it.
+     *
+     * On the report because it is part of what the inspection SAID — a customer
+     * reading "Type B vents need one inch of clearance" beside a finding is
+     * being told the same thing the technician was told, which is the point of
+     * printing it at all.
+     */
+    private function note(string $title, string $bodyText): string
+    {
+        $title = trim($title);
+        $bodyText = trim($bodyText);
+
+        if ($title === '' && $bodyText === '') {
+            return '';
+        }
+
+        return '<div class="note">'
+            .($title === '' ? '' : '<span class="ct">'.$this->text($title).'</span>')
+            .($bodyText === '' ? '' : ' '.$this->text($bodyText))
+            .'</div>';
     }
 
     /**
@@ -243,6 +296,10 @@ final class ReportDocument
             .'.code{margin:3pt 0 0;padding:4pt 6pt;border-left:2pt solid #ccc;'
             .'font-size:9pt;color:#444}'
             .'.ct{font-weight:bold}'
+            .'.dv{font-weight:bold;font-size:11pt;margin:12pt 0 4pt;'
+            .'border-bottom:1px solid #ddd;padding-bottom:2pt}'
+            .'hr.d{border:0;border-top:1px solid #ddd;margin:12pt 0 8pt}'
+            .'.note{margin:6pt 0;padding:5pt 7pt;background:#f4f4f4;font-size:9pt}'
             .'.intro{margin:0 0 10pt}'
             .'img{max-width:220pt;max-height:220pt;margin:3pt 6pt 0 0}'
             .'</style></head><body>'

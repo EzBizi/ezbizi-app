@@ -99,6 +99,24 @@ final class FieldSet
                     );
                 }
 
+                /*
+                 * Furniture: no key needed, and an alert has to say something.
+                 *
+                 * Demanding a key for a horizontal rule would be asking an
+                 * author to name one. An alert with neither a title nor a body
+                 * is a blank box on a form somebody has to fill in.
+                 */
+                if ($type === FieldType::ALERT) {
+                    $row['title'] = trim((string) ($row['title'] ?? ''));
+                    $row['body'] = trim((string) ($row['body'] ?? ''));
+
+                    if ($row['title'] === '' && $row['body'] === '') {
+                        $errors["{$at}.body"] =
+                            'A note to the technician needs something to say. Give it a '
+                            .'heading, some words, or remove it.';
+                    }
+                }
+
                 if ($type === FieldType::PHOTO) {
                     $row['max_count'] = isset($row['max_count']) ? (int) $row['max_count'] : 1;
                     if ($row['max_count'] < 1) {
