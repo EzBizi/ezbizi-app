@@ -110,6 +110,25 @@ fails somewhere downstream instead — 1050 table exists, then 1215 cannot add f
 1060 duplicate column. Three symptoms, one cause. If you meet those, look for orphaned tables
 from a half-applied migration before believing any of them.
 
+The sandbox at `/opt/ezbizi-test` uses the **same MySQL instance as production**, so it could not
+create those triggers either. Every gate run before 2026-08-28 was hitting 1419 the moment it
+reached this migration. The gate was not slow so much as doomed — the constraint blocked
+production *and* blocked the gate that existed to catch it blocking production. The SSH keepalive
+added the same day is a real fix for a real problem, but on its own it only bought a doomed run
+more time to fail in.
+
+**A trap worth knowing before you trust a filtered run.** `tests/Feature/Tasks` passes whole —
+152 tests, 1,929 assertions, from a database dropped and recreated empty. But
+`TaskSecurityTest` and `TaskConcurrencyTest` are order-dependent from an empty database:
+`TaskSecurityTest` alone passes 7/7, and the two files together from empty do not. Both spawn
+real worker processes that commit outside the test's transaction, and both reset with
+`migrate:fresh` in a `finally` because `RefreshDatabase`'s rollback cannot reach another
+process's connection. That reset is load-bearing in ways reading it does not reveal — an
+attempt to replace it with full-table truncation on 2026-08-28 errored 8 of 13 and was reverted.
+**Do not change how those two reset.** If the gate's wall clock ever needs to come down, move
+them to a suite that runs once; leave the cleanup alone. And if a filtered subset comes back
+red, run the whole directory before believing it.
+
 Run the full suite with `php -d memory_limit=1G vendor/bin/phpunit`. Plain `php artisan test` dies with a 128M exhaustion partway through — the parent's `-d` does not reach the processes it spawns.
 
 The private customer-file backup has a disposable, database-free proof that uses the same
