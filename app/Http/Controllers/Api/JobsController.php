@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\JobLine;
+use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Jobs\EarnedStatuses;
@@ -122,6 +123,7 @@ class JobsController extends Controller
         $this->authorize('create', [Job::class, $franchise]);
 
         $this->assertStatusAllowed($input['status'], $franchise);
+        $this->assertPerformerReach($input['performed_by_user_id'] ?? null, $franchise);
 
         $job = DB::transaction(function () use ($input, $franchise, $customer) {
             $job = Job::create($input + [
@@ -172,6 +174,10 @@ class JobsController extends Controller
 
         if (isset($input['status'])) {
             $this->assertStatusAllowed($input['status'], $job->franchise);
+        }
+
+        if (array_key_exists('performed_by_user_id', $input)) {
+            $this->assertPerformerReach($input['performed_by_user_id'], $job->franchise);
         }
 
         DB::transaction(function () use ($job, $input) {
@@ -270,6 +276,33 @@ class JobsController extends Controller
                     'Not one of this organization\'s job statuses (%s). Change the list in Settings.',
                     implode(', ', $allowed)
                 ),
+            ]);
+        }
+    }
+
+    /**
+     * `performed_by_user_id`'s `exists` rule only proves the id is a real user
+     * IN THIS ORGANIZATION — it cannot express reach, which depends on the
+     * job's franchise (§4, `User::canActOnFranchise`). Same shape as
+     * assertStatusAllowed() above and for the same reason: it needs a resolved
+     * Franchise, which isn't available until after `$request->validate()`
+     * returns, so it runs as a second pass rather than as a rule. One copy of
+     * the reach logic — this defers to `canActOnFranchise` rather than
+     * re-deriving it — and the refusal still comes back as a 422 on the field,
+     * not a 403, because naming somebody who can't reach the job is a bad
+     * INPUT, not an authorization failure of the caller's own.
+     */
+    private function assertPerformerReach(?string $userId, Franchise $scope): void
+    {
+        if ($userId === null) {
+            return;
+        }
+
+        $user = User::find($userId);
+
+        if ($user === null || ! $user->canActOnFranchise($scope)) {
+            throw ValidationException::withMessages([
+                'performed_by_user_id' => 'That person is not assigned anywhere this job can be seen.',
             ]);
         }
     }

@@ -4,6 +4,7 @@ namespace Tests\Feature\Api;
 
 use App\Models\AutomationEvent;
 use App\Models\Customer;
+use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\Role;
 use App\Models\User;
@@ -152,7 +153,60 @@ class JobAssignmentTest extends TestCase
         $this->assertSame(1, $count);
     }
 
+    /**
+     * `performed_by_user_id`'s `exists` rule only proves the id is a real
+     * user in this organization — it says nothing about reach (§4). This is
+     * NOT the cross-tenant case (test_a_role_from_another_organization_is_refused's
+     * sibling would be a foreign-org user, which `existsInTenant` already
+     * refuses with 422 on its own); this user is in the same organization,
+     * just assigned only to a franchise other than the job's.
+     */
+    public function test_naming_a_performer_who_cannot_reach_the_jobs_franchise_is_refused(): void
+    {
+        $alpha     = $this->provisionTenant('Alpha');
+        $elsewhere = $this->aFranchise($alpha, 'Alpha F2');
+
+        $outOfReach = $this->userWithRole($alpha, 'Technician', [], onlyAt: $elsewhere);
+
+        $jobId = $this->aJob($alpha); // belongs to $alpha['franchise'], not $elsewhere
+
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/jobs/{$jobId}", ['performed_by_user_id' => $outOfReach->id])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.performed_by_user_id.0',
+                'That person is not assigned anywhere this job can be seen.');
+    }
+
+    /**
+     * The other half of the same check: somebody who genuinely CAN reach the
+     * job's franchise must still be nameable. A reach check that refuses
+     * everybody would pass the test above on its own — this is what proves
+     * it does not.
+     */
+    public function test_naming_a_performer_who_can_reach_the_jobs_franchise_succeeds(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $inReach = $this->userWithRole($alpha, 'Technician', [], onlyAt: $alpha['franchise']);
+
+        $jobId = $this->aJob($alpha);
+
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/jobs/{$jobId}", ['performed_by_user_id' => $inReach->id])
+            ->assertOk()
+            ->assertJsonPath('data.performed_by.name', 'Technician');
+    }
+
     // ── helpers ──────────────────────────────────────────────────
+
+    private function aFranchise(array $tenant, string $name): Franchise
+    {
+        return $this->inTenant($tenant['org'], fn () => Franchise::create([
+            'organization_id' => $tenant['org']->id,
+            'company_id'      => $tenant['company']->id,
+            'name'            => $name,
+        ]));
+    }
 
     private function aRoleNamed(array $tenant, string $name): string
     {
