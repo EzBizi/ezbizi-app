@@ -93,6 +93,13 @@ retry fail somewhere else. The server setting is fixed and the migration is appl
 is in `docs/EZBIZI-DEV-ENVIRONMENT.md`. The local Tasks suite is 152 tests / 1,929 assertions
 green from a freshly created database.
 
+**The gate ran afterwards, and it is green.** Once `log_bin_trust_function_creators` let the
+trigger migration through, the full server-side gate completed for the first time in two days —
+2,193 tests, 15,880 assertions, zero failures, zero errors, 946s, against the code already live.
+So Tasks Phase 1 has a real verdict; it just arrived after the release rather than before it.
+Worth keeping the order straight when reading this later: the gate did not clear the deploy, the
+deploy went first and the gate confirmed it.
+
 **Owner-accepted exception.** The plan's Task 20 asks for one independent review of the whole
 implementation against the spec. The owner waived it on 2026-08-28: every task from 2 to 19
 already carried its own scoped independent review, each recorded on the `tasks-module` board
