@@ -168,14 +168,111 @@ final class FakeTwilioGateway implements TwilioGateway
         $normalized = HttpTwilioGateway::normalizeSearchCriteria($criteria);
         $this->record(__FUNCTION__, [$connection->id, $normalized]);
 
+        if ($this->failSearchAvailableWith !== null) {
+            throw new RuntimeException($this->failSearchAvailableWith);
+        }
+
+        if ($this->available !== null) {
+            return $this->available;
+        }
+
         $area = $normalized['areaCode'] ?? '555';
+        $tollFree = ($criteria['type'] ?? 'local') === 'toll_free';
 
         return [[
-            'phone_number' => '+1'.$area.'0101001',
+            'phone_number' => $tollFree ? '+18330101001' : '+1'.$area.'0101001',
             'friendly_name' => 'Fake available',
             'locality' => 'Testville',
             'region' => 'TS',
+            'postal_code' => '00001',
+            'iso_country' => strtoupper((string) ($criteria['country'] ?? 'US')),
+            'lata' => '822',
+            'rate_center' => 'TESTVILLE',
+            'latitude' => 27.0,
+            'longitude' => -80.0,
+            'address_requirements' => 'none',
+            'beta' => false,
+            'capabilities' => ['voice' => true, 'sms' => true, 'mms' => true, 'fax' => false],
         ]];
+    }
+
+    /**
+     * Search hits a test wants to force — an empty list, an address-required
+     * number, a toll-free run. Null means the generated single hit above.
+     *
+     * @var list<array<string, mixed>>|null
+     */
+    public ?array $available = null;
+
+    /** Make the search throw, so the unreachable-Twilio path can be proved. */
+    public ?string $failSearchAvailableWith = null;
+
+    /** @var list<array{country_code: string, country: string}> */
+    public array $countries = [
+        ['country_code' => 'US', 'country' => 'United States'],
+        ['country_code' => 'CA', 'country' => 'Canada'],
+    ];
+
+    public function availableCountries(PhoneConnection $connection): array
+    {
+        $this->record(__FUNCTION__, [$connection->id]);
+
+        return $this->countries;
+    }
+
+    /**
+     * Live per-number state a test wants to force, keyed by Twilio SID.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    public array $incomingDetail = [];
+
+    public function fetchIncoming(PhoneConnection $connection, string $incomingSid): array
+    {
+        $this->record(__FUNCTION__, [$connection->id, $incomingSid]);
+
+        return $this->incomingDetail[$incomingSid] ?? [
+            'sid' => $incomingSid,
+            'phone_number' => '+15550101001',
+            'friendly_name' => 'Fake line',
+            'capabilities' => ['voice' => true, 'sms' => true, 'mms' => true, 'fax' => false],
+            'emergency_status' => 'Inactive',
+            'emergency_address_sid' => null,
+            'voice_caller_id_lookup' => false,
+            'address_requirements' => 'none',
+        ];
+    }
+
+    /** @var list<array<string, mixed>> */
+    public array $addresses = [];
+
+    public function listAddresses(PhoneConnection $connection): array
+    {
+        $this->record(__FUNCTION__, [$connection->id]);
+
+        return $this->addresses;
+    }
+
+    public function createAddress(PhoneConnection $connection, array $address): array
+    {
+        $this->record(__FUNCTION__, [$connection->id, $address]);
+
+        $sid = 'AD'.bin2hex(random_bytes(16));
+
+        $this->addresses[] = [
+            'sid' => $sid,
+            'friendly_name' => $address['friendly_name'] ?? null,
+            'customer_name' => (string) $address['customer_name'],
+            'street' => (string) $address['street'],
+            'city' => (string) $address['city'],
+            'region' => (string) $address['region'],
+            'postal_code' => (string) $address['postal_code'],
+            'iso_country' => (string) $address['iso_country'],
+            'emergency_enabled' => true,
+            'validated' => true,
+        ];
+
+        return ['sid' => $sid, 'validated' => true, 'emergency_enabled' => true];
     }
 
     /**

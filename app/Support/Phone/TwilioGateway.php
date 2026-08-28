@@ -74,10 +74,26 @@ interface TwilioGateway
      * Search available numbers. Callers pass EzBizi snake_case keys; the HTTP
      * gateway maps them to Twilio’s camelCase before the SDK `read()`.
      *
-     * @param  array{area_code?: string|int, contains?: string, voice?: bool, sms?: bool, country?: string}  $criteria
-     * @return list<array{phone_number: string, friendly_name: ?string, locality: ?string, region: ?string}>
+     * `type` picks which of Twilio's three list resources is read — local,
+     * toll_free or mobile. They are genuinely different resources, not a
+     * filter: a toll-free search sent to the local list quietly answers with
+     * local numbers, and you find out after buying the wrong kind of line.
+     *
+     * @param  array{type?: string, country?: string, area_code?: string|int, contains?: string, voice?: bool, sms?: bool, mms?: bool, near_number?: string, near_lat_long?: string, distance?: int, in_postal_code?: string, in_region?: string, in_rate_center?: string, in_lata?: string, in_locality?: string, exclude_all_address_required?: bool, exclude_local_address_required?: bool, exclude_foreign_address_required?: bool, beta?: bool, limit?: int}  $criteria
+     * @return list<array{phone_number: string, friendly_name: ?string, locality: ?string, region: ?string, postal_code: ?string, iso_country: ?string, lata: ?string, rate_center: ?string, latitude: ?float, longitude: ?float, address_requirements: ?string, beta: bool, capabilities: array<string, bool>}>
      */
     public function searchAvailable(PhoneConnection $connection, array $criteria): array;
+
+    /**
+     * The countries this account may buy numbers in.
+     *
+     * Read from Twilio rather than hard-coded: the list changes, and a stale
+     * constant would either hide a country we can sell or offer one that
+     * errors at purchase.
+     *
+     * @return list<array{country_code: string, country: string}>
+     */
+    public function availableCountries(PhoneConnection $connection): array;
 
     /**
      * @param  array<string, mixed>  $params
@@ -95,6 +111,37 @@ interface TwilioGateway
     public function listIncoming(PhoneConnection $connection): array;
 
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array;
+
+    /**
+     * One line's live state on Twilio.
+     *
+     * Read rather than remembered for the fields Twilio owns and can change
+     * without telling us — above all `emergency_status`, which Twilio flips to
+     * inactive by itself when an address stops validating. A screen that
+     * showed our stored copy would keep saying 911 works after it stopped.
+     *
+     * @return array{sid: string, phone_number: string, friendly_name: string, capabilities: array<string, bool>, emergency_status: ?string, emergency_address_sid: ?string, voice_caller_id_lookup: bool, address_requirements: ?string}
+     */
+    public function fetchIncoming(PhoneConnection $connection, string $incomingSid): array;
+
+    /**
+     * Addresses registered on this Twilio account.
+     *
+     * Twilio requires a validated emergency address before a US line can
+     * reach 911, and it is an account-level resource rather than a property
+     * of the number — one address serves every line at that premises.
+     *
+     * @return list<array{sid: string, friendly_name: ?string, customer_name: string, street: string, city: string, region: string, postal_code: string, iso_country: string, emergency_enabled: bool, validated: bool}>
+     */
+    public function listAddresses(PhoneConnection $connection): array;
+
+    /**
+     * Register an address. `emergency_enabled` is what makes it usable for 911.
+     *
+     * @param  array<string, mixed>  $address
+     * @return array{sid: string, validated: bool, emergency_enabled: bool}
+     */
+    public function createAddress(PhoneConnection $connection, array $address): array;
 
     /**
      * @param  array<string, mixed>  $params

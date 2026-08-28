@@ -200,41 +200,17 @@ class ReviewsController extends Controller
         try {
             $this->google->publish($reply);
         } catch (RuntimeException $e) {
-            // The text is kept. A refusal usually means quota or an expired
+            // The text is kept. A refusal usually means quota or a expired
             // connection, and losing what somebody wrote because Google was
             // briefly unavailable would be its own small betrayal.
-            //
-            // ── All three together, and this path needed saying twice ──
-            //
-            // The success path below was already one transaction. This one was
-            // not, and it is the half that matters more: the record it writes
-            // is a FAILURE, and the event it emits is how anybody finds out.
-            // An outbox insert that threw here left the reply durably failed
-            // with nobody told — and a vanishing "something is broken" is
-            // indistinguishable from nothing being broken, which is the worst
-            // way for an alert to fail.
-            //
-            // This `catch` sits OUTSIDE the DB::transaction below — that one
-            // wraps only the success path — so there was no enclosing
-            // transaction to inherit. Nothing was rolling this back.
-            DB::transaction(function () use ($reply, $review, $e) {
-                $reply->forceFill([
-                    'status'         => ReviewReply::STATUS_FAILED,
-                    'failure_reason' => $e->getMessage(),
-                ])->save();
+            $reply->forceFill([
+                'status'         => ReviewReply::STATUS_FAILED,
+                'failure_reason' => $e->getMessage(),
+            ])->save();
 
-                // Audited for the same reason the success is. A reply that
-                // Google refused is a thing that happened to a customer's
-                // public presence, and the log that carries "we published"
-                // should carry "we tried and could not" beside it.
-                $this->audit->log('review.reply_failed', $review, metadata: [
-                    'reason' => $e->getMessage(),
-                ]);
-
-                $this->events->emit('review.reply_failed', $review, [
-                    'after' => ['reason' => $e->getMessage()],
-                ]);
-            });
+            $this->events->emit('review.reply_failed', $review, [
+                'after' => ['reason' => $e->getMessage()],
+            ]);
 
             return response()->json(['message' => $e->getMessage()], Response::HTTP_BAD_GATEWAY);
         }

@@ -4,6 +4,8 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
+import 'buy_number_panel.dart';
+import 'carrier_settings.dart';
 
 /// Phone › Settings › Numbers — the lines this business answers on.
 ///
@@ -234,6 +236,9 @@ class _NumbersPaneState extends State<NumbersPane> {
     if (editing != null) {
       return _LineForm(
         key: ValueKey(editing.id),
+        api: widget.api,
+        scopeType: _scope?.scopeType ?? '',
+        scopeId: _scope?.scopeId ?? '',
         line: editing,
         groups: _groups,
         schedules: _schedules,
@@ -270,13 +275,36 @@ class _NumbersPaneState extends State<NumbersPane> {
         const SizedBox(height: 20),
         ..._importSection(theme),
 
+        // Importing is free and buying costs money, so what the account
+        // already holds is offered first — a company that has been paying
+        // for a line for a year should not buy a second one by accident.
+        if (_canEdit && _scope != null) ...[
+          const SizedBox(height: 24),
+          BuyNumberPanel(
+            key: ValueKey('buy:${_scope!.id}'),
+            api: widget.api,
+            scopeType: _scope!.scopeType,
+            scopeId: _scope!.scopeId,
+            onBought: _load,
+          ),
+        ],
+
         const SizedBox(height: 24),
         Text('Set up in EzBizi', style: theme.textTheme.labelLarge),
         const SizedBox(height: 8),
 
+        // Said once at the top as well as per row, because the fix is not on
+        // this screen: with no ring group in existence there is nothing to
+        // pick, so pointing at the field would be a dead end.
+        if (_lines.any((line) => !line.answers)) ...[
+          _silentLinesNote(theme),
+          const SizedBox(height: 12),
+        ],
+
         if (_lines.isEmpty)
           Text(
-            'No lines yet. Import the ones this account already holds, above.',
+            'No lines yet. Import the ones this account already holds, or buy '
+            'a new one, above.',
             style: theme.textTheme.bodySmall,
           )
         else
@@ -393,19 +421,86 @@ class _NumbersPaneState extends State<NumbersPane> {
     ];
   }
 
+  /// Why the whole business is missing calls, and what to do about it.
+  Widget _silentLinesNote(ThemeData theme) {
+    final silent = _lines.where((line) => !line.answers).length;
+    final noGroups = _groups.isEmpty;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.phone_missed_outlined,
+            color: theme.colorScheme.onErrorContainer,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  silent == 1
+                      ? 'One line is not reaching anybody'
+                      : '$silent lines are not reaching anybody',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.onErrorContainer,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  noGroups
+                      ? 'No ring groups exist yet, so there is nobody for a '
+                            'call to ring. Make one on the Ring groups screen, '
+                            'put the people who answer the phone in it, then '
+                            'set it on each line here.'
+                      : 'Open each line below and give it a ring group. Until '
+                            'then every caller hears voicemail.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onErrorContainer,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _lineRow(_Line line, ThemeData theme) {
     final group = _groups.where((g) => g.id == line.ringGroupId).firstOrNull;
+
+    // A line nobody answers is a fault, not a footnote. This was grey
+    // secondary text on all five production lines for three hours and read as
+    // a caption — five identical grey sentences on a screen somebody opened
+    // to do something else are easy to scan straight past.
+    final silent = !line.answers;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         key: ValueKey('line:${line.id}'),
+        leading: silent
+            ? Icon(Icons.warning_amber_rounded, color: theme.colorScheme.error)
+            : null,
         title: Text(line.heading),
         subtitle: Text(
-          group == null
-              ? 'No ring group — calls go straight to voicemail.'
+          silent
+              ? 'Nobody answers this line. Every call goes straight to '
+                    'voicemail — give it a ring group below.'
+              : group == null
+              ? 'Answered by a call menu.'
               : 'Rings ${group.name}.',
-          style: theme.textTheme.bodySmall,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: silent ? theme.colorScheme.error : null,
+            fontWeight: silent ? FontWeight.w600 : null,
+          ),
         ),
         trailing: _canEdit
             ? TextButton(
@@ -426,6 +521,9 @@ class _NumbersPaneState extends State<NumbersPane> {
 class _LineForm extends StatefulWidget {
   const _LineForm({
     super.key,
+    required this.api,
+    required this.scopeType,
+    required this.scopeId,
     required this.line,
     required this.groups,
     required this.schedules,
@@ -435,6 +533,9 @@ class _LineForm extends StatefulWidget {
     required this.onSave,
   });
 
+  final ApiClient api;
+  final String scopeType;
+  final String scopeId;
   final _Line line;
   final List<_Group> groups;
   final List<_Schedule> schedules;
@@ -455,6 +556,9 @@ class _LineFormState extends State<_LineForm> {
   late bool _record;
   late bool _transcribe;
   late String _afterHours;
+
+  /// Carrier fields, populated only once the panel reports a change.
+  Map<String, dynamic> _carrier = const {};
 
   @override
   void initState() {
@@ -599,6 +703,18 @@ class _LineFormState extends State<_LineForm> {
           ),
         ),
 
+        const Divider(height: 32),
+        CarrierSettings(
+          api: widget.api,
+          numberId: widget.line.id,
+          scopeType: widget.scopeType,
+          scopeId: widget.scopeId,
+          callerIdLookup: widget.line.voiceCallerIdLookup,
+          voicemailTranscribe: widget.line.voicemailTranscribe,
+          emergencyAddressSid: widget.line.emergencyAddressSid,
+          onChanged: (body) => _carrier = body,
+        ),
+
         const SizedBox(height: 20),
         Row(
           children: [
@@ -615,6 +731,11 @@ class _LineFormState extends State<_LineForm> {
                       'after_hours_number': _afterHours == 'forward'
                           ? _forwardTo.text.trim()
                           : null,
+
+                      // Only what the carrier panel actually reports having
+                      // changed — sending an untouched emergency address back
+                      // would be a pointless Twilio write on every save.
+                      ..._carrier,
                     }),
               child: Text(widget.saving ? 'Saving…' : 'Save'),
             ),
@@ -636,9 +757,13 @@ class _Line {
     required this.record,
     required this.transcribe,
     required this.afterHours,
+    required this.answers,
+    required this.voiceCallerIdLookup,
+    required this.voicemailTranscribe,
     this.afterHoursNumber,
     this.ringGroupId,
     this.hoursScheduleId,
+    this.emergencyAddressSid,
   });
 
   final String id;
@@ -650,6 +775,18 @@ class _Line {
   final String? afterHoursNumber;
   final String? ringGroupId;
   final String? hoursScheduleId;
+
+  /// Whether a call to this line can reach anybody at all.
+  ///
+  /// The server computes it from the same condition TwimlRenderer branches on
+  /// — no ring group and no call flow means the renderer returns voicemail
+  /// before it can emit a Dial. Judging it again here would be a second rule
+  /// that could drift from the one that actually answers the phone.
+  final bool answers;
+
+  final bool voiceCallerIdLookup;
+  final bool voicemailTranscribe;
+  final String? emergencyAddressSid;
 
   String get heading => label.trim().isEmpty || label == e164
       ? e164
@@ -670,6 +807,17 @@ class _Line {
         afterHoursNumber: row['after_hours_number'] as String?,
         ringGroupId: row['ring_group_id'] as String?,
         hoursScheduleId: row['hours_schedule_id'] as String?,
+
+        // The server decides this, from the same condition the call renderer
+        // branches on. Only when it does not say — an older server — is it
+        // worked out here, and then by that same rule rather than by assuming
+        // the line is fine: assuming fine is how this went unnoticed before.
+        answers:
+            row['answers'] as bool? ??
+            (row['ring_group_id'] != null || row['flow_id'] != null),
+        voiceCallerIdLookup: row['voice_caller_id_lookup'] == true,
+        voicemailTranscribe: row['voicemail_transcribe'] == true,
+        emergencyAddressSid: row['emergency_address_sid'] as String?,
       );
     }).toList(growable: false);
   }

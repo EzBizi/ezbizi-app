@@ -193,21 +193,145 @@ final class HttpTwilioGateway implements TwilioGateway
     public function searchAvailable(PhoneConnection $connection, array $criteria): array
     {
         $normalized = self::normalizeSearchCriteria($criteria);
-        $country = $normalized['country'] ?? 'US';
-        unset($normalized['country']);
 
-        $page = $this->connectionClient($connection)
-            ->availablePhoneNumbers($country)
-            ->local
-            ->read($normalized, 20);
+        $country = strtoupper((string) ($normalized['country'] ?? 'US'));
+        $type = (string) ($normalized['type'] ?? 'local');
+        $limit = (int) ($normalized['limit'] ?? 20);
+
+        // Routing keys, not filters. Twilio's read() ignores what it does not
+        // know, so leaving these in would be silent rather than loud.
+        unset($normalized['country'], $normalized['type'], $normalized['limit']);
+
+        $inCountry = $this->connectionClient($connection)->availablePhoneNumbers($country);
+
+        $list = match ($type) {
+            'toll_free' => $inCountry->tollFree,
+            'mobile' => $inCountry->mobile,
+            default => $inCountry->local,
+        };
 
         $out = [];
-        foreach ($page as $number) {
+        foreach ($list->read($normalized, $limit) as $number) {
+            $out[] = self::availableRow($number);
+        }
+
+        return $out;
+    }
+
+    /**
+     * One search hit, flattened.
+     *
+     * `address_requirements` is the field that decides whether a number can
+     * actually be bought: `none`, `any`, `local` or `foreign`. Twilio lists
+     * numbers it will then refuse to sell without a registered Address, so
+     * hiding this turns a knowable refusal into a mystery at purchase.
+     *
+     * @return array<string, mixed>
+     */
+    private static function availableRow(object $number): array
+    {
+        // Twilio answers with mixed-case capability keys — voice, SMS, MMS,
+        // fax. EzBizi speaks one case everywhere.
+        $capabilities = [];
+        foreach ((array) ($number->capabilities ?? []) as $name => $enabled) {
+            $capabilities[strtolower((string) $name)] = (bool) $enabled;
+        }
+
+        return [
+            'phone_number' => (string) $number->phoneNumber,
+            'friendly_name' => $number->friendlyName,
+            'locality' => $number->locality,
+            'region' => $number->region,
+            'postal_code' => $number->postalCode,
+            'iso_country' => $number->isoCountry,
+            'lata' => $number->lata,
+            'rate_center' => $number->rateCenter,
+            'latitude' => $number->latitude === null ? null : (float) $number->latitude,
+            'longitude' => $number->longitude === null ? null : (float) $number->longitude,
+            'address_requirements' => $number->addressRequirements,
+            'beta' => (bool) $number->beta,
+            'capabilities' => $capabilities,
+        ];
+    }
+
+    public function fetchIncoming(PhoneConnection $connection, string $incomingSid): array
+    {
+        $number = $this->connectionClient($connection)
+            ->incomingPhoneNumbers($incomingSid)
+            ->fetch();
+
+        $capabilities = [];
+        foreach ((array) ($number->capabilities ?? []) as $name => $enabled) {
+            $capabilities[strtolower((string) $name)] = (bool) $enabled;
+        }
+
+        return [
+            'sid' => (string) $number->sid,
+            'phone_number' => (string) $number->phoneNumber,
+            'friendly_name' => (string) $number->friendlyName,
+            'capabilities' => $capabilities,
+            'emergency_status' => $number->emergencyStatus,
+            'emergency_address_sid' => $number->emergencyAddressSid,
+            'voice_caller_id_lookup' => (bool) $number->voiceCallerIdLookup,
+            'address_requirements' => $number->addressRequirements,
+        ];
+    }
+
+    public function listAddresses(PhoneConnection $connection): array
+    {
+        $out = [];
+
+        foreach ($this->connectionClient($connection)->addresses->read([], 200) as $address) {
             $out[] = [
-                'phone_number' => $number->phoneNumber,
-                'friendly_name' => $number->friendlyName,
-                'locality' => $number->locality,
-                'region' => $number->region,
+                'sid' => (string) $address->sid,
+                'friendly_name' => $address->friendlyName,
+                'customer_name' => (string) $address->customerName,
+                'street' => (string) $address->street,
+                'city' => (string) $address->city,
+                'region' => (string) $address->region,
+                'postal_code' => (string) $address->postalCode,
+                'iso_country' => (string) $address->isoCountry,
+                'emergency_enabled' => (bool) $address->emergencyEnabled,
+                'validated' => (bool) $address->validated,
+            ];
+        }
+
+        return $out;
+    }
+
+    public function createAddress(PhoneConnection $connection, array $address): array
+    {
+        $created = $this->connectionClient($connection)->addresses->create(
+            $address['customer_name'],
+            $address['street'],
+            $address['city'],
+            $address['region'],
+            $address['postal_code'],
+            $address['iso_country'],
+            array_filter([
+                'friendlyName' => $address['friendly_name'] ?? null,
+
+                // The whole point of registering it. Without this Twilio
+                // stores the address and 911 still has nowhere to send anyone.
+                'emergencyEnabled' => true,
+            ], static fn ($value) => $value !== null),
+        );
+
+        return [
+            'sid' => (string) $created->sid,
+            'validated' => (bool) $created->validated,
+            'emergency_enabled' => (bool) $created->emergencyEnabled,
+        ];
+    }
+
+    public function availableCountries(PhoneConnection $connection): array
+    {
+        $out = [];
+
+        foreach ($this->connectionClient($connection)->availablePhoneNumbers->read([], 200) as $country) {
+            $out[] = [
+                'country_code' => (string) $country->countryCode,
+                'country' => (string) $country->country,
             ];
         }
 
@@ -236,8 +360,9 @@ final class HttpTwilioGateway implements TwilioGateway
             'in_postal_code' => 'inPostalCode',
             'in_region' => 'inRegion',
             'in_rate_center' => 'inRateCenter',
-            'in_lata' => 'inLata',
             'in_locality' => 'inLocality',
+            'in_lata' => 'inLata',
+            
             'exclude_all_address_required' => 'excludeAllAddressRequired',
             'exclude_local_address_required' => 'excludeLocalAddressRequired',
             'exclude_foreign_address_required' => 'excludeForeignAddressRequired',
