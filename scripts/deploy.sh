@@ -143,6 +143,23 @@ fi
 # client in front of the old API for however long the push takes — and if the
 # push then fails, permanently.
 echo "→ pushing code"
+# Pinning the SHA closes the window where main MOVES. It does not close the
+# window where main is REWRITTEN. If a session amends or rebases published main
+# while this runs, the gated commit can stop being reachable from the branch —
+# and pushing it anyway would ship code that no longer exists on main, silently.
+# Checked here rather than assumed, because an abandoned commit reaching
+# production looks exactly like a successful deploy.
+git merge-base --is-ancestor "$GATED_SHA" main || {
+  echo "✗ $GATED_SHA is no longer an ancestor of main — somebody rewrote history"
+  echo "  while this deploy ran. Nothing pushed."
+  # What main became, not just that it changed: a guard that fires and says only
+  # "refusing" sends the next person to re-derive what it already knew.
+  echo "  main is now $(git rev-parse --short main):"
+  git log --oneline "$GATED_SHA"..main | sed 's/^/    /'
+  echo "  Re-run to gate what main is now."
+  exit 1
+}
+
 # The pinned SHA, not the branch tip: what shipped is what was gated.
 git push production "$GATED_SHA":main
 

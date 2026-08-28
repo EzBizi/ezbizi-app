@@ -8,6 +8,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0113',
+      date: '28 Aug 2026',
+      items: [
+        'Social: write a post, choose the accounts, and send it. Publishing '
+            'was a console command; it is a button now.',
+        'A post sent to TikTok lands on your profile privately, because TikTok '
+            'has not audited the app yet. Everywhere else posts publicly.',
+        'Inspections: take photographs while you walk the job, and download the '
+            'finished report as a PDF.',
+        'A customer found by search says which company owns the franchise — on '
+            'the duplicate check now as well as the list.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0112',
       date: '28 Aug 2026',
       items: [
