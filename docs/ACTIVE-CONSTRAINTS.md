@@ -2,6 +2,11 @@
 
 **Temporary. Delete this file when App Store review clears.** Opened 2026-08-28.
 
+**Do not delete it while App Store Connect still reports *Waiting for Review*.**
+It is the only durable record of the freeze; everything else about it lives in
+sessions that do not survive the afternoon. Check the status before removing it,
+and if you cannot check, leave it.
+
 It exists because these constraints were being broadcast to a session roster that
 turns over every few minutes, so half the fleet never heard them and the other half
 heard a version that had already gone stale. A message reaches whoever is listening;
