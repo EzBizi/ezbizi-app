@@ -144,6 +144,16 @@ cat <<EOF
   Pull main in with:  git merge main
   Hand the deploy session your branch and SHAs; they merge and deploy.
 
-  Your own test database still applies:
+  THE DATABASE IS NOT ISOLATED BY THIS. A worktree gives you your own files
+  and your own index; it does NOT give you your own schema. phpunit.xml:27
+  pins DB_DATABASE=ezbizi_testing, and a .env cannot beat it — only a real
+  shell variable can, because that <env> has no force="true". So a perfectly
+  provisioned worktree still runs against the SHARED schema the moment anyone
+  types \`php artisan test\` without the prefix, and RefreshDatabase drops it
+  under whoever else is mid-run.
+
+  THE PREFIX IS NOT OPTIONAL:
+
+    DB_DATABASE=ezbizi_testing_$MODULE php artisan test
     DB_DATABASE=ezbizi_testing_$MODULE vendor/bin/phpunit
 EOF
