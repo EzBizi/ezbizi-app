@@ -211,8 +211,23 @@ class AttachmentsController extends Controller
     /** DELETE /api/v1/attachments/{attachment} */
     public function destroy(Attachment $attachment): JsonResponse
     {
+        /*
+         * Types this endpoint does not manage — the internal morph identities
+         * from AppServiceProvider that Attachables deliberately omits. Upload
+         * already refuses them by validation; this is the other half.
+         *
+         * `inspection_reports` is here rather than behind an
+         * `attachmentRemovalRefusal` on the report, and the difference matters:
+         * that hook refuses EVERY writer, the purge included, and a photograph
+         * of somebody's house has to go when they are erased — the report
+         * declares `answers` erasable and blanks the sentence naming the
+         * picture, so a refusal here would leave the picture. What needs closing
+         * is only this door: InspectionReportPolicy::update IS `archive`, so
+         * without the abort anybody who may hide a report could take a
+         * photograph out of a frozen one.
+         */
         abort_if(
-            in_array($attachment->attachable_type, ['tasks', 'task_updates'], true),
+            in_array($attachment->attachable_type, ['tasks', 'task_updates', 'inspection_reports'], true),
             Response::HTTP_NOT_FOUND,
         );
 

@@ -24,6 +24,10 @@ class Tag extends StatelessWidget {
         ),
         child: Text(
           label,
+          // A tag shortens rather than pushing the row it sits in off the
+          // screen. It is a label beside a name, never the thing being read.
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,

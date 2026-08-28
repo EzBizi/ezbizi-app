@@ -957,6 +957,13 @@ class _ConnectPanelState extends State<_ConnectPanel> {
   final _handle = TextEditingController();
   final _appPassword = TextEditingController();
 
+  /// The app-password form is open on an account that is ALREADY connected.
+  ///
+  /// Only meaningful for a network that connects by password — see
+  /// [_blueskyTile]. False is both "not connected" and "connected and settled",
+  /// which the tile tells apart by asking [_ConnectPanel.connected].
+  bool _replacing = false;
+
   @override
   void dispose() {
     _poll?.cancel();
@@ -1010,7 +1017,46 @@ class _ConnectPanelState extends State<_ConnectPanel> {
     );
   }
 
+  /// Bluesky's tile — the one network here that cannot open a sign-in.
+  ///
+  /// ── Why it needs a connected state of its own ────────────────────
+  ///
+  /// Every other network in this panel is OAuth, and for those the button does
+  /// the same thing whether or not an account is already connected: it opens
+  /// the network's sign-in. One tile serves both states and only the wording
+  /// changes — "Connect" becomes "Reconnect".
+  ///
+  /// Bluesky has no developer console, so connecting IS this form, and a form
+  /// cannot be relabelled the same way. Left as it was, an account already
+  /// connected still drew two empty boxes and a Connect button — which reads as
+  /// "not connected" sitting directly beneath TikTok and Pinterest saying that
+  /// they are. That is the whole of what was wrong with it.
+  ///
+  /// So the form becomes what Reconnect OPENS, rather than what the tile is.
+  /// The sentence differs from the OAuth tiles' because the mechanism does:
+  /// signing in again refreshes a token that already exists, and an app
+  /// password cannot be refreshed at all — only replaced by another one, which
+  /// is a thing somebody has to go and generate in Bluesky first.
   Widget _blueskyTile(_SocialNetwork network) {
+    if (widget.connected.contains(network.value) && !_replacing) {
+      return ListTile(
+        leading: SocialNetworkMark(network: network.value),
+        title: Text(network.label),
+        subtitle: Text(
+          _busy == network.value
+              ? 'Waiting for ${network.label}…'
+              : 'Already connected. An app password cannot be refreshed — '
+                    'reconnecting replaces it with a new one.',
+        ),
+        trailing: FilledButton(
+          onPressed: _busy == null
+              ? () => setState(() => _replacing = true)
+              : null,
+          child: const Text('Reconnect'),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -1043,12 +1089,26 @@ class _ConnectPanelState extends State<_ConnectPanel> {
             decoration: const InputDecoration(labelText: 'App password'),
           ),
           const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton(
-              onPressed: _busy == null ? () => _connectBluesky(network) : null,
-              child: const Text('Connect'),
-            ),
+          Row(
+            children: [
+              FilledButton(
+                onPressed: _busy == null ? () => _connectBluesky(network) : null,
+                child: Text(_replacing ? 'Replace' : 'Connect'),
+              ),
+              // A way back out. Reconnect is one tap from a tile that was
+              // saying everything is fine, and without this the only way to
+              // close the form somebody opened by accident is to close the
+              // whole panel.
+              if (_replacing) ...[
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: _busy == null
+                      ? () => setState(() => _replacing = false)
+                      : null,
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -1074,6 +1134,13 @@ class _ConnectPanelState extends State<_ConnectPanel> {
       setState(() => _error = response.reason);
       return;
     }
+
+    // The password is not kept once it has been sent, and the tile settles back
+    // to saying it is connected rather than leaving a filled-in form behind
+    // that looks like it still has something to do.
+    _handle.clear();
+    _appPassword.clear();
+    setState(() => _replacing = false);
 
     await widget.onConnected();
   }

@@ -12,6 +12,56 @@ import 'package:http/testing.dart';
 /// The list is not a dead end. The API already knew how to show, edit,
 /// deactivate, delete and reassign a customer; these pin the missing face.
 void main() {
+  /// A franchise NAME does not identify a franchise: two companies in one
+  /// organization may each have a Florida. The tag is what stops somebody
+  /// acting on another franchise's customer, so it has to say which.
+  testWidgets('the owner tag names the company as well as the franchise', (
+    tester,
+  ) async {
+    await _pump(tester, customers: const [_alice]);
+
+    expect(find.text('Everdoors · Connecticut'), findsOneWidget);
+    expect(
+      find.text('Connecticut'),
+      findsNothing,
+      reason: 'The bare franchise name is the ambiguity being fixed.',
+    );
+  });
+
+  /// A search escapes the view scope on purpose, so any view can be showing
+  /// rows from across the organization — the qualifier cannot be conditional
+  /// on standing in the organization view.
+  testWidgets('the company is named in a franchise view too', (tester) async {
+    await _pump(tester, customers: const [_alice], scope: const {
+      'type': 'franchise',
+      'id': 'fr-1',
+      'label': 'Connecticut',
+      'path': ['Everdoors', 'Connecticut'],
+    });
+
+    expect(find.text('Everdoors · Connecticut'), findsOneWidget);
+  });
+
+  testWidgets('a server that sends no company still reads as it always did', (
+    tester,
+  ) async {
+    await _pump(tester, customers: const [_aliceWithoutCompany]);
+
+    expect(find.text('Connecticut'), findsOneWidget);
+  });
+
+  testWidgets('a long company name shortens the tag rather than the window', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      customers: const [_aliceInALongCompany],
+      size: const Size(375, 800),
+    );
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('creating a customer offers a street address', (tester) async {
     await _pump(tester);
 
@@ -96,7 +146,46 @@ const _alice = {
   'phone': '203-555-0100',
   'is_active': true,
   'jobs_count': 0,
+  'owning_franchise': {
+    'id': 'fr-1',
+    'name': 'Connecticut',
+    'company': {'id': 'co-1', 'name': 'Everdoors'},
+  },
+};
+
+/// The same customer from a server that does not send the company yet.
+///
+/// Written out rather than spread over [_alice]: a const map cannot override a
+/// key it already has, and the whole point of this fixture is the one key.
+const _aliceWithoutCompany = {
+  'id': 'c-1',
+  'name': 'Alice Roofing',
+  'number': 'C-1001',
+  'email': 'alice@example.com',
+  'phone': '203-555-0100',
+  'is_active': true,
+  'jobs_count': 0,
   'owning_franchise': {'id': 'fr-1', 'name': 'Connecticut'},
+};
+
+/// A long company name, to prove the tag shortens rather than shoving the row
+/// off the edge of a phone.
+const _aliceInALongCompany = {
+  'id': 'c-1',
+  'name': 'Alice Roofing',
+  'number': 'C-1001',
+  'email': 'alice@example.com',
+  'phone': '203-555-0100',
+  'is_active': true,
+  'jobs_count': 0,
+  'owning_franchise': {
+    'id': 'fr-1',
+    'name': 'Connecticut',
+    'company': {
+      'id': 'co-1',
+      'name': 'A-1 Chimney Sweep and Masonry Restoration Incorporated',
+    },
+  },
 };
 
 const _aliceDetail = {
@@ -121,8 +210,10 @@ Future<void> _pump(
   ],
   List<Map<String, dynamic>> customers = const [],
   http.Response? Function(http.Request request)? onRequest,
+  Map<String, Object?>? scope,
+  Size size = const Size(1280, 900),
 }) async {
-  tester.view.physicalSize = const Size(1280, 900);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
@@ -135,7 +226,7 @@ Future<void> _pump(
 
       if (path.endsWith('/me')) {
         return _json({
-          'data': {..._me, 'permissions': permissions},
+          'data': {..._me, 'permissions': permissions, 'scope': scope ?? _me['scope']},
         });
       }
 

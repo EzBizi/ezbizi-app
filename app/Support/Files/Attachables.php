@@ -6,6 +6,7 @@ use App\Models\InventoryIssue;
 use App\Models\InventoryItem;
 use App\Models\InventoryPurchaseOrder;
 use App\Models\InventorySale;
+use App\Models\InspectionRun;
 use App\Models\InventoryVendor;
 use App\Models\Service;
 use App\Models\Job;
@@ -114,6 +115,26 @@ final class Attachables
             'inventory_vendors' => InventoryVendor::class,
             'inventory_sales' => InventorySale::class,
             'services' => Service::class,
+            /*
+             * The in-progress inspection, and only that one.
+             *
+             * A run's policy already says the right thing about a photograph
+             * taken on site: `update` means "may fill in this inspection", and
+             * `view` answers "no such run" for anybody but the person who
+             * started it, because a draft is personal. So the file inherits
+             * exactly the confidentiality of the draft it belongs to, which is
+             * the whole argument this class makes for not giving attachments a
+             * permission of their own.
+             *
+             * `inspection_reports` is deliberately NOT here. It is in the morph
+             * map in AppServiceProvider — an attachment must be able to point at
+             * one, because that is where a run's photographs go when it is
+             * submitted — but it must never be a type a REQUEST can name.
+             * InspectionReportPolicy::update is `archive`, so listing it here
+             * would let anybody who may hide a report add photographs to a
+             * frozen one, and a report that can grow after submit is not frozen.
+             */
+            'inspection_runs' => InspectionRun::class,
         ];
     }
 

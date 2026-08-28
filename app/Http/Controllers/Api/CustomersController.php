@@ -61,7 +61,14 @@ class CustomersController extends Controller
         $scope = \App\Support\Scoping\ViewScope::forUser($request->user());
 
         $customers = Customer::query()
-            ->with('owningFranchise:id,name')
+            /*
+             * The franchise's COMPANY comes with it, because the name alone
+             * does not identify it. Two companies in one organization may each
+             * have a franchise called Florida, and a row tagged "Florida" then
+             * says nothing about which — see `present()` for why that tag
+             * carries the weight it does.
+             */
+            ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name')
             ->withCount('jobs')
             /*
              * Scoped by OWNING franchise, and only when a search is not running.
@@ -303,6 +310,21 @@ class CustomersController extends Controller
             'owning_franchise' => [
                 'id'   => $customer->owning_franchise_id,
                 'name' => $customer->owningFranchise?->name,
+                /*
+                 * Which company that franchise belongs to.
+                 *
+                 * The tag above is the thing standing between somebody and
+                 * acting on another franchise's customer, and a search
+                 * deliberately escapes the view scope (see `index`) — so on the
+                 * result set where this matters most, the rows can span the
+                 * whole organization. A franchise NAME does not identify one
+                 * across that: two companies may each have a Florida, and
+                 * "Florida" then answers nothing.
+                 *
+                 * Null when the customer has no owning franchise, which is the
+                 * same "Unassigned" case the name is null for.
+                 */
+                'company' => $customer->owningFranchise?->company?->only(['id', 'name']),
             ],
             'jobs_count' => $customer->jobs_count ?? $customer->jobs()->count(),
         ];

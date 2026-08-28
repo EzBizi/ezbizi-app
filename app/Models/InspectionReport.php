@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\HasAttachments;
 use App\Models\Concerns\WrittenOnce;
 use App\Support\Database\WrittenOnceRefusal;
 use App\Support\Privacy\Erasure;
@@ -34,6 +35,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class InspectionReport extends Model implements HoldsPersonalData
 {
     use BelongsToTenant;
+    use HasAttachments;
     use HasUuids;
     use WrittenOnce;
 

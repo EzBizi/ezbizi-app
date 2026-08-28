@@ -486,6 +486,54 @@ class VerticalSliceTest extends TestCase
         $this->assertSame(['C-00001', 'C-00002', 'C-00003'], $numbers);
     }
 
+    /**
+     * The owner tag identifies a franchise, which its NAME alone does not.
+     *
+     * Two companies in one organization may each have a Florida. The tag on
+     * every customer row is what stops somebody acting on another franchise's
+     * customer, and a search deliberately escapes the view scope — so that tag
+     * routinely has to distinguish franchises from different companies, and
+     * "Florida" answers nothing.
+     */
+    public function test_a_customer_carries_the_company_its_owning_franchise_belongs_to(): void
+    {
+        $alpha = $this->provision('Alpha', 'a@alpha.test');
+
+        $second = $this->inTenant($alpha['org'], fn () => Company::create([
+            'organization_id' => $alpha['org']->id,
+            'name'            => 'Second Co',
+            'is_active'       => true,
+        ]));
+
+        $elsewhere = $this->inTenant($alpha['org'], fn () => Franchise::create([
+            'organization_id' => $alpha['org']->id,
+            'company_id'      => $second->id,
+            // The same franchise name under a different company, which is the
+            // whole case: the two are told apart by their company or not at all.
+            'name'            => 'Alpha F1',
+            'is_active'       => true,
+        ]));
+
+        $this->as($alpha['admin'])->postJson('/api/v1/customers', [
+            'owning_franchise_id' => $alpha['franchise']->id, 'name' => 'Ours',
+        ])->assertCreated();
+
+        $this->as($alpha['admin'])->postJson('/api/v1/customers', [
+            'owning_franchise_id' => $elsewhere->id, 'name' => 'Theirs',
+        ])->assertCreated();
+
+        $rows = collect(
+            $this->as($alpha['admin'])->getJson('/api/v1/customers')->assertOk()->json('data')
+        )->keyBy('name');
+
+        $this->assertSame('Alpha F1', $rows['Ours']['owning_franchise']['name']);
+        $this->assertSame('Alpha F1', $rows['Theirs']['owning_franchise']['name']);
+
+        // Identical names, and the payload still says which is which.
+        $this->assertSame('Alpha Co', $rows['Ours']['owning_franchise']['company']['name']);
+        $this->assertSame('Second Co', $rows['Theirs']['owning_franchise']['company']['name']);
+    }
+
     // ── duplicates are surfaced, never merged (§5.2) ─────────────
 
     public function test_a_possible_duplicate_is_reported_but_does_not_block(): void

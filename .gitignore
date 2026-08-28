@@ -50,3 +50,12 @@ Thumbs.db
 # tree dirty after any test and blocked release.sh. Laravel gitignores it by
 # default; this repo had it committed.
 .phpunit.result.cache
+
+# Scratch output from the Playwright MCP browser. Session artefacts, never source.
+/.playwright-mcp/
+
+# App Store screenshots, produced by scripts/screenshots-ios.sh from the real
+# app on a simulator. Derived output: 2.7 MB of PNGs that this repo would push
+# to the production server on every deploy, and that any machine with the
+# simulator can regenerate.
+/store-screenshots/

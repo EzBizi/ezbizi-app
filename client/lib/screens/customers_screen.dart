@@ -17,6 +17,19 @@ import 'customers/customer_detail_panel.dart';
 /// has to be visible BEFORE they act — not buried in a detail pane they may
 /// never open.
 ///
+/// It names the COMPANY as well as the franchise, for the same reason it exists
+/// at all. A franchise name does not identify a franchise: two companies in one
+/// organization may each have a Florida, and a row tagged "Florida" answers
+/// nothing about which one — which is the failure the tag was put there to
+/// prevent, quietly restored.
+///
+/// Said on every row rather than only in the organization view, because the
+/// view is not what decides how wide the list is. A SEARCH escapes the view
+/// scope on purpose (CustomersController::index — a customer nobody can find is
+/// a customer somebody duplicates), so a franchise view searching for "Philip"
+/// gets results from across the organization. A rule that showed the company
+/// only in the organization view would drop it exactly there.
+///
 /// Importing and exporting customers is HERE rather than on a tab of its own
 /// (§12). It used to be one "Import & export" destination listing every
 /// resource, which meant somebody who wanted their customer list in a
@@ -287,6 +300,15 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final owner = customer['owning_franchise'] as Map<String, dynamic>;
     final jobs = customer['jobs_count'] as int? ?? 0;
 
+    // "EzBizi · Florida", or just the franchise on a server that does not send
+    // the company yet — the older shape reads as it always did rather than as
+    // a row with something missing from it.
+    final company = (owner['company'] as Map<String, dynamic>?)?['name'];
+    final franchise = owner['name'] as String? ?? 'Unassigned';
+    final ownerLabel = company is String && company.isNotEmpty
+        ? '$company · $franchise'
+        : franchise;
+
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -301,7 +323,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
               ),
             ),
             // §5.2: visible in the list, not only on the detail screen.
-            Tag(owner['name'] as String? ?? 'Unassigned'),
+            //
+            // Flexible because the label now carries two names, and a Row hands
+            // a non-flex child unbounded width: an organization with a company
+            // called something long would otherwise push the row off the right
+            // edge of a phone rather than shortening the tag.
+            Flexible(child: Tag(ownerLabel)),
             if (customer['is_active'] == false)
               const Tag('Inactive', warn: true),
           ],

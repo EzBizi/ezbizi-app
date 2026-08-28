@@ -321,6 +321,73 @@ void main() {
       expect(connect.onPressed, isNotNull);
     });
 
+    /// Bluesky is the one network that connects by app password rather than by
+    /// opening a sign-in, and its tile was the only one that never asked
+    /// whether it was already connected — so an account that WAS connected
+    /// still showed an empty form and a Connect button, directly under TikTok
+    /// and Pinterest saying "Already connected".
+    testWidgets('a connected Bluesky account says so instead of offering the '
+        'form again', (tester) async {
+      await _pumpScreen(
+        tester,
+        _handler(bluesky: true, connections: const [_blueskyAccount]),
+      );
+
+      await _openConnectPanel(tester);
+
+      expect(find.textContaining('Already connected'), findsOneWidget);
+      expect(
+        find.widgetWithText(FilledButton, 'Reconnect'),
+        findsOneWidget,
+        reason: 'The same word the OAuth tiles use for the same situation.',
+      );
+      expect(
+        find.widgetWithText(TextField, 'App password'),
+        findsNothing,
+        reason: 'An empty form under a connected account reads as disconnected.',
+      );
+    });
+
+    /// The form is what Reconnect opens, rather than what the tile is.
+    testWidgets('Reconnect opens the form for a new app password, and Cancel '
+        'puts it away', (tester) async {
+      await _pumpScreen(
+        tester,
+        _handler(bluesky: true, connections: const [_blueskyAccount]),
+      );
+
+      await _openConnectPanel(tester);
+      await tester.tap(find.widgetWithText(FilledButton, 'Reconnect'));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(TextField, 'Handle'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'App password'), findsOneWidget);
+      expect(
+        find.widgetWithText(FilledButton, 'Replace'),
+        findsOneWidget,
+        reason: 'Not Connect — there is a connection, and this replaces it.',
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(TextField, 'App password'), findsNothing);
+      expect(find.textContaining('Already connected'), findsOneWidget);
+    });
+
+    /// The control: nothing connected, and the form is the tile, as before.
+    testWidgets('an unconnected Bluesky is still the form on its own', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler(bluesky: true));
+
+      await _openConnectPanel(tester);
+
+      expect(find.widgetWithText(TextField, 'App password'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Connect'), findsWidgets);
+      expect(find.widgetWithText(FilledButton, 'Reconnect'), findsNothing);
+    });
+
     testWidgets('Posts lays out on a 375-point window without overflowing', (
       tester,
     ) async {
@@ -668,11 +735,27 @@ Future<void> _pump(
 /// is what holds the real endpoint to the real registry. What must NOT happen
 /// is the client keeping its own copy, which is why nothing under `lib/` names
 /// a trigger.
+/// Social Media Management → Accounts → the Connect panel.
+Future<void> _openConnectPanel(WidgetTester tester) async {
+  await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.widgetWithText(FilledButton, 'Connect a page to Everdoors'),
+  );
+  await tester.pumpAndSettle();
+}
+
 MockClientHandler _handler({
   int status = 200,
   String message = 'Marketing is unavailable.',
   bool sentIsRaised = false,
   bool pinterestUsable = false,
+  /// Bluesky is off by default so the tests written before it stay about what
+  /// they were about. It is the only network here that connects by password,
+  /// which is the whole reason its tile behaves differently.
+  bool bluesky = false,
   List<Map<String, Object?>>? connections,
   List<Map<String, Object?>>? triggers,
   List<Map<String, Object?>>? actions,
@@ -760,6 +843,15 @@ MockClientHandler _handler({
             'connects_by': 'sign_in',
             'start_path': '/social/x/start',
           },
+          if (bluesky)
+            {
+              'value': 'bluesky',
+              'label': 'Bluesky',
+              'usable': true,
+              'unusable_because': null,
+              'connects_by': 'password',
+              'start_path': '/social/bluesky/start',
+            },
         ],
       });
     }
@@ -827,6 +919,14 @@ const _pinterestBoard = {
   'provider': 'pinterest',
   'provider_label': 'Pinterest',
   'handle': 'everdoors_pins',
+};
+
+const _blueskyAccount = {
+  'id': 'conn-4',
+  'display_name': 'EzBizi',
+  'provider': 'bluesky',
+  'provider_label': 'Bluesky',
+  'handle': 'ezbizi.bsky.social',
 };
 
 const _xAccount = {

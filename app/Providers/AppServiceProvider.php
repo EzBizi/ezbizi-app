@@ -152,6 +152,10 @@ class AppServiceProvider extends ServiceProvider
                 // never target Tasks or rebind an update attachment.
                 'tasks' => \App\Models\Task::class,
                 'task_updates' => \App\Models\TaskUpdate::class,
+                // A submitted inspection report, for the same reason: its
+                // photographs arrive by being re-pointed from the run at submit,
+                // never by an upload naming the report. See Attachables.
+                'inspection_reports' => \App\Models\InspectionReport::class,
             ],
         );
 

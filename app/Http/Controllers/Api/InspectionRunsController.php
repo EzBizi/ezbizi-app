@@ -256,6 +256,25 @@ class InspectionRunsController extends Controller
                 'definition_name' => $inspectionRun->definition?->name ?? 'Inspection',
             ]);
 
+            /*
+             * BEFORE the delete, and that order is the whole of this.
+             *
+             * The run hard-deletes, and HasAttachments takes a hard-deleting
+             * record's files with it — so a photograph still pointing at the run
+             * on the next line is destroyed at the exact moment the inspection
+             * becomes evidence. Re-pointing first leaves the run with no
+             * attachments to take, which is why the hook needs no exception.
+             *
+             * A plain mass update and not a loop: nothing here reads the rows,
+             * the ids in `answers` do not change, and the bytes are not touched
+             * at all — the file stays exactly where it was written and only the
+             * row that says what it belongs to moves.
+             */
+            $inspectionRun->attachments()->update([
+                'attachable_type' => $report->getMorphClass(),
+                'attachable_id' => $report->getKey(),
+            ]);
+
             $inspectionRun->delete();
             $this->events->emit('inspection.submitted', $report, [
                 'report_id' => $report->id,

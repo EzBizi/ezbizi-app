@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\HasAttachments;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -20,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class InspectionRun extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use HasAttachments;
     use HasUuids;
 
     public static function retention(): RetentionPolicy

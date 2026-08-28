@@ -155,6 +155,27 @@ class Attachment extends Model implements HoldsPersonalData
             }
 
             /*
+             * And a customer's photographs also hang off their INSPECTIONS.
+             *
+             * The report declares `answers` erasable and blanks it to `[]`, so
+             * the sentence naming the picture goes — but `answers` holds the
+             * attachment's id, not its bytes. Without this branch the blanking
+             * is the whole of the erasure and the photograph of the house is
+             * still on disk with nothing left pointing at it, which is §9's
+             * "uploaded files" miss exactly.
+             *
+             * Only reports. A run is a personal draft that never outlives a
+             * submit or a discard, and its own retention says so.
+             */
+            if ($subject instanceof Customer) {
+                $query->orWhere(fn (Builder $q) => $q
+                    ->where('attachable_type', (new InspectionReport)->getMorphClass())
+                    ->whereIn('attachable_id', InspectionReport::query()
+                        ->where('customer_id', $subject->getKey())
+                        ->select('id')));
+            }
+
+            /*
              * An employee's files hang off their ONBOARDING, not off them.
              *
              * The rendered contract is the case that matters, and it is the one
