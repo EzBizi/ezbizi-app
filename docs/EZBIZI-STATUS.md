@@ -82,6 +82,17 @@ local reds are the documented Windows-only rows — stack-trace path separators,
 tests that cannot complete a trusted TLS handshake to `localhost`. The deploy gate on the box is
 the release verdict; a green local run is the weaker signal.
 
+**How it actually shipped, 2026-08-28.** Release `20260828151058`, client `v0.0.0112`, 91 commits,
+7 new permissions synced for 88 total. The sandbox gate did **not** run to completion — it was
+killed at about 16 minutes and the release went out without it, on the owner's instruction after
+two days stuck on `v0.0.0110`. That is recorded here rather than smoothed over, because the
+paragraph above calls the deploy gate the release verdict and this release did not have one.
+What blocked those two days was not slowness: the Tasks trigger migration cannot apply on a
+stock MySQL with binary logging on and no `SUPER`, and its half-applied wreckage made every
+retry fail somewhere else. The server setting is fixed and the migration is applied; the detail
+is in `docs/EZBIZI-DEV-ENVIRONMENT.md`. The local Tasks suite is 152 tests / 1,929 assertions
+green from a freshly created database.
+
 **Owner-accepted exception.** The plan's Task 20 asks for one independent review of the whole
 implementation against the spec. The owner waived it on 2026-08-28: every task from 2 to 19
 already carried its own scoped independent review, each recorded on the `tasks-module` board

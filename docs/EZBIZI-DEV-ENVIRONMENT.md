@@ -92,6 +92,24 @@ green gate. Three are missing libraries; one was fixed.
 
 **A full local run is no longer the nine-red of 2026-08-19 morning.** GD and Dompdf are on this machine now (`HrOnboardingDocumentPdfTest` 13/13). Two Windows-only rows remain (path separators in a stack trace, localhost TLS). The deploy gate does **not** run here — `scripts/deploy.sh` pipes `git archive main` to `/opt/ezbizi-test` on the box. A green local run is still the weaker signal.
 
+**It runs the other way too: this machine accepts a migration a stock MySQL refuses.**
+`2026_08_25_173000_create_task_view_and_delivery_tables` creates two triggers through
+`DB::unprepared` — `task_views_main_marker_immutable` and `task_views_main_permanent` — which
+make the permanent Main view's marker unchangeable and the view undeletable. A `CHECK`
+constraint cannot say "this column may not change", so a trigger is the mechanism; there is
+nothing wrong with the migration. But MySQL refuses `CREATE TRIGGER` without `SUPER` while
+binary logging is on (error 1419), and the application's MySQL user correctly does not have
+`SUPER`. Local `mysqld` here runs as a user process with different settings, so it never bit,
+and the migration passed every local run while blocking every deploy for two days.
+
+The server fix is `log_bin_trust_function_creators=ON`, persisted so it survives a restart —
+applied to the box on 2026-08-28. **Any fresh environment with binlog on will hit this**, and
+the failure is confusing rather than obvious: the migration dies partway, leaves tables and a
+`notifications.delivery_key` column behind unrecorded in `migrations`, and every later attempt
+fails somewhere downstream instead — 1050 table exists, then 1215 cannot add foreign key, then
+1060 duplicate column. Three symptoms, one cause. If you meet those, look for orphaned tables
+from a half-applied migration before believing any of them.
+
 Run the full suite with `php -d memory_limit=1G vendor/bin/phpunit`. Plain `php artisan test` dies with a 128M exhaustion partway through — the parent's `-d` does not reach the processes it spawns.
 
 The private customer-file backup has a disposable, database-free proof that uses the same
