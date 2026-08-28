@@ -150,6 +150,16 @@ class TaskPresentationCodecTest extends TestCase
         $decoded = $codec->decode($this->board, $ok);
         $this->assertSame('status', $decoded['window']['bucket_field']);
 
+        $exactlyFifty = $this->configuration([
+            'presentation' => 'kanban',
+            'window' => [
+                'bucket_field' => 'status',
+                'buckets' => array_map(fn () => (string) Str::uuid7(), range(1, 50)),
+            ],
+        ]);
+        $decodedFifty = $codec->decode($this->board, $exactlyFifty);
+        $this->assertCount(50, $decodedFifty['window']['buckets']);
+
         $tooMany = $this->configuration([
             'presentation' => 'kanban',
             'window' => [
@@ -222,11 +232,18 @@ class TaskPresentationCodecTest extends TestCase
     public function test_workload_window_requires_a_valid_unit(): void
     {
         $codec = app(TaskViewCodec::class);
-        $valid = $this->configuration([
+        $day = $this->configuration([
+            'presentation' => 'workload',
+            'window' => ['from' => '2026-09-01', 'to' => '2026-09-14', 'unit' => 'day'],
+        ]);
+        $decodedDay = $codec->decode($this->board, $day);
+        $this->assertSame('day', $decodedDay['window']['unit']);
+
+        $week = $this->configuration([
             'presentation' => 'workload',
             'window' => ['from' => '2026-09-01', 'to' => '2026-09-14', 'unit' => 'week'],
         ]);
-        $decoded = $codec->decode($this->board, $valid);
+        $decoded = $codec->decode($this->board, $week);
         $this->assertSame('week', $decoded['window']['unit']);
 
         $invalid = $this->configuration([
@@ -234,6 +251,26 @@ class TaskPresentationCodecTest extends TestCase
             'window' => ['from' => '2026-09-01', 'to' => '2026-09-14', 'unit' => 'month'],
         ]);
         $this->assertRefused(fn () => $codec->decode($this->board, $invalid), 'configuration.window');
+    }
+
+    public function test_workload_window_is_also_bounded_to_400_days(): void
+    {
+        $codec = app(TaskViewCodec::class);
+
+        // Exactly 400 days is allowed.
+        $ok = $this->configuration([
+            'presentation' => 'workload',
+            'window' => ['from' => '2026-01-01', 'to' => '2027-02-05', 'unit' => 'day'],
+        ]);
+        $decoded = $codec->decode($this->board, $ok);
+        $this->assertSame(['from' => '2026-01-01', 'to' => '2027-02-05', 'unit' => 'day'], $decoded['window']);
+
+        // 401 days is refused, same bound as calendar/timeline.
+        $tooWide = $this->configuration([
+            'presentation' => 'workload',
+            'window' => ['from' => '2026-01-01', 'to' => '2027-02-06', 'unit' => 'day'],
+        ]);
+        $this->assertRefused(fn () => $codec->decode($this->board, $tooWide), 'configuration.window');
     }
 
     public function test_permanent_main_view_cannot_change_presentation(): void
@@ -281,6 +318,32 @@ class TaskPresentationCodecTest extends TestCase
         $this->assertSame('status', $decoded['group_by']);
         $this->assertSame('north', $decoded['search']);
         $this->assertSame(['page' => 2, 'per_page' => 25], $decoded['window']);
+    }
+
+    public function test_default_main_view_never_resaved_still_returns_the_upgraded_shape_over_the_api(): void
+    {
+        // The board's permanent Main view was seeded by TaskBoardWriter directly from
+        // TaskViewCodec::defaults(), bypassing decode() entirely, and setUp() never touches
+        // it. Its stored bytes must still be schema 1.
+        $mainId = $this->board->views()->where('is_permanent_main', true)->value('id');
+        $stored = DB::table('task_views')->find($mainId);
+        $storedConfiguration = json_decode($stored->configuration, true);
+        $this->assertSame(1, $storedConfiguration['schema']);
+        $this->assertArrayNotHasKey('window', $storedConfiguration, 'A schema 1 row never carries a window key in storage.');
+
+        $response = $this->getJson("/api/v1/tasks/boards/{$this->board->id}/views")
+            ->assertOk();
+        $main = collect($response->json('data'))->firstWhere('id', $mainId);
+        $this->assertNotNull($main, 'The permanent Main view must appear in the listing.');
+        $this->assertArrayHasKey('presentation', $main['configuration']);
+        $this->assertArrayHasKey('window', $main['configuration']);
+        $this->assertSame('table', $main['configuration']['presentation']);
+        $this->assertNull($main['configuration']['window']);
+        $this->assertSame(2, $main['configuration']['schema']);
+
+        // Still never rewritten in storage by the mere read.
+        $after = DB::table('task_views')->find($mainId);
+        $this->assertSame($stored->configuration, $after->configuration);
     }
 
     private function assertRefused(callable $call, string $key): void
