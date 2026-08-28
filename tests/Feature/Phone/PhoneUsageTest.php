@@ -149,6 +149,32 @@ class PhoneUsageTest extends TestCase
         $this->assertCount(2, $response->json('data'));
     }
 
+    /**
+     * The empty case must be the same SHAPE as the normal one.
+     *
+     * `totals` is a keyed collection, and an empty PHP array encodes as `[]`
+     * rather than `{}` — so on a tenant with no usage yet the key changed type
+     * from map to list. The client cast it to a map, the cast threw mid-load,
+     * and the screen span forever with nothing to say. A hang is worse than an
+     * error: an error names itself.
+     */
+    public function test_totals_is_an_object_even_when_there_is_no_usage(): void
+    {
+        $t = $this->provisionTenant();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $this->connect($t);
+
+        // Deliberately no import run, which is every tenant's first day.
+        $response = $this->signedInAs($editor)->getJson('/api/v1/phone/usage?'.http_build_query([
+            'scope_type' => 'organization',
+            'scope_id' => $t['org']->id,
+        ]))->assertOk();
+
+        $this->assertStringContainsString('"totals":{}', $response->getContent());
+        $this->assertStringNotContainsString('"totals":[]', $response->getContent());
+        $this->assertSame([], $response->json('data'));
+    }
+
     public function test_seeing_the_bill_needs_the_authority_that_spends_it(): void
     {
         $t = $this->provisionTenant();

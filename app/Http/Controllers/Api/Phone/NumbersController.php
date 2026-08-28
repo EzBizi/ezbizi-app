@@ -239,7 +239,15 @@ class NumbersController extends Controller
                 'price' => (string) $row->price,
                 'price_unit' => $row->price_unit,
             ])->all(),
-            'totals' => $totals,
+            // Cast to an object, and this is not cosmetic. An empty PHP array
+            // encodes as `[]`, not `{}` — so on a tenant with no usage yet
+            // this key changed TYPE from map to list. The client cast it to a
+            // map, the cast threw inside the load, and the spinner never
+            // cleared: a screen that hung rather than one that said anything.
+            //
+            // A keyed collection must serialise as an object at every size, or
+            // its empty case is a different contract from its normal one.
+            'totals' => (object) $totals,
             'from' => $from,
             'to' => $to,
         ]);

@@ -86,11 +86,28 @@ class _UsagePaneState extends State<UsagePane> {
 
     if (!mounted) return;
 
+    // Parsed OUTSIDE setState, and guarded. The endless spinner this screen
+    // shipped with was a cast throwing in here: the exception escaped before
+    // `_loading` was cleared, so the pane hung with nothing to say. Whatever
+    // arrives, this screen ends up in a state it can draw.
+    List<_Row> rows = const [];
+    Map<String, String> totals = const {};
+    String? failed;
+
+    if (response.ok) {
+      try {
+        rows = _Row.listFrom(response.body);
+        totals = _Row.totalsFrom(response.body);
+      } catch (_) {
+        failed = 'EzBizi could not read the cost figures the server sent.';
+      }
+    }
+
     setState(() {
       _loading = false;
-      _rows = response.ok ? _Row.listFrom(response.body) : const [];
-      _totals = response.ok ? _Row.totalsFrom(response.body) : const {};
-      _error = response.ok ? null : response.reason;
+      _rows = rows;
+      _totals = totals;
+      _error = response.ok ? failed : response.reason;
       _note = response.ok ? response.body['message'] as String? : null;
     });
   }
@@ -252,7 +269,14 @@ class _Row {
   }
 
   static Map<String, String> totalsFrom(Map<String, dynamic> body) {
-    final totals = (body['totals'] as Map?) ?? const {};
+    // Read without casting. `as Map?` threw here when the server sent `[]` for
+    // an empty keyed collection, and because that happened mid-load the pane
+    // spun forever instead of reporting anything. The server sends an object
+    // now; this stays tolerant because a screen should degrade to "no totals"
+    // on a shape it did not expect, never hang.
+    final totals = body['totals'];
+
+    if (totals is! Map) return const {};
 
     return {
       for (final entry in totals.entries)
