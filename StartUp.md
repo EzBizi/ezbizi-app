@@ -36,6 +36,7 @@ Everything is in `docs/`, in this repo.
 
 | Order | File | Why |
 |---|---|---|
+| 0 | `docs/ACTIVE-CONSTRAINTS.md` | **Only if it exists.** Temporary rules in force right now — a release under review, a frozen client, a row nobody may write. Deleted when they lift, so its presence is the signal. |
 | 1 | `docs/EZBIZI-STATUS.md` | One page. **If two documents disagree, this one wins.** Current state, standing hazards, the numbers. |
 | 2 | `docs/EZBIZI-BUILD-PLAN.md` | The architecture brief. **Every `§` reference in the code points here.** Read at least §2.1, §3, §4 and §6 before writing anything — see section 5 below for why those four. |
 | 3 | `docs/DEPLOY.md` | How a release actually reaches the box, and every trap in it. |
