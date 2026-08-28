@@ -8,6 +8,32 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0115',
+      date: '28 Aug 2026',
+      items: [
+        'Email can start a conversation, not only answer one. Write to '
+            'somebody from a connected inbox.',
+        'Phone: search the numbers a country actually sells and buy one — by '
+            'area code, city, or a pattern the number contains.',
+        'Each line carries its own emergency address, caller-name lookup and '
+            'voicemail transcription. A line with nobody to ring now says so.',
+        'Fleet keeps the fields A-1 Chimney was keeping elsewhere: plate '
+            'state, registration and inspection dates, toll device and plan, '
+            'the registered owner, and who is listed to drive.',
+        'Leads and Reviews no longer offer a Connect button to somebody who '
+            'is not allowed to connect anything.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0114',
+      date: '28 Aug 2026',
+      items: [
+        'Web Management: keep your hours, phone numbers and addresses in '
+            'EzBizi, and let the WordPress plugin render them on your site.',
+        'Change them once here and every page that shows them follows.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0113',
       date: '28 Aug 2026',
       items: [
