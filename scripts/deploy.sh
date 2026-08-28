@@ -324,6 +324,7 @@ while read -r url want; do
   esac
 done <<SMOKE
 https://app.ezbizi.com/api/v1/web/ezbizi.js 200 application/javascript
+https://app.ezbizi.com/api/v1/web/public/values 400 application/json
 SMOKE
 
 # The marketing site, last, for the same reason the code goes before the UI:
