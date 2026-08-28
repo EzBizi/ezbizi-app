@@ -359,4 +359,120 @@ class JobLinesTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.amount.minor', 56700);
     }
+
+    /**
+     * Task 4 review finding: `destroy()` runs three real effects inside one
+     * transaction — an audit row, the delete, `recomputeTotal()` — and none of
+     * it was ever exercised through the HTTP route. A test that only checked
+     * for a 200 and a row count would still pass against a `destroy()` that
+     * forgot to recompute, so this asserts the JOB'S TOTAL at every step
+     * instead: two lines summed, one removed and the total drops to exactly
+     * what's left (not zero, not the old total), the last one removed and both
+     * the total and the `lines` list go empty.
+     */
+    public function test_deleting_a_line_recomputes_the_jobs_total(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        [$jobId, $firstServiceId] = $this->aJobAndAService($alpha);
+
+        $secondServiceId = $this->inTenant($alpha['org'], function () {
+            return Service::factory()->create(['name' => 'Second service', 'price_minor' => 5000])->id;
+        });
+
+        $firstLineId = $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/jobs/{$jobId}/lines", ['service_id' => $firstServiceId, 'qty' => 1])
+            ->assertCreated()
+            ->json('data.id');
+
+        $secondLineId = $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/jobs/{$jobId}/lines", ['service_id' => $secondServiceId, 'qty' => 1])
+            ->assertCreated()
+            ->json('data.id');
+
+        // 18900 (Chimney sweep) + 5000 (Second service) = 23900.
+        $this->signedInAs($alpha['admin'])
+            ->getJson("/api/v1/jobs/{$jobId}")
+            ->assertOk()
+            ->assertJsonPath('data.amount.minor', 23900)
+            ->assertJsonCount(2, 'data.lines');
+
+        $this->signedInAs($alpha['admin'])
+            ->deleteJson("/api/v1/jobs/{$jobId}/lines/{$firstLineId}")
+            ->assertOk();
+
+        // Only the second line's 5000 should remain — not 23900, not 18900.
+        $this->signedInAs($alpha['admin'])
+            ->getJson("/api/v1/jobs/{$jobId}")
+            ->assertOk()
+            ->assertJsonPath('data.amount.minor', 5000)
+            ->assertJsonCount(1, 'data.lines')
+            ->assertJsonPath('data.lines.0.id', $secondLineId);
+
+        $this->signedInAs($alpha['admin'])
+            ->deleteJson("/api/v1/jobs/{$jobId}/lines/{$secondLineId}")
+            ->assertOk();
+
+        $this->signedInAs($alpha['admin'])
+            ->getJson("/api/v1/jobs/{$jobId}")
+            ->assertOk()
+            ->assertJsonPath('data.amount.minor', 0)
+            ->assertJsonCount(0, 'data.lines');
+    }
+
+    /**
+     * Task 4 review finding: `destroy()`'s
+     * `abort_unless($line->job_id === $job->getKey(), 404)` guard was never
+     * exercised. Two jobs, each with one line; delete job A's line through job
+     * B's URL. A 404 alone isn't proof the guard did anything — a route that
+     * 404s for an unrelated reason would pass that check too — so this also
+     * confirms the line SURVIVES: still there, unchanged, still under job A
+     * afterwards.
+     */
+    public function test_deleting_a_line_through_the_wrong_jobs_url_is_refused(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        [$jobAId, $serviceAId] = $this->aJobAndAService($alpha);
+
+        // A second job with its own service — NOT another call to
+        // aJobAndAService(), which would try to create a second "Chimney
+        // sweep" service in the same catalogue and collide on the
+        // organization+catalogue_key+name unique index.
+        $customerBId = $this->signedInAs($alpha['admin'])->postJson('/api/v1/customers', [
+            'owning_franchise_id' => $alpha['franchise']->id,
+            'name' => 'Second Job Customer',
+        ])->assertCreated()->json('data.id');
+
+        $jobBId = $this->signedInAs($alpha['admin'])->postJson('/api/v1/jobs', [
+            'franchise_id' => $alpha['franchise']->id,
+            'customer_id'  => $customerBId,
+            'title'        => 'A second job with lines',
+            'status'       => 'scheduled',
+        ])->assertCreated()->json('data.id');
+
+        $serviceBId = $this->inTenant($alpha['org'], function () {
+            return Service::factory()->create(['name' => 'Wrong job service', 'price_minor' => 7500])->id;
+        });
+
+        $lineAId = $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/jobs/{$jobAId}/lines", ['service_id' => $serviceAId, 'qty' => 1])
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/jobs/{$jobBId}/lines", ['service_id' => $serviceBId, 'qty' => 1])
+            ->assertCreated();
+
+        $this->signedInAs($alpha['admin'])
+            ->deleteJson("/api/v1/jobs/{$jobBId}/lines/{$lineAId}")
+            ->assertNotFound();
+
+        // Still there, still under job A, total untouched.
+        $this->signedInAs($alpha['admin'])
+            ->getJson("/api/v1/jobs/{$jobAId}")
+            ->assertOk()
+            ->assertJsonPath('data.amount.minor', 18900)
+            ->assertJsonCount(1, 'data.lines')
+            ->assertJsonPath('data.lines.0.id', $lineAId);
+    }
 }
