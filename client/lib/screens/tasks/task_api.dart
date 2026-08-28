@@ -70,28 +70,36 @@ final class TaskApi {
 
   final ApiClient _api;
   final Map<String, TaskBoard> _boards = <String, TaskBoard>{};
+  int _cacheEpoch = 0;
 
-  void clearCache() => _boards.clear();
+  void clearCache() {
+    _cacheEpoch++;
+    _boards.clear();
+  }
 
   Future<TaskApiResult<List<TaskBoard>>> boardDirectory() async {
+    final cacheEpoch = _cacheEpoch;
     final response = await _api.get('/tasks/boards');
     return _decode(response, (data) {
       if (data is! List) throw const FormatException('data must be a list.');
       final boards = data
           .map((entry) => TaskBoard.fromJson(_map(entry, 'data[]')))
           .toList(growable: false);
-      for (final board in boards) {
-        _boards[board.id] = board;
+      if (cacheEpoch == _cacheEpoch) {
+        for (final board in boards) {
+          _boards[board.id] = board;
+        }
       }
       return boards;
     });
   }
 
   Future<TaskApiResult<TaskBoard>> board(String boardId) async {
+    final cacheEpoch = _cacheEpoch;
     final response = await _api.get('/tasks/boards/$boardId');
     return _decode(response, (data) {
       final board = TaskBoard.fromJson(_map(data, 'data'));
-      _boards[board.id] = board;
+      if (cacheEpoch == _cacheEpoch) _boards[board.id] = board;
       return board;
     });
   }
@@ -104,6 +112,7 @@ final class TaskApi {
     required TaskBoardVisibility visibility,
     String? description,
   }) async {
+    final cacheEpoch = _cacheEpoch;
     final response = await _api.post('/tasks/boards', <String, dynamic>{
       'name': name,
       'visibility': visibility == TaskBoardVisibility.private
@@ -113,7 +122,7 @@ final class TaskApi {
     });
     return _decode(response, (data) {
       final board = TaskBoard.fromJson(_map(data, 'data'));
-      _boards[board.id] = board;
+      if (cacheEpoch == _cacheEpoch) _boards[board.id] = board;
       return board;
     });
   }
@@ -183,13 +192,19 @@ final class TaskApi {
     );
   }
 
-  Future<TaskApiResult<List<TaskViewDefinition>>> views(String boardId) async {
+  Future<TaskApiResult<TaskViewsSnapshot>> views(String boardId) async {
     final response = await _api.get('/tasks/boards/$boardId/views');
     return _decode(response, (data) {
       if (data is! List) throw const FormatException('data must be a list.');
-      return data
-          .map((entry) => TaskViewDefinition.fromJson(_map(entry, 'data[]')))
-          .toList(growable: false);
+      final meta = _map(response.body['meta'], 'meta');
+      final capabilities = _map(meta['capabilities'], 'meta.capabilities');
+      return TaskViewsSnapshot(
+        views: data
+            .map((entry) => TaskViewDefinition.fromJson(_map(entry, 'data[]')))
+            .toList(growable: false),
+        canCreatePersonal: _requiredBoolean(capabilities, 'create_personal'),
+        canCreateShared: _requiredBoolean(capabilities, 'create_shared'),
+      );
     });
   }
 
@@ -527,6 +542,7 @@ final class TaskApi {
     required int expectedStructureVersion,
     required Map<String, Object?> changes,
   }) async {
+    final cacheEpoch = _cacheEpoch;
     final response = await _api.patch(
       '/tasks/boards/$boardId',
       _ownedMutation(
@@ -537,7 +553,7 @@ final class TaskApi {
     );
     return _decode(response, (data) {
       final board = TaskBoard.fromJson(_map(data, 'data'));
-      _boards[board.id] = board;
+      if (cacheEpoch == _cacheEpoch) _boards[board.id] = board;
       return board;
     });
   }
@@ -619,6 +635,12 @@ int? _optionalMetaInteger(ApiResponse response, String key) {
   if (meta is! Map) return null;
   final value = meta[key];
   return value is int ? value : null;
+}
+
+bool _requiredBoolean(Map<String, Object?> value, String key) {
+  final result = value[key];
+  if (result is bool) return result;
+  throw FormatException('$key must be a bool.');
 }
 
 Map<String, Object?> _ownedMutation(

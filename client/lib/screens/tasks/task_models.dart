@@ -94,17 +94,10 @@ enum TaskViewDensity { compact, comfortable, unknown }
 
 enum TaskConflictKind { task, update, groupOrder, view, structure, unknown }
 
-final class TaskViewCapabilities {
-  const TaskViewCapabilities({
-    required this.personalViews,
-    required this.sharedUnlockedViews,
-    required this.sharedLockedViews,
-  });
-
-  final bool personalViews;
-  final bool sharedUnlockedViews;
-  final bool sharedLockedViews;
-}
+/// Stable draft identities let convergence wait for every open editor. The
+/// Task 17B update composer plugs into the same callback without coupling its
+/// UI to the board table.
+typedef TaskDraftChanged = void Function(String draftId, bool dirty);
 
 final class TaskBoard {
   const TaskBoard({
@@ -693,6 +686,7 @@ final class TaskViewDefinition {
     required this.version,
     required this.position,
     required this.preference,
+    required this.actions,
   });
 
   factory TaskViewDefinition.fromJson(Map<String, Object?> json) {
@@ -715,6 +709,7 @@ final class TaskViewDefinition {
       preference: preference == null
           ? null
           : TaskViewPreference.fromJson(_expectMap(preference, 'preference')),
+      actions: _optionalStrings(json, 'actions'),
     );
   }
 
@@ -730,6 +725,21 @@ final class TaskViewDefinition {
   final int version;
   final int position;
   final TaskViewPreference? preference;
+  final List<String> actions;
+
+  bool can(String action) => actions.contains(action);
+}
+
+final class TaskViewsSnapshot {
+  const TaskViewsSnapshot({
+    required this.views,
+    required this.canCreatePersonal,
+    required this.canCreateShared,
+  });
+
+  final List<TaskViewDefinition> views;
+  final bool canCreatePersonal;
+  final bool canCreateShared;
 }
 
 final class TaskViewConfiguration {
@@ -753,14 +763,7 @@ final class TaskViewConfiguration {
     filters: <TaskFilter>[],
     sorts: <TaskSort>[],
     hiddenColumns: <String>[],
-    columnOrder: <String>[
-      'task',
-      'owner',
-      'status',
-      'priority',
-      'start_on',
-      'due_on',
-    ],
+    columnOrder: <String>['owner', 'status', 'priority', 'start_on', 'due_on'],
     columnWidths: <String, int>{},
     groupBy: null,
     search: '',
@@ -782,15 +785,23 @@ final class TaskViewConfiguration {
         json,
         'sorts',
       ).map(TaskSort.fromJson).toList(growable: false),
-      hiddenColumns: _strings(json, 'hidden_columns'),
-      columnOrder: _strings(json, 'column_order'),
+      // Task is the permanent pinned identity column and never participates in
+      // scrollable layout mutations, including legacy saved configurations.
+      hiddenColumns: _strings(
+        json,
+        'hidden_columns',
+      ).where((key) => key != 'task').toList(growable: false),
+      columnOrder: _strings(
+        json,
+        'column_order',
+      ).where((key) => key != 'task').toList(growable: false),
       columnWidths: Map.unmodifiable(
         _object(json, 'column_widths').map(
           (key, value) => MapEntry(
             key,
             _expectType<int>(value, 'configuration.column_widths.$key'),
           ),
-        ),
+        )..remove('task'),
       ),
       groupBy: _nullableString(json, 'group_by'),
       search: _string(json, 'search'),
@@ -802,9 +813,9 @@ final class TaskViewConfiguration {
     'presentation': rawPresentation,
     'filters': filters.map((filter) => filter.toJson()).toList(growable: false),
     'sorts': sorts.map((sort) => sort.toJson()).toList(growable: false),
-    'hidden_columns': hiddenColumns,
-    'column_order': columnOrder,
-    'column_widths': columnWidths,
+    'hidden_columns': hiddenColumns.where((key) => key != 'task').toList(),
+    'column_order': columnOrder.where((key) => key != 'task').toList(),
+    'column_widths': Map<String, int>.from(columnWidths)..remove('task'),
     'group_by': groupBy,
     'search': search,
   };

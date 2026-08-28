@@ -15,6 +15,7 @@ class TaskColumnCell extends StatelessWidget {
     required this.onChanged,
     this.enabled = true,
     this.participants = const [],
+    this.onDraftChanged,
   });
 
   final TaskRow task;
@@ -24,6 +25,9 @@ class TaskColumnCell extends StatelessWidget {
   onChanged;
   final bool enabled;
   final List<TaskParticipant> participants;
+  final TaskDraftChanged? onDraftChanged;
+
+  String get _draftId => 'task:${task.id}:custom:${definition.id}';
 
   static bool isSortable(TaskColumnKind kind) => switch (kind) {
     TaskColumnKind.text ||
@@ -53,12 +57,16 @@ class TaskColumnCell extends StatelessWidget {
         initial: value.value as String? ?? '',
         label: definition.name,
         onSaved: (text) => onChanged(definition, text),
+        draftId: _draftId,
+        onDraftChanged: onDraftChanged,
       ),
       TaskColumnKind.number => _NumberCell(
         initial: value.value as num?,
         suffix: definition.numberSuffix,
         label: definition.name,
         onSaved: (number) => onChanged(definition, number),
+        draftId: _draftId,
+        onDraftChanged: onDraftChanged,
       ),
       TaskColumnKind.checkbox => Tooltip(
         message: 'Toggle ${definition.name}',
@@ -76,6 +84,8 @@ class TaskColumnCell extends StatelessWidget {
         initial: value.value as DateTime?,
         label: definition.name,
         onSaved: (date) => onChanged(definition, date),
+        draftId: _draftId,
+        onDraftChanged: onDraftChanged,
       ),
       TaskColumnKind.people => _PeopleCell(
         selected: List<String>.from(value.value as List<String>? ?? const []),
@@ -91,6 +101,8 @@ class TaskColumnCell extends StatelessWidget {
         initial: value.value as TaskLinkValue?,
         label: definition.name,
         onSaved: (link) => onChanged(definition, link),
+        draftId: _draftId,
+        onDraftChanged: onDraftChanged,
       ),
       // File mutations are intentionally closed until Task 10A proves the
       // off-instance restore path. Keep values visible without pretending it
@@ -123,10 +135,14 @@ class _TextCell extends StatefulWidget {
     required this.initial,
     required this.label,
     required this.onSaved,
+    required this.draftId,
+    this.onDraftChanged,
   });
   final String initial;
   final String label;
-  final ValueChanged<String> onSaved;
+  final Future<void> Function(String) onSaved;
+  final String draftId;
+  final TaskDraftChanged? onDraftChanged;
   @override
   State<_TextCell> createState() => _TextCellState();
 }
@@ -135,8 +151,26 @@ class _TextCellState extends State<_TextCell> {
   late final TextEditingController _controller = TextEditingController(
     text: widget.initial,
   );
+  bool _dirty = false;
+  void _mark(String value) {
+    _dirty = value != widget.initial;
+    widget.onDraftChanged?.call(widget.draftId, _dirty);
+  }
+
+  @override
+  void didUpdateWidget(covariant _TextCell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initial == widget.initial) return;
+    if (_controller.text == widget.initial) {
+      _mark(_controller.text);
+    } else if (!_dirty) {
+      _controller.text = widget.initial;
+    }
+  }
+
   @override
   void dispose() {
+    if (_dirty) widget.onDraftChanged?.call(widget.draftId, false);
     _controller.dispose();
     super.dispose();
   }
@@ -145,7 +179,10 @@ class _TextCellState extends State<_TextCell> {
   Widget build(BuildContext context) => TextField(
     controller: _controller,
     decoration: InputDecoration(isDense: true, labelText: widget.label),
-    onSubmitted: widget.onSaved,
+    onChanged: _mark,
+    onSubmitted: (value) async {
+      await widget.onSaved(value);
+    },
   );
 }
 
@@ -155,11 +192,15 @@ class _NumberCell extends StatefulWidget {
     required this.suffix,
     required this.label,
     required this.onSaved,
+    required this.draftId,
+    this.onDraftChanged,
   });
   final num? initial;
   final String? suffix;
   final String label;
-  final ValueChanged<num?> onSaved;
+  final Future<void> Function(num?) onSaved;
+  final String draftId;
+  final TaskDraftChanged? onDraftChanged;
   @override
   State<_NumberCell> createState() => _NumberCellState();
 }
@@ -169,8 +210,25 @@ class _NumberCellState extends State<_NumberCell> {
     text: widget.initial?.toString() ?? '',
   );
   String? _error;
+  bool _dirty = false;
+
+  String get _initialText => widget.initial?.toString() ?? '';
+
+  @override
+  void didUpdateWidget(covariant _NumberCell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initial == widget.initial) return;
+    if (_controller.text == _initialText) {
+      _dirty = false;
+      widget.onDraftChanged?.call(widget.draftId, false);
+    } else if (!_dirty) {
+      _controller.text = _initialText;
+    }
+  }
+
   @override
   void dispose() {
+    if (_dirty) widget.onDraftChanged?.call(widget.draftId, false);
     _controller.dispose();
     super.dispose();
   }
@@ -188,10 +246,14 @@ class _NumberCellState extends State<_NumberCell> {
       suffixText: widget.suffix,
       errorText: _error,
     ),
-    onSubmitted: (text) {
+    onChanged: (value) {
+      _dirty = value != _initialText;
+      widget.onDraftChanged?.call(widget.draftId, _dirty);
+    },
+    onSubmitted: (text) async {
       final trimmed = text.trim();
       if (trimmed.isEmpty) {
-        widget.onSaved(null);
+        await widget.onSaved(null);
         return;
       }
       final parsed = num.tryParse(trimmed);
@@ -200,7 +262,7 @@ class _NumberCellState extends State<_NumberCell> {
         return;
       }
       setState(() => _error = null);
-      widget.onSaved(parsed);
+      await widget.onSaved(parsed);
     },
   );
 }
@@ -210,10 +272,14 @@ class _DateCell extends StatefulWidget {
     required this.initial,
     required this.label,
     required this.onSaved,
+    required this.draftId,
+    this.onDraftChanged,
   });
   final DateTime? initial;
   final String label;
-  final ValueChanged<String?> onSaved;
+  final Future<void> Function(String?) onSaved;
+  final String draftId;
+  final TaskDraftChanged? onDraftChanged;
   @override
   State<_DateCell> createState() => _DateCellState();
 }
@@ -222,11 +288,27 @@ class _DateCellState extends State<_DateCell> {
   late final TextEditingController _controller = TextEditingController(
     text: _format(widget.initial),
   );
+  bool _dirty = false;
   static String _format(DateTime? date) => date == null
       ? ''
       : '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+  @override
+  void didUpdateWidget(covariant _DateCell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initial == widget.initial) return;
+    final initial = _format(widget.initial);
+    if (_controller.text == initial) {
+      _dirty = false;
+      widget.onDraftChanged?.call(widget.draftId, false);
+    } else if (!_dirty) {
+      _controller.text = initial;
+    }
+  }
+
   @override
   void dispose() {
+    if (_dirty) widget.onDraftChanged?.call(widget.draftId, false);
     _controller.dispose();
     super.dispose();
   }
@@ -240,8 +322,13 @@ class _DateCellState extends State<_DateCell> {
       labelText: widget.label,
       hintText: 'YYYY-MM-DD',
     ),
-    onSubmitted: (text) =>
-        widget.onSaved(text.trim().isEmpty ? null : text.trim()),
+    onChanged: (value) {
+      _dirty = value != _format(widget.initial);
+      widget.onDraftChanged?.call(widget.draftId, _dirty);
+    },
+    onSubmitted: (text) async {
+      await widget.onSaved(text.trim().isEmpty ? null : text.trim());
+    },
   );
 }
 
@@ -313,10 +400,14 @@ class _LinkCell extends StatefulWidget {
     required this.initial,
     required this.label,
     required this.onSaved,
+    required this.draftId,
+    this.onDraftChanged,
   });
   final TaskLinkValue? initial;
   final String label;
-  final ValueChanged<Map<String, Object?>?> onSaved;
+  final Future<void> Function(Map<String, Object?>?) onSaved;
+  final String draftId;
+  final TaskDraftChanged? onDraftChanged;
   @override
   State<_LinkCell> createState() => _LinkCellState();
 }
@@ -325,8 +416,24 @@ class _LinkCellState extends State<_LinkCell> {
   late final TextEditingController _controller = TextEditingController(
     text: widget.initial?.url ?? '',
   );
+  bool _dirty = false;
+
+  @override
+  void didUpdateWidget(covariant _LinkCell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initial == widget.initial) return;
+    final initial = widget.initial?.url ?? '';
+    if (_controller.text == initial) {
+      _dirty = false;
+      widget.onDraftChanged?.call(widget.draftId, false);
+    } else if (!_dirty) {
+      _controller.text = initial;
+    }
+  }
+
   @override
   void dispose() {
+    if (_dirty) widget.onDraftChanged?.call(widget.draftId, false);
     _controller.dispose();
     super.dispose();
   }
@@ -339,9 +446,15 @@ class _LinkCellState extends State<_LinkCell> {
       labelText: widget.label,
       hintText: 'https://',
     ),
-    onSubmitted: (url) => widget.onSaved(
-      url.trim().isEmpty ? null : <String, Object?>{'url': url.trim()},
-    ),
+    onChanged: (value) {
+      _dirty = value != (widget.initial?.url ?? '');
+      widget.onDraftChanged?.call(widget.draftId, _dirty);
+    },
+    onSubmitted: (url) async {
+      await widget.onSaved(
+        url.trim().isEmpty ? null : <String, Object?>{'url': url.trim()},
+      );
+    },
   );
 }
 

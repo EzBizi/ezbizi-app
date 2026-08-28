@@ -7,7 +7,7 @@ class TaskViewsBar extends StatelessWidget {
     super.key,
     required this.views,
     required this.activeViewId,
-    required this.capabilities,
+    required this.canCreatePersonal,
     required this.dirty,
     required this.onSelected,
     required this.onCreate,
@@ -18,7 +18,7 @@ class TaskViewsBar extends StatelessWidget {
 
   final List<TaskViewDefinition> views;
   final String? activeViewId;
-  final TaskViewCapabilities capabilities;
+  final bool canCreatePersonal;
   final bool dirty;
   final ValueChanged<TaskViewDefinition> onSelected;
   final VoidCallback onCreate;
@@ -31,15 +31,6 @@ class TaskViewsBar extends StatelessWidget {
       if (view.id == activeViewId) return view;
     }
     return null;
-  }
-
-  bool _mayEdit(TaskViewDefinition view) {
-    if (view.visibility == TaskViewVisibility.personal) {
-      return capabilities.personalViews;
-    }
-    return view.isLocked
-        ? capabilities.sharedLockedViews
-        : capabilities.sharedUnlockedViews;
   }
 
   @override
@@ -88,7 +79,7 @@ class TaskViewsBar extends StatelessWidget {
                 ],
               ),
             ),
-            if (capabilities.personalViews)
+            if (canCreatePersonal)
               IconButton(
                 tooltip: 'New saved view',
                 onPressed: onCreate,
@@ -108,21 +99,18 @@ class TaskViewsBar extends StatelessWidget {
                   }
                 },
                 itemBuilder: (_) => [
-                  if (_mayEdit(active))
+                  if (active.can('update'))
                     PopupMenuItem(
                       value: 'save',
                       enabled: dirty,
                       child: const Text('Save changes'),
                     ),
-                  if (capabilities.personalViews)
+                  if (active.can('duplicate'))
                     const PopupMenuItem(
                       value: 'duplicate',
                       child: Text('Duplicate view'),
                     ),
-                  if (!active.isPermanentMain &&
-                      ((active.visibility == TaskViewVisibility.personal &&
-                              capabilities.personalViews) ||
-                          capabilities.sharedLockedViews))
+                  if (active.can('delete'))
                     const PopupMenuItem(
                       value: 'delete',
                       child: Text('Delete view'),

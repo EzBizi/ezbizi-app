@@ -45,7 +45,11 @@ final class TaskViewCodec
             'filters' => [],
             'sorts' => [],
             'hidden_columns' => [],
-            'column_order' => array_merge(array_keys(self::CORE_TYPES), $board->columnDefinitions()
+            // Task is the permanent pinned identity column. Saved layout state
+            // only owns the scrollable operational columns beside it.
+            'column_order' => array_merge(array_values(array_filter(
+                array_keys(self::CORE_TYPES), fn (string $reference) => $reference !== 'task'
+            )), $board->columnDefinitions()
                 ->active()->orderBy('position')->pluck('id')->map(fn (string $id) => 'custom:'.$id)->all()),
             'column_widths' => (object) [],
             'group_by' => null,
@@ -105,8 +109,14 @@ final class TaskViewCodec
             $sorts[] = ['field' => $sort['field'], 'direction' => $sort['direction']];
         }
 
-        $hidden = $this->columnList($board, $input['hidden_columns'], 'configuration.hidden_columns');
-        $order = $this->columnList($board, $input['column_order'], 'configuration.column_order');
+        $hidden = array_values(array_filter(
+            $this->columnList($board, $input['hidden_columns'], 'configuration.hidden_columns'),
+            fn (string $reference) => $reference !== 'task',
+        ));
+        $order = array_values(array_filter(
+            $this->columnList($board, $input['column_order'], 'configuration.column_order'),
+            fn (string $reference) => $reference !== 'task',
+        ));
         $widthInput = is_object($input['column_widths']) ? get_object_vars($input['column_widths']) : $input['column_widths'];
         if (! is_array($widthInput) || (array_is_list($widthInput) && $widthInput !== [])) {
             $this->invalid('configuration.column_widths', 'Column widths must be an object keyed by column.');
@@ -119,6 +129,9 @@ final class TaskViewCodec
             $this->field($board, $reference, 'configuration.column_widths.'.$reference);
             if (! is_int($width) || $width < 60 || $width > 800) {
                 $this->invalid('configuration.column_widths.'.$reference, 'A column width must be between 60 and 800 pixels.');
+            }
+            if ($reference === 'task') {
+                continue;
             }
             $widths[$reference] = $width;
         }

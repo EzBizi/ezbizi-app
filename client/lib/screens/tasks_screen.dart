@@ -70,19 +70,24 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   int _lastPage = 1;
   int _total = 0;
   List<TaskStatusSummary> _statusSummaries = const [];
+  List<TaskGroupCount> _groupCounts = const [];
   List<TaskViewDefinition> _views = const [];
+  bool _canCreatePersonalView = false;
+  bool _canCreateSharedView = false;
   String? _activeViewId;
   int _activeViewVersion = 1;
   TaskViewConfiguration _configuration = TaskViewConfiguration.empty;
   String? _boardEtag;
   TaskMyTasksPage? _myTasks;
+  final Map<int, TaskMyTasksPage> _myTaskPages = <int, TaskMyTasksPage>{};
   String? _myTasksError;
   bool _myTasksLoading = false;
+  bool _myTasksLoadingMore = false;
   bool _showMyTasks = false;
   bool _showFilters = false;
   bool _showViewEditor = false;
   bool _viewDirty = false;
-  bool _editorDirty = false;
+  final Set<String> _dirtyDraftIds = <String>{};
   bool _foreground = true;
   int _queryToken = 0;
   Timer? _poller;
@@ -132,8 +137,9 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _unavailable = false;
       _conflict = false;
     });
+    final privacy = _privacyGeneration;
     final result = await _tasks.boardDirectory();
-    if (!mounted) return;
+    if (!_isCurrentPrivacy(privacy)) return;
     if (result is TaskApiSuccess<List<TaskBoard>>) {
       setState(() {
         _loading = false;
@@ -153,8 +159,11 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _consumeIntent(TaskAddressIntent intent, int generation) async {
+    final privacy = _privacyGeneration;
     final result = await _tasks.board(intent.boardId);
-    if (!_isCurrentIntent(intent, generation)) return;
+    if (!_isCurrentPrivacy(privacy) || !_isCurrentIntent(intent, generation)) {
+      return;
+    }
     if (result is TaskApiUnavailable<TaskBoard>) {
       _evict(result.message);
       widget.onIntentConsumed?.call();
@@ -196,21 +205,25 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _owners = const [];
       _people = const [];
       _views = const [];
+      _canCreatePersonalView = false;
+      _canCreateSharedView = false;
       _activeViewId = null;
       _activeViewVersion = 1;
       _configuration = TaskViewConfiguration.empty;
       _boardEtag = null;
       _total = 0;
       _statusSummaries = const [];
+      _groupCounts = const [];
       _privacyGeneration++;
       _viewDirty = false;
-      _editorDirty = false;
+      _dirtyDraftIds.clear();
       _showMyTasks = false;
       _showFilters = false;
     });
     _mobileDetail.value = null;
+    final privacy = _privacyGeneration;
     final result = await _tasks.boardRows(board.id, page: _page);
-    if (!mounted || request != _requestGeneration) return;
+    if (!_isCurrentPrivacy(privacy) || request != _requestGeneration) return;
     if (result is TaskApiUnavailable<TaskRowsPage>) {
       _evict(result.message);
       if (consumeIntent && _isCurrentIntent(intent!, generation!)) {
@@ -232,6 +245,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _lastPage = result.data.lastPage;
       _total = result.data.total;
       _statusSummaries = result.data.statusSummaries;
+      _groupCounts = result.data.groupCounts;
       _activeViewId = result.data.viewId;
       _activeViewVersion = result.data.viewVersion;
       _configuration = result.data.configuration;
@@ -250,16 +264,19 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadViews(String boardId) async {
+    final privacy = _privacyGeneration;
     final result = await _tasks.views(boardId);
-    if (!mounted || _board?.id != boardId) return;
-    if (result is TaskApiUnavailable<List<TaskViewDefinition>>) {
+    if (!_isCurrentPrivacy(privacy) || _board?.id != boardId) return;
+    if (result is TaskApiUnavailable<TaskViewsSnapshot>) {
       _evict(result.message);
       return;
     }
-    if (result is TaskApiSuccess<List<TaskViewDefinition>>) {
+    if (result is TaskApiSuccess<TaskViewsSnapshot>) {
       setState(() {
-        _views = result.data;
-        final active = result.data
+        _views = result.data.views;
+        _canCreatePersonalView = result.data.canCreatePersonal;
+        _canCreateSharedView = result.data.canCreateShared;
+        final active = result.data.views
             .where((view) => view.id == _activeViewId)
             .firstOrNull;
         if (active != null) _activeViewVersion = active.version;
@@ -268,15 +285,25 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadParticipants(String boardId) async {
+    final privacy = _privacyGeneration;
     final owners = await _tasks.participants(
       boardId,
       purpose: TaskParticipantPurpose.owner,
     );
+    if (!_isCurrentPrivacy(privacy) || _board?.id != boardId) return;
+    if (owners is TaskApiUnavailable<List<TaskParticipant>>) {
+      _evict(owners.message);
+      return;
+    }
     final people = await _tasks.participants(
       boardId,
       purpose: TaskParticipantPurpose.people,
     );
-    if (!mounted || _board?.id != boardId) return;
+    if (!_isCurrentPrivacy(privacy) || _board?.id != boardId) return;
+    if (people is TaskApiUnavailable<List<TaskParticipant>>) {
+      _evict(people.message);
+      return;
+    }
     if (owners is TaskApiSuccess<List<TaskParticipant>>) {
       setState(() => _owners = owners.data);
     }
@@ -304,16 +331,17 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     if (!mounted || _board?.id != board.id) return;
     final detail = _detail;
     if (detail != null) {
+      final privacy = _privacyGeneration;
       final result = await _tasks.taskDetail(
         board.id,
         detail.task.id,
         etag: conditional ? detail.etag : null,
       );
-      if (!mounted || _board?.id != board.id) return;
+      if (!_isCurrentPrivacy(privacy) || _board?.id != board.id) return;
       if (result is TaskApiUnavailable<TaskDetailSnapshot>) {
         _evict(result.message);
       } else if (result is TaskApiSuccess<TaskDetailSnapshot>) {
-        if (_editorDirty || _mutationQueues.isNotEmpty) {
+        if (_dirtyDraftIds.isNotEmpty || _mutationQueues.isNotEmpty) {
           setState(() => _conflict = true);
         } else {
           _replaceDetail(result.data);
@@ -327,14 +355,19 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     bool conditional = false,
   }) async {
     final token = ++_queryToken;
+    final privacy = _privacyGeneration;
     final result = await _tasks.boardRows(
       board.id,
       viewId: _activeViewId,
-      configuration: _configuration,
+      configuration: _viewDirty ? _configuration : null,
       page: _page,
       etag: conditional ? _boardEtag : null,
     );
-    if (!mounted || token != _queryToken || _board?.id != board.id) return;
+    if (!_isCurrentPrivacy(privacy) ||
+        token != _queryToken ||
+        _board?.id != board.id) {
+      return;
+    }
     if (result is TaskApiUnavailable<TaskRowsPage>) {
       _evict(result.message);
       return;
@@ -345,7 +378,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       return;
     }
     final page = result.data;
-    if (_editorDirty || _mutationQueues.isNotEmpty) {
+    if (_dirtyDraftIds.isNotEmpty || _mutationQueues.isNotEmpty) {
       setState(() => _conflict = true);
       return;
     }
@@ -359,51 +392,100 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _lastPage = page.lastPage;
       _total = page.total;
       _statusSummaries = page.statusSummaries;
+      _groupCounts = page.groupCounts;
       _boardEtag = page.etag;
       _activeViewVersion = page.viewVersion;
       if (!_viewDirty) _configuration = page.configuration;
     });
   }
 
-  Future<void> _loadMyTasks({bool conditional = false}) async {
+  Future<void> _loadMyTasks({
+    bool conditional = false,
+    int? requestedPage,
+  }) async {
+    final privacy = _privacyGeneration;
+    final pages = requestedPage == null
+        ? (_myTaskPages.isEmpty
+              ? const <int>[1]
+              : (_myTaskPages.keys.toList()..sort()))
+        : <int>[requestedPage];
     if (!conditional) {
       setState(() {
         _myTasksLoading = _myTasks == null;
+        _myTasksLoadingMore = requestedPage != null && requestedPage > 1;
         _myTasksError = null;
       });
     }
-    final result = await _tasks.myTasks(
-      page: _myTasks?.page ?? 1,
-      etag: conditional ? _myTasks?.etag : null,
-    );
-    if (!mounted) return;
-    if (result is TaskApiUnavailable<TaskMyTasksPage>) {
-      _evict(result.message);
+    for (final page in pages) {
+      if (!_isCurrentPrivacy(privacy)) return;
+      final result = await _tasks.myTasks(
+        page: page,
+        etag: conditional ? _myTaskPages[page]?.etag : null,
+      );
+      if (!_isCurrentPrivacy(privacy)) return;
+      if (result is TaskApiUnavailable<TaskMyTasksPage>) {
+        _evict(result.message);
+        return;
+      }
+      if (result is TaskApiNotModified<TaskMyTasksPage>) continue;
+      if (result is TaskApiSuccess<TaskMyTasksPage>) {
+        _myTaskPages[page] = result.data;
+        _myTaskPages.removeWhere((loaded, _) => loaded > result.data.lastPage);
+        _rebuildMyTasks();
+      } else if (!conditional) {
+        setState(() => _myTasksError = result.message);
+        break;
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _myTasksLoading = false;
+        _myTasksLoadingMore = false;
+      });
+    }
+  }
+
+  void _rebuildMyTasks() {
+    final pages = _myTaskPages.values.toList()
+      ..sort((left, right) => left.page.compareTo(right.page));
+    if (pages.isEmpty) {
+      _myTasks = null;
       return;
     }
-    if (result is TaskApiNotModified<TaskMyTasksPage>) return;
-    setState(() {
-      _myTasksLoading = false;
-      if (result is TaskApiSuccess<TaskMyTasksPage>) {
-        _myTasks = result.data;
-        _myTasksError = null;
-      } else if (!conditional) {
-        _myTasksError = result.message;
-      }
-    });
+    final first = pages.first;
+    final last = pages.last;
+    _myTasks = TaskMyTasksPage(
+      items: pages.expand((page) => page.items).toList(growable: false),
+      total: first.total,
+      page: last.page,
+      perPage: first.perPage,
+      lastPage: first.lastPage,
+      etag: first.etag,
+    );
+    _myTasksError = null;
+  }
+
+  Future<void> _loadMoreMyTasks() async {
+    final current = _myTasks;
+    if (current == null || current.page >= current.lastPage) return;
+    await _loadMyTasks(requestedPage: current.page + 1);
   }
 
   void _openMyTasks() {
     setState(() {
+      _privacyGeneration++;
       _showMyTasks = true;
       _showDirectory = false;
+      _myTaskPages.clear();
+      _myTasks = null;
     });
     _loadMyTasks();
   }
 
   Future<void> _openMyTask(TaskMyTask item) async {
+    final privacy = _privacyGeneration;
     final result = await _tasks.board(item.boardId);
-    if (!mounted) return;
+    if (!_isCurrentPrivacy(privacy)) return;
     if (result is TaskApiUnavailable<TaskBoard>) {
       _evict(result.message);
     } else if (result is TaskApiSuccess<TaskBoard>) {
@@ -412,8 +494,9 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _openSearchResult(TaskQuickSearchResult result) async {
+    final privacy = _privacyGeneration;
     final board = await _tasks.board(result.boardId);
-    if (!mounted) return;
+    if (!_isCurrentPrivacy(privacy)) return;
     if (board is TaskApiUnavailable<TaskBoard>) {
       _evict(board.message);
     } else if (board is TaskApiSuccess<TaskBoard>) {
@@ -436,11 +519,13 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _detail = null;
     });
     _mobileDetail.value = null;
+    final privacy = _privacyGeneration;
     final result = await _tasks.taskDetail(board.id, taskId);
     if (consumeIntent
-        ? (!_isCurrentIntent(intent!, generation!) ||
+        ? (!_isCurrentPrivacy(privacy) ||
+              !_isCurrentIntent(intent!, generation!) ||
               request != _requestGeneration)
-        : (!mounted || request != _requestGeneration)) {
+        : (!_isCurrentPrivacy(privacy) || request != _requestGeneration)) {
       return;
     }
     if (result is TaskApiUnavailable<TaskDetailSnapshot>) {
@@ -473,6 +558,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                 taskApi: _tasks,
                 onTaskChanged: _replaceDetail,
                 onOpenRecordRoute: _openRecordRoute,
+                onDraftChanged: _draftChanged,
                 fullScreen: true,
                 onClose: () => Navigator.of(context).pop(),
               ),
@@ -487,6 +573,9 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       mounted &&
       widget.pendingIntent == intent &&
       _intentGeneration == generation;
+
+  bool _isCurrentPrivacy(int privacy) =>
+      mounted && privacy == _privacyGeneration;
 
   void _replaceDetail(TaskDetailSnapshot detail) {
     if (!mounted) return;
@@ -506,13 +595,14 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     if (_bulkBusy) return;
     final board = _board;
     if (board == null || page < 1 || page > _lastPage) return;
+    final privacy = _privacyGeneration;
     final result = await _tasks.boardRows(
       board.id,
       viewId: _activeViewId,
       configuration: _configuration,
       page: page,
     );
-    if (!mounted) return;
+    if (!_isCurrentPrivacy(privacy)) return;
     if (result is TaskApiUnavailable<TaskRowsPage>) {
       _evict(result.message);
       return;
@@ -524,6 +614,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
         _lastPage = result.data.lastPage;
         _total = result.data.total;
         _statusSummaries = result.data.statusSummaries;
+        _groupCounts = result.data.groupCounts;
         _boardEtag = result.data.etag;
       });
     }
@@ -545,6 +636,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   Future<void> _selectView(TaskViewDefinition view) async {
     final board = _board;
     if (board == null || view.id == _activeViewId) return;
+    final privacy = _privacyGeneration;
     setState(() {
       _activeViewId = view.id;
       _activeViewVersion = view.version;
@@ -555,7 +647,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _boardEtag = null;
     });
     await _refreshBoardRows(board);
-    if (mounted) {
+    if (_isCurrentPrivacy(privacy) && _board?.id == board.id) {
       final preference = await _tasks.saveViewPreference(
         board.id,
         view.id,
@@ -568,7 +660,8 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           scrollTop: view.preference?.scrollTop ?? 0,
         ),
       );
-      if (mounted && preference is TaskApiUnavailable<TaskViewPreference>) {
+      if (!_isCurrentPrivacy(privacy) || _board?.id != board.id) return;
+      if (preference is TaskApiUnavailable<TaskViewPreference>) {
         _evict(preference.message);
       }
     }
@@ -576,14 +669,15 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
 
   Future<void> _saveView(TaskViewDefinition view) async {
     final board = _board;
-    if (board == null || !_viewDirty) return;
+    if (board == null || !_viewDirty || !view.can('update')) return;
+    final privacy = _privacyGeneration;
     final result = await _tasks.updateView(
       board.id,
       view.id,
       expectedViewVersion: view.version,
       changes: <String, Object?>{'configuration': _configuration.toJson()},
     );
-    if (!mounted) return;
+    if (!_isCurrentPrivacy(privacy) || _board?.id != board.id) return;
     if (result is TaskApiUnavailable<TaskViewMutationResult>) {
       _evict(result.message);
     } else if (result is TaskApiConflictResult<TaskViewMutationResult> ||
@@ -609,7 +703,14 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     bool locked,
   ) async {
     final board = _board;
-    if (board == null || name.trim().isEmpty) return;
+    if (board == null ||
+        name.trim().isEmpty ||
+        (visibility == TaskViewVisibility.personal &&
+            !_canCreatePersonalView) ||
+        (visibility == TaskViewVisibility.shared && !_canCreateSharedView)) {
+      return;
+    }
+    final privacy = _privacyGeneration;
     final result = await _tasks.createView(
       board.id,
       name: name.trim(),
@@ -620,7 +721,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           ? board.structureVersion
           : null,
     );
-    if (!mounted) return;
+    if (!_isCurrentPrivacy(privacy) || _board?.id != board.id) return;
     if (result is TaskApiUnavailable<TaskViewMutationResult>) {
       _evict(result.message);
     } else if (result is TaskApiConflictResult<TaskViewMutationResult>) {
@@ -635,7 +736,10 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       });
       if (visibility == TaskViewVisibility.shared) {
         final refreshed = await _tasks.board(board.id);
-        if (mounted && refreshed is TaskApiSuccess<TaskBoard>) {
+        if (!_isCurrentPrivacy(privacy) || _board?.id != board.id) return;
+        if (refreshed is TaskApiUnavailable<TaskBoard>) {
+          _evict(refreshed.message);
+        } else if (refreshed is TaskApiSuccess<TaskBoard>) {
           setState(() => _board = refreshed.data);
         }
       }
@@ -644,14 +748,15 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
 
   Future<void> _duplicateView(TaskViewDefinition view) async {
     final board = _board;
-    if (board == null) return;
+    if (board == null || !view.can('duplicate')) return;
+    final privacy = _privacyGeneration;
     final result = await _tasks.duplicateView(
       board.id,
       view.id,
       name: '${view.name} copy',
       expectedViewVersion: view.version,
     );
-    if (!mounted) return;
+    if (!_isCurrentPrivacy(privacy) || _board?.id != board.id) return;
     if (result is TaskApiUnavailable<TaskViewDefinition>) {
       _evict(result.message);
     } else if (result is TaskApiConflictResult<TaskViewDefinition>) {
@@ -664,7 +769,8 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
 
   Future<void> _deleteView(TaskViewDefinition view) async {
     final board = _board;
-    if (board == null) return;
+    if (board == null || !view.can('delete')) return;
+    final privacy = _privacyGeneration;
     final result = await _tasks.deleteView(
       board.id,
       view.id,
@@ -675,12 +781,25 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           ? board.structureVersion
           : null,
     );
-    if (!mounted) return;
+    if (!_isCurrentPrivacy(privacy) || _board?.id != board.id) return;
     if (result is TaskApiUnavailable<bool>) {
       _evict(result.message);
     } else if (result is TaskApiConflictResult<bool>) {
       setState(() => _conflict = true);
     } else if (result is TaskApiSuccess<bool>) {
+      if (view.visibility == TaskViewVisibility.shared) {
+        final refreshed = await _tasks.board(board.id);
+        if (!_isCurrentPrivacy(privacy) || _board?.id != board.id) return;
+        if (refreshed is TaskApiUnavailable<TaskBoard>) {
+          _evict(refreshed.message);
+          return;
+        }
+        if (refreshed is! TaskApiSuccess<TaskBoard>) {
+          setState(() => _conflict = true);
+          return;
+        }
+        setState(() => _board = refreshed.data);
+      }
       setState(() {
         _views = _views.where((current) => current.id != view.id).toList();
       });
@@ -694,12 +813,13 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   Future<void> _rename(TaskRow task, String title) async {
     final trimmed = title.trim();
     if (trimmed.isEmpty || trimmed == task.title) return;
+    final privacy = _privacyGeneration;
     final result = await _tasks.updateTask(
       task.id,
       expectedTaskVersion: task.version,
       changes: <String, Object?>{'title': trimmed},
     );
-    if (!mounted) return;
+    if (!_isCurrentPrivacy(privacy)) return;
     if (result is TaskApiUnavailable<TaskRow>) {
       _evict(result.message);
       return;
@@ -720,6 +840,10 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   void _announce(String message) {
     if (!mounted) return;
     setState(() => _announcement = message);
+  }
+
+  void _draftChanged(String draftId, bool dirty) {
+    dirty ? _dirtyDraftIds.add(draftId) : _dirtyDraftIds.remove(draftId);
   }
 
   TaskRow _replaceRow(
@@ -811,7 +935,6 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     final task = _rows.where((row) => row.id == taskId).firstOrNull;
     if (task == null) return;
     final optimistic = switch (field) {
-      'title' => _replaceRow(task, title: value as String),
       'owner_user_id' => _replaceRow(
         task,
         ownerUserId: value as String?,
@@ -827,21 +950,17 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
         priorityOptionId: value as String?,
         clearPriority: value == null,
       ),
-      'due_on' => _replaceRow(
-        task,
-        dueOn: value == null ? null : DateTime.tryParse(value as String),
-        clearDue: value == null,
-      ),
       _ => task,
     };
-    _putRow(optimistic);
+    if (!identical(optimistic, task)) _putRow(optimistic);
     _announce('Saving ${field.replaceAll('_', ' ')}.');
+    final privacy = _privacyGeneration;
     final result = await _tasks.updateTask(
       task.id,
       expectedTaskVersion: task.version,
       changes: <String, Object?>{field: value},
     );
-    if (!mounted) return;
+    if (!_isCurrentPrivacy(privacy)) return;
     if (result is TaskApiSuccess<TaskRow>) {
       _putRow(_mergeServerRow(task, result.data));
       _announce('${field.replaceAll('_', ' ')} saved.');
@@ -871,13 +990,14 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     final task = _rows.where((row) => row.id == taskId).firstOrNull;
     if (task == null) return;
     _announce('Saving ${column.name}.');
+    final privacy = _privacyGeneration;
     final result = await _tasks.updateColumnValue(
       task.id,
       column.id,
       expectedTaskVersion: task.version,
       value: value,
     );
-    if (!mounted) return;
+    if (!_isCurrentPrivacy(privacy)) return;
     if (result is TaskApiSuccess<TaskColumnValueMutation>) {
       final values = Map<String, TaskCellValue>.from(task.values);
       values[column.id] = TaskCellValue.fromJson(
@@ -907,6 +1027,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   Future<void> _bulk(List<TaskRow> tasks, Map<String, Object?> changes) async {
     final board = _board;
     if (board == null || _bulkBusy) return;
+    final privacy = _privacyGeneration;
     final selectedIds = tasks.map((task) => task.id).toSet();
     setState(() {
       _bulkBusy = true;
@@ -916,7 +1037,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       await Future.wait(
         selectedIds.map((id) => _mutationQueues[id] ?? Future<void>.value()),
       );
-      if (!mounted || _board?.id != board.id) return;
+      if (!_isCurrentPrivacy(privacy) || _board?.id != board.id) return;
       final latest = selectedIds
           .map((id) => _rows.where((row) => row.id == id).firstOrNull)
           .whereType<TaskRow>()
@@ -936,7 +1057,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
             .toList(growable: false),
         changes: changes,
       );
-      if (!mounted) return;
+      if (!_isCurrentPrivacy(privacy) || _board?.id != board.id) return;
       if (result is TaskApiSuccess<List<TaskRow>>) {
         for (final row in result.data) {
           final previous = _rows
@@ -963,11 +1084,12 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _createBoard(String name) async {
+    final privacy = _privacyGeneration;
     final result = await _tasks.createBoard(
       name: name,
       visibility: TaskBoardVisibility.scope,
     );
-    if (!mounted) return;
+    if (!_isCurrentPrivacy(privacy)) return;
     if (result is TaskApiSuccess<TaskBoard>) {
       setState(() {
         _creating = false;
@@ -994,14 +1116,19 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _error = null;
       _unavailable = true;
       _views = const [];
+      _canCreatePersonalView = false;
+      _canCreateSharedView = false;
       _activeViewId = null;
       _configuration = TaskViewConfiguration.empty;
       _boardEtag = null;
       _myTasks = null;
+      _myTaskPages.clear();
       _myTasksError = null;
       _showMyTasks = false;
       _total = 0;
       _statusSummaries = const [];
+      _groupCounts = const [];
+      _dirtyDraftIds.clear();
       _privacyGeneration++;
     });
     _mobileDetail.value = null;
@@ -1063,7 +1190,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
         )
       : _showViewEditor
       ? _NewViewPane(
-          canShare: widget.session.me?.can('tasks.manage') ?? false,
+          canShare: _canCreateSharedView,
           onCancel: () => setState(() => _showViewEditor = false),
           onCreate: _createView,
         )
@@ -1074,6 +1201,8 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           error: _myTasksError,
           onRetry: _loadMyTasks,
           onOpen: _openMyTask,
+          onLoadMore: _loadMoreMyTasks,
+          loadingMore: _myTasksLoadingMore,
         )
       : _showDirectory || _board == null
       ? _directoryOnly()
@@ -1238,13 +1367,6 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
         );
 
   Widget _boardControls() {
-    final me = widget.session.me;
-    final writable = me != null && !me.organization.isReadOnly;
-    final capabilities = TaskViewCapabilities(
-      personalViews: writable,
-      sharedUnlockedViews: writable && me.can('tasks.edit'),
-      sharedLockedViews: writable && me.can('tasks.manage'),
-    );
     final statusNames = <String?, String>{
       for (final status in _board?.statuses ?? const <TaskStatusOption>[])
         status.id: status.name,
@@ -1257,7 +1379,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           TaskViewsBar(
             views: _views,
             activeViewId: _activeViewId,
-            capabilities: capabilities,
+            canCreatePersonal: _canCreatePersonalView,
             dirty: _viewDirty,
             onSelected: _selectView,
             onCreate: () => setState(() => _showViewEditor = true),
@@ -1313,6 +1435,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           taskApi: _tasks,
           onTaskChanged: _replaceDetail,
           onOpenRecordRoute: _openRecordRoute,
+          onDraftChanged: _draftChanged,
           fullScreen: true,
           onClose: () => setState(() => _detailOpen = false),
         );
@@ -1364,8 +1487,8 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                     owners: _owners,
                     people: _people,
                     configuration: _configuration,
-                    onEditorDirtyChanged: (dirty) =>
-                        setState(() => _editorDirty = dirty),
+                    groupCounts: _groupCounts,
+                    onDraftChanged: _draftChanged,
                     onSelectionChanged: (count) => _announce(
                       count == 0
                           ? 'Selection cleared.'
@@ -1396,6 +1519,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                 taskApi: _tasks,
                 onTaskChanged: _replaceDetail,
                 onOpenRecordRoute: _openRecordRoute,
+                onDraftChanged: _draftChanged,
                 onClose: () => setState(() => _detailOpen = false),
               ),
             ),

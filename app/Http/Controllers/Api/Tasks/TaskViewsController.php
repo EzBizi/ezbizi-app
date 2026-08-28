@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Tasks;
 use App\Models\TaskBoard;
 use App\Models\TaskView;
 use App\Models\TaskViewPreference;
+use App\Models\User;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\TaskBoardAccess;
 use App\Support\Tasks\TaskStructureConflict;
@@ -34,7 +35,10 @@ final class TaskViewsController extends TaskApiController
             ->with(['preferences' => fn ($query) => $query->where('user_id', $request->user()->id)])
             ->orderBy('visibility')->orderBy('position')->get();
 
-        return response()->json(['data' => $views->map(fn (TaskView $view) => $this->present($view))->values()]);
+        return response()->json([
+            'data' => $views->map(fn (TaskView $view) => $this->present($view, $request->user(), $board, $scope))->values(),
+            'meta' => ['capabilities' => $this->creationCapabilities($request->user(), $board, $scope)],
+        ]);
     }
 
     public function store(Request $request, TaskBoard $board): JsonResponse
@@ -47,14 +51,15 @@ final class TaskViewsController extends TaskApiController
             'expected_structure_version' => ['sometimes', 'integer', 'min:1'],
         ]);
 
+        $scope = ViewScope::forUser($request->user());
         try {
-            $result = $this->writer->create($request->user(), $board, ViewScope::forUser($request->user()), $input);
+            $result = $this->writer->create($request->user(), $board, $scope, $input);
         } catch (TaskStructureConflict $conflict) {
             return $this->structureConflict($conflict);
         }
 
         return response()->json([
-            'data' => $this->present($result['view']),
+            'data' => $this->present($result['view'], $request->user(), $board, $scope),
             'meta' => ['structure_version' => $result['structure_version']],
         ], Response::HTTP_CREATED);
     }
@@ -70,16 +75,17 @@ final class TaskViewsController extends TaskApiController
             'configuration' => ['sometimes', 'array'],
         ]);
 
+        $scope = ViewScope::forUser($request->user());
         try {
-            $result = $this->writer->update($request->user(), $board, ViewScope::forUser($request->user()), $viewId, $input);
+            $result = $this->writer->update($request->user(), $board, $scope, $viewId, $input);
         } catch (TaskViewConflict $conflict) {
-            return $this->viewConflict($conflict);
+            return $this->viewConflict($conflict, $request->user(), $board, $scope);
         } catch (TaskStructureConflict $conflict) {
             return $this->structureConflict($conflict);
         }
 
         return response()->json([
-            'data' => $this->present($result['view']),
+            'data' => $this->present($result['view'], $request->user(), $board, $scope),
             'meta' => ['structure_version' => $result['structure_version']],
         ]);
     }
@@ -90,10 +96,11 @@ final class TaskViewsController extends TaskApiController
             'expected_view_version' => ['sometimes', 'integer', 'min:1'],
             'expected_structure_version' => ['sometimes', 'integer', 'min:1'],
         ]);
+        $scope = ViewScope::forUser($request->user());
         try {
-            $this->writer->delete($request->user(), $board, ViewScope::forUser($request->user()), $viewId, $input);
+            $this->writer->delete($request->user(), $board, $scope, $viewId, $input);
         } catch (TaskViewConflict $conflict) {
-            return $this->viewConflict($conflict);
+            return $this->viewConflict($conflict, $request->user(), $board, $scope);
         } catch (TaskStructureConflict $conflict) {
             return $this->structureConflict($conflict);
         }
@@ -107,16 +114,19 @@ final class TaskViewsController extends TaskApiController
             'name' => ['required', 'string', 'max:191'],
             'expected_view_version' => ['required', 'integer', 'min:1'],
         ]);
+        $scope = ViewScope::forUser($request->user());
         try {
             $copy = $this->writer->duplicate(
-                $request->user(), $board, ViewScope::forUser($request->user()), $viewId,
+                $request->user(), $board, $scope, $viewId,
                 $input['name'], (int) $input['expected_view_version'],
             );
         } catch (TaskViewConflict $conflict) {
-            return $this->viewConflict($conflict);
+            return $this->viewConflict($conflict, $request->user(), $board, $scope);
         }
 
-        return response()->json(['data' => $this->present($copy)], Response::HTTP_CREATED);
+        return response()->json([
+            'data' => $this->present($copy, $request->user(), $board, $scope),
+        ], Response::HTTP_CREATED);
     }
 
     public function reorder(Request $request, TaskBoard $board): JsonResponse
@@ -129,16 +139,19 @@ final class TaskViewsController extends TaskApiController
             'expected_view_versions' => ['required_if:visibility,personal', 'array'],
             'expected_view_versions.*' => ['integer', 'min:1'],
         ]);
+        $scope = ViewScope::forUser($request->user());
         try {
-            $result = $this->writer->reorder($request->user(), $board, ViewScope::forUser($request->user()), $input);
+            $result = $this->writer->reorder($request->user(), $board, $scope, $input);
         } catch (TaskViewConflict $conflict) {
-            return $this->viewConflict($conflict);
+            return $this->viewConflict($conflict, $request->user(), $board, $scope);
         } catch (TaskStructureConflict $conflict) {
             return $this->structureConflict($conflict);
         }
 
         return response()->json([
-            'data' => collect($result['views'])->map(fn (TaskView $view) => $this->present($view))->values(),
+            'data' => collect($result['views'])->map(
+                fn (TaskView $view) => $this->present($view, $request->user(), $board, $scope)
+            )->values(),
             'meta' => ['structure_version' => $result['structure_version']],
         ]);
     }
@@ -160,11 +173,16 @@ final class TaskViewsController extends TaskApiController
         return response()->json(['data' => $this->presentPreference($preference)]);
     }
 
-    private function viewConflict(TaskViewConflict $conflict): JsonResponse
+    private function viewConflict(
+        TaskViewConflict $conflict,
+        User $actor,
+        TaskBoard $board,
+        ViewScope $scope,
+    ): JsonResponse
     {
         return response()->json([
             'message' => $conflict->getMessage(),
-            'data' => $this->present($conflict->view),
+            'data' => $this->present($conflict->view, $actor, $board, $scope),
             'meta' => ['current_view_version' => (int) $conflict->view->version],
         ], Response::HTTP_CONFLICT);
     }
@@ -177,7 +195,7 @@ final class TaskViewsController extends TaskApiController
         ], Response::HTTP_CONFLICT);
     }
 
-    private function present(TaskView $view): array
+    private function present(TaskView $view, User $actor, TaskBoard $board, ViewScope $scope): array
     {
         $configuration = $view->configuration;
         $configuration['column_widths'] = (object) ($configuration['column_widths'] ?? []);
@@ -193,9 +211,44 @@ final class TaskViewsController extends TaskApiController
             'configuration' => $configuration,
             'version' => (int) $view->version,
             'position' => (int) $view->position,
+            'actions' => $this->viewActions($view, $actor, $board, $scope),
             'preference' => $view->relationLoaded('preferences') && $view->preferences->first()
                 ? $this->presentPreference($view->preferences->first()) : null,
         ];
+    }
+
+    /** @return array{create_personal:bool,create_shared:bool} */
+    private function creationCapabilities(User $actor, TaskBoard $board, ViewScope $scope): array
+    {
+        $writable = $this->writable($actor, $board, $scope);
+
+        return [
+            'create_personal' => $writable,
+            'create_shared' => $writable && $this->access->manageDecision($actor, $board, $scope)->allowed(),
+        ];
+    }
+
+    /** @return list<string> */
+    private function viewActions(TaskView $view, User $actor, TaskBoard $board, ViewScope $scope): array
+    {
+        $writable = $this->writable($actor, $board, $scope);
+        $manage = $writable && $this->access->manageDecision($actor, $board, $scope)->allowed();
+        $personal = $view->visibility === 'personal' && $view->owner_user_id === $actor->id;
+        $update = $personal
+            ? $writable
+            : ($view->is_locked ? $manage : $writable && $actor->hasPermission('tasks.edit'));
+
+        return array_values(array_filter([
+            $update ? 'update' : null,
+            $view->visibility === 'shared' && $writable ? 'duplicate' : null,
+            ! $view->is_permanent_main && ($personal ? $writable : $manage) ? 'delete' : null,
+        ]));
+    }
+
+    private function writable(User $actor, TaskBoard $board, ViewScope $scope): bool
+    {
+        return $this->access->viewDecision($actor, $board, $scope)->allowed()
+            && ! $actor->organization?->isReadOnly();
     }
 
     private function presentPreference(TaskViewPreference $preference): array

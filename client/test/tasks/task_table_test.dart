@@ -16,6 +16,9 @@ void main() {
             body: TaskTable(
               board: _board,
               rows: const [_row],
+              groupCounts: const [
+                TaskGroupCount(groupId: 'group-1', value: 'group-1', count: 12),
+              ],
               selectedTaskId: null,
               onSelected: (_) {},
               onTitleChanged: (_, _) {},
@@ -24,10 +27,10 @@ void main() {
         ),
       );
 
-      expect(find.text('To do'), findsOneWidget);
+      expect(find.text('To do · 12'), findsOneWidget);
       expect(find.text('Measure opening'), findsOneWidget);
       expect(find.text('Task'), findsOneWidget);
-      await tester.tap(find.byTooltip('Collapse To do'));
+      await tester.tap(find.byTooltip('Collapse To do · 12'));
       await tester.pump();
       expect(find.text('Measure opening'), findsNothing);
     },

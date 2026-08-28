@@ -56,7 +56,7 @@ class TaskViewsApiTest extends TestCase
         $configuration = $this->configuration([
             'filters' => [['field' => 'due_on', 'operator' => 'between', 'value' => ['2026-09-01', '2026-09-30']]],
             'sorts' => [['field' => 'due_on', 'direction' => 'desc']],
-            'hidden_columns' => ['owner'],
+            'hidden_columns' => ['task', 'owner'],
             'column_order' => ['task', 'due_on', 'status'],
             'column_widths' => ['task' => 320],
             'group_by' => 'status',
@@ -68,7 +68,10 @@ class TaskViewsApiTest extends TestCase
         $response = $this->getJson($url)->assertOk()
             ->assertJsonPath('data.0.id', $this->second->id)
             ->assertJsonPath('meta.total', 2)
-            ->assertJsonPath('meta.configuration.group_by', 'status');
+            ->assertJsonPath('meta.configuration.group_by', 'status')
+            ->assertJsonPath('meta.configuration.hidden_columns', ['owner'])
+            ->assertJsonPath('meta.configuration.column_order', ['due_on', 'status'])
+            ->assertJsonMissingPath('meta.configuration.column_widths.task');
         $this->assertSame(2, array_sum(array_column($response->json('meta.status_summaries'), 'count')));
         $this->assertCount(2, $response->json('meta.group_counts'));
         $etag = $response->headers->get('ETag');
@@ -86,6 +89,21 @@ class TaskViewsApiTest extends TestCase
         $this->getJson("/api/v1/tasks/boards/{$this->board->id}/rows?".http_build_query([
             'configuration' => json_encode($configuration),
         ]))->assertUnprocessable()->assertJsonValidationErrors('configuration.filters.0.value');
+
+        $this->enterTenant();
+        $this->first = $this->first->fresh();
+        $this->patchJson("/api/v1/tasks/{$this->first->id}", [
+            'expected_version' => $this->first->version,
+            'owner_user_id' => $this->alpha['admin']->id,
+        ])->assertOk();
+        $this->enterTenant();
+        $this->first = $this->first->fresh();
+        $configuration = $this->configuration(['filters' => [[
+            'field' => 'owner', 'operator' => 'contains_any', 'value' => [$this->alpha['admin']->id],
+        ]]]);
+        $this->getJson("/api/v1/tasks/boards/{$this->board->id}/rows?".http_build_query([
+            'configuration' => json_encode($configuration),
+        ]))->assertOk()->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.id', $this->first->id);
         $configuration = $this->configuration(['filters' => [
             'field' => 'owner', 'operator' => 'contains_any', 'value' => [$this->alpha['admin']->id],
         ]]);
@@ -176,6 +194,40 @@ class TaskViewsApiTest extends TestCase
         $this->lookAt($this->alpha['admin']);
         $this->deleteJson("/api/v1/tasks/boards/{$this->board->id}/views/".$this->board->views()->where('is_permanent_main', true)->value('id'))
             ->assertUnprocessable();
+    }
+
+    public function test_view_actions_and_creation_capabilities_are_authored_by_the_server(): void
+    {
+        $personalId = $this->postJson("/api/v1/tasks/boards/{$this->board->id}/views", [
+            'name' => 'Mine', 'visibility' => 'personal', 'configuration' => $this->configuration(),
+        ])->assertCreated()->json('data.id');
+        $structureVersion = $this->board->fresh()->structure_version;
+        $unlockedId = $this->postJson("/api/v1/tasks/boards/{$this->board->id}/views", [
+            'name' => 'Team dispatch', 'visibility' => 'shared', 'is_locked' => false,
+            'expected_structure_version' => $structureVersion, 'configuration' => $this->configuration(),
+        ])->assertCreated()->json('data.id');
+        $lockedId = $this->postJson("/api/v1/tasks/boards/{$this->board->id}/views", [
+            'name' => 'Locked dispatch', 'visibility' => 'shared', 'is_locked' => true,
+            'expected_structure_version' => $structureVersion + 1, 'configuration' => $this->configuration(),
+        ])->assertCreated()->json('data.id');
+
+        $owner = $this->getJson("/api/v1/tasks/boards/{$this->board->id}/views")->assertOk()
+            ->assertJsonPath('meta.capabilities.create_personal', true)
+            ->assertJsonPath('meta.capabilities.create_shared', true);
+        $ownerUnlocked = collect($owner->json('data'))->firstWhere('id', $unlockedId);
+        $this->assertSame(['update', 'duplicate', 'delete'], $ownerUnlocked['actions']);
+        $ownerPersonal = collect($owner->json('data'))->firstWhere('id', $personalId);
+        $this->assertSame(['update', 'delete'], $ownerPersonal['actions']);
+
+        $editor = $this->userWithRole($this->alpha, 'View editor', ['tasks.view', 'tasks.edit']);
+        $this->lookAt($editor);
+        $this->signedInAs($editor);
+        $editorResponse = $this->getJson("/api/v1/tasks/boards/{$this->board->id}/views")->assertOk()
+            ->assertJsonPath('meta.capabilities.create_personal', true)
+            ->assertJsonPath('meta.capabilities.create_shared', false);
+        $views = collect($editorResponse->json('data'))->keyBy('id');
+        $this->assertSame(['update', 'duplicate'], $views[$unlockedId]['actions']);
+        $this->assertSame(['duplicate'], $views[$lockedId]['actions']);
     }
 
     private function createTask(string $title, string $dueOn, string $groupId, string $statusId): Task

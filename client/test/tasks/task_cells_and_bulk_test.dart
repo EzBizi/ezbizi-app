@@ -27,11 +27,17 @@ void main() {
     expect(malformed.rawValue, 'not-a-number');
   });
 
-  test('accepts the canonical decimal-string Number response without losing raw wire value', () {
-    final value = TaskCellValue.fromJson('3.500000', definition: _column('Decimal', TaskColumnKind.number));
-    expect(value.value, 3.5);
-    expect(value.rawValue, '3.500000');
-  });
+  test(
+    'accepts the canonical decimal-string Number response without losing raw wire value',
+    () {
+      final value = TaskCellValue.fromJson(
+        '3.500000',
+        definition: _column('Decimal', TaskColumnKind.number),
+      );
+      expect(value.value, 3.5);
+      expect(value.rawValue, '3.500000');
+    },
+  );
 
   testWidgets('renders each declared custom type and keeps File unavailable', (
     tester,
@@ -84,6 +90,36 @@ void main() {
     expect(TaskColumnCell.isSortable(TaskColumnKind.label), isFalse);
     expect(TaskColumnCell.isSortable(TaskColumnKind.file), isFalse);
     expect(TaskColumnCell.isSortable(TaskColumnKind.number), isTrue);
+  });
+
+  testWidgets('custom text editor reports its stable draft identity', (
+    tester,
+  ) async {
+    final drafts = <String, bool>{};
+    final definition = _column('Text', TaskColumnKind.text);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TaskColumnCell(
+            task: _task,
+            definition: definition,
+            value: const TaskCellValue(
+              kind: TaskColumnKind.text,
+              value: 'A note',
+              rawValue: 'A note',
+              isReadOnly: false,
+            ),
+            onChanged: (_, _) async {},
+            onDraftChanged: (id, dirty) => drafts[id] = dirty,
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'Draft note');
+    expect(drafts['task:task-1:custom:${definition.id}'], isTrue);
+    await tester.enterText(find.byType(TextField), 'A note');
+    expect(drafts['task:task-1:custom:${definition.id}'], isFalse);
   });
 
   test(

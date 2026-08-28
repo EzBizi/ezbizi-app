@@ -50,7 +50,7 @@ class _TaskFiltersPanelState extends State<TaskFiltersPanel> {
     widget.onChanged(next);
   }
 
-  List<(String, String)> get _columns {
+  List<(String, String)> get _queryColumns {
     final labels = <String, String>{
       for (final column in widget.board.coreColumns)
         column.key: column.displayLabel,
@@ -65,10 +65,17 @@ class _TaskFiltersPanelState extends State<TaskFiltersPanel> {
       'start_on': 'Start date',
       'due_on': 'Due date',
     };
-    return _configuration.columnOrder
+    final ordered = <String>[
+      ..._configuration.columnOrder,
+      ...labels.keys.where((key) => !_configuration.columnOrder.contains(key)),
+    ];
+    return ordered
         .map((key) => (key, labels[key] ?? defaults[key] ?? key))
         .toList(growable: false);
   }
+
+  List<(String, String)> get _layoutColumns =>
+      _queryColumns.where((column) => column.$1 != 'task').toList();
 
   String? get _personId {
     for (final filter in _configuration.filters) {
@@ -88,7 +95,11 @@ class _TaskFiltersPanelState extends State<TaskFiltersPanel> {
         .toList();
     if (id != null) {
       filters.add(
-        TaskFilter(field: 'owner', operator: 'in', value: <String>[id]),
+        TaskFilter(
+          field: 'owner',
+          operator: 'contains_any',
+          value: <String>[id],
+        ),
       );
     }
     _change(_configuration.copyWith(filters: List.unmodifiable(filters)));
@@ -202,9 +213,10 @@ class _TaskFiltersPanelState extends State<TaskFiltersPanel> {
               SizedBox(
                 width: 220,
                 child: Semantics(
+                  key: const Key('task-person-filter'),
                   label: 'Filter by person',
                   child: DropdownButtonFormField<String>(
-                    key: const Key('task-person-filter'),
+                    key: ValueKey('person-${_personId ?? 'any'}'),
                     isExpanded: true,
                     initialValue: _personId,
                     decoration: const InputDecoration(labelText: 'Person'),
@@ -223,9 +235,10 @@ class _TaskFiltersPanelState extends State<TaskFiltersPanel> {
               SizedBox(
                 width: 220,
                 child: Semantics(
+                  key: const Key('task-sort-field'),
                   label: 'Sort tasks',
                   child: DropdownButtonFormField<String>(
-                    key: const Key('task-sort-field'),
+                    key: ValueKey('sort-${sort?.field ?? 'board'}'),
                     isExpanded: true,
                     initialValue: sort?.field,
                     decoration: const InputDecoration(labelText: 'Sort by'),
@@ -233,7 +246,7 @@ class _TaskFiltersPanelState extends State<TaskFiltersPanel> {
                       const DropdownMenuItem<String>(
                         child: Text('Board order'),
                       ),
-                      for (final column in _columns)
+                      for (final column in _queryColumns)
                         DropdownMenuItem(
                           value: column.$1,
                           child: Text(column.$2),
@@ -258,9 +271,10 @@ class _TaskFiltersPanelState extends State<TaskFiltersPanel> {
               SizedBox(
                 width: 220,
                 child: Semantics(
+                  key: const Key('task-group-by'),
                   label: 'Group tasks',
                   child: DropdownButtonFormField<String>(
-                    key: const Key('task-group-by'),
+                    key: ValueKey('group-${_configuration.groupBy ?? 'board'}'),
                     isExpanded: true,
                     initialValue: _configuration.groupBy,
                     decoration: const InputDecoration(labelText: 'Group by'),
@@ -268,7 +282,7 @@ class _TaskFiltersPanelState extends State<TaskFiltersPanel> {
                       const DropdownMenuItem<String>(
                         child: Text('Board groups'),
                       ),
-                      for (final column in _columns)
+                      for (final column in _queryColumns)
                         DropdownMenuItem(
                           value: column.$1,
                           child: Text(column.$2),
@@ -283,7 +297,7 @@ class _TaskFiltersPanelState extends State<TaskFiltersPanel> {
           ),
           const SizedBox(height: 14),
           Text('Columns', style: Theme.of(context).textTheme.labelLarge),
-          for (final column in _columns)
+          for (final column in _layoutColumns)
             Row(
               children: [
                 Checkbox(

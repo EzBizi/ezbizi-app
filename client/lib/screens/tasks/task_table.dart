@@ -22,7 +22,8 @@ class TaskTable extends StatefulWidget {
     this.bulkBusy = false,
     this.interactionLocked = false,
     this.configuration = TaskViewConfiguration.empty,
-    this.onEditorDirtyChanged,
+    this.groupCounts = const <TaskGroupCount>[],
+    this.onDraftChanged,
   });
   final TaskBoard board;
   final List<TaskRow> rows;
@@ -41,7 +42,8 @@ class TaskTable extends StatefulWidget {
   final bool bulkBusy;
   final bool interactionLocked;
   final TaskViewConfiguration configuration;
-  final ValueChanged<bool>? onEditorDirtyChanged;
+  final List<TaskGroupCount> groupCounts;
+  final TaskDraftChanged? onDraftChanged;
   @override
   State<TaskTable> createState() => _TaskTableState();
 }
@@ -120,17 +122,14 @@ class _TaskTableState extends State<TaskTable> {
           : row.groupByValue;
       (groups[key] ??= []).add(row);
     }
-    final ids = widget.configuration.groupBy == null
-        ? <Object?>[
-            ...widget.board.groups.where((g) => !g.archived).map((g) => g.id),
-            ...groups.keys.where(
-              (id) => !widget.board.groups.any((g) => g.id == id),
-            ),
-          ]
-        : groups.keys.toList(growable: false);
+    final ids = <Object?>{
+      ...widget.groupCounts.map((count) => count.value),
+      if (widget.configuration.groupBy == null)
+        ...widget.board.groups.where((g) => !g.archived).map((g) => g.id),
+      ...groups.keys,
+    }.toList(growable: false);
     final columns = _visibleColumns();
-    final taskWidth = (widget.configuration.columnWidths['task'] ?? 300)
-        .toDouble();
+    const taskWidth = 300.0;
     return FocusableActionDetector(
       shortcuts: const {
         SingleActivator(LogicalKeyboardKey.escape): _ClearIntent(),
@@ -198,32 +197,30 @@ class _TaskTableState extends State<TaskTable> {
                       controller: _pinned,
                       children: [
                         _header(context, 'Task'),
-                        for (final id in ids)
-                          if (groups[id] case final rows?) ...[
-                            _group(
-                              context,
-                              _groupName(id),
-                              _collapsed.contains(id),
-                              () => setState(
-                                () => _collapsed.contains(id)
-                                    ? _collapsed.remove(id)
-                                    : _collapsed.add(id),
-                              ),
+                        for (final id in ids) ...[
+                          _group(
+                            context,
+                            _groupLabel(id, groups[id] ?? const <TaskRow>[]),
+                            _collapsed.contains(id),
+                            () => setState(
+                              () => _collapsed.contains(id)
+                                  ? _collapsed.remove(id)
+                                  : _collapsed.add(id),
                             ),
-                            if (!_collapsed.contains(id))
-                              for (final row in rows)
-                                _PinnedRow(
-                                  task: row,
-                                  selected: row.id == widget.selectedTaskId,
-                                  checked: _selection.contains(row.id),
-                                  onSelect: () => widget.onSelected(row),
-                                  onCheck: () => _toggle(row),
-                                  onTitle: (title) =>
-                                      _core(row, 'title', title),
-                                  onDirtyChanged: (dirty) =>
-                                      widget.onEditorDirtyChanged?.call(dirty),
-                                ),
-                          ],
+                          ),
+                          if (!_collapsed.contains(id))
+                            for (final row in groups[id] ?? const <TaskRow>[])
+                              _PinnedRow(
+                                task: row,
+                                selected: row.id == widget.selectedTaskId,
+                                checked: _selection.contains(row.id),
+                                onSelect: () => widget.onSelected(row),
+                                onCheck: () => _toggle(row),
+                                onTitle: (title) => _core(row, 'title', title),
+                                onDirtyChanged: (dirty) => widget.onDraftChanged
+                                    ?.call('task:${row.id}:title', dirty),
+                              ),
+                        ],
                       ],
                     ),
                   ),
@@ -239,23 +236,24 @@ class _TaskTableState extends State<TaskTable> {
                           controller: _columns,
                           children: [
                             _OperationalHeader(columns: columns),
-                            for (final id in ids)
-                              if (groups[id] case final rows?) ...[
-                                _groupSpacer(context),
-                                if (!_collapsed.contains(id))
-                                  for (final row in rows)
-                                    _OperationalRow(
-                                      task: row,
-                                      board: widget.board,
-                                      columns: columns,
-                                      owners: widget.owners,
-                                      people: widget.people,
-                                      onCore: (field, value) =>
-                                          _core(row, field, value),
-                                      onCustom: (column, value) =>
-                                          _custom(row, column, value),
-                                    ),
-                              ],
+                            for (final id in ids) ...[
+                              _groupSpacer(context),
+                              if (!_collapsed.contains(id))
+                                for (final row
+                                    in groups[id] ?? const <TaskRow>[])
+                                  _OperationalRow(
+                                    task: row,
+                                    board: widget.board,
+                                    columns: columns,
+                                    owners: widget.owners,
+                                    people: widget.people,
+                                    onCore: (field, value) =>
+                                        _core(row, field, value),
+                                    onCustom: (column, value) =>
+                                        _custom(row, column, value),
+                                    onDraftChanged: widget.onDraftChanged,
+                                  ),
+                            ],
                           ],
                         ),
                       ),
@@ -359,6 +357,12 @@ class _TaskTableState extends State<TaskTable> {
             'Unassigned',
       _ => value?.toString() ?? 'No value',
     };
+  }
+
+  String _groupLabel(Object? value, List<TaskRow> rows) {
+    final matches = widget.groupCounts.where((count) => count.value == value);
+    final count = matches.isEmpty ? null : matches.first.count;
+    return count == null ? _groupName(value) : '${_groupName(value)} · $count';
   }
 }
 
@@ -489,7 +493,7 @@ class _PinnedRow extends StatefulWidget {
   final bool checked;
   final VoidCallback onSelect;
   final VoidCallback onCheck;
-  final ValueChanged<String> onTitle;
+  final Future<void> Function(String) onTitle;
   final ValueChanged<bool> onDirtyChanged;
   @override
   State<_PinnedRow> createState() => _PinnedRowState();
@@ -498,16 +502,22 @@ class _PinnedRow extends StatefulWidget {
 class _PinnedRowState extends State<_PinnedRow> {
   late final _title = TextEditingController(text: widget.task.title);
   late final _focus = FocusNode();
+  bool _dirty = false;
   @override
   void didUpdateWidget(covariant _PinnedRow old) {
     super.didUpdateWidget(old);
-    if (!_focus.hasFocus && old.task.title != widget.task.title) {
+    if (old.task.title == widget.task.title) return;
+    if (_title.text == widget.task.title) {
+      _dirty = false;
+      widget.onDirtyChanged(false);
+    } else if (!_dirty) {
       _title.text = widget.task.title;
     }
   }
 
   @override
   void dispose() {
+    if (_dirty) widget.onDirtyChanged(false);
     _title.dispose();
     _focus.dispose();
     super.dispose();
@@ -545,11 +555,12 @@ class _PinnedRowState extends State<_PinnedRow> {
                   isDense: true,
                 ),
                 onTap: widget.onSelect,
-                onChanged: (value) =>
-                    widget.onDirtyChanged(value != widget.task.title),
-                onSubmitted: (value) {
-                  widget.onTitle(value);
-                  widget.onDirtyChanged(false);
+                onChanged: (value) {
+                  _dirty = value != widget.task.title;
+                  widget.onDirtyChanged(_dirty);
+                },
+                onSubmitted: (value) async {
+                  await widget.onTitle(value);
                 },
               ),
             ),
@@ -605,6 +616,7 @@ class _OperationalRow extends StatelessWidget {
     required this.people,
     required this.onCore,
     required this.onCustom,
+    this.onDraftChanged,
   });
   final TaskRow task;
   final TaskBoard board;
@@ -613,6 +625,7 @@ class _OperationalRow extends StatelessWidget {
   final List<TaskParticipant> people;
   final Future<void> Function(String, Object?) onCore;
   final Future<void> Function(TaskColumnDefinition, Object?) onCustom;
+  final TaskDraftChanged? onDraftChanged;
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
@@ -650,6 +663,7 @@ class _OperationalRow extends StatelessWidget {
             ),
         participants: people,
         onChanged: onCustom,
+        onDraftChanged: onDraftChanged,
       );
     }
     return switch (column.key) {
@@ -695,6 +709,8 @@ class _OperationalRow extends StatelessWidget {
         child: _Date(
           value: task.startOn,
           changed: (value) => onCore('start_on', value),
+          draftId: 'task:${task.id}:core:start_on',
+          onDraftChanged: onDraftChanged,
         ),
       ),
       'due_on' => Semantics(
@@ -702,6 +718,8 @@ class _OperationalRow extends StatelessWidget {
         child: _Date(
           value: task.dueOn,
           changed: (value) => onCore('due_on', value),
+          draftId: 'task:${task.id}:core:due_on',
+          onDraftChanged: onDraftChanged,
         ),
       ),
       _ => const SizedBox.shrink(),
@@ -773,9 +791,16 @@ class _ArchivedOrOption extends StatelessWidget {
 }
 
 class _Date extends StatefulWidget {
-  const _Date({required this.value, required this.changed});
+  const _Date({
+    required this.value,
+    required this.changed,
+    required this.draftId,
+    this.onDraftChanged,
+  });
   final DateTime? value;
-  final ValueChanged<String?> changed;
+  final Future<void> Function(String?) changed;
+  final String draftId;
+  final TaskDraftChanged? onDraftChanged;
   @override
   State<_Date> createState() => _DateState();
 }
@@ -786,8 +811,27 @@ class _DateState extends State<_Date> {
         ? ''
         : '${widget.value!.year.toString().padLeft(4, '0')}-${widget.value!.month.toString().padLeft(2, '0')}-${widget.value!.day.toString().padLeft(2, '0')}',
   );
+  bool _dirty = false;
+
+  String get _initialText => widget.value == null
+      ? ''
+      : '${widget.value!.year.toString().padLeft(4, '0')}-${widget.value!.month.toString().padLeft(2, '0')}-${widget.value!.day.toString().padLeft(2, '0')}';
+
+  @override
+  void didUpdateWidget(covariant _Date oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value == widget.value) return;
+    if (_controller.text == _initialText) {
+      _dirty = false;
+      widget.onDraftChanged?.call(widget.draftId, false);
+    } else if (!_dirty) {
+      _controller.text = _initialText;
+    }
+  }
+
   @override
   void dispose() {
+    if (_dirty) widget.onDraftChanged?.call(widget.draftId, false);
     _controller.dispose();
     super.dispose();
   }
@@ -796,8 +840,13 @@ class _DateState extends State<_Date> {
   Widget build(BuildContext context) => TextField(
     controller: _controller,
     decoration: const InputDecoration(isDense: true, hintText: 'YYYY-MM-DD'),
-    onSubmitted: (value) =>
-        widget.changed(value.trim().isEmpty ? null : value.trim()),
+    onChanged: (value) {
+      _dirty = value != _initialText;
+      widget.onDraftChanged?.call(widget.draftId, _dirty);
+    },
+    onSubmitted: (value) async {
+      await widget.changed(value.trim().isEmpty ? null : value.trim());
+    },
   );
 }
 

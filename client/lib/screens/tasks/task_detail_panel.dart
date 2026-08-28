@@ -12,6 +12,7 @@ class TaskDetailPanel extends StatelessWidget {
     required this.onOpenRecordRoute,
     required this.onClose,
     this.fullScreen = false,
+    this.onDraftChanged,
   });
   final TaskDetailSnapshot? task;
   final TaskApi taskApi;
@@ -19,6 +20,10 @@ class TaskDetailPanel extends StatelessWidget {
   final ValueChanged<String> onOpenRecordRoute;
   final VoidCallback onClose;
   final bool fullScreen;
+
+  /// Reserved for detail editors and the Task 17B update composer so they join
+  /// the board's convergence draft registry by stable identity.
+  final TaskDraftChanged? onDraftChanged;
   @override
   Widget build(BuildContext context) {
     if (task == null) {

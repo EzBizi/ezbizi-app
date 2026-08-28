@@ -80,7 +80,7 @@ void main() {
       expect(view.configuration.presentation, TaskViewPresentation.table);
       expect(view.configuration.filters.single.field, 'due_on');
       expect(view.configuration.sorts.single.direction, TaskSortDirection.desc);
-      expect(view.configuration.columnWidths['task'], 320);
+      expect(view.configuration.columnWidths['task'], isNull);
       expect(view.preference?.density, TaskViewDensity.compact);
     });
 
@@ -214,6 +214,24 @@ void main() {
         );
       },
     );
+    test('normalizes the pinned task identity out of layout mutations', () {
+      final json = Map<String, Object?>.from(
+        _viewFixture()['configuration']! as Map<String, Object?>,
+      );
+      json['hidden_columns'] = <Object?>['task', 'owner'];
+      json['column_order'] = <Object?>['due_on', 'task', 'status'];
+      json['column_widths'] = <String, Object?>{'task': 360, 'due_on': 180};
+
+      final configuration = TaskViewConfiguration.fromJson(json);
+
+      expect(configuration.hiddenColumns, <String>['owner']);
+      expect(configuration.columnOrder, <String>['due_on', 'status']);
+      expect(configuration.columnWidths, <String, int>{'due_on': 180});
+      expect(configuration.toJson()['column_order'], <String>[
+        'due_on',
+        'status',
+      ]);
+    });
   });
 }
 

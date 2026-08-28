@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -8,6 +9,34 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  test(
+    'an authorized read cannot restore a board cache after eviction',
+    () async {
+      final response = Completer<http.Response>();
+      var requests = 0;
+      final api = TaskApi(
+        ApiClient(
+          client: MockClient((request) async {
+            requests++;
+            if (request.url.path.endsWith('/board-1')) return response.future;
+            return _json(500, <String, Object?>{
+              'message': 'Unexpected request',
+            });
+          }),
+        ),
+      );
+
+      final pending = api.board('board-1');
+      api.clearCache();
+      response.complete(_json(200, <String, Object?>{'data': _minimalBoard()}));
+      expect(await pending, isA<TaskApiSuccess<TaskBoard>>());
+
+      final rows = await api.boardRows('board-1');
+      expect(rows, isA<TaskApiFailure<TaskRowsPage>>());
+      expect(requests, 1);
+    },
+  );
+
   test('loads a typed board directory from the Tasks endpoint', () async {
     var call = 0;
     final api = TaskApi(

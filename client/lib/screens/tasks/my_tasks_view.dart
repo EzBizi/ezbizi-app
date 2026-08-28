@@ -10,6 +10,8 @@ class MyTasksView extends StatelessWidget {
     this.loading = false,
     this.error,
     this.onRetry,
+    this.onLoadMore,
+    this.loadingMore = false,
   });
 
   final TaskMyTasksPage? page;
@@ -17,6 +19,8 @@ class MyTasksView extends StatelessWidget {
   final bool loading;
   final String? error;
   final VoidCallback? onRetry;
+  final VoidCallback? onLoadMore;
+  final bool loadingMore;
 
   @override
   Widget build(BuildContext context) {
@@ -43,9 +47,19 @@ class MyTasksView extends StatelessWidget {
     }
     return ListView.separated(
       padding: const EdgeInsets.all(12),
-      itemCount: current.items.length,
+      itemCount:
+          current.items.length +
+          (current.page < current.lastPage && onLoadMore != null ? 1 : 0),
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
+        if (index == current.items.length) {
+          return Center(
+            child: TextButton(
+              onPressed: loadingMore ? null : onLoadMore,
+              child: Text(loadingMore ? 'Loading more…' : 'Load more tasks'),
+            ),
+          );
+        }
         final item = current.items[index];
         final due = item.task.dueOn;
         return ListTile(

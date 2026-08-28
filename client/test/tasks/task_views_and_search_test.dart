@@ -33,6 +33,12 @@ void main() {
                 'data': <Object?>[
                   _view(name: 'Main', locked: true, permanent: true),
                 ],
+                'meta': <String, Object?>{
+                  'capabilities': <String, Object?>{
+                    'create_personal': true,
+                    'create_shared': false,
+                  },
+                },
               });
             }
             if (path.endsWith('/duplicate')) {
@@ -111,7 +117,9 @@ void main() {
         expectedViewVersion: 3,
       );
 
-      expect(listed.value?.single.isPermanentMain, isTrue);
+      expect(listed.value?.views.single.isPermanentMain, isTrue);
+      expect(listed.value?.canCreatePersonal, isTrue);
+      expect(listed.value?.canCreateShared, isFalse);
       expect(created.value?.definition.configuration.search, isEmpty);
       expect(updated.value?.structureVersion, 8);
       expect(copied.value?.visibility, TaskViewVisibility.personal);
@@ -309,7 +317,7 @@ void main() {
     await tester.tap(find.byKey(const Key('task-sort-direction')));
     await tester.tap(find.byKey(const Key('task-hide-owner')));
     await tester.tap(find.byKey(const Key('task-column-owner-down')));
-    await tester.tap(find.byKey(const Key('task-width-task-increase')));
+    await tester.tap(find.byKey(const Key('task-width-owner-increase')));
     await tester.tap(find.byKey(const Key('task-group-by')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Status').last);
@@ -317,7 +325,7 @@ void main() {
     expect(configuration.search, 'doors');
     expect(configuration.filters.single.toJson(), <String, Object?>{
       'field': 'owner',
-      'operator': 'in',
+      'operator': 'contains_any',
       'value': <Object?>['user-1'],
     });
     expect(configuration.sorts.single.toJson(), <String, Object?>{
@@ -325,9 +333,79 @@ void main() {
       'direction': 'desc',
     });
     expect(configuration.hiddenColumns, contains('owner'));
-    expect(configuration.columnOrder.indexOf('owner'), 2);
-    expect(configuration.columnWidths['task'], 344);
+    expect(configuration.columnOrder.indexOf('owner'), 1);
+    expect(configuration.columnWidths['owner'], 204);
     expect(configuration.groupBy, 'status');
+    expect(find.byKey(const Key('task-hide-task')), findsNothing);
+    expect(find.byKey(const Key('task-column-task-down')), findsNothing);
+    expect(find.byKey(const Key('task-width-task-increase')), findsNothing);
+  });
+
+  testWidgets('open filter panel follows a newly selected view', (
+    tester,
+  ) async {
+    final first = TaskViewConfiguration.empty.copyWith(
+      filters: const <TaskFilter>[
+        TaskFilter(
+          field: 'owner',
+          operator: 'contains_any',
+          value: <String>['user-1'],
+        ),
+      ],
+      sorts: <TaskSort>[
+        TaskSort.fromJson(const <String, Object?>{
+          'field': 'due_on',
+          'direction': 'asc',
+        }),
+      ],
+      groupBy: 'status',
+    );
+    final second = TaskViewConfiguration.empty.copyWith(
+      filters: const <TaskFilter>[
+        TaskFilter(
+          field: 'owner',
+          operator: 'contains_any',
+          value: <String>['user-2'],
+        ),
+      ],
+      sorts: <TaskSort>[
+        TaskSort.fromJson(const <String, Object?>{
+          'field': 'priority',
+          'direction': 'desc',
+        }),
+      ],
+      groupBy: 'owner',
+    );
+    Widget panel(TaskViewConfiguration configuration) => _app(
+      TaskFiltersPanel(
+        board: TaskBoard.fromJson(_boardWithColumns()),
+        configuration: configuration,
+        people: const <TaskParticipant>[
+          TaskParticipant(
+            id: 'user-1',
+            name: 'Taylor',
+            email: 'taylor@example.com',
+          ),
+          TaskParticipant(
+            id: 'user-2',
+            name: 'Jordan',
+            email: 'jordan@example.com',
+          ),
+        ],
+        onChanged: (_) {},
+        onClose: () {},
+      ),
+    );
+
+    await tester.pumpWidget(panel(first));
+    expect(find.text('Taylor'), findsOneWidget);
+    expect(find.text('Due date'), findsWidgets);
+    await tester.pumpWidget(panel(second));
+    await tester.pump();
+
+    expect(find.text('Jordan'), findsOneWidget);
+    expect(find.text('Taylor'), findsNothing);
+    expect(find.text('Priority'), findsWidgets);
   });
 
   testWidgets('quick search ignores an older response that arrives last', (
@@ -393,7 +471,12 @@ void main() {
             TaskViewsBar(
               views: <TaskViewDefinition>[
                 TaskViewDefinition.fromJson(
-                  _view(name: 'Main', locked: true, permanent: true),
+                  _view(
+                    name: 'Main',
+                    locked: true,
+                    permanent: true,
+                    actions: const <String>['duplicate'],
+                  ),
                 ),
                 TaskViewDefinition.fromJson(
                   _view(
@@ -401,15 +484,12 @@ void main() {
                     name: 'My dispatch',
                     visibility: 'personal',
                     locked: false,
+                    actions: const <String>['update', 'delete'],
                   ),
                 ),
               ],
               activeViewId: 'view-1',
-              capabilities: const TaskViewCapabilities(
-                personalViews: true,
-                sharedUnlockedViews: true,
-                sharedLockedViews: false,
-              ),
+              canCreatePersonal: true,
               dirty: false,
               onSelected: (view) => selected = view.id,
               onCreate: () => action = 'create',
@@ -421,6 +501,7 @@ void main() {
               child: MyTasksView(
                 page: myPage,
                 onOpen: (item) => selected = item.task.id,
+                onLoadMore: () => action = 'more',
               ),
             ),
           ],
@@ -440,6 +521,112 @@ void main() {
     expect(selected, 'task-1');
   });
 
+  testWidgets('My Tasks offers load more through the server last page', (
+    tester,
+  ) async {
+    var loads = 0;
+    final page = TaskMyTasksPage.fromJson(<String, Object?>{
+      'data': <Object?>[
+        <String, Object?>{
+          ..._task(),
+          'board': <String, Object?>{'id': 'board-1', 'name': 'Visible board'},
+        },
+      ],
+      'meta': <String, Object?>{
+        'total': 2,
+        'page': 1,
+        'per_page': 1,
+        'last_page': 2,
+      },
+    }, etag: '"mine-1"');
+    await tester.pumpWidget(
+      _app(MyTasksView(page: page, onOpen: (_) {}, onLoadMore: () => loads++)),
+    );
+
+    await tester.tap(find.text('Load more tasks'));
+
+    expect(loads, 1);
+  });
+
+  testWidgets(
+    'My Tasks loads through lastPage and polls loaded pages by ETag',
+    (tester) async {
+      final conditionalEtags = <int, String?>{};
+      final api = ApiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/v1/tasks/boards') {
+            return _json(200, <String, Object?>{
+              'data': <Object?>[_boardWithColumns()],
+            });
+          }
+          if (request.url.path == '/api/v1/tasks/my') {
+            final page = int.parse(request.url.queryParameters['page']!);
+            final conditional = request.headers['if-none-match'];
+            if (conditional != null) {
+              conditionalEtags[page] = conditional;
+              return http.Response(
+                '',
+                304,
+                headers: <String, String>{'etag': conditional},
+              );
+            }
+            return _json(
+              200,
+              <String, Object?>{
+                'data': <Object?>[
+                  <String, Object?>{
+                    ..._taskWithTitle(
+                      page == 1 ? 'First assignment' : 'Second assignment',
+                    ),
+                    'id': 'task-$page',
+                    'number': 'TASK-$page',
+                    'board': <String, Object?>{
+                      'id': 'board-1',
+                      'name': 'Operations',
+                    },
+                  },
+                ],
+                'meta': <String, Object?>{
+                  'total': 2,
+                  'page': page,
+                  'per_page': 1,
+                  'last_page': 2,
+                },
+              },
+              headers: <String, String>{'etag': '"mine-$page"'},
+            );
+          }
+          return _json(500, <String, Object?>{'message': 'Unexpected request'});
+        }),
+      );
+      await tester.pumpWidget(
+        _app(
+          TasksScreen(
+            api: api,
+            session: Session(api),
+            pollInterval: const Duration(milliseconds: 200),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.text('My Tasks'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('First assignment'), findsOneWidget);
+
+      await tester.tap(find.text('Load more tasks'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('First assignment'), findsOneWidget);
+      expect(find.text('Second assignment'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 220));
+      await tester.pump();
+      expect(conditionalEtags, <int, String?>{1: '"mine-1"', 2: '"mine-2"'});
+    },
+  );
+
   testWidgets('read-only capability hides personal view mutation actions', (
     tester,
   ) async {
@@ -453,15 +640,12 @@ void main() {
                 visibility: 'personal',
                 locked: false,
                 permanent: false,
+                actions: const <String>[],
               ),
             ),
           ],
           activeViewId: 'view-1',
-          capabilities: const TaskViewCapabilities(
-            personalViews: false,
-            sharedUnlockedViews: false,
-            sharedLockedViews: false,
-          ),
+          canCreatePersonal: false,
           dirty: true,
           onSelected: (_) {},
           onCreate: () {},
@@ -543,8 +727,14 @@ void main() {
             case '/api/v1/tasks/boards/board-1/views':
               return _json(200, <String, Object?>{
                 'data': <Object?>[
-                  _view(name: 'Main', locked: true, permanent: true),
+                  _view(
+                    name: 'Main',
+                    locked: true,
+                    permanent: true,
+                    actions: const <String>['duplicate'],
+                  ),
                 ],
+                'meta': _viewCapabilities(),
               });
             case '/api/v1/tasks/boards/board-1/participants':
               return _json(200, <String, Object?>{'data': <Object?>[]});
@@ -589,6 +779,69 @@ void main() {
     },
   );
 
+  testWidgets('polling waits until every identified editor is clean', (
+    tester,
+  ) async {
+    var rowReads = 0;
+    final api = ApiClient(
+      client: MockClient((request) async {
+        switch (request.url.path) {
+          case '/api/v1/tasks/boards':
+            return _json(200, <String, Object?>{
+              'data': <Object?>[_boardWithColumns()],
+            });
+          case '/api/v1/tasks/boards/board-1/rows':
+            rowReads++;
+            return _rowsResponse(
+              title: rowReads == 1 ? 'Original title' : 'Remote title',
+              etag: '"board-$rowReads"',
+            );
+          case '/api/v1/tasks/boards/board-1/views':
+            return _json(200, <String, Object?>{
+              'data': <Object?>[_view(name: 'Main', permanent: true)],
+              'meta': _viewCapabilities(),
+            });
+          case '/api/v1/tasks/boards/board-1/participants':
+            return _json(200, <String, Object?>{'data': <Object?>[]});
+        }
+        return _json(500, <String, Object?>{'message': 'Unexpected request'});
+      }),
+    );
+    await tester.pumpWidget(
+      _app(
+        TasksScreen(
+          api: api,
+          session: Session(api),
+          pollInterval: const Duration(milliseconds: 200),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('Operations'));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    final dueField = find.byType(TextField).last;
+    final titleField = find.descendant(
+      of: find.byKey(const Key('task-row-task-1')),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(dueField, '2026-10-10');
+    await tester.enterText(titleField, 'Temporary title');
+    await tester.enterText(titleField, 'Original title');
+    await tester.pump(const Duration(milliseconds: 220));
+    await tester.pump();
+
+    expect(find.text('Remote title'), findsNothing);
+    expect(find.text('2026-10-10'), findsOneWidget);
+    expect(
+      find.text('This task or saved view changed while you were editing it.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
     '304 preserves state and later polling revocation evicts task caches',
     (tester) async {
@@ -596,6 +849,7 @@ void main() {
       var detailReads = 0;
       String? boardConditional;
       String? detailConditional;
+      String? cleanConfigurationOverride;
       final api = ApiClient(
         client: MockClient((request) async {
           switch (request.url.path) {
@@ -609,6 +863,8 @@ void main() {
                 return _rowsResponse(title: 'Still visible', etag: '"board-1"');
               }
               boardConditional = request.headers['if-none-match'];
+              cleanConfigurationOverride =
+                  request.url.queryParameters['configuration'];
               if (rowReads == 2) {
                 return http.Response(
                   '',
@@ -622,8 +878,14 @@ void main() {
             case '/api/v1/tasks/boards/board-1/views':
               return _json(200, <String, Object?>{
                 'data': <Object?>[
-                  _view(name: 'Main', locked: true, permanent: true),
+                  _view(
+                    name: 'Main',
+                    locked: true,
+                    permanent: true,
+                    actions: const <String>['duplicate'],
+                  ),
                 ],
+                'meta': _viewCapabilities(),
               });
             case '/api/v1/tasks/boards/board-1/participants':
               return _json(200, <String, Object?>{'data': <Object?>[]});
@@ -671,6 +933,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 20));
 
       expect(boardConditional, '"board-1"');
+      expect(cleanConfigurationOverride, isNull);
       expect(detailConditional, '"detail-1"');
       expect(find.text('Still visible'), findsWidgets);
 
@@ -680,6 +943,210 @@ void main() {
       expect(find.text('Still visible'), findsNothing);
     },
   );
+
+  testWidgets('shared view delete refetches the board structure version', (
+    tester,
+  ) async {
+    var boardShowReads = 0;
+    final api = ApiClient(
+      client: MockClient((request) async {
+        switch (request.url.path) {
+          case '/api/v1/tasks/boards':
+            return _json(200, <String, Object?>{
+              'data': <Object?>[_boardWithColumns()],
+            });
+          case '/api/v1/tasks/boards/board-1':
+            boardShowReads++;
+            return _json(200, <String, Object?>{
+              'data': <String, Object?>{
+                ..._boardWithColumns(),
+                'structure_version': 8,
+              },
+            });
+          case '/api/v1/tasks/boards/board-1/rows':
+            return _rowsResponse(title: 'Visible work', etag: '"board-1"');
+          case '/api/v1/tasks/boards/board-1/views':
+            return _json(200, <String, Object?>{
+              'data': <Object?>[
+                _view(
+                  name: 'Shared dispatch',
+                  locked: false,
+                  actions: const <String>['update', 'duplicate', 'delete'],
+                ),
+                _view(
+                  id: 'view-2',
+                  name: 'Main',
+                  locked: false,
+                  permanent: true,
+                  actions: const <String>['update', 'duplicate'],
+                ),
+              ],
+              'meta': _viewCapabilities(),
+            });
+          case '/api/v1/tasks/boards/board-1/participants':
+            return _json(200, <String, Object?>{'data': <Object?>[]});
+          case '/api/v1/tasks/boards/board-1/views/view-1':
+            return http.Response('', 204);
+          case '/api/v1/tasks/boards/board-1/views/view-2/preference':
+            return _json(200, <String, Object?>{
+              'data': <String, Object?>{
+                'view_id': 'view-2',
+                'collapsed_group_ids': <Object?>[],
+                'density': 'compact',
+                'is_last_active': true,
+                'scroll_left': 0,
+                'scroll_top': 0,
+              },
+            });
+        }
+        return _json(500, <String, Object?>{'message': 'Unexpected request'});
+      }),
+    );
+    await tester.pumpWidget(
+      _app(
+        TasksScreen(
+          api: api,
+          session: Session(api),
+          pollInterval: const Duration(days: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('Operations'));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byTooltip('Saved view actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete view'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(boardShowReads, 1);
+  });
+
+  testWidgets('participant reach loss evicts the loaded board', (tester) async {
+    final api = ApiClient(
+      client: MockClient((request) async {
+        switch (request.url.path) {
+          case '/api/v1/tasks/boards':
+            return _json(200, <String, Object?>{
+              'data': <Object?>[_boardWithColumns()],
+            });
+          case '/api/v1/tasks/boards/board-1/rows':
+            return _rowsResponse(title: 'Private assignment', etag: '"b1"');
+          case '/api/v1/tasks/boards/board-1/views':
+            return _json(200, <String, Object?>{
+              'data': <Object?>[_view(name: 'Main', permanent: true)],
+              'meta': _viewCapabilities(),
+            });
+          case '/api/v1/tasks/boards/board-1/participants':
+            return _json(404, <String, Object?>{
+              'message': 'This task board is unavailable.',
+            });
+        }
+        return _json(500, <String, Object?>{'message': 'Unexpected request'});
+      }),
+    );
+    await tester.pumpWidget(
+      _app(
+        TasksScreen(
+          api: api,
+          session: Session(api),
+          pollInterval: const Duration(days: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('Operations'));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('This task board is unavailable.'), findsOneWidget);
+    expect(find.text('Private assignment'), findsNothing);
+  });
+
+  testWidgets('an old My Tasks open cannot resurrect state after revocation', (
+    tester,
+  ) async {
+    final boardOpen = Completer<http.Response>();
+    var myReads = 0;
+    var rowReads = 0;
+    final api = ApiClient(
+      client: MockClient((request) async {
+        switch (request.url.path) {
+          case '/api/v1/tasks/boards':
+            return _json(200, <String, Object?>{
+              'data': <Object?>[_boardWithColumns()],
+            });
+          case '/api/v1/tasks/my':
+            myReads++;
+            if (myReads == 1) {
+              return _json(
+                200,
+                <String, Object?>{
+                  'data': <Object?>[
+                    <String, Object?>{
+                      ..._taskWithTitle('Private assignment'),
+                      'board': <String, Object?>{
+                        'id': 'board-1',
+                        'name': 'Operations',
+                      },
+                    },
+                  ],
+                  'meta': <String, Object?>{
+                    'total': 1,
+                    'page': 1,
+                    'per_page': 50,
+                    'last_page': 1,
+                  },
+                },
+                headers: const <String, String>{'etag': '"mine-1"'},
+              );
+            }
+            return _json(404, <String, Object?>{
+              'message': 'Tasks are unavailable.',
+            });
+          case '/api/v1/tasks/boards/board-1':
+            return boardOpen.future;
+          case '/api/v1/tasks/boards/board-1/rows':
+            rowReads++;
+            return _rowsResponse(title: 'Resurrected', etag: '"b1"');
+        }
+        return _json(500, <String, Object?>{'message': 'Unexpected request'});
+      }),
+    );
+    await tester.pumpWidget(
+      _app(
+        TasksScreen(
+          api: api,
+          session: Session(api),
+          pollInterval: const Duration(milliseconds: 200),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('My Tasks'));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('Private assignment'));
+    await tester.pump(const Duration(milliseconds: 220));
+    await tester.pump();
+    expect(find.text('This task board is unavailable.'), findsOneWidget);
+
+    boardOpen.complete(
+      _json(200, <String, Object?>{'data': _boardWithColumns()}),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(rowReads, 0);
+    expect(find.text('This task board is unavailable.'), findsOneWidget);
+  });
 }
 
 Widget _app(Widget child) => MaterialApp(
@@ -704,6 +1171,7 @@ Map<String, Object?> _view({
   bool locked = true,
   bool permanent = false,
   int version = 1,
+  List<String> actions = const <String>[],
 }) => <String, Object?>{
   'id': id,
   'board_id': 'board-1',
@@ -716,6 +1184,7 @@ Map<String, Object?> _view({
   'version': version,
   'position': 0,
   'preference': null,
+  'actions': actions,
 };
 
 Map<String, Object?> _configuration() => <String, Object?>{
@@ -725,7 +1194,6 @@ Map<String, Object?> _configuration() => <String, Object?>{
   'sorts': <Object?>[],
   'hidden_columns': <Object?>[],
   'column_order': <Object?>[
-    'task',
     'owner',
     'status',
     'priority',
@@ -735,6 +1203,16 @@ Map<String, Object?> _configuration() => <String, Object?>{
   'column_widths': <String, Object?>{},
   'group_by': null,
   'search': '',
+};
+
+Map<String, Object?> _viewCapabilities({
+  bool createPersonal = true,
+  bool createShared = true,
+}) => <String, Object?>{
+  'capabilities': <String, Object?>{
+    'create_personal': createPersonal,
+    'create_shared': createShared,
+  },
 };
 
 Map<String, Object?> _board() => <String, Object?>{
