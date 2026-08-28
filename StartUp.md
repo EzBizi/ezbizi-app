@@ -110,6 +110,92 @@ If a background agent or a parallel task owns a file, do not also edit it. A
 full-file write silently destroys the other's work with no conflict and no warning.
 Wait, or take the file over explicitly.
 
+### Committing on a tree many sessions share
+
+"Stage by path, never `git add -A`" is not enough, and saying it was cost a day.
+One file was fixed and silently reverted three times in an afternoon — the third
+time twelve minutes after its session had been warned. `git log` showed every
+restore sitting in history looking fine while the content was gone.
+
+**There is one rule, and every tool is unsafe without it and safe with it:**
+
+> **Resolve the base at commit time and parent onto that same commit.** Not at
+> review time, not at build time. If more than a few seconds pass between reading
+> a blob and `commit-tree -p <base>`, rebuild the blob.
+
+Partial commit, `hash-object`/`update-index`, and the private index are all
+equally unsafe if the base drifts, and all equally safe if it does not. Reach for
+whichever suits the file; the rule is the same.
+
+**Why the tool is not the fix.** One revert today used a private index correctly:
+`read-tree HEAD` took the *current* tree, then `--cacheinfo` overwrote two paths
+with blobs computed from a HEAD twenty minutes older. Everything committed in
+between reverted, silently. The guard its author was proudest of — asserting
+another session's uncommitted hunk was absent from their blob — was correct when
+built and became the instrument of the revert once that hunk was committed. The
+private index stops you disturbing the shared index, which is real and worth
+having. **It does nothing about a stale blob, and a stale blob is what bites.**
+
+One commit can revert through two surfaces at once. `358b3db` removed three phone
+routes through its `routes/api.php` blob *and* deleted eight files through its
+stale tree — 2,004 deletions across three unrelated modules, no conflict.
+
+```bash
+BASE=$(git rev-parse HEAD)                 # resolve ONCE, here, immediately
+export GIT_INDEX_FILE=$(mktemp -u)
+git read-tree "$BASE"                      # replaces this index; ignores .git/index
+git update-index --cacheinfo 100644,<blob>,<path>   # blobs built from $BASE, just now
+TREE=$(git write-tree)
+git diff-index --cached --stat "$BASE"     # ← ITS OWN STEP. Read it. Stop if wrong.
+COMMIT=$(git commit-tree "$TREE" -p "$BASE" -F msg)
+git update-ref refs/heads/main "$COMMIT" "$BASE"     # fails if main moved
+```
+
+`$BASE` appears four times and must be the same SHA every time. Resolving `HEAD`
+twice is how the drift gets in, and it looks careful while doing it.
+
+`git add` has its own hazard: `.git/index` is *one file* for every session, and
+`git add <path>` adds to whatever another session left staged rather than staging
+only your path. `git reset` first clears it — but that unstages everyone else's
+work-in-progress, so prefer a private index, which never touches it.
+
+**A check chained onto the command it guards is decoration.** The stat must be a
+separate call with a human decision after it. Piped into the commit, the file
+count scrolls past above output nobody reads until afterwards.
+
+### Reachability, ref safety, and content are three different properties
+
+All three passed on a commit whose fix was absent. Each answers a question the
+others cannot:
+
+| Check | Answers |
+|---|---|
+| `git merge-base --is-ancestor <sha> main` | is it still on the branch |
+| `git update-ref … <old>` | did main move while I was building |
+| `git show <sha>:<path>` | **is my change actually in the tree** |
+
+**A commit surviving in `git log` is not evidence its content survived.** Verify
+content against the SHA you care about — a deploy pin, not `HEAD`, since `HEAD`
+moves. `git diff-tree --stat <sha>` is the cheap screen: a commit whose message is
+about one module while rewriting three others is announcing itself.
+
+Three traps found the hard way. `git show` piped into a linter reports phantom
+parse errors on this machine — write the bytes to disk first. **A green test run is
+evidence about the working tree at that instant, not about a commit**; the tree can
+change between the run and the `git add`. And **before reporting a file missing,
+confirm the path is spelled as it exists** — `git ls-tree -r --name-only HEAD -- <dir>`
+rather than a filename from memory. Two near-miss alarms today were a checked path
+that did not exist (`WebPluginController.php`, really `Web/PluginController.php`)
+and a route looked for in `routes/api.php` that is enum-derived, so absent is
+correct. Both times the reading was ABSENT and both times the tree was fine.
+
+### Attribution is not available on this tree
+
+Every commit carries the same `%an` — one machine, one git config — so authorship
+cannot tell sessions apart, and session *names* are reassigned mid-conversation.
+Do not infer who made a commit from its subject matter; that inference has been
+wrong. The durable handle is the **commit SHA**. Name SHAs, not sessions.
+
 ---
 
 ## 5 · The four invariants that break things quietly
@@ -141,9 +227,13 @@ that iterates `me.companies` (or `me.companies.first`) offers siblings of the
 view — standing in A-1 Chimney, Everdoors is still in that list. Authority does
 not flow up either: a company view cannot connect or edit the organization.
 Use `companiesInView`, `franchisesInView`, and `filingCompanyId` on `Me`. The
-switcher (`scope_picker_panel`) is the one control that lists reach. This has
-leaked in Inventory, Fleet, and Phone; do not ship a fourth. A company-view
-widget test with a sibling in `/me` is the proof.
+switcher (`scope_picker_panel`) is the one control that lists reach. This leaked
+in Inventory, Fleet and Phone and was fixed in each; they are now the worked
+examples a new module copies, which is what AGENTS.md means by "copies
+Inventory/Fleet/Phone". Do not ship a fourth leak. A company-view widget test
+with a sibling in `/me` is the proof — `client/test/inventory_screen_test.dart`
+("a company view does not offer sibling companies on New location") is the shape
+to copy.
 
 ### §6 — settings cascade upward
 
@@ -323,11 +413,25 @@ against unmodified code.
 ./scripts/deploy.sh --code   # code only, skip the Flutter build
 ```
 
-**Commit first.** The gate tests `git archive main` — the exact tree about to ship,
-not your working directory.
+**Commit first.** The gate resolves `GATED_SHA` once with `git rev-parse main` and
+then tests *that* commit — the exact tree about to ship, not your working directory,
+and not whatever `main` becomes while the suite runs. The push is the same SHA. So no
+commit freeze is needed during a deploy; anything you land mid-run simply ships next
+time.
 
-Bump `client/VERSION` in the same commit. It is shown bottom-left in the app and on
-sign-in, so a stale cache is visible rather than guessed at.
+`client/VERSION` is bumped **once per release, by whoever cuts that release** — not
+by every contributing commit. It is shown bottom-left in the app and on sign-in, so
+a stale cache is visible rather than guessed at, and that only works if the number
+means "what shipped". Many sessions committing into one tree would otherwise race a
+single-line file, and four commits in one release batch cannot each own the number.
+
+**Two release trains read this file, and both are legitimate.** A web deploy
+(`scripts/deploy.sh`) is one. A store build is the other: `scripts/build-app.sh:78`
+reads `client/VERSION` and line 88 derives `BUILD_NUMBER` from it, because Apple
+requires a monotonic `CFBundleVersion` and Play a rising `versionCode` — so a store
+build **must** bump it, independently of any deploy, or the upload is refused. A
+bump you did not expect is more likely the other train than a violation. Ask before
+reverting one.
 
 Every step is a gate, in this order, and **nothing ships if any of them is red**:
 

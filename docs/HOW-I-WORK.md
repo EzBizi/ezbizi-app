@@ -171,9 +171,10 @@ it untouched — length made a wrong thing look considered.
 ./scripts/deploy.sh
 ```
 
-Commit first: the gate tests `git archive main`, not your working tree. Bump
-`client/VERSION` in that same commit, so a stale cache is visible rather than guessed
-at. `--code` skips the Flutter build.
+Commit first: the gate pins `GATED_SHA` with `git rev-parse main` and tests that
+commit, not your working tree — and pushes the same SHA, so what was gated is what
+ships. `client/VERSION` is bumped once per release by whoever cuts it, not in every
+contributing commit; see `StartUp.md` §9. `--code` skips the Flutter build.
 
 The script is the gate and it is the only way to ship:
 
