@@ -727,6 +727,58 @@ class ModuleServiceProvider extends ServiceProvider
                         isRaised: true,
                     ),
                 ],
+                /*
+                 * ── Why a rule may punch the clock ──────────────────
+                 *
+                 * This module declared triggers and no actions until 2026-08-28,
+                 * with nothing written down about why. The obvious argument
+                 * against is real and worth stating so nobody re-litigates it
+                 * from scratch: a shift opened or closed by a rule is a timesheet
+                 * entry no person punched, and payroll is downstream of it.
+                 *
+                 * The owner's ruling is that this is the organization's call to
+                 * make, not ours to withhold — automations are a thing a business
+                 * builds for itself, and what it does with them is its own
+                 * affair. A company that wants every open shift closed at
+                 * midnight is not doing something we should have to approve.
+                 *
+                 * What keeps that honest rather than merely permissive: a punch
+                 * made by a rule goes through exactly the path a person's punch
+                 * does, so it is audited as `time_clock.clocked_in/out`, it
+                 * raises the same trigger, and the shift is an ordinary row on
+                 * the Human Resources day list. It is visible as a punch. It is
+                 * not visible as one a human made, which is why the event it
+                 * raises carries the automation's causation chain.
+                 */
+                automationActions: [
+                    /*
+                     * `executionType` is spelled out rather than derived, the
+                     * way the Task actions spell theirs out. Left to itself
+                     * ActionDefinition keeps everything after the FIRST dot, so
+                     * these would execute as bare `clock_in` / `clock_out` in a
+                     * namespace every module shares — and "clock in" is a phrase
+                     * a second module could plausibly want. Phone can derive
+                     * safely because `phone.voicemail.mark_dealt` still leaves a
+                     * dotted `voicemail.mark_dealt` behind; a two-segment key
+                     * does not.
+                     */
+                    new ActionDefinition(
+                        key: 'time_clock.clock_in',
+                        label: 'Start a shift',
+                        description: 'Opens a shift for the person this rule is about, the same way '
+                            .'the button does. Refused if the organization has the clock switched '
+                            .'off, if they may not use it, or if they are already on a shift.',
+                        executionType: 'time_clock.clock_in',
+                    ),
+                    new ActionDefinition(
+                        key: 'time_clock.clock_out',
+                        label: 'End a shift',
+                        description: 'Closes the open shift of the person this rule is about. Needs '
+                            .'only an open shift, so a shift left running by somebody whose access '
+                            .'has since changed can still be closed.',
+                        executionType: 'time_clock.clock_out',
+                    ),
+                ],
             ),
 
             /*

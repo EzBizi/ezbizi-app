@@ -2,6 +2,7 @@
 
 namespace App\Support\TimeClock;
 
+use App\Models\AutomationEvent;
 use App\Models\Organization;
 use App\Models\TimeClockShift;
 use App\Models\User;
@@ -65,8 +66,20 @@ final class TimeClock
         ];
     }
 
-    /** @return array{organization_enabled: bool, can_clock: bool, show_button: bool, open: null|array{id: string, clocked_in_at: string}} */
-    public function clockIn(User $user): array
+    /**
+     * `$causedBy` is set when an automation action did this rather than a person.
+     *
+     * It is not decoration. AutomationEngine reads `depth` and the causation
+     * chain off the event to stop a cascade, and both are derived from what is
+     * passed here. Emitting without it starts a FRESH root at depth 0, so a
+     * rule of "when somebody clocks in, clock them out" would raise a clocked_out
+     * that looks person-initiated, re-enter the engine, and ping-pong past both
+     * the depth cap and the cascade budget — the exact A→B→A that §5.5 says
+     * depth alone does not catch.
+     *
+     * @return array{organization_enabled: bool, can_clock: bool, show_button: bool, open: null|array{id: string, clocked_in_at: string}}
+     */
+    public function clockIn(User $user, ?AutomationEvent $causedBy = null): array
     {
         if (! $this->organizationEnabled($user->organization)) {
             throw ValidationException::withMessages([
@@ -79,7 +92,7 @@ final class TimeClock
         }
 
         try {
-            return DB::transaction(function () use ($user) {
+            return DB::transaction(function () use ($user, $causedBy) {
                 $open = TimeClockShift::query()
                     ->open()
                     ->where('user_id', $user->getKey())
@@ -100,7 +113,12 @@ final class TimeClock
                 ]);
 
                 $this->audit->log('time_clock.clocked_in', $shift);
-                $this->events->emit('time_clock.clocked_in', $user, $this->eventPayload($shift));
+                $this->events->emit(
+                    'time_clock.clocked_in',
+                    $user,
+                    $this->eventPayload($shift),
+                    causedBy: $causedBy,
+                );
 
                 return $this->payload($user);
             });
@@ -117,11 +135,14 @@ final class TimeClock
      * Close the open shift. Allowed after the org switch or grant is taken away
      * (design §3.10, §4); only an open row is required.
      *
+     * `$causedBy` carries the automation cascade when a rule did this rather
+     * than a person — see clockIn() for why it is load-bearing.
+     *
      * @return array{organization_enabled: bool, can_clock: bool, show_button: bool, open: null|array{id: string, clocked_in_at: string}}
      */
-    public function clockOut(User $user): array
+    public function clockOut(User $user, ?AutomationEvent $causedBy = null): array
     {
-        return DB::transaction(function () use ($user) {
+        return DB::transaction(function () use ($user, $causedBy) {
             $open = TimeClockShift::query()
                 ->open()
                 ->where('user_id', $user->getKey())
@@ -138,7 +159,12 @@ final class TimeClock
             $open->save();
 
             $this->audit->log('time_clock.clocked_out', $open);
-            $this->events->emit('time_clock.clocked_out', $user, $this->eventPayload($open));
+            $this->events->emit(
+                'time_clock.clocked_out',
+                $user,
+                $this->eventPayload($open),
+                causedBy: $causedBy,
+            );
 
             return $this->payload($user);
         });

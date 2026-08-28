@@ -62,6 +62,10 @@ class AutomationsController extends Controller
         'task.set_due_date',
         'task.move_group',
         'task.add_update',
+        // Spelled out in the module too — a two-segment key would otherwise
+        // execute as a bare `clock_in` in a namespace every module shares.
+        'time_clock.clock_in',
+        'time_clock.clock_out',
     ];
 
     private const TASK_ACTIONS = [

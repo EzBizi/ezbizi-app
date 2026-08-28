@@ -21,10 +21,12 @@ use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\TaskUpdateWriter;
 use App\Support\Tasks\TaskWriter;
+use App\Support\TimeClock\TimeClock;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * Performing one action from an automation (plan §5.5).
@@ -167,6 +169,7 @@ class ActionRunner
         private readonly RecordNumberGenerator $numbers,
         private readonly TaskWriter $tasks,
         private readonly TaskUpdateWriter $updates,
+        private readonly TimeClock $timeClock,
     ) {}
 
     /**
@@ -215,6 +218,9 @@ class ActionRunner
             'task.set_due_date' => $this->updateTask($action, $event, $subject, $automation, 'due_on'),
             'task.move_group' => $this->moveTask($action, $event, $subject, $automation),
             'task.add_update' => $this->addTaskUpdate($action, $event, $subject, $automation, $actionIndex),
+
+            'time_clock.clock_in' => $this->punch($event, $subject, in: true),
+            'time_clock.clock_out' => $this->punch($event, $subject, in: false),
 
             default => throw new InvalidArgumentException(
                 "Unknown automation action '{$type}'. Actions are declared by modules "
@@ -336,6 +342,67 @@ class ActionRunner
      *
      * @return array{type: string, ok: bool, detail: string}
      */
+    /**
+     * Clock the event's person in or out.
+     *
+     * Subject-bound, so the rule needs an event that is ABOUT a person — a
+     * clock trigger, or `user.activated`. A rule wanting "clock out everybody
+     * still open at 11pm" needs a scheduled trigger and a picked person, and
+     * neither exists yet; refusing clearly beats a silently-empty run.
+     *
+     * TimeClock is called rather than reimplemented, so the organization
+     * switch, the grant, the row lock, the unique index, the audit entry and
+     * the emitted event are the same ones a person's punch goes through. The
+     * asymmetry between the two is deliberate and belongs to that class: clock
+     * IN refuses when the organization has the feature off or the person lacks
+     * the grant, clock OUT only needs an open shift, because a shift left open
+     * by somebody whose access changed still has to be closable (design §3.10).
+     * A rule inherits both without restating either.
+     */
+    private function punch(AutomationEvent $event, ?Model $subject, bool $in): array
+    {
+        $type = $in ? 'time_clock.clock_in' : 'time_clock.clock_out';
+
+        if (! $subject instanceof User) {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => 'That record is not a person, so there is nobody to clock '
+                    .($in ? 'in.' : 'out.'),
+            ];
+        }
+
+        try {
+            $in
+                ? $this->timeClock->clockIn($subject, $event)
+                : $this->timeClock->clockOut($subject, $event);
+        } catch (ValidationException $e) {
+            // "Already clocked in" and "not clocked in" are the ordinary result
+            // of a rule firing on somebody whose state already matches, not a
+            // fault. The run log says which, in the same sentence a person gets.
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => collect($e->errors())->flatten()->first() ?? $e->getMessage(),
+            ];
+        } catch (HttpException $e) {
+            // clockIn aborts 403 when the person does not hold time_clock.view.
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => $e->getMessage(),
+            ];
+        }
+
+        return [
+            'type' => $type,
+            'ok' => true,
+            'detail' => $in
+                ? "Clocked {$subject->name} in."
+                : "Clocked {$subject->name} out.",
+        ];
+    }
+
     private function markVoicemailDealt(AutomationEvent $event, ?Model $subject): array
     {
         if (! $subject instanceof PhoneCall) {
