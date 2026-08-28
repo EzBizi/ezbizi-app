@@ -358,7 +358,7 @@ class _TaskTransferFlowState extends State<TaskTransferFlow> {
                   ].join(' · '),
                 ),
               ),
-              if (_decisionControl(issue, preview) case final control?)
+              if (_decisionControl(issue) case final control?)
                 Padding(
                   padding: const EdgeInsets.only(left: 40, bottom: 10),
                   child: control,
@@ -510,19 +510,9 @@ class _TaskTransferFlowState extends State<TaskTransferFlow> {
     return copy(_decisions);
   }
 
-  String? _sourceValue(TaskImportIssue issue, TaskImportPreview preview) {
-    final field = issue.field;
-    if (field == null) return null;
-    final heading = _mapping[field] ?? _customMapping[field];
-    final index = issue.row == null ? null : issue.row! - 2;
-    if (heading != null &&
-        index != null &&
-        index >= 0 &&
-        index < preview.sample.length) {
-      final value = preview.sample[index][heading]?.trim();
-      if (value != null && value.isNotEmpty) return value;
-    }
-    return RegExp("'([^']*)'").firstMatch(issue.message)?.group(1);
+  String? _sourceValue(TaskImportIssue issue) {
+    final value = issue.sourceValue?.trim();
+    return value == null || value.isEmpty ? null : value;
   }
 
   Object? _selectedDecision(String section, String source, {String? columnId}) {
@@ -558,9 +548,9 @@ class _TaskTransferFlowState extends State<TaskTransferFlow> {
     });
   }
 
-  Widget? _decisionControl(TaskImportIssue issue, TaskImportPreview preview) {
+  Widget? _decisionControl(TaskImportIssue issue) {
     final field = issue.field;
-    final source = _sourceValue(issue, preview);
+    final source = _sourceValue(issue);
     if (field == 'owner_email' && issue.code == 'unavailable') {
       return OutlinedButton.icon(
         onPressed: _busy

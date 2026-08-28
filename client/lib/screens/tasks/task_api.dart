@@ -283,6 +283,16 @@ final class TaskApi {
     return _decodeStructure(response, TaskBoard.fromJson);
   }
 
+  Future<TaskApiResult<TaskDuplicateSource>> duplicateSource(
+    String boardId,
+  ) async {
+    final response = await _api.get('/tasks/boards/$boardId/duplicate-source');
+    return _decode(
+      response,
+      (data) => TaskDuplicateSource.fromJson(_map(data, 'data')),
+    );
+  }
+
   Future<TaskApiResult<TaskStructureMutation<TaskGroup>>> createGroup(
     String boardId, {
     required int expectedStructureVersion,

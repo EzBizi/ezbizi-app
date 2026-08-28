@@ -357,6 +357,33 @@ final class TaskStructureMutation<T> {
   final int structureVersion;
 }
 
+final class TaskDuplicateSource {
+  const TaskDuplicateSource({
+    required this.id,
+    required this.name,
+    required this.structureVersion,
+    required this.actions,
+    required this.samePlace,
+  });
+
+  factory TaskDuplicateSource.fromJson(Map<String, Object?> json) =>
+      TaskDuplicateSource(
+        id: _string(json, 'id'),
+        name: _string(json, 'name'),
+        structureVersion: _integer(json, 'structure_version'),
+        actions: _optionalStrings(json, 'actions'),
+        samePlace: _boolean(json, 'same_place'),
+      );
+
+  final String id;
+  final String name;
+  final int structureVersion;
+  final List<String> actions;
+  final bool samePlace;
+
+  bool can(String action) => actions.contains(action);
+}
+
 enum TaskImportFormat { csv, xlsx, unknown }
 
 enum TaskExportFormat { csv, xlsx, json }
@@ -420,6 +447,7 @@ final class TaskImportIssue {
     required this.field,
     required this.code,
     required this.message,
+    required this.sourceValue,
   });
 
   factory TaskImportIssue.fromJson(Map<String, Object?> json) =>
@@ -428,12 +456,14 @@ final class TaskImportIssue {
         field: json['field'] is String ? json['field'] as String : null,
         code: json['code'] is String ? json['code'] as String : null,
         message: _string(json, 'message'),
+        sourceValue: _nullableString(json, 'source_value'),
       );
 
   final int? row;
   final String? field;
   final String? code;
   final String message;
+  final String? sourceValue;
 }
 
 final class TaskImportPreview {

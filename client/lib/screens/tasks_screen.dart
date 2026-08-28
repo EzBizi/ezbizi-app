@@ -101,9 +101,14 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   Timer? _poller;
   Timer? _queryDebounce;
   int _privacyGeneration = 0;
+  String? _actorUserId;
 
   @override
   void dispose() {
+    final draft = TaskDuplicateDraftStore.pending;
+    if (draft != null && draft.actorUserId != widget.session.me?.id) {
+      TaskDuplicateDraftStore.pending = null;
+    }
     WidgetsBinding.instance.removeObserver(this);
     _poller?.cancel();
     _queryDebounce?.cancel();
@@ -114,6 +119,11 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _actorUserId = widget.session.me?.id;
+    final draft = TaskDuplicateDraftStore.pending;
+    if (draft != null && draft.actorUserId != _actorUserId) {
+      TaskDuplicateDraftStore.pending = null;
+    }
     WidgetsBinding.instance.addObserver(this);
     _poller = Timer.periodic(widget.pollInterval, (_) => _pollVisible());
     _loadDirectory();
@@ -128,6 +138,11 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(covariant TasksScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final actorUserId = widget.session.me?.id;
+    if (_actorUserId != actorUserId) {
+      TaskDuplicateDraftStore.pending = null;
+      _actorUserId = actorUserId;
+    }
     if (widget.pendingIntent != oldWidget.pendingIntent) {
       _intentGeneration++;
       _requestGeneration++;
@@ -1260,18 +1275,10 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     final actorId = widget.session.me?.id;
     if (board == null || actorId == null || !board.can('duplicate')) return;
     TaskDuplicateDraftStore.pending = TaskDuplicateDraft(
-      board: board,
-      name: '${board.name} copy',
-      originScopeKey: _scopeKey,
-      includeTasks: false,
+      sourceBoardId: board.id,
       actorUserId: actorId,
     );
     _continueDuplicate();
-  }
-
-  String get _scopeKey {
-    final scope = widget.session.me?.scope;
-    return '${scope?.type}:${scope?.id}';
   }
 
   TaskDuplicateDraft? get _pendingDuplicate {
@@ -1282,16 +1289,12 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   void _continueDuplicate() {
     final draft = _pendingDuplicate;
     if (draft == null) return;
-    final samePlace = draft.originScopeKey == _scopeKey;
     _openTaskSurface(
       'Duplicate board',
-      TaskDuplicateFlow(
+      TaskDuplicateContinuation(
         api: _tasks,
-        board: draft.board,
+        draft: draft,
         destinationLabel: widget.session.me?.scope.fullPath ?? 'Current view',
-        samePlace: samePlace,
-        initialDraft: draft,
-        onDraftChanged: (changed) => TaskDuplicateDraftStore.pending = changed,
         onChooseAnotherDestination: () {
           Navigator.of(context, rootNavigator: true).maybePop();
           _announce('Choose the destination with the top-bar switcher.');
@@ -1301,9 +1304,10 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           Navigator.of(context, rootNavigator: true).maybePop();
           _loadDirectory();
         },
-        onUnavailable: (message) {
+        onInvalid: (_) {
           TaskDuplicateDraftStore.pending = null;
-          _surfaceUnavailable(message);
+          Navigator.of(context, rootNavigator: true).maybePop();
+          _announce('The source board is no longer available.');
         },
       ),
     );
@@ -1348,6 +1352,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
 
   void _evict(String? message) {
     _tasks.clearCache();
+    TaskDuplicateDraftStore.pending = null;
     if (!mounted) return;
     setState(() {
       _loading = false;

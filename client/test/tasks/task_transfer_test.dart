@@ -163,13 +163,14 @@ void main() {
           home: Scaffold(
             body: TaskDuplicateFlow(
               api: api,
-              board: TaskBoard.fromJson(
-                _board(
-                  actions: const <Object?>['duplicate', 'duplicate_with_tasks'],
-                ),
+              source: const TaskDuplicateSource(
+                id: 'board-1',
+                name: 'Operations',
+                structureVersion: 4,
+                actions: <String>['duplicate', 'duplicate_with_tasks'],
+                samePlace: false,
               ),
               destinationLabel: 'A-1 Chimney › Connecticut',
-              samePlace: false,
               onDuplicated: (board) => duplicated = board,
               onUnavailable: (_) {},
             ),
@@ -195,52 +196,53 @@ void main() {
     },
   );
 
-  testWidgets('duplicate draft survives a scope-keyed remount', (tester) async {
-    final board = TaskBoard.fromJson(
-      _board(actions: const <Object?>['duplicate', 'duplicate_with_tasks']),
-    );
+  testWidgets('lost duplicate-source access clears opaque pending state', (
+    tester,
+  ) async {
+    var invalidated = false;
+    http.Request? verificationRequest;
     TaskDuplicateDraftStore.pending = TaskDuplicateDraft(
-      board: board,
-      name: 'Operations copy',
-      originScopeKey: 'company:one',
-      includeTasks: false,
+      sourceBoardId: 'secret-board-id',
       actorUserId: 'user-1',
     );
     final api = TaskApi(
       ApiClient(
-        client: MockClient((_) async => _json(500, <String, Object?>{})),
+        client: MockClient((request) async {
+          verificationRequest = request;
+          return _json(404, <String, Object?>{
+            'message': 'That source is unavailable.',
+          });
+        }),
       ),
     );
 
-    Widget flow({required bool samePlace, required String destination}) =>
-        MaterialApp(
-          home: Scaffold(
-            body: TaskDuplicateFlow(
-              api: api,
-              board: board,
-              destinationLabel: destination,
-              samePlace: samePlace,
-              initialDraft: TaskDuplicateDraftStore.pending,
-              onDraftChanged: (draft) =>
-                  TaskDuplicateDraftStore.pending = draft,
-              onDuplicated: (_) {},
-              onUnavailable: (_) {},
-            ),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TaskDuplicateContinuation(
+            api: api,
+            draft: TaskDuplicateDraftStore.pending!,
+            destinationLabel: 'Company two',
+            onDuplicated: (_) {},
+            onInvalid: (_) {
+              invalidated = true;
+              TaskDuplicateDraftStore.pending = null;
+            },
           ),
-        );
-
-    await tester.pumpWidget(flow(samePlace: true, destination: 'Company one'));
-    await tester.enterText(
-      find.byKey(const ValueKey('task-duplicate-name')),
-      'Regional structure',
+        ),
+      ),
     );
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpWidget(flow(samePlace: false, destination: 'Company two'));
+    await tester.pumpAndSettle();
 
-    expect(find.text('Regional structure'), findsOneWidget);
-    expect(find.text('Company two'), findsOneWidget);
-    expect(find.text('Copy tasks too'), findsNothing);
-    TaskDuplicateDraftStore.pending = null;
+    expect(invalidated, isTrue);
+    expect(verificationRequest?.method, 'GET');
+    expect(
+      verificationRequest?.url.path,
+      '/api/v1/tasks/boards/secret-board-id/duplicate-source',
+    );
+    expect(TaskDuplicateDraftStore.pending, isNull);
+    expect(find.textContaining('Secret board'), findsNothing);
+    expect(find.text('Company two'), findsNothing);
   });
 
   testWidgets('reconciliation decision can make an import committable', (
@@ -275,6 +277,7 @@ void main() {
                         'row': 2,
                         'field': 'status',
                         'code': 'decision_required',
+                        'source_value': 'Monday To do',
                         'message':
                             "Choose an active status for 'Monday To do'.",
                       },
