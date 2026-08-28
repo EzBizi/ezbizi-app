@@ -30,7 +30,38 @@ cd "$(dirname "$0")/.."
 VERSION=$(tr -d '[:space:]' < client/VERSION)
 COMMIT=$(git rev-parse --short HEAD)
 
-git diff --quiet && git diff --cached --quiet || COMMIT="${COMMIT}+"
+# ── refuse to stamp a build nobody can reproduce ─────────────────
+#
+# The trailing "+" below means the tree was dirty. It was a marker, not a
+# guard, and production shipped as `v0.0.0112 · 288a795+` — a bundle that
+# corresponds to no commit. release.sh already refuses a dirty tree, but
+# deploy.sh calls THIS script directly and walked around that check.
+#
+# Thirteen sessions share this working tree; it is routinely dirty with
+# somebody else's work in progress. So the refusal names the files, because
+# on a shared tree "the tree is dirty" sends you hunting through dozens of
+# them at the exact moment you are trying to ship.
+#
+# --allow-dirty is the deliberate escape, and it still stamps the "+" so the
+# artefact says of itself that it is not reproducible.
+DIRTY=$(git status --porcelain --untracked-files=no)
+
+if [ -n "$DIRTY" ]; then
+  if [ "${1:-}" = "--allow-dirty" ]; then
+    COMMIT="${COMMIT}+"
+    echo "⚠ building from a dirty tree (--allow-dirty). This artefact cannot be"
+    echo "  reproduced from ${COMMIT%+}; it is stamped + to say so."
+  else
+    echo "✗ refusing to build: the working tree has uncommitted changes." >&2
+    echo "  A build from here cannot be reproduced from any commit, and the" >&2
+    echo "  version it stamps would name one it does not match." >&2
+    echo >&2
+    echo "$DIRTY" | sed 's/^/    /' >&2
+    echo >&2
+    echo "  Commit or stash these, or pass --allow-dirty if you mean it." >&2
+    exit 1
+  fi
+fi
 
 BUILT_AT=$(date -u +'%Y-%m-%d %H:%M')
 
