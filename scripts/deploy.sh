@@ -88,8 +88,39 @@ echo "$BACKEND_OUT" | tail -3
 BACKEND_TESTS=$(echo "$BACKEND_OUT" | grep -oE '[0-9]+ passed' | tail -1 | grep -oE '[0-9]+')
 
 if [ "$CODE_ONLY" != "--code" ]; then
-  echo "→ client analyze + tests"
-  CLIENT_OUT=$( (cd client && flutter analyze && flutter test) 2>&1 ) || {
+  # The client is checked and built in a WORKTREE AT THE PINNED SHA, never in
+  # the working directory.
+  #
+  # The backend half has always tested `git archive` — the tree about to ship.
+  # This half did not: it ran `flutter analyze` where you are standing. Thirteen
+  # sessions share this directory, so that meant any one of them holding a
+  # half-written widget blocked everybody's deploy. It happened: six analyze
+  # errors, all from two sessions' uncommitted edits, none of them in the commit
+  # being shipped. The same tree at its pinned SHA analyzed with no issues.
+  #
+  # The false PASS is the worse half, and it is why this is a worktree rather
+  # than a nicer error message. Somebody's uncommitted local fix could make
+  # analyze green for code that does not contain the fix, and the broken build
+  # would ship having been checked and approved.
+  #
+  # A worktree rather than `git archive` because build-web.sh asks git who it is
+  # (`rev-parse --short HEAD`) and whether the tree is dirty. An archive has no
+  # .git and both questions fail. A worktree has real git, and is clean by
+  # construction — so build-web.sh's dirty-tree refusal passes on its own terms
+  # and stamps a version that can actually be reproduced from the commit.
+  #
+  # Nothing is linked into it. A junction from a worktree back to the main tree
+  # is what deleted this repo's vendor/ once already — `git worktree remove`
+  # follows it and deletes through. Flutter needs no vendor, so there is nothing
+  # to link and no reason to.
+  WORKTREE=$(mktemp -d)
+  trap 'git worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true' EXIT
+  git worktree add --detach "$WORKTREE" "$GATED_SHA" >/dev/null 2>&1 || {
+    echo "✗ could not check out $GATED_SHA to test — nothing deployed"; exit 1;
+  }
+
+  echo "→ client analyze + tests (at $GATED_SHA, not your working tree)"
+  CLIENT_OUT=$( (cd "$WORKTREE/client" && flutter pub get && flutter analyze && flutter test) 2>&1 ) || {
     echo "$CLIENT_OUT"; echo "✗ client checks failed — nothing deployed"; exit 1;
   }
   echo "$CLIENT_OUT" | tail -2
@@ -103,7 +134,7 @@ if [ "$CODE_ONLY" != "--code" ]; then
   # useless here — Git Bash on Windows rewrites a lone "/" into a drive path and
   # the build fails with a base-href of "C:/Program Files/Git/".
   # One script, so a build can never ship without its version stamped in.
-  scripts/build-web.sh
+  (cd "$WORKTREE" && scripts/build-web.sh)
 
 fi
 
@@ -130,7 +161,7 @@ if [ "$CODE_ONLY" != "--code" ]; then
   # Flutter's assets are content-addressed, so half of them 404. Unpacking beside
   # it and renaming makes the change one operation, and leaves the previous build
   # next door to rename back to.
-  tar -cz -C client/build/web . | ssh "$REMOTE" "
+  tar -cz -C "$WORKTREE/client/build/web" . | ssh "$REMOTE" "
     set -e
     rm -rf '$SHARED.new' '$SHARED.old'
     mkdir -p '$SHARED.new'
