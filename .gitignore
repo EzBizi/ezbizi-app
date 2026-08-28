@@ -59,3 +59,17 @@ Thumbs.db
 # to the production server on every deploy, and that any machine with the
 # simulator can regenerate.
 /store-screenshots/
+
+# Laravel's schema dump. NOT committed, deliberately.
+#
+# It makes the server's deploy gate much faster — one file load instead of
+# replaying 82 migrations, each paying two fsyncs on a busy disk. But Laravel
+# LOADS it by shelling out to the `mysql` client, and on the Windows dev
+# machines the MySQL bin directory is not on PATH, so every local test run dies
+# with "'mysql' is not recognized" the moment this file exists.
+#
+# Breaking every developer's local loop to speed up one server step is the wrong
+# trade. The deploy dying was never this anyway — that was an SSH idle timeout,
+# fixed with ServerAliveInterval. Revisit if the bin dir gets onto PATH and
+# DEV-ENVIRONMENT.md says so.
+/database/schema/
