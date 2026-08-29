@@ -286,6 +286,21 @@ refresh() {
   echo "updated $dest"
   updated=1
 }
+# The backup verifier runs from a SNAPSHOT in /usr/local/bin, not from the
+# release. On 2026-08-28 its six-table list was replaced with a derived one
+# (f52faa8) — and the fix sat in deploy/ through four releases while the copy
+# that actually runs every night kept the old list. Nothing looked wrong: the
+# file was in every release, git said it was fixed, and the verifier went on
+# checking the six tables a truncated dump leaves full.
+#
+# Same lesson as the peer watchdog directly below, which is why it now sits
+# beside it: shipping a file into deploy/ is not installing it.
+refresh "$ROOT/deploy/restore-check.sh" /usr/local/bin/ezbizi-restore-check.sh 0755
+# backup.sh is identical to its installed copy today, and is here so that stays
+# true. Every script in deploy/ that runs from /usr/local/bin belongs on this
+# list; refresh() is a no-op when the destination does not exist, so listing one
+# a box has never installed costs nothing.
+refresh "$ROOT/deploy/backup.sh" /usr/local/bin/ezbizi-backup.sh 0755
 refresh "$ROOT/deploy/watch-peer-websites.sh" /usr/local/bin/ezbizi-watch-peer-websites.sh 0755
 refresh "$ROOT/deploy/ezbizi-watch-peer.service" /etc/systemd/system/ezbizi-watch-peer.service 0644
 refresh "$ROOT/deploy/ezbizi-watch-peer.timer" /etc/systemd/system/ezbizi-watch-peer.timer 0644
