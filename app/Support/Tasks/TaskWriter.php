@@ -40,7 +40,6 @@ final class TaskWriter
         private readonly RecordNumberGenerator $numbers,
         private readonly AuditLogger $audit,
         private readonly EventEmitter $events,
-        private readonly TaskRecurrenceWorker $recurrence,
     ) {}
 
     public function create(User $actor, TaskBoard $board, ViewScope $scope, array $attributes, ?AutomationEvent $causedBy = null): Task
@@ -562,11 +561,25 @@ final class TaskWriter
     }
 
     /**
-     * Completing a recurring (`after_completion`) task records its next
-     * occurrence date (task-6 brief). TaskRecurrenceWorker does the actual
-     * work — computing the date, checking until/count, creating the next
-     * instance or closing the series out — and this is the ONLY place that
-     * calls it outside the worker's own hourly `on_schedule` sweep.
+     * Completing a recurring (`after_completion`) task relays its next
+     * occurrence to the outbox (task-6 brief, fix round 1).
+     *
+     * Deliberately NOT a call into TaskRecurrenceWorker: that class's
+     * instance-creation path takes `lockForUpdate()->max('position')`, and
+     * an InnoDB deadlock there aborts this whole transaction, not a
+     * savepoint — a `catch` around the call would still fire, but the
+     * completion's own COMMIT that follows would then land on a
+     * transaction the server already discarded, silently losing the
+     * completion itself while the API reports success. This method does
+     * nothing but parse the already-validated `recurrence` JSON (pure, no
+     * query, no lock) and emit one outbox row via EventEmitter — exactly
+     * the same durability guarantee (same transaction, same table) every
+     * other write in this class already relies on, and cheap enough that
+     * it cannot be the thing that deadlocks.
+     *
+     * `TaskRecurrenceWorker::relayPendingCompletions()` is the hourly
+     * consumer of that row; it does the lock-heavy work in its own
+     * transaction, never the user's.
      *
      * Caught and swallowed, not rethrown: a failing recurrence rule must
      * never be able to fail the completion that triggered it. If this ever
@@ -578,7 +591,15 @@ final class TaskWriter
             return;
         }
         try {
-            $this->recurrence->afterCompletion($task);
+            $recurrence = TaskRecurrenceCodec::parse($task->recurrence);
+            if ($recurrence === null || $recurrence->mode !== 'after_completion') {
+                return;
+            }
+            $this->events->emit(TaskRecurrenceWorker::RELAY_TRIGGER, $task, [
+                'organization_id' => $task->organization_id,
+                'board_id' => $task->board_id,
+                'task_id' => $task->id,
+            ]);
         } catch (\Throwable $e) {
             report($e);
         }

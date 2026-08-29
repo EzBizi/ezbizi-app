@@ -187,6 +187,12 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A recurring task series reached its "until" date or "count" and stopped.',
                         isRaised: true,
                     ),
+                    new TriggerDefinition(
+                        key: 'task.recurrence_instance_due',
+                        label: 'Recurrence instance due',
+                        description: 'An after-completion recurring task finished, and its next instance is due to be created.',
+                        isRaised: true,
+                    ),
                 ],
                 automationActions: [
                     new ActionDefinition(

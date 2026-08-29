@@ -2,6 +2,7 @@
 
 namespace App\Support\Tasks;
 
+use App\Models\AutomationEvent;
 use App\Models\Organization;
 use App\Models\Task;
 use App\Models\TaskActivity;
@@ -37,11 +38,32 @@ use Illuminate\Support\Facades\DB;
  *
  * `after_completion` is completion-driven: exactly one occurrence is ever
  * pending at a time, dated `every`/`unit` from the completion that produced
- * it. TaskWriter calls afterCompletion() synchronously, inside its own
- * completion transaction, the moment a task's status enters the Completed
- * category — see TaskWriter::recordRecurrenceOnCompletion(). That call is
- * wrapped in a try/catch there: a failing rule in this class can never fail
- * the completion that triggered it.
+ * it. TaskWriter does NOT call into this class at completion time (fix
+ * round 1, task-6): it only emits `RELAY_TRIGGER` to the outbox — a plain
+ * `EventEmitter::emit()`, no lock, no task creation, nothing that can abort
+ * the completion's own transaction. relayPendingCompletions() is this
+ * class's hourly consumer of that marker; it does the lock-heavy
+ * buildInstance() work in its OWN transaction, not the user's.
+ *
+ * Why not call straight into this class from TaskWriter (the original
+ * round-1 design): buildInstance()'s nextPosition() takes
+ * `lockForUpdate()->max('position')`. An InnoDB deadlock there aborts the
+ * WHOLE transaction, not a savepoint — a `catch (\Throwable)` around the
+ * call still fires, but the outer COMMIT that follows lands on a
+ * transaction the server already discarded, silently losing the
+ * completion itself while the API reports success. Routing through the
+ * outbox means the completion transaction never touches a lock it doesn't
+ * already need for its own sake.
+ *
+ * relayPendingCompletions() reads a bounded, RECENT window of
+ * RELAY_TRIGGER events rather than scanning "every completed recurring
+ * task" (which never shrinks — see the task-6 report's first design
+ * write-up for why that scan is unsafe). It re-reads each task's CURRENT
+ * `completed_at` rather than trusting anything in the event payload, so
+ * reprocessing the same marker (a missed run, a retried run, two
+ * overlapping runs) is exactly as safe as the periodic `on_schedule` scan:
+ * idempotent through attemptOccurrence()'s occurrence-uniqueness, not
+ * through anything about the event itself.
  *
  * Both modes share attemptOccurrence(): a task_recurrence_occurrences row
  * is WrittenOnce (immutable), so there is no two-phase "claim, then fill in
@@ -57,6 +79,27 @@ final class TaskRecurrenceWorker
      * declaration is bounded by `until`/`count` long before this matters. */
     private const MAX_CYCLES_PER_SERIES = 500;
 
+    /**
+     * The outbox marker TaskWriter emits at completion (fix round 1). Named
+     * as a real, tenant-legible fact ("this task's next recurrence instance
+     * is due"), the same way every other row in this outbox is both
+     * infrastructure and something a tenant could build a rule on — there
+     * is no "internal-only" trigger concept in this registry
+     * (EventEmitter::assertRegistered() has no such carve-out).
+     */
+    public const RELAY_TRIGGER = 'task.recurrence_instance_due';
+
+    /**
+     * How far back relayPendingCompletions() looks for RELAY_TRIGGER
+     * events. Bounded and self-shrinking — old rows simply age out of the
+     * window forever, the same shape as TaskDueWorker's reminder lookback —
+     * rather than the ever-growing "every completed recurring task" scan
+     * this replaces. Three days is generous against an hourly cadence: it
+     * absorbs a missed run or two without a real outage silently losing a
+     * relay forever.
+     */
+    private const RELAY_WINDOW_HOURS = 72;
+
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly SettingsResolver $settings,
@@ -67,14 +110,19 @@ final class TaskRecurrenceWorker
 
     /**
      * The hourly sweep for `on_schedule` series. `after_completion` series
-     * are handled entirely by afterCompletion(), called from TaskWriter, and
-     * never appear in this scan.
+     * are handled by relayPendingCompletions() instead, and are excluded
+     * here at the SQL level (`recurrence->mode`), not by loading each task
+     * and rejecting it in PHP — the same reason TaskDueWorker excludes
+     * Completed/Cancelled tasks in its own WHERE clause rather than after
+     * the fact: a mode check applied in PHP only after LIMIT has already
+     * bounded the batch lets one mode crowd the other out of the window
+     * instead of actually bounding "how much on_schedule work happens".
      */
     public function onSchedule(int $limit = 500): int
     {
         $created = 0;
         $query = Task::withoutGlobalScopes()
-            ->whereNotNull('recurrence')
+            ->where('recurrence->mode', 'on_schedule')
             ->whereNull('archived_at')
             ->orderBy('id')
             ->limit(max(1, min($limit, 5000)));
@@ -103,38 +151,99 @@ final class TaskRecurrenceWorker
     }
 
     /**
-     * Called from TaskWriter the moment a task's status enters the
-     * Completed category (create() and applyUpdate() both call this — a
-     * task can be created already-completed). Computes exactly ONE next
-     * occurrence, dated `every`/`unit` from the completion that just
-     * happened, and records it. Never throws: any failure here is caught by
-     * the caller and must never fail the completion (task-6 brief).
+     * The hourly consumer of RELAY_TRIGGER (fix round 1, task-6):
+     * TaskWriter emits that marker, cheaply, at the moment an
+     * `after_completion` task completes; this is where the actual
+     * lock-heavy work — checking exhaustion, building the next instance —
+     * happens instead, in its own transaction rather than the user's.
+     *
+     * Deliberately re-reads the task's CURRENT `completed_at` rather than
+     * anything carried in the event: if the task was reopened again before
+     * this ran, `completed_at` is null and there is nothing to do, exactly
+     * matching "creates nothing while the task stays open". If the SAME
+     * task was completed, reopened, and completed again before this ran,
+     * both markers converge on the SAME current `completed_at` and the
+     * second attempt is a no-op via attemptOccurrence()'s own uniqueness —
+     * not because of anything special done here.
      */
-    public function afterCompletion(Task $task): void
+    public function relayPendingCompletions(int $limit = 500): int
     {
-        $recurrence = TaskRecurrenceCodec::parse($task->recurrence);
-        if ($recurrence === null || $recurrence->mode !== 'after_completion') {
-            return;
-        }
-        if ($this->seriesEnded($task)) {
-            return;
-        }
-        $task->loadMissing(['board.company', 'board.franchise', 'board.organization']);
-        if ($task->board === null) {
-            return;
-        }
-        $completionDate = ($task->completed_at ?? now())->copy()
-            ->setTimezone($this->timezone($task))->toDateString();
-        $nextDate = $this->step($completionDate, $recurrence, 1);
-        $cycle = (int) TaskRecurrenceOccurrence::query()
-            ->where('task_id', $task->id)->whereNotNull('created_task_id')->count() + 1;
+        $created = 0;
+        $query = AutomationEvent::withoutGlobalScopes()
+            ->where('event_key', self::RELAY_TRIGGER)
+            ->where('occurred_at', '>=', now()->subHours(self::RELAY_WINDOW_HOURS))
+            ->orderBy('occurred_at')
+            ->limit(max(1, min($limit, 5000)));
 
-        $this->attemptOccurrence($task, $recurrence, $nextDate, $cycle);
+        foreach ($query->get(['organization_id', 'subject_id']) as $event) {
+            $organization = Organization::query()->find($event->organization_id);
+            if ($organization === null || $organization->isReadOnly()) {
+                continue;
+            }
+            $created += $this->tenant->run($organization, function () use ($event): int {
+                $task = Task::query()->active()->with(['board.company', 'board.franchise', 'board.organization'])
+                    ->find($event->subject_id);
+                if ($task === null || $task->board === null || $task->board->archived_at !== null
+                    || $task->completed_at === null) {
+                    return 0;
+                }
+                $recurrence = TaskRecurrenceCodec::parse($task->recurrence);
+                if ($recurrence === null || $recurrence->mode !== 'after_completion') {
+                    return 0;
+                }
+                // The task that just completed may itself be a later
+                // generation (it carries `recurrence` forward — see
+                // buildInstance()). Occurrence bookkeeping (uniqueness,
+                // until/count) is keyed on the ORIGINAL series root across
+                // every generation, not on whichever task happened to
+                // complete — otherwise `count` would silently reset to zero
+                // every generation and never actually stop the series.
+                // Copying FIELDS (title, owner, ...) still comes from $task
+                // itself, the most recently completed generation.
+                $seriesRootId = $this->seriesRootId($task->id);
+                if ($this->seriesEnded($seriesRootId)) {
+                    return 0;
+                }
+
+                $completionDate = $task->completed_at->copy()
+                    ->setTimezone($this->timezone($task))->toDateString();
+                $nextDate = $this->step($completionDate, $recurrence, 1);
+                $cycle = (int) TaskRecurrenceOccurrence::query()
+                    ->where('task_id', $seriesRootId)->whereNotNull('created_task_id')->count() + 1;
+
+                return $this->attemptOccurrence($task, $seriesRootId, $recurrence, $nextDate, $cycle) === 'created' ? 1 : 0;
+            });
+        }
+
+        return $created;
+    }
+
+    /**
+     * Walks `created_task_id -> task_id` backward through
+     * task_recurrence_occurrences until it reaches a task nothing produced
+     * — the original, human-declared series root. Strictly finite: each
+     * step moves to a chronologically earlier occurrence, so there is no
+     * cycle to walk into.
+     */
+    private function seriesRootId(string $taskId): string
+    {
+        $currentId = $taskId;
+        while (true) {
+            $producedByRootId = TaskRecurrenceOccurrence::query()
+                ->where('created_task_id', $currentId)->value('task_id');
+            if ($producedByRootId === null) {
+                return $currentId;
+            }
+            $currentId = $producedByRootId;
+        }
     }
 
     private function advanceSchedule(Task $root, TaskRecurrence $recurrence): int
     {
-        if ($this->seriesEnded($root)) {
+        // on_schedule never chains through completion (instances don't
+        // carry recurrence forward), so the root scanned here is always
+        // already the series root — no seriesRootId() walk needed.
+        if ($this->seriesEnded($root->id)) {
             return 0;
         }
         $baseline = $root->start_on?->format('Y-m-d') ?? $root->due_on?->format('Y-m-d');
@@ -149,7 +258,7 @@ final class TaskRecurrenceWorker
             if ($date > $today) {
                 break;
             }
-            $result = $this->attemptOccurrence($root, $recurrence, $date, $cycle);
+            $result = $this->attemptOccurrence($root, $root->id, $recurrence, $date, $cycle);
             if ($result === 'terminal') {
                 break;
             }
@@ -161,13 +270,21 @@ final class TaskRecurrenceWorker
         return $created;
     }
 
-    /** @return 'created'|'terminal'|'skipped' */
-    private function attemptOccurrence(Task $root, TaskRecurrence $recurrence, string $date, int $cycle): string
+    /**
+     * @param  Task  $fieldsSource  the task whose fields the new instance
+     *                              copies — the one that just completed (or,
+     *                              for on_schedule, the series root itself).
+     * @param  string  $seriesRootId  the stable identity occurrence
+     *                                bookkeeping is keyed on — see
+     *                                seriesRootId().
+     * @return 'created'|'terminal'|'skipped'
+     */
+    private function attemptOccurrence(Task $fieldsSource, string $seriesRootId, TaskRecurrence $recurrence, string $date, int $cycle): string
     {
         try {
-            return DB::transaction(function () use ($root, $recurrence, $date, $cycle): string {
+            return DB::transaction(function () use ($fieldsSource, $seriesRootId, $recurrence, $date, $cycle): string {
                 $exists = TaskRecurrenceOccurrence::query()
-                    ->where('task_id', $root->id)->where('occurrence_date', $date)->exists();
+                    ->where('task_id', $seriesRootId)->where('occurrence_date', $date)->exists();
                 if ($exists) {
                     return 'skipped';
                 }
@@ -176,25 +293,25 @@ final class TaskRecurrenceWorker
                     || ($recurrence->count !== null && $cycle > $recurrence->count);
                 if ($exhausted) {
                     TaskRecurrenceOccurrence::create([
-                        'board_id' => $root->board_id,
-                        'task_id' => $root->id,
+                        'board_id' => $fieldsSource->board_id,
+                        'task_id' => $seriesRootId,
                         'occurrence_date' => $date,
                         'created_task_id' => null,
                         'created_at' => now(),
                     ]);
-                    $this->events->emit('task.recurrence_completed', $root, [
-                        'organization_id' => $root->organization_id,
-                        'board_id' => $root->board_id,
-                        'task_id' => $root->id,
+                    $this->events->emit('task.recurrence_completed', $fieldsSource, [
+                        'organization_id' => $fieldsSource->organization_id,
+                        'board_id' => $fieldsSource->board_id,
+                        'task_id' => $seriesRootId,
                     ]);
 
                     return 'terminal';
                 }
 
-                $instance = $this->buildInstance($root, $date);
+                $instance = $this->buildInstance($fieldsSource, $recurrence, $date);
                 TaskRecurrenceOccurrence::create([
-                    'board_id' => $root->board_id,
-                    'task_id' => $root->id,
+                    'board_id' => $fieldsSource->board_id,
+                    'task_id' => $seriesRootId,
                     'occurrence_date' => $date,
                     'created_task_id' => $instance->id,
                     'created_at' => now(),
@@ -210,13 +327,13 @@ final class TaskRecurrenceWorker
         }
     }
 
-    private function seriesEnded(Task $root): bool
+    private function seriesEnded(string $seriesRootId): bool
     {
         return TaskRecurrenceOccurrence::query()
-            ->where('task_id', $root->id)->whereNull('created_task_id')->exists();
+            ->where('task_id', $seriesRootId)->whereNull('created_task_id')->exists();
     }
 
-    private function buildInstance(Task $root, string $occurrenceDate): Task
+    private function buildInstance(Task $root, TaskRecurrence $recurrence, string $occurrenceDate): Task
     {
         $root->loadMissing(['collaborators', 'columnValues', 'columnPeople', 'columnLabels']);
         $board = $root->board;
@@ -243,6 +360,17 @@ final class TaskRecurrenceWorker
             'position' => $this->nextPosition($board, $root->group_id),
             'created_by' => $actorId,
             'updated_by' => $actorId,
+            // `after_completion` ONLY (fix round 1, task-6 — CRITICAL: the
+            // series otherwise dies after one instance, because
+            // TaskWriter's completion hook only relays for a task whose OWN
+            // `recurrence` is set, and this instance is what the NEXT
+            // completion acts on). Never for `on_schedule`: that mode's
+            // hourly sweep already re-scans the ORIGINAL root by id forever
+            // — copying recurrence onto every generated instance too would
+            // make each one its own new series root on the next sweep,
+            // fanning out a second, uncoordinated schedule from every
+            // instance's own due_on baseline.
+            'recurrence' => $recurrence->mode === 'after_completion' ? $root->recurrence : null,
         ])->save();
 
         foreach ($root->collaborators as $collaborator) {

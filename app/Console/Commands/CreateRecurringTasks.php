@@ -9,12 +9,14 @@ final class CreateRecurringTasks extends Command
 {
     protected $signature = 'ezbizi:create-recurring-tasks {--limit=500}';
 
-    protected $description = 'Create the next due instance of every on_schedule recurring task series';
+    protected $description = 'Advance every on_schedule series and relay every pending after_completion instance';
 
     public function handle(TaskRecurrenceWorker $worker): int
     {
-        $count = $worker->onSchedule((int) $this->option('limit'));
-        $this->info("Created {$count} recurring task instance(s).");
+        $limit = (int) $this->option('limit');
+        $scheduled = $worker->onSchedule($limit);
+        $relayed = $worker->relayPendingCompletions($limit);
+        $this->info("Created {$scheduled} on_schedule and {$relayed} after_completion recurring task instance(s).");
 
         return self::SUCCESS;
     }

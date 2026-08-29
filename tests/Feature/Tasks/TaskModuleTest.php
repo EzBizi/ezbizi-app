@@ -40,6 +40,7 @@ class TaskModuleTest extends TestCase
             'task.dependency_added',
             'task.dependency_removed',
             'task.recurrence_completed',
+            'task.recurrence_instance_due',
         ], $tasks->triggerKeys());
 
         $triggers = collect($tasks->triggers)->keyBy('key');
@@ -54,6 +55,7 @@ class TaskModuleTest extends TestCase
         $this->assertTrue($triggers['task.dependency_added']->isRaised);
         $this->assertTrue($triggers['task.dependency_removed']->isRaised);
         $this->assertTrue($triggers['task.recurrence_completed']->isRaised);
+        $this->assertTrue($triggers['task.recurrence_instance_due']->isRaised);
 
         $actions = collect($tasks->automationActions)->keyBy('key');
         $this->assertSame([

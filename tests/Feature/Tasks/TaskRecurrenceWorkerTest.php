@@ -59,18 +59,33 @@ final class TaskRecurrenceWorkerTest extends TestCase
         $task = $this->createTask('Service the truck');
         $this->declareRecurrence($task, 'after_completion', 3, 'day');
 
-        // Merely editing the task (staying open) must create nothing.
+        // Merely editing the task (staying open) must create nothing, even
+        // after a worker pass: no relay marker is ever emitted for it.
         $this->patchJson("/api/v1/tasks/{$task->id}", [
             'expected_version' => Task::findOrFail($task->id)->version, 'title' => 'Service the truck (updated)',
         ])->assertOk();
         $this->enterTenant();
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+        $this->enterTenant();
         $this->assertSame(0, TaskRecurrenceOccurrence::count());
+        $this->assertSame(0, AutomationEvent::where('event_key', 'task.recurrence_instance_due')->count());
 
         $before = $this->board->tasks()->count();
         $completed = $this->statusOf(StatusCategory::Completed);
         $this->patchJson("/api/v1/tasks/{$task->id}", [
             'expected_version' => Task::findOrFail($task->id)->version, 'status_option_id' => $completed->id,
         ])->assertOk();
+
+        // Completion relays a marker to the outbox; it does not create the
+        // instance synchronously (fix round 1: the completion transaction
+        // must never carry the lock-heavy work).
+        $this->enterTenant();
+        $this->assertSame($before, $this->board->tasks()->count());
+        $this->assertSame(0, TaskRecurrenceOccurrence::count());
+        $this->assertSame(1, AutomationEvent::where('event_key', 'task.recurrence_instance_due')
+            ->where('subject_id', $task->id)->count());
+
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
 
         $this->enterTenant();
         $this->assertSame($before + 1, $this->board->tasks()->count());
@@ -83,6 +98,59 @@ final class TaskRecurrenceWorkerTest extends TestCase
 
         // Exactly one occurrence is ever pending for this series at a time.
         $this->assertSame(1, TaskRecurrenceOccurrence::where('task_id', $task->id)->count());
+    }
+
+    public function test_after_completion_series_continues_into_a_third_generation_because_the_instance_carries_recurrence(): void
+    {
+        Carbon::setTestNow('2026-09-01 12:00:00');
+        $task = $this->createTask('Service the truck');
+        $this->declareRecurrence($task, 'after_completion', 3, 'month');
+
+        // Generation 1 -> 2.
+        $completed = $this->statusOf(StatusCategory::Completed);
+        $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => Task::findOrFail($task->id)->version, 'status_option_id' => $completed->id,
+        ])->assertOk();
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+
+        $this->enterTenant();
+        $generationTwo = Task::findOrFail(
+            TaskRecurrenceOccurrence::where('task_id', $task->id)->firstOrFail()->created_task_id
+        );
+        $this->assertNotNull($generationTwo->recurrence, 'The instance must carry recurrence forward, or the series dies here.');
+        // Read by key, not position: MySQL does not preserve JSON key order
+        // (same rule TaskRecurrenceCodec's own comment documents).
+        $this->assertEquals(['mode' => 'after_completion', 'every' => 3, 'unit' => 'month', 'until' => null, 'count' => null], $generationTwo->recurrence);
+
+        // Generation 2 -> 3. The series root for occurrence bookkeeping is
+        // STILL the original task (task_id on the occurrence row never
+        // changes) — generation 2 completing must produce generation 3.
+        // The org's trial window is relative to real wall-clock time at
+        // provisioning, so jumping the test clock three months ahead would
+        // otherwise make the organization read-only; extend it first.
+        $this->enterTenant();
+        $this->tenant['org']->forceFill(['trial_ends_at' => null])->save();
+        \App\Support\Subscriptions\SubscriptionGuard::flush();
+        // Sanctum::actingAs (via signedInAs, in setUp) pins one specific User
+        // PHP object as the request's authenticated user for the rest of the
+        // test; its `organization` relation, once accessed, stays cached on
+        // that object regardless of the DB update above. Re-sign-in so
+        // EnforceSubscriptionState's `$request->user()->organization` reads
+        // the trial we just cleared, not the one from setUp.
+        $this->signedInAs($this->tenant['admin']->fresh());
+        Carbon::setTestNow('2026-12-01 12:00:00');
+        $this->patchJson("/api/v1/tasks/{$generationTwo->id}", [
+            'expected_version' => Task::findOrFail($generationTwo->id)->version, 'status_option_id' => $completed->id,
+        ])->assertOk();
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+
+        $this->enterTenant();
+        $this->assertSame(2, TaskRecurrenceOccurrence::where('task_id', $task->id)->whereNotNull('created_task_id')->count());
+        $generationThree = Task::findOrFail(
+            TaskRecurrenceOccurrence::where('task_id', $task->id)->orderBy('occurrence_date', 'desc')->firstOrFail()->created_task_id
+        );
+        $this->assertSame('2027-03-01', $generationThree->due_on?->format('Y-m-d'));
+        $this->assertSame($generationTwo->recurrence, $generationThree->recurrence);
     }
 
     // ── on_schedule ───────────────────────────────────────────────
@@ -102,8 +170,16 @@ final class TaskRecurrenceWorkerTest extends TestCase
             ->orderBy('occurrence_date')->pluck('occurrence_date')
             ->map(fn ($d) => $d->format('Y-m-d'))->all();
         $this->assertSame(['2026-09-08', '2026-09-15', '2026-09-22'], $dates);
-        $this->assertSame(3, Task::where('board_id', $this->board->id)
-            ->where('title', 'Weekly inspection')->where('id', '!=', $task->id)->count());
+        $instances = Task::where('board_id', $this->board->id)
+            ->where('title', 'Weekly inspection')->where('id', '!=', $task->id)->get();
+        $this->assertSame(3, $instances->count());
+
+        // Deliberate, not accidental: on_schedule instances do NOT carry
+        // recurrence forward. The root keeps generating every cycle by
+        // re-scanning itself by id; copying recurrence onto each instance
+        // too would make every one of them a second, uncoordinated series
+        // root on the next sweep.
+        $this->assertTrue($instances->every(fn (Task $instance) => $instance->recurrence === null));
     }
 
     public function test_retried_run_creates_no_duplicate(): void
@@ -148,6 +224,31 @@ final class TaskRecurrenceWorkerTest extends TestCase
         $this->assertSame($winner->id, TaskRecurrenceOccurrence::where('task_id', $task->id)->value('created_task_id'));
     }
 
+    public function test_relayed_after_completion_retried_run_creates_no_duplicate(): void
+    {
+        // The outbox relay is what makes after_completion susceptible to a
+        // genuine retried/overlapping RUN in the first place (fix round
+        // 1) — a synchronous call could never be "retried" independently
+        // of the completion itself. Same guarantee, same mechanism
+        // (occurrence uniqueness), different trigger.
+        Carbon::setTestNow('2026-09-01 12:00:00');
+        $task = $this->createTask('Relay retry me');
+        $this->declareRecurrence($task, 'after_completion', 1, 'day');
+        $completed = $this->statusOf(StatusCategory::Completed);
+        $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => Task::findOrFail($task->id)->version, 'status_option_id' => $completed->id,
+        ])->assertOk();
+
+        $this->enterTenant();
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+
+        $this->enterTenant();
+        $this->assertSame(1, TaskRecurrenceOccurrence::where('task_id', $task->id)->count());
+        $this->assertSame(1, Task::where('board_id', $this->board->id)
+            ->where('title', 'Relay retry me')->where('id', '!=', $task->id)->count());
+    }
+
     // ── timezone ──────────────────────────────────────────────────
 
     public function test_day_boundary_resolves_in_the_boards_place_timezone_not_utc(): void
@@ -163,6 +264,8 @@ final class TaskRecurrenceWorkerTest extends TestCase
         $this->patchJson("/api/v1/tasks/{$task->id}", [
             'expected_version' => Task::findOrFail($task->id)->version, 'status_option_id' => $completed->id,
         ])->assertOk();
+        $this->enterTenant();
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
 
         $this->enterTenant();
         $occurrence = TaskRecurrenceOccurrence::where('task_id', $task->id)->firstOrFail();
@@ -251,6 +354,8 @@ final class TaskRecurrenceWorkerTest extends TestCase
         $this->patchJson("/api/v1/tasks/{$task->id}", [
             'expected_version' => Task::findOrFail($task->id)->version, 'status_option_id' => $completed->id,
         ])->assertOk();
+        $this->enterTenant();
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
 
         $this->enterTenant();
         $occurrence = TaskRecurrenceOccurrence::where('task_id', $task->id)->firstOrFail();

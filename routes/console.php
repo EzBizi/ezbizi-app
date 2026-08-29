@@ -64,12 +64,15 @@ Schedule::command('ezbizi:watch-mailboxes')->everyMinute()->withoutOverlapping(5
 Schedule::command('ezbizi:dispatch-task-overdue')->hourly()->withoutOverlapping(10);
 Schedule::command('ezbizi:dispatch-task-due-reminders')->hourly()->withoutOverlapping(10);
 
-// `on_schedule` recurring task instances (Tasks Phase 2 design §11). Its own
+// Recurring task instances (Tasks Phase 2 design §11), both modes. Its own
 // overlap lock, keyed by this command's own signature same as the two
 // above — distinct from both, so a stuck run of one never blocks another.
-// `after_completion` series need no schedule entry: TaskWriter records their
-// next occurrence synchronously, inside the completion transaction that
-// triggers it (see TaskWriter::recordRecurrenceOnCompletion).
+// `on_schedule` series are advanced directly here; `after_completion`
+// series relay through the outbox (TaskWriter emits a cheap marker at
+// completion — see TaskWriter::recordRecurrenceOnCompletion — and this
+// command's other half, TaskRecurrenceWorker::relayPendingCompletions,
+// does the actual lock-heavy instance creation, never inside the
+// completion's own transaction).
 Schedule::command('ezbizi:create-recurring-tasks')->hourly()->withoutOverlapping(10);
 Schedule::command('ezbizi:dispatch-task-notification-intents')->everyMinute()->withoutOverlapping(5);
 Schedule::command('ezbizi:expire-task-update-attachment-candidates')->hourly()->withoutOverlapping(10);
