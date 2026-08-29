@@ -12,6 +12,7 @@ import 'flows_pane.dart';
 import 'general_pane.dart';
 import 'hours_pane.dart';
 import 'numbers_pane.dart';
+import 'porting_pane.dart';
 import 'ring_groups_pane.dart';
 import 'tags_pane.dart';
 import 'trust_pane.dart';
@@ -41,6 +42,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     ('General', Icons.tune_outlined),
     ('Connection', Icons.link_outlined),
     ('Numbers', Icons.dialpad_outlined),
+    ('Porting', Icons.swap_horiz_outlined),
     ('IVR menus', Icons.touch_app_outlined),
     ('Hours', Icons.schedule_outlined),
     ('Ring groups', Icons.groups_outlined),
@@ -304,12 +306,13 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       1 => GeneralPane(api: widget.api, session: widget.session),
       2 => _connectionBody(),
       3 => NumbersPane(api: widget.api, session: widget.session),
-      4 => FlowsPane(api: widget.api, session: widget.session),
-      5 => HoursPane(api: widget.api, session: widget.session),
-      6 => RingGroupsPane(api: widget.api, session: widget.session),
-      7 => TagsPane(api: widget.api, session: widget.session),
-      8 => TrustPane(api: widget.api, session: widget.session),
-      9 => UsagePane(
+      4 => PortingPane(api: widget.api, session: widget.session),
+      5 => FlowsPane(api: widget.api, session: widget.session),
+      6 => HoursPane(api: widget.api, session: widget.session),
+      7 => RingGroupsPane(api: widget.api, session: widget.session),
+      8 => TagsPane(api: widget.api, session: widget.session),
+      9 => TrustPane(api: widget.api, session: widget.session),
+      10 => UsagePane(
         api: widget.api,
         session: widget.session,
         scopeType: _places.first.type,

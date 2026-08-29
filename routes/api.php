@@ -984,6 +984,9 @@ Route::prefix('v1')
         Route::delete('phone/ring-groups/{group}', [PhoneRingGroupsController::class, 'destroy']);
 
         // Port-in: start via gateway; status webhooks update phone_port_requests.
+        // Reading them was never possible: a port could be started, its
+        // status updated by webhook for weeks, and no screen could show it.
+        Route::get('phone/ports', [PhonePortsController::class, 'index']);
         Route::post('phone/ports', [PhonePortsController::class, 'store']);
 
         // Named open-hours schedules on a connection. Create may take a number
