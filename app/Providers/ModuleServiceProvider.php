@@ -2091,8 +2091,9 @@ class ModuleServiceProvider extends ServiceProvider
              * HeartbeatController::store() started calling
              * EventEmitter::emit('monitoring.new_device_seen', ...) on a
              * newly-created device (2026-08-28-monitoring-pc-specs, task 4).
-             * `device_offline` stays `isRaised: false` until its scheduled
-             * check exists.
+             * `device_offline` flipped the same way once DeviceOfflineWorker
+             * started calling EventEmitter::emit('monitoring.device_offline',
+             * ...) from its scheduled sweep (task 6).
              */
             new ModuleDefinition(
                 key: 'monitoring',
@@ -2108,7 +2109,6 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'monitoring.device_offline',
                         label: 'Device went offline',
                         description: 'A device stopped reporting for longer than the allowed gap.',
-                        isRaised: false,
                     ),
                 ],
                 subject: new AutomationSubject(MonitoredDevice::class, 'Device', key: 'monitoring'),
