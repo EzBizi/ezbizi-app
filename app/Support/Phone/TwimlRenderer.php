@@ -6,6 +6,7 @@ use App\Models\PhoneFlow;
 use App\Models\PhoneHoursSchedule;
 use App\Models\PhoneNumber;
 use App\Models\PhoneRingGroup;
+use App\Models\PhoneVoicemailBox;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Twilio\TwiML\VoiceResponse;
@@ -518,9 +519,33 @@ final class TwimlRenderer
         string $language,
         array $context = [],
     ): void {
-        $response->say('Please leave a message after the tone.', ['language' => $language]);
+        // The line's own box, if it has one. A greeting is the last thing a
+        // caller hears before deciding whether to ring a competitor, so a
+        // business that has written one must actually get it — this used to
+        // be the same sentence for every line in every organization.
+        $box = $number->voicemail_box_id === null
+            ? null
+            : PhoneVoicemailBox::query()->find($number->voicemail_box_id);
+
+        $greeting = $box?->spokenGreeting();
+
+        if ($box !== null && $box->greeting_mode === 'audio'
+            && filled($box->greeting_audio_url)) {
+            $response->play((string) $box->greeting_audio_url);
+        } else {
+            $response->say(
+                $greeting ?? 'Please leave a message after the tone.',
+                ['language' => $box?->greeting_language ?: $language],
+            );
+        }
 
         $attributes = ['playBeep' => true];
+
+        // Twilio's own bounds, clamped rather than trusted: a maxLength of 0
+        // records nothing and a caller would hear a beep and then silence.
+        if ($box !== null) {
+            $attributes['maxLength'] = max(10, min(3600, (int) $box->max_seconds));
+        }
         if (is_string($context['recording_status_callback'] ?? null)
             && $context['recording_status_callback'] !== '') {
             $attributes['recordingStatusCallback'] = $context['recording_status_callback'];
@@ -530,7 +555,7 @@ final class TwimlRenderer
         // down a live call, and a different switch on the line — `transcribe`
         // starts a real-time stream on the conversation and never touches the
         // recording somebody leaves after everyone has hung up.
-        if ($number->voicemail_transcribe) {
+        if ($number->voicemail_transcribe || $box?->transcribe) {
             $attributes['transcribe'] = true;
 
             if (is_string($context['transcription_status_callback'] ?? null)

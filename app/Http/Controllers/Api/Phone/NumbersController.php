@@ -673,6 +673,9 @@ class NumbersController extends Controller
             // never attached to anything: the column was permanently null and
             // every menu in the system was decoration.
             'flow_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_flows')],
+
+            // Which greeting a caller hears when nobody answers.
+            'voicemail_box_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_voicemail_boxes')],
             'record' => ['sometimes', 'boolean'],
             'transcribe' => ['sometimes', 'boolean'],
             'after_hours' => ['sometimes', Rule::in(PhoneNumber::AFTER_HOURS)],
@@ -880,6 +883,7 @@ class NumbersController extends Controller
             'after_hours_number' => $number->after_hours_number,
             'ring_group_id' => $number->ring_group_id,
             'flow_id' => $number->flow_id,
+            'voicemail_box_id' => $number->voicemail_box_id,
             'hours_schedule_id' => $number->hours_schedule_id,
             'language' => $number->language,
             'sms_outbound_allowed' => (bool) $number->sms_outbound_allowed,

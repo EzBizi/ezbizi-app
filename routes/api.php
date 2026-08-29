@@ -66,6 +66,7 @@ use App\Http\Controllers\Api\Phone\ServiceRequestsController as PhoneServiceRequ
 use App\Http\Controllers\Api\Phone\SmsWebhookController as PhoneSmsWebhookController;
 use App\Http\Controllers\Api\Phone\StatusWebhookController as PhoneStatusWebhookController;
 use App\Http\Controllers\Api\Phone\TokensController as PhoneTokensController;
+use App\Http\Controllers\Api\Phone\VoicemailBoxesController as PhoneVoicemailBoxesController;
 use App\Http\Controllers\Api\Phone\TranscriptionWebhookController as PhoneTranscriptionWebhookController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
@@ -990,6 +991,13 @@ Route::prefix('v1')
         // Port-in: start via gateway; status webhooks update phone_port_requests.
         // Reading them was never possible: a port could be started, its
         // status updated by webhook for weeks, and no screen could show it.
+        // Voicemail boxes: the greeting, not the messages. Recordings live on
+        // the call rows and keep their own retention there.
+        Route::get('phone/voicemail-boxes', [PhoneVoicemailBoxesController::class, 'index']);
+        Route::post('phone/voicemail-boxes', [PhoneVoicemailBoxesController::class, 'store']);
+        Route::patch('phone/voicemail-boxes/{box}', [PhoneVoicemailBoxesController::class, 'update']);
+        Route::delete('phone/voicemail-boxes/{box}', [PhoneVoicemailBoxesController::class, 'destroy']);
+
         Route::get('phone/ports', [PhonePortsController::class, 'index']);
         Route::post('phone/ports', [PhonePortsController::class, 'store']);
 

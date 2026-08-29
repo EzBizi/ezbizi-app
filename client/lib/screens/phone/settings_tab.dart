@@ -18,6 +18,7 @@ import 'ring_groups_pane.dart';
 import 'tags_pane.dart';
 import 'trust_pane.dart';
 import 'usage_pane.dart';
+import 'voicemail_pane.dart';
 import 'service_request_pane.dart';
 
 /// Phone › Settings — layout 6: a rail of sections, and the form beside it.
@@ -47,6 +48,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     ('IVR menus', Icons.touch_app_outlined),
     ('Hours', Icons.schedule_outlined),
     ('Ring groups', Icons.groups_outlined),
+    ('Voicemail', Icons.voicemail_outlined),
     ('Tags', Icons.sell_outlined),
     ('Trust', Icons.verified_outlined),
     ('Number quality', Icons.fact_check_outlined),
@@ -312,10 +314,11 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       5 => FlowsPane(api: widget.api, session: widget.session),
       6 => HoursPane(api: widget.api, session: widget.session),
       7 => RingGroupsPane(api: widget.api, session: widget.session),
-      8 => TagsPane(api: widget.api, session: widget.session),
-      9 => TrustPane(api: widget.api, session: widget.session),
-      10 => NumberQualityPane(api: widget.api, session: widget.session),
-      11 => UsagePane(
+      8 => VoicemailPane(api: widget.api, session: widget.session),
+      9 => TagsPane(api: widget.api, session: widget.session),
+      10 => TrustPane(api: widget.api, session: widget.session),
+      11 => NumberQualityPane(api: widget.api, session: widget.session),
+      12 => UsagePane(
         api: widget.api,
         session: widget.session,
         scopeType: _places.first.type,
