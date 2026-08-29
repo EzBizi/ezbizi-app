@@ -11,6 +11,7 @@ import 'call_flow_pane.dart';
 import 'flows_pane.dart';
 import 'general_pane.dart';
 import 'hours_pane.dart';
+import 'number_quality_pane.dart';
 import 'numbers_pane.dart';
 import 'porting_pane.dart';
 import 'ring_groups_pane.dart';
@@ -48,6 +49,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     ('Ring groups', Icons.groups_outlined),
     ('Tags', Icons.sell_outlined),
     ('Trust', Icons.verified_outlined),
+    ('Number quality', Icons.fact_check_outlined),
     ('Cost', Icons.receipt_long_outlined),
     ('Messaging', Icons.sms_outlined),
   ];
@@ -312,7 +314,8 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       7 => RingGroupsPane(api: widget.api, session: widget.session),
       8 => TagsPane(api: widget.api, session: widget.session),
       9 => TrustPane(api: widget.api, session: widget.session),
-      10 => UsagePane(
+      10 => NumberQualityPane(api: widget.api, session: widget.session),
+      11 => UsagePane(
         api: widget.api,
         session: widget.session,
         scopeType: _places.first.type,

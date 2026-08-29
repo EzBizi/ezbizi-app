@@ -18,6 +18,7 @@ use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -163,6 +164,68 @@ class NumbersController extends Controller
             ->all();
 
         return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * GET /api/v1/phone/lookup
+     *
+     * What a number actually is — valid or not, mobile or landline, and whose
+     * carrier. Twilio Lookup v2.
+     *
+     * ── Why it is cached, and why the cache can be bypassed ──────
+     *
+     * Every fresh lookup is billed. A number's line type barely changes, so
+     * asking twice in a day is money for the same answer — but it DOES change
+     * when somebody ports, and a stale "landline" is how a text silently goes
+     * nowhere. So the default is the cached answer and `force` buys a fresh
+     * one, with the screen saying which it gave you.
+     *
+     * `cached` travels in the response for that reason: a figure whose age is
+     * unknown gets trusted like a fresh one.
+     *
+     * phone.edit, because a fresh lookup spends the tenant's money.
+     */
+    public function lookup(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'e164' => ['required', 'string', 'max:24'],
+            'force' => ['sometimes'],
+        ]);
+
+        $this->authorize('viewAny', PhoneNumber::class);
+        abort_unless($request->user()->hasPermission('phone.edit'), Response::HTTP_FORBIDDEN);
+
+        $e164 = trim($input['e164']);
+        $force = filter_var($request->query('force'), FILTER_VALIDATE_BOOL);
+
+        $key = 'phone:lookup:'.$this->tenant->idOrFail().':'.$e164;
+
+        if (! $force) {
+            $hit = Cache::get($key);
+
+            if (is_array($hit)) {
+                return response()->json(['data' => $hit, 'cached' => true]);
+            }
+        }
+
+        try {
+            $result = $this->twilio->lookupDetailed($e164);
+        } catch (Throwable) {
+            // Not a 500: "we could not ask" is a different answer from "that
+            // number is not real", and conflating them would have somebody
+            // delete a customer's good number.
+            return response()->json([
+                'data' => null,
+                'cached' => false,
+                'message' => 'EzBizi could not reach Twilio to check that number.',
+            ]);
+        }
+
+        // Thirty days: long enough that repeat checks are free, short enough
+        // that a ported number corrects itself within a billing cycle.
+        Cache::put($key, $result, now()->addDays(30));
+
+        return response()->json(['data' => $result, 'cached' => false]);
     }
 
     /**

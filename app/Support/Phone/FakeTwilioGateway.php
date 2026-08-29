@@ -386,6 +386,37 @@ final class FakeTwilioGateway implements TwilioGateway
         ];
     }
 
+    /**
+     * A detailed lookup a test wants to force — an invalid number, a landline,
+     * a mobile. Null gives a valid US mobile.
+     *
+     * @var array<string, mixed>|null
+     */
+    public ?array $detailedLookup = null;
+
+    public function lookupDetailed(string $e164): array
+    {
+        $this->record(__FUNCTION__, func_get_args());
+
+        if (! $this->lookupEnabled) {
+            throw new RuntimeException('not enabled');
+        }
+
+        if ($this->detailedLookup !== null) {
+            return $this->detailedLookup;
+        }
+
+        return [
+            'phone_number' => $e164,
+            'valid' => true,
+            'national_format' => '(561) 555-0123',
+            'country_code' => 'US',
+            'line_type' => 'mobile',
+            'carrier_name' => 'Fake Wireless',
+            'caller_name' => 'Fake Caller',
+        ];
+    }
+
     public function lookup(string $e164): array
     {
         $this->record(__FUNCTION__, func_get_args());

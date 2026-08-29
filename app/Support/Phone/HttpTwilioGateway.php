@@ -503,6 +503,33 @@ final class HttpTwilioGateway implements TwilioGateway
         ];
     }
 
+    public function lookupDetailed(string $e164): array
+    {
+        $result = $this->platformClient()->lookups->v2->phoneNumbers($e164)->fetch([
+            'fields' => 'line_type_intelligence,caller_name',
+        ]);
+
+        // Twilio returns these as associative arrays, and returns them as null
+        // when the paid field could not be resolved — which is not the same as
+        // the number being invalid.
+        $line = is_array($result->lineTypeIntelligence) ? $result->lineTypeIntelligence : [];
+        $caller = is_array($result->callerName) ? $result->callerName : [];
+
+        return [
+            'phone_number' => (string) ($result->phoneNumber ?? $e164),
+
+            // `valid` is the free half of Lookup and the half that matters
+            // most: a number nobody can dial is worth knowing about whether or
+            // not the paid carrier data resolved.
+            'valid' => (bool) $result->valid,
+            'national_format' => $result->nationalFormat,
+            'country_code' => $result->countryCode,
+            'line_type' => $line['type'] ?? null,
+            'carrier_name' => $line['carrier_name'] ?? null,
+            'caller_name' => $caller['caller_name'] ?? null,
+        ];
+    }
+
     public function startPort(PhoneConnection $connection, array $e164s, array $params = []): array
     {
         $phoneNumbers = array_map(

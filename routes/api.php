@@ -944,6 +944,10 @@ Route::prefix('v1')
         // the authority that spends the money in the first place.
         Route::get('phone/usage', [PhoneNumbersController::class, 'usage']);
 
+        // What a number actually is — Twilio Lookup v2. phone.edit, because a
+        // fresh lookup is billed; the cached answer is free.
+        Route::get('phone/lookup', [PhoneNumbersController::class, 'lookup']);
+
         Route::get('phone/numbers/available', [PhoneNumbersController::class, 'available']);
         Route::get('phone/numbers/countries', [PhoneNumbersController::class, 'countries']);
 
