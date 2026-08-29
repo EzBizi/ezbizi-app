@@ -329,4 +329,27 @@ final class Refusal
             .'instead of drawing a dependency between boards.'
         );
     }
+
+    /**
+     * Recurrence cannot be declared on a subtask (Tasks Phase 2 design §11,
+     * task-6 brief, fix round 2).
+     *
+     * Not a §4 reach failure — the actor holds `tasks.edit` and stands over
+     * the board perfectly well, same shape as [dependencyCycle]. What is
+     * refused is the shape of the request itself: a subtask is a checklist
+     * item under its parent rather than independent work, and Phase 1 has
+     * exactly one subtask level, so there is no defensible answer to what a
+     * recurring subtask does when its parent is archived, completed, or
+     * deleted. Refusing at declaration is one validation rather than
+     * teaching every later consumer of `recurrence` a second shape nobody
+     * asked for.
+     */
+    public static function recurrenceOnSubtask(): Response
+    {
+        return Response::deny(
+            'A subtask cannot recur on its own — it is a checklist item under its parent '
+            .'task rather than independent work. If this needs to repeat on its own '
+            .'schedule, make it a task of its own instead of a subtask.'
+        );
+    }
 }

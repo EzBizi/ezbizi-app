@@ -182,6 +182,44 @@ final class TaskRecurrenceWorkerTest extends TestCase
         $this->assertTrue($instances->every(fn (Task $instance) => $instance->recurrence === null));
     }
 
+    /**
+     * Fix round 2 (task-6): one candidate throwing must not abort the rest
+     * of the batch. Seeded the same way fix round 1's finding actually
+     * happened — a board where buildInstance() cannot find a non-terminal
+     * status to put the new instance in, so it throws instead of returning
+     * a refusal — proving TaskRecurrenceWorker::runCandidate() actually
+     * isolates it, not merely that a try/catch exists somewhere.
+     */
+    public function test_one_failing_candidate_does_not_stop_the_rest_of_the_batch(): void
+    {
+        Carbon::setTestNow('2026-09-01 12:00:00');
+
+        $badBoard = $this->createBoard('Broken board');
+        $badTask = $this->createTaskOnBoard($badBoard, 'Bad series', startOn: '2026-09-01');
+        $this->declareRecurrence($badTask, 'on_schedule', 1, 'day');
+        // Archived AFTER the task exists: what must break is buildInstance()
+        // finding a non-terminal status for the NEW instance, not the
+        // creation of the seed task itself.
+        $this->enterTenant();
+        \App\Models\TaskStatusOption::where('board_id', $badBoard->id)
+            ->whereIn('category', [StatusCategory::NotStarted, StatusCategory::Active, StatusCategory::Blocked])
+            ->update(['archived_at' => now()]);
+
+        $goodTask = $this->createTask('Good series', startOn: '2026-09-01');
+        $this->declareRecurrence($goodTask, 'on_schedule', 1, 'day');
+
+        Carbon::setTestNow('2026-09-02 12:00:00');
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+
+        $this->enterTenant();
+        $this->assertSame(0, TaskRecurrenceOccurrence::where('task_id', $badTask->id)->count(),
+            'The failing candidate must not have partially recorded anything.');
+        $this->assertSame(1, TaskRecurrenceOccurrence::where('task_id', $goodTask->id)->count(),
+            'A candidate queued behind a failing one must still be processed.');
+        $this->assertSame(1, Task::where('board_id', $this->board->id)
+            ->where('title', 'Good series')->where('id', '!=', $goodTask->id)->count());
+    }
+
     public function test_retried_run_creates_no_duplicate(): void
     {
         Carbon::setTestNow('2026-09-01 12:00:00');
@@ -383,8 +421,13 @@ final class TaskRecurrenceWorkerTest extends TestCase
 
     private function createTask(string $title, ?string $startOn = null, ?string $description = null): Task
     {
-        $group = $this->board->groups()->active()->firstOrFail();
-        $status = $this->statusOf(StatusCategory::NotStarted);
+        return $this->createTaskOnBoard($this->board, $title, $startOn, $description);
+    }
+
+    private function createTaskOnBoard(TaskBoard $board, string $title, ?string $startOn = null, ?string $description = null): Task
+    {
+        $group = $board->groups()->active()->firstOrFail();
+        $status = $board->statusOptions()->active()->where('category', StatusCategory::NotStarted)->firstOrFail();
         $payload = ['title' => $title, 'group_id' => $group->id, 'status_option_id' => $status->id];
         if ($startOn !== null) {
             $payload['start_on'] = $startOn;
@@ -392,11 +435,20 @@ final class TaskRecurrenceWorkerTest extends TestCase
         if ($description !== null) {
             $payload['description'] = $description;
         }
-        $id = $this->postJson("/api/v1/tasks/boards/{$this->board->id}/tasks", $payload)
+        $id = $this->postJson("/api/v1/tasks/boards/{$board->id}/tasks", $payload)
             ->assertCreated()->json('data.id');
         $this->enterTenant();
 
         return Task::findOrFail($id);
+    }
+
+    private function createBoard(string $name): TaskBoard
+    {
+        $id = $this->postJson('/api/v1/tasks/boards', ['name' => $name, 'visibility' => 'scope'])
+            ->assertCreated()->json('data.id');
+        $this->enterTenant();
+
+        return TaskBoard::findOrFail($id);
     }
 
     private function createColumn(string $name): TaskColumnDefinition

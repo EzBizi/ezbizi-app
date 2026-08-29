@@ -116,6 +116,54 @@ final class TaskRecurrenceDeclarationTest extends TestCase
 
     // ── TaskWriter::setRecurrence ───────────────────────────────
 
+    /**
+     * Fix round 2 (task-6): a subtask cannot declare recurrence, in either
+     * mode. Both modes reach the same `tasks_group_xor_parent_check`
+     * violation by the same path once a worker tries to build an instance
+     * (buildInstance() copies `group`, which only a top-level task has), so
+     * both are refused at declaration rather than one of them surfacing a
+     * database error hours later.
+     */
+    public function test_declaring_either_mode_on_a_subtask_is_refused(): void
+    {
+        $parent = $this->createTask('Parent');
+        $subtask = $this->createSubtask($parent, 'Checklist item');
+
+        foreach (['after_completion', 'on_schedule'] as $mode) {
+            try {
+                app(TaskWriter::class)->setRecurrence(
+                    $this->tenant['admin'],
+                    $subtask,
+                    ['mode' => $mode, 'every' => 1, 'unit' => 'day'],
+                    (int) $subtask->version,
+                );
+                $this->fail("Expected declaring {$mode} on a subtask to be refused.");
+            } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+                $this->assertStringContainsString('cannot recur', $e->getMessage());
+            }
+        }
+
+        $this->enterTenant();
+        $this->assertNull(Task::findOrFail($subtask->id)->recurrence);
+    }
+
+    public function test_declaring_either_mode_on_a_top_level_task_still_works(): void
+    {
+        foreach (['after_completion', 'on_schedule'] as $mode) {
+            $task = $this->createTask("Top level {$mode}");
+
+            $declared = app(TaskWriter::class)->setRecurrence(
+                $this->tenant['admin'],
+                $task,
+                ['mode' => $mode, 'every' => 1, 'unit' => 'day'],
+                (int) $task->version,
+            );
+
+            $this->assertNotNull($declared->recurrence);
+            $this->assertSame($mode, $declared->recurrence['mode']);
+        }
+    }
+
     public function test_declaration_is_a_versioned_write_that_conflicts_on_a_stale_version(): void
     {
         $task = $this->createTask('Recurring');
@@ -193,6 +241,17 @@ final class TaskRecurrenceDeclarationTest extends TestCase
         $status = $this->board->statusOptions()->active()->where('category', StatusCategory::NotStarted)->firstOrFail();
         $id = $this->postJson("/api/v1/tasks/boards/{$this->board->id}/tasks", [
             'title' => $title, 'group_id' => $group->id, 'status_option_id' => $status->id,
+        ])->assertCreated()->json('data.id');
+        $this->enterTenant();
+
+        return Task::findOrFail($id);
+    }
+
+    private function createSubtask(Task $parent, string $title): Task
+    {
+        $status = $this->board->statusOptions()->active()->where('category', StatusCategory::NotStarted)->firstOrFail();
+        $id = $this->postJson("/api/v1/tasks/boards/{$this->board->id}/tasks", [
+            'title' => $title, 'parent_task_id' => $parent->id, 'status_option_id' => $status->id,
         ])->assertCreated()->json('data.id');
         $this->enterTenant();
 

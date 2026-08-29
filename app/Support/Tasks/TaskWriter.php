@@ -237,6 +237,17 @@ final class TaskWriter
             abort_if($locked->archived_at !== null, 404);
             $this->assertVersion($locked, $version, ['recurrence']);
 
+            // Fix round 2 (task-6): a subtask cannot declare recurrence, in
+            // either mode — buildInstance() has no defensible shape for a
+            // recurring checklist item (it copies `group`, which only a
+            // top-level task has), and both modes reach the same
+            // tasks_group_xor_parent_check violation by the same path.
+            // Clearing an existing declaration is still allowed regardless
+            // — a refusal never blocks the safer, de-escalating action.
+            if ($raw !== null && $locked->parent_task_id !== null) {
+                Refusal::recurrenceOnSubtask()->authorize();
+            }
+
             $recurrence = TaskRecurrenceCodec::parse($raw);
             $before = $this->auditFields($locked);
             $locked->forceFill([

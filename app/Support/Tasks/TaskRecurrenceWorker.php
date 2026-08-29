@@ -132,7 +132,7 @@ final class TaskRecurrenceWorker
             if ($organization === null || $organization->isReadOnly()) {
                 continue;
             }
-            $created += $this->tenant->run($organization, function () use ($taskId): int {
+            $created += $this->runCandidate($organization, function () use ($taskId): int {
                 $task = Task::query()->active()->with(['board.company', 'board.franchise', 'board.organization'])
                     ->find($taskId);
                 if ($task === null || $task->board === null || $task->board->archived_at !== null) {
@@ -148,6 +148,38 @@ final class TaskRecurrenceWorker
         }
 
         return $created;
+    }
+
+    /**
+     * Per-item resilience (fix round 2, task-6): one candidate's uncaught
+     * exception must not abort the rest of the batch — every other
+     * organization and series still queued behind it in the same run.
+     *
+     * TaskDueWorker::eachCandidate() has no equivalent of this: it calls
+     * `$this->tenant->run($organization, $observe)` directly, with nothing
+     * catching a failure from one candidate before it reaches the
+     * surrounding `foreach`. That gap is not something this class
+     * introduced — it is a pre-existing shape in a worker already
+     * scheduled hourly in production — surfaced here because a subtask's
+     * `tasks_group_xor_parent_check` violation (fix round 1's finding) hit
+     * this exact failure mode first. There was no existing per-item
+     * pattern in this codebase to match, so this is a new one, reported
+     * rather than copied.
+     *
+     * A failure is reported (so it stays visible, not silently swallowed)
+     * and counted as zero for this run; the occurrence/event that produced
+     * it is untouched, so the SAME candidate is picked up again next run —
+     * exactly the same retry story as any other skipped candidate.
+     */
+    private function runCandidate(Organization $organization, callable $work): int
+    {
+        try {
+            return $this->tenant->run($organization, $work);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return 0;
+        }
     }
 
     /**
@@ -180,7 +212,7 @@ final class TaskRecurrenceWorker
             if ($organization === null || $organization->isReadOnly()) {
                 continue;
             }
-            $created += $this->tenant->run($organization, function () use ($event): int {
+            $created += $this->runCandidate($organization, function () use ($event): int {
                 $task = Task::query()->active()->with(['board.company', 'board.franchise', 'board.organization'])
                     ->find($event->subject_id);
                 if ($task === null || $task->board === null || $task->board->archived_at !== null
