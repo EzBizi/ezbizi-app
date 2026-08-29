@@ -565,6 +565,55 @@ confident one from another agent. On one change two independent reviewers
 "confirmed" a defect that did not reproduce; the test written to prove it passed
 against unmodified code.
 
+### A guard is strongest exactly where it needs to be weakest
+
+The other half of the rule above. A test that cannot fail is useless; a guard
+that fires hardest on the case it exists to catch is worse, because it looks
+like it is working.
+
+Six of these turned up on 2026-08-28 alone, all in code behaving exactly as
+designed, with the design pointed the wrong way:
+
+- **The backup verifier could not go red.** `restore-check.sh` compared six
+  named tables to catch "a dump interrupted partway through". Those six —
+  organizations, companies, franchises, users, roles, permissions — are the
+  FOUNDATION set, the first thing any dump writes, so a truncated dump leaves
+  exactly them full. Six of the sixty-four non-empty tables, and it had chosen
+  the six least capable of failing.
+- **The landmine detector protected the landmine.** `index-landmines.sh` looks a
+  staged blob up in history: recognised means a stale snapshot, safe to clear;
+  unrecognised means somebody's live work, protect it. A staged DELETION has no
+  blob, so an armed deletion of a 368-line file committed minutes earlier came
+  back "live" and the clearing command was withheld — for the one entry on the
+  list that most needed clearing, and the four beside it.
+- **The report was wrong only in the evening.** A window built in the view
+  timezone and bound against a UTC column dropped every call after 19:00 local,
+  and those calls reappeared the next morning inside the following day's window.
+  Correct again by the time anybody checked, which is why it survived in
+  production and nobody ever reported it.
+- **The gate tested a tree that no longer existed.** A hand-written list of
+  directories to wipe before extracting the archive was missing `public`, so a
+  file deleted by a commit survived in the sandbox and failed the very commit
+  that deleted it. It fails honest work, and — the dangerous direction — it
+  would equally have PASSED a deletion that live code still referenced.
+- **The suite proved the first hop and said nothing about the feature.** Eight
+  green tests on a recurring-task worker, not one of which completed a
+  second-generation instance. "Service the truck every 3 months" serviced it
+  twice and never again.
+- **`/version.json` reports `1.0.0` build `1`.** It is pubspec's default, it has
+  never changed, and it is the first file anybody reaches for to confirm what is
+  deployed. It would report healthy for a build that was never shipped.
+
+**The question that finds them:** *what does this look like when it is doing its
+job, and is that distinguishable from it not being there at all?* If the answer
+is no, the check is decoration. Prove it can say something other than "fine" —
+doctor the input, watch it complain, then put the input back.
+
+And when a check reports something implausible, suspect the check. The staged
+deletion above was found because "matches no commit" is a strange thing to say
+about a file sitting right there at HEAD — nothing had failed, the output just
+read oddly.
+
 ---
 
 ## 9 · Deploying
