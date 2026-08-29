@@ -267,6 +267,29 @@ work-in-progress, so prefer a private index, which never touches it.
 separate call with a human decision after it. Piped into the commit, the file
 count scrolls past above output nobody reads until afterwards.
 
+### Isolation and durability are different properties
+
+Per-session worktrees (`./scripts/session-worktree.sh <module>`) give each session
+its own working tree and its own index, and they genuinely remove a whole class of
+failure: two sessions sharing one index, one carrying another's staging, a stale
+blob overwriting a good one before it is committed. All of that goes.
+
+**They do not remove the revert class.** Once merged, your content sits on `main`
+like everyone else's, and a later commit built from a stale base reverts it there
+exactly as before. Every revert on the day this was written hit content that was
+**already committed** — not content anyone was holding in a working tree — so
+worktrees would not have prevented a single one.
+
+The dangerous reading is "the revert problem is solved", followed by the content
+check being dropped at precisely the point it becomes the only thing left standing.
+`git show <sha>:<path>` against the deploy pin stays mandatory.
+
+This is the day's shape once more, and it caught the person announcing the fix in
+the message announcing it: **a control that removes *some* failure modes gets
+described as removing *the* failure, and the description is what people act on.**
+The same shape as an exit code that "means pass", a private index that "was
+immune", and a branch-protection rule sitting in settings enforcing nothing.
+
 ### A clean check is a photograph, not a guarantee
 
 Every failure this section describes is one shape: **a reading whose scope was
@@ -350,6 +373,28 @@ Inventory/Fleet/Phone". Do not ship a fourth leak. A company-view widget test
 with a sibling in `/me` is the proof — `client/test/inventory_screen_test.dart`
 ("a company view does not offer sibling companies on New location") is the shape
 to copy.
+
+### A view-timezone window must be converted before it reaches a UTC column
+
+`DashboardPeriod::$startsOn`, and anything from `Carbon::now($timezone)`, is a
+**wall clock in the organisation's timezone**. A Carbon binds to a query as its own
+wall-clock string with no conversion, so handing one straight to a comparison
+against a UTC column puts the whole window out by the offset. Convert first:
+
+```php
+$period->startsOn->copy()->utc()
+```
+
+Seven glances in `app/Support/Dashboard/Glances/` do this, and `JobsGlance:107`
+states the rule beside the call. It is worth knowing both directions this fails in,
+because finding one will not find the other: a two-sided `whereBetween` binds late
+and **drops** rows at the upper edge (Phone's `CallReport`, fixed in `1fb67ba` —
+every evening call vanished from "today" and reappeared next morning), while a
+one-sided `>=` binds early and **over-counts** (`HrGlance:93`, open as TODO #34).
+
+Both are invisible in the morning and wrong in the evening, which is why neither
+was ever reported by a user. A `DATE` column has no timezone to get wrong; only
+datetimes are exposed.
 
 ### §6 — settings cascade upward
 
