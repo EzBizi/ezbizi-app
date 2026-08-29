@@ -56,6 +56,29 @@ while IFS= read -r f; do
   stat=$(git diff-index --cached --numstat "$HEAD_SHA" -- "$f" | awk '{printf "+%s -%s", $1, $2}')
   [ -z "$stat" ] && continue          # entry agrees with HEAD; nothing staged in effect
 
+  # A STAGED DELETION FIRST, because it has no blob to look up and would
+  # otherwise fall through to "live" — protecting the most dangerous entry
+  # there is. Committing one removes a file that HEAD has; when that file was
+  # just added by somebody else commit, the deletion is the exact inverse of
+  # their work.
+  #
+  # The discriminator is the WORKING TREE. Nobody deletes a file and leaves it
+  # on disk, so "staged D, still present in the worktree" is a stale snapshot
+  # taken before the file existed — clearable. "Staged D and gone from the
+  # worktree" is somebody actually removing it, which is theirs.
+  if [ "$(git diff --cached --name-status -- "$f" | cut -f1)" = "D" ]; then
+    if [ -f "$f" ]; then
+      stale=$((stale + 1)); stale_paths="$stale_paths $f"
+      printf '  STALE  %-46s %-10s  staged DELETION of a file HEAD has and the worktree still holds
+' "$f" "$stat"
+    else
+      live=$((live + 1))
+      printf '  live   %-46s %-10s  staged deletion, and gone from the worktree — somebody means it
+' "$f" "$stat"
+    fi
+    continue
+  fi
+
   # Is the staged content a snapshot of some commit, or somebody's edit?
   blob=$(git ls-files --stage -- "$f" | awk '{print $2}')
   hit=""
