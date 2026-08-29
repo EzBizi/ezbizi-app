@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Support\Automations\EventEmitter;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The scheduled scan behind `monitoring.device_offline` (task 6).
@@ -21,6 +22,14 @@ use App\Support\Tenancy\TenantContext;
  * while that column is still null. Emitting sets it, which is what stops the
  * very next sweep re-firing for the same silence — and a fresh beat clearing it
  * again is what lets a LATER silence fire again.
+ *
+ * The emit and the guard-write happen inside one `DB::transaction()` per
+ * device, same as `TaskDueWorker::observeOverdue()` — a crash between the
+ * two, uncommitted, is exactly a crash before either happened, so the very
+ * next sweep sees `offline_alerted_at` still null and selects the device
+ * again. Without the transaction that same crash would leave the outbox row
+ * committed but the guard unset, and the next sweep would re-select the
+ * device and emit a second event for the same episode.
  */
 class DeviceOfflineWorker
 {
@@ -41,7 +50,7 @@ class DeviceOfflineWorker
             }
 
             $count += $this->tenant->run($organization, function () use ($organization): int {
-                $seconds = (int) $this->settings->get('monitoring.offline_after_seconds', $organization);
+                $seconds = $this->settings->get('monitoring.offline_after_seconds', $organization);
                 $cutoff = now()->subSeconds($seconds);
 
                 $stale = MonitoredDevice::query()
@@ -51,10 +60,12 @@ class DeviceOfflineWorker
                     ->get();
 
                 foreach ($stale as $device) {
-                    $this->events->emit('monitoring.device_offline', $device, [
-                        'last_seen_at' => $device->last_seen_at?->toIso8601String(),
-                    ]);
-                    $device->forceFill(['offline_alerted_at' => now()])->save();
+                    DB::transaction(function () use ($device): void {
+                        $this->events->emit('monitoring.device_offline', $device, [
+                            'last_seen_at' => $device->last_seen_at?->toIso8601String(),
+                        ]);
+                        $device->forceFill(['offline_alerted_at' => now()])->save();
+                    });
                 }
 
                 return $stale->count();
