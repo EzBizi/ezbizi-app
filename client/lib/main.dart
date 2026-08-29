@@ -363,11 +363,22 @@ class _HomeShellState extends State<HomeShell> {
   /// so it only starts beating once somebody is actually signed in and inside
   /// the shell — a beat posted before that would just be an authenticated
   /// endpoint refusing a request nobody sent on purpose.
-  late final MonitoringHeartbeat _heartbeat = MonitoringHeartbeat(widget.api);
+  ///
+  /// Constructed explicitly in [initState] rather than as an inline `late
+  /// final` field initializer — a `late final` FIELD initializer runs on
+  /// first READ, not at construction. The only reads were in `_show()` and
+  /// `dispose()`, so a session that lands on a deep link and never taps the
+  /// nav rail never read it, never constructed it, and its `Timer.periodic`
+  /// never started: zero beats, not even the keep-alive, contradicting the
+  /// class's own doc comment that the keep-alive fires unconditionally once
+  /// this exists. Assigning it here forces that construction to happen
+  /// exactly once, unconditionally, the moment the shell mounts.
+  late final MonitoringHeartbeat _heartbeat;
 
   @override
   void initState() {
     super.initState();
+    _heartbeat = MonitoringHeartbeat(widget.api);
     _apply(widget.address?.path);
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
