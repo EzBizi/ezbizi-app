@@ -104,7 +104,28 @@ final class CallReport
     ): Builder {
         $query = PhoneCall::query()
             ->whereIn('number_id', $numberIds)
-            ->whereBetween('created_at', [$from, $to]);
+
+            // ── Convert the bounds, do not just pass them ────────────
+            //
+            // `created_at` is UTC. The caller builds this window in the
+            // ORGANIZATION's timezone, and a Carbon binds as its own local
+            // wall-clock string with no conversion — so a UTC-5 org compared
+            // UTC timestamps against Eastern strings, and the whole window sat
+            // five hours late.
+            //
+            // What that did in production: every call made in the last five
+            // hours of the local day was past the upper bound and vanished
+            // from "today". It came back the next morning, when those calls
+            // fell inside the following day's window — so the report was
+            // wrong only in the evening, and right again by the time anybody
+            // checked. Nobody would ever have reported it.
+            //
+            // The grouping below already does this correctly, shifting UTC
+            // into local with DATE_ADD. This is the same idea at the edges.
+            ->whereBetween('created_at', [
+                $from->copy()->utc(),
+                $to->copy()->utc(),
+            ]);
 
         if (! empty($filters['number_ids'])) {
             $query->whereIn('number_id', $filters['number_ids']);
