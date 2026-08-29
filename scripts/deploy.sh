@@ -314,6 +314,47 @@ fi
 # user-supplied parameter can be pushed into that regex by the caller
 # (/api/v1/web/sites/foo.js). Nothing reaches a controller, but the wrong 404
 # comes back. Add a line here for anything with that shape.
+# What the SCHEDULER holds, asked of the scheduler.
+#
+# A diff of routes/console.php proves a line was added to a file. It does not
+# prove the scheduler took it — which is the failure mode this exists for. On
+# 2026-08-28 ezbizi:publish-due-social-posts had to be confirmed by hand on the
+# box, because a schedule entry that silently does not register looks exactly
+# like one that does: the posts sit at "scheduled" forever and nothing goes red.
+#
+# It keeps the PREVIOUS release list and prints only what changed. Printing the
+# whole list every time is the weak form — a list nobody reads is not a control,
+# and a command that disappears has to show up as an ABSENCE to be noticed at
+# all. Proven both ways against the box before shipping: a doctored baseline
+# reported one addition and one disappearance rather than only ever saying fine.
+#
+# The empty guard matters more than it looks. If schedule:list fails, the list
+# is empty and every command reads as REMOVED — a fleet-wide false alarm, which
+# is how a check teaches people to ignore it.
+echo "→ what the scheduler actually holds"
+ssh "$REMOTE" '
+  cd /var/www/ezbizi-current
+  PREV=/var/www/ezbizi/last-schedule.txt
+  NOW=$(mktemp)
+  sudo -u www-data php8.4 artisan schedule:list 2>/dev/null | grep -oE "artisan [a-z0-9:._-]+" | sed "s/^artisan //" | sort -u > "$NOW"
+  if [ ! -s "$NOW" ]; then
+    echo "   ✗ schedule:list returned nothing — the scheduler holds no commands, or the call failed"
+  elif [ -f "$PREV" ]; then
+    A=$(comm -13 "$PREV" "$NOW"); R=$(comm -23 "$PREV" "$NOW")
+    if [ -z "$A" ] && [ -z "$R" ]; then
+      echo "   ok   $(wc -l < "$NOW") scheduled commands, unchanged"
+    else
+      [ -n "$A" ] && echo "$A" | sed "s/^/   + now scheduled: /"
+      [ -n "$R" ] && echo "$R" | sed "s/^/   - NO LONGER scheduled: /"
+    fi
+    cp "$NOW" "$PREV"
+  else
+    echo "   (first run) $(wc -l < "$NOW") scheduled commands recorded as the baseline"
+    cp "$NOW" "$PREV"
+  fi
+  rm -f "$NOW"
+' || echo "⚠ could not read the schedule from the box" >&2
+
 echo "→ smoke: URLs only the live server can answer"
 while read -r url want; do
   [ -z "$url" ] && continue
