@@ -32,18 +32,31 @@ use Illuminate\Support\Facades\DB;
  * ── The two modes ─────────────────────────────────────────────────
  *
  * `on_schedule` is purely calendar-driven: onSchedule() walks forward from
- * the series task's own start_on/due_on, one `every`/`unit` step per cycle,
- * and creates every due-and-not-yet-recorded occurrence regardless of
- * whether earlier ones were finished. It runs on the hourly schedule.
+ * the series task's own start_on/due_on, FLOORED at the date recurrence was
+ * DECLARED (`TaskRecurrence::$declaredOn` — whole-branch review finding 1)
+ * so a declaration on a task with historical dates cannot backfill every
+ * occurrence since then, one `every`/`unit` step per cycle, and creates
+ * every due-and-not-yet-recorded occurrence on/after that floor regardless
+ * of whether earlier ones were finished. It runs on the hourly schedule.
  *
- * `after_completion` is completion-driven: exactly one occurrence is ever
- * pending at a time, dated `every`/`unit` from the completion that produced
- * it. TaskWriter does NOT call into this class at completion time (fix
- * round 1, task-6): it only emits `RELAY_TRIGGER` to the outbox — a plain
- * `EventEmitter::emit()`, no lock, no task creation, nothing that can abort
- * the completion's own transaction. relayPendingCompletions() is this
- * class's hourly consumer of that marker; it does the lock-heavy
- * buildInstance() work in its OWN transaction, not the user's.
+ * `after_completion` is completion-driven: dated `every`/`unit` from the
+ * completion that produced it. Nothing today enforces that only one
+ * instance is ever pending at a time — reopening an already-relayed
+ * completion and completing it again on a different date produces a
+ * second live instance, because TaskRecurrenceOccurrence's uniqueness is
+ * keyed on (series root, occurrence date), not on "has this series
+ * already produced its next instance" (whole-branch review finding 10;
+ * tracked as a follow-up, not fixed here). TaskWriter does NOT call into
+ * this class at completion time (fix round 1, task-6): it only emits
+ * `RELAY_TRIGGER` to the outbox — a real row write (an INSERT into
+ * automation_events, in the completion's own transaction — that IS the
+ * point of an outbox), just no `lockForUpdate()` and no task creation. A
+ * database-level failure writing that row still propagates and fails the
+ * completion (whole-branch review finding 9) — only a malformed
+ * `recurrence` value is swallowed, because that is bad data, not a broken
+ * transaction. relayPendingCompletions() is this class's hourly consumer
+ * of that marker; it does the lock-heavy buildInstance() work in its OWN
+ * transaction, not the user's.
  *
  * Why not call straight into this class from TaskWriter (the original
  * round-1 design): buildInstance()'s nextPosition() takes

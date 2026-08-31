@@ -2018,15 +2018,9 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           ),
       ],
     );
-    final constrainedView = minViewHeight == null
-        ? view
-        : ConstrainedBox(
-            constraints: BoxConstraints(minHeight: minViewHeight),
-            child: view,
-          );
     if (minViewHeight == null) {
       return Column(
-        children: [chrome, Expanded(child: constrainedView), ?trailing],
+        children: [chrome, Expanded(child: view), ?trailing],
       );
     }
     return LayoutBuilder(
@@ -2041,7 +2035,17 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
               constraints: BoxConstraints(maxHeight: chromeBudget),
               child: SingleChildScrollView(child: chrome),
             ),
-            Expanded(child: constrainedView),
+            // No ConstrainedBox(minHeight:) around [view] here — removed
+            // (coordinator follow-up B on the whole-branch review's own
+            // fix wave). This method's own doc above already explained
+            // why nesting one around a tight-fitted Expanded child cannot
+            // work; leaving a provably-inert widget in the tree anyway is
+            // the exact pattern that misled two prior reviews into
+            // believing the OLD version of this method enforced a floor
+            // it did not. The real floor is the chromeBudget cap above:
+            // by construction, whatever height reaches Expanded here can
+            // never be less than minViewHeight.
+            Expanded(child: view),
             ?trailing,
           ],
         );
