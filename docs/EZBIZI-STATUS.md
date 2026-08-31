@@ -108,12 +108,16 @@ nothing. No Critical or Important finding is outstanding.
 
 ## Tasks — Phase 2, 2026-08-31
 
-Five presentations, one query surface. `GET tasks/boards/{board}/rows` is the only read path for
-Table, Kanban, Calendar, Timeline/Gantt, and Workload — `presentation` and `window` travel inside
-the saved view's `configuration` JSON rather than as separate endpoints or query parameters. Four
-presentation-specific endpoints would have been four places to get exact-view/private-board access
-right; one endpoint checked once (`TaskBoardAccess::viewDecision`) cannot drift out of sync with
-itself the way four copies of the same check eventually do.
+Five presentations, one query surface per scope. `GET tasks/boards/{board}/rows` is the only read
+path for a single board's own Table, Kanban, Calendar, Timeline/Gantt, and Workload — `presentation`
+and `window` travel inside the saved view's `configuration` JSON rather than as separate endpoints
+or query parameters. `GET tasks/my` is a second surface, not a second implementation of the same
+one: it serves the cross-board form of four of the five (Table, Calendar, Timeline, Workload —
+Kanban has no cross-board meaning, a bucket field is board-structure-specific) through the same
+`presentation`/`configuration` shape. What actually does not drift out of sync is access, not
+endpoint count: both surfaces resolve through the same `TaskBoardAccess::constrainVisible`, so a
+board's exact-view/private-board visibility is checked once in one place regardless of which
+surface asks.
 
 **View configuration moved to `schema:2`, upgraded on read, never rewritten.** A schema 1 view
 (Phase 1's only shape — table, no window) decodes today at the same meaning it always had, with
@@ -155,20 +159,28 @@ whoever is looking at the board.
 
 **Recurrence has two modes, and they run through different transactions on purpose.**
 `on_schedule` is purely calendar-driven: the hourly worker walks forward from the series task's own
-`start_on`/`due_on`, one `every`/`unit` step per cycle, and creates every occurrence that is due
-and not yet recorded, regardless of whether earlier ones were finished. `after_completion` is
-completion-driven — exactly one occurrence is ever pending, dated `every`/`unit` from the
-completion that produced it — and it does **not** create that occurrence inline. Completing a task
-only emits a `RELAY_TRIGGER` outbox event (a plain `EventEmitter::emit()`, no lock, no row write);
-the hourly worker's `relayPendingCompletions()` is the only thing that turns that marker into a
-task, in its own transaction. The reason: the occurrence-creation path takes a
+`start_on`/`due_on`, floored at the date recurrence was DECLARED rather than the task's own
+possibly-historical dates (a declaration must never backfill), one `every`/`unit` step per cycle,
+and creates every occurrence that is due and not yet recorded, regardless of whether earlier ones
+were finished. `after_completion` is completion-driven — dated `every`/`unit` from the completion
+that produced it — and it does **not** create that occurrence inline. Completing a task only emits
+a `RELAY_TRIGGER` outbox event: still a real write, a row inserted into `automation_events` in the
+completion's own transaction (that IS the point of routing through an outbox — the marker commits
+or rolls back atomically with the completion it describes) — but no `lockForUpdate()` and no task
+creation; the hourly worker's `relayPendingCompletions()` is the only thing that turns that marker
+into a task, in its own transaction. The reason: the occurrence-creation path takes a
 `lockForUpdate()->max('position')` lock, and an InnoDB deadlock there aborts the whole surrounding
 transaction, not a savepoint — if that lock lived inside the completion's own transaction, a
 deadlock on somebody else's series could silently lose the completion itself while the API reported
-success. Routing through the outbox means the completion transaction never touches a lock it does
-not already need for its own sake. `TaskRecurrenceOccurrence` is the idempotency row for both
-modes — written in the same transaction as whatever it records, a created task or a terminal
-marker with none.
+success. Routing through the outbox means the completion transaction never touches a LOCK it does
+not already need for its own sake; a genuine database failure writing the marker itself still
+propagates and fails the completion honestly, rather than being swallowed.
+`TaskRecurrenceOccurrence` is the idempotency row for both modes — written in the same transaction
+as whatever it records, a created task or a terminal marker with none — and it is what stops the
+SAME occurrence date from producing two tasks, not a guarantee that only one `after_completion`
+instance is EVER pending: reopening an already-relayed completion and completing it again on a
+different date is not something this table's uniqueness catches, because it produces a new,
+never-before-seen occurrence date. That gap is tracked as a known limitation, not fixed here.
 
 **Cross-board Timeline/Calendar/Workload are read-only summaries**, and they reuse My Tasks'
 access path verbatim rather than re-deriving one. Phase 1 already proved that path against a
