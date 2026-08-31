@@ -218,7 +218,7 @@ on main may have moved on.
 
 | # | Item | State |
 |---|---|---|
-| ✅ | **Phone · Caller Identity & Trust** | **Layout 1 approved** (prerequisite ladder) — `docs/previews/phone-trust-layouts.html` @ `d0ce75a`. Approved as drawn, i.e. **merged** with the existing Trust section as *Trust & caller identity*, rail 14 → 13. **No live Phone session to hand it to** — whoever picks Phone up implements layout 1. |
+| ✅ | **Phone · Caller Identity & Trust** | **Layout 1 approved** (prerequisite ladder) — `docs/previews/phone-trust-layouts.html` @ `d66bcef`. Approved as drawn, i.e. **merged** with the existing Trust section as *Trust & caller identity*, rail 14 → 13. **No live Phone session to hand it to** — whoever picks Phone up implements layout 1. |
 | ✅ | **Scheduling · Availability + Settings** | **Layout 7 approved** (Overview + area rail — Jose's own combination of 1 and 2), Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Being built by the Scheduling session. |
 | ✅ | **Fleet · vehicle Identity card** | **Layout 2 approved** (grouped by subject) — `docs/previews/fleet-identity-layouts.html` @ `560aed5`. **No live Fleet session.** Ready to build by whoever picks Fleet up. |
 | 3 | **Phone · Settings rail** — 14 sections, grew one at a time | Not started. |
