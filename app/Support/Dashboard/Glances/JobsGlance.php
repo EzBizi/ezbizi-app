@@ -5,7 +5,7 @@ namespace App\Support\Dashboard\Glances;
 use App\Models\Job;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Dashboard\Widgets\JobsByStatus;
 use App\Support\Dashboard\Widgets\Revenue;
@@ -21,42 +21,19 @@ use Illuminate\Support\Carbon;
  * statuses stay a prompt rather than a silent zero. Today and upcoming are
  * sentences on the same box.
  */
-final class JobsGlance implements Glance
+final class JobsGlance extends DescribedGlance
 {
+    protected const KEY = 'jobs';
+    protected const LABEL = 'Jobs';
+    protected const PERMISSION = 'jobs.view';
+    protected const PRESENTATIONS = ['pie', 'bar', 'line', 'text'];
+    protected const DEFAULT_PRESENTATION = 'pie';
+    protected const SNAPSHOT = true;
+
     public function __construct(
         private readonly JobsByStatus $jobsByStatus,
         private readonly Revenue $revenue,
     ) {}
-
-    public function key(): string
-    {
-        return 'jobs';
-    }
-
-    public function label(): string
-    {
-        return 'Jobs';
-    }
-
-    public function permission(): string
-    {
-        return 'jobs.view';
-    }
-
-    public function allowedPresentations(): array
-    {
-        return ['pie', 'bar', 'line', 'text'];
-    }
-
-    public function defaultPresentation(): string
-    {
-        return 'pie';
-    }
-
-    public function snapshot(): bool
-    {
-        return true;
-    }
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {

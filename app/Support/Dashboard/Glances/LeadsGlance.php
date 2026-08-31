@@ -5,7 +5,7 @@ namespace App\Support\Dashboard\Glances;
 use App\Models\Lead;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
@@ -28,37 +28,14 @@ use Illuminate\Support\Carbon;
  * runs once at nine in the morning would otherwise draw every one of the
  * previous day's enquiries as a spike at nine.
  */
-final class LeadsGlance implements Glance
+final class LeadsGlance extends DescribedGlance
 {
-    public function key(): string
-    {
-        return 'leads';
-    }
-
-    public function label(): string
-    {
-        return 'Leads';
-    }
-
-    public function permission(): string
-    {
-        return 'leads.view';
-    }
-
-    public function allowedPresentations(): array
-    {
-        return ['line', 'bar', 'text'];
-    }
-
-    public function defaultPresentation(): string
-    {
-        return 'line';
-    }
-
-    public function snapshot(): bool
-    {
-        return false;
-    }
+    protected const KEY = 'leads';
+    protected const LABEL = 'Leads';
+    protected const PERMISSION = 'leads.view';
+    protected const PRESENTATIONS = ['line', 'bar', 'text'];
+    protected const DEFAULT_PRESENTATION = 'line';
+    protected const SNAPSHOT = false;
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {

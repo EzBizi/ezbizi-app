@@ -6,7 +6,7 @@ use App\Models\InspectionReport;
 use App\Models\InspectionRun;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
@@ -20,37 +20,14 @@ use Illuminate\Support\Collection;
  * submitted reports that are not archived (frozen definition_name). Archived
  * and submitted-this-period stay sentences. Reach copies Generated Reports.
  */
-final class InspectionGlance implements Glance
+final class InspectionGlance extends DescribedGlance
 {
-    public function key(): string
-    {
-        return 'inspection';
-    }
-
-    public function label(): string
-    {
-        return 'Inspection';
-    }
-
-    public function permission(): string
-    {
-        return 'inspection.view';
-    }
-
-    public function allowedPresentations(): array
-    {
-        return ['bar', 'pie', 'text'];
-    }
-
-    public function defaultPresentation(): string
-    {
-        return 'bar';
-    }
-
-    public function snapshot(): bool
-    {
-        return true;
-    }
+    protected const KEY = 'inspection';
+    protected const LABEL = 'Inspection';
+    protected const PERMISSION = 'inspection.view';
+    protected const PRESENTATIONS = ['bar', 'pie', 'text'];
+    protected const DEFAULT_PRESENTATION = 'bar';
+    protected const SNAPSHOT = true;
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {

@@ -6,7 +6,7 @@ use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Tenancy\TenantContext;
 
@@ -17,37 +17,14 @@ use App\Support\Tenancy\TenantContext;
  * 0/0 as health. Waiting undelivered events ride as a sentence on the same box.
  * Matched/skipped runs are skipped in the pie (succeeded vs failed only).
  */
-final class AutomationsGlance implements Glance
+final class AutomationsGlance extends DescribedGlance
 {
-    public function key(): string
-    {
-        return 'automations';
-    }
-
-    public function label(): string
-    {
-        return 'Automations';
-    }
-
-    public function permission(): string
-    {
-        return 'automations.view';
-    }
-
-    public function allowedPresentations(): array
-    {
-        return ['pie', 'bar', 'text'];
-    }
-
-    public function defaultPresentation(): string
-    {
-        return 'pie';
-    }
-
-    public function snapshot(): bool
-    {
-        return true;
-    }
+    protected const KEY = 'automations';
+    protected const LABEL = 'Automations';
+    protected const PERMISSION = 'automations.view';
+    protected const PRESENTATIONS = ['pie', 'bar', 'text'];
+    protected const DEFAULT_PRESENTATION = 'pie';
+    protected const SNAPSHOT = true;
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {

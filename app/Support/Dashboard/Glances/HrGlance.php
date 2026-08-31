@@ -4,7 +4,7 @@ namespace App\Support\Dashboard\Glances;
 
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Dashboard\Widgets\Hr\ExpiringCertifications;
 use App\Support\Dashboard\Widgets\Hr\InvitationsStalled;
@@ -22,8 +22,15 @@ use Illuminate\Database\Eloquent\Builder;
  * sentences so text mode keeps the HR plan's five numbers. Places stay
  * ScopesToPlaces — the founder is at organization level, not on a franchise.
  */
-final class HrGlance implements Glance
+final class HrGlance extends DescribedGlance
 {
+    protected const KEY = 'hr';
+    protected const LABEL = 'Human Resources';
+    protected const PERMISSION = 'hr.view';
+    protected const PRESENTATIONS = ['bar', 'pie', 'text'];
+    protected const DEFAULT_PRESENTATION = 'bar';
+    protected const SNAPSHOT = true;
+
     use ScopesToPlaces;
 
     public function __construct(
@@ -32,36 +39,6 @@ final class HrGlance implements Glance
         private readonly StartersAndLeavers $startersAndLeavers,
         private readonly ExpiringCertifications $expiringCertifications,
     ) {}
-
-    public function key(): string
-    {
-        return 'hr';
-    }
-
-    public function label(): string
-    {
-        return 'Human Resources';
-    }
-
-    public function permission(): string
-    {
-        return 'hr.view';
-    }
-
-    public function allowedPresentations(): array
-    {
-        return ['bar', 'pie', 'text'];
-    }
-
-    public function defaultPresentation(): string
-    {
-        return 'bar';
-    }
-
-    public function snapshot(): bool
-    {
-        return true;
-    }
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {
