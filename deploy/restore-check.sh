@@ -541,8 +541,27 @@ live_migrations=$(q "SELECT COUNT(*) FROM \`$LIVE\`.migrations;")
 # Every table that has rows in production must have rows in the restore. This is
 # the check that catches a dump interrupted partway through: the schema is
 # complete, the early tables are full, and the later ones are silently empty.
+#
+# THE LIST IS DERIVED, and it has to be. It used to name six tables —
+# organizations, companies, franchises, users, roles, permissions — and those
+# six are the FOUNDATION set, the first thing any dump writes. A dump
+# interrupted partway through leaves exactly those full and everything after
+# them empty, so this check passed on the single failure mode it exists to
+# catch. It could not go red. The schema has 139 created tables across 89
+# migrations; six of them were being asked to speak for all of it.
+#
+# Found by the audit session on 2026-08-28 — the same shape as the deploy
+# gate's hand-written wipe list found the same day, and the same direction of
+# failure: a maintained list standing in for a fact the system already knows,
+# green when it should be red.
+#
+# COUNT(*) per table rather than information_schema.TABLE_ROWS, which is an
+# estimate for InnoDB and cheerfully reports 0 for a small non-empty table —
+# the one reading this check cannot afford to get wrong.
 empty=""
-for table in organizations companies franchises users roles permissions; do
+for table in $(q "SELECT table_name FROM information_schema.tables \
+                  WHERE table_schema='$LIVE' AND table_type='BASE TABLE' \
+                  ORDER BY table_name;"); do
   live_rows=$(q "SELECT COUNT(*) FROM \`$LIVE\`.\`$table\`;")
   back_rows=$(q "SELECT COUNT(*) FROM \`$SCRATCH\`.\`$table\`;")
 

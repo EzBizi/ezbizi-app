@@ -30,6 +30,25 @@ class Files {
   /// reading them as text would corrupt them the same way a photo would.
   static Future<PickedBytes?> pickBytes({String accept = ''}) =>
       impl.pickBytes(accept: accept);
+
+  /// A URL the browser can play or show, for bytes we already hold.
+  ///
+  /// Web only, and null everywhere else. On web this is an object URL over a
+  /// Blob — the same mechanism [download] already uses — so a video the person
+  /// just picked can be played back BEFORE it is uploaded anywhere. Nothing
+  /// leaves the machine to make this work, which is the point: the file is
+  /// being reviewed precisely because nobody is sure it is the right one yet.
+  ///
+  /// Off the web it answers null and the caller shows what it knows instead.
+  /// A native player would need the bytes written to a real file and a
+  /// different controller, which is a platform's worth of work for a preview
+  /// the desktop and mobile builds can live without today.
+  static String? previewUrl(List<int> bytes, String mime) =>
+      impl.previewUrl(bytes, mime);
+
+  /// Hand back a URL from [previewUrl]. Blobs are held until revoked, so a
+  /// composer that picked ten videos would otherwise keep all ten in memory.
+  static void releasePreviewUrl(String url) => impl.releasePreviewUrl(url);
 }
 
 class PickedFile {

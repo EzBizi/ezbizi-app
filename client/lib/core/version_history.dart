@@ -8,6 +8,29 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0117',
+      date: '28 Aug 2026',
+      items: [
+        'Web Management: you can issue a new browser key without touching the '
+            'plugin token. A page still carrying the old key keeps whatever '
+            'text is already written into it rather than going blank.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0116',
+      date: '28 Aug 2026',
+      items: [
+        'Phone: point a line at a menu. Menus could be built, named and given '
+            'destinations, and there was no way to attach one to a number — '
+            'every caller went straight past it.',
+        'Phone: the Cost screen no longer spins forever on a company with no '
+            'usage collected yet.',
+        'Web Management: your two keys are shown side by side and named for '
+            'what each is for — the secret one belongs on your server, the '
+            'public one goes in your page source on purpose.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0115',
       date: '28 Aug 2026',
       items: [

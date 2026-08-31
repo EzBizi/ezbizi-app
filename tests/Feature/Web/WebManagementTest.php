@@ -331,6 +331,16 @@ class WebManagementTest extends TestCase
             $readme,
         );
 
+        /*
+         * The version wordpress.org rejected was 6.8, and this line is the
+         * only thing standing between a stale value and a second rejection.
+         * `c0a0df8` put 6.8 back in a stale whole-file commit and the suite
+         * stayed green, because it reverted the readme and this assertion
+         * together — consistent with each other and wrong about the world.
+         * Pinning the number here means the next such revert goes red.
+         */
+        $this->assertStringContainsString('Tested up to: 7.1', $readme);
+
         $this->assertNotFalse(
             $zip->locateName('ezbizi/uninstall.php'),
             'Deleting the plugin must take the stored token with it.',
@@ -410,6 +420,89 @@ class WebManagementTest extends TestCase
      * See wordpress-plugin/tests/plugin-check.php for what it does and does not
      * cover, and why it is not a real WordPress install.
      */
+    // ── the snippet has to be reachable, not merely shipped ─────────
+
+    /**
+     * The snippet is served by a ROUTE, and these tests exist because shipping
+     * the file was not enough.
+     *
+     * `public/ezbizi.js` deployed perfectly and was unreachable on every
+     * release: nginx roots app.ezbizi.com at the Flutter build and sends only
+     * `/api` to Laravel, so Laravel's `public/` is not a web root here. The
+     * docs handed customers a URL that answered 404 and nothing failed — no
+     * test, no gate, no deploy check. It was found by somebody reading the
+     * nginx config.
+     */
+    public function test_the_browser_snippet_is_actually_served(): void
+    {
+        $response = $this->get('/api/v1/web/ezbizi.js')->assertOk();
+
+        $this->assertStringContainsString(
+            'application/javascript',
+            (string) $response->headers->get('Content-Type'),
+            'A script tag will not execute a response served as something else.',
+        );
+
+        $body = $response->getContent();
+
+        $this->assertStringContainsString('data-ezbizi', (string) $body);
+        $this->assertStringContainsString('textContent', (string) $body);
+    }
+
+    /**
+     * The URL the documentation gives must be the URL that exists.
+     *
+     * This is the assertion that would have caught the original defect, and it
+     * is the general form of it: a promise made to a customer in prose is not
+     * checked by anything unless something checks it. Reading the doc rather
+     * than hardcoding the path means the two cannot drift apart silently —
+     * change the route without the doc and this goes red.
+     */
+    public function test_the_documented_snippet_url_is_the_one_that_works(): void
+    {
+        $doc = file_get_contents(base_path('docs/WEB-MANAGEMENT-WITHOUT-WORDPRESS.md'));
+
+        $this->assertIsString($doc);
+        $this->assertSame(
+            1,
+            preg_match('#<script src="https://app\.ezbizi\.com(/[^"]+)"#', $doc, $found),
+            'The doc no longer shows a script tag, so this guard cannot check it.',
+        );
+
+        $this->get($found[1])->assertOk();
+    }
+
+    /**
+     * `public/` is not served on this host, so a file there is a file nobody
+     * can fetch. Somebody tidying the snippet "back where static assets go"
+     * would reintroduce the exact bug, and the move is invisible in review.
+     */
+    public function test_the_snippet_does_not_move_back_into_the_unserved_directory(): void
+    {
+        $this->assertFileExists(resource_path('snippet/ezbizi.js'));
+        $this->assertFileDoesNotExist(
+            public_path('ezbizi.js'),
+            'public/ is not a web root on app.ezbizi.com — see SnippetController.',
+        );
+    }
+
+    /**
+     * A missing key and a wrong key are different questions, and answering both
+     * with 404 cost a colleague a misdiagnosis: they read
+     * `404 {"message":"That key is not valid."}` on a keyless request and
+     * concluded the route was missing. Same status, opposite meaning.
+     */
+    public function test_a_request_with_no_key_is_told_so_rather_than_404(): void
+    {
+        $this->getJson('/api/v1/web/public/values')
+            ->assertStatus(400)
+            ->assertJsonFragment(['message' => 'No key was given. Add ?key=pk_... from Web Management.']);
+
+        $this->getJson('/api/v1/web/public/values?key=pk_nonsense')
+            ->assertStatus(404)
+            ->assertJsonFragment(['message' => 'That key is not valid.']);
+    }
+
     public function test_the_plugin_behaves_when_actually_executed(): void
     {
         $script = base_path('wordpress-plugin/tests/plugin-check.php');
@@ -424,6 +517,247 @@ class WebManagementTest extends TestCase
 
         $this->assertSame(0, $status, "The WordPress plugin failed its own checks:\n".$report);
         $this->assertStringContainsString('PASS', $report);
+    }
+
+    // ── 7. the public key, for sites with nowhere to keep a secret ──
+
+    public function test_every_site_gets_a_public_key_that_is_not_the_token(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $created = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $key = $created['data']['public_key'];
+
+        $this->assertStringStartsWith('pk_', $key);
+        $this->assertNotSame($created['token'], $key);
+        $this->assertStringStartsWith('ezb_', $created['token']);
+
+        // Unlike the token, it comes back on an ordinary read — it is meant to
+        // be pasted into a public page, so hiding it helps nobody.
+        $this->assertSame(
+            $key,
+            $this->signedInAs($editor)
+                ->getJson("/api/v1/web/sites/{$created['data']['id']}")
+                ->assertOk()->json('data.public_key'),
+        );
+    }
+
+    public function test_two_sites_never_share_a_public_key(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $one = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $two = $this->registerSite($editor, $tenant, 'nj.a-1chimney.com');
+
+        $this->assertNotSame($one['data']['public_key'], $two['data']['public_key']);
+    }
+
+    public function test_a_browser_reads_values_with_the_public_key_and_no_token(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $this->setValues($editor, $site['data']['id'], ['phone' => '555-0100']);
+
+        $body = $this->getJson(
+            '/api/v1/web/public/values?key='.$site['data']['public_key'],
+        )->assertOk();
+
+        $this->assertSame('555-0100', $body->json('values.phone'));
+        $this->assertNotEmpty($body->json('fields'));
+    }
+
+    /**
+     * The point of a separate endpoint rather than reusing the plugin's.
+     *
+     * The authenticated response names the host, the label and the company. A
+     * key scraped from somebody's page source must not turn into a map of which
+     * businesses use EzBizi and how their sites are grouped.
+     */
+    public function test_the_public_endpoint_never_names_the_company_or_the_host(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $this->setValues($editor, $site['data']['id'], ['phone' => '555-0100']);
+
+        $body = $this->getJson('/api/v1/web/public/values?key='.$site['data']['public_key'])
+            ->assertOk()->json();
+
+        $this->assertSame(['fields', 'values', 'pages'], array_keys($body));
+        $this->assertStringNotContainsString('a-1chimney.com', json_encode($body));
+        $this->assertStringNotContainsString('Alpha Co', json_encode($body));
+    }
+
+    public function test_a_page_override_reaches_the_browser_too(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $this->setValues($editor, $site['data']['id'], ['phone' => '555-0100']);
+
+        $this->signedInAs($editor)->putJson(
+            "/api/v1/web/sites/{$site['data']['id']}/values",
+            ['path' => '/contact', 'values' => ['phone' => '555-0999']],
+        )->assertOk();
+
+        $body = $this->getJson('/api/v1/web/public/values?key='.$site['data']['public_key'])
+            ->assertOk();
+
+        $this->assertSame('555-0100', $body->json('values.phone'));
+        $this->assertSame('555-0999', $body->json('pages./contact.phone'));
+    }
+
+    /**
+     * A key that never existed and one that was rotated away answer IDENTICALLY.
+     *
+     * That is the whole oracle guarantee: a caller holding a harvested key must
+     * not be able to learn whether it was ever real, so "wrong" and "retired"
+     * are one answer.
+     *
+     * This test used to assert that a MISSING key answered the same way too,
+     * which was the rule drawn too wide. Nobody sending no key is probing
+     * anything, and merging that case cost a colleague a misdiagnosis — see
+     * test_a_request_with_no_key_is_told_so_rather_than_404. The oracle applies
+     * between two keys, not between a key and its absence.
+     */
+    public function test_a_wrong_key_and_a_retired_key_answer_the_same_way(): void
+    {
+        $tenant = $this->provisionTenant('Oracle');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'rotated.example.com');
+
+        $retired = $site['data']['public_key'];
+
+        $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$site['data']['id']}/public-key")
+            ->assertOk();
+
+        $never = $this->getJson('/api/v1/web/public/values?key=pk_nonsense')->assertNotFound();
+        $was = $this->getJson('/api/v1/web/public/values?key='.$retired)->assertNotFound();
+
+        $this->assertSame($never->json('message'), $was->json('message'));
+    }
+
+    public function test_the_browser_response_is_cacheable_and_cross_origin(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $this->getJson('/api/v1/web/public/values?key='.$site['data']['public_key'])
+            ->assertOk()
+            ->assertHeader('Access-Control-Allow-Origin', '*')
+            ->assertHeader('Cache-Control', 'max-age=300, public');
+    }
+
+    public function test_the_token_still_does_not_work_as_a_public_key(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        // The two credentials are not interchangeable in either direction.
+        $this->getJson('/api/v1/web/public/values?key='.$site['token'])->assertNotFound();
+        $this->pluginRead($site['data']['public_key'], 'a-1chimney.com')->assertUnauthorized();
+    }
+
+    // ── 8. an empty site answers with an OBJECT, never an array ─────
+
+    /**
+     * The first-run deadlock, and the test that would have caught it.
+     *
+     * `pluck()->all()` returns a PHP array. Populated, json_encode writes an
+     * object; EMPTY, it writes `[]`. So this endpoint answered with two
+     * different TYPES for `values` depending only on whether anybody had filled
+     * the form in yet, and the Flutter panel — which casts it to a Map — threw
+     * on the empty case. The exception escaped before the loading flag could be
+     * cleared, so the panel span forever: you could not open it until the site
+     * had values, and you could not add values without opening it.
+     *
+     * Every newly registered site hit this. ezbizi.com, the first real one, hit
+     * it immediately. Asserting on the ENCODED JSON rather than the decoded
+     * array is the whole point — PHP cannot tell the two apart after decoding,
+     * which is exactly why it shipped.
+     *
+     * @return list<array{0: string}>
+     */
+    public static function valueEndpoints(): array
+    {
+        return [
+            'the panel' => ['panel'],
+            'the plugin' => ['plugin'],
+            'the browser' => ['public'],
+        ];
+    }
+
+    #[DataProvider('valueEndpoints')]
+    public function test_a_site_with_no_values_still_answers_with_an_object(string $which): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $json = match ($which) {
+            'panel' => $this->signedInAs($editor)
+                ->getJson("/api/v1/web/sites/{$site['data']['id']}/values")
+                ->assertOk()->content(),
+            'plugin' => $this->pluginRead($site['token'], 'a-1chimney.com')
+                ->assertOk()->content(),
+            'public' => $this->getJson(
+                '/api/v1/web/public/values?key='.$site['data']['public_key'],
+            )->assertOk()->content(),
+        };
+
+        $this->assertStringContainsString('"values":{}', $json,
+            'An empty values map encoded as a JSON array, which the client cannot cast to a Map.');
+        $this->assertStringContainsString('"pages":{}', $json,
+            'An empty pages map encoded as a JSON array.');
+        $this->assertStringNotContainsString('"values":[]', $json);
+        $this->assertStringNotContainsString('"pages":[]', $json);
+    }
+
+    public function test_a_populated_site_still_answers_with_the_same_object_shape(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $this->setValues($editor, $site['data']['id'], ['phone' => '555-0100']);
+
+        $json = $this->signedInAs($editor)
+            ->getJson("/api/v1/web/sites/{$site['data']['id']}/values")
+            ->assertOk()->content();
+
+        // Populated was never broken; this holds the fix to not breaking it.
+        $this->assertStringContainsString('"values":{"phone":"555-0100"}', $json);
+        $this->assertStringContainsString('"pages":{}', $json);
+    }
+
+    public function test_saving_the_first_value_returns_an_object_too(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        // The PUT returns the same payload as the GET, and its empty case is
+        // reached by clearing the only value a site has.
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/values", [
+                'values' => ['phone' => ''],
+            ])
+            ->assertOk()
+            ->assertSee('"values":{}', escape: false);
     }
 
     // ── helpers ─────────────────────────────────────────────────────

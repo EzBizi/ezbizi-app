@@ -30,12 +30,38 @@ class TwilioVoiceDevice implements VoiceDevice {
         }.toJS,
       );
       _device = device;
-      await device.register().toDart;
+
+      // ── Why this needs a timeout and not just a catch ────────────
+      //
+      // register() opens a signalling socket. If that socket never connects —
+      // a proxy swallowing WebSockets, a captive portal, a network that
+      // accepts and then drops — the promise NEVER SETTLES. A promise that
+      // never settles is not a rejection, so `catch` below cannot fire and
+      // this await simply hangs forever.
+      //
+      // The desk then draws perfectly, shows no error, and never rings. That
+      // is the worst failure this module has: indistinguishable from a quiet
+      // day. Ten seconds is generous for a socket handshake, and timing out
+      // lands us in the same state as a refused token, which is at least a
+      // state the rest of the code already understands.
+      await device.register().toDart.timeout(const Duration(seconds: 10));
+      _registered = true;
     } catch (_) {
-      // No SDK, or a token Twilio refused. The desk still draws; Call then
-      // says so by doing nothing.
+      // No SDK, a token Twilio refused, or signalling that never came up.
+      // The desk still draws; `registered` is how Call knows not to pretend
+      // it can take a call.
+      _registered = false;
     }
   }
+
+  /// Whether the device actually reached Twilio.
+  ///
+  /// Kept separate from `_device != null`: the object exists the moment it is
+  /// constructed, long before — and whether or not — registration succeeds.
+  bool _registered = false;
+
+  @override
+  bool get registered => _registered;
 
   @override
   Future<void> connect({required String to, String? callerId}) async {

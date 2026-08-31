@@ -394,20 +394,44 @@ class _SiteCardState extends State<_SiteCard> {
       return;
     }
 
-    final data = response.body['data'] as Map<String, dynamic>;
-    final values = (data['values'] as Map<String, dynamic>?) ?? {};
+    /*
+     * `_loading` is cleared in a finally, and that is the important half.
+     *
+     * It used to be set inside the success path, so ANY throw between the await
+     * and that line left the spinner turning for as long as somebody was
+     * willing to watch it. The first version of this method threw on exactly
+     * that path — see the map decoding below — and the failure a person saw was
+     * not an error message but a panel that never opened. An exception here
+     * should show as a broken panel, never as a busy one.
+     */
+    try {
+      final data = response.body['data'] as Map<String, dynamic>;
+      final values = _asMap(data['values']);
 
-    setState(() {
-      _loading = false;
-      _fields = (data['fields'] as List<dynamic>).cast<Map<String, dynamic>>();
+      _fields = (data['fields'] as List<dynamic>? ?? const [])
+          .cast<Map<String, dynamic>>();
 
       for (final field in _fields) {
         final key = field['key'] as String;
         _controllers.putIfAbsent(key, TextEditingController.new).text =
             (values[key] as String?) ?? '';
       }
-    });
+    } catch (_) {
+      _error = 'This site\'s details could not be read.';
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
+
+  /// A JSON map that might arrive as a list, because an empty one used to.
+  ///
+  /// PHP encodes an empty associative array as `[]` rather than `{}`, so this
+  /// field was an object on a site with details and an array on a site without.
+  /// The server now always sends an object; this stays because a client that
+  /// hard-casts a wire type it does not control is one deploy away from the
+  /// same deadlock, and an older client will meet the old shape forever.
+  Map<String, dynamic> _asMap(Object? raw) =>
+      raw is Map<String, dynamic> ? raw : <String, dynamic>{};
 
   Future<void> _save() async {
     setState(() {
@@ -474,6 +498,32 @@ class _SiteCardState extends State<_SiteCard> {
     }
   }
 
+  /// The browser key is public, so this is not a leak response — it is the
+  /// answer to somebody polling it, or to a key that ended up somewhere the
+  /// customer would rather it had not.
+  ///
+  /// Unlike the token there is no show-once ceremony: the new key comes back
+  /// in the site payload like any other field, because it was never a secret.
+  Future<void> _rotatePublicKey() async {
+    final response = await widget.api.post(
+      '/web/sites/$_id/public-key',
+      {},
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _confirming = null;
+      if (response.ok) {
+        _saved = 'New browser key issued. Paste the snippet again.';
+      } else {
+        _error = response.message;
+      }
+    });
+
+    if (response.ok) await widget.onChanged();
+  }
+
   Future<void> _remove() async {
     final response = await widget.api.delete('/web/sites/$_id');
 
@@ -531,6 +581,7 @@ class _SiteCardState extends State<_SiteCard> {
                       children: [
                         if (widget.freshToken != null) _tokenBlock(theme),
                         if (!_connected) _installGuide(theme),
+                        _snippetBlock(theme),
                         for (final field in _fields)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 12),
@@ -584,6 +635,44 @@ class _SiteCardState extends State<_SiteCard> {
 
   Widget _confirmRow(ThemeData theme) {
     final removing = _confirming == 'remove';
+    final rekeying = _confirming == 'rotate-key';
+
+    if (rekeying) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Issue a new browser key? Any page still carrying the old one '
+              'stops updating — it keeps whatever text is written between the '
+              'tags, so nothing goes blank, but it stops following $_host '
+              'until you paste the new snippet in.',
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => setState(() => _confirming = null),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: _rotatePublicKey,
+                  child: const Text('Issue a new browser key'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -678,6 +767,96 @@ class _SiteCardState extends State<_SiteCard> {
   /// They stay while the site is unconnected because that is exactly when they
   /// are needed, and go once it has read, because a permanent install guide
   /// above a working site is noise on every later visit.
+  /// The other way in, for a site that is not WordPress.
+  ///
+  /// ── Why this block exists at all ──
+  ///
+  /// The public key shipped in the API and had nowhere to appear, so the only
+  /// credential this screen showed was the SECRET token. Asked for the browser
+  /// key, the honest answer from anybody looking at this panel was to hand over
+  /// the `ezb_` one, because it was the only key on screen. That is not a user
+  /// error; a screen that shows one credential and needs another is the error.
+  ///
+  /// So the two are shown TOGETHER and named for what they are: `ezb_` is the
+  /// plugin's, never public; `pk_` is the browser's, printed in page source on
+  /// purpose. Seeing them side by side is what makes the difference legible.
+  Widget _snippetBlock(ThemeData theme) {
+    final key = widget.site['public_key'] as String? ?? '';
+
+    if (key.isEmpty) return const SizedBox.shrink();
+
+    final snippet =
+        '<script src="${ApiClient.baseUrl}/api/v1/web/ezbizi.js" '
+        'data-key="$key"></script>';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Not WordPress?', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
+          const Text(
+            'Put this one line in the page, then mark any element with '
+            'data-ezbizi to fill it:',
+          ),
+          const SizedBox(height: 8),
+          SelectableText(snippet, style: theme.textTheme.bodySmall),
+          const SizedBox(height: 8),
+          const SelectableText(
+            '<span data-ezbizi="phone">555-0100</span>',
+            style: TextStyle(fontFamily: 'monospace'),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Whatever is already between the tags stays if the value is '
+            'blank, so the page never shows an empty gap — and a search '
+            'engine still reads a real value.',
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: SelectableText(
+                  key,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Copy the snippet',
+                icon: const Icon(Icons.copy_outlined, size: 18),
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: snippet));
+
+                  if (mounted) setState(() => _saved = 'Snippet copied.');
+                },
+              ),
+              if (widget.canEdit)
+                TextButton(
+                  onPressed: () =>
+                      setState(() => _confirming = 'rotate-key'),
+                  child: const Text('New key'),
+                ),
+            ],
+          ),
+          Text(
+            'This key is safe in public page source — it reads only what this '
+            'site already publishes. The plugin token above is not: it starts '
+            'ezb_ and belongs on your server only.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _installGuide(ThemeData theme) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),

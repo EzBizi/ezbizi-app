@@ -11,6 +11,7 @@ import '../screens/inventory_screen.dart';
 import '../screens/jobs_screen.dart';
 import '../screens/business_profile_screen.dart';
 import '../screens/leads_screen.dart';
+import '../screens/monitoring/monitoring_screen.dart';
 import '../screens/reviews_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../screens/phone_screen.dart';
@@ -107,6 +108,10 @@ final Map<String, ModuleScreen> moduleScreens = {
   'services': ModuleScreen(
     Icons.handyman_outlined,
     (api, session) => ServicesScreen(api: api, session: session),
+  ),
+  'monitoring': ModuleScreen(
+    Icons.desktop_windows_outlined,
+    (api, session) => MonitoringScreen(api: api, session: session),
   ),
   // ── The three modules Marketing draws inside itself ────────────
   //

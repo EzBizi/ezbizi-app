@@ -19,6 +19,7 @@ are separate projects; the shared numbering only produced gaps whenever an item 
 | 31 | **EZ Leads — Google Ads API Basic Access** | **[YOU]** then **[CLAUDE]** | **Submitted 2026-08-25**, ~5 business days to initial review. Token is currently **Test level** and cannot touch a real account. MCC `706-109-4046`. Brand verification (its hard prerequisite) is **done**, and was **re-verified 2026-08-26** after the official logo replaced the interim monogram — a logo change re-triggers verification, so do not touch branding mid-review without watching it go green again. One step may still be outstanding: the developer token must be *associated* with project `ezbizi-506117` by making one Ads API call with OAuth credentials from that project — the call may fail, it only has to be made. |
 | 32 | **EZ Leads — `adwords` scope verification** | **[BOTH]** | **Module shipped 2026-08-25, so this is now recordable.** Google requires a YouTube demo video showing the scope in use across every OAuth client on the project. `business.manage` needs none of this — Google classifies it **non-sensitive**, confirmed on the Data Access page 2026-08-25. Only `adwords` is sensitive. Record against a staging environment or test project: demoing unverified scopes on production traffic consumes the **100-user lifetime cap, which cannot be reset**. |
 | 33 | ~~**EZ Leads — OAuth clients**~~ | ✅ | **Done 2026-08-26.** `EzBizi Business Profile` and `EzBizi Google Ads`, both Web application, on `ezbizi-506117`. Kept separate so a customer can connect a Business Profile without a Google Ads account. All five values are on the box `.env` and in `H:\Development\Credentials\Google OAuth - EZ Leads.md` — never in git. Both drivers report READY as `www-data`, and the redirect URIs the app derives match what is registered character for character. **Two traps cost an hour and are now in DEPLOY.md:** a release holds its own *copy* of `.env`, so editing the master only affects the next deploy; and `config:cache` must run as `ubuntu`, because `bootstrap/cache` is `ubuntu:ubuntu` and it fails silently as `www-data`. |
+| 34 | **HR glance over-counts new starters in the evening** | **[CLAUDE]** | **Real, in production, unowned.** `app/Support/Dashboard/Glances/HrGlance.php:93` passes `$period->startsOn` with no `->copy()->utc()`; `Widgets/Hr/StartersAndLeavers.php:56` binds it to `where('created_at', '>=', ...)` against a UTC column. A view-TZ Carbon binds as its own wall-clock string, so for a UTC-5 organisation the lower bound sits **five hours early** and starters from ~19:00 the previous evening are pulled into this period. Over-counts rather than drops, which is why nobody reported it. **Seven sibling glances do it correctly** — CustomersGlance:62, InspectionGlance:95, JobsGlance:112 and :229, LeadsGlance:71, ReviewsGlance:70, TasksGlance:77 — and JobsGlance:107 carries the comment stating the rule: "startsOn is a view-TZ wall; created_at is UTC". So the fix is one line matching seven precedents. It needs a **frozen-clock test that fails without it**, which is why it is not a drive-by. Same class as 1fb67ba (Phone `CallReport`), which failed in the opposite direction — a `whereBetween` bound late and **dropped** evening calls. `StartersAndLeavers:65` is fine: `whereDate('occurred_on', ...)` is a DATE column with no timezone to get wrong. **Freeze-safe** — it changes a number, not a response shape. HR has no session in the roster. |
 
 ## Mail console work (you) — recorded 2026-08-18
 
@@ -214,6 +215,29 @@ base UI, so they are recorded here rather than fixed piecemeal.
 - Workspace DWD and SES SMTP are the same kind of leftover: **TODO #28 and #1**, steps on this page under Mail console work.
 
 ## Done
+
+- ✅ **The inspection engine, and A1's form ported onto it** — *2026-08-29.* Nine phases.
+  An inspection now belongs to the organization, a company or a franchise (`scope_type`/
+  `scope_id`, Automation's pair). Fields and whole screens carry `visible_if` —
+  eq/ne/in/not_in with nested and/or — and the two consequences are the ones to know:
+  **a hidden field is not a missing answer** (or a masonry inspection is blocked at Submit
+  by a wood-stove question nobody was shown) and **its answer is dropped at submit** (or the
+  report freezes evidence of a question it never asked). Options carry a pass/fail variant
+  and their own nested fields, so **failing a finding structurally demands its photograph,
+  its explanation and its priced work** — the one idea worth stealing wholesale from A1's
+  tool. Building codes live in a per-organization library, cited by id as a draft and frozen
+  as WORDS into the version at publish, so correcting a typo never rewrites what a report
+  already told a customer. Recommended work is picked from Services and becomes `job_lines`
+  on submit — no estimate model, because `JobLine` already snapshots name and price for
+  exactly the same reason. Six new field types, chosen by counting what A1's form actually
+  uses: its type union declares `address` and the real form uses it zero times. And three
+  print modes, so a report reads as findings rather than 120 undifferentiated rows, with
+  "1 of 3 items did not meet standards" at the top.
+  **The port is a seed, not a code path** — `inspection:import-a1` writes it through
+  `FieldSet`, the Builder's own validator, so anything the engine could not express would
+  fail there. It lands as a DRAFT: publishing is A1's call after reading it.
+  Spec `docs/superpowers/specs/2026-08-28-inspection-engine-design.md`,
+  plan `docs/superpowers/plans/2026-08-28-inspection-scope-owner.md` (phase 1).
 
 - ✅ **An inspection belongs to a place** — *2026-08-29.* A named inspection is the
   organization's, a company's, or a franchise's, using the same `scope_type`/`scope_id`

@@ -267,6 +267,29 @@ work-in-progress, so prefer a private index, which never touches it.
 separate call with a human decision after it. Piped into the commit, the file
 count scrolls past above output nobody reads until afterwards.
 
+### Isolation and durability are different properties
+
+Per-session worktrees (`./scripts/session-worktree.sh <module>`) give each session
+its own working tree and its own index, and they genuinely remove a whole class of
+failure: two sessions sharing one index, one carrying another's staging, a stale
+blob overwriting a good one before it is committed. All of that goes.
+
+**They do not remove the revert class.** Once merged, your content sits on `main`
+like everyone else's, and a later commit built from a stale base reverts it there
+exactly as before. Every revert on the day this was written hit content that was
+**already committed** — not content anyone was holding in a working tree — so
+worktrees would not have prevented a single one.
+
+The dangerous reading is "the revert problem is solved", followed by the content
+check being dropped at precisely the point it becomes the only thing left standing.
+`git show <sha>:<path>` against the deploy pin stays mandatory.
+
+This is the day's shape once more, and it caught the person announcing the fix in
+the message announcing it: **a control that removes *some* failure modes gets
+described as removing *the* failure, and the description is what people act on.**
+The same shape as an exit code that "means pass", a private index that "was
+immune", and a branch-protection rule sitting in settings enforcing nothing.
+
 ### A clean check is a photograph, not a guarantee
 
 Every failure this section describes is one shape: **a reading whose scope was
@@ -350,6 +373,28 @@ Inventory/Fleet/Phone". Do not ship a fourth leak. A company-view widget test
 with a sibling in `/me` is the proof — `client/test/inventory_screen_test.dart`
 ("a company view does not offer sibling companies on New location") is the shape
 to copy.
+
+### A view-timezone window must be converted before it reaches a UTC column
+
+`DashboardPeriod::$startsOn`, and anything from `Carbon::now($timezone)`, is a
+**wall clock in the organisation's timezone**. A Carbon binds to a query as its own
+wall-clock string with no conversion, so handing one straight to a comparison
+against a UTC column puts the whole window out by the offset. Convert first:
+
+```php
+$period->startsOn->copy()->utc()
+```
+
+Seven glances in `app/Support/Dashboard/Glances/` do this, and `JobsGlance:107`
+states the rule beside the call. It is worth knowing both directions this fails in,
+because finding one will not find the other: a two-sided `whereBetween` binds late
+and **drops** rows at the upper edge (Phone's `CallReport`, fixed in `1fb67ba` —
+every evening call vanished from "today" and reappeared next morning), while a
+one-sided `>=` binds early and **over-counts** (`HrGlance:93`, open as TODO #34).
+
+Both are invisible in the morning and wrong in the evening, which is why neither
+was ever reported by a user. A `DATE` column has no timezone to get wrong; only
+datetimes are exposed.
 
 ### §6 — settings cascade upward
 
@@ -519,6 +564,55 @@ Treat review findings the same way — including your own, and including a
 confident one from another agent. On one change two independent reviewers
 "confirmed" a defect that did not reproduce; the test written to prove it passed
 against unmodified code.
+
+### A guard is strongest exactly where it needs to be weakest
+
+The other half of the rule above. A test that cannot fail is useless; a guard
+that fires hardest on the case it exists to catch is worse, because it looks
+like it is working.
+
+Six of these turned up on 2026-08-28 alone, all in code behaving exactly as
+designed, with the design pointed the wrong way:
+
+- **The backup verifier could not go red.** `restore-check.sh` compared six
+  named tables to catch "a dump interrupted partway through". Those six —
+  organizations, companies, franchises, users, roles, permissions — are the
+  FOUNDATION set, the first thing any dump writes, so a truncated dump leaves
+  exactly them full. Six of the sixty-four non-empty tables, and it had chosen
+  the six least capable of failing.
+- **The landmine detector protected the landmine.** `index-landmines.sh` looks a
+  staged blob up in history: recognised means a stale snapshot, safe to clear;
+  unrecognised means somebody's live work, protect it. A staged DELETION has no
+  blob, so an armed deletion of a 368-line file committed minutes earlier came
+  back "live" and the clearing command was withheld — for the one entry on the
+  list that most needed clearing, and the four beside it.
+- **The report was wrong only in the evening.** A window built in the view
+  timezone and bound against a UTC column dropped every call after 19:00 local,
+  and those calls reappeared the next morning inside the following day's window.
+  Correct again by the time anybody checked, which is why it survived in
+  production and nobody ever reported it.
+- **The gate tested a tree that no longer existed.** A hand-written list of
+  directories to wipe before extracting the archive was missing `public`, so a
+  file deleted by a commit survived in the sandbox and failed the very commit
+  that deleted it. It fails honest work, and — the dangerous direction — it
+  would equally have PASSED a deletion that live code still referenced.
+- **The suite proved the first hop and said nothing about the feature.** Eight
+  green tests on a recurring-task worker, not one of which completed a
+  second-generation instance. "Service the truck every 3 months" serviced it
+  twice and never again.
+- **`/version.json` reports `1.0.0` build `1`.** It is pubspec's default, it has
+  never changed, and it is the first file anybody reaches for to confirm what is
+  deployed. It would report healthy for a build that was never shipped.
+
+**The question that finds them:** *what does this look like when it is doing its
+job, and is that distinguishable from it not being there at all?* If the answer
+is no, the check is decoration. Prove it can say something other than "fine" —
+doctor the input, watch it complain, then put the input back.
+
+And when a check reports something implausible, suspect the check. The staged
+deletion above was found because "matches no commit" is a strange thing to say
+about a file sitting right there at HEAD — nothing had failed, the output just
+read oddly.
 
 ---
 

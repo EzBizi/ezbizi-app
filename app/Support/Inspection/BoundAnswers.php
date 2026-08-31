@@ -41,7 +41,113 @@ final class BoundAnswers
             }
         }
 
+        return self::withoutHidden($screens, $answers);
+    }
+
+    /**
+     * Drop answers to questions this version will not ask.
+     *
+     * A technician answers the wood-stove branch, then changes the system type
+     * to masonry. Without this the report freezes an answer it never renders —
+     * evidence of a question that was not asked, sitting in `answers` forever
+     * and surfacing in an export or a §9 purge report as something the visit
+     * apparently found.
+     *
+     * Resolved against the FINAL answers, once, at submit. Doing it as the
+     * technician types would delete work the moment they tapped the wrong
+     * option and tapped back.
+     *
+     * ── It is not a whitelist, deliberately ─────────────────────
+     *
+     * Only keys that BELONG to a field this version declares are considered. An
+     * answer key with no field behind it is left exactly where it is: it
+     * belongs to something else — a future field type this build predates, or a
+     * list this method has never heard of — and dropping it would be freeze
+     * deleting data it does not understand.
+     *
+     * @param  list<array<string, mixed>>  $screens
+     * @param  array<string, mixed>  $answers
+     * @return array<string, mixed>
+     */
+    private static function withoutHidden(array $screens, array $answers): array
+    {
+        foreach ($screens as $screen) {
+            if (! is_array($screen)) {
+                continue;
+            }
+
+            $screenShown = Condition::passes($screen['visible_if'] ?? null, $answers);
+
+            foreach ((is_array($screen['fields'] ?? null) ? $screen['fields'] : []) as $field) {
+                if (! is_array($field)) {
+                    continue;
+                }
+
+                $shown = $screenShown
+                    && Condition::passes($field['visible_if'] ?? null, $answers);
+
+                $key = (string) ($field['key'] ?? '');
+                if ($key !== '' && array_key_exists($key, $answers) && ! $shown) {
+                    unset($answers[$key]);
+                }
+
+                /*
+                 * Nested answers go when their option is not the chosen one.
+                 *
+                 * A technician marks a crown failed, photographs it, then
+                 * changes their mind and marks it passing. The report must not
+                 * carry a photograph of a fault it says does not exist.
+                 *
+                 * `revealedBy` is asked against the answers as they now stand,
+                 * so a field whose own option was just dropped reveals nothing
+                 * and its children go with it.
+                 */
+                $revealed = $shown ? OptionSet::revealedBy($field, $answers) : [];
+                $live = [];
+                foreach ($revealed as $inner) {
+                    if (Condition::passes($inner['visible_if'] ?? null, $answers)) {
+                        $live[] = (string) ($inner['key'] ?? '');
+                    }
+                }
+
+                foreach (self::everyNestedKey($field) as $nestedKey) {
+                    if ($nestedKey !== ''
+                        && array_key_exists($nestedKey, $answers)
+                        && ! in_array($nestedKey, $live, true)) {
+                        unset($answers[$nestedKey]);
+                    }
+                }
+            }
+        }
+
         return $answers;
+    }
+
+    /**
+     * Every key that lives inside any of this field's options.
+     *
+     * The set to consider dropping. Only keys this version DECLARES are looked
+     * at, so an answer with no field behind it is still left alone — freeze
+     * must not become a whitelist.
+     *
+     * @param  array<string, mixed>  $field
+     * @return list<string>
+     */
+    private static function everyNestedKey(array $field): array
+    {
+        $keys = [];
+
+        foreach ((is_array($field['options'] ?? null) ? $field['options'] : []) as $option) {
+            $option = OptionSet::normalise($option);
+
+            foreach (($option['fields'] ?? []) as $nested) {
+                if (is_array($nested)) {
+                    $keys[] = (string) ($nested['key'] ?? '');
+                }
+            }
+        }
+
+        return $keys;
     }
 
     public static function render(?Customer $customer, ?Job $job, string $bind): ?string

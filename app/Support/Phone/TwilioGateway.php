@@ -85,6 +85,21 @@ interface TwilioGateway
     public function searchAvailable(PhoneConnection $connection, array $criteria): array;
 
     /**
+     * Daily usage for this connection's subaccount.
+     *
+     * Every subaccount reports its own usage, which is the only way to tell
+     * what one company's phone service cost when EzBizi pays one bill for all
+     * of them. Twilio does not keep these forever, so this is collected
+     * nightly rather than asked for when somebody wants a number.
+     *
+     * Dates are Y-m-d in the account's own timezone, which is Twilio's rule,
+     * not ours.
+     *
+     * @return list<array{category: string, description: ?string, start_date: ?string, usage: string, usage_unit: ?string, count: string, count_unit: ?string, price: string, price_unit: ?string}>
+     */
+    public function usageDaily(PhoneConnection $connection, string $startDate, string $endDate): array;
+
+    /**
      * The countries this account may buy numbers in.
      *
      * Read from Twilio rather than hard-coded: the list changes, and a stale
@@ -161,6 +176,21 @@ interface TwilioGateway
      * @return array{phone_number: string, caller_name: ?string}
      */
     public function lookup(string $e164): array;
+
+    /**
+     * Lookup v2 with line type and carrier — what a number actually IS.
+     *
+     * Separate from [lookup], which asks only for caller_name and is called on
+     * every inbound call. This one is asked for deliberately by a person and
+     * costs money per call, so it is never on a hot path.
+     *
+     * `valid` is the free part; line type intelligence is billed. A number
+     * that fails validation returns valid=false rather than throwing, because
+     * "that is not a real number" is an answer, not a failure.
+     *
+     * @return array{phone_number: string, valid: bool, national_format: ?string, country_code: ?string, line_type: ?string, carrier_name: ?string, caller_name: ?string}
+     */
+    public function lookupDetailed(string $e164): array;
 
     /**
      * Start a US port-in on the connection’s Twilio account.

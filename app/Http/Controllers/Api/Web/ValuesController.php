@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Support\Web\SeoFields;
+use App\Support\Web\ValuePayload;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -43,8 +44,7 @@ class ValuesController extends Controller
         return response()->json([
             'data' => [
                 'fields' => SeoFields::catalogue(),
-                'values' => $this->mapFor($site, ''),
-                'pages' => $this->pageMaps($site),
+                ...ValuePayload::forRows($this->rows($site)),
             ],
         ]);
     }
@@ -100,8 +100,7 @@ class ValuesController extends Controller
         return response()->json([
             'data' => [
                 'fields' => SeoFields::catalogue(),
-                'values' => $this->mapFor($site, ''),
-                'pages' => $this->pageMaps($site),
+                ...ValuePayload::forRows($this->rows($site)),
             ],
         ]);
     }
@@ -126,25 +125,19 @@ class ValuesController extends Controller
         return $path === '/' ? '' : strtolower($path);
     }
 
-    /** @return array<string, string> */
-    private function mapFor(WebSite $site, string $path): array
+    /**
+     * Every value row for this site, site-wide and per-page together.
+     *
+     * One query rather than the two this used to make, because ValuePayload
+     * splits them — and because two queries could disagree if somebody saved
+     * between them.
+     *
+     * @return \Illuminate\Support\Collection<int, WebValue>
+     */
+    private function rows(WebSite $site): \Illuminate\Support\Collection
     {
         return WebValue::query()
             ->where('site_id', $site->getKey())
-            ->where('path', $path)
-            ->pluck('value', 'key')
-            ->all();
-    }
-
-    /** @return array<string, array<string, string>> */
-    private function pageMaps(WebSite $site): array
-    {
-        return WebValue::query()
-            ->where('site_id', $site->getKey())
-            ->where('path', '!=', '')
-            ->get(['path', 'key', 'value'])
-            ->groupBy('path')
-            ->map(fn ($rows) => $rows->pluck('value', 'key')->all())
-            ->all();
+            ->get(['path', 'key', 'value']);
     }
 }

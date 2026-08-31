@@ -161,6 +161,35 @@ return [
         'client_secret' => env('TIKTOK_CLIENT_SECRET'),
         'redirect' => env('TIKTOK_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/tiktok/callback',
+
+        /*
+         * Whether THIS EzBizi installation's TikTok app has passed their audit.
+         *
+         * ── The deadlock this exists to break ────────────────────
+         *
+         * TikTok has two ways in. Direct Post puts the video on the profile and
+         * requires the app to have passed audit. The inbox puts it in the
+         * creator's drafts and needs only `video.upload`, from day one.
+         *
+         * Until 2026-08-28 the composer always took Direct Post, so every
+         * publish came back "Please review our integration guidelines at
+         * ..." — which names no field and reads like the video was rejected.
+         * It was not: the app is not audited, so that endpoint was never going
+         * to answer anything else.
+         *
+         * That is circular, and the circle is the point. Direct Post needs the
+         * audit; the audit submission needs a filmed demo of a working publish;
+         * the publish cannot work. Defaulting to the inbox breaks it — the
+         * demo films a real post reaching a real account, which is what the
+         * audit is asking to see.
+         *
+         * §2.1 category 2: this is a fact about where this copy is installed
+         * and how far its app registration has got, not a tenant setting. No
+         * organization may answer it differently, and it is not a customer need
+         * being answered by a console command — it is our own paperwork. Flip
+         * it the day the audit clears; no code change, no release.
+         */
+        'direct_post' => (bool) env('TIKTOK_DIRECT_POST', false),
     ],
 
     'youtube' => [

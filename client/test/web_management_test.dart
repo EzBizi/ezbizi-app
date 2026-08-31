@@ -63,6 +63,100 @@ void main() {
     expect(find.textContaining('[ezbizi_phone]'), findsOneWidget);
   });
 
+  /*
+   * The first-run deadlock, from the client's side.
+   *
+   * PHP encodes an empty associative array as `[]`, so a site with no values
+   * answered with `"values":[]` where a populated one answered `{...}`. This
+   * screen cast that field to a Map, the cast threw, and the throw escaped
+   * before the loading flag was cleared — so the panel span forever. You could
+   * not open it until the site had values and could not add values without
+   * opening it. Every newly registered site hit it.
+   *
+   * The fixture above had always returned a POPULATED map, which is why the
+   * suite was green while the feature was unusable. This serves the shape the
+   * old server really sent.
+   */
+  testWidgets('a website with no values yet still opens', (tester) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      emptyValues: true,
+    );
+
+    await tester.tap(find.text('a-1chimney.com'));
+    await tester.pumpAndSettle();
+
+    // The panel is open and usable rather than spinning.
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('Phone number'), findsOneWidget);
+  });
+
+  /// The panel must SHOW the browser key, and must not let it be confused with
+  /// the plugin token.
+  ///
+  /// This test exists because of a real incident: the public key shipped in the
+  /// API with no UI behind it, so the only credential this screen displayed was
+  /// the secret `ezb_` token. Asked for the browser key, the only reasonable
+  /// thing to hand over was the token — which is a screen defect, not a user
+  /// mistake, and it put a live secret somewhere it should never have gone.
+  testWidgets('a site offers its browser key, distinguished from the token', (
+    tester,
+  ) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+    );
+
+    await tester.tap(find.text('a-1chimney.com'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('pk_fixture_browser_key'), findsWidgets);
+
+    // The snippet points at the route that is actually served — public/ is not
+    // a web root on this host, so /ezbizi.js at the domain root is not it.
+    expect(find.textContaining('/api/v1/web/ezbizi.js'), findsOneWidget);
+
+    // And it says which key is safe in public, because that is the whole
+    // distinction somebody has to get right.
+    expect(find.textContaining('ezb_'), findsOneWidget);
+  });
+
+  /// The browser key must be rotatable FROM THE SCREEN, not only from the API.
+  ///
+  /// The doc promised the public key "rotates independently" before any
+  /// endpoint existed; the endpoint was then built and still had no control
+  /// behind it. Same defect, one layer up — a capability nobody can reach is
+  /// indistinguishable from one that does not exist.
+  testWidgets('a browser key can be reissued, inline and never in a dialog', (
+    tester,
+  ) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+    );
+
+    await tester.tap(find.text('a-1chimney.com'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('New key'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.textContaining('Issue a new browser key?'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+  });
+
+  testWidgets('view alone cannot reissue a browser key', (tester) async {
+    await _pumpDestination(tester, permissions: ['web_management.view']);
+
+    await tester.tap(find.text('a-1chimney.com'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('New key'), findsNothing);
+  });
+
   // §6 — no pop-ups, ever. Adding is a form in place, not a dialog.
   testWidgets('adding a website opens a form in place and never a dialog', (
     tester,
@@ -132,13 +226,14 @@ Future<void> _pumpDestination(
   WidgetTester tester, {
   required List<String> permissions,
   bool scopedToCompany = false,
+  bool emptyValues = false,
 }) async {
   tester.view.physicalSize = const Size(1280, 900);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
   final api = ApiClient(
-    client: MockClient(_respond(permissions, scopedToCompany)),
+    client: MockClient(_respond(permissions, scopedToCompany, emptyValues)),
   );
   final session = Session(api);
 
@@ -167,6 +262,7 @@ Future<void> _pumpDestination(
 Future<http.Response> Function(http.Request) _respond(
   List<String> permissions,
   bool scopedToCompany,
+  bool emptyValues,
 ) {
   return (request) async {
     Map<String, Object?>? body;
@@ -194,8 +290,11 @@ Future<http.Response> Function(http.Request) _respond(
               'shortcode': '[ezbizi_phone]',
             },
           ],
-          'values': {'phone': '555-0100'},
-          'pages': <String, Object?>{},
+          // An empty map arrives from PHP as `[]`, not `{}` — the shape that
+          // used to deadlock this panel. Serving the real thing is the only
+          // way this test means anything.
+          'values': emptyValues ? <Object?>[] : {'phone': '555-0100'},
+          'pages': emptyValues ? <Object?>[] : <String, Object?>{},
         },
       };
     }
@@ -217,6 +316,7 @@ const List<Map<String, Object?>> _sites = [
     'connected_at': '2026-08-28T10:00:00+00:00',
     'last_seen_at': '2026-08-28T11:00:00+00:00',
     'plugin_version': '1.0.0',
+    'public_key': 'pk_fixture_browser_key',
   },
   {
     'id': 'site-2',
@@ -226,6 +326,7 @@ const List<Map<String, Object?>> _sites = [
     'connected_at': null,
     'last_seen_at': null,
     'plugin_version': null,
+    'public_key': 'pk_fixture_branch_key',
   },
 ];
 

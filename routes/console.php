@@ -36,6 +36,17 @@ Schedule::command('ezbizi:expire-impersonations')->everyFiveMinutes()->withoutOv
 // header warns about. Five minutes means a stale lock costs one skipped sweep.
 Schedule::command('ezbizi:dispatch-automation-events')->everyMinute()->withoutOverlapping(5);
 
+// Scheduled social posts. The composer writes a wall time and leaves the
+// targets `scheduled`; this is the only thing that turns them into `queued`.
+//
+// Every minute, because a minute is the resolution the composer offers — a
+// slower sweep would make "9:00" mean "some time after 9:00" and the person
+// would have no way to know which. `withoutOverlapping` for the reason above
+// it: two sweeps meeting on the same row would publish twice, and the claim
+// update inside the command is the second line of defence rather than the
+// first.
+Schedule::command('ezbizi:publish-due-social-posts')->everyMinute()->withoutOverlapping(5);
+
 // Watching the shared inboxes, so `email.received` can fire (§5.5).
 //
 // Every minute, and that is NOT the cadence. A mailbox is looked at every five
@@ -67,6 +78,12 @@ Schedule::command('ezbizi:dispatch-task-notification-intents')->everyMinute()->w
 Schedule::command('ezbizi:expire-task-update-attachment-candidates')->hourly()->withoutOverlapping(10);
 Schedule::command('ezbizi:expire-task-import-sessions')->hourly()->withoutOverlapping(10);
 
+// Monitoring (2026-08-28-monitoring-pc-specs, task 6). Every five minutes so a
+// device that stops reporting is caught soon after the default 180-second
+// (monitoring.offline_after_seconds) threshold passes, without scanning on
+// every request the way the heartbeat does.
+Schedule::command('ezbizi:dispatch-monitoring-device-offline')->everyFiveMinutes()->withoutOverlapping(10);
+
 // Backup health (§18 Phase 0 item 5). At 05:00, well after the 03:17 timer, so a
 // slow night is not reported as a missing one.
 //
@@ -74,3 +91,14 @@ Schedule::command('ezbizi:expire-task-import-sessions')->hourly()->withoutOverla
 // about a subsystem that stopped, not about an incident in progress. What makes
 // it useful is that a MISSING verdict counts as a failure — see the command.
 Schedule::command('ezbizi:check-backups --quiet-when-healthy')->dailyAt('05:00');
+
+// Per-company Twilio cost (§5). At 04:20 — after midnight in every US zone the
+// platform serves, so "yesterday" is a day Twilio has finished totting up, and
+// clear of the 03:17 backup timer and the 05:00 health check.
+//
+// Daily, and deliberately not more often: the figure only changes once a day.
+// The reason to run it at all is that Twilio PRUNES usage records, so a night
+// missed is a night nobody can ever get back — which is also why the command
+// exits 0 when only some accounts fail. A nightly page over one suspended
+// tenant gets muted, and a muted alarm is worse than none.
+Schedule::command('ezbizi:phone-usage')->dailyAt('04:20')->withoutOverlapping(30);

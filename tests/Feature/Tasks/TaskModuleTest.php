@@ -37,6 +37,8 @@ class TaskModuleTest extends TestCase
             'task.update_added',
             'task.archived',
             'task.overdue',
+            'task.dependency_added',
+            'task.dependency_removed',
         ], $tasks->triggerKeys());
 
         $triggers = collect($tasks->triggers)->keyBy('key');
@@ -48,6 +50,8 @@ class TaskModuleTest extends TestCase
         }
         $this->assertTrue($triggers['task.update_added']->isRaised);
         $this->assertTrue($triggers['task.overdue']->isRaised);
+        $this->assertTrue($triggers['task.dependency_added']->isRaised);
+        $this->assertTrue($triggers['task.dependency_removed']->isRaised);
 
         $actions = collect($tasks->automationActions)->keyBy('key');
         $this->assertSame([

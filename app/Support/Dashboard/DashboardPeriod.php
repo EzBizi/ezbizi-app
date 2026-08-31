@@ -72,21 +72,14 @@ final class DashboardPeriod
         };
     }
 
+    /**
+     * Moved to `ViewTimezone` when scheduling needed the same answer: a post
+     * scheduled for 9am must fire at the 9am this would have reported it in,
+     * and two copies of that reasoning is how they come to differ.
+     */
     private static function timezoneFor(User $user): string
     {
-        $scope = ViewScope::forUser($user);
-        $settings = app(SettingsResolver::class);
-
-        if ($scope->type === ViewScope::FRANCHISE) {
-            $franchise = Franchise::find($scope->id);
-            if (is_string($franchise?->timezone) && $franchise->timezone !== '') {
-                return $franchise->timezone;
-            }
-
-            return (string) $settings->get('timezone', $user->organization);
-        }
-
-        return (string) $settings->get('timezone', $scope->settingsScope());
+        return \App\Support\Time\ViewTimezone::forUser($user);
     }
 
     private static function weekStartsAtFor(User $user): int

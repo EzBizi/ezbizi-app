@@ -9,6 +9,7 @@ use App\Models\BusinessLocation;
 use App\Models\InventoryItem;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Models\MonitoredDevice;
 use App\Models\Organization;
 use App\Models\Review;
 use App\Models\Service;
@@ -167,6 +168,18 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'task.overdue',
                         label: 'Overdue',
                         description: 'The scheduled check first observed unfinished late work.',
+                        isRaised: true,
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.dependency_added',
+                        label: 'Dependency added',
+                        description: 'A "blocks" edge was drawn between two tasks on the same board.',
+                        isRaised: true,
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.dependency_removed',
+                        label: 'Dependency removed',
+                        description: 'A "blocks" edge between two tasks was removed.',
                         isRaised: true,
                     ),
                 ],
@@ -912,6 +925,20 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Date set or changed',
                         description: 'A job’s date was set, moved, or cleared. Clearing it counts '
                             .'— the event fires with an empty new date.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'job.assigned',
+                        label: 'Assigned to a role',
+                        description: 'A job’s role was set, changed or cleared. It carries the '
+                            .'old role as well as the new one. Naming a role says whose trade '
+                            .'the work is — it does not decide who may open the job.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'job.completed',
+                        label: 'Completed',
+                        description: 'A job reached one of the statuses your organization counts '
+                            .'as earned. Set that list in Settings. This fires only on the way '
+                            .'IN, so a job corrected back and forth does not fire twice.',
                     ),
                 ],
                 automationActions: [
@@ -2049,6 +2076,55 @@ class ModuleServiceProvider extends ServiceProvider
                 // the loop guards count actions, not rules, so a rule that
                 // writes rules escapes them entirely. It stays a human act.
                 automationExemptBecause: 'An automation that could write automations would escape the loop guards.',
+            ),
+
+            /*
+             * Monitoring — 2026-08-28-monitoring-pc-specs.
+             *
+             * Not CRUD. A device is reported by the machine that runs the
+             * client, never created or edited by an admin, so the only
+             * standing grant is `view`. `specs.view` is a second, narrower
+             * grant so an organization can let a manager see who is online
+             * without also handing them the hardware inventory underneath.
+             *
+             * The subject names 'monitoring' explicitly rather than letting
+             * it derive from the class: MonitoredDevice would default to
+             * `monitoreddevice`, and the triggers below are keyed
+             * `monitoring.*` — the same compound-name case InventoryItem
+             * documents itself (it keys as `item`, not `inventoryitem`).
+             *
+             * Both triggers started `isRaised: false` — this module was
+             * registered before anything under app/ emitted either event, and
+             * ModuleRegistryTest's standing check refuses `isRaised: true`
+             * until something does (its own failure message: "declared as
+             * raised, but nothing in app/ mentions it... declare isRaised:
+             * false until something emits it"). `new_device_seen` flipped to
+             * true (the default — the parameter is omitted below) once
+             * HeartbeatController::store() started calling
+             * EventEmitter::emit('monitoring.new_device_seen', ...) on a
+             * newly-created device (2026-08-28-monitoring-pc-specs, task 4).
+             * `device_offline` flipped the same way once DeviceOfflineWorker
+             * started calling EventEmitter::emit('monitoring.device_offline',
+             * ...) from its scheduled sweep (task 6).
+             */
+            new ModuleDefinition(
+                key: 'monitoring',
+                label: 'Monitoring',
+                actions: ['view', 'specs.view'],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'monitoring.new_device_seen',
+                        label: 'New device seen',
+                        description: 'A person signed in from a device not seen before.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'monitoring.device_offline',
+                        label: 'Device went offline',
+                        description: 'A device stopped reporting for longer than the allowed gap.',
+                    ),
+                ],
+                subject: new AutomationSubject(MonitoredDevice::class, 'Device', key: 'monitoring'),
+                sidebar: true,
             ),
 
             /*

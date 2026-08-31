@@ -2,18 +2,22 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/job_status.dart';
-import '../../core/money.dart';
 import '../../core/session.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
+import 'job_lines_tab.dart';
 
 /// One job, opened from the list.
 ///
 /// Franchise and customer do not move: that would rewrite two histories.
-/// Status, date, description, duration and price do. Delete is here too.
+/// Status, date, description and duration do. Delete is here too.
+///
+/// Price is not a field on this panel. It is `job['amount']`, summed
+/// server-side from the service lines in the Work section below — see
+/// [JobLinesTab]. A typed total was the bug this module replaced.
 class JobDetailPanel extends StatefulWidget {
   const JobDetailPanel({
     super.key,
@@ -35,7 +39,6 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   final _description = TextEditingController();
   final _scheduled = TextEditingController();
   final _duration = TextEditingController();
-  final _amount = TextEditingController();
 
   Map<String, dynamic>? _row;
   List<JobStatus> _statusChoices = const [];
@@ -62,7 +65,6 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     _description.dispose();
     _scheduled.dispose();
     _duration.dispose();
-    _amount.dispose();
     super.dispose();
   }
 
@@ -100,10 +102,6 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     final duration = row['duration_minutes'];
     _duration.text = duration == null ? '' : '$duration';
 
-    final amount = row['amount'] as Map<String, dynamic>?;
-    final display = amount?['display'];
-    _amount.text = display == null ? '' : '$display';
-
     final parsed = parseJobStatuses(row['allowed_statuses']);
     _statusChoices = parsed.isEmpty
         ? [
@@ -130,14 +128,6 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   }
 
   Future<void> _save() async {
-    final int? cents;
-    try {
-      cents = parseAmountMinor(_amount.text);
-    } on FormatException catch (e) {
-      setState(() => _error = e.message);
-      return;
-    }
-
     final durationText = _duration.text.trim();
     final int? minutes;
     if (durationText.isEmpty) {
@@ -167,7 +157,6 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
           : _description.text.trim(),
       'scheduled_for': scheduled.isEmpty ? null : scheduled,
       'duration_minutes': minutes,
-      'amount_minor': ?cents,
     });
 
     if (!mounted) return;
@@ -300,27 +289,25 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  controller: _amount,
-                  decoration: InputDecoration(
-                    labelText: 'Price',
-                    helperText:
-                        'In dollars. Stored as whole cents so it cannot drift.',
-                    helperMaxLines: 2,
-                    suffixText: (row?['amount'] as Map?)?['currency'] as String?,
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  enabled: editable,
-                ),
-                const SizedBox(height: 12),
-                TextField(
                   controller: _description,
                   decoration: const InputDecoration(labelText: 'Notes'),
                   minLines: 2,
                   maxLines: 6,
                   enabled: editable,
                 ),
+                if (row != null) ...[
+                  const SizedBox(height: 20),
+                  const Divider(),
+                  const SizedBox(height: 16),
+                  JobLinesTab(
+                    api: widget.api,
+                    jobId: widget.id,
+                    job: row,
+                    editable: editable,
+                    refusalReason: _editRefusal,
+                    onChanged: (fresh) => setState(() => _row = fresh),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 Align(
                   alignment: Alignment.centerLeft,

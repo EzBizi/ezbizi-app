@@ -25,6 +25,16 @@ id_rsa*
 *[Ss][Ee][Cc][Rr][Ee][Tt]*
 *.stackdump
 
+# Stray sqlite databases from the DB_DATABASE trap. `DB_DATABASE=x artisan ...`
+# outside the test runner names a FILE, not a schema, because .env says sqlite —
+# so it silently creates one here and exits 0 listing every migration as run.
+# A 925 KB `ezbizi_testing_twilio` was sitting in this directory, untracked and
+# unignored, when this rule was written. See docs/ACTIVE-CONSTRAINTS.md.
+ezbizi_testing*
+*.sqlite
+*.sqlite3
+database/*.db
+
 # ── dependencies / build ──────────────────────────────
 /vendor
 /composer.phar

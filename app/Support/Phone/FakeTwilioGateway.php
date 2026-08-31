@@ -213,6 +213,54 @@ final class FakeTwilioGateway implements TwilioGateway
         ['country_code' => 'CA', 'country' => 'Canada'],
     ];
 
+    /**
+     * Usage rows a test wants returned. Null gives one calls row and one sms
+     * row, which is enough to prove the importer sums and upserts.
+     *
+     * @var list<array<string, mixed>>|null
+     */
+    public ?array $usage = null;
+
+    public ?string $failUsageDailyWith = null;
+
+    public function usageDaily(PhoneConnection $connection, string $startDate, string $endDate): array
+    {
+        $this->record(__FUNCTION__, [$connection->id, $startDate, $endDate]);
+
+        if ($this->failUsageDailyWith !== null) {
+            throw new RuntimeException($this->failUsageDailyWith);
+        }
+
+        if ($this->usage !== null) {
+            return $this->usage;
+        }
+
+        return [
+            [
+                'category' => 'calls',
+                'description' => 'Voice',
+                'start_date' => $startDate,
+                'usage' => '12',
+                'usage_unit' => 'minutes',
+                'count' => '4',
+                'count_unit' => 'calls',
+                'price' => '0.1700',
+                'price_unit' => 'USD',
+            ],
+            [
+                'category' => 'sms',
+                'description' => 'SMS',
+                'start_date' => $startDate,
+                'usage' => '3',
+                'usage_unit' => 'messages',
+                'count' => '3',
+                'count_unit' => 'messages',
+                'price' => '0.0237',
+                'price_unit' => 'USD',
+            ],
+        ];
+    }
+
     public function availableCountries(PhoneConnection $connection): array
     {
         $this->record(__FUNCTION__, [$connection->id]);
@@ -335,6 +383,37 @@ final class FakeTwilioGateway implements TwilioGateway
         return [
             'sid' => 'SM'.bin2hex(random_bytes(16)),
             'status' => 'queued',
+        ];
+    }
+
+    /**
+     * A detailed lookup a test wants to force — an invalid number, a landline,
+     * a mobile. Null gives a valid US mobile.
+     *
+     * @var array<string, mixed>|null
+     */
+    public ?array $detailedLookup = null;
+
+    public function lookupDetailed(string $e164): array
+    {
+        $this->record(__FUNCTION__, func_get_args());
+
+        if (! $this->lookupEnabled) {
+            throw new RuntimeException('not enabled');
+        }
+
+        if ($this->detailedLookup !== null) {
+            return $this->detailedLookup;
+        }
+
+        return [
+            'phone_number' => $e164,
+            'valid' => true,
+            'national_format' => '(561) 555-0123',
+            'country_code' => 'US',
+            'line_type' => 'mobile',
+            'carrier_name' => 'Fake Wireless',
+            'caller_name' => 'Fake Caller',
         ];
     }
 

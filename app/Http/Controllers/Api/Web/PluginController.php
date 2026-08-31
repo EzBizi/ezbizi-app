@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Support\Web\SeoFields;
+use App\Support\Web\ValuePayload;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -105,11 +106,7 @@ class PluginController extends Controller
                     'company' => $site->company?->name,
                 ],
                 'fields' => SeoFields::catalogue(),
-                'values' => $rows->where('path', '')->pluck('value', 'key')->all(),
-                'pages' => $rows->where('path', '!=', '')
-                    ->groupBy('path')
-                    ->map(fn ($group) => $group->pluck('value', 'key')->all())
-                    ->all(),
+                ...ValuePayload::forRows($rows),
             ]);
         });
     }

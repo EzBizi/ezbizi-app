@@ -28,10 +28,8 @@ final class PinterestPublisher implements SocialPublisher
 
     public function publish(SocialConnection $connection, PostPayload $post): string
     {
-        $kind = $post->kind();
-
-        if ($kind !== SocialMediaKind::Image) {
-            throw SocialPublishFailed::notImplemented('Pinterest', $kind->label());
+        if (($why = $this->cannotSend($post->kind())) !== null) {
+            throw new SocialPublishFailed($why);
         }
 
         $token = $this->token($connection);
@@ -58,6 +56,15 @@ final class PinterestPublisher implements SocialPublisher
         }
 
         return $id;
+    }
+
+    public function cannotSend(SocialMediaKind $kind): ?string
+    {
+        // A Pin is a picture. Pinterest does take video, and EzBizi does not
+        // send it — which is why this says "not built" and not "not accepted".
+        return $kind === SocialMediaKind::Image
+            ? null
+            : SocialPublishFailed::notImplemented('Pinterest', $kind->label())->getMessage();
     }
 
     private function firstBoard(string $token): string

@@ -141,6 +141,22 @@ DB_DATABASE=ezbizi_testing_<yourmodule> vendor/bin/phpunit --filter=<YourTest>
 
 One module went 107 errors → 112/112 on this alone.
 
+**That prefix works for the test runner and nowhere else.** It names a *schema*
+only because `phpunit.xml:26` pins `DB_CONNECTION=mysql`. Everywhere else `.env`
+says sqlite, and Laravel reads `DB_DATABASE` as a **file path**:
+
+| Command | Driver | `DB_DATABASE` means |
+|---|---|---|
+| `php artisan test` | mysql | schema `ezbizi_testing_<m>` |
+| `DB_DATABASE=… php artisan migrate` | **sqlite** | **a FILE `./ezbizi_testing_<m>`** |
+| `DB_CONNECTION=mysql DB_DATABASE=… php artisan migrate` | mysql | schema `ezbizi_testing_<m>` |
+
+The middle row **exits 0 and lists every migration as though it ran.** It has
+already happened: a 925 KB SQLite file named `ezbizi_testing_twilio` was sitting
+in the repo root, untracked and — until this was written — unignored, one
+`git add -A` from being committed. For anything that is not `phpunit`, set
+`DB_CONNECTION=mysql` as well.
+
 ---
 
 Committing safely on this shared tree is **not** temporary and lives in

@@ -72,11 +72,49 @@ final class ReportDocument
                     continue;
                 }
 
+                $type = (string) ($field['type'] ?? '');
+
+                // Furniture is printed as furniture: a heading is a heading and
+                // a note to the technician is a note. Neither has an answer, so
+                // neither gets a label-and-value row.
+                if ($type === FieldType::DIVIDER) {
+                    $heading = trim((string) ($field['label'] ?? ''));
+                    $body .= $heading === ''
+                        ? '<hr class="d">'
+                        : '<div class="dv">'.$this->text($heading).'</div>';
+
+                    continue;
+                }
+
+                if ($type === FieldType::ALERT) {
+                    $body .= $this->note(
+                        (string) ($field['title'] ?? ''),
+                        (string) ($field['body'] ?? ''),
+                    );
+
+                    continue;
+                }
+
+                $print = PrintAs::of($field);
+
+                // Answered to steer the form, never printed. A customer does not
+                // need to be told "masonry" eleven times.
+                if ($print === PrintAs::IGNORE) {
+                    continue;
+                }
+
                 $key = (string) ($field['key'] ?? '');
                 $label = (string) ($field['label'] ?? $key);
 
+                if ($print === PrintAs::ROOT) {
+                    $body .= $this->finding($field, $answers, $photos);
+
+                    continue;
+                }
+
                 $body .= '<div class="f"><div class="l">'.$this->text($label).'</div>'
                     .$this->answer($field, $answers[$key] ?? null, $photos)
+                    .$this->citation($field)
                     .'</div>';
             }
         }
@@ -85,7 +123,7 @@ final class ReportDocument
             $body = '<p class="empty">This inspection had no questions.</p>';
         }
 
-        return $this->page($report, $body);
+        return $this->page($report, $this->summary($screens, $answers).$body);
     }
 
     /**
@@ -102,6 +140,17 @@ final class ReportDocument
         // Falling through to the text branch would print a uuid where the
         // signature goes, which is the failure the drawn mark exists to fix.
         $type = $field['type'] ?? '';
+
+        if ($type === FieldType::SERVICES) {
+            return $this->work(is_array($value) ? $value : []);
+        }
+
+        if ($type === FieldType::CHECKBOX) {
+            // A tick box says Yes or No, never "1" or an empty space. An
+            // unticked box is a real answer and reads as one — a blank there
+            // would read as a question nobody reached.
+            return '<div class="v">'.($value === true ? 'Yes' : 'No').'</div>';
+        }
 
         if ($type === FieldType::PHOTO || $type === FieldType::SIGNATURE) {
             $ids = is_array($value) ? $value : [];
@@ -131,6 +180,252 @@ final class ReportDocument
         return $text === ''
             ? '<div class="v none">Not answered</div>'
             : '<div class="v">'.nl2br($this->text($text)).'</div>';
+    }
+
+    /**
+     * One FINDING: a heading, and everything it gathered beneath it.
+     *
+     * The chosen option in WORDS — "not-ok" is a key for the engine, "Does not
+     * meet standards" is what the customer is being told — coloured by that
+     * option's variant so a failure is visible without reading, then the code
+     * it is measured against, then whatever the option revealed: the
+     * photograph, the explanation, the recommended work.
+     *
+     * Grouping is the whole point. Those three used to print as three unrelated
+     * rows further down the page, and a reader had no way to tell which finding
+     * a photograph belonged to.
+     *
+     * @param  array<string, mixed>  $field
+     * @param  array<string, mixed>  $answers
+     */
+    private function finding(array $field, array $answers, $photos): string
+    {
+        $key = (string) ($field['key'] ?? '');
+        $label = (string) ($field['label'] ?? $key);
+        $chosen = $this->chosenOption($field, $answers);
+
+        $variant = $chosen['variant'] ?? OptionSet::DEFAULT_VARIANT;
+        $said = $chosen['label'] ?? '';
+
+        $inner = '';
+
+        // What the option revealed, in the order the technician filled it in.
+        foreach (OptionSet::revealedBy($field, $answers) as $nested) {
+            if (! is_array($nested) || PrintAs::of($nested) === PrintAs::IGNORE) {
+                continue;
+            }
+
+            $nestedKey = (string) ($nested['key'] ?? '');
+            $nestedLabel = (string) ($nested['label'] ?? $nestedKey);
+
+            $inner .= '<div class="f"><div class="l">'.$this->text($nestedLabel).'</div>'
+                .$this->answer($nested, $answers[$nestedKey] ?? null, $photos)
+                .'</div>';
+        }
+
+        return '<div class="finding '.$this->text($variant).'">'
+            .'<div class="fh">'.$this->text($label).'</div>'
+            .($said === '' ? '' : '<div class="fs">'.$this->text($said).'</div>')
+            .$this->citation($field)
+            .$inner
+            .'</div>';
+    }
+
+    /**
+     * The option this answer chose, normalised.
+     *
+     * Null-ish when the field is not a choice or nothing was answered, in which
+     * case the finding still prints its heading — a question that was asked and
+     * not answered is itself worth seeing on a report.
+     *
+     * @param  array<string, mixed>  $field
+     * @param  array<string, mixed>  $answers
+     * @return array{label?: string, variant?: string}
+     */
+    private function chosenOption(array $field, array $answers): array
+    {
+        if (($field['type'] ?? '') !== FieldType::CHOICE) {
+            return [];
+        }
+
+        $answer = $answers[$field['key'] ?? ''] ?? null;
+        if ($answer === null || $answer === '' || $answer === []) {
+            return [];
+        }
+
+        $chosen = array_map(
+            static fn ($v) => is_scalar($v) ? (string) $v : '',
+            is_array($answer) ? $answer : [$answer],
+        );
+
+        $labels = [];
+        $variant = OptionSet::DEFAULT_VARIANT;
+
+        foreach ((is_array($field['options'] ?? null) ? $field['options'] : []) as $option) {
+            $option = OptionSet::normalise($option);
+
+            if ($option === null || ! in_array($option['value'], $chosen, true)) {
+                continue;
+            }
+
+            $labels[] = $option['label'];
+
+            // A multi-choice takes the WORST of what was chosen: one failing
+            // item among three makes the finding a failure, and colouring it by
+            // the first pick would hide that.
+            if ($option['variant'] === 'fail') {
+                $variant = 'fail';
+            } elseif ($option['variant'] === 'pass' && $variant !== 'fail') {
+                $variant = 'pass';
+            } elseif ($variant === OptionSet::DEFAULT_VARIANT) {
+                $variant = $option['variant'];
+            }
+        }
+
+        return ['label' => implode(', ', $labels), 'variant' => $variant];
+    }
+
+    /**
+     * How many findings did not meet standards.
+     *
+     * The single most useful line on a chimney report, and derivable only
+     * because options carry a variant. Absent entirely when there are no
+     * findings — an empty banner saying "0 of 0" is worse than no banner.
+     *
+     * @param  list<array<string, mixed>>  $screens
+     * @param  array<string, mixed>  $answers
+     */
+    private function summary(array $screens, array $answers): string
+    {
+        $total = 0;
+        $failed = 0;
+
+        foreach ($screens as $screen) {
+            foreach ((is_array($screen['fields'] ?? null) ? $screen['fields'] : []) as $field) {
+                if (! is_array($field) || PrintAs::of($field) !== PrintAs::ROOT) {
+                    continue;
+                }
+
+                $total++;
+
+                if (($this->chosenOption($field, $answers)['variant'] ?? '') === 'fail') {
+                    $failed++;
+                }
+            }
+        }
+
+        if ($total === 0) {
+            return '';
+        }
+
+        return '<div class="sum'.($failed > 0 ? ' bad' : '').'">'
+            .$failed.' of '.$total.' item'.($total === 1 ? '' : 's')
+            .' did not meet standards.</div>';
+    }
+
+    /**
+     * The work this finding recommends, priced, with a line total.
+     *
+     * Printed from the SNAPSHOT stored in the answer — the name and price as
+     * they were when the technician recommended it — never a fresh read of the
+     * catalogue. A service renamed or re-priced afterwards must not change what
+     * the customer was quoted, which is the same rule the job line follows.
+     *
+     * @param  list<mixed>  $picks
+     */
+    private function work(array $picks): string
+    {
+        $rows = '';
+        $total = 0;
+
+        foreach ($picks as $pick) {
+            if (! is_array($pick)) {
+                continue;
+            }
+
+            $qty = (int) ($pick['qty'] ?? 1);
+            $unit = (int) ($pick['unit_price_minor'] ?? 0);
+            $amount = $unit * $qty;
+            $total += $amount;
+
+            $rows .= '<tr><td>'.$this->text((string) ($pick['name'] ?? '')).'</td>'
+                .'<td class="q">'.$qty.'</td>'
+                .'<td class="m">'.$this->money($amount).'</td></tr>';
+        }
+
+        if ($rows === '') {
+            return '<div class="v none">No work recommended</div>';
+        }
+
+        return '<table class="w">'.$rows
+            .'<tr class="tot"><td>Total</td><td class="q"></td>'
+            .'<td class="m">'.$this->money($total).'</td></tr>'
+            .'</table>';
+    }
+
+    /**
+     * Minor units as a decimal, with no currency symbol.
+     *
+     * The symbol is deliberately absent: the organization's currency lives on
+     * the job, this document is not the place that decides it, and a hardcoded
+     * dollar sign on a report for a franchise in Manchester is worse than a
+     * bare number.
+     */
+    private function money(int $minor): string
+    {
+        return number_format($minor / 100, 2);
+    }
+
+    /**
+     * A note the form showed the technician, printed where they saw it.
+     *
+     * On the report because it is part of what the inspection SAID — a customer
+     * reading "Type B vents need one inch of clearance" beside a finding is
+     * being told the same thing the technician was told, which is the point of
+     * printing it at all.
+     */
+    private function note(string $title, string $bodyText): string
+    {
+        $title = trim($title);
+        $bodyText = trim($bodyText);
+
+        if ($title === '' && $bodyText === '') {
+            return '';
+        }
+
+        return '<div class="note">'
+            .($title === '' ? '' : '<span class="ct">'.$this->text($title).'</span>')
+            .($bodyText === '' ? '' : ' '.$this->text($bodyText))
+            .'</div>';
+    }
+
+    /**
+     * The building code this finding is measured against.
+     *
+     * Printed from the copy frozen INTO THE VERSION at publish, never looked up
+     * live: a report says what the violation was on the day, and correcting the
+     * library afterwards must not rewrite it. That is why the words are here at
+     * all rather than an id.
+     */
+    private function citation(array $field): string
+    {
+        $code = $field['code'] ?? null;
+
+        if (! is_array($code)) {
+            return '';
+        }
+
+        $title = trim((string) ($code['title'] ?? $code['code'] ?? ''));
+        $bodyText = trim((string) ($code['body'] ?? ''));
+
+        if ($title === '' && $bodyText === '') {
+            return '';
+        }
+
+        return '<div class="code">'
+            .($title === '' ? '' : '<span class="ct">'.$this->text($title).'</span>')
+            .($bodyText === '' ? '' : ' '.$this->text($bodyText))
+            .'</div>';
     }
 
     /**
@@ -210,6 +505,26 @@ final class ReportDocument
             .'.l{font-weight:bold;font-size:10pt}'
             .'.v{margin-top:1pt}'
             .'.none{color:#777;font-style:italic}'
+            .'.code{margin:3pt 0 0;padding:4pt 6pt;border-left:2pt solid #ccc;'
+            .'font-size:9pt;color:#444}'
+            .'.ct{font-weight:bold}'
+            .'.dv{font-weight:bold;font-size:11pt;margin:12pt 0 4pt;'
+            .'border-bottom:1px solid #ddd;padding-bottom:2pt}'
+            .'hr.d{border:0;border-top:1px solid #ddd;margin:12pt 0 8pt}'
+            .'.note{margin:6pt 0;padding:5pt 7pt;background:#f4f4f4;font-size:9pt}'
+            .'table.w{width:100%;border-collapse:collapse;margin:3pt 0;font-size:10pt}'
+            .'table.w td{padding:2pt 4pt;border-bottom:1px solid #eee}'
+            .'table.w td.q{width:40pt;text-align:right}'
+            .'table.w td.m{width:70pt;text-align:right}'
+            .'table.w tr.tot td{font-weight:bold;border-bottom:0;border-top:1px solid #999}'
+            .'.finding{margin:8pt 0;padding:6pt 8pt;border-left:3pt solid #bbb}'
+            .'.finding.pass{border-left-color:#2e7d32}'
+            .'.finding.fail{border-left-color:#c62828;background:#fdf6f6}'
+            .'.finding.not_applicable{border-left-color:#999}'
+            .'.fh{font-weight:bold;font-size:11pt}'
+            .'.fs{margin:1pt 0 3pt}'
+            .'.sum{margin:0 0 10pt;padding:6pt 8pt;background:#eef4ee;font-weight:bold}'
+            .'.sum.bad{background:#fdecea}'
             .'.intro{margin:0 0 10pt}'
             .'img{max-width:220pt;max-height:220pt;margin:3pt 6pt 0 0}'
             .'</style></head><body>'

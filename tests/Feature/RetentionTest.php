@@ -662,26 +662,15 @@ class RetentionTest extends TestCase
                 .'`contract_signatures` are the records that matter and both state a policy; '
                 .'this row is a name and a pointer at the current version',
 
-            /*
-             * `jobs` sits next to the group above and is not one of them: it is
-             * a BUSINESS record rather than structure, so it does not get to
-             * lean on that paragraph and is argued on its own.
-             *
-             * It accumulates, one row per piece of work, and it is kept — which
-             * is the same answer `customers` gives, for the same reason: the
-             * invoices §9 insists on keeping are found through it and tax law
-             * wants them. What it does not hold is a person. The customer is a
-             * foreign key into `customers`, which states its policy and
-             * anonymises in place; the photographs are `attachments`, which
-             * states its own and drops them; and free text somebody typed into
-             * a job description is the caveat the purge already publishes,
-             * which nothing can find and no policy should pretend to.
-             */
-            'jobs' => 'the work itself (§5.2). It accumulates and it is kept, on the same '
-                .'terms as the customer it belongs to — there is no age at which last year\'s '
-                .'job stops being what an invoice refers to. The personal data reachable from '
-                .'it lives in `customers` and `attachments`, and both of those decide about '
-                .'themselves',
+            // `jobs` used to be argued here as a business record that holds no
+            // person. It no longer does: `performed_by_user_id` (spec §5, §7,
+            // §8.1) put an employee's identity directly on the row, so the
+            // premise this entry rested on is false and the table decides about
+            // itself now — see Job::retention(). Left OUT of this list on
+            // purpose, not edited in place: the staleness check below is what
+            // catches an exception that excuses a table which no longer needs
+            // excusing, and leaving a rewritten sentence here would defeat it
+            // the same way the stale `staff_impersonations` entry once did.
 
             /*
              * ── EZBIZI'S OWN TABLES, NOT ANY TENANT'S ───────────

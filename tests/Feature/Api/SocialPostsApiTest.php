@@ -115,6 +115,226 @@ class SocialPostsApiTest extends TestCase
         $this->assertNothingWasWritten($t);
     }
 
+    /**
+     * The gap a real post fell through on 2026-08-28.
+     *
+     * Pinterest ACCEPTS video — `SocialProvider::refuses()` rightly said yes —
+     * and EzBizi's poster does not SEND it. Two different facts, and only the
+     * network-level one was checked, so the row was written, queued, run, and
+     * failed. Everything this controller promises to refuse before writing a
+     * row, it now actually refuses.
+     */
+    public function test_a_network_that_takes_video_but_has_no_video_poster_is_refused_before_a_row_is_written(): void
+    {
+        $t   = $this->provisionTenant('A1-Group');
+        $row = $this->connection($t, 'company', $t['company']->id);
+
+        Http::fake();
+
+        $this->signedInAs($t['admin'])
+            ->post(self::ENDPOINT, [
+                'connections' => [$row->getKey()],
+                'body'        => 'A sweep, on video.',
+                'media'       => UploadedFile::fake()->create('sweep.mp4', 12, 'video/mp4'),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath(
+                'errors.connections.0',
+                // The sentence separates "your account is broken" from "we have
+                // not built this", and names the half that IS working so nobody
+                // goes hunting through their Pinterest settings.
+                fn (string $m) => str_contains($m, 'cannot post video to Pinterest yet')
+                    && str_contains($m, 'connection is fine'),
+            );
+
+        $this->assertNothingWasWritten($t);
+        Http::assertNothingSent();
+    }
+
+    /**
+     * Scheduling — the half of Task 5 that waited, and the promise it makes.
+     *
+     * A scheduled post sends NOTHING now. Its targets sit in `scheduled`, which
+     * is deliberately not `queued`: "waiting to send" for a post due next
+     * Tuesday would be the same lie the composer already told once, just
+     * slower.
+     */
+    public function test_a_scheduled_post_sends_nothing_until_its_time(): void
+    {
+        $t   = $this->provisionTenant('A1-Group');
+        $row = $this->connection($t, 'company', $t['company']->id);
+
+        Http::fake();
+
+        $this->signedInAs($t['admin'])
+            ->post(self::ENDPOINT, [
+                'connections'   => [$row->getKey()],
+                'body'          => 'Book your autumn sweep.',
+                'media'         => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
+                'scheduled_for' => now()->addDays(3)->format('Y-m-d H:i'),
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.targets.0.status', SocialPostTarget::STATUS_SCHEDULED);
+
+        Http::assertNothingSent();
+
+        $this->inTenant($t['org'], function () {
+            $post = SocialPost::query()->sole();
+
+            $this->assertNotNull($post->scheduled_for);
+            // The clock is the server's answer about the view, never the
+            // client's — the composer sends a wall time and nothing else.
+            $this->assertNotNull($post->scheduled_timezone);
+            $this->assertFalse($post->isDue());
+        });
+    }
+
+    public function test_the_sweep_releases_a_post_once_it_is_due_and_not_before(): void
+    {
+        $t   = $this->provisionTenant('A1-Group');
+        $row = $this->connection($t, 'company', $t['company']->id);
+
+        Http::fake([
+            'api.pinterest.com/v5/boards*' => Http::response(['items' => [['id' => 'board-1']]]),
+            'api.pinterest.com/v5/pins'    => Http::response(['id' => 'pin-9']),
+        ]);
+
+        $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
+            'connections'   => [$row->getKey()],
+            'body'          => 'Autumn sweep.',
+            'media'         => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
+            'scheduled_for' => now()->addHour()->format('Y-m-d H:i'),
+        ])->assertCreated();
+
+        // Not yet. The sweep must be a no-op before the time, or the schedule
+        // means nothing.
+        $this->artisan('ezbizi:publish-due-social-posts')->assertSuccessful();
+        Http::assertNothingSent();
+
+        $this->inTenant($t['org'], fn () => $this->assertSame(
+            SocialPostTarget::STATUS_SCHEDULED,
+            SocialPostTarget::query()->sole()->status,
+        ));
+
+        // Now it is. A whole day, not "two hours": the wall time is read in the
+        // VIEW's clock (Etc/GMT+5 by default), so a string built from UTC `now`
+        // is not an hour away in absolute terms — it is an hour away on a
+        // different clock. That skew is the feature, and a test that assumed
+        // otherwise would be asserting the bug.
+        $this->travelTo(now()->addDay());
+        $this->artisan('ezbizi:publish-due-social-posts')->assertSuccessful();
+
+        $this->inTenant($t['org'], function () {
+            $target = SocialPostTarget::query()->sole();
+
+            $this->assertSame(SocialPostTarget::STATUS_SENT, $target->status);
+            $this->assertSame('pin-9', $target->remote_id);
+        });
+    }
+
+    /**
+     * A second sweep does not re-send what the first already released.
+     *
+     * Honest about what this covers: the sweep's own query narrows to
+     * `scheduled`, and the first pass moves the row out of it, so THIS test
+     * would pass even with the claim removed. It is still worth having — it is
+     * the property a person cares about — but the claim below it is what makes
+     * the same thing true when two sweeps overlap rather than run in sequence,
+     * and that needs its own test.
+     */
+    public function test_a_second_sweep_does_not_send_the_same_post_again(): void
+    {
+        $t   = $this->provisionTenant('A1-Group');
+        $row = $this->connection($t, 'company', $t['company']->id);
+
+        Http::fake([
+            'api.pinterest.com/v5/boards*' => Http::response(['items' => [['id' => 'board-1']]]),
+            'api.pinterest.com/v5/pins'    => Http::response(['id' => 'pin-9']),
+        ]);
+
+        $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
+            'connections'   => [$row->getKey()],
+            'body'          => 'Once, please.',
+            'media'         => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
+            'scheduled_for' => now()->addMinutes(5)->format('Y-m-d H:i'),
+        ])->assertCreated();
+
+        $this->travelTo(now()->addDay());
+
+        $this->artisan('ezbizi:publish-due-social-posts')->assertSuccessful();
+        $this->artisan('ezbizi:publish-due-social-posts')->assertSuccessful();
+
+        // One Pin created, not two.
+        Http::assertSentCount(2); // boards + pins, from the single send
+        $this->inTenant($t['org'], fn () => $this->assertSame(
+            1,
+            SocialPostTarget::query()->where('status', SocialPostTarget::STATUS_SENT)->count(),
+        ));
+    }
+
+    /**
+     * The wall time belongs to the VIEW's clock, not to the server's.
+     *
+     * TODO #20. Somebody in the Connecticut branch typing 9am means
+     * Connecticut's 9am. Storing the instant instead would be right today and
+     * wrong the moment a branch's timezone is corrected — and the promise the
+     * person made was about a clock on a wall, not a moment in physics.
+     */
+    public function test_the_time_is_stored_as_the_view_reads_it(): void
+    {
+        $t   = $this->provisionTenant('A1-Group');
+        $row = $this->connection($t, 'company', $t['company']->id);
+
+        Http::fake();
+
+        $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
+            'connections'   => [$row->getKey()],
+            'body'          => 'Nine in the morning, wherever I am standing.',
+            'media'         => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
+            'scheduled_for' => '2099-03-04 09:00',
+        ])->assertCreated();
+
+        $this->inTenant($t['org'], function () {
+            $post = SocialPost::query()->sole();
+
+            // Kept as typed — 9am is still 9am in the row.
+            $this->assertStringContainsString('2099-03-04 09:00', (string) $post->scheduled_for);
+
+            // And it resolves through the view's clock rather than the
+            // server's, so the two only agree when the clocks do.
+            $this->assertSame(
+                $post->scheduled_timezone,
+                $post->dueAt()?->timezone->getName(),
+            );
+        });
+    }
+
+    public function test_a_time_that_has_already_passed_is_refused_rather_than_sent_now(): void
+    {
+        $t   = $this->provisionTenant('A1-Group');
+        $row = $this->connection($t, 'company', $t['company']->id);
+
+        Http::fake();
+
+        $this->signedInAs($t['admin'])
+            ->post(self::ENDPOINT, [
+                'connections'   => [$row->getKey()],
+                'body'          => 'Yesterday.',
+                'media'         => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
+                'scheduled_for' => now()->subDays(2)->format('Y-m-d H:i'),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath(
+                'errors.scheduled_for.0',
+                fn (string $m) => str_contains($m, 'already passed'),
+            );
+
+        // Publishing it immediately would be the least recoverable reading of
+        // somebody mistyping the day. A post cannot be unsent.
+        $this->assertNothingWasWritten($t);
+        Http::assertNothingSent();
+    }
+
     public function test_a_post_with_neither_words_nor_a_file_is_refused(): void
     {
         $t   = $this->provisionTenant('A1-Group');

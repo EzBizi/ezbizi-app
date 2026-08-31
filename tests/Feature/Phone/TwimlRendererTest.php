@@ -96,6 +96,153 @@ class TwimlRendererTest extends TestCase
         $this->assertStringNotContainsString('<Start>', $on);
     }
 
+    /**
+     * The Call Flow screen reads describe(); the caller hears inbound(). If
+     * those two ever disagree the screen becomes a liar, which is exactly the
+     * failure that let five production lines sit on ring_group_id = null while
+     * the Numbers screen reported them as ordinary.
+     *
+     * So this asserts the pair AGREE, and it does so on the case that can
+     * actually drift: a ring group that EXISTS but can reach nobody. Checking
+     * only the null-group case proves nothing — both sides read the same
+     * column there and would agree even if the availability rule were dropped
+     * from one of them. Verified by deleting that rule from describe() and
+     * watching this fail.
+     */
+    public function test_the_trace_agrees_with_what_the_caller_actually_gets(): void
+    {
+        $t = $this->provisionTenant();
+
+        $answers = static fn (array $steps) => collect($steps)->firstWhere('step', 'answer');
+
+        // One connection, two lines on it — a second connection in the same
+        // scope violates the uniqueness the module depends on.
+        [$dndSteps, $dndXml, $liveSteps, $liveXml] = $this->inTenant($t['org'], function () use ($t) {
+            $connection = $this->connection($t);
+            $renderer = new TwimlRenderer;
+
+            // Set, but its only member is at Do Not Disturb. Anything reading
+            // ring_group_id alone would call this line healthy.
+            $away = $this->member($t, 'Away', 'away@'.$t['org']->slug.'.test');
+            PhonePresence::query()->create([
+                'connection_id' => $connection->id,
+                'user_id' => $away->id,
+                'state' => PhonePresence::STATE_DND,
+            ]);
+            $quiet = $this->number($t, $connection, [
+                'ring_group_id' => $this->group($connection, [$away->id])->id,
+            ]);
+
+            $desk = $this->member($t, 'Desk', 'desk@'.$t['org']->slug.'.test');
+            PhonePresence::query()->create([
+                'connection_id' => $connection->id,
+                'user_id' => $desk->id,
+                'state' => PhonePresence::STATE_REGISTERED,
+            ]);
+            $live = $this->number($t, $connection, [
+                'ring_group_id' => $this->group($connection, [$desk->id])->id,
+            ]);
+
+            return [
+                $renderer->describe($quiet), $renderer->inbound($quiet, []),
+                $renderer->describe($live), $renderer->inbound($live, []),
+            ];
+        });
+
+        $this->assertFalse(
+            $answers($dndSteps)['usable'],
+            'the group is set but nobody is available, and the trace called it usable',
+        );
+        $this->assertStringNotContainsString('<Dial', $dndXml);
+        $this->assertStringContainsString('<Record', $dndXml);
+
+        $this->assertTrue($answers($liveSteps)['usable']);
+        $this->assertStringContainsString('<Dial', $liveXml);
+    }
+
+    /**
+     * The consent sentence is the one setting here with legal weight, and it
+     * was hardcoded for every organization in every jurisdiction. A business
+     * that had to name itself, or say why, could not — and recorded anyway.
+     */
+    public function test_a_line_speaks_its_own_consent_sentence_or_the_default(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$default, $own, $blank] = $this->inTenant($t['org'], function () use ($t) {
+            [$number] = $this->lineWithAvailableDesk($t, record: true);
+            $renderer = new TwimlRenderer;
+
+            $first = $renderer->inbound($number->fresh(), []);
+
+            $number->forceFill([
+                'recording_notice' => 'A-1 Chimney records calls for training.',
+            ])->save();
+            $second = $renderer->inbound($number->fresh(), []);
+
+            // Blank must fall back to the default, never to silence.
+            $number->forceFill(['recording_notice' => '   '])->save();
+            $third = $renderer->inbound($number->fresh(), []);
+
+            return [$first, $second, $third];
+        });
+
+        $this->assertStringContainsString('This call may be recorded.', $default);
+
+        $this->assertStringContainsString('A-1 Chimney records calls for training.', $own);
+        $this->assertStringNotContainsString('This call may be recorded.', $own);
+
+        $this->assertStringContainsString('This call may be recorded.', $blank);
+    }
+
+    /**
+     * A fallback number rings once and then takes a message.
+     *
+     * ── Why the second pass matters more than the first ──────────
+     *
+     * The Dial carries an `action`, so when it ends Twilio posts back and the
+     * renderer reaches this branch AGAIN. Dialling unconditionally would ring
+     * the fallback forever, billed per attempt, for as long as the caller held
+     * on. The batch counter in the context is the guard, and this asserts it.
+     */
+    public function test_a_fallback_number_is_dialled_once_and_then_becomes_voicemail(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$first, $second, $noFallback] = $this->inTenant($t['org'], function () use ($t) {
+            $connection = $this->connection($t);
+            $renderer = new TwimlRenderer;
+
+            // No ring group: the steps above reach nobody.
+            $number = $this->number($t, $connection, [
+                'ring_group_id' => null,
+                'fallback_number' => '+17867869060',
+            ]);
+
+            $bare = $this->number($t, $connection, ['ring_group_id' => null]);
+
+            return [
+                $renderer->inbound($number, ['batch' => 0]),
+                $renderer->inbound($number, ['batch' => 1]),
+                $renderer->inbound($bare, ['batch' => 0]),
+            ];
+        });
+
+        // First pass: the fallback is dialled, and no message is taken yet.
+        $this->assertStringContainsString('+17867869060', $first);
+        $this->assertStringContainsString('<Dial', $first);
+        $this->assertStringNotContainsString('<Record', $first);
+
+        // Second pass: voicemail, and crucially NOT the fallback again.
+        $this->assertStringNotContainsString('+17867869060', $second);
+        $this->assertStringNotContainsString('<Dial', $second);
+        $this->assertStringContainsString('<Record', $second);
+
+        // Unchanged for a line with no fallback set.
+        $this->assertStringNotContainsString('<Dial', $noFallback);
+        $this->assertStringContainsString('<Record', $noFallback);
+    }
+
     public function test_hours_closed_goes_to_voicemail_without_dialing(): void
     {
         $t = $this->provisionTenant();

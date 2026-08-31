@@ -52,6 +52,97 @@ class PhoneFlowTest extends TestCase
         return [$t, $connection, $group];
     }
 
+    /**
+     * A menu can be pointed at a line.
+     *
+     * ── The gap this closes ──────────────────────────────────────
+     *
+     * `flow_id` was fillable on the model and read by the renderer, and NO
+     * endpoint in the module ever wrote it. The only writes anywhere were
+     * FlowsController clearing it when a flow was deleted. So a menu could be
+     * built, named, given digits and destinations — and never attached to
+     * anything. The column was permanently null, every caller skipped straight
+     * past the menu, and the whole IVR feature was decoration.
+     *
+     * It is the same family as the ring groups and voicemail_transcribe: it
+     * saved, it displayed, it did nothing. This is the write that makes the
+     * feature exist.
+     */
+    public function test_a_line_can_be_pointed_at_a_menu_and_refuses_a_foreign_one(): void
+    {
+        [$t, $connection, $group] = $this->connectedCompany();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+
+        [$number, $flow, $foreign] = $this->inTenant($t['org'], function () use ($t, $connection, $group) {
+            $flow = PhoneFlow::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'name' => 'Main menu',
+                'nodes' => [
+                    'type' => 'menu',
+                    'prompt' => 'Press one for sales.',
+                    'options' => [
+                        ['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id],
+                    ],
+                ],
+            ]);
+
+            // A second connection, so "belongs to another account" is a real
+            // case rather than a hypothetical one.
+            $other = new PhoneConnection([
+                'organization_id' => $t['org']->id,
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'kind' => PhoneConnection::KIND_SUBACCOUNT,
+                'account_sid' => 'ACotherotherotherotherotherot',
+                'api_key_sid' => 'SKotherotherotherotherotherot',
+                'status' => PhoneConnection::STATUS_CONNECTED,
+            ]);
+            $other->writeSecrets('secret', 'token');
+            $other->save();
+
+            $foreign = PhoneFlow::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $other->id,
+                'name' => 'Somebody else',
+                'nodes' => ['type' => 'menu', 'prompt' => 'No.', 'options' => []],
+            ]);
+
+            $number = PhoneNumber::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_COMPANY,
+                'scope_id' => $t['company']->id,
+                'twilio_sid' => 'PN'.str_repeat('f', 32),
+                'e164' => '+15615559001',
+                'label' => 'Main',
+                'after_hours' => 'voicemail',
+            ]);
+
+            return [$number, $flow, $foreign];
+        });
+
+        $this->signedInAs($editor)
+            ->patchJson('/api/v1/phone/numbers/'.$number->id, ['flow_id' => $flow->id])
+            ->assertOk()
+            ->assertJsonPath('data.flow_id', $flow->id);
+
+        // And the caller actually hears it — the point of the whole exercise.
+        $this->inTenant($t['org'], function () use ($number, $flow) {
+            $this->assertSame($flow->id, $number->fresh()->flow_id);
+            $xml = (new \App\Support\Phone\TwimlRenderer)->inbound($number->fresh(), []);
+            $this->assertStringContainsString('Press one for sales.', $xml);
+            $this->assertStringContainsString('<Gather', $xml);
+        });
+
+        // A menu on another Twilio account names groups this line cannot
+        // reach, so it would read its prompt and dial nobody.
+        $this->signedInAs($editor)
+            ->patchJson('/api/v1/phone/numbers/'.$number->id, ['flow_id' => $foreign->id])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('flow_id');
+    }
+
     public function test_a_menu_is_stored_in_the_shape_the_renderer_reads(): void
     {
         [$t, $connection, $group] = $this->connectedCompany();

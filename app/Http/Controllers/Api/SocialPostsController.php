@@ -14,6 +14,8 @@ use App\Support\Social\Publishing\PostPayload;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialMediaKind;
+use App\Support\Time\ViewTimezone;
+use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -109,6 +111,8 @@ class SocialPostsController extends Controller
                 'body'       => $post->body,
                 'title'      => $post->title,
                 'has_media'  => $post->media_path !== null,
+                'scheduled_for'      => $post->scheduled_for,
+                'scheduled_timezone' => $post->scheduled_timezone,
                 'author'     => $post->author?->name,
                 'created_at' => $post->created_at?->toIso8601String(),
                 'targets'    => $post->targets
@@ -144,6 +148,11 @@ class SocialPostsController extends Controller
             'connections.*' => ['string'],
             'body'          => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'title'         => ['nullable', 'string', 'max:255'],
+            // Wall clock in the view's own timezone, as the composer typed it.
+            // No timezone on the wire: the server decides which clock the view
+            // is on, because a client that sent one could send a different one
+            // than the screen was showing.
+            'scheduled_for' => ['nullable', 'string', 'date_format:Y-m-d H:i'],
             'media'         => [
                 'nullable', 'file',
                 'mimes:'.implode(',', SocialMediaKind::extensions()),
@@ -154,9 +163,12 @@ class SocialPostsController extends Controller
             'media.mimes'          => 'Social networks take pictures and video: '
                 .implode(', ', SocialMediaKind::extensions()).'.',
             'media.max'            => $this->limits->tooLargeMessage(),
+            'scheduled_for.date_format' => 'That is not a time this can read. '
+                .'Pick the day and time again.',
         ]);
 
-        $file = $request->file('media');
+        $file     = $request->file('media');
+        $schedule = $this->schedule($request, $data['scheduled_for'] ?? null);
 
         if ($file === null && trim((string) ($data['body'] ?? '')) === '') {
             throw ValidationException::withMessages([
@@ -185,11 +197,13 @@ class SocialPostsController extends Controller
 
         $this->assertEveryNetworkTakesThis($connections, $kind);
 
-        $post = DB::transaction(function () use ($connections, $data, $file, $user) {
+        $post = DB::transaction(function () use ($connections, $data, $file, $user, $schedule) {
             $post = new SocialPost([
-                'body'       => $data['body'] ?? null,
-                'title'      => $data['title'] ?? null,
-                'created_by' => $user->getKey(),
+                'body'               => $data['body'] ?? null,
+                'title'              => $data['title'] ?? null,
+                'created_by'         => $user->getKey(),
+                'scheduled_for'      => $schedule['for'],
+                'scheduled_timezone' => $schedule['timezone'],
             ]);
 
             if ($file !== null) {
@@ -205,7 +219,9 @@ class SocialPostsController extends Controller
             foreach ($connections as $connection) {
                 $post->targets()->create([
                     'social_connection_id' => $connection->getKey(),
-                    'status'               => SocialPostTarget::STATUS_QUEUED,
+                    'status'               => $schedule['for'] === null
+                        ? SocialPostTarget::STATUS_QUEUED
+                        : SocialPostTarget::STATUS_SCHEDULED,
                 ]);
             }
 
@@ -219,8 +235,17 @@ class SocialPostsController extends Controller
          * names is visible — and it would return having found nothing, leaving a
          * post that says `queued` forever with nothing left to send it.
          */
-        foreach ($post->targets as $target) {
-            PublishSocialTarget::dispatch($target->getKey());
+        /*
+         * A scheduled post dispatches nothing now. `ezbizi:publish-due-social-
+         * posts` picks it up the minute it comes due — the same outbox shape
+         * the automations use, and for the same reason: a delayed job carrying
+         * the work would have to be cancelled if somebody changed their mind,
+         * and a row can simply stop being due.
+         */
+        if ($schedule['for'] === null) {
+            foreach ($post->targets as $target) {
+                PublishSocialTarget::dispatch($target->getKey());
+            }
         }
 
         /*
@@ -234,8 +259,10 @@ class SocialPostsController extends Controller
         $post->load('targets');
 
         $this->audit->log('social.post_queued', $post, [
-            'accounts' => $connections->map(fn (SocialConnection $c) => $c->display_name)->all(),
-            'kind'     => $kind->value,
+            'accounts'      => $connections->map(fn (SocialConnection $c) => $c->display_name)->all(),
+            'kind'          => $kind->value,
+            'scheduled_for' => $schedule['for'],
+            'timezone'      => $schedule['timezone'],
         ], actor: $user);
 
         return response()->json([
@@ -246,6 +273,45 @@ class SocialPostsController extends Controller
                 )->all(),
             ],
         ], Status::HTTP_CREATED);
+    }
+
+    /**
+     * The time this post is promised for, and the clock that promise is in.
+     *
+     * ── Why the server names the timezone ────────────────────────
+     *
+     * The composer sends a wall time and nothing else. The clock comes from the
+     * VIEW (§3), resolved here — a client that sent its own could send one the
+     * screen was not showing, and "9am" would quietly become a different 9am
+     * than the person read.
+     *
+     * ── Why a past time is refused rather than sent now ──────────
+     *
+     * Somebody picking a time that has already gone has made a mistake — most
+     * often the day — and silently publishing immediately is the least
+     * recoverable reading of it. A post cannot be unsent.
+     *
+     * @return array{for: string|null, timezone: string|null}
+     */
+    private function schedule(Request $request, ?string $wall): array
+    {
+        if ($wall === null || trim($wall) === '') {
+            return ['for' => null, 'timezone' => null];
+        }
+
+        $timezone = ViewTimezone::forUser($request->user());
+        $moment   = Carbon::parse($wall, $timezone);
+
+        // A minute of slack: the composer's clock and the server's are not the
+        // same clock, and refusing "now" as past would be right and useless.
+        if ($moment->lt(now()->subMinute())) {
+            throw ValidationException::withMessages([
+                'scheduled_for' => 'That time has already passed. Pick a time in the future, '
+                    .'or use Publish now.',
+            ]);
+        }
+
+        return ['for' => $moment->format('Y-m-d H:i:s'), 'timezone' => $timezone];
     }
 
     /**
@@ -287,7 +353,30 @@ class SocialPostsController extends Controller
         foreach ($connections as $connection) {
             $provider = $connection->providerEnum();
 
-            $because = Publishers::refusalFor($provider) ?? $provider?->refuses($kind);
+            /*
+             * Three different refusals, and the ORDER is the whole point —
+             * each one is the truest thing that can be said at that step, and
+             * a later one said earlier is misleading rather than merely worse.
+             *
+             *   1. No publisher for this network at all. "Facebook is not built
+             *      yet" — nothing about the post could change that.
+             *   2. The NETWORK will not take a post of this kind. "Pinterest
+             *      needs a picture or a video" — the remedy is to attach one.
+             *   3. The network WOULD take it and EzBizi has not built that
+             *      half. "Cannot post video to Pinterest yet; the connection is
+             *      fine" — the remedy is on us, and saying so stops somebody
+             *      hunting through their Pinterest settings.
+             *
+             * Getting 2 and 3 the wrong way round tells a person with a
+             * text-only post that our video poster is missing, which is true
+             * and not their problem. Number 3 was absent entirely until
+             * 2026-08-28, which cost a real post: Pinterest accepts video, so
+             * step 2 passed, a row was written, the job ran, and only the
+             * publisher knew.
+             */
+            $because = Publishers::refusalFor($provider)
+                ?? $provider?->refuses($kind)
+                ?? Publishers::for($provider)?->cannotSend($kind);
 
             if ($because !== null) {
                 /*

@@ -6,7 +6,10 @@ import '../../core/session.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/error_note.dart';
+import 'condition.dart';
+import 'option.dart';
 import 'photo_field.dart';
+import 'services_field.dart';
 import 'signature_field.dart';
 
 /// New Inspection: search a client or job, pick a named inspection, fill, submit.
@@ -41,6 +44,15 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   /// a String, and a comma-joined list of uuids in a text box is the kind of
   /// thing that works until somebody's answer contains a comma.
   final Map<String, List<String>> _photos = {};
+
+  /// Tick-box answers, which are bools rather than text or lists.
+  final Map<String, bool> _checks = {};
+
+  /// Recommended-work answers: a list of priced picks per field.
+  final Map<String, List<Map<String, dynamic>>> _work = {};
+
+  /// The organization's priced services, from the run payload.
+  List<Map<String, dynamic>> _catalogue = const [];
   String? _blocked;
 
   bool get _mayDiscard =>
@@ -185,12 +197,52 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     }
     _fields.clear();
     _photos.clear();
+    _checks.clear();
+    _work.clear();
+    _catalogue = [
+      for (final s in (run['services'] as List? ?? const []))
+        if (s is Map) Map<String, dynamic>.from(s),
+    ];
     final answers = run['answers'] is Map
         ? Map<String, dynamic>.from(run['answers'] as Map)
         : const <String, dynamic>{};
-    for (final screen in _screensOf(run)) {
-      for (final field in _fieldsOf(screen)) {
+    // Every field, not only the visible ones: a technician who answers the wood
+    // branch, switches to masonry and switches back must find their answer
+    // still there. The server drops what the report will not ask, once, at
+    // submit — this end never throws an answer away mid-run.
+    // Flattened: a nested field's answer lives in the same map as any other,
+    // so it needs a controller like any other. Built for EVERY option's fields,
+    // chosen or not, for the same reason the top-level ones are — switching
+    // away and back must not lose what was typed.
+    List<Map<String, dynamic>> withNested(Map<String, dynamic> screen) => [
+      for (final field in _allFieldsOf(screen)) ...[
+        field,
+        for (final option in InspectionOption.allOf(field['options']))
+          ...option.fields,
+      ],
+    ];
+
+    for (final screen in _allScreensOf(run)) {
+      for (final field in withNested(screen)) {
         final key = '${field['key']}';
+        // Furniture stores nothing, so it needs no controller.
+        if (field['type'] == 'divider' || field['type'] == 'alert') {
+          continue;
+        }
+
+        if (field['type'] == 'services') {
+          _work[key] = [
+            for (final p in (answers[key] as List? ?? const []))
+              if (p is Map) Map<String, dynamic>.from(p),
+          ];
+          continue;
+        }
+
+        if (field['type'] == 'checkbox') {
+          _checks[key] = answers[key] == true;
+          continue;
+        }
+
         if (field['type'] == 'photo' || field['type'] == 'signature') {
           _photos[key] = [
             for (final id in (answers[key] as List? ?? const [])) '$id',
@@ -222,40 +274,147 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   Map<String, dynamic> _answers() => {
         for (final e in _fields.entries) e.key: e.value.text,
         for (final e in _photos.entries) e.key: e.value,
+        for (final e in _checks.entries) e.key: e.value,
+        for (final e in _work.entries) e.key: e.value,
       };
 
-  List<Map<String, dynamic>> _screensOf(Map<String, dynamic> run) => [
+  /// Every screen this version declares, shown or not.
+  ///
+  /// Kept separate from [_screensOf] because saving and freezing reason about
+  /// all of them while the step strip only walks the visible ones.
+  List<Map<String, dynamic>> _allScreensOf(Map<String, dynamic> run) => [
         for (final s in (run['screens'] as List? ?? const []))
           if (s is Map) Map<String, dynamic>.from(s),
       ];
 
-  List<Map<String, dynamic>> _fieldsOf(Map<String, dynamic> screen) => [
+  /// The screens actually asked, given what has been answered so far.
+  ///
+  /// A screen with a false condition is not skipped over on Next — it is not in
+  /// the list at all, so the step strip counts what the technician will really
+  /// be asked rather than showing "3 of 9" and then jumping.
+  List<Map<String, dynamic>> _screensOf(Map<String, dynamic> run) {
+    final answers = _answers();
+
+    return [
+      for (final screen in _allScreensOf(run))
+        if (conditionPasses(screen['visible_if'], answers)) screen,
+    ];
+  }
+
+  /// Every field this screen declares, shown or not.
+  List<Map<String, dynamic>> _allFieldsOf(Map<String, dynamic> screen) => [
         for (final f in (screen['fields'] as List? ?? const []))
           if (f is Map) Map<String, dynamic>.from(f),
       ];
 
+  /// The building code frozen onto this field at publish, if it cites one.
+  ///
+  /// Read from the version, never fetched: the wording is part of what was
+  /// published, so a library corrected afterwards does not change what this run
+  /// is being held to.
+  Widget _citation(Map<String, dynamic> field) {
+    final code = field['code'];
+    if (code is! Map) return const SizedBox.shrink();
+
+    final title = '${code['title'] ?? code['code'] ?? ''}'.trim();
+    final body = '${code['body'] ?? ''}'.trim();
+    if (title.isEmpty && body.isEmpty) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(6),
+          border: Border(
+            left: BorderSide(color: theme.colorScheme.outlineVariant, width: 3),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (title.isNotEmpty)
+              Text(title,
+                  style: theme.textTheme.labelSmall
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+            if (body.isNotEmpty) ...[
+              if (title.isNotEmpty) const SizedBox(height: 2),
+              Text(body,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The fields this field's chosen option reveals, that are themselves shown.
+  ///
+  /// One level: a revealed field cannot reveal more. The server refuses depth
+  /// two in FieldSet, so this end does not have to defend against it.
+  List<Map<String, dynamic>> _revealed(Map<String, dynamic> field) {
+    final answers = _answers();
+
+    return [
+      for (final nested in InspectionOption.revealedBy(field, answers))
+        if (conditionPasses(nested['visible_if'], answers)) nested,
+    ];
+  }
+
+  /// The fields actually asked on this screen.
+  ///
+  /// The server holds the same rule twice over — RequiredFields skips hidden
+  /// fields, and BoundAnswers drops their answers at submit — so a client that
+  /// disagreed here would show a question the report then throws away.
+  List<Map<String, dynamic>> _fieldsOf(Map<String, dynamic> screen) {
+    final answers = _answers();
+
+    return [
+      for (final field in _allFieldsOf(screen))
+        if (conditionPasses(field['visible_if'], answers)) field,
+    ];
+  }
+
   String? _missingOn(Map<String, dynamic> screen) {
     final answers = _answers();
+
     for (final field in _fieldsOf(screen)) {
-      final required = field['required'] == true;
-      final rule = field['required_if'];
-      var needs = required;
-      if (rule is Map) {
-        final other = '${rule['field'] ?? ''}';
-        final equals = '${rule['equals'] ?? rule['value'] ?? ''}';
-        needs = needs || answers[other] == equals;
-      }
-      if (!needs) continue;
-      final value = answers['${field['key']}'] ?? '';
-      // A photo answer is a list, and an empty one is the missing case. `''`
-      // would never match it and a required photo would wave everybody through.
-      final empty =
-          value is List ? value.isEmpty : value.toString().trim().isEmpty;
-      if (empty) {
-        return '${field['label'] ?? field['key']}';
+      // The field itself, then what its answer revealed — the order they are
+      // drawn, and the order a technician can act on. The server's
+      // RequiredFields walks the same order, so the two name the same field.
+      for (final candidate in [field, ..._revealed(field)]) {
+        final label = _missingLabel(candidate, answers);
+        if (label != null) return label;
       }
     }
+
     return null;
+  }
+
+  /// This one field's label if it is required and empty, otherwise null.
+  String? _missingLabel(Map<String, dynamic> field, Map<String, dynamic> answers) {
+    final rule = field['required_if'];
+    var needs = field['required'] == true;
+
+    if (rule is Map) {
+      final other = '${rule['field'] ?? ''}';
+      final equals = '${rule['equals'] ?? rule['value'] ?? ''}';
+      needs = needs || answers[other] == equals;
+    }
+
+    if (!needs) return null;
+
+    final value = answers['${field['key']}'] ?? '';
+    // A photo, signature or multi-choice answer is a list, and an empty one is
+    // the missing case. `''` would never match it and a required photo would
+    // wave everybody through.
+    final empty = value is List ? value.isEmpty : value.toString().trim().isEmpty;
+
+    return empty ? '${field['label'] ?? field['key']}' : null;
   }
 
   Future<void> _next() async {
@@ -429,9 +588,10 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
         );
 
       case 'choice':
-        final options = [
-          for (final o in (field['options'] as List? ?? const [])) '$o',
-        ];
+        // Both shapes: a definition stored before options became objects
+        // keeps its strings until somebody saves it through the Builder.
+        final choices = InspectionOption.allOf(field['options']);
+        final options = [for (final o in choices) o.value];
         final current = _fields[key]?.text ?? '';
 
         return DropdownButtonFormField<String>(
@@ -440,8 +600,8 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
           isExpanded: true,
           decoration: InputDecoration(labelText: label),
           items: [
-            for (final option in options)
-              DropdownMenuItem(value: option, child: Text(option)),
+            for (final choice in choices)
+              DropdownMenuItem(value: choice.value, child: Text(choice.label)),
             // An answer already given against an option since removed. Dropping
             // it silently would change a saved answer by redrawing the screen.
             if (current != '' && !options.contains(current))
@@ -457,12 +617,121 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
           },
         );
 
+      case 'divider':
+        // A heading between fields. Not a control, so it takes no key and
+        // answers nothing — see FieldType::FURNITURE.
+        return Padding(
+          key: widgetKey,
+          padding: const EdgeInsets.only(top: 8, bottom: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (label.isNotEmpty)
+                Text(label, style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 6),
+              Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
+            ],
+          ),
+        );
+
+      case 'alert':
+        final title = '${field['title'] ?? ''}'.trim();
+        final body = '${field['body'] ?? ''}'.trim();
+
+        return Container(
+          key: widgetKey,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.secondaryContainer,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (title.isNotEmpty)
+                Text(title,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.onSecondaryContainer,
+                        )),
+              if (body.isNotEmpty) ...[
+                if (title.isNotEmpty) const SizedBox(height: 4),
+                Text(body,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSecondaryContainer,
+                        )),
+              ],
+            ],
+          ),
+        );
+
+      case 'checkbox':
+        // The answer is a bool, not text, so it does not use a controller.
+        // `_photos` already holds the non-text answers; a third map would be a
+        // third place to remember.
+        final ticked = _checks[key] ?? false;
+
+        return CheckboxListTile(
+          key: widgetKey,
+          value: ticked,
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          title: Text(label),
+          onChanged: (value) {
+            setState(() => _checks[key] = value ?? false);
+            _save();
+          },
+        );
+
+      case 'textarea':
+        return TextField(
+          key: widgetKey,
+          controller: _fields[key],
+          minLines: 3,
+          maxLines: 6,
+          decoration: InputDecoration(labelText: label, alignLabelWithHint: true),
+        );
+
+      case 'email':
+        return TextField(
+          key: widgetKey,
+          controller: _fields[key],
+          keyboardType: TextInputType.emailAddress,
+          autocorrect: false,
+          decoration: InputDecoration(labelText: label),
+        );
+
+      case 'phone':
+        return TextField(
+          key: widgetKey,
+          controller: _fields[key],
+          keyboardType: TextInputType.phone,
+          decoration: InputDecoration(labelText: label),
+        );
+
       case 'number':
         return TextField(
           key: widgetKey,
           controller: _fields[key],
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(labelText: label),
+        );
+
+      case 'services':
+        // The catalogue rides along on the run payload — a picker that had to
+        // fetch would be a spinner on a roof with one bar of signal.
+        return InspectionServicesField(
+          key: widgetKey,
+          api: widget.api,
+          label: label,
+          picks: [
+            for (final p in (_work[key] ?? const []))
+              Map<String, dynamic>.from(p),
+          ],
+          catalogue: _catalogue,
+          onChanged: (picks) {
+            setState(() => _work[key] = picks);
+            _save();
+          },
         );
 
       case 'signature':
@@ -527,7 +796,21 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
                   const SizedBox(height: 12),
                   for (final field in _fieldsOf(screen)) ...[
                     _control(field, run),
+                    // The standard this finding is measured against, under the
+                    // control. A technician certifying that something does not
+                    // meet a code has to be able to read the code.
+                    _citation(field),
                     const SizedBox(height: 12),
+                    // What this answer revealed, indented under it. A failing
+                    // finding demands its photograph HERE, beside the finding,
+                    // rather than as a separate question further down the form.
+                    for (final nested in _revealed(field)) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16),
+                        child: _control(nested, run),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                   ],
                 ],
               ),

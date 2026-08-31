@@ -7,12 +7,18 @@ import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/tag.dart';
+import 'call_flow_pane.dart';
 import 'flows_pane.dart';
+import 'general_pane.dart';
 import 'hours_pane.dart';
+import 'number_quality_pane.dart';
 import 'numbers_pane.dart';
+import 'porting_pane.dart';
 import 'ring_groups_pane.dart';
 import 'tags_pane.dart';
 import 'trust_pane.dart';
+import 'usage_pane.dart';
+import 'voicemail_pane.dart';
 import 'service_request_pane.dart';
 
 /// Phone › Settings — layout 6: a rail of sections, and the form beside it.
@@ -34,17 +40,31 @@ class PhoneSettingsTab extends StatefulWidget {
 
 class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   static const _sections = <(String, IconData)>[
+    ('Call flow', Icons.account_tree_outlined),
+    ('General', Icons.tune_outlined),
     ('Connection', Icons.link_outlined),
     ('Numbers', Icons.dialpad_outlined),
-    ('Call flows', Icons.account_tree_outlined),
+    ('Porting', Icons.swap_horiz_outlined),
+    ('IVR menus', Icons.touch_app_outlined),
     ('Hours', Icons.schedule_outlined),
     ('Ring groups', Icons.groups_outlined),
+    ('Voicemail', Icons.voicemail_outlined),
     ('Tags', Icons.sell_outlined),
     ('Trust', Icons.verified_outlined),
+    ('Number quality', Icons.fact_check_outlined),
+    ('Cost', Icons.receipt_long_outlined),
     ('Messaging', Icons.sms_outlined),
   ];
 
-  int _section = 0;
+  /// Connection, not Call flow.
+  ///
+  /// Call flow leads the rail because it is the screen that says whether any
+  /// of the others are doing anything — but it has nothing to say until a
+  /// phone account exists, and landing a brand new organization on "no lines
+  /// yet" would be answering a question they have not asked. Connection is
+  /// where somebody with nothing set up actually needs to start.
+  int _section = 2;
+
   bool _paneOpen = false;
 
   bool _loading = true;
@@ -281,13 +301,29 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
 
   Widget _sectionBody() {
     return switch (_section) {
-      0 => _connectionBody(),
-      1 => NumbersPane(api: widget.api, session: widget.session),
-      2 => FlowsPane(api: widget.api, session: widget.session),
-      3 => HoursPane(api: widget.api, session: widget.session),
-      4 => RingGroupsPane(api: widget.api, session: widget.session),
-      5 => TagsPane(api: widget.api, session: widget.session),
-      6 => TrustPane(api: widget.api, session: widget.session),
+      // Call flow leads, because it is the only screen that says whether any
+      // of the others are doing anything.
+      0 => CallFlowPane(api: widget.api),
+
+      // General writes what Call flow reads. Adjacent on purpose: the two
+      // answer the same question, one as a report and one as a form.
+      1 => GeneralPane(api: widget.api, session: widget.session),
+      2 => _connectionBody(),
+      3 => NumbersPane(api: widget.api, session: widget.session),
+      4 => PortingPane(api: widget.api, session: widget.session),
+      5 => FlowsPane(api: widget.api, session: widget.session),
+      6 => HoursPane(api: widget.api, session: widget.session),
+      7 => RingGroupsPane(api: widget.api, session: widget.session),
+      8 => VoicemailPane(api: widget.api, session: widget.session),
+      9 => TagsPane(api: widget.api, session: widget.session),
+      10 => TrustPane(api: widget.api, session: widget.session),
+      11 => NumberQualityPane(api: widget.api, session: widget.session),
+      12 => UsagePane(
+        api: widget.api,
+        session: widget.session,
+        scopeType: _places.first.type,
+        scopeId: _places.first.id,
+      ),
       _ => _unbuilt('Messaging campaigns will be set here.'),
     };
   }
