@@ -94,7 +94,23 @@ void main() {
     // white paper because they are the pixels of a printed document. They are
     // inside the count deliberately: excluding them needs a second pattern that
     // itself drifts, and the ratchet only cares about direction.
-    const baseline = 79;
+    // Corrected 79 -> 80 on 2026-08-31. NOT a new literal: the count is
+    // IDENTICAL at d0ce75a (where 79 was written) and at main, so nothing was
+    // added after the baseline was declared. 79 was measured in a worktree that
+    // did not yet hold 6d587f9, another session's landed SEO screen, whose
+    // `Colors.transparent` is one of the benign ones described above. The merge
+    // made the true count visible; it did not raise it.
+    //
+    // This is the shared-tree measurement problem in miniature, and worth
+    // remembering before anyone corrects a ratchet again: a number measured in
+    // YOUR worktree is a claim about your worktree. Measure a baseline at the
+    // tip you are committing to, not at the tip you branched from.
+    //
+    // The rule above still stands and this is not a precedent for bumping it.
+    // If it fails again, check whether the count moved BETWEEN the baseline
+    // commit and now -- if it did, somebody added a colour and the fix is in
+    // their file.
+    const baseline = 80;
 
     test('no new hardcoded colours outside theme.dart', () {
       final pattern = RegExp(r'Color\(0x|Colors\.[a-z]');
