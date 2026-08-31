@@ -825,6 +825,36 @@ matters, because a test that misreads a line ending goes red and somebody
 investigates, whereas the WordPress plugin would quietly render the wrong thing
 on a customer's page forever.
 
+### An upper bound is not a gate: floor anything whose scope is DERIVED
+
+A ratchet asserting only `found <= baseline` passes when `found` is **0**. Break
+the regex, point the scan at the wrong directory, rename the folder — comfortably
+under the limit, green forever, and nothing says the measurement stopped
+happening. Two of these shipped on the same morning: a colour-literal ratchet
+scanning a directory, and a dashboard-icon gate diffing against a registry
+filter. Both needed a second assertion, made separately from the rule:
+
+```
+expect(scanned, greaterThan(100))   // the scan actually ran
+expect(found,   greaterThan(0))     // the pattern actually matches
+```
+
+Neither is the rule. They are the proof that the rule was measured.
+
+**But do not floor everything.** A test looping a two-entry literal in its own
+file has the identical structural hole and does not need it: emptying a literal
+is a deliberate edit by somebody looking straight at it. A codebase full of
+`assertNotEmpty` on hardcoded arrays is noise, and it teaches people to stop
+reading the floors — which costs exactly what the rule was buying.
+
+**The line is DERIVED versus LITERAL scope**, and the diagnostic is one question:
+
+> *Can this scope become empty without anybody editing this file?*
+
+A directory scan, a registry filter, a glob, a grep — yes, because something
+upstream can move while the test sits untouched. A literal in the same file — no.
+Floor the first; leave the second alone.
+
 ### Regenerating a golden: how to tell colour from movement before you do it
 
 `--update-goldens` is the standard way to hide a layout regression, because it
