@@ -694,6 +694,12 @@ final class GmailMailboxReader implements MailboxReader
         ]);
     }
 
+    /** Gmail's are fixed, and Gmail is the same everywhere. */
+    public function availableFolders(Mailbox $mailbox): array
+    {
+        return ['INBOX', 'STARRED', 'SENT', 'DRAFT', 'TRASH', 'SPAM'];
+    }
+
     /**
      * A new message — the same endpoint as a reply, without the thread.
      *

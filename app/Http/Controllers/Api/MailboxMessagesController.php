@@ -305,6 +305,9 @@ class MailboxMessagesController extends Controller
      *  THE SAME "info sends as info" RULE AS reply(), AND THE SAME
      *  READ GATE.
      *
+     *  (See also `folders()` below, which is the same read gate for
+     *  the same reason.)
+     *
      *  There is deliberately no `email.send` permission. Replying
      *  already decided this: an inbox somebody can read and not
      *  answer is not a shared inbox, and the same reasoning covers
@@ -405,6 +408,39 @@ class MailboxMessagesController extends Controller
                 $mailbox->address,
             ),
         ]);
+    }
+
+    /**
+     * GET /api/v1/email/mailboxes/{mailbox}/folders
+     *
+     * Which folders this mailbox can open — asked, not assumed.
+     *
+     * ── Why this is its own request ──────────────────────────────
+     *
+     * IMAP is the reason. Gmail and Outlook answer from a constant, but an
+     * IMAP server has to be ASKED, and asking means a connection. Folding that
+     * into the mailbox listing would open one connection per mailbox every
+     * time somebody looked at the Email tab, before they had chosen any of
+     * them. This is asked once, when a mailbox is opened.
+     *
+     * The read gate, because a folder list is a fact about somebody's mail.
+     * That an inbox has an Archive folder is not much on its own, and it is
+     * not nothing, and there is no reason for it to be reachable by somebody
+     * who may not open the inbox.
+     */
+    public function folders(Request $request, Mailbox $mailbox): JsonResponse
+    {
+        $this->assertMayRead($request->user(), $mailbox, 'open this inbox');
+
+        try {
+            $folders = $this->readers->for($mailbox)->availableFolders($mailbox);
+        } catch (CannotReadMailbox $e) {
+            return $this->refused($e);
+        } catch (CannotReachHost $e) {
+            return response()->json(['message' => $e->getMessage()], $e->status());
+        }
+
+        return response()->json(['data' => array_values($folders)]);
     }
 
     /**

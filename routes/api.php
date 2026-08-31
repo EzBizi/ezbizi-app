@@ -1189,6 +1189,7 @@ Route::prefix('v1')
         Route::post('email/workspace/oauth/start', [GoogleWorkspaceAuthController::class, 'start']);
         Route::get('email/workspace/oauth/status', [GoogleWorkspaceAuthController::class, 'status']);
 
+        Route::get('email/mailboxes/{mailbox}/folders', [MailboxMessagesController::class, 'folders']);
         Route::get('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'index']);
         Route::post('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'store']);
         Route::post('email/mailboxes/{mailbox}/messages/bulk', [MailboxMessagesController::class, 'bulk']);

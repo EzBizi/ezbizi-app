@@ -847,6 +847,13 @@ class ScriptedMailboxReader implements MailboxReader
         $this->answerOrFail();
     }
 
+    public function availableFolders(Mailbox $mailbox): array
+    {
+        $this->answerOrFail();
+
+        return ['INBOX'];
+    }
+
     public function trash(Mailbox $mailbox, string $messageId): void
     {
         $this->answerOrFail();

@@ -499,27 +499,31 @@ void main() {
     expect(body, contains('Attached.'));
   });
 
-  /// A folder list is what the PROVIDER can open, not one list for everybody.
+  /// A folder list is what the SERVER said, not a table this client keeps.
   ///
   /// Outlook has no Starred — Graph offers a flag filter over the inbox, which
   /// is a different query rather than a folder — and it does have Archive,
-  /// which Gmail is not offered here. Drawing one list for both means one of
-  /// them names a folder that comes back refused, which is the same failure as
-  /// a folder that silently shows the Inbox, only louder.
+  /// which Gmail does not. The screen does not know that and must not: it
+  /// draws what came back from `/folders`, which is the only arrangement that
+  /// can also be right for an IMAP server nobody has seen.
   testWidgets('an Outlook inbox offers Archive and not Starred', (tester) async {
     await _pump(
       tester,
-      _handler(mailboxes: [
-        {
-          'id': 'mb-1',
-          'address': 'info@a-1chimney.com',
-          'display_name': 'Info',
-          'provider': 'microsoft_oauth',
-          'unread': 0,
-          'can_reply': true,
-          'shared_read': true,
-        },
-      ]),
+      _handler(
+        mailboxes: [
+          {
+            'id': 'mb-1',
+            'address': 'info@a-1chimney.com',
+            'display_name': 'Info',
+            'provider': 'microsoft_oauth',
+            'unread': 0,
+            'can_reply': true,
+            'shared_read': true,
+          },
+        ],
+        // What MicrosoftMailboxReader::availableFolders answers.
+        folders: const ['INBOX', 'SENT', 'DRAFT', 'TRASH', 'SPAM', 'ARCHIVE'],
+      ),
       size: const Size(1400, 900),
     );
 
@@ -565,6 +569,60 @@ void main() {
 
     // The control: the mailbox itself is on screen.
     expect(find.text('info@a-1chimney.com'), findsWidgets);
+  });
+
+  /// An IMAP mailbox draws the folders THAT SERVER has — no more, no fewer.
+  ///
+  /// The guess for IMAP is the Inbox alone, because nothing else is knowable
+  /// without asking. Once asked, the answer replaces the guess: this server
+  /// has Sent and Trash and no Archive, so Archive is not offered. Offering it
+  /// and refusing on the click is the broken promise this module keeps
+  /// declining to make.
+  testWidgets('an IMAP inbox draws the folders its own server reported',
+      (tester) async {
+    await _pump(
+      tester,
+      _handler(
+        mailboxes: [
+          {
+            'id': 'mb-1',
+            'address': 'info@a-1chimney.com',
+            'display_name': 'Info',
+            'provider': 'imap',
+            'unread': 0,
+            'can_reply': true,
+            'shared_read': true,
+          },
+        ],
+        folders: const ['INBOX', 'SENT', 'TRASH'],
+      ),
+      size: const Size(1400, 900),
+    );
+
+    // Before it is asked, the guess is the Inbox alone — so nothing here can
+    // be coming from a provider table.
+    await _tap(
+      tester,
+      find.descendant(
+        of: find.byType(MailboxRail),
+        matching: find.text('info@a-1chimney.com'),
+      ).first,
+    );
+
+    expect(find.text('Sent'), findsOneWidget);
+    expect(find.text('Trash'), findsOneWidget);
+
+    expect(
+      find.text('Archive'),
+      findsNothing,
+      reason: 'A folder this server did not report is on screen, so picking it '
+          'would come back refused.',
+    );
+    expect(
+      find.text('Starred'),
+      findsNothing,
+      reason: 'Starred is a Gmail idea and this is an IMAP mailbox.',
+    );
   });
 
   /// Gate four of four: if the answer would be 403, the button is not drawn.
@@ -894,6 +952,7 @@ MockClientHandler _handler({
   void Function(String path, Map<String, dynamic> body)? onSend,
   void Function(http.Request request)? onSendRequest,
   void Function(String url)? onFile,
+  List<String>? folders,
 }) {
   return (request) async {
     final path = request.url.path;
@@ -907,6 +966,11 @@ MockClientHandler _handler({
         200,
         headers: {'content-type': 'application/octet-stream'},
       );
+    }
+
+    // What folders this mailbox actually has, asked when it is opened.
+    if (path.endsWith('/folders')) {
+      return _json({'data': folders ?? const ['INBOX']});
     }
 
     if (path.endsWith('/email/mailboxes')) {

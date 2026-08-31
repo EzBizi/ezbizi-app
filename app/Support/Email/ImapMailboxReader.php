@@ -140,12 +140,17 @@ final class ImapMailboxReader implements MailboxReader
      */
     public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        $this->assertInboxOnly($mailbox, $label);
-
         $limit = max(1, min($limit, self::MAX_PAGE));
 
-        return $this->withConnection($mailbox, function (ImapConnection $imap) use ($cursor, $limit) {
-            $box = $imap->examineInbox();
+        return $this->withConnection($mailbox, function (ImapConnection $imap) use ($mailbox, $cursor, $limit, $label) {
+            // Discovery only when it is needed. The Inbox is the one folder
+            // every IMAP server has under that exact name, so the common path
+            // costs no extra round trip.
+            $folder = strtoupper($label) === 'INBOX'
+                ? 'INBOX'
+                : $this->folderFor($mailbox, $label, $imap->folders());
+
+            $box = $imap->examine($folder);
 
             if ($box['exists'] === 0) {
                 // A genuinely empty inbox, and the only place this module is
@@ -189,8 +194,12 @@ final class ImapMailboxReader implements MailboxReader
     {
         $limit = max(1, min($limit, self::MAX_PAGE));
 
-        return $this->withConnection($mailbox, function (ImapConnection $imap) use ($query, $cursor, $limit) {
-            $box = $imap->examineInbox();
+        return $this->withConnection($mailbox, function (ImapConnection $imap) use ($mailbox, $query, $cursor, $limit, $label) {
+            $folder = strtoupper($label) === 'INBOX'
+                ? 'INBOX'
+                : $this->folderFor($mailbox, $label, $imap->folders());
+
+            $box = $imap->examine($folder);
 
             $term = '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], trim($query)).'"';
 
@@ -606,43 +615,54 @@ final class ImapMailboxReader implements MailboxReader
     }
 
     /**
-     * IMAP has folders; this reader does not offer them yet, and says so.
+     * What this particular server has, which is the only way to know.
      *
-     * ── Why a refusal and not a quiet Inbox ──────────────────────
+     * One LIST, and only when somebody opens the mailbox — not on the inbox
+     * listing, which would mean a connection per mailbox before anybody had
+     * asked to look at any of them.
+     */
+    public function availableFolders(Mailbox $mailbox): array
+    {
+        return $this->withConnection(
+            $mailbox,
+            fn (ImapConnection $imap) => ImapFolders::available($imap->folders()),
+        );
+    }
+
+    /**
+     * The folder to open, or a refusal saying why there is none.
      *
-     * `$label` used to be accepted and ignored here, so `?label=SENT` returned
-     * received mail and reported success. That is the failure shape this
-     * codebase keeps finding: it saved, it displayed, it did nothing. The
-     * client only offers folders on Gmail, so nothing on screen reached it —
-     * but the endpoint is reachable, and a latent lie is still a lie.
+     * ── Ask the server; do not assume ────────────────────────────
      *
-     * ── What real IMAP folders would take ────────────────────────
+     * This used to refuse everything but the Inbox, which was honest and
+     * useless. Before that it accepted the label and returned the Inbox, which
+     * was neither. What it does now is ask — {@see ImapConnection::folders} —
+     * and hand the answer to {@see ImapFolders}, which holds the recognising
+     * and can be tested without a mail server.
      *
-     * Not a constant map like Graph's. Folder names differ per server —
-     * `Sent`, `Sent Items`, `INBOX.Sent` — so it needs `LIST "" "*"`, ideally
-     * with `RETURN (SPECIAL-USE)` to read `\Sent` and `\Trash` where the
-     * server offers it, and a heuristic where it does not. It also needs the
-     * folder name quoted into `EXAMINE`, which is the same injection shape as
-     * the header guard in {@see ReplyComposer}: a name is attacker-adjacent
-     * once it comes back off a server we do not run.
+     * What is left here is the sentence, because only this layer knows which
+     * mailbox somebody was looking at when it happened.
      *
-     * ponytail: Inbox only, refused honestly. Real folders need LIST discovery
-     * plus SPECIAL-USE and an EXAMINE quoting guard — a piece of work, not a
-     * parameter.
+     * @param  list<array{name: string, attributes: list<string>}>  $folders
      *
      * @throws CannotReadMailbox
      */
-    private function assertInboxOnly(Mailbox $mailbox, string $label): void
+    private function folderFor(Mailbox $mailbox, string $label, array $folders): string
     {
-        if (strtoupper($label) === 'INBOX') {
-            return;
+        $folder = ImapFolders::resolve($folders, $label);
+
+        if ($folder !== null) {
+            return $folder;
         }
 
         throw CannotReadMailbox::providerRefused(
             $mailbox,
-            'EzBizi can only open the Inbox on a mail server connected this way, so there '
-            .'is nothing to show for that folder. The other folders are still there in '
-            .'your own mail program.',
+            sprintf(
+                'This mail server has no %s folder, so there is nothing to show. It may be '
+                .'called something EzBizi does not recognise — the mail is still there in '
+                .'your own mail program.',
+                strtolower($label),
+            ),
         );
     }
 

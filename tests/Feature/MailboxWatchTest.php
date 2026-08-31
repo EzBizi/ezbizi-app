@@ -1109,6 +1109,11 @@ class WatchedInbox implements MailboxReader
 
     public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void {}
 
+    public function availableFolders(Mailbox $mailbox): array
+    {
+        return ['INBOX'];
+    }
+
     public function trash(Mailbox $mailbox, string $messageId): void {}
 
     public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
