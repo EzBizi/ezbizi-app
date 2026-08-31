@@ -194,6 +194,26 @@ silent because both sides look right in isolation.
 > condition never created rather than an instrument too narrow, the same trap as the
 > `isExpanded` overflow.
 
+**A missing measurement is not a zero measurement.** Third instance, so it is a rule
+rather than three fixes: attestation shows *not captured* rather than a 0% rate;
+Scheduling says *configured capacity* rather than *remaining*; Cost marks today
+**not yet counted** rather than £0 because the import runs overnight. Each time, a
+plausible zero was available and would have been read as a fact. **If the number is
+absent, say absent — a zero is an assertion.**
+
+**Which way an absent FIELD should default depends on which direction the claim is
+serious.** Phone's decision, and it does not generalise — deliberately:
+
+> `plays` missing → **assume it plays**. "No caller ever hears this menu" is an
+> accusation; inventing it from an absent field paints every healthy menu red against
+> an older server.
+>
+> `reachable` missing → **assume NOT reachable**. "This group will answer" is a
+> reassurance; inventing it means a call goes nowhere while the screen says it is fine.
+
+**Default toward the claim you would rather be wrong about.** Same field shape,
+opposite safe default, because one is an accusation and the other is a promise.
+
 **Never express a state by fading the element that carries text.** Transparency attacks
 legibility directly, and it always bites hardest in the state where legibility matters
 most — dragging, disabled, loading, pending. Express it with elevation, an outline, a
