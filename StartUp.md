@@ -156,6 +156,38 @@ git reset -q HEAD -- <your paths>          # ← STEP 8. Not optional. See below
 scripts/index-landmines.sh                 # must read 0 stale, 0 live
 ```
 
+**THE INDEX RE-ACCUMULATES, SO CHECK IT IMMEDIATELY BEFORE EACH COMMIT — NOT
+AFTER THE LAST ONE.**
+
+A session disarmed six stale paths straight after committing and `index-landmines.sh`
+read `0 stale, 0 live`. **Minutes later the same six were staged again** — almost
+certainly another session's `git add -A` sweeping the whole tree. A second session
+hit it independently within the hour.
+
+So disarming after a commit is a courtesy to whoever commits next; it protects
+nothing of yours. **The index you cleaned ten minutes ago is not the index you are
+about to commit from**, because it is shared and anybody's `git add -A` refills it
+while you are typing.
+
+That makes the pre-commit check the only thing that actually works, and its result
+expires the moment you look away:
+
+```bash
+./scripts/index-landmines.sh     # immediately before EVERY commit, every time
+```
+
+It is also the same shape as the rest of this file one level down: every
+measurement here has turned out to be a claim about a MOMENT rather than a state
+— a worktree count, a golden image, a baseline taken before a merge. A clean
+index is one more of those, and it is the one that eats work rather than merely
+misleading somebody.
+
+**And clear other people's stale entries without asking.** From outside you cannot
+tell whether somebody is mid-edit, but the failure mode of clearing is one
+`git add` and the failure mode of waiting is somebody else's commit eating the
+work. Clearing is cheap and reversible; waiting is neither. `git reset` writes the
+index and never the working tree.
+
 **BEFORE ANY OF THAT: `git commit -- <paths>` is the safe everyday form, and it
 is one word different from the dangerous one.**
 
