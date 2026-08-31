@@ -1045,6 +1045,39 @@ how somebody talks themselves out of a correct diagnosis. Read it with
 
 ## 9 · Deploying
 
+### The defect nobody will ever report: a healthy-looking row nobody checked
+
+Everything else in this section is about a measurement that MISLEADS. This is the
+other failure: a measurement taken correctly, then **discarded before it reached
+anyone who could act on it**.
+
+Two instances on 2026-08-31, an hour apart, both in Phone:
+
+- A ring group of four where all four are on Do Not Disturb rings **nobody**. The
+  pane said "4 people", because it counted MEMBERSHIP. The dialler already knew
+  who was reachable and the screen was never told.
+- A menu can be built, named, given options and attached to a line, and if it has
+  no `menu` node the renderer looks for, **every call goes straight past it**. The
+  pane listed it as healthy, because it counted EXISTENCE.
+
+**Neither will ever be reported.** The caller does not know they missed a menu.
+The owner does not know theirs is skipped. There is no complaint to investigate,
+so it sits until somebody happens to build a screen that needs the fact.
+
+In both cases the server ALREADY COMPUTED the truth and threw it away — one of
+them (`describe()`) was running for every row with all but one boolean discarded,
+so surfacing it cost nothing and no extra query.
+
+**The tell is a status derived from existence rather than from function.**
+"Attached", "configured", "4 members", "connected" — each answers a question
+nobody asked. The question is whether it WORKS, and something upstream usually
+knows. Ask what the renderer, the dialler or the dispatcher decided, and carry
+that to the screen instead of re-deriving a weaker version of it there.
+
+The second copy is its own hazard: deriving "who would actually ring" in the
+client would have been a second implementation of the dialling rule, free to
+drift from the first. The fix was one function both callers ask.
+
 ### A sub-second failure is infrastructure — but only if something answered
 
 A suite that dies far faster than it could possibly run is an environmental
