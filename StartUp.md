@@ -1045,6 +1045,36 @@ how somebody talks themselves out of a correct diagnosis. Read it with
 
 ## 9 · Deploying
 
+### The gate is bound on MIGRATIONS, not on tests
+
+Measured 2026-08-31, when a run went from ~20 minutes to 37+ for about 5% more
+tests. phpunit was using **1m52s of CPU in 19 minutes of wall clock** — 2.7%,
+effectively idle — and MySQL was the real consumer, caught mid
+`alter table franchises add unique ...`.
+
+`RefreshDatabase` rebuilds the schema per test class. That day added roughly ten
+tables across Scheduling, phone trust, phone extensions, staff messages and
+Training, and every one of them made every rebuild more expensive. **The suite
+grew 5% and the gate grew 60%.**
+
+So when the gate feels slow, do not go looking for a slow test. Check the CPU
+split first:
+
+```bash
+ssh app 'ps -eo etime,time,cmd | grep phpunit'
+```
+
+Low CPU against high elapsed means it is waiting on the database, and the fix is
+not in any test file. A long run with phpunit near 100% CPU is a different
+problem and worth chasing.
+
+**This compounds with every table anyone adds, and nothing surfaces it.** The
+gate is the bottleneck on the whole fleet's release cadence; the thing making it
+slower is schema, not code. The real fix is a migrated-once template rather than
+per-class rebuilds, which changes how every test in the codebase sets up — not
+something to attempt with five modules in flight.
+
+
 ```bash
 ./scripts/deploy.sh          # code + UI
 ./scripts/deploy.sh --code   # code only, skip the Flutter build
