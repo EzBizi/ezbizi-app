@@ -66,6 +66,29 @@ and freeze safety — things it can verify. It declined to add "has this been th
 design?" on a peer's say-so, which is correct: a role must not be enforceable by the
 session that holds it. Only Jose can put it at the gate.
 
+**Never redefine a field or a number in place — add a new one.** Three distinct
+instances in a single day: summing per-guide `overdue` and calling the result people;
+a safety note that was right for the wrong reason; and an offer to redefine
+`people_due_for_retaking` from *already lapsed* to *lapsing within N days*. Each time,
+**the number stays plausible and the meaning moves**, so nothing announces the change
+and every existing reader is quietly wrong. If the meaning shifts, the name shifts.
+
+**Two panels that summon different people must differ in tense as well as wording.**
+HR's certification panel is a *lookahead* with a `days` window defaulting to 60 —
+nobody is out of compliance yet. Training's counts passes that have **already lapsed** —
+somebody is uncertified right now. A lookahead was offered for symmetry and declined:
+making them read alike would hide that one is a warning and the other is a failure in
+progress. So HR names its window ("expire in the next 60 days") and Training stays
+present-tense ("need to retake something").
+
+**Preview palettes in `docs/previews/` are snapshots, not the source of truth.** All
+eight files hard-code `--cyan: #00AEEF`, which `theme.dart` no longer uses for `primary`.
+They are **not** being retro-fitted: what Jose approved in each is the *layout*, and
+re-touching an owner-approved artefact to chase a token invites the question of whether
+the approval still stands. Client work takes colour from `theme.dart` by house rule and
+so cannot inherit a stale mockup value. If a mockup's chrome differs from the shipped
+screen, the mockup is the stale one.
+
 **Never express a state by fading the element that carries text.** Transparency attacks
 legibility directly, and it always bites hardest in the state where legibility matters
 most — dragging, disabled, loading, pending. Express it with elevation, an outline, a
@@ -190,11 +213,14 @@ live one — read it rather than this summary.
 
 | # | Item | State |
 |---|---|---|
-| 1 | **Phone · Caller Identity & Trust** | Five layouts built — `docs/previews/phone-trust-layouts.html`. **With Jose.** |
+| ✅ | **Phone · Caller Identity & Trust** | **Layout 1 approved** (prerequisite ladder) — `docs/previews/phone-trust-layouts.html`. Approved as drawn, i.e. **merged** with the existing Trust section as *Trust & caller identity*, rail 14 → 13. **No live Phone session to hand it to** — whoever picks Phone up implements layout 1. |
+| — | **Scheduling · Availability + Settings** | Six layouts built — `docs/previews/scheduling-layouts.html`. **With Jose.** See below. |
 | 2 | **Fleet · vehicle Identity card** | Briefed, see below. Not started. |
 | 3 | **Phone · Settings rail** — 14 sections, grew one at a time | Not started. |
-| 4 | **Web Management · per-page value overrides** | Briefed, see below. Not started. |
-| — | **Scheduling · the three tabs** | **Blocked by Jose** — he chose "not decided yet" on whether Availability means staff, equipment, or customer booking slots. Nothing gets drawn on a guess. |
+| 4 | **Web Management · per-page value overrides** | Briefed. `license` ruled **conditional**. Not started. |
+
+**Also approved and shipped 2026-08-31:** the `theme.dart` contrast fix and the
+colour-literal ratchet, both in `d0ce75a`.
 
 ### 1 · Phone · Caller Identity & Trust — two open rulings
 
@@ -215,6 +241,64 @@ live one — read it rather than this summary.
   The Trust Hub Business Profile is **console-only** — no API creates one — and Voice
   Integrity needs it *approved*, not merely created, which is why the two registrations
   can differ for one reason while looking independent.
+
+### Scheduling · Availability + Settings
+
+Availability means **dispatch capacity** — jobs takeable per slot, per weekday, per
+service area. Areas hold zip codes; one zip belongs to exactly one area, enforced.
+Slots and capacity are **per area**, not franchise-wide (Jose ruled directly).
+
+Jose's two shaping answers: area count **"varies a lot by franchise"** — two and thirty
+are both real, so the area list is searchable and never assumes it fits; and slots are
+**"the same everywhere in practice"**, so the grid is regular and divergence is the
+exception. Together those make *configure one pattern, apply to every area* the primary
+act, not a convenience.
+
+**Three constraints that are easy to lose:**
+
+- **Closing a day must DELETE slot rows, never write zeros.** Storage distinguishes "we
+  do not work Sundays" (no rows) from "we work Sundays and are full" (rows at zero). If
+  a close affordance ever zeroes instead, the two collapse into one appearance and
+  nothing errors. The layouts rely on this: a closed day is an **absent column**, not a
+  column of zeros — which is also what makes the week fit at 375px.
+- **No per-date overrides exist and none are designed** — capacity is per weekday and
+  recurring. But the cell is *shaped* to carry an exception marker nothing sets, because
+  "closed this Thursday for the holiday" is close enough to certain that designing it
+  out would be a choice. No field, no endpoint, no creation UI.
+- **Nothing burns a slot yet** — Scheduled Jobs does not exist, so every cell reads full
+  capacity forever. **Ruled by Jose: the cell is called "configured capacity", not
+  "remaining".** That is what the number is; the lie was the noun, not the number. It
+  becomes "remaining" when Jobs lands, and the label moves with the meaning.
+
+**No pattern table — settled, and the reasoning matters more than the verdict.** A stored
+pattern is not one table, it is a template system: it needs a precedence rule (does
+editing it rewrite existing areas or only new ones?), an override model (does an area's
+exception survive a pattern edit?), and a migration for areas that already diverge. Three
+decisions nobody asked for, each a place for a fact to quietly change. The pattern is
+derivable — comparing slot sets is cheap — so "apply a pattern" is just a write: delete
+an area's rows, write the new set. No pattern object, nothing to keep in sync.
+
+**And no intent column either, on a narrower argument.** Comparison can tell that an area
+*differs*, not whether it differs *on purpose* — so a bulk apply could silently flatten a
+deliberate exception. But ask what actually writes a drift: with one write path and one
+human, **difference is intent by construction.** The single exception is a bulk apply
+that reaches some areas and not others. So close that path rather than recording intent
+around it:
+
+1. **All or none.** A partial apply is the only thing that manufactures a difference
+   nobody chose; it should not be a reachable state.
+2. **Name what will be overwritten, before it is** — the actual areas and values, not a
+   generic warning. The user re-states intent when it is at risk.
+
+> **The trigger for revisiting:** once a franchise holds more than a handful of deliberate
+> exceptions, that confirmation becomes a wall people click through — which is the silent
+> flatten again. Then a nullable "deliberately its own shape" column on `service_areas`
+> earns its place, with real data about which areas rather than a guess. Zero franchises
+> have used this once.
+>
+> Note this lands opposite to the per-date exception cell, deliberately: shaping a cell
+> costs nothing now and a re-cut later, so it was done; a column costs a migration either
+> way, so it waits for a reason.
 
 ### 2 · Fleet · vehicle Identity card
 

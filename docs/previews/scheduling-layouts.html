@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EzBizi — Scheduling · Availability &amp; Settings layouts</title>
+  <style>
+    :root {
+      /* mirrors client/lib/core/theme.dart AFTER d0ce75a — primary is now the
+         deeper cyan on light surfaces, because #00AEEF read at 2.5:1 on white. */
+      --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+      --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+      --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+      --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+    }
+    * { box-sizing:border-box; }
+    html,body { margin:0; background:#DDE3E8; color:var(--ink);
+      font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+    button { font:inherit; cursor:pointer; }
+    .app { max-width:1280px; margin:0 auto; padding:16px 16px 48px; }
+
+    header.picker { background:var(--page); border:1px solid var(--line);
+      border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+    header.picker h1 { font-size:18px; margin:0 0 4px; }
+    header.picker p { margin:0 0 12px; color:var(--muted); max-width:80ch; }
+    .locked { font-size:13px; background:var(--info-c); border-radius:8px;
+      padding:10px 12px; margin-bottom:12px; max-width:92ch; }
+    .locked strong { display:block; margin-bottom:4px; color:var(--cyan-deep); }
+    .ask { font-size:13px; background:var(--warn-c); border-radius:8px;
+      padding:10px 12px; margin-bottom:12px; max-width:92ch; }
+    .ask strong { display:block; margin-bottom:4px; color:var(--warn); }
+    .ask b { display:block; margin-top:7px; }
+    .nums { display:flex; flex-wrap:wrap; gap:8px; }
+    .nums button { min-width:44px; min-height:44px; border-radius:8px;
+      border:1px solid var(--line); background:var(--page); color:var(--ink); }
+    .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+    .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:90ch; }
+    .caption strong { display:block; margin-bottom:4px; }
+
+    .shell { display:grid; grid-template-columns:200px 1fr; min-height:700px;
+      background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+    nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+    nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+    nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+      text-decoration:none; margin-bottom:2px; }
+    nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+    .page { display:flex; flex-direction:column; min-width:0; }
+    .tabs { display:flex; flex-wrap:wrap; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+    .tabs span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+      background:var(--page); color:var(--muted); }
+    .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+    .pane { padding:18px 20px 32px; overflow:auto; min-width:0; }
+    .pane > h2 { font-size:17px; margin:0 0 2px; }
+    .pane > .sub { color:var(--muted); margin:0 0 16px; max-width:72ch; }
+
+    .card { border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin:0 0 12px; }
+    .card h3 { font-size:14px; margin:0 0 2px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .card .why { color:var(--muted); font-size:13px; margin:2px 0 0; max-width:66ch; }
+    .pill { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--alt);
+      color:var(--muted); font-weight:600; white-space:nowrap; }
+    .pill.ok { background:var(--ok-c); color:var(--ok); }
+    .pill.warn { background:var(--warn-c); color:var(--warn); }
+    .pill.none { background:var(--alt); color:var(--muted); }
+    .btn { background:var(--primary); color:#fff; border:0; border-radius:8px;
+      padding:9px 14px; min-height:44px; }
+    .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+    .btn.sm { min-height:36px; padding:6px 12px; font-size:13px; }
+    .row-actions { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+    .meta { color:var(--muted); font-size:12px; margin-top:6px; }
+    .banner { background:var(--info-c); border-radius:8px; padding:11px 13px;
+      font-size:13px; margin:0 0 14px; }
+    .banner.warn { background:var(--warn-c); }
+    .banner b { display:block; margin-bottom:3px; }
+
+    /* searchable area rail — must survive 2 areas and 30 */
+    .split { display:grid; grid-template-columns:236px 1fr; flex:1; min-height:0; }
+    .arealist { border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
+    .search { display:flex; align-items:center; gap:8px; margin:12px; padding:9px 11px;
+      border:1px solid var(--line); border-radius:9px; background:var(--alt);
+      color:var(--muted); font-size:13px; min-height:40px; }
+    .arealist .scroll { overflow:auto; padding:0 8px 12px; }
+    .arealist a { display:block; padding:9px 11px; border-radius:8px; text-decoration:none;
+      color:var(--ink); font-size:13px; }
+    .arealist a .z { display:block; color:var(--muted); font-size:11px; margin-top:1px; }
+    .arealist a.on { background:var(--info-c); color:var(--cyan-deep); font-weight:600; }
+    .arealist .count { padding:0 20px 8px; color:var(--muted); font-size:11px;
+      text-transform:uppercase; letter-spacing:.04em; }
+
+    /* the week grid */
+    table.grid { border-collapse:collapse; width:100%; font-size:13px; }
+    table.grid th, table.grid td { border:1px solid var(--line); padding:0; text-align:center; }
+    table.grid th { background:var(--alt); color:var(--muted); font-weight:600;
+      font-size:12px; padding:8px 4px; }
+    table.grid th.slot, table.grid td.slot { text-align:left; padding:8px 10px;
+      background:var(--alt); color:var(--ink); font-weight:600; white-space:nowrap; }
+    table.grid td .cell { min-height:44px; display:flex; align-items:center;
+      justify-content:center; gap:4px; }
+    table.grid td input { width:46px; min-height:34px; text-align:center; font:inherit;
+      border:1px solid var(--line); border-radius:6px; background:var(--page); color:var(--ink); }
+    table.grid td.closed { background:repeating-linear-gradient(45deg,#F2F5F7 0 6px,#E9EDF1 6px 12px); }
+    table.grid td.closed .cell { color:var(--muted); font-size:11px; }
+    table.grid th.closedhead { color:var(--muted); }
+    .full { color:var(--warn); font-weight:600; }
+    .free { color:var(--ok); font-weight:600; }
+
+    .bulkbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+      padding:11px 12px; background:var(--alt); border:1px solid var(--line);
+      border-radius:9px; margin-bottom:12px; }
+    .bulkbar .lbl { color:var(--muted); font-size:12px; margin-right:2px; }
+
+    /* pattern-first */
+    .pattern { border:2px solid var(--primary); border-radius:11px; padding:14px 16px;
+      margin-bottom:14px; background:var(--info-c); }
+    .pattern h3 { margin:0 0 3px; font-size:14px; }
+    .chips { display:flex; flex-wrap:wrap; gap:7px; margin-top:9px; }
+    .chips b { font-weight:500; font-size:12px; padding:6px 11px; border-radius:999px;
+      background:var(--page); border:1px solid var(--line); }
+    .applied { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+    .applied span { font-size:12px; padding:5px 10px; border-radius:999px;
+      background:var(--page); border:1px solid var(--line); }
+    .applied span.diff { border-color:var(--warn); color:var(--warn); }
+
+    .weeknav { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+    .weeknav .arrow { min-width:44px; min-height:44px; border:1px solid var(--line);
+      border-radius:9px; background:var(--page); color:var(--primary); }
+    .weeknav .range { font-weight:600; }
+
+    /* 375 */
+    .phone { width:375px; margin:0 auto; border:8px solid var(--ink); border-radius:28px;
+      overflow:hidden; background:#fff; min-height:700px; display:flex; flex-direction:column; }
+    .phone .bar375 { padding:11px 12px; border-bottom:1px solid var(--line); font-weight:600;
+      display:flex; gap:8px; align-items:center; font-size:14px; }
+    .phone .bar375 .back { color:var(--primary); font-weight:500; }
+    .phone .scroll { padding:13px 12px 24px; overflow:auto; }
+    .daycard { border:1px solid var(--line); border-radius:10px; margin-bottom:9px; }
+    .daycard .h { display:flex; justify-content:space-between; align-items:center;
+      padding:10px 12px; background:var(--alt); border-radius:9px 9px 0 0; font-weight:600; }
+    .daycard .b { padding:6px 12px 10px; }
+    .daycard .s { display:flex; justify-content:space-between; align-items:center;
+      padding:8px 0; border-bottom:1px solid var(--line); }
+    .daycard .s:last-child { border-bottom:0; }
+    .daycard.shut .h { color:var(--muted); }
+
+    @media (max-width:900px) {
+      .shell { grid-template-columns:1fr; }
+      nav.side { display:none; }
+      .split { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Scheduling › Availability &amp; Settings — layouts</h1>
+
+    <div class="locked">
+      <strong>Already decided, not in this gallery</strong>
+      Availability means <b>dispatch capacity</b> — how many jobs a franchise can take, per slot,
+      per weekday, per service area. A franchise creates service areas holding zip codes; one zip
+      belongs to exactly one area, enforced. Slots and capacity are defined <b>per area</b>, not
+      franchise-wide. A closed day is a day with <b>no slot rows</b> — closing deletes, it does not
+      zero. Capacity is per weekday and recurring: <b>there are no per-date overrides</b> and none
+      are being designed. No modals; colours from <code>theme.dart</code>; 375px is a floor.
+    </div>
+
+    <div class="ask">
+      <strong>Three things you have already told us that shaped every layout here</strong>
+      <b>1 · Area count “varies a lot by franchise.”</b> Not two, not thirty — both. So the area list
+      is searchable and never assumes it fits on screen. This is the answer that cost the most.
+      <b>2 · “Same slots everywhere in practice.”</b> The model permits per-area divergence and that
+      stands, but real franchises run one pattern — so the grid is regular, and divergence is drawn
+      as the exception rather than the default. Combined with (1), <b>“apply this shape to every
+      area” is the primary act, not a convenience</b>: thirty areas with one pattern should be
+      configured roughly once. That is what layouts 1 and 7 are built around.
+      <b>3 · One thing still open, and I have drawn my recommendation rather than your pick.</b>
+      Nothing burns a slot yet — Scheduled Jobs does not exist — so every cell reads full capacity
+      forever. You chose “ship with a warning line” from three options; a fourth arrived after you
+      answered. Layout 4 draws it: the cell is not called <b>remaining</b>, it is called
+      <b>configured capacity</b>, which is what the number actually is. The lie was the noun, not
+      the number. It becomes “remaining” the day Jobs lands, with no redesign. Say the word and I
+      will redraw it as the warning line you picked.
+    </div>
+
+    <p>
+      Pick a number. <strong>7 is the recommendation for Settings — your combination of 1 and 2 —
+      and 4 for Availability.</strong> 1, 2 and 3 are the three organising principles that led
+      there and are kept so the reasoning is visible; 7 supersedes 1. 8 is 7 with an area
+      selected, so the switch is shown rather than described. 9, 5 and 6 are 375px.
+    </p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Pattern first, areas applied to it (recommended)",
+      "Makes the slot pattern the primary object and the areas a list you apply it to. Defined once — 7-11, 11-3, 3-5, two jobs each, Monday to Friday — then applied to every area at once, with the areas that differ marked. Chosen because of your two answers together: the pattern is the same everywhere and there can be thirty areas, so the common act is configure-once-apply-to-all and the rare act is one area's Thursday exception. Every other layout makes you visit thirty screens to express one intention. Weakness: it invents an object the storage does not have — there is no pattern row, it is a client-side shape written out as many slot rows — so 'the pattern' is a fiction the screen maintains, and an area edited directly then falls out of it. Layout 1 shows that state as a marked exception rather than hiding it."],
+  2: ["2 · Area first, list beside the grid",
+      "The house pattern — searchable area rail, one area's 7x3 grid in the pane, bulk actions above it. Familiar to anyone who has used Fleet, Phone or Web Management, and it is the layout that needs no explanation. Every cell is directly editable and nothing is a fiction: what you see is what is stored. Weakness, and it is the one your answers create: a franchise with thirty areas and one pattern configures the same thing thirty times, and the copy-to-other-areas control is a mitigation bolted onto a screen whose shape assumes you edit one area at a time."],
+  3: ["3 · One long table, every area stacked",
+      "No rail. Every area's grid down one scroll, so the whole configuration is visible and comparable at once, and spotting the area that differs is a glance rather than a hunt through thirty tabs. Best for auditing, and the only layout where 'is Houston the same as Dallas' is answerable without clicking. Weakness: at thirty areas this is 630 input cells on one page, and it degrades from comparable to unusable somewhere around six. Included because at two or three areas it is genuinely the best of the three, and 'varies a lot' means some franchises live there."],
+  4: ["4 · Availability — read-only, and the number is honest (recommended)",
+      "Search by zip or area name; a zip resolves to its owning area. Week grid, arrows to page. The cell is labelled CONFIGURED CAPACITY, not remaining, because nothing burns a slot yet — that is the recommendation you have not ruled on. Closed days are absent columns, not columns of zeros, because storage genuinely distinguishes 'we do not work Sundays' from 'we work Sundays and are full', and flattening those loses a fact. Note the close affordance in Settings must DELETE rows rather than write zeros, or the two collapse silently and nothing errors."],
+  5: ["5 · Settings at 375px",
+      "The 7-column grid does not survive a phone, so it stops being a grid. One day per card, slots as rows inside it, capacity on the right. Closed days collapse to a single line rather than three empty rows. The bulk bar stays at the top, because on a phone it matters more, not less — nobody hand-edits twenty-one numbers on a handset, and 'apply the pattern' is the only realistic act at this width."],
+  7: ["7 · Overview + area rail — 1 and 2 combined (RECOMMENDED, supersedes 1)",
+      "Your synthesis, and it is better than either half. The searchable rail from layout 2 is permanent, with an Overview item pinned above the areas; the pane defaults to layout 1's pattern dashboard. Configure-once lives in the Overview, the Thursday exception lives one click away in the area's own grid, and neither is buried in the other. It also fixes the specific weakness each layout had alone: layout 1 had no direct route to a single area's numbers, and layout 2 made a thirty-area franchise express one intention thirty times. The rail is the thing that makes 'varies a lot' survivable at both ends — nine areas or thirty, it searches and scrolls, and the Overview never moves."],
+  8: ["8 · The same screen with an area selected",
+      "Not a different layout — layout 7 after clicking Houston, shown so the switch is visible rather than described. The rail keeps its selection, the pane becomes that area's editable grid, and the Overview stays one click away. Houston is the area that differs, so it carries the exception banner and the route back to the pattern. Note the bulk bar is still here: 'copy Monday to weekdays' is useful inside one area, not only across all of them."],
+  9: ["9 · Layout 7 at 375px",
+      "The rail becomes the screen and a selection pushes the pane, per the sub-600 rule — same behaviour Web Management uses, so it is a house pattern rather than a new one. Overview sits at the top of that list. Inside an area the 7-column grid stops being a grid: one card per day, slots as rows, closed days collapsed to a single line. The bulk actions stay at the top because on a phone they matter more, not less — nobody hand-edits twenty-one numbers on a handset."],
+  6: ["6 · Availability at 375px",
+      "Same inversion: days become cards, slots become rows. This is the screen someone uses while a customer is on the phone, so the search is at the top and the answer is one glance per day. Closed days are one grey line. Both 375px layouts drop the seven-column grid entirely rather than making it scroll sideways — chrome and grids that are only as wide as somebody's data has no business forcing a horizontal drag."]
+};
+
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const SLOTS = ['7 – 11am','11am – 3pm','3 – 5pm'];
+
+const AREAS = [
+  ['Dallas', '18 zips'], ['Fort Worth', '11 zips'], ['Houston', '24 zips'],
+  ['Plano', '7 zips'], ['Arlington', '9 zips'], ['Irving', '6 zips'],
+  ['Garland', '5 zips'], ['McKinney', '8 zips'], ['Frisco', '6 zips'],
+];
+
+const shell = (tab, body) => `
+  <div class="shell">
+    <nav class="side">
+      <div class="brand">EzBizi</div>
+      <a>Dashboard</a><a>Customers</a><a>Jobs</a>
+      <a class="on">Scheduling</a><a>Phone</a><a>Fleet</a>
+    </nav>
+    <div class="page">
+      <div class="tabs">
+        <span class="${tab==='avail'?'on':''}">Availability</span>
+        <span class="${tab==='sched'?'on':''}">Schedule</span>
+        <span class="${tab==='set'?'on':''}">Settings</span>
+      </div>
+      ${body}
+    </div>
+  </div>`;
+
+const areaRail = (activeIdx) => `
+  <div class="arealist">
+    <div class="search">&#9906; Search areas or a zip…</div>
+    <div class="count">9 service areas</div>
+    <div class="scroll">
+      ${AREAS.map((a,i) => `
+        <a class="${i===activeIdx?'on':''}">${a[0]}<span class="z">${a[1]}</span></a>`).join('')}
+    </div>
+  </div>`;
+
+/* editable grid — closed days are ABSENT, not zeroed */
+const editGrid = (closed) => `
+  <table class="grid">
+    <tr>
+      <th class="slot">Slot</th>
+      ${DAYS.map(d => closed.includes(d)
+        ? `<th class="closedhead">${d}</th>`
+        : `<th>${d}</th>`).join('')}
+    </tr>
+    ${SLOTS.map(s => `
+      <tr>
+        <td class="slot">${s}</td>
+        ${DAYS.map(d => closed.includes(d)
+          ? `<td class="closed"><div class="cell">—</div></td>`
+          : `<td><div class="cell"><input value="2"></div></td>`).join('')}
+      </tr>`).join('')}
+  </table>`;
+
+const readGrid = (closed) => `
+  <table class="grid">
+    <tr>
+      <th class="slot">Slot</th>
+      ${DAYS.filter(d => !closed.includes(d)).map(d => `<th>${d}</th>`).join('')}
+    </tr>
+    ${SLOTS.map((s,si) => `
+      <tr>
+        <td class="slot">${s}</td>
+        ${DAYS.filter(d => !closed.includes(d)).map((d,di) => {
+          const n = (si + di) % 3 === 0 ? 2 : (si + di) % 3 === 1 ? 3 : 1;
+          return `<td><div class="cell"><b class="free">${n}</b></div></td>`;
+        }).join('')}
+      </tr>`).join('')}
+  </table>`;
+
+const bulkBar = `
+  <div class="bulkbar">
+    <span class="lbl">Set at once</span>
+    <button class="btn ghost sm" type="button">All slots, all days…</button>
+    <button class="btn ghost sm" type="button">Copy Monday to weekdays</button>
+    <button class="btn ghost sm" type="button">Apply this area to others…</button>
+    <button class="btn ghost sm" type="button">Close a day…</button>
+  </div>`;
+
+/* ---- layouts ---- */
+
+const L1 = () => shell('set', `
+  <div class="pane">
+    <h2>Capacity</h2>
+    <p class="sub">How many jobs you can take, per slot, per day. Most franchises run one pattern
+      everywhere — set it once here, then mark the areas that differ.</p>
+
+    <div class="pattern">
+      <h3>Your slot pattern <span class="pill ok">Applied to 8 of 9 areas</span></h3>
+      <p class="why">Three windows a day, two jobs each, Monday to Friday. Editing this rewrites
+        every area that follows it.</p>
+      <div class="chips"><b>7 – 11am · 2 jobs</b><b>11am – 3pm · 2 jobs</b><b>3 – 5pm · 2 jobs</b>
+        <b>Mon – Fri</b><b>Sat, Sun closed</b></div>
+      <div class="row-actions">
+        <button class="btn sm" type="button">Edit the pattern</button>
+        <button class="btn ghost sm" type="button">Apply to all 9 areas</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Areas following the pattern <span class="pill none">8</span></h3>
+      <div class="applied">
+        ${AREAS.slice(0,8).map(a => `<span>${a[0]}</span>`).join('')}
+      </div>
+      <p class="meta">Each shows the pattern above. Open one to give it its own numbers — it then
+        leaves the pattern and appears below.</p>
+    </div>
+
+    <div class="card">
+      <h3>Areas that differ <span class="pill warn">1</span></h3>
+      <div class="applied"><span class="diff">Houston — Thursday afternoon takes 1, not 2</span></div>
+      <p class="meta">Deliberate exceptions, listed so they cannot be forgotten. An area only
+        appears here once somebody edits it directly.</p>
+      <div class="row-actions">
+        <button class="btn ghost sm" type="button">Open Houston</button>
+        <button class="btn ghost sm" type="button">Return Houston to the pattern</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Service areas and zip codes</h3>
+      <p class="why">A zip belongs to exactly one area, so a search by zip is never ambiguous.</p>
+      <div class="row-actions">
+        <button class="btn ghost sm" type="button">Manage areas and zips</button>
+      </div>
+    </div>
+  </div>`);
+
+const L2 = () => shell('set', `
+  <div class="split">
+    ${areaRail(0)}
+    <div class="pane">
+      <h2>Dallas <span class="pill none">18 zips</span></h2>
+      <p class="sub">Jobs you can take per slot, per weekday. Saturday and Sunday are closed —
+        no slots, rather than slots set to zero.</p>
+      ${bulkBar}
+      ${editGrid(['Sat','Sun'])}
+      <div class="row-actions">
+        <button class="btn" type="button">Save Dallas</button>
+        <button class="btn ghost" type="button">Manage this area's zips</button>
+      </div>
+      <p class="meta">Nine areas today. A franchise running one pattern across all of them edits
+        this screen nine times — which is what layout 1 exists to avoid.</p>
+    </div>
+  </div>`);
+
+const L3 = () => shell('set', `
+  <div class="pane">
+    <h2>Capacity — all areas</h2>
+    <p class="sub">Every area on one scroll, so the one that differs is visible rather than
+      hidden behind a tab. Comfortable at two or three areas; heavy past six.</p>
+    ${bulkBar}
+    ${AREAS.slice(0,3).map((a,i) => `
+      <div class="card">
+        <h3>${a[0]} <span class="pill none">${a[1]}</span>
+          ${i===2?'<span class="pill warn">differs</span>':''}</h3>
+        <div style="margin-top:10px">${editGrid(['Sat','Sun'])}</div>
+      </div>`).join('')}
+    <p class="meta">Showing 3 of 9. At thirty areas this page holds 630 inputs.</p>
+  </div>`);
+
+const L4 = () => shell('avail', `
+  <div class="pane">
+    <h2>Availability</h2>
+    <p class="sub">What a customer can be offered. Search a zip code or an area name.</p>
+
+    <div class="banner warn">
+      <b>These are configured numbers, not remaining ones.</b>
+      Nothing books against capacity yet, so nothing counts down. Every figure here is what the
+      area is <em>set up</em> to take — not what is left after today's jobs. When scheduled jobs
+      start consuming slots this becomes remaining capacity and the wording changes with it.
+    </div>
+
+    <div class="search" style="margin:0 0 14px; max-width:420px">&#9906; 75201, or “Dallas”…</div>
+
+    <div class="card">
+      <h3>Dallas <span class="pill none">from zip 75201</span></h3>
+      <div class="weeknav" style="margin-top:10px">
+        <button class="arrow" type="button">&lsaquo;</button>
+        <span class="range">Mon 1 – Fri 5 September</span>
+        <button class="arrow" type="button">&rsaquo;</button>
+      </div>
+      ${readGrid(['Sat','Sun'])}
+      <p class="meta">Saturday and Sunday are not columns of zeros — they are absent, because
+        Dallas has no slots on those days. “Closed” and “open but full” stay different facts.</p>
+    </div>
+  </div>`);
+
+const L5 = () => `
+  <div class="phone">
+    <div class="bar375"><span class="back">&lsaquo; Areas</span> Dallas — capacity</div>
+    <div class="scroll">
+      <div class="bulkbar" style="margin-bottom:11px">
+        <button class="btn ghost sm" type="button">Apply pattern…</button>
+        <button class="btn ghost sm" type="button">Set all…</button>
+      </div>
+      ${DAYS.map(d => ['Sat','Sun'].includes(d) ? `
+        <div class="daycard shut">
+          <div class="h"><span>${d}</span><span class="pill none">Closed</span></div>
+        </div>` : `
+        <div class="daycard">
+          <div class="h"><span>${d}</span><span class="pill none">6 jobs</span></div>
+          <div class="b">
+            ${SLOTS.map(s => `
+              <div class="s"><span>${s}</span><input value="2" style="width:52px;min-height:38px;
+                text-align:center;font:inherit;border:1px solid var(--line);border-radius:6px"></div>`).join('')}
+          </div>
+        </div>`).join('')}
+      <button class="btn" type="button" style="width:100%;margin-top:6px">Save Dallas</button>
+    </div>
+  </div>`;
+
+const L6 = () => `
+  <div class="phone">
+    <div class="bar375"><span class="back">&lsaquo;</span> Availability</div>
+    <div class="scroll">
+      <div class="search" style="margin:0 0 11px">&#9906; 75201, or “Dallas”…</div>
+      <div class="banner warn" style="font-size:12px">
+        <b>Configured, not remaining.</b>
+        Nothing books against these yet, so they do not count down.
+      </div>
+      <div class="weeknav">
+        <button class="arrow" type="button">&lsaquo;</button>
+        <span class="range" style="font-size:13px">Mon 1 – Fri 5 Sep</span>
+        <button class="arrow" type="button">&rsaquo;</button>
+      </div>
+      ${DAYS.map((d,i) => ['Sat','Sun'].includes(d) ? `
+        <div class="daycard shut">
+          <div class="h"><span>${d}</span><span class="pill none">Closed</span></div>
+        </div>` : `
+        <div class="daycard">
+          <div class="h"><span>${d} ${i+1} Sep</span><span class="pill ok">6</span></div>
+          <div class="b">
+            ${SLOTS.map((s,si) => `
+              <div class="s"><span>${s}</span><b class="free">${(si+i)%3===0?2:(si+i)%3===1?3:1}</b></div>`).join('')}
+          </div>
+        </div>`).join('')}
+    </div>
+  </div>`;
+
+/* ---- 7-9: the combination ---- */
+
+const overviewRail = (active) => `
+  <div class="arealist">
+    <div class="search">&#9906; Search areas or a zip…</div>
+    <div style="padding:0 8px 6px">
+      <a class="${active==='overview'?'on':''}" style="display:block;padding:9px 11px;
+        border-radius:8px;text-decoration:none;font-size:13px;font-weight:600">
+        Overview<span class="z" style="font-weight:400">Pattern &amp; exceptions</span></a>
+    </div>
+    <div class="count" style="border-top:1px solid var(--line);padding-top:10px">9 service areas</div>
+    <div class="scroll">
+      ${AREAS.map(a => `
+        <a class="${active===a[0]?'on':''}">${a[0]}<span class="z">${a[1]}${
+          a[0]==='Houston' ? ' · differs' : ''}</span></a>`).join('')}
+    </div>
+  </div>`;
+
+const overviewPane = `
+  <div class="pane">
+    <h2>Capacity</h2>
+    <p class="sub">Most franchises run one pattern everywhere. Set it here, then open an
+      area on the left to give it different numbers.</p>
+
+    <div class="pattern">
+      <h3>Your slot pattern <span class="pill ok">Followed by 8 of 9 areas</span></h3>
+      <p class="why">Three windows a day, two jobs each, Monday to Friday.</p>
+      <div class="chips"><b>7 – 11am · 2 jobs</b><b>11am – 3pm · 2 jobs</b><b>3 – 5pm · 2 jobs</b>
+        <b>Mon – Fri</b><b>Sat, Sun closed</b></div>
+      <div class="row-actions">
+        <button class="btn sm" type="button">Edit the pattern</button>
+        <button class="btn ghost sm" type="button">Apply to all 9 areas…</button>
+      </div>
+      <p class="meta">Applying names every area it will change before it changes one, and
+        applies to all of them or none.</p>
+    </div>
+
+    <div class="card">
+      <h3>Areas that differ <span class="pill warn">1</span></h3>
+      <div class="applied"><span class="diff">Houston — Thu afternoon takes 1, not 2</span></div>
+      <p class="meta">Listed so an exception cannot be forgotten. An area appears here only
+        once somebody edits it directly, which is the only way to differ.</p>
+    </div>
+
+    <div class="card">
+      <h3>Service areas and zip codes <span class="pill none">9 areas · 94 zips</span></h3>
+      <p class="why">A zip belongs to exactly one area, so a search by zip is never ambiguous.</p>
+      <div class="row-actions">
+        <button class="btn ghost sm" type="button">Manage areas and zips</button>
+      </div>
+    </div>
+  </div>`;
+
+const areaPane = `
+  <div class="pane">
+    <h2>Houston <span class="pill none">24 zips</span> <span class="pill warn">differs from the pattern</span></h2>
+    <p class="sub">Jobs Houston can take per slot, per weekday.</p>
+    <div class="banner warn">
+      <b>Thursday afternoon takes 1 job, where the pattern says 2.</b>
+      Applying the pattern to every area would change it back — and would say so first.
+      <div class="row-actions"><button class="btn ghost sm" type="button">Return Houston to the pattern</button></div>
+    </div>
+    ${bulkBar}
+    ${editGrid(['Sat','Sun'])}
+    <div class="row-actions">
+      <button class="btn" type="button">Save Houston</button>
+      <button class="btn ghost" type="button">Manage this area's zips</button>
+    </div>
+  </div>`;
+
+const L7 = () => shell('set', `<div class="split">${overviewRail('overview')}${overviewPane}</div>`);
+const L8 = () => shell('set', `<div class="split">${overviewRail('Houston')}${areaPane}</div>`);
+
+const L9 = () => `
+  <div style="display:flex;gap:22px;justify-content:center;flex-wrap:wrap">
+    <div class="phone" style="min-height:640px">
+      <div class="bar375">Scheduling — capacity</div>
+      <div class="scroll">
+        <div class="search" style="margin:0 0 10px">&#9906; Search areas or a zip…</div>
+        <div class="daycard" style="border-color:var(--primary)">
+          <div class="h"><span>Overview</span><span class="pill none">Pattern</span></div>
+        </div>
+        <div class="count" style="padding:8px 2px 4px">9 service areas</div>
+        ${AREAS.slice(0,6).map(a => `
+          <div class="daycard">
+            <div class="h" style="font-weight:500">
+              <span>${a[0]}</span>
+              <span class="pill ${a[0]==='Houston'?'warn':'none'}">${
+                a[0]==='Houston' ? 'differs' : a[1]}</span></div>
+          </div>`).join('')}
+        <p class="meta" style="text-align:center">Scrolls. Never assumes it fits.</p>
+      </div>
+    </div>
+    <div class="phone" style="min-height:640px">
+      <div class="bar375"><span class="back">&lsaquo; Areas</span> Houston</div>
+      <div class="scroll">
+        <div class="bulkbar" style="margin-bottom:11px">
+          <button class="btn ghost sm" type="button">Apply pattern…</button>
+          <button class="btn ghost sm" type="button">Set all…</button>
+        </div>
+        ${DAYS.map(d => ['Sat','Sun'].includes(d) ? `
+          <div class="daycard shut">
+            <div class="h"><span>${d}</span><span class="pill none">Closed</span></div>
+          </div>` : `
+          <div class="daycard">
+            <div class="h"><span>${d}</span><span class="pill none">${d==='Thu'?'5':'6'} jobs</span></div>
+            <div class="b">
+              ${SLOTS.map((s,si) => `
+                <div class="s"><span>${s}</span><input value="${
+                  d==='Thu'&&si===2?'1':'2'}" style="width:52px;min-height:38px;text-align:center;
+                  font:inherit;border:1px solid var(--line);border-radius:6px"></div>`).join('')}
+            </div>
+          </div>`).join('')}
+        <button class="btn" type="button" style="width:100%;margin-top:6px">Save Houston</button>
+      </div>
+    </div>
+  </div>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4, 5:L5, 6:L6, 7:L7, 8:L8, 9:L9 };
+
+const nums = document.getElementById('nums');
+const stage = document.getElementById('stage');
+const caption = document.getElementById('caption');
+
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = k;
+  b.addEventListener('click', () => show(+k));
+  nums.appendChild(b);
+});
+
+function show(i) {
+  [...nums.children].forEach((b, idx) => b.setAttribute('aria-pressed', idx + 1 === i ? 'true' : 'false'));
+  const entry = CAPTIONS[i];
+  caption.innerHTML = '<strong>' + entry[0] + '</strong>' + entry[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(7);
+</script>
+</body>
+</html>
