@@ -346,7 +346,20 @@ final class TaskWriter
                 }
             }
             if ($errors !== []) {
-                throw ValidationException::withMessages(['tasks' => $errors]);
+                throw ValidationException::withMessages([
+                    // 'tasks' is a plain-string sentence FIRST — read by
+                    // `ApiResponse.reason` (client/lib/core/api_client.dart),
+                    // which is shared by every module and picks the first
+                    // `errors` value; that logic is not the place to teach
+                    // it a new shape, so this stays exactly the shape it
+                    // already knows how to announce as a sentence, not a
+                    // serialized map (whole-branch review, coordinator
+                    // follow-up A). Structured per-task attribution stays
+                    // available under `task_errors` for a future client
+                    // that wants to point at the specific task.
+                    'tasks' => [$errors[0]['message']],
+                    'task_errors' => $errors,
+                ]);
             }
 
             $causationId = (string) Str::uuid7();
@@ -394,7 +407,11 @@ final class TaskWriter
                 }
             }
             if ($errors !== []) {
-                throw ValidationException::withMessages(['tasks' => $errors]);
+                // Same shape and same reason as the pre-check throw above.
+                throw ValidationException::withMessages([
+                    'tasks' => [$errors[0]['message']],
+                    'task_errors' => $errors,
+                ]);
             }
 
             $fresh = Task::query()->whereIn('id', $selectedIds)->with($this->relations())->get()->keyBy('id');

@@ -199,12 +199,20 @@ class TasksApiTest extends TestCase
             'changes' => ['due_on' => '2026-09-01'],
         ])->assertUnprocessable();
 
-        // A flat list of {task_id, field, message}, not an array keyed by
-        // task id — ValidationException::withMessages() routes through a
-        // MessageBag, which flattens away exactly that kind of key
-        // (verified directly against Laravel, not assumed; see the
-        // comment in TaskWriter::bulk()).
-        $tasksErrors = collect($response->json('errors.tasks'));
+        // errors.tasks is a plain-string sentence FIRST (coordinator
+        // follow-up A) — ApiResponse.reason (client/lib/core/api_client.dart)
+        // announces the first `errors` value verbatim, and a list of maps
+        // there reads to a screen-reader as a serialized map, not a
+        // sentence. The structured per-task attribution moved to
+        // errors.task_errors instead: a flat list of {task_id, field,
+        // message}, not an array keyed by task id — ValidationException::
+        // withMessages() routes through a MessageBag, which flattens away
+        // exactly that kind of key (verified directly against Laravel, not
+        // assumed; see the comment in TaskWriter::bulk()).
+        $sentence = $response->json('errors.tasks.0');
+        $this->assertIsString($sentence, 'errors.tasks must announce a plain sentence, not a structured map.');
+        $this->assertStringContainsString('start date cannot be after the due date', $sentence);
+        $tasksErrors = collect($response->json('errors.task_errors'));
         $this->assertTrue(
             $tasksErrors->contains(fn ($entry) => $entry['task_id'] === $legacy->id),
             'The offending task must be named.'
