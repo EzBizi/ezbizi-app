@@ -228,6 +228,33 @@ for cross-board dependencies, which Phase 2 deliberately refused to build; exter
 identity model that exists nowhere in EzBizi today and should be scoped as its own project rather
 than a Phase 3 bullet. Phase 3 receives its own design, plan, and review gate.
 
+**Independent review, the board card, and the SHA hand-off.** The plan's independent-reviewer
+step was satisfied task-by-task rather than as one whole-implementation pass: every one of the
+sixteen Phase 2 tasks carried its own scoped independent review before being marked complete,
+and several were rejected on first review and reworked — among them the `start_on`-after-`due_on`
+refusal above (built only after review found the design's own claim unenforced) and the Task 15
+golden baseline (rejected for certifying an 11-golden set that predated all four new
+presentation widgets, then corrected). The board card
+(`H:\Development\integrations-board\data.json`, `tasks-module-phase-2`) and the SHA hand-off to
+the deploy session are the coordinating session's own steps, done outside this documentation
+commit — this record does not evidence either one having happened, and a reader should not infer
+deployment or a ticked card from this page alone.
+
+**The full gate, against the tree this documentation was committed from.** `git diff --check`
+clean; `composer audit` no advisories. The full local PHPUnit run: 2607 tests, 2591 passed,
+18347 assertions, 16 non-passes, none of them Tasks tests and none introduced by Phase 2 — 13
+errors plus 1 failure are the documented Windows-only "cannot complete a trusted TLS handshake
+to localhost" IMAP hazard already named above under Phase 1; 1 failure is the documented
+Windows-only stack-trace path-separator hazard also named there; 1 failure
+(`phone_trust_observations` has no retention policy) is a pre-existing Phone-module gap from a
+commit that predates this task. `flutter analyze`: no issues. `flutter test`: 1210/1211, the one
+failure a pre-existing hardcoded-colour-literal ratchet drift (baseline 80, actual 86) in
+Email/Auth/HR screens, none of them Tasks files. `flutter analyze` and `flutter test` read the
+working tree rather than a commit, so those two numbers are a claim about the tree at the moment
+they ran, not about a SHA by itself — the tree at that moment is the one this paragraph was
+committed with.
+
+
 ## EZ Leads — all three modules live, 2026-08-27
 
 The first expansion work that depends on an outside party's approval rather than on us. Rodrigo's
