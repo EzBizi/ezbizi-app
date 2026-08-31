@@ -107,6 +107,11 @@ the approval still stands. Client work takes colour from `theme.dart` by house r
 so cannot inherit a stale mockup value. If a mockup's chrome differs from the shipped
 screen, the mockup is the stale one.
 
+**Hours has no time picker, and must not gain one.** A picker is a dialog, and this
+codebase has no modals. Times are a **masked text field** — validated as real times,
+from-before-to, equal refused, masking as it is typed (`8910b88`). Any Hours layout
+that assumes a picker affordance is designing against a rule, not a gap.
+
 **Never express a state by fading the element that carries text.** Transparency attacks
 legibility directly, and it always bites hardest in the state where legibility matters
 most — dragging, disabled, loading, pending. Express it with elevation, an outline, a
