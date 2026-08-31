@@ -84,7 +84,12 @@ Thumbs.db
 # app on a simulator. Derived output: 2.7 MB of PNGs that this repo would push
 # to the production server on every deploy, and that any machine with the
 # simulator can regenerate.
-/store-screenshots/
+# Unanchored on purpose. This was `/store-screenshots/`, which only matches the
+# repository root - but `flutter drive` runs in client/, so the screenshots land
+# in client/store-screenshots/ and were never ignored at all. Two megabytes of
+# PNGs, one `git add -A` from being committed, behind a rule everyone believed
+# was covering them.
+store-screenshots/
 
 # Laravel's schema dump. NOT committed, deliberately.
 #
