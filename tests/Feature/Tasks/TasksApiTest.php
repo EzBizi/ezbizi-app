@@ -163,6 +163,68 @@ class TasksApiTest extends TestCase
         $this->assertNull($child->fresh()->archived_with_parent_id);
     }
 
+    /**
+     * Whole-branch review finding 6: applyUpdate()'s start/due guard used
+     * to throw straight out of bulk()'s execution loop, bypassing the
+     * per-task error protocol the version/archive-state pre-checks above
+     * already use — a bulk date edit across many tasks failed with a bare,
+     * task-less field error, no indication which of the selected tasks
+     * carried the inverted pair. `Clean task` proves the response names
+     * ONLY the offending task, not every task in the selection; bulk()
+     * stays atomic (the existing "atomically" test above already
+     * establishes that as this method's contract) — the fix is correct
+     * ATTRIBUTION of the one refusal, not a partial commit.
+     */
+    public function test_a_bulk_date_edit_reports_only_the_task_with_a_legacy_inverted_pair(): void
+    {
+        $legacy = $this->createTask('Legacy task');
+        $this->enterTenant();
+        // The API itself refuses to create an inverted pair — this
+        // bypasses TaskWriter entirely to simulate the historical data the
+        // finding is about, the same way a row written before the guard
+        // existed would look today.
+        Task::withoutGlobalScopes()->where('id', $legacy->id)
+            ->update(['start_on' => '2026-09-20', 'due_on' => '2026-09-10']);
+        $legacy = $legacy->fresh();
+        $clean = $this->createTask('Clean task');
+
+        $response = $this->postJson("/api/v1/tasks/boards/{$this->board->id}/bulk", [
+            'tasks' => [
+                ['id' => $legacy->id, 'expected_version' => $legacy->version],
+                ['id' => $clean->id, 'expected_version' => $clean->version],
+            ],
+            // Leaves the legacy row's already-inverted start_on untouched
+            // and only edits due_on — exactly the "the new value looks
+            // fine in isolation" shape the finding describes.
+            'changes' => ['due_on' => '2026-09-01'],
+        ])->assertUnprocessable();
+
+        // A flat list of {task_id, field, message}, not an array keyed by
+        // task id — ValidationException::withMessages() routes through a
+        // MessageBag, which flattens away exactly that kind of key
+        // (verified directly against Laravel, not assumed; see the
+        // comment in TaskWriter::bulk()).
+        $tasksErrors = collect($response->json('errors.tasks'));
+        $this->assertTrue(
+            $tasksErrors->contains(fn ($entry) => $entry['task_id'] === $legacy->id),
+            'The offending task must be named.'
+        );
+        $this->assertFalse(
+            $tasksErrors->contains(fn ($entry) => $entry['task_id'] === $clean->id),
+            'A task with no problem must not be reported as an error too.'
+        );
+        $this->assertCount(1, $tasksErrors, 'Only the one offending task should be reported.');
+        $offending = $tasksErrors->firstOrFail();
+        $this->assertSame('due_on', $offending['field']);
+        $this->assertStringContainsString('start date cannot be after the due date', $offending['message']);
+
+        $this->enterTenant();
+        // Atomic: the whole bulk request is refused, so the clean task's
+        // due_on must not have been silently applied either.
+        $this->assertNull($clean->fresh()->due_on);
+        $this->assertSame('2026-09-10', $legacy->fresh()->due_on->format('Y-m-d'));
+    }
+
     public function test_bulk_refuses_every_change_when_one_target_is_stale_then_updates_each_task_atomically(): void
     {
         $first = $this->createTask('First');

@@ -317,18 +317,32 @@ final class TaskWriter
                 throw ValidationException::withMessages(['tasks' => 'One or more selected tasks are unavailable.']);
             }
 
+            // A flat LIST of {task_id, field, message} entries — not an
+            // array keyed by task id — deliberately (whole-branch review
+            // finding 6, fix round 2). `ValidationException::withMessages()`
+            // routes everything through a `MessageBag`, and a `MessageBag`
+            // only ever normalizes each TOP-LEVEL field into a plain list of
+            // messages: an array keyed by task id here would look right in
+            // PHP but silently loses every one of those keys the moment it
+            // is thrown — `ValidationException::errors()` re-indexes it to
+            // `[0 => [...], 1 => [...]]`, which is what "which task"
+            // actually meant to survive to the wire and did not. Verified
+            // directly against `ValidationException::withMessages()`
+            // (not assumed): a `task_id` field carried INSIDE each list
+            // entry survives that flattening; a `task_id` used as the
+            // entry's own array key does not.
             $errors = [];
             foreach ($tasks as $locked) {
                 $target = $byId[$locked->id];
                 if ((int) $locked->version !== (int) $target['expected_version']) {
-                    $errors[$locked->id] = ['version' => 'This task changed after it was selected.'];
+                    $errors[] = ['task_id' => $locked->id, 'field' => 'version', 'message' => 'This task changed after it was selected.'];
                 }
                 if (! array_key_exists('archived', $changes) && $locked->archived_at !== null) {
-                    $errors[$locked->id] = ['task' => 'This task is unavailable.'];
+                    $errors[] = ['task_id' => $locked->id, 'field' => 'task', 'message' => 'This task is unavailable.'];
                 }
                 if (array_key_exists('archived', $changes)
                     && ((bool) $changes['archived']) === ($locked->archived_at !== null)) {
-                    $errors[$locked->id] = ['archived' => 'This task is already in the requested archive state.'];
+                    $errors[] = ['task_id' => $locked->id, 'field' => 'archived', 'message' => 'This task is already in the requested archive state.'];
                 }
             }
             if ($errors !== []) {
@@ -359,8 +373,28 @@ final class TaskWriter
                         $causationId,
                     );
                 } else {
-                    $this->applyUpdate($actor, $lockedBoard, $locked, $changes, $causationId);
+                    try {
+                        $this->applyUpdate($actor, $lockedBoard, $locked, $changes, $causationId);
+                    } catch (ValidationException $e) {
+                        // The per-task error protocol this method already
+                        // established above for version/archive-state
+                        // conflicts (whole-branch review finding 6) — a
+                        // refusal from applyUpdate() (the start/due date
+                        // guard is the reported case; legacy inverted
+                        // pairs are known to exist) must name the ONE
+                        // offending task rather than surfacing as a bare,
+                        // task-less field error. Safe to just collect and
+                        // keep going: every check inside applyUpdate() that
+                        // can throw runs before its own $task->save() call,
+                        // so nothing has been written for this task yet.
+                        foreach ($e->errors() as $field => $messages) {
+                            $errors[] = ['task_id' => $locked->id, 'field' => $field, 'message' => $messages[0]];
+                        }
+                    }
                 }
+            }
+            if ($errors !== []) {
+                throw ValidationException::withMessages(['tasks' => $errors]);
             }
 
             $fresh = Task::query()->whereIn('id', $selectedIds)->with($this->relations())->get()->keyBy('id');

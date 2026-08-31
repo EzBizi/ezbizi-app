@@ -982,6 +982,20 @@ final class TaskTransfer
             }
             $start = $this->dateValue($row[$mapping['start_on'] ?? ''] ?? '', $number, 'start_on', $errors);
             $due = $this->dateValue($row[$mapping['due_on'] ?? ''] ?? '', $number, 'due_on', $errors);
+            // Same rule TaskWriter::create() enforces at commit time
+            // (whole-branch review finding 6) — checked here too, during
+            // PREVIEW, so an inverted pair is reported with its row number
+            // like every other row error, rather than previewing clean and
+            // then rolling the whole import back with a bare
+            // ValidationException the import surface has no row to show.
+            // Legacy inverted rows are known to exist, so this is not a
+            // theoretical case.
+            if ($start !== null && $due !== null && $start > $due) {
+                $errors[] = [
+                    'row' => $number, 'field' => 'start_on', 'code' => 'start_after_due',
+                    'message' => (string) Refusal::startAfterDue()->message(),
+                ];
+            }
             $custom = [];
             foreach ($mapping['custom'] as $definitionId => $heading) {
                 $definition = $definitions->get($definitionId);
