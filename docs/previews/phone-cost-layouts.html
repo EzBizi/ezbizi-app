@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Phone › Cost layouts</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1180px; margin:0 auto; padding:16px 16px 48px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:82ch; }
+  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:94ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
+  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); } .found strong { color:#A33; }
+  .ask b, .found b { display:block; margin-top:7px; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:92ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+
+  .shell { display:grid; grid-template-columns:200px 1fr; min-height:640px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+  nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .tabs { display:flex; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .tabs span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .settings { display:grid; grid-template-columns:200px 1fr; flex:1; min-height:0; }
+  .rail { border-right:1px solid var(--line); padding:10px 8px; overflow:auto; }
+  .rail a { display:block; padding:8px 11px; border-radius:8px; color:var(--ink);
+    text-decoration:none; font-size:13px; }
+  .rail a.on { background:var(--info-c); color:var(--cyan-deep); font-weight:600; }
+  .rail h4 { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); margin:12px 0 4px; padding:0 11px; font-weight:600; }
+  .rail h4:first-child { margin-top:0; }
+
+  .pane { display:flex; flex-direction:column; min-width:0; overflow:auto; }
+  .paneHead { padding:16px 20px 12px; border-bottom:1px solid var(--line);
+    display:flex; align-items:flex-start; gap:12px; }
+  .paneHead h2 { font-size:17px; margin:0 0 2px; }
+  .paneHead p { margin:0; color:var(--muted); font-size:13px; max-width:70ch; }
+  .paneBody { padding:16px 20px 24px; flex:1; }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:8px;
+    padding:9px 14px; min-height:40px; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:32px; padding:4px 10px; font-size:13px; }
+  .pill { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--alt);
+    border:1px solid var(--line); color:var(--muted); font-weight:600; }
+
+  .asof { background:var(--info-c); border-radius:9px; padding:11px 13px; font-size:13px;
+    margin-bottom:14px; }
+  .asof b { display:block; margin-bottom:2px; }
+
+  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:14px; }
+  .tile { border:1px solid var(--line); border-radius:10px; padding:12px 13px; }
+  .tile .k { color:var(--muted); font-size:12px; }
+  .tile .v { font-size:19px; font-weight:700; margin-top:3px; font-variant-numeric:tabular-nums; }
+  .tile .s { color:var(--muted); font-size:11px; margin-top:2px; }
+
+  table.t { width:100%; border-collapse:collapse; font-size:13px; }
+  table.t th, table.t td { border-bottom:1px solid var(--line); padding:8px 10px; text-align:left; }
+  table.t th { background:var(--alt); color:var(--muted); font-size:12px; font-weight:600; }
+  table.t td.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.t tr.tot td { font-weight:700; background:var(--alt); border-bottom:0; }
+
+  .bars { display:flex; align-items:flex-end; gap:5px; height:120px; padding:8px 0 0;
+    border-bottom:1px solid var(--line); }
+  .bars i { flex:1; background:var(--primary); border-radius:3px 3px 0 0; display:block; min-height:2px; }
+  .bars i.dim { background:#C9D3DB; }
+  .barlabels { display:flex; gap:5px; margin-top:5px; }
+  .barlabels span { flex:1; text-align:center; font-size:10px; color:var(--muted); }
+
+  .stack { display:flex; height:24px; border-radius:6px; overflow:hidden;
+    border:1px solid var(--line); margin:10px 0 8px; }
+  .stack i { display:block; }
+  .legend { display:flex; flex-wrap:wrap; gap:14px; font-size:12px; color:var(--muted); }
+  .legend span { display:flex; align-items:center; gap:6px; }
+  .sw { width:11px; height:11px; border-radius:3px; border:1px solid var(--line); }
+
+  .refuse { border:1px solid var(--line); border-radius:10px; background:var(--alt);
+    padding:16px; font-size:13px; }
+  .refuse b { display:block; margin-bottom:4px; color:var(--ink); font-size:14px; }
+  .void { border:1px dashed #C9D3DB; border-radius:10px; padding:16px;
+    background:var(--alt); color:var(--muted); font-size:13px; }
+  .void b { display:block; color:var(--ink); font-size:14px; margin-bottom:4px; }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; }
+  .sec { border:1px solid var(--line); border-radius:10px; margin-bottom:12px; overflow:hidden; }
+  .sec > h3 { margin:0; padding:10px 14px; background:var(--alt); font-size:13px;
+    border-bottom:1px solid var(--line); }
+  .sec .in { padding:12px 14px; }
+
+  .phone { width:375px; margin:0 auto; border:8px solid var(--ink); border-radius:28px;
+    overflow:hidden; background:#fff; min-height:640px; display:flex; flex-direction:column; }
+  .phone .bar375 { padding:11px 12px; border-bottom:1px solid var(--line); font-weight:600;
+    display:flex; gap:8px; align-items:center; font-size:14px; }
+  .phone .bar375 .back { color:var(--primary); font-weight:500; }
+  .phone .scroll { overflow:auto; flex:1; }
+
+  @media (max-width:900px) {
+    .shell { grid-template-columns:1fr; } nav.side { display:none; }
+    .settings { grid-template-columns:1fr; } .tiles { grid-template-columns:repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Phone › Cost — layouts</h1>
+
+    <div class="locked">
+      <strong>Read from <code>usage_pane.dart</code></strong>
+      <b>“What Twilio charged for this phone account, by day and by kind. Collected each night.”</b>
+      Read-only — nothing here is configured — so under the approved pane pattern the footer is
+      <b>null</b>, and the retry stays in the head because its error is a failed load. Existing
+      states kept: <em>“Nothing collected yet. The nightly import fills this in from Twilio.”</em>
+      and <em>“EzBizi could not read the cost figures the server sent.”</em>
+    </div>
+
+    <div class="found">
+      <strong>Two findings, and the second one is a question for you rather than a design</strong>
+      <b>1 · “Collected each night” means today is missing, and nothing on screen says so.</b>
+      The figures are an overnight import, so the most recent day shown is yesterday and today's
+      calls are not in any total. Somebody checking spend after a heavy morning sees a number that
+      is silently a day behind — the same shape as attestation saying “not captured” and Scheduling
+      saying “configured capacity”. Every layout states the collection time and marks today as
+      not-yet-counted rather than as zero.
+      <b>2 · Seeing costs requires permission to CHANGE phone settings.</b> The refusal says it
+      outright: <em>“You can see what the phone lines do, but not what they cost. That needs
+      permission to change phone settings.”</em> So a bookkeeper who should read the bill and
+      touch nothing cannot, and anybody who can read it can also reconfigure the phone system.
+      <b>That is a server-side permission decision and not mine to change</b> — I am flagging it
+      because this is the screen where it bites. If it should be its own permission, that is a
+      Phone-module change and worth saying now rather than after the layout ships.
+    </div>
+
+    <p>Pick a number. <strong>1 is my recommendation.</strong> 4 is it at 375px.</p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Totals, then where it went, then the daily table (recommended)",
+      "Four tiles for the month's totals by kind, a single stacked bar answering 'where it went' at a glance, and the day-by-day table underneath for anybody who needs the detail. Chosen because the question people bring to a cost screen is almost always 'how much, and what is driving it' — and the existing pane already has 'Where it went' as a heading without anything that actually answers it proportionally. The table stays because a bill you cannot check line by line is not a bill. Weakness: three representations of the same numbers is a lot of pane, and at one line and forty calls a month the tiles and the bar say the same thing twice."],
+  2: ["2 · The daily table alone",
+      "Just the numbers: one row per day, columns by kind, a total row. Smallest, fastest to build, and the only layout that never implies a trend from four days of data. For an account spending forty dollars a month this is arguably the honest amount of screen to spend. Weakness: 'where it went' becomes an act of mental arithmetic across a column, which is the one question the pane's own heading promises to answer."],
+  3: ["3 · A bar per day, with the breakdown below",
+      "A daily bar chart on top, the table underneath. Best for spotting the day something went wrong — a spike is a shape rather than a number you have to notice. Weakness, and it is the reason this is not the recommendation: the data is a nightly import with no same-day figure, so the most recent bar is ALWAYS short, and a chart makes that look like a fall in spending rather than a gap in collection. I have drawn today's bar hatched and labelled for exactly that reason, which is a fix for a problem the chart introduces."],
+  4: ["4 · Layout 1 at 375px",
+      "Tiles go two-up rather than four, the stacked bar keeps its full width because it is the one element that reads better wide than tall, and the daily table drops its least useful column rather than scrolling sideways — a table only as wide as its own data has no business forcing a horizontal drag. The collection notice stays at the top, above everything, because on a phone it is the first thing to scroll away and the most important thing to keep."]
+};
+
+const RAIL = `
+  <h4>Connect</h4><a>General</a><a>Call flow</a><a>Connection</a><a>Numbers</a><a>Porting</a>
+  <h4>Answering</h4><a>IVR menus</a><a>Hours</a><a>Ring groups</a><a>Voicemail</a>
+  <h4>Identity</h4><a>Trust &amp; caller identity</a>
+  <h4>Running it</h4><a>Tags</a><a class="on">Cost</a><a>Messaging</a>`;
+
+const KINDS = [
+  ['Calls', '18.06', '#00708F', 44],
+  ['Numbers', '12.10', '#0093CA', 29],
+  ['Recordings &amp; transcription', '8.63', '#B5730B', 21],
+  ['Messages', '2.39', '#0B8F5B', 6]
+];
+
+const DAYS = [
+  ['26 Aug','3.11','1.73','0.29','5.13'],
+  ['27 Aug','2.84','1.73','0.31','4.88'],
+  ['28 Aug','4.02','1.73','0.44','6.19'],
+  ['29 Aug','3.55','1.73','0.38','5.66'],
+  ['30 Aug','1.12','1.73','0.09','2.94'],
+  ['31 Aug','—','—','—','—']
+];
+
+const shell = (body) => `
+  <div class="shell">
+    <nav class="side"><div class="brand">EzBizi</div>
+      <a>Dashboard</a><a>Customers</a><a>Jobs</a><a class="on">Phone</a><a>Fleet</a></nav>
+    <div class="page">
+      <div class="tabs"><span>Call</span><span>Records</span><span class="on">Settings</span></div>
+      <div class="settings"><div class="rail">${RAIL}</div>${body}</div>
+    </div>
+  </div>`;
+
+const head = `
+  <div class="paneHead">
+    <div style="flex:1"><h2>Cost</h2>
+      <p>What Twilio charged for this phone account, by day and by kind.</p></div>
+    <button class="btn ghost sm" type="button">↻ Try again</button>
+  </div>`;
+
+const asof = `
+  <div class="asof">
+    <b>Collected last night. Today is not in these figures.</b>
+    Costs are imported once a night, so the most recent full day is 30 August. Anything spent
+    today appears tomorrow — it is not counted as zero, it is not counted yet.
+  </div>`;
+
+const tiles = `
+  <div class="tiles">
+    ${KINDS.map(k => `
+      <div class="tile"><div class="k">${k[0]}</div><div class="v">$${k[1]}</div>
+        <div class="s">${k[3]}% of the month</div></div>`).join('')}
+  </div>`;
+
+const stacked = `
+  <div class="sec"><h3>Where it went — August, $41.18</h3>
+    <div class="in">
+      <div class="stack">${KINDS.map(k => `<i style="width:${k[3]}%;background:${k[2]}"></i>`).join('')}</div>
+      <div class="legend">
+        ${KINDS.map(k => `<span><i class="sw" style="background:${k[2]}"></i> ${k[0]} · $${k[1]}</span>`).join('')}
+      </div>
+    </div></div>`;
+
+const dayTable = (slim) => `
+  <table class="t">
+    <tr><th>Day</th><th class="n">Calls</th><th class="n">Numbers</th>
+      ${slim ? '' : '<th class="n">Other</th>'}<th class="n">Total</th></tr>
+    ${DAYS.map(d => d[1] === '—' ? `
+      <tr><td>${d[0]} <span class="pill">today</span></td>
+        <td class="n" colspan="${slim?2:3}" style="color:var(--muted);text-align:left">
+          Not collected yet — appears tomorrow</td><td class="n">—</td></tr>` : `
+      <tr><td>${d[0]}</td><td class="n">$${d[1]}</td><td class="n">$${d[2]}</td>
+        ${slim ? '' : `<td class="n">$${d[3]}</td>`}<td class="n">$${d[4]}</td></tr>`).join('')}
+    <tr class="tot"><td>Month to date</td><td class="n">$18.06</td><td class="n">$12.10</td>
+      ${slim ? '' : '<td class="n">$11.02</td>'}<td class="n">$41.18</td></tr>
+  </table>`;
+
+const L1 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${asof}${tiles}${stacked}
+      <div class="sec"><h3>Day by day</h3><div class="in">${dayTable(false)}</div></div>
+    </div>
+  </div>`);
+
+const L2 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${asof}
+      <div class="sec"><h3>Day by day</h3><div class="in">${dayTable(false)}</div></div>
+      <p class="note">Just the numbers. Never implies a trend from five days — but “where it went”
+        becomes arithmetic across a column, which is the question the pane's own heading promises
+        to answer.</p>
+    </div>
+  </div>`);
+
+const L3 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${asof}
+      <div class="sec"><h3>Day by day</h3>
+        <div class="in">
+          <div class="bars">
+            <i style="height:70%"></i><i style="height:66%"></i><i style="height:88%"></i>
+            <i style="height:78%"></i><i style="height:40%"></i>
+            <i class="dim" style="height:8%;background:repeating-linear-gradient(45deg,#E9EDF1 0 5px,#DCE3E9 5px 10px)"></i>
+          </div>
+          <div class="barlabels">${DAYS.map(d => `<span>${d[0].split(' ')[0]}</span>`).join('')}</div>
+          <p class="note"><b>The last bar is hatched because today has not been collected</b>,
+            not because spending fell. A chart makes a gap in collection look like a trend, and
+            this is the fix for a problem the chart itself introduces.</p>
+          ${dayTable(false)}
+        </div></div>
+    </div>
+  </div>`);
+
+const L4 = () => `
+  <div class="phone">
+    <div class="bar375"><span class="back">‹ Settings</span> Cost</div>
+    <div class="scroll">
+      ${head}
+      <div class="paneBody" style="padding:13px 12px">
+        ${asof}
+        <div class="tiles" style="grid-template-columns:repeat(2,1fr)">
+          ${KINDS.map(k => `
+            <div class="tile"><div class="k">${k[0]}</div><div class="v">$${k[1]}</div>
+              <div class="s">${k[3]}%</div></div>`).join('')}
+        </div>
+        ${stacked}
+        <div class="sec"><h3>Day by day</h3><div class="in">${dayTable(true)}</div></div>
+        <p class="note">The table drops its least useful column rather than scrolling sideways.</p>
+      </div>
+    </div>
+  </div>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button'); b.type='button'; b.textContent=k;
+  b.addEventListener('click', () => show(+k)); nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b,x) => b.setAttribute('aria-pressed', x+1===i ? 'true':'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(1);
+</script>
+</body>
+</html>
