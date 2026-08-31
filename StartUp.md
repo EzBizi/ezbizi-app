@@ -189,6 +189,21 @@ staged for whoever commits next without a pathspec. Clearing them is still
 `index-landmines.sh` plus `git reset -q HEAD -- <paths>`. But you can no longer
 fire somebody else's.
 
+**When you REPAIR one of these, rebuild a contended file as CURRENT HEAD plus
+your own lines — never as your old copy of it.**
+
+The obvious instinct is to restore your version of `routes/api.php` wholesale.
+That rolls back everyone who touched it since, which is a revert committed while
+repairing a revert, and it is the third one nobody notices. Restore deleted files
+from the ORIGINAL COMMIT'S BLOBS so what lands is byte-identical to what was
+tested, and rebuild shared files by re-applying only your own block on top of
+whatever HEAD says now. Then verify the other blocks survived: after one repair
+the check was web/sites 5 routes, inspections/codes 5, phone/trust 4,
+phone/ports 2, all intact alongside the restored ones.
+
+The trap is not obvious until you are standing in it, and you are standing in it
+while relieved that you spotted the first problem.
+
 **And check what you actually committed, every time:**
 
 ```bash
