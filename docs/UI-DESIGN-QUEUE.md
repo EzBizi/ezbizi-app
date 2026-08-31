@@ -172,6 +172,28 @@ file with `
 `, the replace does nothing, and the run passes green. **Confirming the
 sabotage applied is part of doing one.**
 
+**Do not collapse the reasons an incapacity exists — the reason decides who fixes it.**
+Ring groups was drawn with two unavailable states (signed out, Do not disturb) and the
+data has **three**: *never signed in to Phone* is a separate fact, and it is usually
+somebody who **does not know they were put in a ring group at all**. Those need three
+different actions — go and tell them, wait, or respect a deliberate choice — so
+flattening them into "unavailable" throws away the only part that tells you what to do.
+Found by the Phone session while building `10ff9d0`, against a drawing of mine that
+implied two.
+
+**When the screen needs a fact the server computes but discards, grow the endpoint —
+never recompute it in the client.** Reachability lived inside `DialPlan::batches()` and
+was knowable only mid-call; the pane got member ids and nothing else. `reachableUserIds()`
+now exists and `batches()` calls it, so the screen and the dialler share one rule. The
+same shape as `describe()` keeping one boolean out of a whole trace. **A client-side
+reimplementation of a server rule is a second copy that will drift**, and the drift is
+silent because both sides look right in isolation.
+
+> The test for that pair has to run against a **mixed** group. All-reachable or
+> all-unreachable passes against two implementations that disagree — which is a
+> condition never created rather than an instrument too narrow, the same trap as the
+> `isExpanded` overflow.
+
 **Never express a state by fading the element that carries text.** Transparency attacks
 legibility directly, and it always bites hardest in the state where legibility matters
 most — dragging, disabled, loading, pending. Express it with elevation, an outline, a
