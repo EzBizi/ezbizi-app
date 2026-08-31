@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use App\Support\Phone\PhoneScope;
 use App\Models\PhoneConnection;
 use App\Models\PhoneVoicemailBox;
 use App\Support\Tenancy\TenantContext;
@@ -33,8 +34,10 @@ class VoicemailBoxesController extends Controller
             return response()->json(['data' => []]);
         }
 
-        $rows = PhoneVoicemailBox::query()
-            ->whereIn('connection_id', $connections)
+        $rows = PhoneScope::apply(
+            PhoneVoicemailBox::query()->whereIn('connection_id', $connections),
+            $request->user(),
+        )
             ->orderBy('name')
             ->get()
             ->map(fn (PhoneVoicemailBox $box) => $this->row($box))
@@ -52,7 +55,11 @@ class VoicemailBoxesController extends Controller
         abort_if($connection === null, Response::HTTP_NOT_FOUND);
         $this->authorize('update', $connection);
 
+        [$scopeType, $scopeId] = PhoneScope::filing($request->user());
+
         $box = PhoneVoicemailBox::query()->create([
+            'scope_type' => $scopeType,
+            'scope_id' => $scopeId,
             ...$input,
             'organization_id' => $this->tenant->idOrFail(),
         ]);

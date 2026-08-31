@@ -37,6 +37,7 @@ class PhoneVoicemailBox extends Model implements StatesRetention
     ];
 
     protected $fillable = [
+        'scope_type', 'scope_id',
         'organization_id', 'connection_id', 'name',
         'owner_type', 'owner_id',
         'greeting_mode', 'greeting_text', 'greeting_voice',
