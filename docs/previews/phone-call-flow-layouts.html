@@ -164,7 +164,7 @@
       customers, not about the design, and you know it and I do not.</b>
     </div>
 
-    <p>Pick a number. <strong>2 is my recommendation, at eleven lines.</strong> 4 is it at 375px.</p>
+    <p>Pick a number. <strong>You picked 3.</strong> 5 is that same screen with the line list carrying each line's endpoint, which closes the one objection I had to 3. Pick whichever of 3 or 5 you prefer — 4 is 375px.</p>
     <div class="nums" id="nums"></div>
     <div class="caption" id="caption"></div>
   </header>
@@ -179,6 +179,8 @@ const CAPTIONS = {
       "The same four steps compressed into a horizontal run of chips — Open → no menu → Front desk → voicemail — one row per line, broken lines pinned to the top and tinted. Turns 'which line reaches nobody' from a scroll into a glance, and makes lines COMPARABLE, which the card layout cannot do at all: you can see that nine lines end at Front desk and two do not, and that is usually the actual question. Keeps the correspondence with General in miniature — same order, same skipped treatment, dashed chip for a step that does not run. Weakness: a horizontal path is less legible than a vertical ladder for one line studied closely, so it trades depth for breadth."],
   3: ["3 · Line list beside one resolved flow",
       "A list of lines on the left, the selected line's full chain on the right. Scales to any number of lines and gives each one the full vertical ladder without a long scroll — the best of both on paper. Weakness, and it is the same objection that lost layout 3 in Fleet: it hides the comparison. You can only ever see one line's flow, so 'do all my lines end up in the right place' becomes eleven clicks. For a read-only report whose main job is reassurance across the whole set, making the set invisible is the wrong trade."],
+  5: ["5 · Layout 3, with the line list carrying where each line ENDS",
+      "Approved layout 3, with its one weakness closed. The objection to 3 was that you can only ever see one line's flow, so 'do all my lines end up in the right place' becomes eleven clicks — the comparison the report exists to give you is the thing the split hides. This puts each line's ENDPOINT in the list itself: 'ends at Front desk', 'ends at voicemail, always'. The full ladder still needs a click, but the question people actually open this pane with is answerable from the list alone, and the broken line is visible without selecting it. Costs one line of text per row and no layout change to the detail pane. If you prefer 3 exactly as you saw it, that is a legitimate preference — this is the same screen with more information in the left column, not a different design."],
   4: ["4 · Layout 2 at 375px",
       "The chips wrap rather than scroll sideways — a path only as wide as its own labels has no business forcing a horizontal drag, which is the rule already settled for the Tasks chrome bars. Each line becomes a small block: name and number, then the wrapped path, then its badges. Broken lines stay pinned to the top, because on a phone 'first' is the only reliable way to make something findable."]
 };
@@ -330,7 +332,39 @@ const L4 = () => `
     </div>
   </div>`;
 
-const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const endsAt = (l) => l[6] ? 'voicemail, always'
+  : l[5] === 'forward' ? 'forwarded' : `${l[4]}, then voicemail`;
+
+const L5 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${alarm}
+      <div class="split2">
+        <div class="l">
+          ${ordered().map((l,i) => `
+            <div class="it ${i===0 ? 'on bad' : ''}" style="align-items:flex-start">
+              <div style="flex:1">
+                <b>${l[0]}</b>
+                <div style="color:var(--muted);font-size:12px">${l[1]}</div>
+                <div style="font-size:12px;margin-top:3px;color:${l[6] ? '#A33' : 'var(--ink)'}">
+                  ends at <b>${endsAt(l)}</b></div>
+              </div>
+              ${l[6] ? '<span class="pill err">!</span>' : ''}
+            </div>`).join('')}
+        </div>
+        <div class="r">
+          <h3 style="margin:0 0 4px;font-size:14px">Old fax <span class="pill err">Reaches nobody</span></h3>
+          <p class="note" style="margin:0 0 12px">(203) 555 0188</p>
+          ${chain(LINES[4])}
+        </div>
+      </div>
+      <p class="note">The endpoint is in the list, so “do all my lines end up in the right
+        place” is answerable without selecting anything. The ladder still needs a click —
+        but that is the detail, not the question.</p>
+    </div>
+  </div>`);
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4, 5:L5 };
 const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
       caption = document.getElementById('caption');
 Object.keys(LAYOUTS).forEach(k => {
@@ -343,7 +377,7 @@ function show(i) {
   caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
   stage.innerHTML = LAYOUTS[i]();
 }
-show(2);
+show(5);
 </script>
 </body>
 </html>

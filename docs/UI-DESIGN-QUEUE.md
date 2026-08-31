@@ -66,7 +66,7 @@ and freeze safety — things it can verify. It declined to add "has this been th
 design?" on a peer's say-so, which is correct: a role must not be enforceable by the
 session that holds it. Only Jose can put it at the gate.
 
-**Never redefine a field or a number in place — add a new one.** Four distinct
+**Never redefine a field or a number in place — add a new one.** Five distinct
 instances in a single day: summing per-guide `overdue` and calling the result people;
 a safety note that was right for the wrong reason; an offer to redefine
 `people_due_for_retaking` from *already lapsed* to *lapsing within N days*; and a ✅ in
@@ -74,6 +74,15 @@ this file's own queue meaning both "being built" and "nobody is touching this". 
 time, **the number stays plausible and the meaning moves**, so nothing announces the
 change and every existing reader is quietly wrong. If the meaning shifts, the name
 shifts.
+
+> **The fifth, found in a JSON key by the Phone session, is the cleanest example
+> of the shape.** `TwimlRenderer::describe()` gives every step a `usable` bool —
+> but on the *menu* step it means "this step does not break the call", and on the
+> *answer* step it means "reaches somebody". Two meanings, one key. So a design
+> asking for `usable` as its skip flag would have rendered the one step it was
+> drawn for — a menu that is configured and silently skipped — as perfectly fine.
+> The fix is a distinct `skipped` bool, not a widened `usable`: **when a key has to
+> answer a second question, it gets a second key.**
 
 > **Why writing the rule down twice did not stop it happening in the file that
 > contains it:** this failure is markedly easier to see in someone else's data than in
