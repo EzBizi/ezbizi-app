@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Phone › Call desk proportions</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1280px; margin:0 auto; padding:16px 16px 48px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:82ch; }
+  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:94ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
+  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); } .found strong { color:#A33; }
+  .ask b, .found b { display:block; margin-top:7px; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:92ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+  table.m { border-collapse:collapse; font-size:12px; margin:8px 0 2px; }
+  table.m th, table.m td { border:1px solid rgba(0,0,0,.12); padding:4px 9px; text-align:right; }
+  table.m th { background:rgba(0,0,0,.05); text-align:left; }
+  table.m td.bad { background:var(--err-c); color:#A33; font-weight:700; }
+  table.m td.ok { color:var(--ok); }
+
+  .shell { display:grid; grid-template-columns:200px 1fr; min-height:600px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+  nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; font-size:13px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .tabs { display:flex; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .tabs span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+
+  .desk { display:grid; flex:1; min-height:0; }
+  .desk.now  { grid-template-columns:220px 1fr 280px; }
+  .desk.pure { grid-template-columns:1fr 1fr 2fr; }
+  .desk.mins { grid-template-columns:minmax(220px,1fr) minmax(260px,1fr) minmax(340px,2fr); }
+  .col { border-right:1px solid var(--line); display:flex; flex-direction:column; min-width:0; }
+  .col:last-child { border-right:0; }
+  .col > h2 { margin:0; font-size:12px; font-weight:600; color:var(--muted);
+    letter-spacing:.04em; text-transform:uppercase; padding:11px 13px 8px;
+    border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; }
+  .col .pad { padding:10px 12px; overflow:auto; flex:1; }
+  .pct { margin-left:auto; font-weight:700; color:var(--primary); }
+
+  .person { display:flex; gap:9px; align-items:center; padding:8px 3px;
+    border-bottom:1px solid var(--line); }
+  .person:last-child { border-bottom:0; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); flex:none; }
+  .person .g { flex:1; min-width:0; }
+  .person .nm { font-weight:600; font-size:13px; }
+  .person .sub { color:var(--muted); font-size:12px; }
+  .ico { width:30px; height:30px; border-radius:7px; border:1px solid var(--line);
+    background:var(--page); color:var(--primary); display:grid; place-items:center; flex:none; }
+
+  .status { text-align:center; padding:7px; color:var(--cyan-deep); font-weight:600; font-size:13px; }
+  .numfield { margin:8px 10px; min-height:40px; border:1px solid var(--line); border-radius:9px;
+    display:flex; align-items:center; padding:0 12px; color:#9AA5AF; }
+  .dial { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; padding:4px 10px 8px; }
+  .dial b { min-height:42px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); display:grid; place-items:center; font-size:15px; font-weight:600; }
+  .dial b i { display:block; font-size:8px; font-style:normal; color:var(--muted); letter-spacing:.06em; }
+  .callrow { display:flex; gap:8px; justify-content:center; padding:0 10px 10px; }
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:8px;
+    padding:8px 14px; min-height:38px; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .btn.grey { background:var(--alt); color:var(--muted); border:1px solid var(--line); }
+
+  .m { max-width:88%; padding:7px 10px; border-radius:11px; font-size:12px;
+    background:var(--alt); border:1px solid var(--line); margin-bottom:6px; }
+  .m.out { margin-left:auto; background:var(--info-c); border-color:transparent; }
+  .m .t { display:block; color:var(--muted); font-size:10px; margin-top:3px; }
+  .cust h3 { margin:0 0 2px; font-size:14px; }
+  .cust .meta { color:var(--muted); font-size:12px; margin-bottom:10px; }
+  .warn { background:var(--warn-c); color:var(--warn); font-size:11px; padding:6px 10px;
+    border-radius:7px; margin:0 0 8px; }
+  .composer { border-top:1px solid var(--line); padding:8px 10px; display:flex; gap:7px; }
+  .composer .fld { flex:1; min-height:36px; border:1px solid var(--line); border-radius:8px;
+    padding:0 10px; display:flex; align-items:center; color:#9AA5AF; font-size:12px; }
+  .squeeze { background:var(--err-c); color:#A33; font-size:11px; padding:5px 9px;
+    border-radius:6px; margin:6px 10px; font-weight:600; }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; }
+
+  @media (max-width:900px) {
+    .shell { grid-template-columns:1fr; } nav.side { display:none; }
+    .desk { grid-template-columns:1fr !important; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Phone › Call desk — proportions</h1>
+
+    <div class="locked">
+      <strong>What it is today, measured from <code>call_tab.dart:528</code></strong>
+      <code>SizedBox(width: 220)</code> · <code>Expanded</code> · <code>SizedBox(width: 280)</code>.
+      Two <b>fixed</b> panes with the dial pad taking everything left over — so the middle grows
+      with the window and the two sides never do. On your 1440 screen, with the sidebar taking
+      287, that is about <b>19% · 57% · 24%</b>, which is why the pad looks marooned in white space
+      while the customer column is cramped.
+    </div>
+
+    <div class="ask">
+      <strong>Your 25 · 25 · 50, and why the right pane getting half is the right call</strong>
+      <b>The Team column is no longer just a roster.</b> Staff messaging was approved into it —
+      a thread lives there now — so 220px was already going to be too narrow. 25% gives it room
+      for a conversation without evicting the dial pad.
+      <b>The Customer column at 50% is the one that changes most.</b> It holds the matched
+      customer, their details and the SMS thread, in 280px today. At half the desk it stops being
+      a sliver and becomes the place you actually read.
+      <b>And the dial pad genuinely does not need the space it has.</b> A twelve-key pad plus a
+      status line and two buttons is about 260px of content; everything above that is padding.
+      That is why shrinking it costs nothing — up to a point, which is the whole of finding 1.
+    </div>
+
+    <div class="found">
+      <strong>The one risk your ratio introduces, and it is only at small desktop widths</strong>
+      Percentages hold at every width, including widths where 25% is too small for a dial pad.
+      The desk switches to the stacked layout below 900px, so the tightest desktop case is a
+      window around 900–1100.
+      <table class="m">
+        <tr><th>Window</th><th>Desk width</th><th>Pad at 25%</th><th>Verdict</th></tr>
+        <tr><td>1920</td><td>1633</td><td class="ok">408</td><td>fine</td></tr>
+        <tr><td>1440 (yours)</td><td>1153</td><td class="ok">288</td><td>fine</td></tr>
+        <tr><td>1280</td><td>993</td><td class="ok">248</td><td>tight but usable</td></tr>
+        <tr><td>1100</td><td>813</td><td class="bad">203</td><td>keys start to crowd</td></tr>
+        <tr><td>950</td><td>663</td><td class="bad">166</td><td>three keys will not fit properly</td></tr>
+      </table>
+      <b>A dial pad has a floor and the other two panes do not</b> — a roster or a thread just
+      gets narrower and stays usable, while a keypad below about 240px stops being tappable.
+      Layout 2 is your exact ratio with that floor added; layout 3 keeps the ratio absolutely and
+      lets the desk scroll instead. <b>1 is your spec drawn literally</b> so you can see it before
+      choosing how it should behave when it cannot hold.
+    </div>
+
+    <p>Pick a number. <strong>2 is my recommendation</strong> — your ratio, with a floor so it
+      never becomes unusable. 4 shows today's proportions for comparison.</p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · 25 · 25 · 50, exactly as specified",
+      "Three flexible columns, 1:1:2. The ratio holds at every width, which is the appeal — the desk looks the same shape on a laptop and on a large monitor, and nothing is pinned. At your 1440 that is 288 · 288 · 577 and it reads well. The weakness is at the bottom of the desktop range: at a 950px window the pad gets 166px, and twelve keys plus their letters do not fit that. It is not wrong, it just has no floor, and the failure is silent — the keys shrink until they are hard to hit rather than announcing anything."],
+  2: ["2 · 25 · 25 · 50, with a floor under each pane (recommended)",
+      "The same ratio, expressed as a minimum plus a share: the pad never goes below about 280px, the roster never below 240, the customer pane never below 360. Above roughly 1050 of desk width the minimums never bind and you get exactly 25 · 25 · 50 — so on your screen this is visually identical to layout 1. Below that the pad stops shrinking first, because it is the only one of the three with a hard floor: a roster or a thread just gets narrower and stays usable, and a keypad stops being tappable. It costs nothing where the ratio fits and protects the case where it does not."],
+  3: ["3 · Hold the ratio absolutely, and let the desk scroll",
+      "25 · 25 · 50 always, with a minimum width on the desk as a whole — so instead of the pad shrinking past usefulness, the whole three-column desk scrolls horizontally at small windows. The ratio is then never violated. I have drawn it because it is the honest third answer, and I recommend against it: horizontal scrolling on a call desk means the customer column can be off-screen while you are on the phone to that customer, which is the one thing the layout exists to prevent. It also breaks the rule already settled here — horizontal scroll is for wide DATA, not for chrome, and a desk is chrome."],
+  4: ["4 · Today, for comparison — 19 · 57 · 24",
+      "Not a proposal. `SizedBox(width: 220)` and `SizedBox(width: 280)` with the pad taking the remainder, which is what you are looking at. The two panes that hold the most content are fixed at their smallest useful size, and the pane that needs the least grows with every extra pixel of screen. On a larger monitor it gets worse rather than better, because all the new space goes to the pad."]
+};
+
+const TEAM = [['Jose Luis Demasi','Available'],['Bar Ohayon','Available']];
+
+const roster = () => TEAM.map(p => `
+  <div class="person"><span class="dot"></span>
+    <div class="g"><div class="nm">${p[0]}</div><div class="sub">${p[1]}</div></div>
+    <button class="ico" type="button">&#9990;</button>
+    <button class="ico" type="button">&#9993;</button>
+  </div>`).join('');
+
+const KEYS = [['1',''],['2','ABC'],['3','DEF'],['4','GHI'],['5','JKL'],['6','MNO'],
+              ['7','PQRS'],['8','TUV'],['9','WXYZ'],['*',''],['0','+'],['#','']];
+
+const padCol = (squeeze) => `
+  <div class="col">
+    <h2>Dial<span class="pct">25%</span></h2>
+    <div class="pad" style="padding:0">
+      <div style="padding:9px 12px 0;color:var(--muted);font-size:12px">
+        Calling as <b style="color:var(--ink)">Marketing</b> · +1 239 456 0829</div>
+      <div class="status">Ready</div>
+      <div class="numfield">Number</div>
+      ${squeeze ? '<div class="squeeze">At a 950px window this pane is 166px — the keys crowd.</div>' : ''}
+      <div class="dial">${KEYS.map(k => `<b>${k[0]}<i>${k[1]}</i></b>`).join('')}</div>
+      <div class="callrow">
+        <button class="btn grey" type="button">Call</button>
+        <button class="btn ghost" type="button">Internal</button>
+      </div>
+    </div>
+  </div>`;
+
+const teamCol = (pct) => `
+  <div class="col">
+    <h2>Team<span class="pct">${pct}</span></h2>
+    <div class="pad">
+      ${roster()}
+      <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:7px">Bar Ohayon</div>
+        <div class="m">Are we still covering Hartford at 2?<span class="t">1:41pm</span></div>
+        <div class="m out">Yes — Luis has the parts.<span class="t">You · Seen 1:44pm</span></div>
+      </div>
+    </div>
+    <div class="composer"><span class="fld">Message…</span>
+      <button class="btn" type="button" style="min-height:36px;padding:6px 12px">Send</button></div>
+  </div>`;
+
+const custCol = (pct) => `
+  <div class="col">
+    <h2>Customer<span class="pct">${pct}</span></h2>
+    <div class="pad cust">
+      <h3>Eve Harding</h3>
+      <div class="meta">(203) 555 0188 · 14 Mill Rd, Hartford CT · Customer since 2019</div>
+      <div class="warn">This line cannot send texts until messaging is approved.</div>
+      <div class="m">Running 10 minutes late, sorry!<span class="t">Eve · 1:38pm</span></div>
+      <div class="m out">No problem, we will see you shortly.<span class="t">You · 1:39pm</span></div>
+      <div class="m">Thanks — is the sweep still £95?<span class="t">Eve · 1:52pm</span></div>
+    </div>
+    <div class="composer"><span class="fld">Message</span>
+      <button class="btn grey" type="button" style="min-height:36px;padding:6px 12px">Send</button></div>
+  </div>`;
+
+const shell = (cls, cols, note) => `
+  <div class="shell">
+    <nav class="side"><div class="brand">EzBizi</div>
+      <a>Dashboard</a><a>Tasks</a><a>Customers</a><a>Jobs</a>
+      <a class="on">Phone</a><a>Fleet Management</a></nav>
+    <div class="page">
+      <div class="tabs"><span class="on">Call</span><span>Records</span><span>Reports</span><span>Settings</span></div>
+      <div class="desk ${cls}">${cols}</div>
+    </div>
+  </div>
+  ${note ? `<p class="note">${note}</p>` : ''}`;
+
+const L1 = () => shell('pure', teamCol('25%') + padCol(true) + custCol('50%'),
+  'Exactly 1 : 1 : 2 at every width. The squeeze note in the pad is what happens at the bottom of the desktop range — nothing announces it, the keys just get harder to hit.');
+
+const L2 = () => shell('mins', teamCol('25%') + padCol(false) + custCol('50%'),
+  'Identical to layout 1 on your screen. The minimums only bind below about 1150, where the pad stops shrinking first — the only one of the three with a hard floor.');
+
+const L3 = () => shell('pure', teamCol('25%') + padCol(false) + custCol('50%'),
+  'The ratio is never violated because the desk scrolls sideways instead. Which means the customer column can be off-screen while you are on the phone to that customer — and a desk is chrome, not wide data.');
+
+const L4 = () => shell('now',
+  `<div class="col"><h2>Team<span class="pct" style="color:var(--muted)">19% · fixed 220</span></h2>
+     <div class="pad">${roster()}</div></div>` + padCol(false).replace('25%','57%') +
+  custCol('24% · fixed 280'),
+  'Today. The two panes holding the most content are fixed at their smallest useful size, and the one needing least grows with every extra pixel — so a bigger monitor makes it worse, not better.');
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button'); b.type='button'; b.textContent=k;
+  b.addEventListener('click', () => show(+k)); nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b,x) => b.setAttribute('aria-pressed', x+1===i ? 'true':'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(2);
+</script>
+</body>
+</html>
