@@ -210,14 +210,23 @@ any assertion anchored with `$` fails on a file that is correct in git:
 "    ->  1
 ```
 
-**Swept, and the population is small.** Three `$`-anchored multiline regexes
-exist in `tests/` in total. Two were in `WebManagementTest` — the plugin's
-`Stable tag` and `Version` headers — and Web Management fixed both in `7149803`
-with `[^
-]+`, which cannot match a CR rather than merely tolerating one. The
-third, `ClientModuleScreensTest.php:54`, anchors at `^` only with no trailing
-`$`, so nothing can get between the pattern and the anchor. Nothing else in the
-suite has the shape.
+**Swept twice, independently, and the class is closed.** Across the whole repo:
+
+| shape | count | verdict |
+|---|---|---|
+| `$`-anchored, multiline | **2** | both `WebManagementTest`, the plugin's `Stable tag` and `Version` headers |
+| `/m` but `^`-anchored only | 3 | safe — the stray CR sits at the END of the previous line, so `^` still matches |
+| Dart `RegExp(multiLine: true)` | 0 | — |
+
+Web Management fixed both in `7149803`, with `[^
+]+` — which cannot match a CR
+rather than merely tolerating one — proven in both directions by converting the
+files to CRLF, running green, reverting and running green again.
+
+**The right response to this red is to merge that fix, not to tolerate it.**
+A red recorded as "known false" is a red people stop reading, and this one is one
+merge away from not existing. Until it lands, main is red on every Windows
+checkout.
 
 **If you write a new one, this is the trap.** `grep "Stable tag" file | od -c`
 shows the line ending in a bare `
