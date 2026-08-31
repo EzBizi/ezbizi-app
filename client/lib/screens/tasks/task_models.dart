@@ -1676,6 +1676,69 @@ final class TaskMyTasksPage {
   final String? etag;
 }
 
+/// `GET /tasks/my` with a non-Table `configuration.presentation` — Task 14's
+/// cross-board Calendar, Timeline or Workload, reachable the way My Tasks
+/// already is rather than opening one board. Every row here already carries
+/// which board it came from (`TaskMyTask.boardName`), the same shape
+/// `TaskMyTask.fromJson` already builds for Table's `myTasks()` — this
+/// contract reuses that parse rather than a second one.
+///
+/// `isWorkload` picks between the two shapes exactly the way
+/// `TaskRowsPage.fromJson` already does: Workload's `data` holds per-owner
+/// unit rows, not task rows, so forcing it through `TaskMyTask.fromJson`
+/// (which requires `id`, `title`, etc.) would throw.
+final class TaskCrossBoardPage {
+  const TaskCrossBoardPage({
+    required this.presentation,
+    required this.items,
+    required this.workloadRows,
+    required this.total,
+    required this.page,
+    required this.perPage,
+    required this.lastPage,
+    required this.omitted,
+    required this.window,
+    this.etag,
+  });
+
+  factory TaskCrossBoardPage.fromJson(
+    Map<String, Object?> json, {
+    required TaskPresentation presentation,
+    String? etag,
+  }) {
+    final meta = _object(json, 'meta');
+    final isWorkload = presentation == TaskPresentation.workload;
+    final omittedJson = _optionalObject(meta, 'omitted');
+    return TaskCrossBoardPage(
+      presentation: presentation,
+      items: isWorkload
+          ? const <TaskMyTask>[]
+          : _objects(json, 'data').map(TaskMyTask.fromJson).toList(growable: false),
+      workloadRows: isWorkload
+          ? _objects(json, 'data').map(TaskWorkloadRow.fromJson).toList(growable: false)
+          : const <TaskWorkloadRow>[],
+      total: _integer(meta, 'total'),
+      page: _integer(meta, 'page'),
+      perPage: _integer(meta, 'per_page'),
+      lastPage: _integer(meta, 'last_page'),
+      omitted: omittedJson == null ? TaskOmitted.zero : TaskOmitted.fromJson(omittedJson),
+      window: TaskWindow.decode(presentation, _optionalObject(meta, 'window')),
+      etag: etag,
+    );
+  }
+
+  final TaskPresentation presentation;
+  final List<TaskMyTask> items;
+  final List<TaskWorkloadRow> workloadRows;
+  final int total;
+  final int page;
+  final int perPage;
+  final int lastPage;
+  final TaskOmitted omitted;
+  final TaskWindow? window;
+  final String? etag;
+}
+
 final class TaskQuickSearchResult {
   const TaskQuickSearchResult({
     required this.boardId,

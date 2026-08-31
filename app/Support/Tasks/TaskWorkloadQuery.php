@@ -36,9 +36,14 @@ final class TaskWorkloadQuery
     public function __construct(private readonly TaskBoardAccess $access) {}
 
     /**
+     * `$board` is `null` for Task 14's cross-board summaries — every board
+     * the accessible-boards prefilter (`TaskBoardAccess::constrainVisible`)
+     * lets through is counted together rather than one board at a time, the
+     * same accessible set `TaskListQuery::crossBoardRows()` windows.
+     *
      * @return array{data:list<array{owner_id:?string,owner_name:?string,units:list<array{date:string,count:int}>}>,omitted:array{unowned:int}}
      */
-    public function rows(User $user, ViewScope $scope, TaskBoard $board, TaskWindow $window): array
+    public function rows(User $user, ViewScope $scope, ?TaskBoard $board, TaskWindow $window): array
     {
         $base = fn (): Builder => $this->baseQuery($user, $scope, $board, $window);
 
@@ -79,7 +84,7 @@ final class TaskWorkloadQuery
         return ['data' => $this->present($aggregated), 'omitted' => ['unowned' => $unowned]];
     }
 
-    private function baseQuery(User $user, ViewScope $scope, TaskBoard $board, TaskWindow $window): Builder
+    private function baseQuery(User $user, ViewScope $scope, ?TaskBoard $board, TaskWindow $window): Builder
     {
         $visibleBoards = $this->access->constrainVisible(TaskBoard::query()->active(), $user, $scope)
             ->select('task_boards.id');
@@ -90,7 +95,7 @@ final class TaskWorkloadQuery
         // every task whose covered span (start_on, if any, through due_on)
         // never touches the window before the day-join even runs.
         return Task::query()
-            ->where('board_id', $board->id)
+            ->when($board !== null, fn (Builder $query) => $query->where('board_id', $board->id))
             ->whereIn('board_id', $visibleBoards)
             ->active()
             ->whereNull('parent_task_id')

@@ -63,9 +63,13 @@ final class TaskListQuery
      * see byte-identical results. Workload's per-owner reshaping is Task 7's job;
      * here it is left as the plain filtered-accessible set.
      *
+     * `$board` is only dereferenced by the Kanban branch — a bucket field is
+     * board-structure-specific, so `crossBoardRows()` (which never windows
+     * Kanban) is the one caller that passes `null`.
+     *
      * @return array{0:Builder,1:array{undated:int,outside_window:int,unowned:int},2:bool}
      */
-    private function applyWindow(Builder $query, TaskBoard $board, TaskPresentation $presentation, TaskWindow $window, int $summaryTotal): array
+    private function applyWindow(Builder $query, ?TaskBoard $board, TaskPresentation $presentation, TaskWindow $window, int $summaryTotal): array
     {
         $omitted = ['undated' => 0, 'outside_window' => 0, 'unowned' => 0];
         $windowed = clone $query;
@@ -137,6 +141,51 @@ final class TaskListQuery
             'page' => $page,
             'per_page' => $perPage,
             'last_page' => max(1, (int) ceil($total / $perPage)),
+            'fingerprint' => $this->myTasksFingerprint($query, $visibleBoards),
+        ];
+    }
+
+    /**
+     * The same accessible-boards prefilter `myTasks()` uses
+     * (`TaskBoardAccess::constrainVisible`), windowed by Calendar or
+     * Timeline instead of filtered to one owner — Task 14's cross-board
+     * summaries (spec: reachable the way My Tasks is, read-only). Workload
+     * is not handled here: the caller (`MyTasksController`) short-circuits
+     * `data` from `TaskWorkloadQuery::rows()` the same way
+     * `TaskBoardRowsController` already does for a single board, and
+     * `applyWindow()`'s own Workload branch below never fetches a real row
+     * set for the same reason it doesn't for one board — it would be
+     * thrown away. Kanban is refused by the controller before this is ever
+     * called: a bucket field is board-structure-specific and has no
+     * cross-board meaning.
+     */
+    public function crossBoardRows(User $user, ViewScope $scope, TaskPresentation $presentation, TaskWindow $window, int $page, int $perPage): array
+    {
+        $visibleBoards = $this->access->constrainVisible(TaskBoard::query()->active(), $user, $scope);
+        $query = Task::query()->active()->whereNull('parent_task_id')
+            ->whereIn('board_id', (clone $visibleBoards)->select('task_boards.id'))
+            ->orderByRaw('due_on IS NULL')->orderBy('due_on')->orderBy('number');
+
+        $summaryTotal = (clone $query)->reorder()->count();
+        [$windowed, $omitted, $paginate] = $this->applyWindow($query, null, $presentation, $window, $summaryTotal);
+
+        $total = $paginate ? $summaryTotal : (clone $windowed)->reorder()->count();
+        $rowsQuery = (clone $windowed)->with([...$this->relations($presentation), 'board:id,name']);
+        $rows = $paginate ? $rowsQuery->forPage($page, $perPage)->get() : $rowsQuery->get();
+
+        return [
+            'data' => $rows->map(function (Task $task) use ($presentation): array {
+                $row = $this->present($task, null, $presentation);
+                $row['board'] = ['id' => $task->board->id, 'name' => $task->board->name];
+
+                return $row;
+            })->values()->all(),
+            'total' => $total,
+            'page' => $paginate ? $page : 1,
+            'per_page' => $perPage,
+            'last_page' => $paginate ? max(1, (int) ceil($total / $perPage)) : 1,
+            'omitted' => $omitted,
+            'window' => $window->toArray(),
             'fingerprint' => $this->myTasksFingerprint($query, $visibleBoards),
         ];
     }

@@ -59,8 +59,9 @@ class TaskTimelineView extends StatefulWidget {
     required this.month,
     required this.rows,
     required this.omitted,
-    required this.onMove,
+    this.onMove,
     required this.onMonthChanged,
+    this.readOnly = false,
   });
 
   /// The displayed month. Only `.year`/`.month` are read; the day and any
@@ -73,8 +74,19 @@ class TaskTimelineView extends StatefulWidget {
   /// `due_on`" (task-12 brief), the one thing a task with neither date
   /// cannot be placed on this grid to show for itself.
   final TaskOmitted omitted;
-  final TaskTimelineMove onMove;
+
+  /// `null` when [readOnly] is `true` — a cross-board caller (task-14 brief)
+  /// never needs it, since [readOnly] also removes every drag surface that
+  /// would call it.
+  final TaskTimelineMove? onMove;
   final ValueChanged<DateTime> onMonthChanged;
+
+  /// A cross-board Timeline (task-14 brief) is read-only: dragging a bar
+  /// would need the target board's write authorization resolved per card,
+  /// and the honest version of that is opening the board. When `true`, no
+  /// `Draggable`/`DragTarget` is built ANYWHERE in this widget's tree — not
+  /// a disabled one, none — rather than merely ignoring drops.
+  final bool readOnly;
 
   @override
   State<TaskTimelineView> createState() => _TaskTimelineViewState();
@@ -143,6 +155,8 @@ class _TaskTimelineViewState extends State<TaskTimelineView> {
   }
 
   Future<void> _handleDrop(_TimelineDrag drag, DateTime day) async {
+    final onMove = widget.onMove;
+    if (onMove == null) return;
     final task = drag.task;
     final (DateTime? newStart, DateTime? newDue) = switch (drag.kind) {
       _TimelineDragKind.start =>
@@ -160,7 +174,7 @@ class _TaskTimelineViewState extends State<TaskTimelineView> {
       _movingTaskId = task.id;
       _dragError = null;
     });
-    final message = await widget.onMove(task, startOn: newStart, dueOn: newDue);
+    final message = await onMove(task, startOn: newStart, dueOn: newDue);
     if (!mounted) return;
     setState(() {
       _movingTaskId = null;
@@ -362,7 +376,8 @@ class _TaskTimelineViewState extends State<TaskTimelineView> {
           key: ValueKey('timeline-day-${task.id}-${_keyDate(day)}'),
           width: _dayWidth,
           height: _rowHeight,
-          onDropped: (drag) => _handleDrop(drag, day),
+          onDropped: widget.readOnly ? null : (drag) => _handleDrop(drag, day),
+          readOnly: widget.readOnly,
         ),
     ],
   );
@@ -383,6 +398,7 @@ class _TaskTimelineViewState extends State<TaskTimelineView> {
           key: ValueKey('timeline-bar-${task.id}'),
           task: task,
           dragging: dragging,
+          readOnly: widget.readOnly,
         ),
       );
     }
@@ -399,6 +415,7 @@ class _TaskTimelineViewState extends State<TaskTimelineView> {
         task: task,
         isDue: isDue,
         dragging: dragging,
+        readOnly: widget.readOnly,
       ),
     );
   }
@@ -447,31 +464,39 @@ class _DayCell extends StatelessWidget {
     required this.width,
     required this.height,
     required this.onDropped,
+    this.readOnly = false,
   });
 
   final double width;
   final double height;
-  final ValueChanged<_TimelineDrag> onDropped;
+  final ValueChanged<_TimelineDrag>? onDropped;
+  final bool readOnly;
+
+  Widget _body(BuildContext context, {required bool highlighted}) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: highlighted
+            ? scheme.primaryContainer.withValues(alpha: 0.35)
+            : Colors.transparent,
+        border: Border(
+          right: BorderSide(color: EzBiziTheme.edge(context)),
+          bottom: BorderSide(color: EzBiziTheme.edge(context)),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    if (readOnly) return _body(context, highlighted: false);
     return DragTarget<_TimelineDrag>(
       onWillAcceptWithDetails: (_) => true,
-      onAcceptWithDetails: (details) => onDropped(details.data),
-      builder: (context, candidates, rejected) => Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          color: candidates.isNotEmpty
-              ? scheme.primaryContainer.withValues(alpha: 0.35)
-              : Colors.transparent,
-          border: Border(
-            right: BorderSide(color: EzBiziTheme.edge(context)),
-            bottom: BorderSide(color: EzBiziTheme.edge(context)),
-          ),
-        ),
-      ),
+      onAcceptWithDetails: (details) => onDropped!(details.data),
+      builder: (context, candidates, rejected) =>
+          _body(context, highlighted: candidates.isNotEmpty),
     );
   }
 }
@@ -484,10 +509,16 @@ class _DayCell extends StatelessWidget {
 /// `start_on`, the right strip moves only `due_on`, and the body moves both
 /// together (preserving the span) in one command.
 class TaskTimelineBar extends StatelessWidget {
-  const TaskTimelineBar({super.key, required this.task, required this.dragging});
+  const TaskTimelineBar({
+    super.key,
+    required this.task,
+    required this.dragging,
+    this.readOnly = false,
+  });
 
   final TaskRow task;
   final bool dragging;
+  final bool readOnly;
 
   // The bar itself, always at full opacity — the label lives inside it, and
   // transparency must never be how a state is shown on the element carrying
@@ -546,6 +577,11 @@ class TaskTimelineBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final body = _bar(scheme, marked: dragging);
+    // A cross-board bar (task-14 brief) is never wrapped in `Draggable` or
+    // given resize handles here — not disabled, absent — because dragging
+    // it would need the target board's write authorization resolved per
+    // card, the same reason `TaskCalendarView`'s read-only card skips it.
+    if (readOnly) return body;
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -617,11 +653,13 @@ class TaskTimelineMarker extends StatelessWidget {
     required this.task,
     required this.isDue,
     required this.dragging,
+    this.readOnly = false,
   });
 
   final TaskRow task;
   final bool isDue;
   final bool dragging;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -638,6 +676,8 @@ class TaskTimelineMarker extends StatelessWidget {
         ),
       ),
     );
+    // Cross-board (task-14 brief): no `Draggable` in the tree at all.
+    if (readOnly) return Tooltip(message: task.title, child: body);
     return Draggable<_TimelineDrag>(
       data: _TimelineDrag(task, isDue ? _TimelineDragKind.due : _TimelineDragKind.start),
       feedback: Material(

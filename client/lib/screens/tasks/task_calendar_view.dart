@@ -36,8 +36,9 @@ class TaskCalendarView extends StatefulWidget {
     required this.month,
     required this.rows,
     required this.omitted,
-    required this.onMove,
+    this.onMove,
     required this.onMonthChanged,
+    this.readOnly = false,
   });
 
   /// The displayed month. Only `.year`/`.month` are read; the day and any
@@ -50,8 +51,19 @@ class TaskCalendarView extends StatefulWidget {
   /// due date cannot appear on a month grid, and the count of how many were
   /// left out is the one thing this view is required to say out loud.
   final TaskOmitted omitted;
-  final TaskCalendarMove onMove;
+
+  /// `null` when [readOnly] is `true` — a cross-board caller (task-14 brief)
+  /// never needs it, since [readOnly] also removes every drag surface that
+  /// would call it.
+  final TaskCalendarMove? onMove;
   final ValueChanged<DateTime> onMonthChanged;
+
+  /// A cross-board Calendar (task-14 brief) is read-only: dragging a card
+  /// would need the target board's write authorization resolved per card,
+  /// and the honest version of that is opening the board. When `true`, no
+  /// `Draggable`/`DragTarget` is built ANYWHERE in this widget's tree — not
+  /// a disabled one, none — rather than merely ignoring drops.
+  final bool readOnly;
 
   @override
   State<TaskCalendarView> createState() => _TaskCalendarViewState();
@@ -102,6 +114,8 @@ class _TaskCalendarViewState extends State<TaskCalendarView> {
   }
 
   Future<void> _handleDrop(TaskRow task, DateTime day) async {
+    final onMove = widget.onMove;
+    if (onMove == null) return;
     final due = task.dueOn;
     if (due != null &&
         due.year == day.year &&
@@ -113,7 +127,7 @@ class _TaskCalendarViewState extends State<TaskCalendarView> {
       _movingTaskId = task.id;
       _dragError = null;
     });
-    final message = await widget.onMove(task, day);
+    final message = await onMove(task, day);
     if (!mounted) return;
     setState(() {
       _movingTaskId = null;
@@ -255,7 +269,10 @@ class _TaskCalendarViewState extends State<TaskCalendarView> {
                                   day: day,
                                   tasks: byDay[day] ?? const [],
                                   movingTaskId: _movingTaskId,
-                                  onDropped: (task) => _handleDrop(task, day),
+                                  onDropped: widget.readOnly
+                                      ? null
+                                      : (task) => _handleDrop(task, day),
+                                  readOnly: widget.readOnly,
                                 ),
                         ),
                     ],
@@ -302,7 +319,10 @@ class _TaskCalendarViewState extends State<TaskCalendarView> {
                     day: day,
                     tasks: byDay[day] ?? const [],
                     movingTaskId: _movingTaskId,
-                    onDropped: (task) => _handleDrop(task, day),
+                    onDropped: widget.readOnly
+                        ? null
+                        : (task) => _handleDrop(task, day),
+                    readOnly: widget.readOnly,
                   ),
                 ),
             ],
@@ -320,51 +340,60 @@ class _DayCell extends StatelessWidget {
     required this.tasks,
     required this.movingTaskId,
     required this.onDropped,
+    this.readOnly = false,
   });
 
   final DateTime day;
   final List<TaskRow> tasks;
   final String? movingTaskId;
-  final ValueChanged<TaskRow> onDropped;
+  final ValueChanged<TaskRow>? onDropped;
+  final bool readOnly;
+
+  Widget _body(BuildContext context, {required bool highlighted}) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: highlighted
+            ? scheme.primaryContainer.withValues(alpha: 0.35)
+            : scheme.surfaceContainerLow,
+        border: Border.all(color: EzBiziTheme.edge(context)),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            child: Text('${day.day}', style: TextStyle(color: scheme.onSurfaceVariant)),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              children: [
+                for (final task in tasks)
+                  _CalendarCard(
+                    key: ValueKey('calendar-card-${task.id}'),
+                    task: task,
+                    dragging: movingTaskId == task.id,
+                    readOnly: readOnly,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    if (readOnly) return _body(context, highlighted: false);
     return DragTarget<TaskRow>(
       onWillAcceptWithDetails: (_) => true,
-      onAcceptWithDetails: (details) => onDropped(details.data),
-      builder: (context, candidates, rejected) => Container(
-        margin: const EdgeInsets.all(2),
-        decoration: BoxDecoration(
-          color: candidates.isNotEmpty
-              ? scheme.primaryContainer.withValues(alpha: 0.35)
-              : scheme.surfaceContainerLow,
-          border: Border.all(color: EzBiziTheme.edge(context)),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-              child: Text('${day.day}', style: TextStyle(color: scheme.onSurfaceVariant)),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                children: [
-                  for (final task in tasks)
-                    _CalendarCard(
-                      key: ValueKey('calendar-card-${task.id}'),
-                      task: task,
-                      dragging: movingTaskId == task.id,
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+      onAcceptWithDetails: (details) => onDropped!(details.data),
+      builder: (context, candidates, rejected) =>
+          _body(context, highlighted: candidates.isNotEmpty),
     );
   }
 }
@@ -376,64 +405,73 @@ class _DayRow extends StatelessWidget {
     required this.tasks,
     required this.movingTaskId,
     required this.onDropped,
+    this.readOnly = false,
   });
 
   final DateTime day;
   final List<TaskRow> tasks;
   final String? movingTaskId;
-  final ValueChanged<TaskRow> onDropped;
+  final ValueChanged<TaskRow>? onDropped;
+  final bool readOnly;
 
   static const _weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+  Widget _body(BuildContext context, {required bool highlighted}) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: highlighted
+            ? scheme.primaryContainer.withValues(alpha: 0.35)
+            : scheme.surfaceContainerLow,
+        border: Border.all(color: EzBiziTheme.edge(context)),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '${_weekdayLabels[day.weekday % 7]} ${day.day}',
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (tasks.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                'No tasks',
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+              ),
+            )
+          else
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final task in tasks)
+                  _CalendarCard(
+                    key: ValueKey('calendar-card-${task.id}'),
+                    task: task,
+                    dragging: movingTaskId == task.id,
+                    readOnly: readOnly,
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    if (readOnly) return _body(context, highlighted: false);
     return DragTarget<TaskRow>(
       onWillAcceptWithDetails: (_) => true,
-      onAcceptWithDetails: (details) => onDropped(details.data),
-      builder: (context, candidates, rejected) => Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: candidates.isNotEmpty
-              ? scheme.primaryContainer.withValues(alpha: 0.35)
-              : scheme.surfaceContainerLow,
-          border: Border.all(color: EzBiziTheme.edge(context)),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '${_weekdayLabels[day.weekday % 7]} ${day.day}',
-              style: TextStyle(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            if (tasks.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(
-                  'No tasks',
-                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
-                ),
-              )
-            else
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final task in tasks)
-                    _CalendarCard(
-                      key: ValueKey('calendar-card-${task.id}'),
-                      task: task,
-                      dragging: movingTaskId == task.id,
-                    ),
-                ],
-              ),
-          ],
-        ),
-      ),
+      onAcceptWithDetails: (details) => onDropped!(details.data),
+      builder: (context, candidates, rejected) =>
+          _body(context, highlighted: candidates.isNotEmpty),
     );
   }
 }
@@ -443,14 +481,20 @@ class _CalendarCard extends StatelessWidget {
     super.key,
     required this.task,
     required this.dragging,
+    this.readOnly = false,
   });
 
   final TaskRow task;
   final bool dragging;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
     final body = _body(context);
+    // A cross-board card (task-14 brief) is never wrapped in `Draggable`
+    // here — not disabled, absent — because dragging it would need the
+    // target board's write authorization resolved per card.
+    if (readOnly) return body;
     return Draggable<TaskRow>(
       data: task,
       feedback: Material(

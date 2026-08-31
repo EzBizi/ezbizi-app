@@ -125,6 +125,32 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   bool _myTasksLoading = false;
   bool _myTasksLoadingMore = false;
   bool _showMyTasks = false;
+  // Task 14: Calendar, Timeline and Workload opened ACROSS the current view
+  // rather than one board — reachable the way My Tasks itself is, so this
+  // rides inside `_showMyTasks` as a presentation switch rather than a
+  // fourth top-level nav destination. READ-ONLY throughout: every widget
+  // these feed is opened with `readOnly: true`, which removes every drag
+  // surface from the tree rather than merely disabling one (task-14 brief).
+  TaskPresentation _myTasksPresentation = TaskPresentation.table;
+  DateTime _myTasksCalendarMonth = DateTime.utc(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
+  DateTime _myTasksTimelineMonth = DateTime.utc(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
+  DateTime _myTasksWorkloadMonth = DateTime.utc(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
+  List<TaskMyTask> _myTasksCalendarItems = const [];
+  List<TaskMyTask> _myTasksTimelineItems = const [];
+  List<TaskWorkloadRow> _myTasksWorkloadRows = const [];
+  TaskOmitted _myTasksPresentationOmitted = TaskOmitted.zero;
+  bool _myTasksPresentationLoading = false;
+  String? _myTasksPresentationError;
+  String? _myTasksPresentationEtag;
   bool _showFilters = false;
   bool _showViewEditor = false;
   NameEntryRequest? _nameRequest;
@@ -393,7 +419,52 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
 
   Future<void> _refreshVisible({bool conditional = false}) async {
     if (_showMyTasks) {
-      await _loadMyTasks(conditional: conditional);
+      switch (_myTasksPresentation) {
+        case TaskPresentation.table:
+          await _loadMyTasks(conditional: conditional);
+        case TaskPresentation.calendar:
+          await _loadMyTasksPresentation(
+            TaskPresentation.calendar,
+            TaskDateRangeWindow(
+              from: DateTime.utc(
+                _myTasksCalendarMonth.year,
+                _myTasksCalendarMonth.month,
+                1,
+              ),
+              to: DateTime.utc(
+                _myTasksCalendarMonth.year,
+                _myTasksCalendarMonth.month + 1,
+                0,
+              ),
+            ),
+            conditional: conditional,
+          );
+        case TaskPresentation.timeline:
+          await _loadMyTasksPresentation(
+            TaskPresentation.timeline,
+            TaskDateRangeWindow(
+              from: DateTime.utc(
+                _myTasksTimelineMonth.year,
+                _myTasksTimelineMonth.month,
+                1,
+              ),
+              to: DateTime.utc(
+                _myTasksTimelineMonth.year,
+                _myTasksTimelineMonth.month + 1,
+                0,
+              ),
+            ),
+            conditional: conditional,
+          );
+        case TaskPresentation.workload:
+          await _loadMyTasksPresentation(
+            TaskPresentation.workload,
+            _myTasksWorkloadWindowFor(_myTasksWorkloadMonth),
+            conditional: conditional,
+          );
+        case TaskPresentation.kanban:
+          break;
+      }
       return;
     }
     final board = _board;
@@ -559,8 +630,142 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _showDirectory = false;
       _myTaskPages.clear();
       _myTasks = null;
+      _myTasksPresentation = TaskPresentation.table;
+      _myTasksCalendarItems = const [];
+      _myTasksTimelineItems = const [];
+      _myTasksWorkloadRows = const [];
+      _myTasksPresentationOmitted = TaskOmitted.zero;
+      _myTasksPresentationError = null;
+      _myTasksPresentationEtag = null;
     });
     _loadMyTasks();
+  }
+
+  /// Switches My Tasks' active presentation — the same shape
+  /// `_changePresentation` already uses for a board, restricted to the
+  /// three that make sense across every board in view (task-14 brief):
+  /// Table stays owner-filtered (`myTasks()`, unchanged); Calendar,
+  /// Timeline and Workload each re-window and reload through
+  /// `TaskApi.myTasksPresentation`. Kanban is never reachable here — it is
+  /// absent from the bar's `availablePresentations` this screen passes.
+  void _changeMyTasksPresentation(TaskPresentation presentation) {
+    setState(() => _myTasksPresentation = presentation);
+    switch (presentation) {
+      case TaskPresentation.table:
+        if (_myTasks == null) _loadMyTasks();
+      case TaskPresentation.calendar:
+        _applyMyTasksCalendarWindow(_myTasksCalendarMonth);
+      case TaskPresentation.timeline:
+        _applyMyTasksTimelineWindow(_myTasksTimelineMonth);
+      case TaskPresentation.workload:
+        _applyMyTasksWorkloadWindow(_myTasksWorkloadMonth);
+      case TaskPresentation.kanban:
+        break;
+    }
+  }
+
+  void _applyMyTasksCalendarWindow(DateTime month) {
+    final start = DateTime.utc(month.year, month.month);
+    final from = DateTime.utc(start.year, start.month, 1);
+    final to = DateTime.utc(start.year, start.month + 1, 0);
+    setState(() => _myTasksCalendarMonth = start);
+    _loadMyTasksPresentation(
+      TaskPresentation.calendar,
+      TaskDateRangeWindow(from: from, to: to),
+    );
+  }
+
+  void _changeMyTasksCalendarMonth(DateTime month) =>
+      _applyMyTasksCalendarWindow(month);
+
+  void _applyMyTasksTimelineWindow(DateTime month) {
+    final start = DateTime.utc(month.year, month.month);
+    final from = DateTime.utc(start.year, start.month, 1);
+    final to = DateTime.utc(start.year, start.month + 1, 0);
+    setState(() => _myTasksTimelineMonth = start);
+    _loadMyTasksPresentation(
+      TaskPresentation.timeline,
+      TaskDateRangeWindow(from: from, to: to),
+    );
+  }
+
+  void _changeMyTasksTimelineMonth(DateTime month) =>
+      _applyMyTasksTimelineWindow(month);
+
+  TaskWorkloadWindow _myTasksWorkloadWindowFor(DateTime month) =>
+      TaskWorkloadWindow(
+        from: DateTime.utc(month.year, month.month, 1),
+        to: DateTime.utc(month.year, month.month + 1, 0),
+        unit: TaskWorkloadUnit.day,
+      );
+
+  void _applyMyTasksWorkloadWindow(DateTime month) {
+    final start = DateTime.utc(month.year, month.month);
+    setState(() => _myTasksWorkloadMonth = start);
+    _loadMyTasksPresentation(
+      TaskPresentation.workload,
+      _myTasksWorkloadWindowFor(start),
+    );
+  }
+
+  void _changeMyTasksWorkloadMonth(DateTime month) =>
+      _applyMyTasksWorkloadWindow(month);
+
+  Future<void> _loadMyTasksPresentation(
+    TaskPresentation presentation,
+    TaskWindow window, {
+    bool conditional = false,
+  }) async {
+    if (!conditional) {
+      setState(() {
+        _myTasksPresentationLoading = true;
+        _myTasksPresentationError = null;
+      });
+    }
+    final privacy = _privacyGeneration;
+    final result = await _tasks.myTasksPresentation(
+      presentation: presentation,
+      window: window,
+      etag: conditional ? _myTasksPresentationEtag : null,
+    );
+    if (!_isCurrentPrivacy(privacy) ||
+        !_showMyTasks ||
+        _myTasksPresentation != presentation) {
+      return;
+    }
+    if (result is TaskApiUnavailable<TaskCrossBoardPage>) {
+      _evict(result.message);
+      return;
+    }
+    if (result is TaskApiNotModified<TaskCrossBoardPage>) {
+      if (mounted) setState(() => _myTasksPresentationLoading = false);
+      return;
+    }
+    if (result is! TaskApiSuccess<TaskCrossBoardPage>) {
+      if (!conditional) {
+        setState(() {
+          _myTasksPresentationError = result.message;
+          _myTasksPresentationLoading = false;
+        });
+      }
+      return;
+    }
+    final page = result.data;
+    setState(() {
+      _myTasksCalendarItems = presentation == TaskPresentation.calendar
+          ? page.items
+          : _myTasksCalendarItems;
+      _myTasksTimelineItems = presentation == TaskPresentation.timeline
+          ? page.items
+          : _myTasksTimelineItems;
+      _myTasksWorkloadRows = presentation == TaskPresentation.workload
+          ? page.workloadRows
+          : _myTasksWorkloadRows;
+      _myTasksPresentationOmitted = page.omitted;
+      _myTasksPresentationEtag = page.etag;
+      _myTasksPresentationLoading = false;
+      _myTasksPresentationError = null;
+    });
   }
 
   Future<void> _openMyTask(TaskMyTask item) async {
@@ -1392,6 +1597,13 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _myTaskPages.clear();
       _myTasksError = null;
       _showMyTasks = false;
+      _myTasksPresentation = TaskPresentation.table;
+      _myTasksCalendarItems = const [];
+      _myTasksTimelineItems = const [];
+      _myTasksWorkloadRows = const [];
+      _myTasksPresentationOmitted = TaskOmitted.zero;
+      _myTasksPresentationError = null;
+      _myTasksPresentationEtag = null;
       _total = 0;
       _statusSummaries = const [];
       _groupCounts = const [];
@@ -1486,18 +1698,88 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           onCreate: _createView,
         )
       : _showMyTasks
-      ? MyTasksView(
-          page: _myTasks,
-          loading: _myTasksLoading,
-          error: _myTasksError,
-          onRetry: _loadMyTasks,
-          onOpen: _openMyTask,
-          onLoadMore: _loadMoreMyTasks,
-          loadingMore: _myTasksLoadingMore,
-        )
+      ? _myTasksContent()
       : _showDirectory || _board == null
       ? _directoryOnly()
       : _presentationBody(mobile, wide);
+
+  /// My Tasks (task-14 brief): Table stays the owner-filtered list it
+  /// always was; Calendar, Timeline and Workload open the SAME three
+  /// presentations a board offers, but across every board the current view
+  /// lets this viewer open — READ-ONLY throughout (`readOnly: true` on
+  /// every view below removes drag surfaces from the tree entirely, it does
+  /// not merely disable them).
+  static const _myTasksPresentations = {
+    TaskPresentation.table,
+    TaskPresentation.calendar,
+    TaskPresentation.timeline,
+    TaskPresentation.workload,
+  };
+
+  Widget _myTasksContent() => Column(
+    children: [
+      TaskPresentationBar(
+        presentation: _myTasksPresentation,
+        kanbanField: _kanbanField,
+        onPresentationChanged: _changeMyTasksPresentation,
+        onKanbanFieldChanged: (_) {},
+        availablePresentations: _myTasksPresentations,
+      ),
+      if (_myTasksPresentationError case final message?)
+        MaterialBanner(
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => setState(() => _myTasksPresentationError = null),
+              child: const Text('Dismiss'),
+            ),
+          ],
+        ),
+      Expanded(child: _myTasksBody()),
+    ],
+  );
+
+  Widget _myTasksBody() => switch (_myTasksPresentation) {
+    TaskPresentation.calendar => _myTasksPresentationLoading &&
+            _myTasksCalendarItems.isEmpty
+        ? const Center(child: CircularProgressIndicator())
+        : TaskCalendarView(
+            month: _myTasksCalendarMonth,
+            rows: _myTasksCalendarItems
+                .map((item) => item.task)
+                .toList(growable: false),
+            omitted: _myTasksPresentationOmitted,
+            onMonthChanged: _changeMyTasksCalendarMonth,
+            readOnly: true,
+          ),
+    TaskPresentation.timeline => _myTasksPresentationLoading &&
+            _myTasksTimelineItems.isEmpty
+        ? const Center(child: CircularProgressIndicator())
+        : TaskTimelineView(
+            month: _myTasksTimelineMonth,
+            rows: _myTasksTimelineItems
+                .map((item) => item.task)
+                .toList(growable: false),
+            omitted: _myTasksPresentationOmitted,
+            onMonthChanged: _changeMyTasksTimelineMonth,
+            readOnly: true,
+          ),
+    TaskPresentation.workload => TaskWorkloadView(
+        month: _myTasksWorkloadMonth,
+        window: _myTasksWorkloadWindowFor(_myTasksWorkloadMonth),
+        rows: _myTasksWorkloadRows,
+        onMonthChanged: _changeMyTasksWorkloadMonth,
+      ),
+    TaskPresentation.table || TaskPresentation.kanban => MyTasksView(
+        page: _myTasks,
+        loading: _myTasksLoading,
+        error: _myTasksError,
+        onRetry: _loadMyTasks,
+        onOpen: _openMyTask,
+        onLoadMore: _loadMoreMyTasks,
+        loadingMore: _myTasksLoadingMore,
+      ),
+  };
 
   /// A generic switch on `TaskPresentation` (Ruling 1, progress.md) — not a
   /// Kanban-specific branch off `_content`. Tasks 11-13 each added their own

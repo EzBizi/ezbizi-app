@@ -1332,6 +1332,43 @@ final class TaskApi {
     );
   }
 
+  /// Task 14: Calendar, Timeline or Workload opened across the current view
+  /// rather than one board — the same `GET /tasks/my` endpoint `myTasks()`
+  /// uses, with `presentation`/`window` carried inside `configuration` on
+  /// the wire exactly the way `boardRows()`'s doc-comment above already
+  /// explains for a single board (Ruling 16). Table is not reachable through
+  /// this method — call `myTasks()` for that, unchanged.
+  Future<TaskApiResult<TaskCrossBoardPage>> myTasksPresentation({
+    required TaskPresentation presentation,
+    required TaskWindow window,
+    int page = 1,
+    int perPage = 50,
+    String? etag,
+  }) async {
+    final response = await _api.get('/tasks/my', <String, String>{
+      'configuration': jsonEncode(<String, Object?>{
+        'presentation': presentation.wire,
+        'window': window.toJson(),
+      }),
+      'page': '$page',
+      'per_page': '$perPage',
+    }, _etagHeader(etag));
+    if (response.statusCode == 304) {
+      return TaskApiNotModified<TaskCrossBoardPage>(
+        etag: response.headers['etag'] ?? etag,
+        correlationId: response.correlationId,
+      );
+    }
+    return _decode(
+      response,
+      (_) => TaskCrossBoardPage.fromJson(
+        Map<String, Object?>.from(response.body),
+        presentation: presentation,
+        etag: response.headers['etag'],
+      ),
+    );
+  }
+
   Future<TaskApiResult<List<TaskQuickSearchResult>>> quickSearch(
     String query,
   ) async {

@@ -626,6 +626,181 @@ void main() {
     },
   );
 
+  testWidgets(
+    'My Tasks Calendar, Timeline and Workload open across every visible '
+    'board — reachable the way My Tasks itself is, and carry no drag '
+    'surface anywhere in their tree',
+    (tester) async {
+      // Computed against the CURRENT month rather than a hardcoded one —
+      // `TasksScreen` seeds its cross-board Calendar/Timeline/Workload
+      // window from `DateTime.now()` (the same way it already seeds the
+      // single-board `_calendarMonth` etc.), so a fixed month would make
+      // this test's own tasks fall outside whatever window the screen
+      // actually requests once the wall clock moves past it.
+      final now = DateTime.now();
+      String isoDate(int day) =>
+          DateTime.utc(now.year, now.month, day).toIso8601String().substring(0, 10);
+      final monthStart = isoDate(1);
+      final monthEnd = DateTime.utc(now.year, now.month + 1, 0);
+      final monthEndIso = isoDate(monthEnd.day);
+      final requestedConfigurations = <String, String>{};
+      final api = ApiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/v1/tasks/boards') {
+            return _directoryResponse();
+          }
+          if (request.url.path == '/api/v1/tasks/my') {
+            final configuration = request.url.queryParameters['configuration'];
+            if (configuration == null) {
+              return _json(200, <String, Object?>{
+                'data': <Object?>[],
+                'meta': <String, Object?>{
+                  'total': 0,
+                  'page': 1,
+                  'per_page': 50,
+                  'last_page': 1,
+                },
+              });
+            }
+            final decoded =
+                jsonDecode(configuration) as Map<String, Object?>;
+            final presentation = decoded['presentation'] as String;
+            requestedConfigurations[presentation] = configuration;
+            if (presentation == 'workload') {
+              return _json(200, <String, Object?>{
+                'data': <Object?>[
+                  <String, Object?>{
+                    'owner_id': 'user-1',
+                    'owner_name': 'Worker one',
+                    'units': <Object?>[
+                      <String, Object?>{'date': monthStart, 'count': 2},
+                    ],
+                  },
+                ],
+                'meta': <String, Object?>{
+                  'total': 0,
+                  'page': 1,
+                  'per_page': 50,
+                  'last_page': 1,
+                  'omitted': <String, Object?>{
+                    'undated': 0,
+                    'outside_window': 0,
+                    'unowned': 0,
+                  },
+                  'window': <String, Object?>{
+                    'from': monthStart,
+                    'to': monthEndIso,
+                    'unit': 'day',
+                  },
+                },
+              });
+            }
+            // Calendar and Timeline: two tasks from TWO DIFFERENT boards —
+            // this is the "across the current view" proof, not one board's
+            // rows reused under a new tab.
+            return _json(200, <String, Object?>{
+              'data': <Object?>[
+                <String, Object?>{
+                  ..._taskWithTitle('Task from board A'),
+                  'due_on': isoDate(1),
+                  'start_on': isoDate(1),
+                  'board': <String, Object?>{
+                    'id': 'board-1',
+                    'name': 'Board A',
+                  },
+                },
+                <String, Object?>{
+                  ..._taskWithTitle('Task from board B'),
+                  'id': 'task-2',
+                  'due_on': isoDate(2),
+                  'start_on': isoDate(2),
+                  'board': <String, Object?>{
+                    'id': 'board-2',
+                    'name': 'Board B',
+                  },
+                },
+              ],
+              'meta': <String, Object?>{
+                'total': 2,
+                'page': 1,
+                'per_page': 50,
+                'last_page': 1,
+                'omitted': <String, Object?>{
+                  'undated': 0,
+                  'outside_window': 0,
+                  'unowned': 0,
+                },
+                'window': <String, Object?>{
+                  'from': monthStart,
+                  'to': monthEndIso,
+                },
+              },
+            });
+          }
+          return _json(500, <String, Object?>{'message': 'Unexpected request'});
+        }),
+      );
+      await tester.pumpWidget(
+        _app(TasksScreen(api: api, session: Session(api))),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Reachable the way My Tasks itself is: tap the same "My Tasks" tab,
+      // then the presentation bar it now carries.
+      await tester.tap(find.text('My Tasks'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('presentation-tab-kanban')), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('presentation-tab-calendar')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Task from board A'), findsOneWidget);
+      expect(find.text('Task from board B'), findsOneWidget);
+      expect(find.byType(DragTarget<TaskRow>), findsNothing);
+      expect(find.byType(Draggable<TaskRow>), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('presentation-tab-timeline')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('TASK-1 Task from board A'), findsOneWidget);
+      expect(find.text('TASK-1 Task from board B'), findsOneWidget);
+      expect(find.byType(DragTarget<TaskRow>), findsNothing);
+      expect(find.byType(Draggable<TaskRow>), findsNothing);
+      // The finder types above are `TaskCalendarView`'s own drag generics —
+      // Timeline drags a different type (`_TimelineDrag`, private), so its
+      // absence is confirmed by scanning every widget in the tree instead.
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget.runtimeType.toString().contains('DragTarget') ||
+              widget.runtimeType.toString().contains('Draggable'),
+        ),
+        findsNothing,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('presentation-tab-workload')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Worker one'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget.runtimeType.toString().contains('DragTarget') ||
+              widget.runtimeType.toString().contains('Draggable'),
+        ),
+        findsNothing,
+      );
+
+      expect(requestedConfigurations.keys.toSet(), <String>{
+        'calendar',
+        'timeline',
+        'workload',
+      });
+    },
+  );
+
   testWidgets('read-only capability hides personal view mutation actions', (
     tester,
   ) async {

@@ -23,12 +23,20 @@ class TaskPresentationBar extends StatelessWidget {
     required this.kanbanField,
     required this.onPresentationChanged,
     required this.onKanbanFieldChanged,
+    this.availablePresentations,
   });
 
   final TaskPresentation presentation;
   final TaskKanbanField kanbanField;
   final ValueChanged<TaskPresentation> onPresentationChanged;
   final ValueChanged<TaskKanbanField> onKanbanFieldChanged;
+
+  /// Restricts which tabs this bar offers. `null` (the default, every
+  /// existing board caller) shows all five, unchanged. Task 14's cross-board
+  /// summaries pass a set without `TaskPresentation.kanban` — a bucket field
+  /// is board-structure-specific and has no cross-board meaning, so that tab
+  /// is not merely disabled here, it never appears.
+  final Set<TaskPresentation>? availablePresentations;
 
   static const _tabs = [
     (TaskPresentation.table, 'Table', Icons.table_rows_outlined, true),
@@ -54,6 +62,7 @@ class TaskPresentationBar extends StatelessWidget {
 
   List<Widget> _tabChips() => [
     for (final (value, label, icon, available) in _tabs)
+      if (availablePresentations == null || availablePresentations!.contains(value))
       ChoiceChip(
         key: ValueKey('presentation-tab-${value.wire}'),
         avatar: Icon(icon, size: 16),
