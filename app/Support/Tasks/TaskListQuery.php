@@ -13,6 +13,23 @@ use Illuminate\Database\Eloquent\Builder;
 
 final class TaskListQuery
 {
+    /**
+     * Server-side cap on `crossBoardRows()`'s Calendar/Timeline result
+     * (whole-branch review finding 4). Those two presentations never
+     * paginate — `page`/`per_page` describe a page of a LIST, and a full
+     * month grid or Gantt has no such concept, so `applyWindow()` returns
+     * `$paginate = false` for both, the same as it does for a single
+     * board's own Calendar/Timeline. For ONE board that is bounded by how
+     * many tasks that board holds; cross-board it is bounded only by the
+     * organization filter and the (already generous) 400-day window,
+     * while every row drags in seven eager relations plus its subtask
+     * tree — a cheap GET on a busy organization could otherwise
+     * materialise tens of thousands of models into one response. Reported
+     * truthfully via `omitted.capped` rather than silently truncated, the
+     * same rule every other omission in this response already follows.
+     */
+    private const CROSS_BOARD_ROW_CAP = 1000;
+
     public function __construct(private readonly TaskBoardAccess $access, private readonly TaskViewCodec $codec) {}
 
     public function boardRows(User $user, ViewScope $scope, TaskBoard $board, array $configuration, int $page, int $perPage): array
@@ -71,7 +88,7 @@ final class TaskListQuery
      */
     private function applyWindow(Builder $query, ?TaskBoard $board, TaskPresentation $presentation, TaskWindow $window, int $summaryTotal): array
     {
-        $omitted = ['undated' => 0, 'outside_window' => 0, 'unowned' => 0];
+        $omitted = ['undated' => 0, 'outside_window' => 0, 'unowned' => 0, 'capped' => 0];
         $windowed = clone $query;
 
         if ($presentation === TaskPresentation::Calendar) {
@@ -171,7 +188,12 @@ final class TaskListQuery
 
         $total = $paginate ? $summaryTotal : (clone $windowed)->reorder()->count();
         $rowsQuery = (clone $windowed)->with([...$this->relations($presentation), 'board:id,name']);
-        $rows = $paginate ? $rowsQuery->forPage($page, $perPage)->get() : $rowsQuery->get();
+        if ($paginate) {
+            $rows = $rowsQuery->forPage($page, $perPage)->get();
+        } else {
+            $rows = $rowsQuery->limit(self::CROSS_BOARD_ROW_CAP)->get();
+            $omitted['capped'] = max(0, $total - $rows->count());
+        }
 
         return [
             'data' => $rows->map(function (Task $task) use ($presentation): array {

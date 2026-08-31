@@ -210,6 +210,7 @@ class _TaskTimelineViewState extends State<TaskTimelineView> {
         _header(context),
         if (_dragError case final message?) _errorBanner(context, message),
         _omittedBanner(context),
+        if (widget.omitted.capped > 0) _cappedBanner(context),
         Expanded(
           child: rows.isEmpty
               ? const Center(
@@ -295,6 +296,25 @@ class _TaskTimelineViewState extends State<TaskTimelineView> {
             ? '1 task has no start or due date and is not shown here.'
             : '$count tasks have no start or due date and are not shown here.',
         style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+      ),
+    );
+  }
+
+  /// Only rendered when `capped > 0` — matches `TaskCalendarView`'s own
+  /// `_cappedBanner` (whole-branch review finding 4): the client half of
+  /// `TaskListQuery::crossBoardRows()`'s `omitted.capped`, an exceptional
+  /// condition rather than a routine per-board metric.
+  Widget _cappedBanner(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final count = widget.omitted.capped;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Text(
+        key: const ValueKey('timeline-capped-count'),
+        count == 1
+            ? '1 further task is not shown — narrow the date range to see it.'
+            : '$count further tasks are not shown — narrow the date range to see them.',
+        style: TextStyle(color: scheme.error, fontSize: 12),
       ),
     );
   }

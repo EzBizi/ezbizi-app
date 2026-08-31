@@ -262,23 +262,37 @@ final class TaskOmitted {
     required this.undated,
     required this.outsideWindow,
     required this.unowned,
+    this.capped = 0,
   });
 
   static const TaskOmitted zero = TaskOmitted(
     undated: 0,
     outsideWindow: 0,
     unowned: 0,
+    capped: 0,
   );
 
   factory TaskOmitted.fromJson(Map<String, Object?> json) => TaskOmitted(
     undated: _integer(json, 'undated'),
     outsideWindow: _integer(json, 'outside_window'),
     unowned: _integer(json, 'unowned'),
+    // `capped` is additive (whole-branch review finding 4): `_integer`
+    // (used by the other three fields above) THROWS on a missing key, the
+    // right choice for a field that has always been present — but this one
+    // has not, so a server response that predates it must not fail to
+    // parse. `_optionalInteger` tolerates absence; `?? 0` matches every
+    // other "nothing was omitted for this reason" default in this class.
+    capped: _optionalInteger(json, 'capped') ?? 0,
   );
 
   final int undated;
   final int outsideWindow;
   final int unowned;
+
+  /// Rows a cross-board Calendar/Timeline window left out purely because
+  /// the server-side row cap was hit (`TaskListQuery::CROSS_BOARD_ROW_CAP`)
+  /// — never set outside those two cross-board presentations.
+  final int capped;
 }
 
 enum TaskSortDirection { asc, desc, unknown }

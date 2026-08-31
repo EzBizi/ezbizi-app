@@ -168,6 +168,7 @@ class _TaskCalendarViewState extends State<TaskCalendarView> {
         _header(context),
         if (_dragError case final message?) _errorBanner(context, message),
         _omittedBanner(context),
+        if (widget.omitted.capped > 0) _cappedBanner(context),
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) =>
@@ -241,6 +242,27 @@ class _TaskCalendarViewState extends State<TaskCalendarView> {
             ? '1 task has no due date and is not shown here.'
             : '$count tasks have no due date and are not shown here.',
         style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+      ),
+    );
+  }
+
+  /// Only rendered when `capped > 0` — unlike the undated count above,
+  /// this is an exceptional condition (a cross-board window hitting the
+  /// server's row cap, whole-branch review finding 4), not a routine
+  /// per-board metric that reads meaningfully at zero. Server-truncated
+  /// counts are never silently dropped: this is the client half of
+  /// `TaskListQuery::crossBoardRows()`'s own `omitted.capped`.
+  Widget _cappedBanner(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final count = widget.omitted.capped;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Text(
+        key: const ValueKey('calendar-capped-count'),
+        count == 1
+            ? '1 further task is not shown — narrow the date range to see it.'
+            : '$count further tasks are not shown — narrow the date range to see them.',
+        style: TextStyle(color: scheme.error, fontSize: 12),
       ),
     );
   }
