@@ -254,17 +254,42 @@ final class MicrosoftMailboxReader implements MailboxReader
      * leaves the next colleague unable to see that the customer was already
      * answered.
      */
-    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
     {
+        $message = [
+            'subject'      => $subject,
+            'body'         => ['contentType' => 'Text', 'content' => $body],
+            'toRecipients' => array_values(array_map(
+                fn (string $address) => ['emailAddress' => ['address' => $address]],
+                $to,
+            )),
+        ];
+
+        if ($attachments !== []) {
+            /*
+             * Graph assembles the MIME itself, so files go as structured
+             * objects rather than through {@see ReplyComposer::composeNew}.
+             * That is the third different shape for the same three files —
+             * raw MIME for IMAP, raw MIME base64url for Gmail, this for Graph
+             * — and it is why the controller hands every reader the same
+             * name/mime/bytes triple and lets each one do its own packing.
+             *
+             * `sendMail` carries attachments inline up to about 3MB of
+             * request. Above that Graph wants an upload session against a
+             * draft, which is a different flow entirely; the controller's size
+             * limit keeps us the safe side of it rather than discovering the
+             * boundary from a 413 in front of a customer.
+             */
+            $message['attachments'] = array_values(array_map(fn (array $file) => [
+                '@odata.type'  => '#microsoft.graph.fileAttachment',
+                'name'         => $file['name'],
+                'contentType'  => $file['mime'],
+                'contentBytes' => base64_encode($file['bytes']),
+            ], $attachments));
+        }
+
         $this->post($mailbox, self::GRAPH.'/me/sendMail', [
-            'message' => [
-                'subject'      => $subject,
-                'body'         => ['contentType' => 'Text', 'content' => $body],
-                'toRecipients' => array_values(array_map(
-                    fn (string $address) => ['emailAddress' => ['address' => $address]],
-                    $to,
-                )),
-            ],
+            'message'         => $message,
             'saveToSentItems' => true,
         ]);
     }

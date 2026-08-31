@@ -99,9 +99,9 @@ final class RecordingMailboxReader implements MailboxReader
         $this->recording($mailbox, fn () => $this->inner->reply($mailbox, $messageId, $body));
     }
 
-    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
     {
-        $this->recording($mailbox, fn () => $this->inner->send($mailbox, $to, $subject, $body));
+        $this->recording($mailbox, fn () => $this->inner->send($mailbox, $to, $subject, $body, $attachments));
     }
 
     public function trash(Mailbox $mailbox, string $messageId): void

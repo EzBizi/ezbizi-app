@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/files.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
 
@@ -42,16 +43,32 @@ class ComposePanel extends StatefulWidget {
   final String sendAs;
 
   @override
-  State<ComposePanel> createState() => _ComposePanelState();
+  State<ComposePanel> createState() => ComposePanelState();
 }
 
-class _ComposePanelState extends State<ComposePanel> {
+/// Public so a widget test can hand the panel a file without opening the
+/// operating system's file picker, which a widget test cannot do.
+class ComposePanelState extends State<ComposePanel> {
   final _to = TextEditingController();
   final _subject = TextEditingController();
   final _body = TextEditingController();
 
+  /// Held in memory only, and only until the message is sent.
+  ///
+  /// Nothing is uploaded ahead of time and nothing is written down anywhere —
+  /// the files go up inside the same request as the message. So closing this
+  /// panel is a complete cancel, with nothing to tidy up on the server and no
+  /// half-uploaded file waiting to be collected.
+  final _files = <({String name, List<int> bytes})>[];
+
   bool _busy = false;
   String? _error;
+
+  /// Matches the server: five files, two megabytes together.
+  static const _maxFiles = 5;
+  static const _maxTotalBytes = 2 * 1024 * 1024;
+
+  int get _totalBytes => _files.fold(0, (sum, f) => sum + f.bytes.length);
 
   @override
   void initState() {
@@ -83,20 +100,76 @@ class _ComposePanelState extends State<ComposePanel> {
   bool get _canSend =>
       !_busy && _recipients.isNotEmpty && _body.text.trim().isNotEmpty;
 
+  /// The half of [_attach] that follows the picker, exposed for tests.
+  ///
+  /// The OS file picker cannot be opened from a widget test, and stubbing it
+  /// would leave the interesting half — what this panel does with the bytes,
+  /// and what it then puts on the wire — asserted against a stub instead of
+  /// against the panel.
+  @visibleForTesting
+  void debugAddFile(String name, List<int> bytes) {
+    setState(() => _files.add((name: name, bytes: bytes)));
+  }
+
+  /// Refused HERE as well as at the server, and the sentence is the same size.
+  ///
+  /// Not because the server's check is doubted — it is the one that counts —
+  /// but because a person who has just waited for a 2MB upload to be rejected
+  /// has been made to wait for news this screen already had.
+  Future<void> _attach() async {
+    if (_files.length >= _maxFiles) return;
+
+    final picked = await Files.pickBytes();
+
+    if (picked == null || !mounted) return;
+
+    if (_totalBytes + picked.bytes.length > _maxTotalBytes) {
+      setState(() {
+        _error = 'Those files come to more than 2 MB together, which is more than '
+            'this inbox can send in one message. Send fewer, or share the large '
+            'ones as a link.';
+      });
+      return;
+    }
+
+    setState(() {
+      _error = null;
+      _files.add((name: picked.name, bytes: picked.bytes));
+    });
+  }
+
   Future<void> _send() async {
     setState(() {
       _busy = true;
       _error = null;
     });
 
-    final response = await widget.api.post(
-      '/email/mailboxes/${widget.mailboxId}/messages',
-      {
-        'to': _recipients,
-        'subject': _subject.text.trim(),
-        'body': _body.text.trim(),
-      },
-    );
+    // Two shapes for one endpoint: JSON when there is nothing to attach,
+    // multipart when there is. Not multipart always — a message with no files
+    // has no reason to travel as a form, and JSON is what every other verb in
+    // this client sends.
+    final response = _files.isEmpty
+        ? await widget.api.post(
+            '/email/mailboxes/${widget.mailboxId}/messages',
+            {
+              'to': _recipients,
+              'subject': _subject.text.trim(),
+              'body': _body.text.trim(),
+            },
+          )
+        : await widget.api.postFiles(
+            '/email/mailboxes/${widget.mailboxId}/messages',
+            'attachments',
+            _files,
+            fields: {
+              // Repeated keys, because a multipart form has no arrays — this is
+              // the shape PHP reads back as `to[0]`, `to[1]`.
+              for (var i = 0; i < _recipients.length; i++)
+                'to[$i]': _recipients[i],
+              'subject': _subject.text.trim(),
+              'body': _body.text.trim(),
+            },
+          );
 
     if (!mounted) return;
 
@@ -204,6 +277,38 @@ class _ComposePanelState extends State<ComposePanel> {
               alignLabelWithHint: true,
             ),
           ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // Wrap, not Row: five filenames beside a button overflow a 375px
+              // panel, and a chip that has been pushed off the edge is a file
+              // somebody cannot remove.
+              TextButton.icon(
+                onPressed: (_busy || _files.length >= _maxFiles) ? null : _attach,
+                icon: const Icon(Icons.attach_file, size: 18),
+                label: Text(_files.isEmpty ? 'Attach a file' : 'Attach another'),
+              ),
+              for (final file in _files)
+                InputChip(
+                  label: Text(file.name),
+                  onDeleted: _busy ? null : () => setState(() => _files.remove(file)),
+                  deleteIconColor: theme.colorScheme.onSurfaceVariant,
+                ),
+            ],
+          ),
+          if (_files.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              // The running total, because the limit is on the SUM and a person
+              // adding a fourth file cannot otherwise tell how close they are.
+              '${_files.length} of $_maxFiles files · '
+              '${(_totalBytes / 1024).round()} KB of 2048 KB',
+              style: theme.textTheme.labelSmall,
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 14),
             ErrorNote(_error!),

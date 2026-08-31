@@ -700,10 +700,10 @@ final class GmailMailboxReader implements MailboxReader
      * No `threadId`, so Gmail files it as a new conversation rather than under
      * whatever was last opened. That omission is the whole difference.
      */
-    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
     {
         $this->post($mailbox, self::API.'/messages/send', [
-            'raw' => $this->composer->composeNewForGmail($mailbox, $to, $subject, $body),
+            'raw' => $this->composer->composeNewForGmail($mailbox, $to, $subject, $body, $attachments),
         ]);
     }
 

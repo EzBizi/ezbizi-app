@@ -98,12 +98,18 @@ interface MailboxReader
      * hands the parts to a provider API that builds the message itself. Neither
      * path may interpolate a recipient into a header by hand.
      *
+     * Files travel INSIDE the request that sends the message and are never
+     * written down — same rule as the rest of this interface. There is no
+     * attachment record, no `attachables` row and nothing to clean up, because
+     * an outgoing file that outlives the send is a copy of correspondence.
+     *
      * @param  list<string>  $to  one or more recipient addresses
+     * @param  list<array{name: string, mime: string, bytes: string}>  $attachments
      *
      * @throws CannotReadMailbox when the mailbox cannot be opened at all
      * @throws CannotReachHost   when the SMTP host fails the same guard the IMAP host does
      */
-    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void;
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void;
 
     /**
      * Move this message (and its thread, where the provider groups) to Trash.

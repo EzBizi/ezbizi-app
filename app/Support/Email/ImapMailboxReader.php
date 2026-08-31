@@ -576,7 +576,7 @@ final class ImapMailboxReader implements MailboxReader
      * threading headers, and there is nothing here to fetch. So this is the
      * SMTP half on its own — guard, then compose, then send.
      */
-    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
     {
         $smtp = $mailbox->smtpHost();
 
@@ -599,7 +599,7 @@ final class ImapMailboxReader implements MailboxReader
             password: (string) $mailbox->credential(),
             from: $mailbox->address,
             to: $to,
-            message: $this->composer->composeNew($mailbox, $to, $subject, $body),
+            message: $this->composer->composeNew($mailbox, $to, $subject, $body, $attachments),
         ));
     }
 
