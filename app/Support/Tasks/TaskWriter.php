@@ -60,6 +60,16 @@ final class TaskWriter
             $collaborators = $this->collaborators($lockedBoard, $attributes['collaborator_user_ids'] ?? []);
             $description = $this->richText->normalize($attributes['description'] ?? null);
             $dueOn = $attributes['due_on'] ?? null;
+            $startOn = $attributes['start_on'] ?? null;
+            // Same rule as applyUpdate()'s merged-state check (design spec
+            // §8; task-12 brief, fix round 2), reusing Refusal::startAfterDue()
+            // rather than a second sentence. Simpler here than on update:
+            // there is no existing row to merge against, so this only ever
+            // fires when BOTH dates are present in this one request and
+            // inverted. Either date absent (including both) is always fine.
+            if ($startOn !== null && $dueOn !== null && $startOn > $dueOn) {
+                throw ValidationException::withMessages(['start_on' => (string) Refusal::startAfterDue()->message()]);
+            }
 
             $task = new Task;
             $task->forceFill([

@@ -315,6 +315,49 @@ class TasksApiTest extends TestCase
         $this->assertNull($task->due_on);
     }
 
+    /**
+     * Same rule at creation (task-12 brief, fix round 2) — `TaskWriter::create()`
+     * reuses `Refusal::startAfterDue()` rather than a second sentence. There
+     * is no existing row to merge against here, so this only ever fires
+     * when both dates are present in the one request and inverted.
+     */
+    public function test_creating_with_start_on_after_due_on_is_refused(): void
+    {
+        $response = $this->postJson("/api/v1/tasks/boards/{$this->board->id}/tasks", [
+            'title' => 'Install the unit',
+            'status_option_id' => $this->taskStatus(StatusCategory::NotStarted)->id,
+            'group_id' => $this->group()->id,
+            'start_on' => '2026-09-15',
+            'due_on' => '2026-09-10',
+        ])->assertUnprocessable()->assertJsonValidationErrors('start_on');
+        $this->assertStringContainsString(
+            'start date cannot be after the due date',
+            (string) $response->json('errors.start_on.0'),
+        );
+
+        $this->enterTenant();
+        $this->assertSame(0, Task::where('title', 'Install the unit')->count());
+    }
+
+    public function test_creating_with_both_dates_in_a_valid_order_succeeds(): void
+    {
+        $task = $this->createTask('Install the unit', dueOn: '2026-09-10', startOn: '2026-09-05');
+
+        $this->assertSame('2026-09-05', $task->start_on->format('Y-m-d'));
+        $this->assertSame('2026-09-10', $task->due_on->format('Y-m-d'));
+    }
+
+    public function test_creating_with_only_one_date_succeeds(): void
+    {
+        $dueOnly = $this->createTask('Order the unit', dueOn: '2026-09-10');
+        $this->assertNull($dueOnly->start_on);
+        $this->assertSame('2026-09-10', $dueOnly->due_on->format('Y-m-d'));
+
+        $startOnly = $this->createTask('Begin demolition', startOn: '2026-09-05');
+        $this->assertSame('2026-09-05', $startOnly->start_on->format('Y-m-d'));
+        $this->assertNull($startOnly->due_on);
+    }
+
     private function createTask(string $title, ?string $parentId = null, ?string $dueOn = null, ?string $startOn = null): Task
     {
         $payload = [
