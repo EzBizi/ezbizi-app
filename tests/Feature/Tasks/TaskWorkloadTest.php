@@ -145,6 +145,25 @@ class TaskWorkloadTest extends TestCase
         $this->assertSame([['date' => '2026-08-31', 'count' => 1]], $row['units']);
     }
 
+    public function test_a_task_spanning_several_days_inside_one_week_counts_once_for_that_week(): void
+    {
+        $admin = $this->alpha['admin']->fresh();
+        // Tue 2026-09-08 through Thu 2026-09-10, all inside the Sunday-start
+        // week of 2026-09-06 through 2026-09-12 (default week_starts_on is
+        // sunday — not overridden here). A regression that counted per DAY
+        // instead of per UNIT would report count: 3 for this single task;
+        // the both-dates unit=day tests cannot catch that, because with
+        // unit=day every day is already its own distinct bucket.
+        $this->createTask('Three days, one week', '2026-09-08', '2026-09-10', $admin->id);
+
+        $response = $this->getJson($this->rowsUrl($this->configuration('week', '2026-09-01', '2026-09-30')))
+            ->assertOk();
+
+        $row = collect($response->json('data'))->firstWhere('owner_id', $admin->id);
+        $this->assertNotNull($row);
+        $this->assertSame([['date' => '2026-09-06', 'count' => 1]], $row['units']);
+    }
+
     public function test_a_person_with_no_tasks_in_the_window_does_not_appear_as_a_phantom_zero_row(): void
     {
         $admin = $this->alpha['admin']->fresh();

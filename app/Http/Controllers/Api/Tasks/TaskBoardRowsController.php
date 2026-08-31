@@ -55,7 +55,7 @@ final class TaskBoardRowsController extends TaskApiController
             (int) ($input['per_page'] ?? 50),
         );
         if (TaskPresentation::from($configuration['presentation']) === TaskPresentation::Workload) {
-            $window = TaskWindow::parse(TaskPresentation::Workload, $configuration['window']);
+            $window = TaskWindow::parse(TaskPresentation::Workload, $result['window']);
             $workload = $this->workload->rows($request->user(), $scope, $board, $window);
             $result['data'] = $workload['data'];
             $result['omitted']['unowned'] = $workload['omitted']['unowned'];
